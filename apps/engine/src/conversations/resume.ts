@@ -34,6 +34,7 @@ export interface ResumeSummary {
       intent_kind?: string;
       authorization_url?: string;
       fields?: ResumeFormField[];
+      external_tool?: ExternalToolSubject;
     };
     summary: string;
     /** When this approval lapses. The only real deadline in the product;
@@ -290,6 +291,23 @@ function buildOneSentence(p: OneSentenceInputs): string {
   }
 }
 
+/** What an external MCP tool approval asks about, as data a client can phrase
+ *  in its own language: the connector's registered name, the server's tool
+ *  name, and an optional one-line hint the server supplied. */
+export interface ExternalToolSubject {
+  connector: string;
+  tool: string;
+  hint?: string;
+}
+
+function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { connector, tool, hint } = value as Record<string, unknown>;
+  if (typeof connector !== "string" || !connector.trim()) return undefined;
+  if (typeof tool !== "string" || !tool.trim()) return undefined;
+  return { connector, tool, ...(typeof hint === "string" && hint.trim() ? { hint } : {}) };
+}
+
 /** Project the dialog fields only; never expose its execution or approval capability. */
 export function pendingPrompt(input: unknown): {
   prompt?: {
@@ -297,12 +315,14 @@ export function pendingPrompt(input: unknown): {
     intent_kind?: string;
     authorization_url?: string;
     fields?: ResumeFormField[];
+    external_tool?: ExternalToolSubject;
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   const value = input as Record<string, unknown>;
   if (typeof value.question !== "string" || !value.question.trim()) return {};
   const fields = resumeFormFields(value.fields);
+  const externalTool = externalToolSubject(value.external_tool);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
@@ -326,6 +346,7 @@ export function pendingPrompt(input: unknown): {
       ...(fields ? { fields } : {}),
       ...(typeof intent?.kind === "string" ? { intent_kind: intent.kind } : {}),
       ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
+      ...(externalTool ? { external_tool: externalTool } : {}),
     },
   };
 }
