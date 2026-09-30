@@ -15,14 +15,16 @@
 // The adapter is injected so tests (and the real fanout worker) can
 // swap in a fake or a platform-specific bundle. When no adapter is
 // provided the service records a `deliveries` row with status
-// `skipped` and does not call the adapter.
+// `skipped` and does not call the adapter. An adapter that reports it
+// skipped the event (the sk CLI inbox passing on a non-actionable event)
+// likewise yields a `skipped` row and no audit entry: nothing was sent.
 
 import { and, eq } from "drizzle-orm";
 import { audit } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ChatAdapter } from "../chat/adapter.ts";
 import { deliver as chatDeliver } from "../chat/dispatcher.ts";
-import type { ChatDelivery } from "../chat/types.ts";
+import type { ChatDelivery, OutboundSendResult } from "../chat/types.ts";
 import type { Db } from "../db/client.ts";
 import {
   type NotificationChannelRow,
@@ -45,7 +47,7 @@ import { tryAcquire } from "./rate-limit.ts";
  */
 export interface NotificationAdapter {
   readonly platform?: string;
-  send(delivery: ChatDelivery): Promise<{ platform_message_id: string }>;
+  send(delivery: ChatDelivery): Promise<OutboundSendResult>;
 }
 
 /** Resolver that maps a rule to an adapter. Tests pass a fake. */
@@ -377,10 +379,28 @@ export async function dispatchEvent(
       // ChatAdapter — it has no verify/receive/update/sendApproval), so
       // it is invoked directly via the minimal `send` interface, the
       // same path test doubles use.
-      if (adapter.platform && adapter.platform !== "sk_cli") {
-        await chatDeliver(adapter as unknown as ChatAdapter, delivery);
-      } else {
-        await adapter.send(delivery);
+      const sendResult: OutboundSendResult =
+        adapter.platform && adapter.platform !== "sk_cli"
+          ? await chatDeliver(adapter as unknown as ChatAdapter, delivery)
+          : await adapter.send(delivery);
+      if ("skipped" in sendResult) {
+        const outcome: DeliveryOutcome = {
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          status: "skipped",
+          reason: sendResult.skipped,
+        };
+        result.outcomes.push(outcome);
+        await recordDelivery(db, {
+          tenant_id: event.tenant_id,
+          rule_id: rule.row.id,
+          channel_id: channel.id,
+          event,
+          severity: rule.severity,
+          status: "skipped",
+          reason: sendResult.skipped,
+        });
+        continue;
       }
       await onSuccess(db, channel.id);
       const outcome: DeliveryOutcome = {

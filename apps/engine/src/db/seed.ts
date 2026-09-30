@@ -78,11 +78,22 @@ async function seedEssentials(db: Db): Promise<SeededRoleIds> {
 }
 
 /**
+ * Events the default sk CLI inbox rule routes: exactly the catalog events a
+ * person may have to act on (`classifyEvent` in `webhooks/events/catalog.ts`).
+ * Step-level and routine events are not in it, so a running workflow does not
+ * produce a notification delivery and a sent-message audit row per step. A
+ * test keeps this list equal to the catalog's actionable entries, and the
+ * data migration that narrowed existing default rules writes the same value.
+ */
+export const DEFAULT_CLI_INBOX_EVENT_PATTERN =
+  "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed";
+
+/**
  * Seed the default sk CLI inbox notification rule for a tenant. The rule
- * routes every matching event (`*` / `*`, severity floor `info`) into the
- * `cli_notification_inbox` via the reserved `_cli` / `_inbox` target. The
- * `SkCliAdapter` is the process-global fallback that materialises each
- * delivery as a local row.
+ * routes the actionable events (`DEFAULT_CLI_INBOX_EVENT_PATTERN`, any
+ * workflow, severity floor `info`) into the `cli_notification_inbox` via the
+ * reserved `_cli` / `_inbox` target. The `SkCliAdapter` is the
+ * process-global fallback that materialises each delivery as a local row.
  *
  * Idempotent: guarded by the same `(_cli, _inbox)` NOT EXISTS check as the
  * 0042 backfill migration, so it is safe to re-run on every bootstrap /
@@ -109,7 +120,7 @@ export async function seedDefaultCliNotificationRule(
   await tx.insert(notificationRules).values({
     tenant_id,
     name: "sk CLI inbox (default)",
-    event_pattern: "*",
+    event_pattern: DEFAULT_CLI_INBOX_EVENT_PATTERN,
     workflow_pattern: "*",
     severity: "info",
     request_source_filter: null,
