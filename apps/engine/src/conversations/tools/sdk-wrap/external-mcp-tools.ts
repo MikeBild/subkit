@@ -94,9 +94,10 @@ export interface PaletteOperationSpec {
   suffix: string;
   /** Audit and operator-facing identity of what is being called. */
   target: string;
-  /** One line a person reads next to the approval question: the server's
-   *  display title, or the opening of its own description. Never the
-   *  model-facing `description`, which carries schemas and gate prose. */
+  /** One line a person reads next to the approval question, attributed to
+   *  the server (`external_tool.server_claim`): its display title, or the
+   *  opening of its own description. Never the model-facing `description`,
+   *  which carries schemas and gate prose. */
   hint?: string;
   description: string;
   inputSchema: Record<string, unknown>;
@@ -599,20 +600,24 @@ async function executeExternalMcpTool(
       // registered and the tool as the server calls it — not the prefixed
       // palette id. `external_tool` carries the same subject as data, so a
       // client renders it in its own language instead of parsing the prose.
+      // What the server says about its own tool is its claim, not ours: it
+      // rides as `server_claim` for a client to attribute, and never becomes
+      // the intent's description — a server may title a destructive tool
+      // "Read-only (safe)".
       const elicitationInput: Record<string, unknown> = {
         kind: "external_write",
         question: `Run the tool "${spec.suffix}" on ${connector_name}?`,
         external_tool: {
           connector: connector_name,
           tool: spec.suffix,
-          ...(spec.hint ? { hint: spec.hint } : {}),
+          ...(spec.hint ? { server_claim: spec.hint } : {}),
         },
         target: { tool: name, connector_slug, remote_tool: spec.target },
         pending_output: { connector_slug, remote_tool: spec.target, input_keys: inputKeys },
         commit_intent: {
           kind: "grant_relayed_tool_call",
           payload: { tool: name, approval_id: confirm_id },
-          description: spec.hint ?? `Lets the tool "${spec.suffix}" on ${connector_name} run once.`,
+          description: `Lets the tool "${spec.suffix}" on ${connector_name} run once.`,
         },
         // Persist the human-reachable link, not just mention it to the model.
         // Withholding it here left the operator with no channel at all on a

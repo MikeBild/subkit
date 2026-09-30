@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { auditLog, webhooksInbound } from "../db/schema/index.ts";
@@ -34,41 +34,67 @@ const REFUSED_DELIVERY_ACTIONS = [
   AuditAction.WEBHOOK_TRIGGER_FAILED_VERIFICATION,
 ];
 
+/** How far back the newest refused delivery is looked for. The standing state
+ *  is `admission_hold`; this only dates it, and bounds the audit scan. */
+const REFUSAL_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
 /**
  * The workflow's inbound hooks, judged like its schedules. A hook is the other
  * thing that starts runs without a person, and one the authority gate refuses
  * on every delivery used to leave no trace here at all.
+ *
+ * A deactivated hook receives nothing, so it holds nothing: its hold reads as
+ * null here exactly as a paused schedule's does, and the overview and the
+ * attention list count only active hooks. `refusal_reasons` is the caller's
+ * audit visibility — the reason text is audit-log content.
  */
-export async function inboundHookAutomationView(tenant: string, workflow: string, db: Executor) {
+export async function inboundHookAutomationView(
+  tenant: string,
+  workflow: string,
+  db: Executor,
+  now: Date,
+  options: { refusal_reasons: boolean },
+) {
   const hooks = await db
     .select()
     .from(webhooksInbound)
     .where(and(eq(webhooksInbound.tenant_id, tenant), eq(webhooksInbound.workflow_id, workflow)))
     .orderBy(webhooksInbound.slug);
+  if (hooks.length === 0) return [];
+  // The newest refusal per hook, whatever gate refused it — one scan of the
+  // (tenant, action, ts) index, bounded by the lookback window.
+  const refusals = await db
+    .selectDistinctOn([auditLog.resource_id], {
+      resource_id: auditLog.resource_id,
+      ts: auditLog.ts,
+      reason: auditLog.reason,
+    })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant),
+        inArray(auditLog.action, REFUSED_DELIVERY_ACTIONS),
+        gte(auditLog.ts, new Date(now.getTime() - REFUSAL_LOOKBACK_MS)),
+        eq(auditLog.resource_type, "webhook_inbound"),
+        inArray(
+          auditLog.resource_id,
+          hooks.map((hook) => hook.id),
+        ),
+      ),
+    )
+    .orderBy(auditLog.resource_id, desc(auditLog.ts));
+  const newest = new Map(refusals.map((row) => [row.resource_id, row]));
   return Promise.all(
     hooks.map(async (hook) => {
       const automation = await inspectInboundHookAutomation(hook, db);
-      // The newest refusal, whatever gate refused it — (tenant, action, ts) is indexed.
-      const [refused] = await db
-        .select({ ts: auditLog.ts, reason: auditLog.reason })
-        .from(auditLog)
-        .where(
-          and(
-            eq(auditLog.tenant_id, tenant),
-            inArray(auditLog.action, REFUSED_DELIVERY_ACTIONS),
-            eq(auditLog.resource_type, "webhook_inbound"),
-            eq(auditLog.resource_id, hook.id),
-          ),
-        )
-        .orderBy(desc(auditLog.ts))
-        .limit(1);
+      const refused = newest.get(hook.id);
       return {
         ...automation,
         slug: hook.slug,
         environment: "prod" as const,
-        admission_hold: hook.admission_hold ?? null,
+        admission_hold: hook.active ? (hook.admission_hold ?? null) : null,
         last_refused_at: refused?.ts.toISOString() ?? null,
-        last_refused_reason: refused?.reason ?? null,
+        last_refused_reason: options.refusal_reasons ? (refused?.reason ?? null) : null,
       };
     }),
   );

@@ -39,6 +39,7 @@ import {
   getDraftCredential,
 } from "../../../conversations/persistence/draft-credential-cache.ts";
 import { pauseForUserInput } from "../../../conversations/tools/ask-user/common.ts";
+import { getCredentialForConnector } from "../../../credentials/service.ts";
 import {
   auditLog,
   connectorCredentialSetupGrants,
@@ -306,6 +307,22 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
     );
     expect(correctRes.status).toBe(200);
     expect(await getGrantRow(token)).toBeNull();
+  });
+});
+
+describe("pasted credential whitespace", () => {
+  // A key copied with a trailing newline used to be stored verbatim; sent as
+  // a header, the runtime then refused it with an error quoting the secret.
+  test("the stored bearer token carries no surrounding whitespace", async () => {
+    const token = await seedGrant();
+    const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant: token, token: "  pasted-bearer-secret\r\n" }).toString(),
+    });
+    expect(res.status).toBe(200);
+    const stored = await getCredentialForConnector(server.tenantId, connectorId, "dev", server.db);
+    expect(stored?.value).toEqual({ mode: "bearer", token: "pasted-bearer-secret" });
   });
 });
 

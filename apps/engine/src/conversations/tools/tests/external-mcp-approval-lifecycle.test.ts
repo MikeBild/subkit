@@ -244,12 +244,22 @@ describe("external MCP tool approval", () => {
     expect(input.external_tool).toEqual({
       connector: "Metabase Reporting MCP",
       tool: "search_items",
-      hint: "Search saved questions and dashboards",
+      server_claim: "Search saved questions and dashboards",
     });
+    // The server's own words are its claim, carried apart. What the approval
+    // says it does is the engine's sentence — a server could title a
+    // destructive tool "Read-only (safe)".
+    expect((input.commit_intent as { description?: unknown }).description).toBe(
+      'Lets the tool "search_items" on Metabase Reporting MCP run once.',
+    );
     // The resume projection every client reads carries the same subject.
     expect(pendingPrompt(input).prompt).toMatchObject({
       intent_kind: "grant_relayed_tool_call",
-      external_tool: { connector: "Metabase Reporting MCP", tool: "search_items" },
+      external_tool: {
+        connector: "Metabase Reporting MCP",
+        tool: "search_items",
+        server_claim: "Search saved questions and dashboards",
+      },
     });
     expect(remoteCalls).toBe(0);
   });

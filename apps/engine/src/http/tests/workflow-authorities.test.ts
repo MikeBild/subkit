@@ -9,16 +9,19 @@ import {
 } from "../../auth/browser-session.ts";
 import {
   apiKeys,
+  auditLog,
   connectors,
   patchCandidates,
   sessions,
   tenants,
   users,
+  webhooksInbound,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.ts";
+import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -865,4 +868,122 @@ test("held report preparation works for a saved draft and cannot grant, activate
   const status = await app.request(`${f.base}/automation-status`, { headers: browserHeaders });
   expect(status.status).toBe(200);
   expect(await status.json()).toEqual({ schedules: [], inbound_hooks: [] });
+});
+
+// A caller who reads schedules does not thereby read the workflow's hooks, and
+// a refusal's reason is audit-log content. Each narrower reader sees exactly
+// what its permissions already cover elsewhere.
+test("automation-status shows hooks and refusal reasons only to readers of each", async () => {
+  const slug = `authority-hooks-${++counter}`;
+  const [workflow] = await ctx.db
+    .insert(workflows)
+    .values({ tenant_id: ctx.tenantId, slug, name: slug, lifecycle: "draft" })
+    .returning();
+  if (!workflow) throw new Error("missing workflow fixture");
+  const hold = {
+    reason_code: "execution_authority_required" as const,
+    observed_at: "2026-01-01T00:00:00.000Z",
+  };
+  const secret = {
+    verifier: "standard",
+    secret_ciphertext: Buffer.alloc(1),
+    secret_iv: Buffer.alloc(1),
+    secret_auth_tag: Buffer.alloc(1),
+  };
+  const [active, inactive] = await ctx.db
+    .insert(webhooksInbound)
+    .values([
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: workflow.id,
+        slug: `${slug}-a`,
+        ...secret,
+        admission_hold: hold,
+      },
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id: workflow.id,
+        slug: `${slug}-b`,
+        ...secret,
+        active: false,
+        admission_hold: hold,
+      },
+    ])
+    .returning();
+  if (!active || !inactive) throw new Error("missing hook fixture");
+  const refusal = (id: string, resource_id: string, age: string, reason: string) => ({
+    id,
+    ts: sql`clock_timestamp() - ${age}::interval`,
+    tenant_id: ctx.tenantId,
+    actor_type: "system",
+    action: "webhook.inbound.denied",
+    resource_type: "webhook_inbound",
+    resource_id,
+    result: "denied",
+    reason,
+  });
+  await ctx.db.insert(auditLog).values([
+    refusal(
+      "00000000-0000-4000-8000-00000000a001",
+      active.id,
+      "1 hour",
+      "execution_authority_required",
+    ),
+    // Outside the lookback: the newest refusal the view reports is bounded.
+    refusal("00000000-0000-4000-8000-00000000a002", inactive.id, "40 days", "signature_mismatch"),
+  ]);
+
+  const reader = async (name: string, permissions: string[]) => {
+    const role = await createRole(ctx.db, ctx.tenantId, `${slug}-${name}`);
+    for (const permission of permissions)
+      await grantPermissionToRole(ctx.db, ctx.tenantId, role.id, permission);
+    const [user] = await ctx.db
+      .insert(users)
+      .values({ tenant_id: ctx.tenantId, email: `${slug}-${name}@test.local`, role: "member" })
+      .returning();
+    if (!user) throw new Error("missing user fixture");
+    await ctx.db.update(users).set({ role_id: role.id }).where(eq(users.id, user.id));
+    const key = `wf_live_${name}_${slug.replaceAll("-", "_")}`;
+    await ctx.db.insert(apiKeys).values({
+      tenant_id: ctx.tenantId,
+      user_id: user.id,
+      prefix: key.slice(0, 12),
+      token_sha256: createHash("sha256").update(key).digest("hex"),
+      scopes: ["*"],
+    });
+    return key;
+  };
+  const status = async (key: string) => {
+    const res = await app.request(`/v1/workflows/${workflow.id}/automation-status`, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(res.status).toBe(200);
+    return (
+      (await res.json()) as {
+        inbound_hooks: Array<{
+          slug: string;
+          admission_hold: unknown;
+          last_refused_at: string | null;
+          last_refused_reason: string | null;
+        }>;
+      }
+    ).inbound_hooks;
+  };
+  const base = ["workflow:read", "schedule:read"];
+
+  expect(await status(await reader("schedules", base))).toEqual([]);
+
+  const hooksOnly = await status(await reader("hooks", [...base, "inbound_hook:read"]));
+  expect(hooksOnly.map((hook) => hook.slug)).toEqual([`${slug}-a`, `${slug}-b`]);
+  expect(hooksOnly[0]?.last_refused_at).not.toBeNull();
+  expect(hooksOnly.map((hook) => hook.last_refused_reason)).toEqual([null, null]);
+
+  const full = await status(await reader("audit", [...base, "inbound_hook:read", "audit:read"]));
+  expect(full.map((hook) => hook.last_refused_reason)).toEqual([
+    "execution_authority_required",
+    null,
+  ]);
+  expect(full[1]?.last_refused_at).toBeNull();
+  // A deactivated hook receives nothing, so it holds nothing.
+  expect(full.map((hook) => hook.admission_hold)).toEqual([hold, null]);
 });

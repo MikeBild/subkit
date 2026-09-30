@@ -174,9 +174,9 @@ export function extractCredentialFromFormOutput(
       //     match (`extractChatPastedCredential`) INCLUDES the `Bearer `
       //     prefix verbatim.
       // Strip a single leading scheme word (+ surrounding whitespace) so the
-      // captured value is the bare credential. `header`/`query` modes are
-      // deliberately untouched — their value is written to the wire verbatim,
-      // so a pasted `Authorization: Bearer …` header value must keep it.
+      // captured value is the bare credential. `header`/`query` modes keep a
+      // scheme word — their value is written to the wire verbatim, so a
+      // pasted `Authorization: Bearer …` header value must keep it.
       const token = raw.replace(/^\s*Bearer\s+/i, "").trim();
       if (!token) return null;
       return { mode: "bearer", token };
@@ -195,8 +195,15 @@ export function extractCredentialFromFormOutput(
       return { mode: "basic", username, password };
     }
     case "header": {
-      const header_name = seedString("header_name") ?? pick(["header_name", "header", "name"]);
-      const header_value = seedString("header_value") ?? pick(["header_value", "value", "token"]);
+      // Surrounding whitespace is a paste artefact, never part of a header:
+      // a trailing newline sent on the wire makes the runtime reject the
+      // request with an error that quotes the secret.
+      const header_name = (
+        seedString("header_name") ?? pick(["header_name", "header", "name"])
+      )?.trim();
+      const header_value = (
+        seedString("header_value") ?? pick(["header_value", "value", "token"])
+      )?.trim();
       if (!header_name || !header_value) return null;
       return { mode: "header", header_name, header_value };
     }

@@ -13,7 +13,7 @@ export interface ChatApproval {
   authorizationUrl?: string;
   /** An external MCP tool approval: phrased from these names, not the
    *  engine's English question. */
-  externalTool?: { connector: string; tool: string; hint?: string };
+  externalTool?: { connector: string; tool: string; server_claim?: string };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -40,8 +40,8 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     id: pending.id,
     toolCallId: call.id,
     question: input.question,
-    // The hint below the question already says what the tool does; the
-    // intent's description is the same line, or an English fallback.
+    // The server's claim is shown attributed, never as the decision's own
+    // details; the intent's description is only the engine's English line.
     description:
       !externalTool && typeof intent.description === "string" ? intent.description : null,
     ...(externalTool ? { externalTool } : {}),

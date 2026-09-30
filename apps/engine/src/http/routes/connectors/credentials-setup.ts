@@ -319,7 +319,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       let credential: Parameters<typeof setDraftCredential>[1];
       switch (validated.auth_type) {
         case "bearer": {
-          const token = form.get("token") ?? "";
+          const token = (form.get("token") ?? "").trim();
           if (!token) throw new MissingFieldError("token");
           credential = { mode: "bearer", token };
           break;
@@ -332,8 +332,8 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
           break;
         }
         case "header": {
-          const header_name = form.get("header_name") ?? "";
-          const header_value = form.get("header_value") ?? "";
+          const header_name = (form.get("header_name") ?? "").trim();
+          const header_value = (form.get("header_value") ?? "").trim();
           if (!header_name || !header_value) {
             throw new MissingFieldError("header_name/header_value");
           }
@@ -536,7 +536,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       let value: Parameters<typeof credsvc.upsertCredential>[0]["value"];
       switch (connector.auth_type) {
         case "bearer": {
-          const token = form.get("token") ?? "";
+          const token = (form.get("token") ?? "").trim();
           if (!token) throw new MissingFieldError("token");
           value = { mode: "bearer", token };
           break;
@@ -549,8 +549,8 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
           break;
         }
         case "header": {
-          const headerName = form.get("header_name") ?? "";
-          const headerValue = form.get("header_value") ?? "";
+          const headerName = (form.get("header_name") ?? "").trim();
+          const headerValue = (form.get("header_value") ?? "").trim();
           if (!headerName || !headerValue) throw new MissingFieldError("header_name/header_value");
           value = { mode: "header", headers: { [headerName]: headerValue } };
           break;

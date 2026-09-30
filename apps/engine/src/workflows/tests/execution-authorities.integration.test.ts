@@ -557,6 +557,78 @@ test("a production grant releases the workflow's held inbound hook, and nothing 
   expect((await inspectInboundHookAutomation(hook, ctx.db)).state).toBe("authorized");
 });
 
+test("a refusal racing a production grant cannot leave a hold behind it", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const [hook] = await ctx.db
+    .insert(webhooksInbound)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      slug: `${f.workflow.slug}-hook`,
+      verifier: "standard",
+      secret_ciphertext: Buffer.alloc(1),
+      secret_iv: Buffer.alloc(1),
+      secret_auth_tag: Buffer.alloc(1),
+    })
+    .returning();
+  if (!hook) throw new Error("missing hook fixture");
+  const prod = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      execution_environment: "prod",
+    },
+    ctx.db,
+  );
+  const hold = {
+    reason_code: "execution_authority_required" as const,
+    observed_at: f.input.valid_from,
+  };
+  // The refusal already judged the hook not ready and holds its row; the hold
+  // it is about to write is still NULL when the grant arrives.
+  let grant: Promise<unknown> = Promise.resolve();
+  await ctx.db.transaction(async (refusal) => {
+    await refusal
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(eq(webhooksInbound.id, hook.id))
+      .for("update");
+    let granted = false;
+    grant = grantWorkflowAuthority(
+      f.workflow.id,
+      { ...f.input, execution_environment: "prod", expected_manifest_digest: prod.digest },
+      f.context,
+    ).finally(() => {
+      granted = true;
+    });
+    // Until the grant either finishes or queues behind the refusal's row lock.
+    for (let attempt = 0; attempt < 200 && !granted; attempt += 1) {
+      const waiting = await ctx.db.execute<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+              AND query ILIKE '%webhooks_inbound%'`,
+      );
+      if ((waiting.rows[0]?.n ?? 0) > 0) break;
+      await Bun.sleep(25);
+    }
+    await refusal
+      .update(webhooksInbound)
+      .set({ admission_hold: hold })
+      .where(eq(webhooksInbound.id, hook.id));
+  });
+  await grant;
+  const [observed] = await ctx.db
+    .select({ admission_hold: webhooksInbound.admission_hold })
+    .from(webhooksInbound)
+    .where(eq(webhooksInbound.id, hook.id));
+  expect(observed?.admission_hold).toBeNull();
+});
+
 test("automation evidence rejects expired, changed-version and cross-tenant grants", async () => {
   const f = await fixture();
   await ctx.db

@@ -51,6 +51,22 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
     });
   });
 
+  it("trims a pasted header's surrounding whitespace, keeping the value itself", () => {
+    // A trailing newline sent on the wire makes the runtime reject the request
+    // with an error that quotes the secret.
+    expect(
+      extractCredentialFromFormOutput(
+        "header",
+        { header_name: " X-Api-Key " },
+        { values: { header_value: "  Bearer wf_live_abc123\r\n" } },
+      ),
+    ).toEqual({
+      mode: "header",
+      header_name: "X-Api-Key",
+      header_value: "Bearer wf_live_abc123",
+    });
+  });
+
   it("maps a basic form (username + password) into a basic credential", () => {
     const out = extractCredentialFromFormOutput(
       "basic",
