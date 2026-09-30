@@ -21,7 +21,7 @@ export interface UnavailableConnector {
   reason: string;
 }
 
-/** The query both the run dialog and the detail action read, so they share one request. */
+/** The run dialog's pre-check, one per workflow version and environment. */
 export function runPreviewKey(workflowId: string, versionId: string, environment: RunEnvironment) {
   return ["workflow-run-preview", workflowId, versionId, environment] as const;
 }

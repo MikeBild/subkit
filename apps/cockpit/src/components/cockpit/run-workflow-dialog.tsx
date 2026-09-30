@@ -62,10 +62,10 @@ type Failure =
 
 /**
  * Whether each environment can run the version POST /v1/executions runs, as
- * the authority preview says — a read, never a run. Shared by the dialog and
- * the detail page's action, which ask the same question under the same key.
+ * the authority preview says — a read, never a run, asked only while the
+ * dialog is open.
  */
-export function useRunAvailability(
+function useRunAvailability(
   workflowId: string,
   versionId: string | null,
   enabled: boolean,
