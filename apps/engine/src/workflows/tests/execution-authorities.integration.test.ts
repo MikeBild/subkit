@@ -12,13 +12,17 @@ import {
   sessions,
   tenants,
   users,
+  webhooksInbound,
   workflowExecutionAuthorities,
   workflows,
   workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
+import {
+  inspectInboundHookAutomation,
+  inspectScheduleAutomation,
+} from "../../scheduler/automation-status.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import {
@@ -474,6 +478,84 @@ for (const scenario of [
     expect((await inspectScheduleAutomation(schedule, ctx.db)).ready).toBe(false);
   });
 }
+
+test("a production grant releases the workflow's held inbound hook, and nothing else", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const hold = {
+    reason_code: "execution_authority_unavailable" as const,
+    observed_at: f.input.valid_from,
+  };
+  const secret = { secret_ciphertext: Buffer.alloc(1), secret_iv: Buffer.alloc(1) };
+  const [hook] = await ctx.db
+    .insert(webhooksInbound)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      slug: `${f.workflow.slug}-hook`,
+      verifier: "standard",
+      ...secret,
+      secret_auth_tag: Buffer.alloc(1),
+      admission_hold: hold,
+    })
+    .returning();
+  const [other] = await ctx.db
+    .insert(workflows)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      slug: `${f.workflow.slug}-other`,
+      name: "Other",
+      lifecycle: "draft",
+    })
+    .returning();
+  if (!hook || !other) throw new Error("missing hook fixture");
+  await ctx.db.insert(webhooksInbound).values({
+    tenant_id: f.workflow.tenant_id,
+    workflow_id: other.id,
+    slug: `${f.workflow.slug}-other-hook`,
+    verifier: "standard",
+    ...secret,
+    secret_auth_tag: Buffer.alloc(1),
+    admission_hold: hold,
+  });
+  expect((await inspectInboundHookAutomation(hook, ctx.db)).state).toBe("approval_required");
+  const held = async () =>
+    (
+      await ctx.db
+        .select({ workflow_id: webhooksInbound.workflow_id })
+        .from(webhooksInbound)
+        .where(
+          and(
+            eq(webhooksInbound.tenant_id, f.workflow.tenant_id),
+            sql`${webhooksInbound.admission_hold} IS NOT NULL`,
+          ),
+        )
+    ).map((row) => row.workflow_id);
+
+  // Deliveries only ever run in production: a development grant releases nothing.
+  await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
+  expect((await held()).sort()).toEqual([f.workflow.id, other.id].sort());
+
+  const prod = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      execution_environment: "prod",
+    },
+    ctx.db,
+  );
+  await grantWorkflowAuthority(
+    f.workflow.id,
+    { ...f.input, execution_environment: "prod", expected_manifest_digest: prod.digest },
+    f.context,
+  );
+  expect(await held()).toEqual([other.id]);
+  expect((await inspectInboundHookAutomation(hook, ctx.db)).state).toBe("authorized");
+});
 
 test("automation evidence rejects expired, changed-version and cross-tenant grants", async () => {
   const f = await fixture();

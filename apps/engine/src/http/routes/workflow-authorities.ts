@@ -7,7 +7,11 @@ import {
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
-import { nextScheduleFire, workflowAutomationView } from "../../scheduler/index.ts";
+import {
+  inboundHookAutomationView,
+  nextScheduleFire,
+  workflowAutomationView,
+} from "../../scheduler/index.ts";
 import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
@@ -152,11 +156,20 @@ const preview = createRoute({
     ...failures,
   },
 });
+const automationStateSchema = z.enum([
+  "paused",
+  "activation_required",
+  "input_required",
+  "repair_required",
+  "approval_required",
+  "authorized",
+  "verification_unavailable",
+]);
 const automationStatus = createRoute({
   method: "get",
   path: "/v1/workflows/{id}/automation-status",
   tags: ["workflows"],
-  summary: "Read verified readiness of this workflow's schedules",
+  summary: "Read verified readiness of this workflow's schedules and inbound hooks",
   security: [{ bearerAuth: [] }],
   request: { params: workflowParam },
   responses: {
@@ -169,20 +182,39 @@ const automationStatus = createRoute({
               z.object({
                 schedule_id: z.string(),
                 workflow_id: z.string(),
-                state: z.enum([
-                  "paused",
-                  "activation_required",
-                  "input_required",
-                  "repair_required",
-                  "approval_required",
-                  "authorized",
-                  "verification_unavailable",
-                ]),
+                state: automationStateSchema,
                 ready: z.boolean(),
                 cron: z.string(),
                 timezone: z.string(),
                 environment: z.enum(["dev", "prod"]),
                 next_run_at: z.string().nullable(),
+              }),
+            ),
+            /** The other thing that starts runs without a person. Same states
+             *  as a schedule; a hook's deliveries always run in production. */
+            inbound_hooks: z.array(
+              z.object({
+                inbound_hook_id: z.string(),
+                workflow_id: z.string(),
+                slug: z.string(),
+                state: automationStateSchema,
+                ready: z.boolean(),
+                environment: z.literal("prod"),
+                /** Set while the authority gate refuses its deliveries; cleared
+                 *  by an admitted delivery or a grant. */
+                admission_hold: z
+                  .object({
+                    reason_code: z.enum([
+                      "execution_authority_required",
+                      "execution_authority_unavailable",
+                    ]),
+                    observed_at: z.string(),
+                  })
+                  .nullable(),
+                /** The newest refused delivery, from the audit trail, whatever
+                 *  refused it (signature, authority, lifecycle). */
+                last_refused_at: z.string().nullable(),
+                last_refused_reason: z.string().nullable(),
               }),
             ),
           }),
@@ -454,14 +486,12 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     const clock = await c.get("db").execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
     const now = clock.rows[0]?.now;
     if (!now) throw new Error("database clock unavailable");
+    const tenant = requireAuth(c).tenant_id;
+    const workflow = c.req.valid("param").id;
     return c.json(
       {
-        schedules: await workflowAutomationView(
-          requireAuth(c).tenant_id,
-          c.req.valid("param").id,
-          c.get("db"),
-          new Date(now),
-        ),
+        schedules: await workflowAutomationView(tenant, workflow, c.get("db"), new Date(now)),
+        inbound_hooks: await inboundHookAutomationView(tenant, workflow, c.get("db")),
       },
       200,
     );

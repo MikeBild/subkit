@@ -24,6 +24,7 @@ import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
 } from "./tools/ask-user/commit-intent.ts";
+import { interpretConfirmDecision } from "./tools/ask-user/interpret-confirm.ts";
 import { redactElicitationOutput } from "./tools/ask-user/redact-answer.ts";
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
@@ -688,6 +689,24 @@ export async function resolveElicitation(
       .limit(1);
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
+  }
+  // The paused call a confirm was raised for ends with the decision — the
+  // same verdict the transcript projection states (`service/get.ts`) and the
+  // expiry path writes. Left `pending`, the row outlived its question and read
+  // as a call still waiting. Only `outcome` moves: the paused output is what
+  // replay shows the model, and it carries the `confirm_id` a re-issue needs.
+  if (row.tool_name === "ask_user_confirm" && row.tool_call_id) {
+    const accepted = status === "resolved" && interpretConfirmDecision(p.output) === "confirmed";
+    await exec
+      .update(conversationToolCalls)
+      .set({ outcome: accepted ? "ok" : "denied" })
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, p.tenant_id),
+          eq(conversationToolCalls.id, row.tool_call_id),
+          eq(conversationToolCalls.outcome, "pending"),
+        ),
+      );
   }
   // Elicitation audit is a TRI-STATE — see docs/developers/tool-palette.md
   // ("Elicitation audit is a tri-state — transport ≠ approval"). Three

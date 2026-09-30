@@ -11,6 +11,9 @@ export interface ChatApproval {
   singleRun?: boolean;
   workflowName?: string;
   authorizationUrl?: string;
+  /** An external MCP tool approval: phrased from these names, not the
+   *  engine's English question. */
+  externalTool?: { connector: string; tool: string; hint?: string };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -31,11 +34,17 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     : record(call.input);
   const intent = record(input.commit_intent);
   if (typeof input.question !== "string" || !input.question.trim()) return null;
+  const externalTool =
+    intent.kind === "grant_relayed_tool_call" ? pending.prompt?.external_tool : undefined;
   return {
     id: pending.id,
     toolCallId: call.id,
     question: input.question,
-    description: typeof intent.description === "string" ? intent.description : null,
+    // The hint below the question already says what the tool does; the
+    // intent's description is the same line, or an English fallback.
+    description:
+      !externalTool && typeof intent.description === "string" ? intent.description : null,
+    ...(externalTool ? { externalTool } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
     ...(intent.kind === "commit_held_workflow_writes" || intent.kind === "run_workflow"

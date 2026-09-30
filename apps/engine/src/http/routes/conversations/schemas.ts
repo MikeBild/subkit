@@ -219,6 +219,15 @@ export const ConversationDetailSchema = z
                 intent_kind: z.string().optional(),
                 authorization_url: z.string().optional(),
                 fields: z.array(ResumeFormFieldSchema).optional(),
+                /** The subject of an external MCP tool approval, as data a
+                 *  client phrases in its own language. */
+                external_tool: z
+                  .object({
+                    connector: z.string(),
+                    tool: z.string(),
+                    hint: z.string().optional(),
+                  })
+                  .optional(),
               })
               .optional(),
             /** When this approval lapses. Non-null: the column is NOT NULL and

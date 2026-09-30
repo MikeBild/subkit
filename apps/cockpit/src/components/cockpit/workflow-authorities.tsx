@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
-import { listHeldSchedules } from "@/api/decisions";
+import { listHeldInboundHooks, listHeldSchedules } from "@/api/decisions";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -253,6 +253,15 @@ export function WorkflowAuthorities({
     refetchInterval: 30_000,
   });
   const hold = holds.data?.find((schedule) => schedule.workflow_id === workflowId);
+  // A hook the authority gate refuses holds this workflow just as a schedule
+  // does. Read with `schedule:read`; without it the hint is simply absent.
+  const hookHolds = useQuery({
+    queryKey: ["workflow-automation-status", workflowId, "held-hooks"],
+    queryFn: () => listHeldInboundHooks(workflowId),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const hookHold = hookHolds.data?.[0];
   // Only for the number on the badge and in the sentence — which version the
   // approval judges is already decided by the record, so this never gates it.
   const prepared =
@@ -300,7 +309,10 @@ export function WorkflowAuthorities({
               {...(target.activation ? { activation: target.activation } : {})}
               versionLabel={versionLabel}
               disabled={holds.isPending || (prepared && draft.isPending)}
-              initialEnvironment={reviewEnvironment(items, hold)}
+              initialEnvironment={reviewEnvironment(
+                items,
+                hold ?? (hookHold ? { execution_mode: hookHold.environment } : undefined),
+              )}
               {...(target.kind === "prepared"
                 ? { triggerLabel: t("authority.reviewPrepared") }
                 : {})}
@@ -325,6 +337,12 @@ export function WorkflowAuthorities({
         <div className="flex flex-wrap items-center gap-2" data-testid="authority-schedule-held">
           <Badge variant="secondary">{t("schedules.held.status")}</Badge>
           <p className="text-sm">{t("authority.heldHint")}</p>
+        </div>
+      )}
+      {hookHold && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="authority-hook-held">
+          <Badge variant="secondary">{t("schedules.held.status")}</Badge>
+          <p className="text-sm">{t("authority.hookHeldHint", { slug: hookHold.slug })}</p>
         </div>
       )}
       {history.isPending && <p role="status">{t("common.loading")}</p>}
