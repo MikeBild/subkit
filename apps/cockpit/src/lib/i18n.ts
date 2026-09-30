@@ -174,6 +174,7 @@ const EN = {
   "authority.reviewExpired": "Review is no longer current",
   "authority.reviewExpiredHint": "Check again before granting permission.",
   "authority.heldHint": "The next scheduled run is waiting for review.",
+  "authority.hookHeldHint": "Calls to the webhook “{slug}” are refused until this is reviewed.",
   "authority.versionActive": "Version active",
   "authority.grantOpen": "Review permission",
   "authority.grantDescription":
@@ -1586,6 +1587,12 @@ const EN = {
   "schedules.held.prepared":
     "A saved version that is not the one running is waiting for this workflow. The review judges the prepared version, not the one that was held.",
   "schedules.held.review": "Review workflow",
+  "hooks.held.title": "Webhook “{slug}”",
+  "hooks.held.concreteShort":
+    "Incoming calls are refused until the actions and targets are reviewed.",
+  "hooks.held.authorityShort":
+    "Incoming calls are refused: no valid execution approval is available.",
+  "hooks.held.lastRefused": "Last refused {when}",
   "operational.value.unknown": "Cannot be determined",
   "operational.value.forbidden": "Restricted",
   "operational.value.stale": "Stale",
@@ -3038,6 +3045,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.reviewExpired": "Prüfung nicht mehr aktuell",
   "authority.reviewExpiredHint": "Vor der Freigabe erneut prüfen.",
   "authority.heldHint": "Der nächste automatische Lauf wartet auf Prüfung.",
+  "authority.hookHeldHint":
+    "Aufrufe des Webhooks „{slug}“ werden abgewiesen, bis dies geprüft ist.",
   "authority.versionActive": "Version aktiv",
   "authority.grantOpen": "Freigabe prüfen",
   "authority.grantDescription":
@@ -4473,6 +4482,12 @@ const DE: Record<TranslationKey, string> = {
   "schedules.held.prepared":
     "Für diesen Workflow wartet eine gespeicherte Fassung, die nicht die laufende ist. Die Prüfung beurteilt die vorbereitete Fassung, nicht die zurückgehaltene.",
   "schedules.held.review": "Workflow prüfen",
+  "hooks.held.title": "Webhook „{slug}“",
+  "hooks.held.concreteShort":
+    "Eingehende Aufrufe werden abgewiesen, bis Aktionen und Ziele geprüft sind.",
+  "hooks.held.authorityShort":
+    "Eingehende Aufrufe werden abgewiesen: Es liegt keine gültige Ausführungsfreigabe vor.",
+  "hooks.held.lastRefused": "Zuletzt abgewiesen {when}",
   "operational.value.unknown": "Nicht ermittelbar",
   "operational.value.forbidden": "Eingeschränkt",
   "operational.value.stale": "Veraltet",
