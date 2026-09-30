@@ -61,22 +61,42 @@ const channelsGetCmd = defineCommand({
 const channelsCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a notification channel" },
   args: {
-    name: { type: "string", required: true, description: "Channel name" },
-    kind: { type: "string", required: true, description: "Channel kind (e.g. slack, email)" },
-    config: { type: "string", required: true, description: "Channel config as JSON string" },
+    platform: {
+      type: "string",
+      required: true,
+      description: "Chat platform the channel lives on: slack, teams or google_chat",
+    },
+    "workspace-id": {
+      type: "string",
+      required: true,
+      description: "Workspace id on that platform (the chat workspace the channel lives in)",
+    },
+    "channel-id": { type: "string", required: true, description: "Channel id on that platform" },
+    severity: {
+      type: "string",
+      description: "Default severity: debug, info, warn, error or critical (default: info)",
+    },
+    "rate-limit": {
+      type: "string",
+      description: "Deliveries allowed per minute, a positive integer (default: 60)",
+    },
   },
   async run({ args }) {
-    const client = makeClient();
-    let config: Record<string, unknown>;
-    try {
-      config = JSON.parse(args.config as string) as Record<string, unknown>;
-    } catch {
-      process.stderr.write("invalid JSON for --config\n");
+    const rateLimit = args["rate-limit"] === undefined ? undefined : Number(args["rate-limit"]);
+    if (rateLimit !== undefined && !(Number.isInteger(rateLimit) && rateLimit > 0)) {
+      process.stderr.write("--rate-limit must be a positive integer\n");
       process.exit(1);
     }
+    const client = makeClient();
     try {
       printJson(
-        await client.createNotificationChannel({ name: args.name, kind: args.kind, config }),
+        await client.createNotificationChannel({
+          platform: args.platform,
+          workspace_id: args["workspace-id"],
+          channel_id: args["channel-id"],
+          ...(args.severity ? { default_severity: args.severity } : {}),
+          ...(rateLimit !== undefined ? { rate_limit_per_minute: rateLimit } : {}),
+        }),
       );
     } catch (err) {
       reportCommandError(err);

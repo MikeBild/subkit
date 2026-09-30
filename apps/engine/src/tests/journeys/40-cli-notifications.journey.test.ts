@@ -14,6 +14,11 @@
 //   - AC8: `notifications rules delete <id>` outputs "deleted".
 //   - AC9: `notifications rules create --event … --workspace-id … --channel-id …`
 //          creates a rule the engine accepts (`event_pattern` + target pair).
+//   - AC10: deleting a non-existent channel id returns an error.
+//   - AC11: `notifications channels create --platform … --workspace-id …
+//          --channel-id …` creates a channel the engine accepts (the
+//          platform + target pair, not a name/kind/config shape).
+//   - AC12: a channel of this tenant is not visible under a bogus api key.
 // Spec refs: docs/developers/input-surfaces.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -343,6 +348,35 @@ describe("journey 40: sk notifications CLI", () => {
     expect(items.map((r) => r.id)).toContain(body.id as string);
   });
 
+  test("AC11: notifications channels create sends the engine's channel shape", async () => {
+    const { stdout } = await run(
+      notificationsCommand,
+      ["channels", "create"],
+      [
+        "--platform",
+        "slack",
+        "--workspace-id",
+        "W_CREATE",
+        "--channel-id",
+        "C_CREATE",
+        "--severity",
+        "error",
+        "--rate-limit",
+        "12",
+      ],
+    );
+    const body = JSON.parse(extractLastJson(stdout)) as Record<string, unknown>;
+    expect(body.platform).toBe("slack");
+    expect(body.workspace_id).toBe("W_CREATE");
+    expect(body.channel_id).toBe("C_CREATE");
+    expect(body.default_severity).toBe("error");
+    expect(body.rate_limit_per_minute).toBe(12);
+
+    const res = await journeyFetch(ctx, "/v1/notifications/channels");
+    const { items } = (await res.json()) as { items: Array<{ id: string }> };
+    expect(items.map((c) => c.id)).toContain(body.id as string);
+  });
+
   test("AC10: deleting a non-existent channel id returns an error", async () => {
     // RFC-4122-compliant — the pinned contract is the tenant-scoped
     // not-found, not the uuid-shape 400 (see journey 37's note).
@@ -363,7 +397,7 @@ describe("journey 40: sk notifications CLI", () => {
 
   // ---- tenant isolation ----
 
-  test("AC9: channel seeded for this tenant is not visible under a different api key", async () => {
+  test("AC12: channel seeded for this tenant is not visible under a different api key", async () => {
     // Another tenant's API key should return an empty (or unrelated) channel list.
     const otherChannel = await seedChannel({
       workspace_id: "W_ISOLATION",
