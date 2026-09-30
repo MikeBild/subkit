@@ -112,10 +112,24 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
     await card.getByTestId("chat-automation-tool-review").waitFor();
 
     // A turn that left no words and no card: said so, with the way in.
-    recorded = [reviewTurn, silentTurn];
+    // The earlier card is still in the conversation; it must not stand in
+    // for this turn's missing answer.
+    recorded = [
+      reviewTurn,
+      {
+        id: "follow-up",
+        role: "user",
+        model: null,
+        created_at: conversation.updated_at,
+        parts: [{ type: "text", text: "Und jetzt?" }],
+      },
+      silentTurn,
+    ];
     await ask("Und jetzt?");
     const none = panel.getByTestId("agent-panel-no-answer-1");
     await none.waitFor();
+    if ((await card.count()) !== 1)
+      throw new Error("The silent turn repeated the previous turn's card as its answer");
     const href = await panel.getByTestId("agent-panel-conversation-1").getAttribute("href");
     if (!href?.includes(`/chat/${conversationId}`))
       throw new Error(`The silent turn does not link its conversation: ${href}`);
