@@ -6,9 +6,8 @@
 //
 // - a workflow whose webhook the authority gate holds  → "Freigabe prüfen",
 //   to the approval section of the same page;
-// - a workflow whose current version cannot run in development because Gmail
-//   lost its sign-in                                    → "Neu verbinden",
-//   to that connector's sign-in card;
+// - a workflow whose development Gmail lost its sign-in → no authority review
+//   on page open (the run dialog asks that), so its state decides as usual;
 // - a workflow whose newest run failed                  → "Lauf untersuchen";
 // - a workflow with nothing wrong                       → "Im Chat ändern", a
 //   new conversation about it that opens with a real intent, not a label;
@@ -152,7 +151,7 @@ function runs(workflowId) {
   return { items, total: items.length };
 }
 
-function detailApi() {
+function detailApi(state) {
   return async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -182,8 +181,10 @@ function detailApi() {
                 ]
               : [],
         });
-      if (path.startsWith(`/v1/workflows/${id}/versions/`) && path.endsWith("/authority-preview"))
+      if (path.startsWith(`/v1/workflows/${id}/versions/`) && path.endsWith("/authority-preview")) {
+        state.previews += 1;
         return json(route, preview(id, url.searchParams.get("environment")));
+      }
       if (path === `/v1/workflows/${id}/execution-authorities`)
         return json(route, { items: [], next_cursor: null });
       if (path === "/v1/executions" && url.searchParams.get("workflow_id") === id)
@@ -240,7 +241,8 @@ function expect(where, actual, label, href) {
 
 export async function verifyDetailAction(page, stand, localeName, capture) {
   const de = localeName === "de";
-  const handler = detailApi();
+  const state = { previews: 0 };
+  const handler = detailApi(state);
   await page.route(isDetailApi, handler);
   try {
     // ── A workflow its webhook is held for ────────────────────────────────────
@@ -256,14 +258,18 @@ export async function verifyDetailAction(page, stand, localeName, capture) {
     await capture("detail-action-held");
 
     // ── A workflow whose development Gmail must be reconnected ───────────────
+    // The page does not run the authority review to choose its action: that
+    // review is a full resolution, asked for when the run dialog opens (where
+    // development is then offered disabled) and when a reviewer opens the
+    // approval. Its newest run succeeded, so the action is the conversation.
     where = `/workflows/<unavailable> (${localeName})`;
+    state.previews = 0;
     await stand.visit(page, `workflows/${UNAVAILABLE}`);
-    expect(
-      where,
-      await actionOf(page, where),
-      de ? "Neu verbinden" : "Reconnect",
-      `/cockpit/connectors/${GMAIL_DEV}#connector-credentials`,
-    );
+    const unavailable = await actionOf(page, where);
+    if (unavailable.label !== (de ? "Im Chat ändern" : "Change in chat"))
+      throw new Error(`${where}: the action reads "${unavailable.label}"`);
+    if (state.previews !== 0)
+      throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
 
     // ── A workflow whose newest run failed ────────────────────────────────────
     where = `/workflows/<failed> (${localeName})`;
