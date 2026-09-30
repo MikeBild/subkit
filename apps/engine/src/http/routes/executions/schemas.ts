@@ -34,6 +34,17 @@ export const ExecSchema = z
 
 const CauseClassSchema = z.enum(PREVIEW_CLASSIFICATIONS);
 
+// The connector a `connector_unavailable` run was refused for, as resolved in
+// the run's environment — so a client links to it instead of guessing from the
+// definition, which names the other environment's connector.
+const RefusedConnectorSchema = z
+  .object({
+    connector_id: z.string().nullable(),
+    /** missing | disabled | needs_reauth | credential_unavailable | too_many_references */
+    reason: z.string(),
+  })
+  .nullable();
+
 // What happened in a run, as structure. `status` alone cannot say it: a
 // hold-writes preview finalizes `succeeded` with nothing written (`held`), an
 // `on_error:"continue"` failure leaves the run `succeeded` (`partial`). Clients
@@ -45,6 +56,7 @@ export const ExecutionOutcomeSchema = z
     failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
     cause_class: CauseClassSchema.nullable(),
     error_code: z.string().nullable(),
+    connector: RefusedConnectorSchema,
     steps: z.object({
       total: z.number().int().nonnegative(),
       succeeded: z.number().int().nonnegative(),
@@ -67,7 +79,11 @@ export const ExecListItemSchema = ExecSchema.extend({
    * workflow-level failure such as `validation_failed`) and its cause class.
    */
   failure: z
-    .object({ step_key: z.string().nullable(), cause_class: CauseClassSchema.nullable() })
+    .object({
+      step_key: z.string().nullable(),
+      cause_class: CauseClassSchema.nullable(),
+      connector: RefusedConnectorSchema,
+    })
     .nullable(),
 }).openapi("ExecutionListItem");
 

@@ -4058,7 +4058,10 @@ Every tenant starts with one rule, `sk CLI inbox (default)`, targeting the reser
 `_cli` / `_inbox` channel. It routes only events a person may have to act on: failed
 runs, connector authentication failures, removed connector endpoints, and proposed
 repairs. Step events (`execution.step.*`) and routine successes are not routed, so a
-running workflow writes no delivery row per step. A rule of your own that routes such
+running workflow writes no delivery row per step. A run refused before it started,
+because a connector it needs must be reconnected, emits `execution.refused` rather than
+`execution.failed`: the caller got the refusal straight away, nothing ran, and the refusal
+is kept in the audit log. A rule of your own that routes such
 events into the inbox records them as `skipped` with reason `not_actionable`: no inbox
 row and no `chat.message.sent` audit entry.
 

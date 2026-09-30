@@ -1,7 +1,7 @@
 import { ApiError } from "@/api/client";
 import { connectorHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
-import { type Remedy, remedyFor } from "@/lib/remedy";
+import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
 
 /**
  * Which connector keeps a saved workflow from running in an environment, and
@@ -105,17 +105,28 @@ export function connectorFix(
   connector: UnavailableConnector,
 ): Pick<Remedy, "labelKey" | "href"> | null {
   if (!connector.connector_id) return null;
-  if (connector.reason === "needs_reauth" || connector.reason === "credential_unavailable") {
-    const remedy = remedyFor({
-      authState: {
-        connectorId: connector.connector_id,
-        state: connector.reason === "needs_reauth" ? "expired" : "credentials_missing",
-        section: "credentials",
-      },
-      canRun: false,
-      canChat: false,
-    });
+  const authState = refusedSignIn(connector);
+  if (authState) {
+    const remedy = remedyFor({ authState, canRun: false, canChat: false });
     return remedy ? { labelKey: remedy.labelKey, href: remedy.href } : null;
   }
   return { labelKey: "run.openConnector", href: connectorHref(connector.connector_id) };
+}
+
+/**
+ * The sign-in a refusal says is gone, as `remedyFor` reads it: a lost or
+ * missing credential lands on the connector's sign-in card ("Neu verbinden").
+ * Null for a connector switched off or absent — no sign-in fixes those.
+ */
+export function refusedSignIn(
+  connector: Pick<UnavailableConnector, "connector_id" | "reason"> | null | undefined,
+): NonNullable<RemedyInput["authState"]> | null {
+  if (!connector?.connector_id) return null;
+  if (connector.reason !== "needs_reauth" && connector.reason !== "credential_unavailable")
+    return null;
+  return {
+    connectorId: connector.connector_id,
+    state: connector.reason === "needs_reauth" ? "expired" : "credentials_missing",
+    section: "credentials",
+  };
 }

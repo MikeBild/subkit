@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@/api/client";
 import { connectorHref } from "@/app/links";
+import { translate } from "@/lib/i18n";
+import { remedyFor } from "@/lib/remedy";
 import {
   blockedSentenceKey,
   blockingConnector,
   connectorFix,
   defaultEnvironment,
   refusedConnector,
+  refusedSignIn,
 } from "@/lib/run-availability";
 
 const GMAIL = "d94b2e61-5a8f-4c3d-b7e0-9f1a2c6d8e45";
@@ -96,6 +99,30 @@ describe("the fix for a blocked connector", () => {
       blockingConnector({ unavailable_connectors: [{ ...gmail, reason: "disabled" }] })!,
     );
     expect(fix).toEqual({ labelKey: "run.openConnector", href: connectorHref(GMAIL) });
+  });
+
+  test("a run refused for a lost sign-in offers 'Neu verbinden' on the connector's sign-in card", () => {
+    // The outcome of a refused run: no step ran, the refusal names the connector.
+    const remedy = remedyFor({
+      workflowId: "wf",
+      executionId: "run",
+      patch: null,
+      authState: refusedSignIn({ connector_id: GMAIL, reason: "needs_reauth" }),
+      canRun: true,
+      canChat: true,
+    });
+    expect(remedy).toEqual({
+      kind: "reauth",
+      labelKey: "remedy.reconnect",
+      href: `${connectorHref(GMAIL)}#connector-credentials`,
+    });
+    expect(translate("de", "remedy.reconnect")).toBe("Neu verbinden");
+  });
+
+  test("a refusal no sign-in fixes, or that names no connector, offers no reconnect", () => {
+    expect(refusedSignIn({ connector_id: GMAIL, reason: "disabled" })).toBeNull();
+    expect(refusedSignIn({ connector_id: null, reason: "needs_reauth" })).toBeNull();
+    expect(refusedSignIn(null)).toBeNull();
   });
 
   test("every reason the engine names has a sentence, except the reference limit", () => {

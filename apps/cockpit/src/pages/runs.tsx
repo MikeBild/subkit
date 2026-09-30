@@ -35,6 +35,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { remedyFor } from "@/lib/remedy";
+import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { windowFilterLabel } from "@/lib/window-filter";
@@ -225,6 +226,9 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
     queryFn: () =>
       apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
   });
+  // A run refused for its connector ran no step to read a connector from:
+  // the refusal itself names the connector and why, as resolved in the run's
+  // environment.
   const authState = connectorId
     ? {
         connectorId,
@@ -233,7 +237,9 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
             ? connectorAuthState(connector.data)
             : "unproven",
       }
-    : null;
+    : outcome?.cause_class === "connector_unavailable"
+      ? refusedSignIn(outcome.connector)
+      : null;
   const remedy = failed
     ? remedyFor({
         workflowId: current.workflow_id,
