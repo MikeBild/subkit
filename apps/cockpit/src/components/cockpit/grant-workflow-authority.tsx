@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
 import { authorityIssues } from "@/lib/authority-issues";
 import { presentRequestBoundary } from "@/lib/authority-request";
@@ -120,17 +121,50 @@ export function GrantWorkflowAuthority({
   // put a review on screen that the confirm button then refused for good.
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
+  /** A webhook-started workflow waiting for the reviewer's sample call. */
+  const [sample, setSample] = useState<{ slug: string; versionId: string } | null>(null);
+  const [sampleText, setSampleText] = useState("");
+  const [sampleInvalid, setSampleInvalid] = useState(false);
+  /** The newest call this workflow received, else an empty delivery envelope
+   *  — the shape the engine hands a webhook-started run. */
+  async function sampleCall(): Promise<string> {
+    if (session.permissions.includes("execution:read")) {
+      try {
+        const newest = await apiRequest<{ items: { input?: unknown }[] }>(
+          `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&request_source=webhook&limit=1`,
+        );
+        const received = newest.items[0]?.input;
+        if (received !== undefined && received !== null) return JSON.stringify(received, null, 2);
+      } catch {
+        // The template below still lets the reviewer go on.
+      }
+    }
+    return JSON.stringify(
+      { id: "sample", timestamp: Math.floor(Date.now() / 1000), type: "", headers: {}, body: {} },
+      null,
+      2,
+    );
+  }
   const prepare = useMutation({
     mutationFn: async ({
       env,
       token,
       version,
+      input,
     }: {
       env: "dev" | "prod";
       token: number;
       /** The version to judge, when the caller already knows it (a repair). */
       version?: string;
-    }) => {
+      /** The sample call the reviewer supplied for a webhook-started workflow. */
+      input?: unknown;
+    }): Promise<{
+      review: WorkflowAuthorityPreview | null;
+      versionId: string;
+      environment: "dev" | "prod";
+      token: number;
+      sample?: { slug: string; text: string };
+    }> => {
       const superseded = () => new Error("authority_review_superseded");
       const targetVersion = version ?? (prepareVersion ? await prepareVersion() : versionId);
       const preview = (forEnvironment: "dev" | "prod") =>
@@ -163,10 +197,17 @@ export function GrantWorkflowAuthority({
         // second tab and three runs started at once. The flag below is what the
         // wait text reads to say what is actually happening.
         setTrialStartedAt(Date.now());
+        let outcome: { prepared: boolean; reason?: string; trigger?: { slug: string } };
         try {
-          const outcome = await apiRequest<{ prepared: boolean; reason?: string }>(
+          outcome = await apiRequest(
             `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(targetVersion)}/prepare-authority`,
-            { method: "POST", body: JSON.stringify({ environment: asked }) },
+            {
+              method: "POST",
+              body: JSON.stringify({
+                environment: asked,
+                ...(input !== undefined ? { input } : {}),
+              }),
+            },
           );
           // A second tab, or a repair reload, meets a run that is already
           // going. That is the engine doing the right thing — one run instead
@@ -178,6 +219,18 @@ export function GrantWorkflowAuthority({
           if (isLatest(token)) setTrialStartedAt(null);
         }
         if (!isLatest(token)) throw superseded();
+        // A webhook's input is a delivery, and refused deliveries are not
+        // kept. The engine asks rather than running over `{}`; the reviewer
+        // supplies one call, and the review waits for it — not a refusal, and
+        // not yet something to judge.
+        if (outcome.reason === "input_required" && outcome.trigger)
+          return {
+            review: null,
+            versionId: targetVersion,
+            environment: asked,
+            token,
+            sample: { slug: outcome.trigger.slug, text: await sampleCall() },
+          };
         result = await preview(asked);
       }
       // Stale: a newer question was asked (or the dialog closed) while this
@@ -201,7 +254,7 @@ export function GrantWorkflowAuthority({
    * here, per request, and only while it is still the latest — never from the
    * mutation's options, which run for every call that completes.
    */
-  function startReview(env: "dev" | "prod", version?: string) {
+  function startReview(env: "dev" | "prod", version?: string, input?: unknown) {
     const token = latestReview.current + 1;
     latestReview.current = token;
     setReview(null);
@@ -209,12 +262,19 @@ export function GrantWorkflowAuthority({
     setTrialStartedAt(null);
     prepare.reset();
     prepare.mutate(
-      { env, token, version },
+      { env, token, version, input },
       {
         onSuccess: (answer) => {
           if (!isLatest(answer.token)) return;
           setReviewVersionId(answer.versionId);
           setEnvironment(answer.environment);
+          if (answer.sample) {
+            setSample({ slug: answer.sample.slug, versionId: answer.versionId });
+            setSampleText(answer.sample.text);
+            return;
+          }
+          setSample(null);
+          if (!answer.review) return;
           setRuns(String(answer.review.suggested_bounds.max_runs));
           setHours(
             String(
@@ -348,6 +408,12 @@ export function GrantWorkflowAuthority({
   // that is only loading may be — its answer is then dropped (`latestReview`).
   const submitting = grant.isPending || activateOnly.isPending;
   const busy = prepare.isPending || repair.isPending || submitting;
+  // The sample did not fit the workflow's input: the reviewer's to correct,
+  // said beside the field — not the generic "could not be loaded".
+  const sampleRefused =
+    sample && prepare.error instanceof ApiError && prepare.error.code === "input_schema_violation"
+      ? prepare.error.message
+      : null;
   const unsupported = review && !review.eligible_for_repeated_runs;
   const deliveries =
     review?.manifest.effects.flatMap((effect) =>
@@ -376,6 +442,7 @@ export function GrantWorkflowAuthority({
     setOpen(value);
     grant.reset();
     activateOnly.reset();
+    setSample(null);
     if (value) {
       corrected.current = false;
       setEnvironment(initialEnvironment);
@@ -722,7 +789,55 @@ export function GrantWorkflowAuthority({
               <AlertDescription>{t("authority.trial.alreadyRunning")}</AlertDescription>
             </Alert>
           )}
-          {prepare.error && (
+          {sample && !prepare.isPending && (
+            <Alert data-testid="authority-sample" className="bg-accent/10">
+              <AlertTitle>{t("authority.sample.title", { slug: sample.slug })}</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3">
+                <p>{t("authority.sample.what", { slug: sample.slug })}</p>
+                <Field>
+                  <FieldLabel htmlFor="authority-sample-input">
+                    {t("authority.sample.label")}
+                  </FieldLabel>
+                  <Textarea
+                    id="authority-sample-input"
+                    data-testid="authority-sample-input"
+                    className="min-h-40 font-mono text-xs"
+                    value={sampleText}
+                    disabled={busy}
+                    aria-invalid={sampleInvalid || sampleRefused !== null}
+                    onChange={(event) => {
+                      setSampleText(event.target.value);
+                      setSampleInvalid(false);
+                    }}
+                  />
+                  {sampleInvalid && <FieldError>{t("authority.sample.invalid")}</FieldError>}
+                  {sampleRefused !== null && (
+                    <FieldError data-testid="authority-sample-refused">
+                      {t("authority.sample.schema", { detail: sampleRefused })}
+                    </FieldError>
+                  )}
+                </Field>
+                <Button
+                  className="w-fit"
+                  disabled={busy}
+                  data-testid="authority-sample-prepare"
+                  onClick={() => {
+                    let parsed: unknown;
+                    try {
+                      parsed = JSON.parse(sampleText);
+                    } catch {
+                      setSampleInvalid(true);
+                      return;
+                    }
+                    startReview(environment, sample.versionId, parsed);
+                  }}
+                >
+                  {t("authority.sample.prepare")}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          {prepare.error && sampleRefused === null && (
             <Alert variant="destructive">
               <AlertTitle>{t("authority.loadFailed")}</AlertTitle>
               <AlertDescription>{t("authority.retryDescription")}</AlertDescription>
@@ -857,7 +972,7 @@ export function GrantWorkflowAuthority({
             </Button>
           )}
           {!sessionExpired &&
-            (prepare.error ||
+            ((prepare.error && sampleRefused === null) ||
               grant.error ||
               (incomplete && !unsupported) ||
               (boundsVisible && !input && !invalidRuns && !invalidHours)) && (

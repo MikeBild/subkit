@@ -638,6 +638,10 @@ const EN = {
     "{subject} is stopped: its schedule waits for an approval",
   "overview.reason.execution_authority_unavailable":
     "{subject} is stopped: its schedule cannot be approved without a change to the workflow",
+  "overview.reason.execution_authority_requiredHook":
+    "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} is stopped: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
   "overview.reason.scheduler_stale": "{heartbeat} has stopped running",
   "overview.reason.scheduler_staleOther": "A scheduler heartbeat has stopped",
   "overview.reason.failing": "{subject} is failing",
@@ -1672,6 +1676,13 @@ const EN = {
   "hooks.held.authorityShort":
     "Incoming calls are refused: no valid execution approval is available.",
   "hooks.held.lastRefused": "Last refused {when}",
+  "hooks.held.status": "Calls refused",
+  "hooks.held.since": "Refusing since {when}",
+  "hooks.held.concrete":
+    "Calls are refused because this workflow's actions and targets are not reviewed for unattended runs. The review prepares a held run from a sample call — nothing is sent — and then asks for your approval.",
+  "hooks.held.authority":
+    "Calls are refused because the execution approval is missing, expired, revoked or used up. Review the exact version, targets and finite limits and approve again.",
+  "hooks.held.review": "Review approval",
   "operational.value.unknown": "Cannot be determined",
   "operational.value.forbidden": "Restricted",
   "operational.value.stale": "Stale",
@@ -1696,6 +1707,13 @@ const EN = {
   "authority.trial.elapsed": "Running for {seconds} seconds.",
   "authority.trial.alreadyRunning":
     "A trial run for this workflow is already in progress — most likely in another tab. This one is waiting for it rather than starting a second.",
+  "authority.sample.title": "A sample call from “{slug}” is needed",
+  "authority.sample.what":
+    "The webhook “{slug}” starts this workflow, and its refused calls are not kept. The trial run needs one call as it would arrive — nothing is sent. The field holds the newest call this workflow received, or an empty template: put in what the sender really delivers.",
+  "authority.sample.label": "Sample call (JSON)",
+  "authority.sample.invalid": "This is not valid JSON.",
+  "authority.sample.schema": "The sample does not match the workflow's expected input: {detail}",
+  "authority.sample.prepare": "Start trial run with this call",
   "authority.refusal.report_delivery_unprepared":
     "This step sends a report by e-mail, and nothing has watched it do so yet. A trial run — which holds back everything it would send — shows who would receive it, and that is what gets approved.",
   "authority.refusal.report_delivery_unobserved":
@@ -2149,6 +2167,8 @@ const EN = {
   "agentPanel.send": "Ask",
   "agentPanel.thinking": "Working on the answer…",
   "agentPanel.failed": "The question could not be answered.",
+  "agentPanel.noAnswer": "No written answer came back for this question.",
+  "agentPanel.openConversation": "Open the conversation",
   "agentPanel.openChat": "Open in chat",
   "chat.starter.capabilities": "What can this installation do?",
   "chat.starter.lastRun": "Show me a workflow run",
@@ -3594,6 +3614,10 @@ const DE: Record<TranslationKey, string> = {
     "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
   "overview.reason.execution_authority_unavailable":
     "{subject} ist angehalten: sein Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.execution_authority_requiredHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
   "overview.reason.scheduler_stale": "{heartbeat} läuft nicht mehr",
   "overview.reason.scheduler_staleOther": "Ein Herzschlag des Zeitplaners ist ausgeblieben",
   "overview.reason.failing": "{subject} scheitert",
@@ -4646,6 +4670,13 @@ const DE: Record<TranslationKey, string> = {
   "hooks.held.authorityShort":
     "Eingehende Aufrufe werden abgewiesen: Es liegt keine gültige Ausführungsfreigabe vor.",
   "hooks.held.lastRefused": "Zuletzt abgewiesen {when}",
+  "hooks.held.status": "Aufrufe abgewiesen",
+  "hooks.held.since": "Weist seit {when} ab",
+  "hooks.held.concrete":
+    "Aufrufe werden abgewiesen, weil Aktionen und Ziele dieses Workflows für unbeaufsichtigte Läufe nicht geprüft sind. Die Prüfung bereitet mit einem Beispielaufruf einen zurückgehaltenen Lauf vor – es wird nichts gesendet – und fragt dann nach deiner Freigabe.",
+  "hooks.held.authority":
+    "Aufrufe werden abgewiesen, weil die Ausführungsfreigabe fehlt, abgelaufen, widerrufen oder aufgebraucht ist. Prüfe Fassung, Ziele und Grenzen und erteile sie neu.",
+  "hooks.held.review": "Freigabe prüfen",
   "operational.value.unknown": "Nicht ermittelbar",
   "operational.value.forbidden": "Eingeschränkt",
   "operational.value.stale": "Veraltet",
@@ -4670,6 +4701,14 @@ const DE: Record<TranslationKey, string> = {
   "authority.trial.elapsed": "Läuft seit {seconds} Sekunden.",
   "authority.trial.alreadyRunning":
     "Für diesen Workflow läuft bereits ein Probelauf — vermutlich in einem anderen Tab. Dieser wartet darauf, statt einen zweiten zu starten.",
+  "authority.sample.title": "Ein Beispielaufruf von „{slug}“ wird gebraucht",
+  "authority.sample.what":
+    "Der Webhook „{slug}“ startet diesen Workflow, und seine abgewiesenen Aufrufe werden nicht aufbewahrt. Der Probelauf braucht einen Aufruf, wie er ankäme — gesendet wird nichts. Im Feld steht der letzte Aufruf, den dieser Workflow erhalten hat, oder eine leere Vorlage: Trage ein, was der Absender wirklich liefert.",
+  "authority.sample.label": "Beispielaufruf (JSON)",
+  "authority.sample.invalid": "Das ist kein gültiges JSON.",
+  "authority.sample.schema":
+    "Das Beispiel passt nicht zur erwarteten Eingabe des Workflows: {detail}",
+  "authority.sample.prepare": "Probelauf mit diesem Aufruf starten",
   "authority.refusal.report_delivery_unprepared":
     "Dieser Schritt verschickt einen Bericht per E-Mail, und noch niemand hat ihm dabei zugesehen. Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, wer ihn bekäme, und genau das wird freigegeben.",
   "authority.refusal.report_delivery_unobserved":
@@ -5147,6 +5186,8 @@ const DE: Record<TranslationKey, string> = {
   "agentPanel.send": "Fragen",
   "agentPanel.thinking": "Antwort wird erarbeitet …",
   "agentPanel.failed": "Die Frage konnte nicht beantwortet werden.",
+  "agentPanel.noAnswer": "Auf diese Frage kam keine schriftliche Antwort zurück.",
+  "agentPanel.openConversation": "Unterhaltung öffnen",
   "agentPanel.openChat": "Im Chat öffnen",
   "chat.starter.capabilities": "Was kann diese Installation?",
   "chat.starter.lastRun": "Zeig mir einen Workflow-Lauf",

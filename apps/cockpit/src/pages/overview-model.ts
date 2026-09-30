@@ -309,6 +309,24 @@ export function attentionSentence(
   }
 
   switch (item.reason) {
+    case "execution_authority_required":
+    case "execution_authority_unavailable": {
+      // A webhook's refused calls said "its schedule waits", and people went
+      // looking for a schedule the workflow does not have. Read as optional:
+      // an engine that predates the field still gets the schedule sentence.
+      const hook = item.trigger?.kind === "inbound_hook" ? item.trigger.name : null;
+      if (!hook) return { lead: t(reasonKey, { subject }), machine: null, since };
+      return {
+        lead: t(
+          item.reason === "execution_authority_required"
+            ? "overview.reason.execution_authority_requiredHook"
+            : "overview.reason.execution_authority_unavailableHook",
+          { subject, hook },
+        ),
+        machine: null,
+        since,
+      };
+    }
     case "failing": {
       const cause = item.cause_class ? CAUSE_KEYS[item.cause_class] : undefined;
       let lead = t(

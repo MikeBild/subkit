@@ -2,6 +2,7 @@
 // conditions and post-turn fallbacks. Kept in their own module so they
 // can be unit-tested without spinning the DB / provider stack.
 
+import { isAutomationReviewCard } from "./loop/stop-conditions.ts";
 import type { TurnEvent } from "./types.ts";
 
 /**
@@ -63,24 +64,12 @@ export function classifyFallbackSynthesis(params: {
   loopWarnings: number;
 }): { text: string; reason: FallbackSynthesisReason } | null {
   const latest = params.events.filter((event) => event.type === "tool_result").at(-1);
-  if (latest?.type === "tool_result" && latest.tool === "review_workflow_automation") {
-    const output = latest.output as {
-      ok?: unknown;
-      error_code?: unknown;
-      kind?: unknown;
-      presentation?: unknown;
-      data?: { kind?: unknown; presentation?: unknown };
-    } | null;
-    const data = output?.data ?? output;
-    if (
-      output &&
-      output.ok !== false &&
-      !output.error_code &&
-      data?.kind === "workflow_automation_review" &&
-      data.presentation === "automation_readiness_card"
-    )
-      return null;
-  }
+  if (
+    latest?.type === "tool_result" &&
+    latest.tool === "review_workflow_automation" &&
+    isAutomationReviewCard(latest.output)
+  )
+    return null;
   const nextPrompt = pickFreshestNextPrompt(params.events);
   if (nextPrompt) return { text: nextPrompt, reason: "next_prompt_from_tool" };
   const text = synthesizeFallbackMessage(params);

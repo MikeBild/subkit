@@ -1,78 +1,131 @@
+import { sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { inspectScheduleAutomation } from "../scheduler/automation-status.ts";
 import { listSchedules } from "../scheduler/repo.ts";
+import { inboundHookAutomationView } from "../scheduler/workflow-automation-view.ts";
 import type { WorkflowEffectManifest } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { repairGuidanceForIssues } from "../workflows/issue-remedies.ts";
 import { inspectHeldPreviewEvidence } from "../workflows/report-delivery-proposal.ts";
 import { getWorkflow } from "../workflows/service.ts";
 
-/** Keep live scheduling evidence separate from the saved version the person reviews. */
-export async function inspectAutomationReview(db: Db, tenant_id: string, workflow_id: string) {
+interface EnvironmentReview {
+  workflow_version_id: string | null | undefined;
+  is_draft?: boolean;
+  eligible_for_repeated_runs?: boolean;
+  issues?: WorkflowEffectManifest["issues"];
+  unavailable_steps?: string[];
+  verification_unavailable?: boolean;
+  repair_guidance?: ReturnType<typeof repairGuidanceForIssues>;
+  preview_evidence?: Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
+}
+
+/**
+ * Keep live scheduling evidence separate from the saved version the person reviews.
+ *
+ * `inbound_hooks` is asked for, not implied: a hook has its own read permission
+ * and its refusal reason is audit-log content, so only a caller that has
+ * checked both may pass it — the same two probes `automation-status` makes.
+ */
+export async function inspectAutomationReview(
+  db: Db,
+  tenant_id: string,
+  workflow_id: string,
+  options: { inbound_hooks?: { refusal_reasons: boolean } } = {},
+) {
   const workflow = await getWorkflow(tenant_id, workflow_id, db);
   if (!workflow) return null;
   const version_id = workflow.draft_version_id ?? workflow.current_version_id;
+  // One review per environment: a schedule and a hook in the same environment
+  // are judged against the same version and the same boundary.
+  const reviews = new Map<"dev" | "prod", Promise<EnvironmentReview>>();
+  const reviewFor = (environment: "dev" | "prod") => {
+    let review = reviews.get(environment);
+    if (!review) {
+      review = reviewEnvironment(db, tenant_id, workflow_id, version_id, environment, {
+        is_draft: Boolean(workflow.draft_version_id),
+      });
+      reviews.set(environment, review);
+    }
+    return review;
+  };
   const { rows } = await listSchedules(db, tenant_id, workflow_id);
+  const schedules = await Promise.all(
+    rows.map(async (row) => ({
+      environment: row.execution_mode,
+      ...(await inspectScheduleAutomation(row, db)),
+      review: await reviewFor(row.execution_mode),
+    })),
+  );
+  if (!options.inbound_hooks) return { workflow_id, schedules };
+  const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+  const now = clock.rows[0]?.now;
+  if (!now) throw new Error("database clock unavailable");
+  const hooks = await inboundHookAutomationView(
+    tenant_id,
+    workflow_id,
+    db,
+    new Date(now),
+    options.inbound_hooks,
+  );
   return {
     workflow_id,
-    schedules: await Promise.all(
-      rows.map(async (row) => {
-        const active = await inspectScheduleAutomation(row, db);
-        let review: {
-          workflow_version_id: string | null | undefined;
-          is_draft?: boolean;
-          eligible_for_repeated_runs?: boolean;
-          issues?: WorkflowEffectManifest["issues"];
-          unavailable_steps?: string[];
-          verification_unavailable?: boolean;
-          repair_guidance?: ReturnType<typeof repairGuidanceForIssues>;
-          preview_evidence?: Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
-        };
-        try {
-          const preview = version_id
-            ? await previewWorkflowAuthority(
-                {
-                  tenant_id,
-                  workflow_id,
-                  workflow_version_id: version_id,
-                  execution_environment: row.execution_mode,
-                },
-                db,
-              )
-            : null;
-          review = {
-            workflow_version_id: version_id,
-            is_draft: Boolean(workflow.draft_version_id),
-            eligible_for_repeated_runs: preview?.eligible_for_repeated_runs ?? false,
-            issues: preview?.manifest.issues ?? [],
-            unavailable_steps: preview?.unavailable_steps ?? [],
-            preview_evidence: version_id
-              ? await inspectHeldPreviewEvidence(
-                  {
-                    tenant_id,
-                    workflow_id,
-                    workflow_version_id: version_id,
-                    execution_environment: row.execution_mode,
-                  },
-                  db,
-                )
-              : null,
-            // The remedy travels with the diagnosis. Joining over `issues` (not
-            // over `effects`) is what makes a storage or child-call problem
-            // carry its fix too — the old construction only ever matched one
-            // hard-coded report endpoint, so every other issue arrived bare.
-            repair_guidance: repairGuidanceForIssues(
-              preview?.manifest.issues ?? [],
-              preview?.manifest.effects ?? [],
-              preview?.storage_refusals ?? [],
-              preview?.request_refusals ?? [],
-            ),
-          };
-        } catch {
-          review = { workflow_version_id: version_id, verification_unavailable: true };
-        }
-        return { environment: row.execution_mode, ...active, review };
-      }),
+    schedules,
+    inbound_hooks: await Promise.all(
+      hooks.map(async (hook) => ({ ...hook, review: await reviewFor(hook.environment) })),
     ),
   };
+}
+
+async function reviewEnvironment(
+  db: Db,
+  tenant_id: string,
+  workflow_id: string,
+  version_id: string | null | undefined,
+  environment: "dev" | "prod",
+  { is_draft }: { is_draft: boolean },
+): Promise<EnvironmentReview> {
+  try {
+    const preview = version_id
+      ? await previewWorkflowAuthority(
+          {
+            tenant_id,
+            workflow_id,
+            workflow_version_id: version_id,
+            execution_environment: environment,
+          },
+          db,
+        )
+      : null;
+    return {
+      workflow_version_id: version_id,
+      is_draft,
+      eligible_for_repeated_runs: preview?.eligible_for_repeated_runs ?? false,
+      issues: preview?.manifest.issues ?? [],
+      unavailable_steps: preview?.unavailable_steps ?? [],
+      preview_evidence: version_id
+        ? await inspectHeldPreviewEvidence(
+            {
+              tenant_id,
+              workflow_id,
+              workflow_version_id: version_id,
+              execution_environment: environment,
+            },
+            db,
+          )
+        : null,
+      // The remedy travels with the diagnosis. Joining over `issues` (not
+      // over `effects`) is what makes a storage or child-call problem
+      // carry its fix too — the old construction only ever matched one
+      // hard-coded report endpoint, so every other issue arrived bare.
+      repair_guidance: repairGuidanceForIssues(
+        preview?.manifest.issues ?? [],
+        preview?.manifest.effects ?? [],
+        preview?.storage_refusals ?? [],
+        preview?.request_refusals ?? [],
+      ),
+    };
+  } catch {
+    return { workflow_version_id: version_id, verification_unavailable: true };
+  }
 }

@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { leafSchemaMeta, listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
+import { verifyAgentPanel } from "./lib/cockpit-agent-panel.mjs";
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
@@ -16,6 +17,7 @@ import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
+import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
@@ -3944,6 +3946,10 @@ for (const locale of variants) {
         fullPage: false,
       }),
     );
+    await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
+    );
+    await verifyAgentPanel(page, stand, uuid, locale.name);
     await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
         fullPage: false,

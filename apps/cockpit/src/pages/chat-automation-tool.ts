@@ -4,12 +4,22 @@ import { toolNameOf } from "@/lib/tool-parts";
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
+/** Everything that starts the workflow unattended: its schedules and, from an
+ *  engine that reports them, its inbound webhooks. A webhook-only workflow
+ *  used to read as "nothing here" and its card rendered empty. */
+function automationRows(data: Record<string, unknown>): unknown[] {
+  return [
+    ...(Array.isArray(data.schedules) ? data.schedules : []),
+    ...(Array.isArray(data.inbound_hooks) ? data.inbound_hooks : []),
+  ];
+}
+
 export function chatAutomationSummary(
   tool: ToolPart,
 ): "authorized" | "repair" | "review" | "unknown" {
   if (!chatAutomationTool(tool) || !record(tool.output)) return "unknown";
   const data = record(tool.output.data) ? tool.output.data : tool.output;
-  const rows = (data.schedules as unknown[])
+  const rows = automationRows(data)
     .filter(record)
     .filter((row) => row.workflow_id === data.workflow_id);
   if (rows.length === 0) return "unknown";
@@ -39,7 +49,7 @@ export function chatAutomationTool(tool: ToolPart) {
     return null;
   const environments = [
     ...new Set<"dev" | "prod">(
-      data.schedules.flatMap(
+      automationRows(data).flatMap(
         (row): Array<"dev" | "prod"> =>
           record(row) &&
           row.workflow_id === data.workflow_id &&

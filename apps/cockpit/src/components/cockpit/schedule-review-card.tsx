@@ -16,7 +16,9 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
   return (
     <Card size="sm" data-testid="schedule-admission-held">
       <CardHeader>
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* One column, the action under the words it acts on. Beside them it
+            sat askew against a description that wraps at every width. */}
+        <div className="flex min-w-0 flex-col items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">
@@ -49,12 +51,7 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
               </p>
             )}
           </div>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="shrink-0 self-start sm:self-center"
-          >
+          <Button asChild variant="outline" size="sm" className="w-fit">
             <Link
               to="/workflows/$resourceId"
               params={{ resourceId: schedule.workflow_id }}

@@ -4820,6 +4820,7 @@ export interface paths {
                     "application/json": {
                         /** @enum {string} */
                         environment: "dev" | "prod";
+                        input?: components["schemas"]["WorkflowJsonValue"];
                     };
                 };
             };
@@ -4833,6 +4834,11 @@ export interface paths {
                         "application/json": {
                             prepared: boolean;
                             reason?: string;
+                            trigger?: {
+                                /** @enum {string} */
+                                kind: "inbound_hook";
+                                slug: string;
+                            };
                         };
                     };
                 };
@@ -18033,6 +18039,14 @@ export interface components {
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
+        /** @description A sample of what really starts this workflow — for a webhook, one delivery envelope {id, timestamp, type, headers, body}. Validated against the version's input schema; the held run receives exactly this. */
+        WorkflowJsonValue: string | number | boolean | null | components["schemas"]["FileRef"] | (components["schemas"]["WorkflowJsonValue"] | null)[] | {
+            [key: string]: components["schemas"]["WorkflowJsonValue"] | null;
+        };
+        FileRef: {
+            $file: components["schemas"]["FileId"];
+        };
+        FileId: string;
         WorkflowExecutionAuthorityList: {
             items: components["schemas"]["WorkflowExecutionAuthority"][];
             /** Format: uuid */
@@ -18488,13 +18502,6 @@ export interface components {
             };
             multipart?: components["schemas"]["MultipartPart"][];
         };
-        WorkflowJsonValue: string | number | boolean | null | components["schemas"]["FileRef"] | (components["schemas"]["WorkflowJsonValue"] | null)[] | {
-            [key: string]: components["schemas"]["WorkflowJsonValue"] | null;
-        };
-        FileRef: {
-            $file: components["schemas"]["FileId"];
-        };
-        FileId: string;
         Pagination: {
             /** @enum {string} */
             strategy: "offset";
@@ -21650,6 +21657,13 @@ export interface components {
             } | null;
             /** @enum {string} */
             reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
+            /** @description What a held workflow's refused starts come from. Null unless held. */
+            trigger: {
+                /** @enum {string} */
+                kind: "schedule" | "inbound_hook";
+                /** @description The webhook's slug; null for a schedule. */
+                name: string | null;
+            } | null;
             /** @enum {string|null} */
             cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
             counts: {

@@ -38,6 +38,7 @@ function item(overrides: Partial<AttentionItem> = {}): AttentionItem {
     kind: "workflow",
     subject: { kind: "workflow", id: W, name: "Monatsbericht" },
     reason: "failing",
+    trigger: null,
     cause_class: null,
     counts: {},
     since: daysAgo(3),
@@ -93,6 +94,26 @@ describe("the sentence", () => {
     expect(text).toBe(
       "Der Workflow „Monatsbericht“ ist 12-mal gescheitert: Anmeldung abgelehnt; 2 Korrekturen liegen bereit — seit 3 Tagen.",
     );
+  });
+
+  test("a held webhook is named as the webhook, never as a schedule", () => {
+    const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
+      item({ reason, class: "stopped", severity: "critical", trigger });
+    const hook = { kind: "inbound_hook" as const, name: "watchkit-findings" };
+    for (const reason of [
+      "execution_authority_required",
+      "execution_authority_unavailable",
+    ] as const) {
+      const german = attentionSentence(held(reason, hook), de, NOW).lead;
+      expect(german).toContain("„watchkit-findings“");
+      expect(german).not.toContain("Zeitplan");
+      expect(attentionSentence(held(reason, hook), en, NOW).lead).not.toContain("schedule");
+      expect(
+        attentionSentence(held(reason, { kind: "schedule", name: null }), de, NOW).lead,
+      ).toContain("Zeitplan");
+      // An engine without the field keeps the sentence it always had.
+      expect(attentionSentence(held(reason, null), de, NOW).lead).toContain("Zeitplan");
+    }
   });
 
   test("every reason the engine names has its own words, in both languages", () => {

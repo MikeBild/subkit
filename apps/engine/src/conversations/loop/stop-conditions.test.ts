@@ -19,6 +19,8 @@ test("completed readiness card ends narration; failed or legacy reviews continue
   expect(run({ ok: true, data })).toBe(true);
   expect(run({ ok: false, data })).toBe(false);
   expect(run({ ok: true, data: { kind: data.kind } })).toBe(false);
+  // Nothing to show is not a card: the model answers in prose instead.
+  expect(run({ ok: true, data: { ...data, presentation: "text" } })).toBe(false);
   expect(run({ ok: true, data }, "other_tool")).toBe(false);
   expect(run(null)).toBe(false);
 });
