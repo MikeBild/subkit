@@ -27,6 +27,7 @@ import { HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { admissionRefusal } from "./admission-errors.ts";
 import { enforceSavedWorkflowAllowlist, runRequestSource } from "./run.ts";
 import { ClientDeclaredRunSourceSchema, RunResponseSchema } from "./schemas.ts";
 
@@ -68,7 +69,8 @@ const rerunRoute = createRoute({
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: {
-      description: "Original execution is not rerunnable",
+      description:
+        "Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -171,30 +173,13 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
       }
     } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (code === "input_schema_violation")
-        throw new HttpError(400, code, (error as Error).message);
-      if (
-        code?.startsWith("execution_") ||
-        code?.startsWith("workflow_version_") ||
-        code === "workflow_archived"
-      ) {
-        await auditAdmissionRefusal(
-          {
-            tenant_id: principal.tenant_id,
-            reason: code,
-            message: (error as Error).message,
-            workflow_id: original.workflow_id,
-            request_source,
-            actor_id: principal.id ?? null,
-            actor_type: actorType(principal),
-            extra: { rerun_of: original.id },
-          },
-          db,
-        );
-        throw new HttpError(409, code, (error as Error).message);
-      }
-      throw error;
+      return admissionRefusal(error, {
+        db,
+        principal,
+        workflow_id: original.workflow_id,
+        request_source,
+        extra: { rerun_of: original.id },
+      });
     }
     const execution_id = admitted.execution_id;
     if (admitted.replayed && admitted.status !== "queued") {
@@ -229,23 +214,35 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       return c.json({ execution_id, status: "queued", hold_writes: admitted.hold_writes }, 202);
     }
 
-    const result = await runExecution({
-      db,
-      tenant_id: principal.tenant_id,
-      source: {
-        kind: "saved",
-        workflow_id: original.workflow_id,
-        ...(original.workflow_version_id ? { version_id: original.workflow_version_id } : {}),
-      },
-      input: admitted.input,
-      options: {
-        request_source,
+    let result: Awaited<ReturnType<typeof runExecution>>;
+    try {
+      result = await runExecution({
+        db,
+        tenant_id: principal.tenant_id,
+        source: {
+          kind: "saved",
+          workflow_id: original.workflow_id,
+          ...(original.workflow_version_id ? { version_id: original.workflow_version_id } : {}),
+        },
+        input: admitted.input,
+        options: {
+          request_source,
+          principal,
+          execution_mode,
+          parent_execution_id: original.id,
+          existing_execution_id: execution_id,
+        },
+      });
+    } catch (error) {
+      return admissionRefusal(error, {
+        db,
         principal,
-        execution_mode,
-        parent_execution_id: original.id,
-        existing_execution_id: execution_id,
-      },
-    });
+        workflow_id: original.workflow_id,
+        request_source,
+        execution_id,
+        extra: { rerun_of: original.id },
+      });
+    }
     return c.json(
       {
         execution_id: result.execution_id,

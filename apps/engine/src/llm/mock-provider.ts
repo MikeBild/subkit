@@ -62,6 +62,10 @@ export interface ConverseMockStep {
 class MockProvider {
   calls: MockCall[] = [];
   toolChoices: Array<{ type: string; toolName?: string } | undefined> = [];
+  /** The tool palette each converse call offered the model, as name and
+   *  description — what the model actually reads, after every layer
+   *  between the palette assembly and the provider call has had its say. */
+  toolPalettes: Array<Array<{ name: string; description: string }>> = [];
   /** When set, the very next call with this model fails with this kind. */
   failureByModel: Map<string, MockFailure> = new Map();
   /** Canned generator overrides by flow — tests may patch these. */
@@ -97,6 +101,7 @@ class MockProvider {
     this.generateOverrides = {};
     this.conversePlans = new Map();
     this.toolChoices = [];
+    this.toolPalettes = [];
     this.converseCursors = new Map();
     this.cacheSeenKey = new Set();
     this.defaultCriticPassWarned = false;

@@ -6561,7 +6561,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Execution authority or replay boundary no longer matches */
+                /** @description Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -6694,7 +6694,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Original execution is not rerunnable */
+                /** @description Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -10244,7 +10244,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
+                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
                     reviewable?: "true" | "false";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
@@ -18039,7 +18039,6 @@ export interface components {
             /** @description Server-side ISO timestamp; lets the CLI sync clocks. */
             server_time: string;
         };
-        /** @description A sample of what really starts this workflow — for a webhook, one delivery envelope {id, timestamp, type, headers, body}. Validated against the version's input schema; the held run receives exactly this. */
         WorkflowJsonValue: string | number | boolean | null | components["schemas"]["FileRef"] | (components["schemas"]["WorkflowJsonValue"] | null)[] | {
             [key: string]: components["schemas"]["WorkflowJsonValue"] | null;
         };
@@ -18234,6 +18233,15 @@ export interface components {
                 label: string;
             }[];
             unavailable_steps: string[];
+            unavailable_connectors?: {
+                step_id: string;
+                /** Format: uuid */
+                connector_id: string;
+                connector_slug: string;
+                connector_name: string;
+                /** @enum {string} */
+                reason: "disabled" | "needs_reauth" | "credential_unavailable";
+            }[];
             boundary_contradictions?: {
                 step_id: string;
                 declared_prefix: string;
@@ -20674,7 +20682,7 @@ export interface components {
             endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
             title: string;
             body: string;
             /** @default [] */
