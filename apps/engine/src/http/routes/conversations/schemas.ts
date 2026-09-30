@@ -225,7 +225,9 @@ export const ConversationDetailSchema = z
                   .object({
                     connector: z.string(),
                     tool: z.string(),
-                    hint: z.string().optional(),
+                    /** What the remote server says about its own tool. Its
+                     *  claim, unverified — show it attributed to the server. */
+                    server_claim: z.string().optional(),
                   })
                   .optional(),
               })

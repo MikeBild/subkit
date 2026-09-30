@@ -19,9 +19,11 @@ export async function recordInboundAdmission(
   reason: InboundHoldReason | null,
 ): Promise<void> {
   const changed = await db.transaction(async (tx) => {
-    // Serialize with human grants (`resolveGrantedInboundHold` locks the same
-    // row). A refusal observed before a grant must not re-hold the hook after
-    // that grant commits.
+    // Serialize with human grants: a production grant locks every hook of the
+    // workflow, held or not, before it clears their holds
+    // (`resolveGrantedAdmissionHolds`). Whichever commits second sees the
+    // other — a grant waits for this refusal and then clears its hold; a
+    // refusal waits for the grant and then finds the hook ready.
     if (reason) {
       const [hook] = await tx
         .select()
@@ -34,7 +36,10 @@ export async function recordInboundAdmission(
           ),
         )
         .for("update");
-      if (!hook || (await inspectInboundHookAutomation(hook, tx)).ready) return false;
+      // The same hold again changes nothing; skip the readiness inspection
+      // every refused delivery would otherwise pay under the row lock.
+      if (!hook || hook.admission_hold?.reason_code === reason) return false;
+      if ((await inspectInboundHookAutomation(hook, tx)).ready) return false;
     }
     const hold = reason
       ? { reason_code: reason, observed_at: context.observed_at.toISOString() }

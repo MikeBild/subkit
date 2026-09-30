@@ -113,7 +113,13 @@ describe("webhook execution authority admission", () => {
     expect(await hold()).toEqual(first);
 
     // The workflow's automation status names the hook, in a schedule's words.
-    const [status] = await inboundHookAutomationView(ctx.tenantId, ctx.workflowId, ctx.db);
+    const [status] = await inboundHookAutomationView(
+      ctx.tenantId,
+      ctx.workflowId,
+      ctx.db,
+      await databaseNow(ctx.db),
+      { refusal_reasons: true },
+    );
     expect(status).toMatchObject({
       inbound_hook_id: bindingId,
       slug: "authorized-events",

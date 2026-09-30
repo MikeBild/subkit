@@ -144,8 +144,22 @@ async function resolveGrantedAdmissionHolds(
   if (activeVersion !== authority.workflow_version_id) return;
   // A hook's deliveries only ever run in production. A live grant is what its
   // hold was waiting for; the next delivery is the first run, so nothing else
-  // moves. The UPDATE's row lock serializes with a refusal being recorded.
-  if (authority.execution_environment === "prod")
+  // moves. Every hook of the workflow is locked first, held or not: a refusal
+  // that judged the hook before this grant committed still holds its row, and
+  // an UPDATE filtered on `admission_hold IS NOT NULL` passed over that
+  // not-yet-held row, letting the refusal write its hold after the grant.
+  if (authority.execution_environment === "prod") {
+    await tx
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, authority.tenant_id),
+          eq(webhooksInbound.workflow_id, authority.workflow_id),
+        ),
+      )
+      .orderBy(webhooksInbound.id)
+      .for("update");
     await tx
       .update(webhooksInbound)
       .set({ admission_hold: null })
@@ -160,6 +174,7 @@ async function resolveGrantedAdmissionHolds(
           sql`${authority.revoked_at}::timestamptz IS NULL`,
         ),
       );
+  }
   const schedules = await tx
     .select({ id: workflowsSchedules.id, input: workflowsSchedules.input })
     .from(workflowsSchedules)

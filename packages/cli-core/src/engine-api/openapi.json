@@ -15865,7 +15865,7 @@
                           "tool": {
                             "type": "string"
                           },
-                          "hint": {
+                          "server_claim": {
                             "type": "string"
                           }
                         },

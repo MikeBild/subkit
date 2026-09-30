@@ -62,16 +62,16 @@ test("an external MCP tool approval is phrased from the connector and tool, not 
     external_tool: {
       connector: "Metabase Reporting MCP",
       tool: "search",
-      hint: "Search saved questions and dashboards",
+      server_claim: "Search saved questions and dashboards",
     },
   };
   expect(chatApproval(detail)).toMatchObject({
     externalTool: {
       connector: "Metabase Reporting MCP",
       tool: "search",
-      hint: "Search saved questions and dashboards",
+      server_claim: "Search saved questions and dashboards",
     },
-    // The hint is shown once, next to the question — not again as details.
+    // The server's claim is shown once, attributed — not again as details.
     description: null,
   });
   // Another decision never borrows the subject.

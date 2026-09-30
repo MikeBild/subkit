@@ -20770,7 +20770,7 @@ export interface components {
                         external_tool?: {
                             connector: string;
                             tool: string;
-                            hint?: string;
+                            server_claim?: string;
                         };
                     };
                     expires_at: string;

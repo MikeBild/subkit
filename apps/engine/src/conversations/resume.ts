@@ -293,19 +293,25 @@ function buildOneSentence(p: OneSentenceInputs): string {
 
 /** What an external MCP tool approval asks about, as data a client can phrase
  *  in its own language: the connector's registered name, the server's tool
- *  name, and an optional one-line hint the server supplied. */
+ *  name, and — optionally — one line the SERVER says about its tool. That line
+ *  is the server's claim, unverified; a client shows it attributed to the
+ *  server, never as the engine's own statement. */
 export interface ExternalToolSubject {
   connector: string;
   tool: string;
-  hint?: string;
+  server_claim?: string;
 }
 
 function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const { connector, tool, hint } = value as Record<string, unknown>;
+  const { connector, tool, server_claim } = value as Record<string, unknown>;
   if (typeof connector !== "string" || !connector.trim()) return undefined;
   if (typeof tool !== "string" || !tool.trim()) return undefined;
-  return { connector, tool, ...(typeof hint === "string" && hint.trim() ? { hint } : {}) };
+  return {
+    connector,
+    tool,
+    ...(typeof server_claim === "string" && server_claim.trim() ? { server_claim } : {}),
+  };
 }
 
 /** Project the dialog fields only; never expose its execution or approval capability. */

@@ -1,7 +1,32 @@
 import { describe, expect, test } from "bun:test";
+import { McpPreflightError } from "./registry.ts";
 import { resolveStaticAuthHeaders } from "./session-auth.ts";
 
 describe("resolveStaticAuthHeaders", () => {
+  // A pasted key with a trailing newline used to reach the transport, whose
+  // error quoted the raw value into the pool log and the model's context.
+  test("refuses a line break or NUL in any static credential without quoting it", () => {
+    const secret = "sk_live_pasted_secret_value";
+    const cases = [
+      [{ kind: "bearer" }, { mode: "bearer", token: `${secret}\n` }],
+      [{ kind: "basic" }, { mode: "basic", username: "mike", password: `${secret}\r\n` }],
+      [{ kind: "basic" }, { mode: "basic", username: `mi\0ke`, password: secret }],
+      [{ kind: "header" }, { mode: "header", headers: { "X-Api-Key": `${secret}\n` } }],
+    ] as const;
+    for (const [auth, value] of cases) {
+      let error: unknown;
+      try {
+        resolveStaticAuthHeaders(auth, value);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(McpPreflightError);
+      expect((error as McpPreflightError).error_code).toBe("credential_invalid");
+      expect(String((error as Error).message)).not.toContain("sk_live");
+      expect(String((error as Error).message)).not.toContain("mike");
+    }
+  });
+
   test("builds the same bearer header used by persisted MCP sessions", () => {
     expect(
       resolveStaticAuthHeaders({ kind: "bearer" }, { mode: "bearer", token: "secret" }),
