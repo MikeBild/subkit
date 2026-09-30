@@ -362,6 +362,57 @@ describe("update_connector_draft — clean updates pass", () => {
     _resetDraftCredentialCacheForTests();
   });
 
+  it("refuses an invalid auth edit whole: the draft and the entered key stay", async () => {
+    const { setDraftCredential, getDraftCredential, _resetDraftCredentialCacheForTests } =
+      await import("../../persistence/draft-credential-cache.ts");
+    _resetDraftCredentialCacheForTests();
+    const { base, getDraft } = await makeCtx();
+    await updateConnectorDraftTool.execute(base, {
+      name: "Reporting MCP",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://reporting.acme-analytics.io/api/mcp",
+      auth_type: "bearer",
+    });
+    setDraftCredential(base.conversation_id, { mode: "bearer", token: "entered-by-operator" });
+    const before = getDraft().connector;
+    const result = await updateConnectorDraftTool.execute(base, {
+      auth_type: "header",
+      config: { mcp: { transport: "http", auth: { kind: "header", header_name: "X-API-KEY" } } },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error_code).toBe("invalid_connector_draft_edit");
+    expect(getDraft().connector).toEqual(before);
+    expect(getDraftCredential(base.conversation_id)).toEqual({
+      mode: "bearer",
+      token: "entered-by-operator",
+    });
+    _resetDraftCredentialCacheForTests();
+  });
+
+  it("accepts a switch of an mcp draft to header auth and asks for the key again", async () => {
+    const { setDraftCredential, getDraftCredential, _resetDraftCredentialCacheForTests } =
+      await import("../../persistence/draft-credential-cache.ts");
+    _resetDraftCredentialCacheForTests();
+    const { base, getDraft } = await makeCtx();
+    await updateConnectorDraftTool.execute(base, {
+      name: "Reporting MCP",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://reporting.acme-analytics.io/api/mcp",
+      auth_type: "bearer",
+    });
+    setDraftCredential(base.conversation_id, { mode: "bearer", token: "entered-by-operator" });
+    const result = await updateConnectorDraftTool.execute(base, {
+      auth_type: "header",
+      config: { mcp: { transport: "http", auth: { kind: "header" } } },
+    });
+    expect(result.ok).toBe(true);
+    expect(getDraft().connector?.validation?.errors ?? []).toEqual([]);
+    expect(getDraftCredential(base.conversation_id)).toBeNull();
+    _resetDraftCredentialCacheForTests();
+  });
+
   it("allows auth_type changes that are not a downgrade-to-none", async () => {
     const { _resetDraftCredentialCacheForTests } = await import(
       "../../persistence/draft-credential-cache.ts"

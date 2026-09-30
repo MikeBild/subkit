@@ -115,6 +115,7 @@ const MCP_AUTH_KIND_BY_TYPE: Readonly<Partial<Record<AuthType, McpAuthConfig["ki
   none: "none",
   bearer: "bearer",
   basic: "basic",
+  header: "header",
   oauth2: "oauth2",
   oauth2_client: "oauth2_client_credentials",
   oauth2_private_key: "oauth2_private_key_jwt",
@@ -173,7 +174,7 @@ export function validateConnectorAuthType(
     return [
       {
         path: "auth_type",
-        message: `auth_type '${auth_type}' is not supported by the mcp transport — use none, bearer, basic, oauth2, oauth2_client, or oauth2_private_key`,
+        message: `auth_type '${auth_type}' is not supported by the mcp transport — use none, bearer, basic, header, oauth2, oauth2_client, or oauth2_private_key`,
       },
     ];
   }
@@ -240,10 +241,22 @@ export function validateConnectorConfig(
   if (!schema) return [{ path: "driver", message: `no config schema for driver '${driver}'` }];
   const parsed = schema.safeParse(config);
   if (parsed.success) return [];
-  return parsed.error.issues.map((i) => ({
-    path: i.path.length > 0 ? i.path.join(".") : "config",
-    message: i.message,
-  }));
+  return parsed.error.issues.map((i) => {
+    const path = i.path.length > 0 ? i.path.join(".") : "config";
+    // A header name written into the MCP auth block is the one mistake the
+    // bare "Unrecognized key" leaves unanswerable: say where it belongs.
+    const headerKey =
+      driver === "mcp" &&
+      path === "mcp.auth" &&
+      i.code === "unrecognized_keys" &&
+      i.keys.some((key) => /header/i.test(key));
+    return {
+      path,
+      message: headerKey
+        ? `${i.message} — config.mcp.auth carries no header name. For auth_type "header" the name travels with the credential: collect header_name (pre-filled, not sensitive) and header_value (sensitive) with ask_user_form, and keep config.mcp.auth to { kind: "header" }`
+        : i.message,
+    };
+  });
 }
 
 /** Write-path wrapper: throws the `connector_config_invalid` error the HTTP

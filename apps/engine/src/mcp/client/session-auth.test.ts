@@ -31,4 +31,28 @@ describe("resolveStaticAuthHeaders", () => {
       "requires its persisted OAuth provider",
     );
   });
+
+  test("mounts a header credential under its own name, as for an http connector", () => {
+    expect(
+      resolveStaticAuthHeaders(
+        { kind: "header" },
+        { mode: "header", headers: { "X-API-KEY": "secret" } },
+      ),
+    ).toEqual({ "X-API-KEY": "secret" });
+  });
+
+  test("refuses a header the MCP transport sets itself", () => {
+    expect(() =>
+      resolveStaticAuthHeaders(
+        { kind: "header" },
+        { mode: "header", headers: { "Mcp-Session-Id": "x" } },
+      ),
+    ).toThrow("cannot carry a credential");
+  });
+
+  test("refuses a bearer credential on a header server", () => {
+    expect(() =>
+      resolveStaticAuthHeaders({ kind: "header" }, { mode: "bearer", token: "secret" }),
+    ).toThrow("expected header credential");
+  });
 });

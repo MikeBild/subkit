@@ -163,6 +163,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this oauth2 draft has no template, so its oauth metadata cannot be authored on the draft — call start_connector_from_template with an existing template, or register one via POST /v1/connector-templates (admin); do not retry update_connector_draft with oauth fields",
   auth_param_name_in_config:
     'config has no slot for the query parameter name — for query auth the param name lives in the credential\'s `param` field. Set auth_type:"query" on the draft, then collect the secret via ask_user_form(type:password, sensitive:true) and submit save_connector_draft({credential:{mode:"query", param:"<param-name>", value:"<token>"}}) (e.g. param:"token" for Browserless). Remove the key from config.',
+  invalid_connector_draft_edit:
+    "the auth edit was refused and not applied — the draft and any key the user already entered are unchanged. Read the listed issues and send a corrected update_connector_draft; do not tell the user their key was lost or ask for it again because of this refusal",
   connector_bindings_missing:
     "the workflow step is missing a connector binding — call inspect_workflow_draft to see required bindings, then edit_workflow_patch to attach a connector",
   connector_bindings_required:

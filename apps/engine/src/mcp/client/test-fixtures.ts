@@ -26,7 +26,14 @@ export interface SeedMcpConnectorInput {
   auth?: McpAuthConfig;
   /** Declared auth mode. Must match the mode of whatever credential the
    *  test seeds, exactly as it must on a real connector. */
-  auth_type?: "none" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key";
+  auth_type?:
+    | "none"
+    | "bearer"
+    | "basic"
+    | "header"
+    | "oauth2"
+    | "oauth2_client"
+    | "oauth2_private_key";
   display_name?: string;
   /** Defaults to `prod` — the environment `MCP_CREDENTIAL_ENVIRONMENT`
    *  pins, so a credential seeded for the same connector is findable. */
@@ -48,6 +55,7 @@ export async function seedMcpConnector(
         none: "none",
         bearer: "bearer",
         basic: "basic",
+        header: "header",
         oauth2: "oauth2",
         oauth2_client_credentials: "oauth2_client",
         oauth2_private_key_jwt: "oauth2_private_key",
