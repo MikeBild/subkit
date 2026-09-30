@@ -3,8 +3,10 @@ import { eq } from "drizzle-orm";
 import { rotateOAuth2Tokens, upsertCredential } from "../../credentials/service.ts";
 import { connectors, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { capturePreparedWorkflowReferences } from "../../execution/prepared-workflow-references.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { resolveWorkflowEffectManifest } from "../effect-resolution.ts";
+import { WorkflowDefSchema } from "../types.ts";
 
 let ctx: TestDb;
 let counter = 0;
@@ -169,6 +171,49 @@ test("configuration changes alter the binding while temporary availability stays
     .set({ enabled: true, config: { static_query: { recipient: "other" } } })
     .where(eq(connectors.id, f.connector.id));
   expect((await resolveWorkflowEffectManifest(f.input, ctx.db)).digest).not.toBe(before.digest);
+});
+
+test("the preview names the unavailable connector exactly as the run admission refuses it", async () => {
+  const f = await fixture();
+  const [version] = await ctx.db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, f.input.workflow_version_id));
+  const definition = WorkflowDefSchema.parse(version?.dag);
+  const healthy = await resolveWorkflowEffectManifest(f.input, ctx.db);
+  expect(healthy.unavailable_connectors).toEqual([]);
+  for (const [patch, reason] of [
+    [{ needs_reauth: true }, "needs_reauth"],
+    [{ needs_reauth: false, enabled: false }, "disabled"],
+    [{ enabled: true, auth_type: "bearer" as const }, "credential_unavailable"],
+  ] as const) {
+    await ctx.db.update(connectors).set(patch).where(eq(connectors.id, f.connector.id));
+    const preview = await resolveWorkflowEffectManifest(f.input, ctx.db);
+    expect(preview.unavailable_connectors).toEqual([
+      {
+        step_id: "send",
+        connector_id: f.connector.id,
+        connector_slug: f.connector.slug,
+        connector_name: f.connector.display_name,
+        reason,
+      },
+    ]);
+    // Outside the manifest: availability never moves the digest (a changed
+    // auth type is configuration, and does).
+    if (reason !== "credential_unavailable") expect(preview.digest).toBe(healthy.digest);
+    await expect(
+      capturePreparedWorkflowReferences(ctx.db, f.input.tenant_id, "dev", definition),
+    ).rejects.toMatchObject({
+      code: "prepared_credential_unavailable",
+      details: {
+        step_id: "send",
+        connector_id: f.connector.id,
+        connector_slug: f.connector.slug,
+        environment: "dev",
+        reason,
+      },
+    });
+  }
 });
 
 test("OAuth refresh retains the binding but changed scopes require reauthorization", async () => {
