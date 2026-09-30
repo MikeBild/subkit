@@ -91,6 +91,10 @@ function runDialogApi(state) {
     if (path === `/v1/workflows/${WORKFLOW_ID}`) return json(route, RECORD);
     if (path === `/v1/workflows/${WORKFLOW_ID}/input-schema`)
       return json(route, { source: "declared", schema: null });
+    if (path === `/v1/workflows/${WORKFLOW_ID}/draft`)
+      return json(route, { version_id: DRAFT_VERSION_ID, version: 5 });
+    if (path === `/v1/workflows/${WORKFLOW_ID}/execution-authorities`)
+      return json(route, { items: [], next_cursor: null });
     const previewMatch = path.match(
       new RegExp(`^/v1/workflows/${WORKFLOW_ID}/versions/([^/]+)/authority-preview$`),
     );
