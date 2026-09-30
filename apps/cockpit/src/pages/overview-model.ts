@@ -12,6 +12,7 @@
 // every source this person may read has answered.
 
 import type { components } from "@/api/schema";
+import { causeClassKey } from "@/lib/cause-class";
 import type { TranslationKey } from "@/lib/i18n";
 
 export type Attention = components["schemas"]["AttentionV1"];
@@ -209,20 +210,6 @@ const SUBJECT_KEYS = {
   secret: "overview.subject.secret",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
-const CAUSE_KEYS: Record<string, TranslationKey> = {
-  ok: "cause.ok",
-  auth_failed: "cause.auth_failed",
-  placeholder_unresolved: "cause.placeholder_unresolved",
-  schema_mismatch: "cause.schema_mismatch",
-  timeout: "cause.timeout",
-  aborted: "cause.aborted",
-  connector_missing: "cause.connector_missing",
-  budget_exhausted: "cause.budget_exhausted",
-  driver_error: "cause.driver_error",
-  preview_unsupported: "cause.preview_unsupported",
-  unknown: "cause.unknown",
-};
-
 /** The heartbeats the scheduler writes (operator/operational-overview.ts). */
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
   "self_healing.drift_scan": "overview.heartbeat.drift_scan",
@@ -328,7 +315,7 @@ export function attentionSentence(
       };
     }
     case "failing": {
-      const cause = item.cause_class ? CAUSE_KEYS[item.cause_class] : undefined;
+      const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
         (item.counts.failures ?? 0) > 1
           ? "overview.reason.failingCount"

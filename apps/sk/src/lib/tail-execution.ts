@@ -14,13 +14,14 @@ import type { EngineClient } from "../engine-client.ts";
 const TERMINAL_EVENTS = new Set([
   "execution.succeeded",
   "execution.failed",
+  "execution.refused",
   "execution.aborted",
   "execution.timed_out",
 ]);
 
 /**
  * Stream an execution's event frames to `out` until the engine closes
- * the stream. Returns the terminal status ("succeeded" | "failed" |
+ * the stream. Returns the terminal status ("succeeded" | "failed" | "refused" |
  * "aborted" | "timed_out") or null when the stream ended without one
  * (client abort / engine restart).
  */

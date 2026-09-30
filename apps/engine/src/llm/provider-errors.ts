@@ -45,6 +45,9 @@ function readErrorParts(err: unknown): { statusCode: number | null; message: str
 }
 
 export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
+  // An error that already carries its classification keeps it: re-reading the
+  // wording of a typed error could only lose what the thrower knew.
+  if (err instanceof LlmProviderError && err.kind !== "other") return err.kind;
   const { statusCode, message } = readErrorParts(err);
 
   if (message.includes("context_length") || message.includes("too many tokens")) {
@@ -70,6 +73,27 @@ export function isFallbackEligible(err: unknown): boolean {
     kind === "context_length_exceeded" ||
     kind === "network_5xx" ||
     kind === "timeout"
+  );
+}
+
+/**
+ * Whether a call the primary provider refused is retried on the fallback.
+ *
+ * The one answer every LLM caller shares — the chat turn, `invoke`'s one-shot
+ * flows, and the small side calls such as the next-message suggestion. A
+ * transient or capacity refusal moves to the fallback; a genuine request error
+ * does not, because the fallback would be sent the same broken request. A
+ * usage limit is an account limit, so it moves only when the fallback is a
+ * different provider: the same provider under the same key refuses again.
+ */
+export function shouldFallBack(
+  err: unknown,
+  primaryProvider: string,
+  fallbackProvider: string,
+): boolean {
+  if (!isFallbackEligible(err)) return false;
+  return !(
+    classifyProviderError(err) === "quota_exhausted" && primaryProvider === fallbackProvider
   );
 }
 

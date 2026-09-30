@@ -45,7 +45,7 @@ import {
   type ResolvedConnectorCredential,
   serializeXmlBody,
 } from "../../../connectors/drivers/http.ts";
-import { invokeMcpConnectorCall } from "../../../connectors/drivers/mcp.ts";
+import { invokeMcpConnectorCall, mcpEgressInput } from "../../../connectors/drivers/mcp.ts";
 import {
   pgQueryCursor,
   pgQueryWithCount,
@@ -1430,25 +1430,23 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             // under-report what actually crossed the boundary.
             attempt: () =>
               withEgressAudit(
-                {
+                mcpEgressInput({
                   executor: p.ctx.db,
                   tenant_id: p.ctx.tenant_id,
                   actor_id: p.ctx.principal?.id ?? null,
                   actor_type:
                     p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
-                  connector_id: connector.id,
-                  connector_slug: connector.slug,
-                  driver: "mcp",
-                  // Resolved inside the pool, which owns the session and its
-                  // credential; the wrapper never sees the row id.
-                  credential_id: null,
-                  operation: wireMethod,
-                  url: connector.base_url ?? null,
+                  connector: {
+                    id: connector.id,
+                    slug: connector.slug,
+                    url: connector.base_url ?? null,
+                  },
+                  call,
                   source: "execution",
                   execution_id: p.ctx.execution_id,
                   workflow_id: p.ctx.workflow_id,
                   step_id: p.step.id,
-                },
+                }),
                 () =>
                   invokeMcpConnectorCall({
                     db: p.ctx.db,

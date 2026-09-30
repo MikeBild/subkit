@@ -31,6 +31,20 @@ const ExecutionFailed = z.object({
   error_code: z.string().optional(),
 });
 
+// A run refused before its first step — a connector it needs cannot serve it
+// in the run's environment. The row closes `failed`, but nothing ran and the
+// caller was answered at once, so this is not `execution.failed`.
+const ExecutionRefused = z.object({
+  execution_id: z.string().uuid(),
+  workflow_id: z.string().uuid().nullable(),
+  failure: z.object({
+    step_id: z.string().nullable(),
+    error_code: z.string(),
+    error_message: z.string(),
+    connector: z.object({ connector_id: z.string().nullable(), reason: z.string() }).optional(),
+  }),
+});
+
 const WorkflowUpdated = z.object({
   workflow_id: z.string().uuid(),
   version: z.number().int().positive(),
@@ -147,6 +161,24 @@ export const EVENT_CATALOG = {
       error: "step invoice.fetch failed: timeout",
     },
     actionable: ACTIONABLE,
+    resource: pointsAt("execution", "execution_id"),
+  },
+  "execution.refused": {
+    name: "execution.refused",
+    schema: ExecutionRefused,
+    example: {
+      execution_id: "00000000-0000-4000-8000-000000000001",
+      workflow_id: "00000000-0000-4000-8000-000000000002",
+      failure: {
+        step_id: "send",
+        error_code: "prepared_credential_unavailable",
+        error_message: 'Connector "gmail" in dev must be reconnected before this workflow can run.',
+        connector: { connector_id: "00000000-0000-4000-8000-000000000003", reason: "needs_reauth" },
+      },
+    },
+    // The person who asked was told at once; the connector's own events
+    // (`connector.auth_failed`, `connector.health_changed`) carry the fix.
+    actionable: NOT_ACTIONABLE,
     resource: pointsAt("execution", "execution_id"),
   },
   "workflow.updated": {
