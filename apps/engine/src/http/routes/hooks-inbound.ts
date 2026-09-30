@@ -10,7 +10,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/index.ts";
-import { HmacVerifierConfig } from "../../webhooks/inbound/verifiers/hmac.ts";
 import * as svc from "../../webhooks/index.ts";
 import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -157,7 +156,7 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     // here instead of storing a binding that denies every delivery.
     let nativeConfig = body.native_verifier_config ?? null;
     if (body.verifier === "hmac") {
-      const parsed = HmacVerifierConfig.safeParse(nativeConfig?.hmac);
+      const parsed = svc.HmacVerifierConfig.safeParse(nativeConfig?.hmac);
       if (!parsed.success) {
         throw new BadRequestError(
           `native_verifier_config.hmac is invalid: ${parsed.error.issues
