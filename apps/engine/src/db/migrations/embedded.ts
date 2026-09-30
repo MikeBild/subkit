@@ -89,7 +89,6 @@ import sql0068EngineRestartRequests from "./0068_engine_restart_requests.sql" wi
 import sql0069UnbilledRefusedLlmCalls from "./0069_unbilled_refused_llm_calls.sql" with { type: "text" };
 import sql0070FastPathAnswerLast from "./0070_fast_path_answer_last.sql" with { type: "text" };
 import sql0071WebhookAdmissionHold from "./0071_webhook_admission_hold.sql" with { type: "text" };
-import sql0072FailOrphanedPreparations from "./0072_fail_orphaned_preparations.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -186,7 +185,6 @@ const SQL_BY_TAG: Record<string, string> = {
   "0069_unbilled_refused_llm_calls": sql0069UnbilledRefusedLlmCalls,
   "0070_fast_path_answer_last": sql0070FastPathAnswerLast,
   "0071_webhook_admission_hold": sql0071WebhookAdmissionHold,
-  "0072_fail_orphaned_preparations": sql0072FailOrphanedPreparations,
 };
 
 const journal = journalMeta as unknown as Journal;
