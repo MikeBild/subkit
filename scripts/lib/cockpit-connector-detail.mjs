@@ -335,6 +335,22 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     if (header !== "X-API-KEY")
       throw new Error(`${where}: the key form does not keep the header name — "${header}"`);
 
+    // A section taller than the screen keeps its height; the page scrolls. The
+    // column once squeezed the sign-in card to a sliver that hid its form.
+    const clipped = await page.evaluate(() =>
+      [
+        "connector-connection-facts",
+        "connector-runtime",
+        "connector-mcp-tools",
+        "connector-credentials",
+        "connector-workflows",
+      ].filter((id) => {
+        const element = document.querySelector(`[data-testid="${id}"]`);
+        return element instanceof HTMLElement && element.scrollHeight > element.clientHeight + 1;
+      }),
+    );
+    if (clipped.length > 0)
+      throw new Error(`${where}: sections are cut off — ${clipped.join(", ")}`);
     await assertNoVisibleUuids(page.locator("main").first(), where);
     await assertNoSidewaysScroll(page, where);
     await capture("connector-mcp-tools");
