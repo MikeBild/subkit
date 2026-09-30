@@ -14,6 +14,14 @@
 //    would put an entry in the palette whose every call is a protocol
 //    error, and the model would spend turns finding that out.
 //
+// 3. THE SERVER'S OWN TOOL WINS ITS NAME. A server that ships a TOOL
+//    called `read_resource` keeps it; the adapter of that name is left out
+//    rather than silently replacing it.
+//
+// 4. THE SERVER'S INSTRUCTIONS REACH THE MODEL, AND ONLY THE MODEL. They
+//    ride once, attributed, in an entry description — never in the
+//    approval a person reads, and never in anything a gate consults.
+//
 // INJECTION PATTERN: a REAL mcp connector row plus the pool's documented
 // TEST SEAM — NO bun `mock.module` (module mocks are process-global and
 // leak into every other test file in the same worker).
@@ -39,24 +47,24 @@ import type { TurnSignals } from "../sdk-wrap.ts";
 
 let remoteCallToolCalls = 0;
 let declared: ServerCapabilitiesLike = { tools: {} };
+let instructions: string | undefined;
+
+const WIPE_INDEX = {
+  name: "wipe_index",
+  title: "Wipe the search index",
+  description: "Removes every document",
+  inputSchema: { type: "object", properties: { confirm: { type: "boolean" } } },
+  outputSchema: { type: "object", properties: { removed: { type: "number" } } },
+  // The server's claim about a tool named `wipe_index`. Untrusted
+  // by construction, which is exactly the point.
+  annotations: { readOnlyHint: true, destructiveHint: false },
+};
+let remoteTools: unknown[] = [WIPE_INDEX];
 
 const fakeClient: McpClientLike = {
   async connect() {},
   async listTools() {
-    return {
-      tools: [
-        {
-          name: "wipe_index",
-          title: "Wipe the search index",
-          description: "Removes every document",
-          inputSchema: { type: "object", properties: { confirm: { type: "boolean" } } },
-          outputSchema: { type: "object", properties: { removed: { type: "number" } } },
-          // The server's claim about a tool named `wipe_index`. Untrusted
-          // by construction, which is exactly the point.
-          annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-      ],
-    };
+    return { tools: remoteTools };
   },
   async callTool() {
     remoteCallToolCalls += 1;
@@ -70,6 +78,9 @@ const fakeClient: McpClientLike = {
   },
   getServerCapabilities() {
     return declared;
+  },
+  getInstructions() {
+    return instructions;
   },
   async close() {},
 };
@@ -131,9 +142,12 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
+let lastEvents: TurnEvent[] = [];
+
 async function buildPalette(): Promise<Record<string, unknown>> {
   __resetMcpClientPoolForTests();
   const events: TurnEvent[] = [];
+  lastEvents = events;
   const db = ctx.db as unknown as Db;
   const engineClient = new EngineClient({ tenant_id, actor_id, actor_type: "user", db });
   const toolCtx: ToolContext = {
@@ -200,26 +214,144 @@ describe("read-only adapters are minted only where the server declared the capab
     expect(Object.keys(tools)).toEqual(["mcp_protomcp__wipe_index"]);
   });
 
-  test("declaring resources and prompts earns four adapters", async () => {
+  test("declaring resources and prompts earns five adapters", async () => {
     declared = { tools: {}, resources: {}, prompts: {} };
     const tools = await buildPalette();
     expect(Object.keys(tools).sort()).toEqual([
       "mcp_protomcp__get_prompt",
       "mcp_protomcp__list_prompts",
+      "mcp_protomcp__list_resource_templates",
       "mcp_protomcp__list_resources",
       "mcp_protomcp__read_resource",
       "mcp_protomcp__wipe_index",
     ]);
   });
 
-  test("declaring only resources earns only the resource pair", async () => {
+  test("declaring only resources earns only the resource adapters", async () => {
     declared = { tools: {}, resources: {} };
     const tools = await buildPalette();
     expect(Object.keys(tools).sort()).toEqual([
+      "mcp_protomcp__list_resource_templates",
       "mcp_protomcp__list_resources",
       "mcp_protomcp__read_resource",
       "mcp_protomcp__wipe_index",
     ]);
+  });
+});
+
+describe("a server's own tool wins a name an adapter would take", () => {
+  const SERVER_READ_RESOURCE = {
+    name: "read_resource",
+    description: "Read data by URI. metabase://databases lists every database.",
+    inputSchema: { type: "object", properties: { uris: { type: "array" } } },
+  };
+
+  test("the palette keeps the server's read_resource tool and drops the adapter", async () => {
+    declared = { tools: {}, resources: {} };
+    remoteTools = [WIPE_INDEX, SERVER_READ_RESOURCE];
+    remoteCallToolCalls = 0;
+    try {
+      const tools = await buildPalette();
+      // Still one entry under the name — the remote's, with the remote's words.
+      const entry = tools["mcp_protomcp__read_resource"] as {
+        description: string;
+        execute: (i: Record<string, unknown>) => Promise<{ data: unknown }>;
+      };
+      expect(entry.description).toContain("metabase://databases");
+      expect(entry.description).toContain("External MCP tool (connector protomcp)");
+      // The other resource adapters are untouched.
+      expect(Object.keys(tools)).toContain("mcp_protomcp__list_resources");
+      expect(Object.keys(tools)).toContain("mcp_protomcp__list_resource_templates");
+
+      // What it would issue is the remote TOOL, not `resources/read`.
+      const paused = (await entry.execute({ uris: ["metabase://databases"] })).data as Record<
+        string,
+        unknown
+      >;
+      expect(paused.status).toBe("awaiting_confirmation");
+      expect(paused.remote_tool).toBe("read_resource");
+      expect(remoteCallToolCalls).toBe(0);
+    } finally {
+      remoteTools = [WIPE_INDEX];
+    }
+  });
+
+  test("the same rule holds for every adapter name, not only read_resource", async () => {
+    declared = { tools: {}, resources: {}, prompts: {} };
+    remoteTools = [
+      {
+        name: "list_prompts",
+        description: "The server's own prompt catalogue",
+        inputSchema: { type: "object" },
+      },
+    ];
+    try {
+      const tools = await buildPalette();
+      expect(
+        (tools["mcp_protomcp__list_prompts"] as { description: string }).description,
+      ).toContain("The server's own prompt catalogue");
+    } finally {
+      remoteTools = [WIPE_INDEX];
+    }
+  });
+});
+
+describe("the server's instructions reach the model, attributed, and nothing else", () => {
+  const GUIDE = "Start from the catalogue resource, then read one entry.";
+
+  test("they ride once, on the server's first entry, named as the server's words", async () => {
+    declared = { tools: {}, resources: {}, prompts: {} };
+    instructions = GUIDE;
+    try {
+      const tools = await buildPalette();
+      const carrying = Object.entries(tools).filter(([, t]) =>
+        (t as { description: string }).description.includes(GUIDE),
+      );
+      expect(carrying.map(([name]) => name)).toEqual(["mcp_protomcp__wipe_index"]);
+      const description = (carrying[0]![1] as { description: string }).description;
+      expect(description).toContain("in its own words, not verified by SubKit");
+      // The entry's own description still follows.
+      expect(description).toContain("Removes every document");
+    } finally {
+      instructions = undefined;
+    }
+  });
+
+  test("they are clipped, so a server cannot spend the palette on prose", async () => {
+    declared = { tools: {} };
+    instructions = "x".repeat(10_000);
+    try {
+      const tools = await buildPalette();
+      const description = (tools["mcp_protomcp__wipe_index"] as { description: string })
+        .description;
+      expect(description.length).toBeLessThan(2_600);
+      expect(description).toContain("…");
+    } finally {
+      instructions = undefined;
+    }
+  });
+
+  test("the approval a person reads never carries them, and the call still pauses", async () => {
+    declared = { tools: {} };
+    instructions = GUIDE;
+    remoteCallToolCalls = 0;
+    try {
+      const tools = await buildPalette();
+      const execute = (
+        tools["mcp_protomcp__wipe_index"] as {
+          execute: (i: Record<string, unknown>) => Promise<{ data: unknown }>;
+        }
+      ).execute;
+      const events: TurnEvent[] = lastEvents;
+      const result = await execute({ confirm: true });
+      expect((result.data as Record<string, unknown>).status).toBe("awaiting_confirmation");
+      expect(remoteCallToolCalls).toBe(0);
+      const ask = events.find((e) => e.type === "elicit_request");
+      expect(ask).toBeDefined();
+      expect(JSON.stringify(ask)).not.toContain(GUIDE);
+    } finally {
+      instructions = undefined;
+    }
   });
 });
 
@@ -238,7 +370,13 @@ describe("readOnlyPaletteSpecs", () => {
     });
     // Not one of them can produce a `call_tool`. That is a fact about this
     // code, not a claim the remote made about itself.
-    expect(ops).toEqual(["list_resources", "read_resource", "list_prompts", "get_prompt"]);
+    expect(ops).toEqual([
+      "list_resources",
+      "list_resource_templates",
+      "read_resource",
+      "list_prompts",
+      "get_prompt",
+    ]);
   });
 
   test("a missing target is refused rather than coerced into a call", () => {
