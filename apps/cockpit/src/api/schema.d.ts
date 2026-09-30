@@ -8740,6 +8740,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/{id}/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A connector's newest successful and failed call, and its MCP session */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorRuntime"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/{id}/mcp/tool-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Decide whether one remote tool of an mcp connector asks before it runs */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorMcpToolConfirmationRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorMcpToolConfirmation"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not an mcp connector */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/discover": {
         parameters: {
             query?: never;
@@ -19975,6 +20109,7 @@ export interface components {
             /** @enum {string} */
             environment: "dev" | "prod";
             connection: components["schemas"]["ConnectionSummary"];
+            header_names: string[];
             updated_at: string;
         } | null;
         ConnectorMcpInspectResponse: {
@@ -20005,6 +20140,44 @@ export interface components {
             authorization_url: string;
             /** @description Opaque single-use correlation token for this flow. */
             state: string;
+        };
+        ConnectorRuntime: {
+            /**
+             * Format: date-time
+             * @description When the newest successful call was recorded.
+             */
+            last_success_at: string | null;
+            last_failure: {
+                /** Format: date-time */
+                at: string;
+                /** @description Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error. */
+                code: string;
+                /** @enum {string} */
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown";
+            } | null;
+            /** @description Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing. */
+            recorded: boolean;
+            /** @description The negotiated MCP session; null for other drivers or before a handshake. */
+            mcp_session: {
+                protocol_version: string | null;
+                capabilities: string[];
+                /** Format: date-time */
+                last_handshake_at: string | null;
+                consecutive_failures: number;
+                /** Format: date-time */
+                backoff_until: string | null;
+            } | null;
+        };
+        ConnectorMcpToolConfirmation: {
+            tool: string;
+            confirm: boolean;
+            tools_without_confirmation: string[];
+        };
+        ConnectorMcpToolConfirmationRequest: {
+            /** @description The remote tool's own name, as the server's tools/list reports it. */
+            tool: string;
+            /** @description true: ask before every call (the default). false: this tool runs without asking. */
+            confirm: boolean;
         };
         ConnectorDiscoverResponse: {
             /** @enum {string} */
