@@ -1159,7 +1159,7 @@ async function mockApi(route) {
     });
   }
   if (/^\/v1\/workflows\/[^/]+\/automation-status$/.test(path))
-    return json(route, { schedules: [] });
+    return json(route, { schedules: [], inbound_hooks: [] });
   if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
   if (path === "/v1/attention") return json(route, attentionAnswer());
   if (path === "/v1/conversations" && request.method() === "GET") {
