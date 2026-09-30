@@ -219,6 +219,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       result = await runExecution({
         db,
         tenant_id: principal.tenant_id,
+        refusal_answered_to_caller: true,
         source: {
           kind: "saved",
           workflow_id: original.workflow_id,

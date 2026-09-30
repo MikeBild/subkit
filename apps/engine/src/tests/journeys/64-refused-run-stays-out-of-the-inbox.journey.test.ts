@@ -26,6 +26,7 @@ import {
   notificationDeliveries,
 } from "../../db/schema/notifications.ts";
 import { seedDefaultCliNotificationRule } from "../../db/seed.ts";
+import { runExecution } from "../../execution/engine.ts";
 import type { AdapterResolver } from "../../notifications/service.ts";
 import { fanoutEventRow, makeRegistryAdapterResolver } from "../../webhooks/outbound/fanout.ts";
 import {
@@ -179,5 +180,35 @@ describe("journey 64: a refused run stays out of the inbox", () => {
     await res.text();
     await drainFanout();
     expect(await inboxEventTypes()).toEqual(["execution.failed"]);
+  });
+  test("AC5: a queued run refused in the worker still reaches the inbox", async () => {
+    // The caller already got its 202; nobody else learns of the refusal unless
+    // it is announced as a failure.
+    const res = await journeyFetch(ctx, "/v1/executions", {
+      method: "POST",
+      headers: { "x-subkit-environment": "dev" },
+      body: JSON.stringify({ source: "saved", workflow_id: refusingWorkflowId, async: true }),
+    });
+    expect(res.status).toBe(202);
+    const { execution_id } = (await res.json()) as { execution_id: string };
+    // Exactly the call the execution.run worker makes for a queued row.
+    await expect(
+      runExecution({
+        db: ctx.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id: refusingWorkflowId },
+        input: null,
+        options: {
+          request_source: "api",
+          existing_execution_id: execution_id,
+          execution_mode: "dev",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "prepared_credential_unavailable" });
+    const types = await eventTypesFor(execution_id);
+    expect(types).toContain("execution.failed");
+    expect(types).not.toContain("execution.refused");
+    await drainFanout();
+    expect(await inboxEventTypes()).toContain("execution.failed");
   });
 });
