@@ -58,6 +58,7 @@ const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
   failurePattern: "decisions.origin.failurePattern",
   successPattern: "decisions.origin.successPattern",
   authoringPattern: "decisions.origin.authoringPattern",
+  connectorPattern: "decisions.origin.connectorPattern",
   sessionPattern: "decisions.origin.sessionPattern",
   chainedPattern: "decisions.origin.chainedPattern",
   recurringPattern: "decisions.origin.recurringPattern",

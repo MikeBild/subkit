@@ -5,7 +5,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
-import { probeMcpConnector } from "../../connectors/drivers/mcp.ts";
+import { type McpProbeManifest, probeMcpConnector } from "../../connectors/drivers/mcp.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
@@ -13,6 +13,7 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
 import { toCreateConnectorInput, validateConnectorDraft } from "../connector-draft.ts";
+import { proposeConnectorCapabilityCandidate } from "../persistence/connector-skill-candidate.ts";
 import { credentialModeMatchesAuthType } from "../persistence/credential-form-contract.ts";
 import {
   clearDraftCredential,
@@ -613,6 +614,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       latest_probe: Record<string, unknown>,
       probe_duration_ms: number,
       probe_status_code?: number,
+      mcp_manifest?: McpProbeManifest,
     ): Promise<ToolResult> => {
       const connectorLabel = connector.name ?? connector.slug ?? "this connector";
       const saveResult = await saveConnectorAtomic({
@@ -657,10 +659,22 @@ export const probeConnectorDraftTool: ConversationTool = {
         probe_duration_ms,
         ...(probe_status_code !== undefined ? { probe_status_code } : {}),
       });
+      const skillCandidateNotice =
+        mcp_manifest && typeof savedConnector?.id === "string"
+          ? await proposeConnectorCapabilityCandidate({
+              db: ctx.db,
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              connector_id: savedConnector.id,
+              purpose: connector.description ?? null,
+              manifest: mcp_manifest,
+            })
+          : null;
       return {
         ok: true,
         data: {
           ...saved,
+          ...(skillCandidateNotice ? { skill_candidate: skillCandidateNotice } : {}),
           auto_saved: true,
           auto_save_reason: "auto_persist_on_green_probe",
           latest_probe,
@@ -740,7 +754,7 @@ export const probeConnectorDraftTool: ConversationTool = {
           }),
         };
       }
-      return finishWithGreenProbeAutoPersist(latest_probe, duration_ms);
+      return finishWithGreenProbeAutoPersist(latest_probe, duration_ms, undefined, res.manifest);
     }
 
     // GraphQL connectors ALWAYS use the introspection probe, regardless of
