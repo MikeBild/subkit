@@ -201,7 +201,48 @@ describe("MCP_WIRE_METHOD", () => {
       read_resource: "resources/read",
       get_prompt: "prompts/get",
       list_resources: "resources/list",
+      list_resource_templates: "resources/templates/list",
       list_prompts: "prompts/list",
     });
+  });
+});
+
+describe("list_resource_templates", () => {
+  test("issues resources/templates/list and hands back the templates and the cursor", async () => {
+    const seen: Array<{ cursor?: string } | undefined> = [];
+    const client: RemoteCallClient = {
+      async callTool() {
+        throw new Error("a template listing must never reach tools/call");
+      },
+      async readResource() {
+        throw new Error("a template listing must never reach resources/read");
+      },
+      async getPrompt() {
+        return { messages: [] };
+      },
+      async listResourceTemplates(params) {
+        seen.push(params);
+        return {
+          resourceTemplates: [{ uriTemplate: "reports://database/{id}/tables", name: "tables" }],
+          nextCursor: "page2",
+        };
+      },
+    };
+    const out = await performRemoteCall(
+      client,
+      { operation: "list_resource_templates" },
+      { timeout_ms: 1_000 },
+    );
+    expect(seen).toEqual([{}]);
+    expect(out).toEqual({
+      content: {
+        resource_templates: [{ uriTemplate: "reports://database/{id}/tables", name: "tables" }],
+        next_cursor: "page2",
+      },
+      remote_error: false,
+    });
+    expect(remoteCallTarget({ operation: "list_resource_templates" })).toBe(
+      "resources/templates/list",
+    );
   });
 });
