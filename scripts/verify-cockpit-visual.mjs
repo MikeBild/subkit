@@ -2360,7 +2360,10 @@ async function mockApi(route) {
         {
           id: "rule-inbox",
           name: "sk CLI inbox (default)",
-          event_pattern: "*",
+          // The seeded pattern, as `db/seed.ts` writes it: a list, each entry
+          // named on the page.
+          event_pattern:
+            "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed",
           workflow_pattern: "*",
           severity: "info",
           target_workspace_id: "_cli",
@@ -2376,6 +2379,20 @@ async function mockApi(route) {
           target_workspace_id: "T0001",
           target_channel_id: "C0001",
           active: true,
+        },
+        {
+          // Hostile: every catalogued event, an area glob, and one long
+          // dotted event this build has no name for — prose and a machine
+          // value in one wrapping line, at phone width.
+          id: "rule-everything",
+          name: "Alles an die Bereitschaft",
+          event_pattern:
+            "execution.succeeded,execution.failed,workflow.updated,connector.oauth.refreshed,connector.oauth.callback_succeeded,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed,patch.applied,apikey.rotated,conversation.committed,schedule.*,vendor.custom_integration.quarterly_reconciliation_completed_with_warnings",
+          workflow_pattern: "billing-*",
+          severity: "warn",
+          target_workspace_id: "T0001",
+          target_channel_id: "C0001",
+          active: false,
         },
       ],
     });
