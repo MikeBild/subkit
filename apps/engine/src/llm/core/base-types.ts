@@ -25,14 +25,26 @@ export interface SubkitLlmMessage {
   providerOptions?: Record<string, Record<string, unknown>>;
 }
 
-export interface SubkitLlmResponse {
+/**
+ * Which model produced the answer. A refused primary is retried on the
+ * fallback inside the model call, so the model that was asked and the model
+ * that answered can differ — and the usage belongs to the one that answered.
+ */
+export interface SubkitLlmAnsweredBy {
+  model_used: string;
+  fell_back: boolean;
+  /** The primary's refusal that moved the call to the fallback. */
+  primary_error?: string;
+}
+
+export interface SubkitLlmResponse extends SubkitLlmAnsweredBy {
   response: string;
   messages: SubkitLlmMessage[];
   usage: SubkitLlmUsage;
   finish_reason: "stop" | "length" | "tool-calls" | "content-filter" | "error" | "other";
 }
 
-export interface SubkitLlmObjectResponse<T> {
+export interface SubkitLlmObjectResponse<T> extends SubkitLlmAnsweredBy {
   success: boolean;
   response: T | string;
   messages: SubkitLlmMessage[];
@@ -108,6 +120,8 @@ export interface SubkitLlm {
       /** Caller abort signal (P1) — merged with the per-call timeout
        *  ceiling inside the implementation. */
       signal?: AbortSignal;
+      /** Output ceiling for short answers; unset leaves the provider default. */
+      maxOutputTokens?: number;
     },
   ): Promise<SubkitLlmResponse>;
   generateObject<T>(
