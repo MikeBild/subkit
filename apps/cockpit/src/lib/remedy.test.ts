@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { attentionHref, chatNewHref, connectorHref } from "@/app/links";
+import { attentionHref, chatNewHref, connectorHref, runHref, workflowHref } from "@/app/links";
 import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
 
 const WF = "0b6f2d4e-91c3-4a7e-8d52-3f1e6a9c7b20";
@@ -49,6 +49,36 @@ describe("remedyFor", () => {
       { ...base, canChat: false, patch: { id: "p1" } },
       { kind: "review_repair", href: attentionHref({ review: `workflow:${WF}` }) },
     ],
+    [
+      "a held workflow leads to its approval, before a lost sign-in",
+      {
+        ...base,
+        held: true,
+        authState: { connectorId: CONNECTOR, state: "expired" },
+        failedRunId: RUN,
+      },
+      { kind: "grant", href: `${workflowHref(WF)}#workflow-authorities` },
+    ],
+    [
+      "a repair proposal still wins over a hold",
+      { ...base, held: true, patch: { id: "p1" } },
+      { kind: "review_repair", href: attentionHref({ review: `workflow:${WF}` }) },
+    ],
+    [
+      "on the connector's own surfaces a lost sign-in lands on its sign-in card",
+      { ...base, authState: { connectorId: CONNECTOR, state: "expired", section: "credentials" } },
+      { kind: "reauth", href: `${connectorHref(CONNECTOR)}#connector-credentials` },
+    ],
+    [
+      "a failed newest run is investigated before anything is changed",
+      { ...base, failedRunId: RUN },
+      { kind: "open_run", href: runHref(RUN) },
+    ],
+    [
+      "a lost sign-in comes before the failed run it caused",
+      { ...base, failedRunId: RUN, authState: { connectorId: CONNECTOR, state: "expired" } },
+      { kind: "reauth", href: connectorHref(CONNECTOR) },
+    ],
     ["no chat permission and nothing else: no dead link", { ...base, canChat: false }, null],
     [
       "permission to run alone never produces a remedy",
@@ -62,6 +92,14 @@ describe("remedyFor", () => {
       expect(remedy ? { kind: remedy.kind, href: remedy.href } : null).toEqual(expected);
     });
   }
+
+  test("the connector's own surfaces say reconnect; a run page says sign in again", () => {
+    const state = { connectorId: CONNECTOR, state: "expired" };
+    expect(remedyFor({ ...base, authState: state })?.labelKey).toBe("remedy.reauth");
+    expect(remedyFor({ ...base, authState: { ...state, section: "credentials" } })?.labelKey).toBe(
+      "remedy.reconnect",
+    );
+  });
 
   test("carries the opening question into the chat address", () => {
     const remedy = remedyFor({ ...base, prompt: "Warum?" });

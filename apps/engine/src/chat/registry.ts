@@ -6,7 +6,7 @@
 // `chat_workspaces` at boot; tests register adapters by hand.
 
 import type { ChatAdapter } from "./adapter.ts";
-import type { ChatDelivery, ChatPlatform } from "./types.ts";
+import type { ChatDelivery, ChatPlatform, OutboundSendResult } from "./types.ts";
 
 export interface AdapterKey {
   tenant_id: string;
@@ -24,7 +24,7 @@ export interface AdapterKey {
  */
 export interface OutboundFallbackAdapter {
   readonly platform: ChatPlatform;
-  send(delivery: ChatDelivery): Promise<{ platform_message_id: string }>;
+  send(delivery: ChatDelivery): Promise<OutboundSendResult>;
 }
 
 function keyOf(k: AdapterKey): string {

@@ -1906,6 +1906,13 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
+A connector authored from a description, rather than a template, gets a
+`connector_capability` Skill Candidate when its first green probe saves it: a
+deterministic write-up of the server's tools, their read/write claims, the data
+paths and paging the tool descriptions name, and the server's quoted
+instructions. Approved, it loads as a connector Skill wherever that connector is
+in play.
+
 External coding-agent sessions (Claude Code, Codex) feed the same queue: a
 SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
 distillation, and the agent can save an explicitly taught rule mid-session via
@@ -4045,6 +4052,21 @@ A `notification_rules` row carries:
 | `request_source_filter` | Array of sources the rule should fire for. Default: the dispatcher skips `chat`-sourced runs (the conversation already saw the result) and `mcp` runs (the caller is an LLM, not a human). |
 | `target_workspace_id` + `target_channel_id` | Point at the channel row to deliver through. |
 | `active` | Soft-disable without deleting. |
+
+`event_pattern` also takes a comma-separated list (`execution.failed,patch.proposed`).
+Every tenant starts with one rule, `sk CLI inbox (default)`, targeting the reserved
+`_cli` / `_inbox` channel. It routes only events a person may have to act on: failed
+runs, connector authentication failures, removed connector endpoints, and proposed
+repairs. Step events (`execution.step.*`) and routine successes are not routed, so a
+running workflow writes no delivery row per step. A rule of your own that routes such
+events into the inbox records them as `skipped` with reason `not_actionable`: no inbox
+row and no `chat.message.sent` audit entry.
+
+Create a rule from the CLI:
+
+```sh
+sk notifications rules create --event 'execution.failed' --workspace-id T0123 --channel-id C0456
+```
 
 ## Rate limiting
 
@@ -6631,6 +6653,27 @@ sk skill-candidates approve <id>
 ```
 
 sk learns from what works, but humans decide what becomes canonical guidance.
+
+### A connector you describe comes with a skill proposal
+
+A connector created from a template gets the template's skill. A connector you
+describe in a conversation instead — say, your reporting server's MCP endpoint —
+gets a **connector Skill Candidate** the moment its probe comes back green and
+it is saved. The candidate is written from what the probe learned, without a
+model call:
+
+- the server's address (host only) and its sign-in kind — never a secret value;
+- every tool, with the server's own claim that it reads or writes;
+- the data paths the tool descriptions name (for example
+  `metabase://databases`, `metabase://database/{id}/tables`) and what they say
+  about paging and list caps;
+- the server's own instructions, quoted and marked as unverified;
+- what the probe itself saw (the handshake and how many tools it listed).
+
+It lands in the same review queue as every other candidate. Once you approve
+it, every conversation that uses the connector carries it, so the model walks
+the server's paths instead of concluding that data is missing. Probing the same
+server again refreshes the one candidate; a changed tool catalog replaces it.
 
 ## The sk-Stdlib the AI proposes
 
@@ -12694,11 +12737,25 @@ bounded at 64 characters and matches `^[a-zA-Z0-9_-]{1,64}$`; no dots.
 
 **Entries are not all remote tools.** Each entry is a `PaletteOperationSpec` —
 a name, a schema, and the one remote operation it issues. A remote tool supplies
-one each. Where the negotiated capabilities declare resources or prompts, four
-engine-minted adapters are added per server: `list_resources`, `read_resource`,
-`list_prompts`, `get_prompt`. Adapters appear **only** where the capability was
+one each. Where the negotiated capabilities declare resources or prompts,
+engine-minted adapters are added per server: `list_resources`,
+`list_resource_templates`, `read_resource` for resources, `list_prompts`,
+`get_prompt` for prompts. Adapters appear **only** where the capability was
 declared, so the model is never offered an entry whose every call is a protocol
 error.
+
+**The server's own tools win a name.** When a server ships a tool under an
+adapter's name — a `read_resource` TOOL is common, and is often the only way to
+data that is not an MCP resource — the palette keeps the server's tool and leaves
+the adapter out. Two entries cannot share `mcp_<connector_slug>__read_resource`;
+before this rule the adapter silently replaced the tool, and the model lost the
+server's own description of which URIs it reads.
+
+**The server's instructions reach the model once.** The `instructions` a server
+returns at `initialize` are prepended, quoted and attributed to the server ("in
+its own words, not verified by SubKit"), to that server's first palette entry,
+clipped to 2,000 characters. They are description text only: no gate reads
+them, and the approval a person sees never carries them.
 
 **They are ordinary palette entries.** Same registry, same `policyDecide()`
 gate, same durable approval handle, same `tool.dispatch.invoke` audit, same

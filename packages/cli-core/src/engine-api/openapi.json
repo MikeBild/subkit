@@ -4689,8 +4689,7 @@
               ]
             }
           }
-        ],
-        "description": "A sample of what really starts this workflow — for a webhook, one delivery envelope {id, timestamp, type, headers, body}. Validated against the version's input schema; the held run receives exactly this."
+        ]
       },
       "FileRef": {
         "type": "object",
@@ -5544,6 +5543,42 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "unavailable_connectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "connector_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "connector_slug": {
+                  "type": "string"
+                },
+                "connector_name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "needs_reauth",
+                    "credential_unavailable"
+                  ]
+                }
+              },
+              "required": [
+                "step_id",
+                "connector_id",
+                "connector_slug",
+                "connector_name",
+                "reason"
+              ]
             }
           },
           "boundary_contradictions": {
@@ -14818,7 +14853,8 @@
               "success_pattern",
               "chained_workflow_pattern",
               "authoring_capability",
-              "session_learning"
+              "session_learning",
+              "connector_capability"
             ]
           },
           "title": {
@@ -31926,7 +31962,7 @@
             }
           },
           "409": {
-            "description": "Execution authority or replay boundary no longer matches",
+            "description": "Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -32170,7 +32206,7 @@
             }
           },
           "409": {
-            "description": "Original execution is not rerunnable",
+            "description": "Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -36408,7 +36444,8 @@
                 "success_pattern",
                 "chained_workflow_pattern",
                 "authoring_capability",
-                "session_learning"
+                "session_learning",
+                "connector_capability"
               ]
             },
             "required": false,

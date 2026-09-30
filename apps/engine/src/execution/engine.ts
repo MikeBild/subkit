@@ -157,7 +157,48 @@ export interface RunExecutionParams {
   options?: RunOptions;
 }
 
+/**
+ * A caller that pre-created the row (`existing_execution_id`) hands its fate
+ * to this call. A throw before the run starts — an input that fails its
+ * schema, a connector that cannot serve the prepared run — used to leave that
+ * row `queued` forever, and a queued held row is what the preparation lock
+ * reads as "one is already in flight". The refusal is recorded on the row
+ * before it is rethrown. Only a row still `queued` is touched: once it is
+ * `running` the engine owns its terminal state, and a row another worker is
+ * running is never ours to fail.
+ */
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
+  try {
+    return await executeRun(p);
+  } catch (error) {
+    const execution_id = p.options?.existing_execution_id;
+    if (execution_id) {
+      const { code, details } = error as { code?: unknown; details?: unknown };
+      const step_id =
+        details && typeof details === "object" && !Array.isArray(details)
+          ? (details as { step_id?: unknown }).step_id
+          : null;
+      // A finalize that cannot be written (database gone) must not replace the
+      // refusal the caller is about to report; the queue worker retries its own.
+      await finalizeExecution(
+        p.db,
+        p.tenant_id,
+        execution_id,
+        "failed",
+        null,
+        {
+          step_id: typeof step_id === "string" ? step_id : null,
+          error_code: typeof code === "string" ? code : "execution_error",
+          error_message: error instanceof Error ? error.message : String(error),
+        },
+        ["queued"],
+      ).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
   const bound = await bindExistingRun(db, tenant_id, p.source, p.input, p.options ?? {});
   const opts = bound.options;

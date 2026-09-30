@@ -451,8 +451,8 @@ connector `authenticate_oauth` path because an MCP server publishes its own
 authorization server rather than declaring one in config.
 
 Once it handshakes, the remote's tools appear in the chat palette as
-`mcp_<slug>__<tool>` (plus read-only `list_resources` / `read_resource` /
-`list_prompts` / `get_prompt` adapters where the server declared those
+`mcp_<slug>__<tool>` (plus read-only `list_resources` /
+`list_resource_templates` / `read_resource` / `list_prompts` / `get_prompt` adapters where the server declared those
 capabilities), and a workflow reaches them with a `request` step carrying an
 `mcp` block. `call_connector` does NOT support this driver — it answers
 `driver_not_supported_for_call_connector` and tells you to use a workflow
