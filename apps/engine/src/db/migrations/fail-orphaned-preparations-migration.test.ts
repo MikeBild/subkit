@@ -1,4 +1,4 @@
-// 0072_fail_orphaned_preparations — a held run refused before its first step
+// 0073_fail_orphaned_preparations — a held run refused before its first step
 // stayed `queued`, and the preparation lock read it as "in flight" forever.
 // The migration fails exactly those rows: held, queued for over an hour, and
 // with no queue job that could still pick them up. Run once without the queue
@@ -13,10 +13,10 @@ import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 let testDb: TestDb;
 let tenantId: string;
 
-const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0072_fail_orphaned_preparations");
+const migration = EMBEDDED_MIGRATIONS.find((m) => m.tag === "0073_fail_orphaned_preparations");
 
 async function runMigration(): Promise<void> {
-  if (!migration) throw new Error("migration 0072_fail_orphaned_preparations is not embedded");
+  if (!migration) throw new Error("migration 0073_fail_orphaned_preparations is not embedded");
   for (const statement of migration.statements) await testDb.db.execute(sql.raw(statement));
 }
 
@@ -64,7 +64,7 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
-describe("0072_fail_orphaned_preparations", () => {
+describe("0073_fail_orphaned_preparations", () => {
   test("without the queue schema: fails stale held queued rows, leaves the rest", async () => {
     await testDb.db.execute(sql.raw("DROP SCHEMA IF EXISTS pgboss CASCADE"));
     const orphan = await seed({ hold_writes: true, status: "queued", ageMinutes: 120 });
