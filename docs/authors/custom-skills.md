@@ -112,6 +112,27 @@ sk skill-candidates approve <id>
 
 sk learns from what works, but humans decide what becomes canonical guidance.
 
+### A connector you describe comes with a skill proposal
+
+A connector created from a template gets the template's skill. A connector you
+describe in a conversation instead — say, your reporting server's MCP endpoint —
+gets a **connector Skill Candidate** the moment its probe comes back green and
+it is saved. The candidate is written from what the probe learned, without a
+model call:
+
+- the server's address (host only) and its sign-in kind — never a secret value;
+- every tool, with the server's own claim that it reads or writes;
+- the data paths the tool descriptions name (for example
+  `metabase://databases`, `metabase://database/{id}/tables`) and what they say
+  about paging and list caps;
+- the server's own instructions, quoted and marked as unverified;
+- what the probe itself saw (the handshake and how many tools it listed).
+
+It lands in the same review queue as every other candidate. Once you approve
+it, every conversation that uses the connector carries it, so the model walks
+the server's paths instead of concluding that data is missing. Probing the same
+server again refreshes the one candidate; a changed tool catalog replaces it.
+
 ## The sk-Stdlib the AI proposes
 
 JavaScript that authors write — transform steps with `language: "javascript"`, before-request hooks — runs inside a QuickJS-WASM sandbox with zero host globals. Every sandbox context ships a frozen, versioned, deterministic `sk` standard library (HTTP-method classification, null-safe access, allow/deny builders, array reshapers, type guards). The conversational authoring layer is aware of the stdlib and proposes `sk.*` forms by default — `sk.http.isMutating(method)`, `sk.deny("reason")`, `sk.get(input, "request.method", "")` — which shortens code review and keeps policy uniform across tenants. Nothing in the stdlib touches the host, so dry-runs and self-healing stay reproducible.

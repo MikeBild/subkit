@@ -309,7 +309,16 @@ async function connectClient(
 }
 
 export type TransientMcpProbeOutcome =
-  | { ok: true; tool_count: number; manifest_hash: string }
+  | {
+      ok: true;
+      tool_count: number;
+      manifest_hash: string;
+      /** The admitted catalog and the server's free-text instructions, so a
+       *  caller can describe what the handshake learned without opening a
+       *  second session. */
+      tools: RemoteToolDescriptor[];
+      instructions: string | null;
+    }
   | { ok: false; detail: string; preflight_error_code?: McpPreflightErrorCode };
 
 /** Probe an unsaved MCP connector without touching pool or persistence state. */
@@ -334,6 +343,8 @@ export async function probeTransientMcpServer(p: {
       ok: true,
       tool_count: opened.tools.length,
       manifest_hash: opened.manifest_hash,
+      tools: opened.tools,
+      instructions: opened.instructions,
     };
   } catch (error) {
     const message =

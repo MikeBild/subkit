@@ -21,6 +21,10 @@ export const SkillCandidatePatternSchema = z.enum([
   // Learning captured from an external coding-agent session (transcript
   // distillation or explicit `save_learning`). Always `proposed`.
   "session_learning",
+  // Navigation guide for a connector authored without a template skill,
+  // built from what its green probe learned. Connector-keyed supersede: one
+  // live candidate per connector.
+  "connector_capability",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
