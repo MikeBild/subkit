@@ -53,6 +53,7 @@ import {
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
 import { catalogListParams } from "@/pages/catalog-model";
+import { driverLabel, environmentLabel } from "@/pages/connector-detail-model";
 import {
   type ConnectorHealthFilter,
   connectorHealthFilterFromUrl,
@@ -405,14 +406,22 @@ function catalogColumns(
         ),
         { sortable: true, width: "w-[10%]" },
       ),
-      column.text("environment", (row) => row.environment, t("catalog.environment"), {
-        sortable: true,
-        width: "w-[12%]",
-      }),
-      column.text("driver", (row) => row.driver, t("catalog.driver"), {
-        sortable: true,
-        width: "w-[11%]",
-      }),
+      // The same words the connector's own page uses: "Produktion", not "prod";
+      // "MCP-Server", not "mcp". Sorting still reads the engine's value.
+      column.custom(
+        "environment",
+        (row) => row.environment,
+        t("catalog.environment"),
+        (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
+        { sortable: true, width: "w-[12%]" },
+      ),
+      column.custom(
+        "driver",
+        (row) => row.driver,
+        t("catalog.driver"),
+        (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
+        { sortable: true, width: "w-[11%]" },
+      ),
     ];
     // Without workflow:read the relation cannot be read at all. Dropping the
     // column is honest; rendering "0" would claim a measured count.

@@ -158,6 +158,8 @@ export function auditHref(
     /** A window on when the entries were written (ISO 8601, UTC). */
     tsFrom?: string | null;
     tsTo?: string | null;
+    /** Only entries with this outcome — a failure count opens its failures. */
+    result?: "success" | "denied" | "error" | null;
   } = {},
 ): string {
   return withQuery("/audit", {
@@ -168,6 +170,7 @@ export function auditHref(
     action: filter.actions && filter.actions.length > 0 ? filter.actions.join(",") : null,
     ts_from: filter.tsFrom,
     ts_to: filter.tsTo,
+    result: filter.result,
   });
 }
 
