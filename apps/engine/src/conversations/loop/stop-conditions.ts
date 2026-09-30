@@ -18,6 +18,31 @@ interface StepShape {
   toolResults: ReadonlyArray<{ output?: unknown }>;
 }
 
+/**
+ * Whether a `review_workflow_automation` result is a card the chat renders.
+ *
+ * One predicate for both places that decide on it — the stop condition and
+ * the fallback synthesis — accepting the envelope (`{ ok, data }`) and the
+ * bare data alike. The tool sets the card presentation only when a schedule
+ * or a webhook is there to show; anything else is not a card, and a turn
+ * that stopped on it ended with nothing on screen.
+ */
+export function isAutomationReviewCard(output: unknown): boolean {
+  if (!output || typeof output !== "object") return false;
+  const envelope = output as {
+    ok?: unknown;
+    error_code?: unknown;
+    data?: { kind?: unknown; presentation?: unknown };
+    kind?: unknown;
+    presentation?: unknown;
+  };
+  if (envelope.ok === false || envelope.error_code) return false;
+  const data = envelope.data ?? envelope;
+  return (
+    data.kind === "workflow_automation_review" && data.presentation === "automation_readiness_card"
+  );
+}
+
 /** A completed review hands control to a deterministic, localized chat card.
  * Do not ask another model turn to paraphrase internal evidence into instructions. */
 export const automationReviewStopCondition = ({
@@ -25,18 +50,12 @@ export const automationReviewStopCondition = ({
 }: {
   steps: ReadonlyArray<StepShapeWithToolName>;
 }): boolean =>
-  steps.at(-1)?.toolResults.some((result) => {
-    if (result.toolName !== "review_workflow_automation") return false;
-    const output = result.output as {
-      ok?: unknown;
-      data?: { kind?: unknown; presentation?: unknown };
-    } | null;
-    return (
-      output?.ok === true &&
-      output.data?.kind === "workflow_automation_review" &&
-      output.data.presentation === "automation_readiness_card"
-    );
-  }) ?? false;
+  steps
+    .at(-1)
+    ?.toolResults.some(
+      (result) =>
+        result.toolName === "review_workflow_automation" && isAutomationReviewCard(result.output),
+    ) ?? false;
 
 /**
  * Consecutive identical-blocking `dry_run_workflow` results that stop the

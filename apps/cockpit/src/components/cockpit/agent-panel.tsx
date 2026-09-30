@@ -1,8 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { useState } from "react";
-import { sendConversationTurn } from "@/api/client";
-import { absolute, chatNewHref } from "@/app/links";
+import { getConversation, sendConversationTurn } from "@/api/client";
+import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import type { ToolPart } from "@/components/ai-elements/tool";
+import { AutomationToolCard } from "@/components/cockpit/automation-grant";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,10 +17,45 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { chatAutomationTool } from "@/pages/chat-automation-tool";
+import { groupMessageParts } from "@/pages/chat-transcript";
 
 interface PanelTurn {
   question: string;
-  answer: string;
+  conversationId: string;
+  /** What the turn wrote. */
+  texts: string[];
+  /** The cards the turn handed over instead of — or besides — words. */
+  cards: ToolPart[];
+}
+
+/**
+ * The turn as the conversation recorded it: its written text and the cards a
+ * person acts on.
+ *
+ * Only the streamed text was shown here. A turn that answered with a card —
+ * the automation review ends the turn on one — streamed no text, and the
+ * panel stayed empty under the question. The recorded message is what the
+ * full chat renders, so it is what this renders too.
+ */
+function recordedAnswer(
+  parts: readonly unknown[] | null,
+  streamed: string,
+): Pick<PanelTurn, "texts" | "cards"> {
+  if (!parts) return { texts: streamed.trim() ? [streamed] : [], cards: [] };
+  const texts: string[] = [];
+  const cards: ToolPart[] = [];
+  for (const group of groupMessageParts(parts)) {
+    if (group.kind === "part") {
+      const part = group.part as { type?: unknown; text?: unknown };
+      if (part?.type === "text" && typeof part.text === "string" && part.text.trim())
+        texts.push(part.text);
+    } else if (group.kind === "tool") {
+      if ((chatAutomationTool(group.tool)?.environments.length ?? 0) > 0) cards.push(group.tool);
+    }
+  }
+  if (texts.length === 0 && streamed.trim()) texts.push(streamed);
+  return { texts, cards };
 }
 
 /**
@@ -40,10 +77,10 @@ export function AgentPanel({
   const [conversationId, setConversationId] = useState<string | null>(null);
 
   const ask = useMutation({
-    mutationFn: async (message: string) => {
-      let answer = "";
+    mutationFn: async (message: string): Promise<PanelTurn> => {
+      let streamed = "";
       const onEvent = (event: { type: string; [key: string]: unknown }) => {
-        if (event.type === "text_delta" && typeof event.text === "string") answer += event.text;
+        if (event.type === "text_delta" && typeof event.text === "string") streamed += event.text;
       };
       const outcome = await sendConversationTurn(
         conversationId
@@ -51,11 +88,20 @@ export function AgentPanel({
           : { message, target: { workflow_id: workflowId } },
         onEvent,
       );
-      return { conversationId: outcome.conversation.id, answer };
+      const id = outcome.conversation.id;
+      // The recorded turn, once it is over. If it cannot be read, the streamed
+      // words are still an answer; with none of either the turn says so below.
+      const detail = await getConversation(id).catch(() => null);
+      const reply = detail?.messages.filter((entry) => entry.role === "assistant").at(-1);
+      return {
+        question: message,
+        conversationId: id,
+        ...recordedAnswer(reply?.parts ?? null, streamed),
+      };
     },
-    onSuccess: (result, message) => {
-      setConversationId(result.conversationId);
-      setTurns((current) => [...current, { question: message, answer: result.answer }]);
+    onSuccess: (turn) => {
+      setConversationId(turn.conversationId);
+      setTurns((current) => [...current, turn]);
       setQuestion("");
     },
   });
@@ -85,12 +131,35 @@ export function AgentPanel({
                 <p className="text-sm font-medium" data-testid={`agent-panel-question-${index}`}>
                   {turn.question}
                 </p>
-                <p
-                  className="text-sm whitespace-pre-wrap text-muted-foreground"
-                  data-testid={`agent-panel-answer-${index}`}
-                >
-                  {hideTechnicalIdentifiers(turn.answer, t("tool.referenceHiddenInline"))}
-                </p>
+                {turn.texts.length > 0 && (
+                  <p
+                    className="text-sm whitespace-pre-wrap text-muted-foreground"
+                    data-testid={`agent-panel-answer-${index}`}
+                  >
+                    {hideTechnicalIdentifiers(
+                      turn.texts.join("\n\n"),
+                      t("tool.referenceHiddenInline"),
+                    )}
+                  </p>
+                )}
+                {turn.cards.map((tool) => (
+                  <AutomationToolCard key={tool.toolCallId} tool={tool} />
+                ))}
+                {turn.texts.length === 0 && turn.cards.length === 0 && (
+                  <p
+                    className="text-sm text-muted-foreground"
+                    data-testid={`agent-panel-no-answer-${index}`}
+                  >
+                    {t("agentPanel.noAnswer")}{" "}
+                    <a
+                      className="underline underline-offset-4"
+                      href={absolute(conversationHref(turn.conversationId))}
+                      data-testid={`agent-panel-conversation-${index}`}
+                    >
+                      {t("agentPanel.openConversation")}
+                    </a>
+                  </p>
+                )}
               </div>
             ))
           )}

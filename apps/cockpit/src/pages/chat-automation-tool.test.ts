@@ -42,6 +42,23 @@ test("held steps do not invent a report failure or imply approval readiness", ()
   expect(chatAutomationSummary(result({ state: "authorized", ready: true }))).toBe("authorized");
   expect(chatAutomationSummary(result({ state: "authorized", ready: false }))).toBe("unknown");
 });
+test("a webhook-only workflow is a card with the hook's environment and state", () => {
+  const hook = {
+    workflow_id: id,
+    slug: "findings",
+    environment: "prod",
+    state: "approval_required",
+    ready: false,
+    review: { eligible_for_repeated_runs: false },
+  };
+  const output = (row: Record<string, unknown>) =>
+    part({ ok: true, data: { ...data, schedules: [], inbound_hooks: [row] } });
+  expect(chatAutomationTool(output(hook))).toEqual({ workflowId: id, environments: ["prod"] });
+  expect(chatAutomationSummary(output(hook))).toBe("repair");
+  expect(chatAutomationSummary(output({ ...hook, state: "authorized", ready: true }))).toBe(
+    "authorized",
+  );
+});
 test("server review stays actionable in the transcript and uses the bound workflow", () => {
   for (const output of [data, { ok: true, data }]) {
     expect(chatAutomationTool(part(output))).toEqual({ workflowId: id, environments: ["prod"] });

@@ -28,6 +28,7 @@ import {
   suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
 } from "../../workflows/index.ts";
+import { JsonValueSchema } from "../../workflows/types.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -239,7 +240,16 @@ const prepareReport = createRoute({
     params: workflowParam.extend({ version_id: z.string().uuid() }),
     body: {
       content: {
-        "application/json": { schema: z.object({ environment: z.enum(["dev", "prod"]) }).strict() },
+        "application/json": {
+          schema: z
+            .object({
+              environment: z.enum(["dev", "prod"]),
+              input: JsonValueSchema.optional().describe(
+                "A sample of what really starts this workflow — for a webhook, one delivery envelope {id, timestamp, type, headers, body}. Validated against the version's input schema; the held run receives exactly this.",
+              ),
+            })
+            .strict(),
+        },
       },
     },
   },
@@ -254,6 +264,9 @@ const prepareReport = createRoute({
           schema: z.object({
             prepared: z.boolean(),
             reason: z.string().optional(),
+            /** With `input_required`: what starts this workflow, whose
+             *  delivery the preparation needs as `input`. */
+            trigger: z.object({ kind: z.literal("inbound_hook"), slug: z.string() }).optional(),
           }),
         },
       },
@@ -515,19 +528,24 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
   app.openapi(prepareReport, async (c) => {
     const principal = requireAuth(c);
     const { id, version_id } = c.req.valid("param");
+    const body = c.req.valid("json");
     try {
       const outcome = await prepareReportAuthority(
         {
           tenant_id: principal.tenant_id,
           workflow_id: id,
           workflow_version_id: version_id,
-          execution_environment: c.req.valid("json").environment,
+          execution_environment: body.environment,
+          ...(body.input !== undefined ? { input: body.input } : {}),
         },
         c.get("db"),
         principal,
       );
       return c.json(outcome ?? { prepared: false, reason: "nothing_to_prepare" }, 200);
     } catch (error) {
+      // The reviewer's sample does not fit the workflow: theirs to correct.
+      if ((error as { code?: unknown })?.code === "input_schema_violation")
+        throw new HttpError(400, "input_schema_violation", (error as Error).message);
       return translate(error);
     }
   });

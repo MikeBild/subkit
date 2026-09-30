@@ -58,6 +58,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
+import { AutomationGrant, AutomationToolCard } from "@/components/cockpit/automation-grant";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
@@ -117,8 +118,7 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
-import { ChatAutomationReview } from "./chat-automation-review";
-import { chatAutomationSummary, chatAutomationTool } from "./chat-automation-tool";
+import { chatAutomationTool } from "./chat-automation-tool";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
@@ -878,31 +878,13 @@ function ChatMessage({
             );
           }
           const automation = chatAutomationTool(tool);
-          const automationSummary = chatAutomationSummary(tool);
           if (automation && automation.environments.length > 0)
             return (
-              <div
+              <AutomationToolCard
                 key={`${message.id}-automation-${partIndex}`}
-                className="rounded-xl border border-accent/30 bg-accent/10 p-4"
-                data-testid="chat-automation-tool"
-              >
-                <p className="mb-2 font-medium">
-                  {t(`chat.automationCard.${automationSummary}.title`)}
-                </p>
-                <p className="mb-3 text-sm text-muted-foreground">
-                  {t(`chat.automationCard.${automationSummary}.hint`)}
-                </p>
-                {automationSummary !== "authorized" &&
-                  automation.environments.map((environment) => (
-                    <ChatAutomationReview
-                      key={environment}
-                      workflowId={automation.workflowId}
-                      environment={environment}
-                      testId="chat-automation-tool-review"
-                      onAdjust={() => onAutomationAdjust(automation.workflowId)}
-                    />
-                  ))}
-              </div>
+                tool={tool}
+                onAdjust={onAutomationAdjust}
+              />
             );
           const reauth = chatReauth(tool, window.location.origin);
           if (reauth)
@@ -1496,13 +1478,19 @@ export function ChatPage() {
     queryKey: ["workflow-automation-status", targetWorkflowId],
     enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),
     queryFn: () =>
-      apiRequest<{ schedules: { ready: boolean; next_run_at: string | null; timezone: string }[] }>(
-        `/v1/workflows/${encodeURIComponent(targetWorkflowId!)}/automation-status`,
-      ),
+      apiRequest<{
+        schedules: { ready: boolean; next_run_at: string | null; timezone: string }[];
+        inbound_hooks?: { ready: boolean }[];
+      }>(`/v1/workflows/${encodeURIComponent(targetWorkflowId!)}/automation-status`),
     refetchInterval: 15000,
   });
   const readySchedules =
     automationStatus.data?.schedules?.filter((schedule) => schedule.ready) ?? [];
+  // A webhook has no next run to name, but a ready one is automatic operation
+  // all the same: a webhook-only workflow was never announced as ready.
+  const readyAutomations =
+    readySchedules.length +
+    (automationStatus.data?.inbound_hooks?.filter((hook) => hook.ready).length ?? 0);
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
     () =>
@@ -2030,7 +2018,7 @@ export function ChatPage() {
                         <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
                         <AlertDescription>
                           <p>{t("chat.schedule.effect")}</p>
-                          <ChatAutomationReview
+                          <AutomationGrant
                             workflowId={targetWorkflowId}
                             environment={heldTarget.execution_mode}
                             testId="chat-review-schedule"
@@ -2045,7 +2033,7 @@ export function ChatPage() {
 
                   {!heldTarget &&
                     !resume?.unsaved &&
-                    readySchedules.length > 0 &&
+                    readyAutomations > 0 &&
                     status === "ready" && (
                       <Alert
                         className="bg-accent/10 border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
@@ -2237,7 +2225,7 @@ export function ChatPage() {
                   <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
                   <dd className="mt-1 flex flex-col gap-2">
                     <p>{t("chat.schedule.effect")}</p>
-                    <ChatAutomationReview
+                    <AutomationGrant
                       workflowId={targetWorkflowId}
                       environment={heldTarget.execution_mode}
                       testId="chat-context-review-schedule"

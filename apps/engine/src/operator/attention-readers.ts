@@ -91,6 +91,8 @@ interface WorkflowFacts {
   id: string;
   name: string | null;
   held: HeldRow["hold"] | null;
+  /** Set together with `held`: whose refused starts the hold is about. */
+  trigger: AttentionItem["trigger"];
   groups: DigestFailureGroup[];
   patches: { count: number; oldest: Date } | null;
 }
@@ -116,7 +118,14 @@ async function readWorkflowFacts(
       if (!existing.name && name) existing.name = name;
       return existing;
     }
-    const created: WorkflowFacts = { id, name, held: null, groups: [], patches: null };
+    const created: WorkflowFacts = {
+      id,
+      name,
+      held: null,
+      trigger: null,
+      groups: [],
+      patches: null,
+    };
     facts.set(id, created);
     return created;
   };
@@ -152,6 +161,7 @@ async function readWorkflowFacts(
         workflow_id: workflows.id,
         name: workflows.name,
         hold: webhooksInbound.admission_hold,
+        slug: webhooksInbound.slug,
       })
       .from(webhooksInbound)
       .innerJoin(
@@ -178,11 +188,23 @@ async function readWorkflowFacts(
 
   if (held.status === "fulfilled" && heldHooks.status === "fulfilled") {
     sources.schedules = "answered";
-    for (const row of [...held.value, ...heldHooks.value]) {
+    const holds = [
+      ...held.value.map((row) => ({ ...row, trigger: { kind: "schedule" as const, name: null } })),
+      ...heldHooks.value.map((row) => ({
+        ...row,
+        trigger: { kind: "inbound_hook" as const, name: row.slug },
+      })),
+    ];
+    for (const row of holds) {
       if (!row.hold) continue;
       const fact = factFor(row.workflow_id, row.name);
-      // One item per workflow: the first hold speaks for it.
-      if (!fact.held) fact.held = row.hold;
+      // One item per workflow: the first hold speaks for it, and names its
+      // trigger — "its schedule waits" about a webhook sent people looking
+      // for a schedule that does not exist.
+      if (!fact.held) {
+        fact.held = row.hold;
+        fact.trigger = row.trigger;
+      }
     }
   } else sources.schedules = "failed";
 
@@ -289,6 +311,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       kind: "workflow",
       subject: { kind: "workflow", id: fact.id, name: fact.name },
       reason,
+      trigger: fact.held ? fact.trigger : null,
       cause_class: lead?.cause_class ?? null,
       counts,
       since: minIso([
@@ -336,6 +359,7 @@ const readConnectors: TenantReader = async (db, tenantId) => {
         kind: "connector",
         subject: { kind: "connector", id: row.id, name: row.name },
         reason,
+        trigger: null,
         cause_class: null,
         counts: {},
         since: (row.health_changed_at ?? row.updated_at).toISOString(),
@@ -378,6 +402,7 @@ const readConnections: TenantReader = async (db, tenantId) => {
           reason:
             view.state_reason ??
             (view.state === "unreadable" ? "secret_unreadable" : "refresh_failed"),
+          trigger: null,
           cause_class: null,
           counts: {},
           since: view.refresh_failed_at ?? view.expires_at ?? view.created_at,
@@ -411,6 +436,7 @@ const readSecretApprovals: TenantReader = async (db) => {
         kind: "secret_version",
         subject: { kind: "secret", id: ref, name: secret.name },
         reason: "secret_prepared",
+        trigger: null,
         cause_class: null,
         counts: {},
         since: secret.pending_since.toISOString(),
@@ -458,6 +484,7 @@ const readSkills: TenantReader = async (db, tenantId) => {
         kind: "skill_candidates",
         subject: null,
         reason: "skills_proposed",
+        trigger: null,
         cause_class: null,
         counts: { skills: count },
         since: oldest?.toISOString() ?? null,
@@ -487,6 +514,7 @@ function signalItem(signal: RiskSignal, source: "budget" | "risk"): Candidate {
       kind: signal.kind,
       subject: null,
       reason: budget ? "budget_critical" : "risk_critical",
+      trigger: null,
       cause_class: null,
       counts: {},
       since: null,
@@ -544,6 +572,7 @@ async function readFreshnessAndStatus(
           kind: source.id,
           subject: null,
           reason: "scheduler_stale",
+          trigger: null,
           cause_class: null,
           counts: {},
           since: source.updated_at,
@@ -726,6 +755,7 @@ export async function readOwnConversations(
         kind: "conversation",
         subject: { kind: "conversation", id: row.id, name: row.title },
         reason: "awaiting_answer",
+        trigger: null,
         cause_class: null,
         counts: {},
         since: (question?.created_at ?? row.updated_at).toISOString(),

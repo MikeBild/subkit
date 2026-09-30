@@ -1,21 +1,71 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { ToolPart } from "@/components/ai-elements/tool";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
+import { chatAutomationSummary, chatAutomationTool } from "@/pages/chat-automation-tool";
 
-/** The saved draft is the review target; never silently authorize the older active version. */
-export function ChatAutomationReview({
+/**
+ * A `review_workflow_automation` result as the card a person acts on — the
+ * same card in the chat and in the side panel. Null when the result is not a
+ * card, so the caller renders what it would otherwise.
+ */
+export function AutomationToolCard({
+  tool,
+  onAdjust,
+}: {
+  tool: ToolPart;
+  onAdjust?: (workflowId: string) => void;
+}) {
+  const { t } = useI18n();
+  const automation = chatAutomationTool(tool);
+  if (!automation || automation.environments.length === 0) return null;
+  const summary = chatAutomationSummary(tool);
+  return (
+    <div
+      className="rounded-xl border border-accent/30 bg-accent/10 p-4"
+      data-testid="chat-automation-tool"
+    >
+      <p className="mb-2 font-medium">{t(`chat.automationCard.${summary}.title`)}</p>
+      <p className="mb-3 text-sm text-muted-foreground">
+        {t(`chat.automationCard.${summary}.hint`)}
+      </p>
+      {summary !== "authorized" &&
+        automation.environments.map((environment) => (
+          <AutomationGrant
+            key={environment}
+            workflowId={automation.workflowId}
+            environment={environment}
+            testId="chat-automation-tool-review"
+            onAdjust={onAdjust ? () => onAdjust(automation.workflowId) : undefined}
+          />
+        ))}
+    </div>
+  );
+}
+
+/**
+ * The approval of a workflow's automatic runs, opened where the hold is seen:
+ * the chat, the side panel, a held webhook's card.
+ *
+ * The saved draft is the review target; never silently authorize the older
+ * active version.
+ */
+export function AutomationGrant({
   workflowId,
   environment,
   testId,
+  triggerLabel,
   onPrepareSingleRun,
   onAdjust,
 }: {
   workflowId: string;
   environment: "dev" | "prod";
   testId: string;
+  /** What the opening button says where it is mounted; the chat's wording otherwise. */
+  triggerLabel?: string;
   onPrepareSingleRun?: () => void;
   onAdjust?: () => void;
 }) {
@@ -114,7 +164,7 @@ export function ChatAutomationReview({
       onAdjust={onAdjust}
       initialEnvironment={environment}
       triggerTestId={testId}
-      triggerLabel={t("chat.schedule.review")}
+      triggerLabel={triggerLabel ?? t("chat.schedule.review")}
       triggerVariant="default"
     />
   );

@@ -124,6 +124,9 @@ export interface AttentionItem {
     name: string | null;
   } | null;
   reason: AttentionReason;
+  /** What a held workflow's refused starts come from — a schedule or a named
+   *  webhook — so the sentence names the thing that waits. Null unless held. */
+  trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
   /** The run classifier's class behind a failing workflow, else null. */
   cause_class: PreviewClassification | null;
   counts: { patches?: number; failures?: number; skills?: number };
