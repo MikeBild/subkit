@@ -23,6 +23,7 @@
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
+import type { RemoteToolDescriptor } from "../../mcp/client/manifest.ts";
 import {
   connectServerById,
   type InvokeRemoteToolResult,
@@ -188,6 +189,16 @@ function probeErrorFor(
  * reconcile — and a probe that passes is evidence about the thing the
  * engine will actually do.
  */
+/** What a green handshake learned about the server: its admitted catalog
+ *  and free-text instructions. Only the draft (transient) probe carries it —
+ *  that is the path that authors a connector. */
+export interface McpProbeManifest {
+  tools: RemoteToolDescriptor[];
+  instructions: string | null;
+}
+
+export type McpProbeResult = DriverProbeResult & { manifest?: McpProbeManifest };
+
 export async function probeMcpConnector(p: {
   db: Db;
   tenant_id: string;
@@ -195,7 +206,7 @@ export async function probeMcpConnector(p: {
   /** An override opens a throwaway session and is never written before a green probe. */
   credential_override?: DecryptedCredential | null;
   requestSource?: RequestSource;
-}): Promise<DriverProbeResult> {
+}): Promise<McpProbeResult> {
   const start = Date.now();
 
   if (p.credential_override !== undefined) {
@@ -239,6 +250,7 @@ export async function probeMcpConnector(p: {
         ok: true,
         latency_ms,
         detail: `handshake ok — ${outcome.tool_count} tool(s)`,
+        manifest: { tools: outcome.tools, instructions: outcome.instructions },
       };
     } catch (err) {
       return {

@@ -10238,7 +10238,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
+                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
                     reviewable?: "true" | "false";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
@@ -20667,7 +20667,7 @@ export interface components {
             endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
             title: string;
             body: string;
             /** @default [] */

@@ -14817,7 +14817,8 @@
               "success_pattern",
               "chained_workflow_pattern",
               "authoring_capability",
-              "session_learning"
+              "session_learning",
+              "connector_capability"
             ]
           },
           "title": {
@@ -36358,7 +36359,8 @@
                 "success_pattern",
                 "chained_workflow_pattern",
                 "authoring_capability",
-                "session_learning"
+                "session_learning",
+                "connector_capability"
               ]
             },
             "required": false,
