@@ -34,8 +34,10 @@ import {
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { resolveElicitationAndReactivate } from "../../elicitations.ts";
+import { buildMessagesV2 } from "../../parts.ts";
 import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist.ts";
 import { pendingPrompt } from "../../resume.ts";
+import { getConversation } from "../../service/get.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
@@ -280,6 +282,16 @@ describe("external MCP tool approval", () => {
     expect((pausedRow?.output as Record<string, unknown> | undefined)?.status).toBe(
       "awaiting_confirmation",
     );
+
+    // Three rows, two cards: the grant row the harness injects carries no
+    // anchor, so the transcript shows the paused call and the call that ran.
+    expect(rows).toHaveLength(3);
+    const detail = await getConversation(tenant_id, conversation_id, ctx.db as unknown as Db);
+    const parts = buildMessagesV2(detail!.messages, detail!.tool_calls).flatMap((m) => m.parts);
+    const cards = parts.filter((part) => part.type === "tool_result");
+    const ran = rows.find((row) => row.id !== pausedRow?.id && row.parent_message_id !== null);
+    expect(cards.map((card) => card.call_id)).toEqual([pausedRow!.id, ran!.id]);
+    expect(cards.map((card) => card.outcome)).toEqual(["ok", "ok"]);
   });
 
   test("a declined call ends its paused row as denied and never runs", async () => {
