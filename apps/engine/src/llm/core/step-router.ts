@@ -97,6 +97,14 @@ export interface StepRouterParams {
   provider: LlmProviderKind;
   /** Available tools, keyed by name. Used for activeTools narrowing. */
   toolsByName: Record<string, ConversationTool>;
+  /**
+   * Tools the turn's palette carries that are not registry tools — the
+   * `wf_<slug>` saved workflows and the `mcp_<server>__<tool>` entries of
+   * connected MCP servers. Each is gated where it is assembled (RBAC, the
+   * confirm gate); the router has no category to judge them by, so a
+   * full-palette stage keeps them and a narrowed stage leaves them out.
+   */
+  paletteToolNames?: readonly string[];
   signals: StepRouterSignals;
   /**
    * True when the loop has enabled `providerOptions.anthropic.thinking`
@@ -355,6 +363,7 @@ function activeToolsForStage(
   toolsByName: Record<string, ConversationTool>,
   forcedTool: string | null | undefined,
   hasPersistedWorkflow: boolean,
+  paletteToolNames: readonly string[] = [],
 ): string[] | undefined {
   const names = Object.keys(toolsByName);
   const activeAuthoringResource =
@@ -418,7 +427,10 @@ function activeToolsForStage(
   // drop applied. We compute the narrowed list inline and return it.
   const fullPaletteWithDrop = (): string[] | undefined => {
     if (!dropPersistedRequired) return undefined;
-    return keep(() => true);
+    // Only the registry is narrowed here: dropping the palette-only tools
+    // too hid every saved workflow and every connected MCP server's tools
+    // until a workflow happened to be bound.
+    return [...keep(() => true), ...paletteToolNames.filter((n) => !toolsByName[n])];
   };
 
   if (!stage || stage === "idle") {
@@ -543,6 +555,7 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
     toolsByName,
     params.stepNumber === 0 ? params.forcedTool : null,
     signals.hasPersistedWorkflow === true,
+    params.paletteToolNames,
   );
   if (activeTools !== undefined) {
     reasonParts.push(`narrow:${activeTools.length}`);

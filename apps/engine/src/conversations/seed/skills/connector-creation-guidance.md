@@ -404,11 +404,16 @@ under `config.mcp` is rejected at write time, not at first call:
 - `config.mcp.transport` — `http` (the default). `sse` is accepted only so
   pre-existing rows stay patchable and those rows are carried disabled as an
   unsupported transport; `stdio` is refused at write time. Author `http`.
-- `config.mcp.auth.kind` — `none`, `bearer`, `basic`, `oauth2`,
+- `config.mcp.auth.kind` — `none`, `bearer`, `basic`, `header`, `oauth2`,
   `oauth2_client_credentials`, or `oauth2_private_key_jwt`, with optional
   `issuer` / `client_id` / `scope` / `algorithm`. Secrets never go here: the
   storage layer refuses a secret-looking key under `config.mcp.auth`, and the
   credential belongs in the credential row like every other driver.
+- A server that wants its key in a named header (e.g. `X-API-KEY`) is
+  `auth_type: "header"` with `config.mcp.auth.kind: "header"` and nothing else
+  in the auth block. The header name travels with the credential, as for an
+  http connector: collect it with `ask_user_form` as a `header_name` field
+  (pre-filled, not sensitive) next to a sensitive `header_value` field.
 - `config.mcp.remote_tool_call_timeout_ms` — optional per-connector override,
   bounded 1000–300000. Raise it only for a genuinely slow remote; the bound is
   what stops a hung server holding the whole turn.

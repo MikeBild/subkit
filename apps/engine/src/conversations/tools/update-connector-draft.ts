@@ -323,23 +323,6 @@ export const updateConnectorDraftTool: ConversationTool = {
       }
     }
 
-    // Cache consistency: switching auth_type invalidates any cached
-    // draft credential — it was collected for the OLD auth shape. Pre-fix
-    // a bearer token cached before a bearer→basic switch survived and the
-    // next probe went out with `Authorization: Bearer …` against a
-    // basic-auth endpoint (session 97679846). The downgrade-to-"none"
-    // case is already blocked above; this covers mode-to-mode flips.
-    let credentialCacheCleared = false;
-    if (
-      args.auth_type !== undefined &&
-      current.auth_type !== undefined &&
-      current.auth_type !== null &&
-      args.auth_type !== current.auth_type
-    ) {
-      clearDraftCredential(ctx.conversation_id);
-      credentialCacheCleared = true;
-    }
-
     const patch = Object.fromEntries(
       Object.entries(args).filter(([, value]) => value !== undefined),
     ) as Partial<ConnectorDraftDocument>;
@@ -356,6 +339,45 @@ export const updateConnectorDraftTool: ConversationTool = {
       next,
       templates.map((entry) => entry.template),
     );
+    // An auth edit the draft cannot hold is refused whole: applied, it left a
+    // draft that could no longer be probed and — through the cache rule below —
+    // threw away the key the operator had typed in. Other findings (a
+    // placeholder host, a field still missing) stay on the draft as before.
+    const isAuthIssue = (issue: { path: string }) =>
+      issue.path === "auth_type" || /^(config\.)?mcp\.auth(\.|$)/.test(issue.path);
+    const knownErrors = new Set(
+      (current.validation?.errors ?? []).map((issue) => `${issue.path}\u0000${issue.message}`),
+    );
+    const introduced = validation.errors.filter(
+      (issue) => isAuthIssue(issue) && !knownErrors.has(`${issue.path}\u0000${issue.message}`),
+    );
+    if (introduced.length > 0) {
+      return {
+        ok: false,
+        error_code: "invalid_connector_draft_edit",
+        message:
+          "The edit was not applied — the draft and any key already entered are unchanged. " +
+          introduced.map((issue) => `${issue.path}: ${issue.message}`).join("; "),
+        data: { errors: introduced },
+        next_best_actions: ["update_connector_draft", "inspect_connector_draft"],
+      };
+    }
+    // Cache consistency: switching auth_type invalidates any cached
+    // draft credential — it was collected for the OLD auth shape. Pre-fix
+    // a bearer token cached before a bearer→basic switch survived and the
+    // next probe went out with `Authorization: Bearer …` against a
+    // basic-auth endpoint (session 97679846). The downgrade-to-"none"
+    // case is already blocked above; this covers mode-to-mode flips.
+    let credentialCacheCleared = false;
+    if (
+      args.auth_type !== undefined &&
+      current.auth_type !== undefined &&
+      current.auth_type !== null &&
+      args.auth_type !== current.auth_type
+    ) {
+      clearDraftCredential(ctx.conversation_id);
+      credentialCacheCleared = true;
+    }
     const nextDraft = withConnectorDraft(
       ctx.getDraft(),
       { ...next, validation },
