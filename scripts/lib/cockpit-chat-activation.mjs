@@ -144,6 +144,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   await route(`**/v1/workflows/${workflowId}/automation-status`, (r) =>
     fulfill(r, {
       schedules: [{ ready: completed, next_run_at: "2026-10-01T08:00:00.000Z", timezone: "UTC" }],
+      inbound_hooks: [],
     }),
   );
   await route(`**/v1/workflows/${workflowId}/draft`, (r) =>

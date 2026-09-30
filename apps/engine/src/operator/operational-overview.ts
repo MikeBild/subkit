@@ -272,6 +272,26 @@ function rowsOf<T>(result: unknown): T[] {
   return (result as { rows?: T[] } | null)?.rows ?? [];
 }
 
+/** Held automatic runs — by a schedule or a refused hook, counted once per workflow. */
+function heldAutomation(tenantId: string) {
+  return sql`
+    SELECT w.id AS workflow_id, w.name AS name, 'held_schedule' AS kind, s.created_at
+      FROM workflows_schedules s
+      JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
+     WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
+       AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
+    UNION ALL
+    SELECT w.id, w.name, 'held_inbound_hook', h.created_at
+      FROM webhooks_inbound h
+      JOIN workflows w ON w.id = h.workflow_id AND w.tenant_id = h.tenant_id
+     WHERE h.tenant_id = ${tenantId} AND h.active AND h.admission_hold IS NOT NULL
+       AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
+       AND NOT EXISTS (
+         SELECT 1 FROM workflows_schedules s
+          WHERE s.tenant_id = h.tenant_id AND s.workflow_id = h.workflow_id
+            AND NOT s.paused AND s.admission_hold IS NOT NULL)`;
+}
+
 async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverview> {
   const now = new Date();
   const generatedAt = now.toISOString();
@@ -313,21 +333,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       SELECT created_at, FALSE AS blocking FROM skill_candidates
        WHERE tenant_id = ${tenantId} AND status = 'proposed' AND pattern_kind NOT IN ('failure_pattern', 'authoring_capability')
       UNION ALL
-      SELECT s.created_at, TRUE AS blocking FROM workflows_schedules s
-        JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
-       WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
-         AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
-      UNION ALL
-      SELECT h.created_at, TRUE AS blocking FROM webhooks_inbound h
-        JOIN workflows w ON w.id = h.workflow_id AND w.tenant_id = h.tenant_id
-       WHERE h.tenant_id = ${tenantId} AND h.active AND h.admission_hold IS NOT NULL
-         AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
-         -- A workflow already held by its schedule is one blocked workflow, as
-         -- the attention list shows it — not one more per hook.
-         AND NOT EXISTS (
-           SELECT 1 FROM workflows_schedules s
-            WHERE s.tenant_id = h.tenant_id AND s.workflow_id = h.workflow_id
-              AND NOT s.paused AND s.admission_hold IS NOT NULL)
+      SELECT created_at, TRUE AS blocking FROM (${heldAutomation(tenantId)}) held
     ), finished AS (
       SELECT status, source_kind, request_source FROM executions
        WHERE tenant_id = ${tenantId} AND finished_at >= now() - interval '24 hours'
@@ -796,31 +802,10 @@ async function readHealthCauses(
     cause_class: PreviewClassification;
   }>,
 ): Promise<HealthCause[]> {
-  // A hook the authority gate refuses holds its workflow's automatic runs just
-  // as a held schedule does — the blocked tile's own predicate, both halves.
-  const held = rowsOf<{
-    workflow_id: string;
-    name: string;
-    kind: "held_schedule" | "held_inbound_hook";
-  }>(
+  type Held = { workflow_id: string; name: string; kind: HealthCause["kind"] & `held_${string}` };
+  const held = rowsOf<Held>(
     await db.execute(sql`
-      SELECT workflow_id, name, kind FROM (
-        SELECT w.id AS workflow_id, w.name AS name, 'held_schedule' AS kind, s.created_at
-          FROM workflows_schedules s
-          JOIN workflows w ON w.id = s.workflow_id AND w.tenant_id = s.tenant_id
-         WHERE s.tenant_id = ${tenantId} AND NOT s.paused AND s.admission_hold IS NOT NULL
-           AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
-        UNION ALL
-        SELECT w.id, w.name, 'held_inbound_hook', h.created_at
-          FROM webhooks_inbound h
-          JOIN workflows w ON w.id = h.workflow_id AND w.tenant_id = h.tenant_id
-         WHERE h.tenant_id = ${tenantId} AND h.active AND h.admission_hold IS NOT NULL
-           AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
-           AND NOT EXISTS (
-             SELECT 1 FROM workflows_schedules s
-              WHERE s.tenant_id = h.tenant_id AND s.workflow_id = h.workflow_id
-                AND NOT s.paused AND s.admission_hold IS NOT NULL)
-      ) held
+      SELECT workflow_id, name, kind FROM (${heldAutomation(tenantId)}) held
        ORDER BY created_at, workflow_id
        LIMIT ${MAX_HEALTH_CAUSES}`),
   );

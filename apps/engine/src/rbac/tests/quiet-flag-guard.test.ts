@@ -89,6 +89,9 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/mcp/capabilities/resources.ts",
   "apps/engine/src/mcp/capabilities/completion.ts",
   "apps/engine/src/operator/attention.ts",
+  // automation-status projects hook rows and refusal reasons by what the reader
+  // may see; a reader without inbound_hook:read / audit:read is routine.
+  "apps/engine/src/http/routes/workflow-authorities.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",
