@@ -52,6 +52,33 @@ test("requires a readable question and does not label other decisions as inactiv
   expect(chatApproval(detail)).toBeNull();
 });
 
+test("an external MCP tool approval is phrased from the connector and tool, not the engine's prose", () => {
+  const detail = fixture();
+  detail.tool_calls[0]!.tool = "mcp_metabase-reporting-mcp__search";
+  detail.tool_calls[0]!.input = { q: "revenue" };
+  detail.resume_summary!.pending_approval!.prompt = {
+    question: 'Run the tool "search" on Metabase Reporting MCP?',
+    intent_kind: "grant_relayed_tool_call",
+    external_tool: {
+      connector: "Metabase Reporting MCP",
+      tool: "search",
+      hint: "Search saved questions and dashboards",
+    },
+  };
+  expect(chatApproval(detail)).toMatchObject({
+    externalTool: {
+      connector: "Metabase Reporting MCP",
+      tool: "search",
+      hint: "Search saved questions and dashboards",
+    },
+    // The hint is shown once, next to the question — not again as details.
+    description: null,
+  });
+  // Another decision never borrows the subject.
+  detail.resume_summary!.pending_approval!.prompt!.intent_kind = "execute_confirmed_tool_call";
+  expect(chatApproval(detail)?.externalTool).toBeUndefined();
+});
+
 test("renders a policy confirmation attached to the actual OAuth tool", () => {
   const detail = fixture();
   detail.tool_calls[0]!.tool = "authenticate_oauth";

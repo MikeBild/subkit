@@ -59,7 +59,12 @@ export function ChatApprovalCard({
               ? t("chat.singleRun.effect", {
                   name: approval.workflowName ?? t("chat.singleRun.thisWorkflow"),
                 })
-              : readable(approval.question)}
+              : approval.externalTool
+                ? t("chat.decision.externalTool", {
+                    connector: approval.externalTool.connector,
+                    tool: approval.externalTool.tool,
+                  })
+                : readable(approval.question)}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -76,6 +81,11 @@ export function ChatApprovalCard({
           </Button>
         )}
         {approval.savesInactiveWorkflow && <p>{t("chat.decision.saveEffect")}</p>}
+        {approval.externalTool?.hint && (
+          <p className="text-sm text-muted-foreground" data-testid={`${testId}-hint`}>
+            {readable(approval.externalTool.hint)}
+          </p>
+        )}
         {(approval.description || approval.singleRun) && (
           <details>
             <summary className="cursor-pointer">{t("chat.decision.details")}</summary>

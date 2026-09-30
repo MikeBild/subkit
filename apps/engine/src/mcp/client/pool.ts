@@ -355,6 +355,11 @@ export async function probeTransientMcpServer(p: {
 export interface TenantMcpToolSet {
   slug: string;
   connector_id: string;
+  /** The connector's name as the tenant registered it — what a person
+   *  reads in an approval, where the slug is an address. Taken from the
+   *  freshly listed row, never the cached session, so a rename shows at
+   *  once. */
+  display_name: string;
   tools: RemoteToolDescriptor[];
   /** What the server declared it serves. Carried out of the pool so the
    *  palette can mint a resources or prompts adapter ONLY for a server
@@ -372,10 +377,11 @@ export interface TenantMcpToolSet {
   server_version: Record<string, unknown> | null;
 }
 
-function toolSetOf(pooled: PooledClient): TenantMcpToolSet {
+function toolSetOf(pooled: PooledClient, row: McpConnectorRow): TenantMcpToolSet {
   return {
     slug: pooled.slug,
     connector_id: pooled.connector_id,
+    display_name: row.display_name,
     tools: pooled.tools,
     capabilities: pooled.capabilities,
     instructions: pooled.instructions,
@@ -412,7 +418,7 @@ export async function getTenantMcpTools(
   for (const row of servers) {
     const cached = bucket.clients.get(row.id);
     if (cached) {
-      out.push(toolSetOf(cached));
+      out.push(toolSetOf(cached, row));
       continue;
     }
     // Respect an armed backoff window: skip this server this turn.
@@ -436,7 +442,7 @@ export async function getTenantMcpTools(
     }
 
     const outcome = await connectClient(db, tenant_id, row, environment, requestSource);
-    if (outcome.pooled) out.push(toolSetOf(outcome.pooled));
+    if (outcome.pooled) out.push(toolSetOf(outcome.pooled, row));
   }
   return out;
 }
@@ -479,7 +485,7 @@ export async function connectServerById(
   if (!outcome.pooled) {
     return { ok: false, reason: "handshake_failed", detail: outcome.error };
   }
-  return { ok: true, tools: toolSetOf(outcome.pooled) };
+  return { ok: true, tools: toolSetOf(outcome.pooled, row) };
 }
 
 export interface InvokeRemoteToolInput {
