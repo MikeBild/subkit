@@ -24,16 +24,23 @@ import {
 } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
 import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
+import {
+  authLabel,
+  credentialBody,
+  offersConnectionChoice,
+  offersKeyReplacement,
+} from "@/pages/connector-detail-model";
 
 export type ConnectorCredentialSummary = NonNullable<
   components["schemas"]["ConnectorCredentialSummary"]
 >;
 
 /**
- * The connector's credential as the engine describes it — mode, and the
- * Kontoverbindung it sends with that connection's state. One query key, read
- * by the governance bar and by the Anmeldung card alike, so the two can never
- * disagree about where the sign-in stands.
+ * The connector's credential as the engine describes it — mode, the header
+ * names a key is sent in, and the Kontoverbindung it sends with that
+ * connection's state. One query key, read by the governance bar, the
+ * "Verbindung" facts and the Anmeldung card alike, so they can never disagree
+ * about where the sign-in stands.
  */
 export function useConnectorCredential(connectorId: string | null) {
   return useQuery({
@@ -47,10 +54,12 @@ export function useConnectorCredential(connectorId: string | null) {
 }
 
 /**
- * "Anmeldung": how a connector signs in, decided on its own page — pick a
- * Kontoverbindung ("Verbindung wählen") or, only for a provider that cannot
- * grant access itself, paste a key. The card shows the real sign-in state and
- * offers "Neu anmelden" whenever it is lost, not only after a failed test.
+ * "Anmeldung": one sentence for how the connector signs in now, when the
+ * credential was last changed, and the one way to change it that fits its
+ * kind of sign-in. "Verbindung wählen" is offered only where a connection can
+ * carry the sign-in (OAuth, or a connector already linked to one); "Schlüssel
+ * ersetzen" posts the key in the mode the connector signs in with — a key sent
+ * in `X-API-KEY` stays a header key instead of turning into a bearer token.
  */
 export function ConnectorCredentials({
   connectorId,
@@ -67,16 +76,20 @@ export function ConnectorCredentials({
   const client = useQueryClient();
   const [chosen, setChosen] = useState<string>("");
   const [token, setToken] = useState("");
+  const [headerName, setHeaderName] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
 
   const summary = useConnectorCredential(connectorId);
+  const current = summary.data ?? null;
+  const choice = offersConnectionChoice(authType, current?.mode ?? null);
+  const replaceable = offersKeyReplacement(authType);
   const connections = useQuery({
     queryKey: ["admin", "connections"],
     queryFn: () => apiRequest<{ items: ConnectionItem[] }>("/v1/connections"),
-    enabled: canWrite,
+    enabled: canWrite && choice,
   });
   const attach = useMutation({
-    mutationFn: (body: Record<string, string>) =>
+    mutationFn: (body: Record<string, unknown>) =>
       apiRequest<{ id: string }>(`/v1/connectors/${encodeURIComponent(connectorId)}/credentials`, {
         method: "POST",
         body: JSON.stringify(body),
@@ -102,10 +115,12 @@ export function ConnectorCredentials({
     onError: () => toast.error(t("connectorCredentials.renewFailed")),
   });
 
-  const current = summary.data ?? null;
   const items = connections.data?.items ?? [];
   const lost = needsRenewal(state);
   const grantsHref = absolute(apiAccessHref("grants"));
+  // The header the key goes in, pre-filled with the one the engine reports.
+  const header = headerName ?? current?.header_names?.[0] ?? "";
+  const body = credentialBody(authType, token, header);
 
   return (
     <Card data-testid="connector-credentials">
@@ -119,17 +134,19 @@ export function ConnectorCredentials({
             {t(authStateLabel(state))}
           </Badge>
         </CardTitle>
-        <CardDescription>
+        <CardDescription data-testid="connector-credential-sentence">
           {current?.connection
             ? t("connectorCredentials.viaConnection", { name: current.connection.name })
             : current
-              ? t("connectorCredentials.viaKey", {
-                  mode: current.mode,
-                  date: dateTime(current.updated_at),
-                })
+              ? `${authLabel(authType, current.header_names ?? [], t)}.`
               : t("connectorCredentials.none")}{" "}
           {t(authStateHint(state))}
         </CardDescription>
+        {current && !current.connection ? (
+          <p className="text-sm text-muted-foreground" data-testid="connector-credential-stored">
+            {t("connectorCredentials.stored", { date: dateTime(current.updated_at) })}
+          </p>
+        ) : null}
         {current?.connection ? (
           <p className="text-sm" data-testid="connector-connection">
             <span className="text-muted-foreground">
@@ -147,7 +164,7 @@ export function ConnectorCredentials({
           </p>
         ) : null}
       </CardHeader>
-      {canWrite && (
+      {canWrite && (lost || choice || replaceable) ? (
         <CardContent className="grid gap-4">
           {lost ? (
             <div
@@ -176,7 +193,7 @@ export function ConnectorCredentials({
                 >
                   {t("connectorCredentials.renew")}
                 </Button>
-              ) : (
+              ) : replaceable ? (
                 <>
                   <p className="text-sm">{t("connectorCredentials.renewKey")}</p>
                   <Button
@@ -187,91 +204,110 @@ export function ConnectorCredentials({
                     {t("connectorCredentials.renew")}
                   </Button>
                 </>
-              )}
+              ) : null}
             </div>
           ) : null}
-          <Field>
-            <FieldLabel htmlFor="connector-connection">
-              {t("connectorCredentials.choose")}
-            </FieldLabel>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Select value={chosen} onValueChange={setChosen}>
-                <SelectTrigger
-                  id="connector-connection"
-                  className="sm:max-w-xs"
-                  data-testid="connector-connection-select"
-                >
-                  <SelectValue placeholder={t("connectorCredentials.choosePlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {items.map((item) => (
-                    <SelectItem
-                      key={item.id}
-                      value={item.id}
-                      data-testid={`connector-connection-option-${item.name}`}
-                    >
-                      {item.service_name ?? item.name}
-                      <Badge variant="secondary" className="ml-2">
-                        {item.name}
-                      </Badge>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                disabled={!chosen || attach.isPending}
-                onClick={() => attach.mutate({ mode: "connection", connection_id: chosen })}
-                data-testid="connector-connection-apply"
-              >
-                {t("connectorCredentials.use")}
-              </Button>
-            </div>
-            <FieldDescription>
-              {items.length === 0
-                ? t("connectorCredentials.noConnections")
-                : t("connectorCredentials.chooseHint")}{" "}
-              <a href={grantsHref} className="underline" data-testid="connector-connections-link">
-                {t("connectorCredentials.openConnections")}
-              </a>
-            </FieldDescription>
-          </Field>
-          {showKey ? (
+          {choice ? (
             <Field>
-              <FieldLabel htmlFor="connector-key">{t("connectorCredentials.key")}</FieldLabel>
+              <FieldLabel htmlFor="connector-connection">
+                {t("connectorCredentials.choose")}
+              </FieldLabel>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  id="connector-key"
-                  type="password"
-                  autoComplete="off"
-                  value={token}
-                  className="sm:max-w-xs"
-                  onChange={(event) => setToken(event.target.value)}
-                  data-testid="connector-key-input"
-                />
+                <Select value={chosen} onValueChange={setChosen}>
+                  <SelectTrigger
+                    id="connector-connection"
+                    className="sm:max-w-xs"
+                    data-testid="connector-connection-select"
+                  >
+                    <SelectValue placeholder={t("connectorCredentials.choosePlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {items.map((item) => (
+                      <SelectItem
+                        key={item.id}
+                        value={item.id}
+                        data-testid={`connector-connection-option-${item.name}`}
+                      >
+                        {item.service_name ?? item.name}
+                        <Badge variant="secondary" className="ml-2">
+                          {item.name}
+                        </Badge>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
-                  disabled={!token.trim() || attach.isPending}
-                  onClick={() => attach.mutate({ mode: "bearer", token: token.trim() })}
-                  data-testid="connector-key-save"
+                  disabled={!chosen || attach.isPending}
+                  onClick={() => attach.mutate({ mode: "connection", connection_id: chosen })}
+                  data-testid="connector-connection-apply"
                 >
-                  {t("common.save")}
+                  {t("connectorCredentials.use")}
                 </Button>
               </div>
-              <FieldDescription>{t("connectorCredentials.keyHint")}</FieldDescription>
+              <FieldDescription>
+                {items.length === 0
+                  ? t("connectorCredentials.noConnections")
+                  : t("connectorCredentials.chooseHint")}{" "}
+                <a href={grantsHref} className="underline" data-testid="connector-connections-link">
+                  {t("connectorCredentials.openConnections")}
+                </a>
+              </FieldDescription>
             </Field>
-          ) : (
+          ) : null}
+          {replaceable && showKey ? (
+            <div className="grid gap-3" data-testid="connector-key-form">
+              {authType === "header" ? (
+                <Field>
+                  <FieldLabel htmlFor="connector-key-header">
+                    {t("connectorCredentials.headerName")}
+                  </FieldLabel>
+                  <Input
+                    id="connector-key-header"
+                    autoComplete="off"
+                    value={header}
+                    className="font-mono sm:max-w-xs"
+                    onChange={(event) => setHeaderName(event.target.value)}
+                    data-testid="connector-key-header"
+                  />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="connector-key">{t("connectorCredentials.key")}</FieldLabel>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="connector-key"
+                    type="password"
+                    autoComplete="off"
+                    value={token}
+                    className="sm:max-w-xs"
+                    onChange={(event) => setToken(event.target.value)}
+                    data-testid="connector-key-input"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={!body || attach.isPending}
+                    onClick={() => body && attach.mutate(body)}
+                    data-testid="connector-key-save"
+                  >
+                    {t("common.save")}
+                  </Button>
+                </div>
+                <FieldDescription>{t("connectorCredentials.keyHint")}</FieldDescription>
+              </Field>
+            </div>
+          ) : replaceable ? (
             <Button
-              variant="link"
-              className="w-fit px-0"
+              variant="outline"
+              className="w-fit"
               onClick={() => setShowKey(true)}
               data-testid="connector-key-toggle"
             >
-              {t("connectorCredentials.enterKey")}
+              {t("connectorCredentials.replaceKey")}
             </Button>
-          )}
+          ) : null}
         </CardContent>
-      )}
+      ) : null}
     </Card>
   );
 }

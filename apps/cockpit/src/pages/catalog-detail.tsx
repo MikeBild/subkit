@@ -11,6 +11,13 @@ import {
   ConnectorCredentials,
   useConnectorCredential,
 } from "@/components/cockpit/connector-credentials";
+import {
+  ConnectorConnectionFacts,
+  ConnectorMcpTools,
+  ConnectorRuntimeSection,
+  ConnectorTechnicalFacts,
+  ConnectorWorkflows,
+} from "@/components/cockpit/connector-detail";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
@@ -44,6 +51,7 @@ import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { asInspect, type McpInspect } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type RecordValue = Record<string, unknown>;
@@ -599,6 +607,25 @@ export function CatalogDetailPage({
       if (result.ok) toast.success(t("detail.testPassed"));
     },
   });
+  // For an MCP server "Verbindung testen" also reads what the server serves:
+  // one handshake, on the reader's click — never on page open.
+  const inspect = useMutation({
+    mutationFn: async (): Promise<McpInspect> => {
+      const body = asInspect(
+        await apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`, {
+          method: "POST",
+        }),
+      );
+      if (!body) throw new Error("not an inspect answer");
+      return body;
+    },
+  });
+  const isMcp = resource === "connectors" && record?.driver === "mcp";
+  const canTest = resource === "connectors" && permissions.includes("connector:test");
+  const runTest = () => {
+    probe.mutate();
+    if (isMcp) inspect.mutate();
+  };
   // The connector's sign-in, from its record, its credential read and — once
   // run — the manual test. One verdict for the bar and the Anmeldung card.
   const credential = useConnectorCredential(resource === "connectors" && canRead ? id : null);
@@ -698,11 +725,11 @@ export function CatalogDetailPage({
           {resource !== "files" && canWrite && (
             <MetadataDialog resource={resource} id={id} record={record} />
           )}
-          {resource === "connectors" && permissions.includes("connector:test") && (
+          {canTest && (
             <Button
               variant="outline"
-              disabled={probe.isPending}
-              onClick={() => probe.mutate()}
+              disabled={probe.isPending || inspect.isPending}
+              onClick={runTest}
               data-testid="connector-test"
             >
               <RefreshCw data-icon="inline-start" />
@@ -790,7 +817,32 @@ export function CatalogDetailPage({
         {resource === "skills" ? <SkillBody id={id} record={record} canWrite={canWrite} /> : null}
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
-        {resource === "connectors" ? <Overview record={record} /> : null}
+        {resource === "connectors" ? (
+          <ConnectorConnectionFacts
+            record={record}
+            headerNames={credential.data?.header_names ?? []}
+          />
+        ) : null}
+        {resource === "connectors" ? (
+          <ConnectorRuntimeSection
+            connectorId={id}
+            driver={typeof record.driver === "string" ? record.driver : null}
+            canReadStats={permissions.includes("stats:read")}
+            onTest={canTest ? runTest : null}
+          />
+        ) : null}
+        {isMcp ? (
+          <ConnectorMcpTools
+            connectorId={id}
+            record={record}
+            canWrite={canWrite}
+            inspect={{
+              data: inspect.data ?? null,
+              pending: inspect.isPending,
+              failed: inspect.isError,
+            }}
+          />
+        ) : null}
         {resource === "connectors" && connectorAuth ? (
           <ConnectorCredentials
             connectorId={id}
@@ -799,12 +851,18 @@ export function CatalogDetailPage({
             canWrite={canWrite}
           />
         ) : null}
+        {resource === "connectors" &&
+        typeof record.slug === "string" &&
+        permissions.includes("workflow:read") ? (
+          <ConnectorWorkflows slug={record.slug} />
+        ) : null}
         {(resource === "workflows" || resource === "connectors") &&
         permissions.includes("conversation:read") ? (
           <ConversationsAbout
             target={resource === "workflows" ? { workflow_id: id } : { connector_id: id }}
           />
         ) : null}
+        {resource === "connectors" ? <ConnectorTechnicalFacts record={record} id={id} /> : null}
       </div>
     </main>
   );
