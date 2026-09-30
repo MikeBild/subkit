@@ -10,7 +10,7 @@
 //          `GET /v1/stats/connectors`, per connector, per driver and grouped.
 //   - AC3: `GET /v1/connectors/{id}/runtime` still reads the newest call and
 //          reports the driver as recorded.
-// Spec refs: docs/concepts/connectors.md, docs/concepts/audit.md
+// Spec refs: docs/concepts/connectors.md, docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
