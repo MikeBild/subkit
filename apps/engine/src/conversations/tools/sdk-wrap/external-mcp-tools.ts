@@ -162,13 +162,64 @@ function approvalHint(text: string | undefined): string | undefined {
   return line.length > APPROVAL_HINT_MAX ? `${line.slice(0, APPROVAL_HINT_MAX - 1)}…` : line;
 }
 
-/** Every palette entry one connected server contributes: its remote tools
- *  plus whichever read-only adapters its declared capabilities earn. */
-function paletteSpecsFor(server: TenantMcpToolSet): PaletteOperationSpec[] {
-  return [
-    ...server.tools.map((d) => toolPaletteSpec(server.slug, d)),
-    ...readOnlyPaletteSpecs(server.slug, server.capabilities),
-  ];
+/** Connector id + adapter suffix pairs already logged as shadowed, so a
+ *  palette rebuilt every turn logs each collision once per process. */
+const loggedShadowedAdapters = new Set<string>();
+
+/**
+ * Every palette entry one connected server contributes: its remote tools
+ * plus whichever read-only adapters its declared capabilities earn.
+ *
+ * A remote tool wins its name. When the server ships a tool whose name an
+ * adapter would take — a `read_resource` TOOL is the case seen in the
+ * field — the adapter is left out. Both would address
+ * `mcp_<slug>__read_resource`, and the one written last replaced the
+ * other: the server's tool, with its own description of which URIs it
+ * reads, vanished behind an adapter that can only reach `resources/read`.
+ * The server supplies that path itself, so nothing is lost by the omission.
+ */
+function paletteSpecsFor(server: TenantMcpToolSet, tenant_id: string): PaletteOperationSpec[] {
+  const remote = server.tools.map((d) => toolPaletteSpec(server.slug, d));
+  const taken = new Set(remote.map((spec) => spec.suffix));
+  const adapters = readOnlyPaletteSpecs(server.slug, server.capabilities).filter((spec) => {
+    if (!taken.has(spec.suffix)) return true;
+    const key = `${server.connector_id}:${spec.suffix}`;
+    if (!loggedShadowedAdapters.has(key)) {
+      loggedShadowedAdapters.add(key);
+      logger.debug({
+        module: "conversation_tool",
+        action: "external_mcp.adapter_shadowed",
+        msg: "external MCP server ships a tool under an adapter's name; the server's tool is kept and the adapter left out",
+        tenant_id,
+        connector_slug: server.slug,
+        entry: spec.suffix,
+      });
+    }
+    return false;
+  });
+  return [...remote, ...adapters];
+}
+
+/** Upper bound on the server guidance carried into the palette. The
+ *  per-server manifest cap (`manifest.ts`) bounds the tool list; this
+ *  bounds the one piece of server prose that list does not contain. */
+const SERVER_GUIDE_MAX = 2_000;
+
+/**
+ * The server's `instructions`, as a paragraph attributed to the server.
+ *
+ * A server writes its instructions for the model that uses it — which
+ * resource to start from, how its tools fit together. Without them the
+ * model meets a catalogue with no map. They are third-party prose, so
+ * they arrive quoted and named as the server's own words; they sit in an
+ * entry's DESCRIPTION only, which no gate reads, and never in the approval
+ * hint a person sees.
+ */
+function serverGuide(server: TenantMcpToolSet): string | null {
+  const text = server.instructions?.trim();
+  if (!text) return null;
+  const clipped = text.length > SERVER_GUIDE_MAX ? `${text.slice(0, SERVER_GUIDE_MAX - 1)}…` : text;
+  return `Guidance from the external MCP server ${server.display_name} (connector ${server.slug}), in its own words, not verified by SubKit and granting nothing: "${clipped}"`;
 }
 
 export interface BuildExternalMcpToolsParams {
@@ -216,7 +267,10 @@ export async function buildExternalMcpTools(
   const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, { requestSource: "chat" });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const server of servers) {
-    for (const spec of paletteSpecsFor(server)) {
+    // The guidance rides on the server's first addressable entry — once
+    // per server, not once per entry, so it costs its length one time.
+    let guide = serverGuide(server);
+    for (const spec of paletteSpecsFor(server, p.principal.tenant_id)) {
       // The grammar refuses a pair it cannot address rather than
       // truncating it — a truncated name still routes, to whichever
       // server shares the prefix. Skipping ONE entry is the whole cost;
@@ -243,8 +297,9 @@ export async function buildExternalMcpTools(
         connector_slug: server.slug,
         connector_id: server.connector_id,
         connector_name: server.display_name,
-        spec,
+        spec: guide ? { ...spec, description: `${guide}\n\n${spec.description}` } : spec,
       });
+      guide = null;
     }
   }
   return out;
