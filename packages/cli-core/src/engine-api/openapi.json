@@ -15855,6 +15855,24 @@
                             "type"
                           ]
                         }
+                      },
+                      "external_tool": {
+                        "type": "object",
+                        "properties": {
+                          "connector": {
+                            "type": "string"
+                          },
+                          "tool": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "connector",
+                          "tool"
+                        ]
                       }
                     },
                     "required": [

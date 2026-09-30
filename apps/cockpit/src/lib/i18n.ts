@@ -2025,6 +2025,7 @@ const EN = {
     "The decision was not completed. Review the current request and try again.",
   "chat.decision.processing": "Processing decision…",
   "chat.decision.save": "Save inactive version",
+  "chat.decision.externalTool": "{connector}: run the tool “{tool}”?",
 
   "chat.context.help": "About the working context",
   "chat.context.description": "Evidence, checkpoints and pending decisions for this conversation.",
@@ -4933,6 +4934,7 @@ const DE: Record<TranslationKey, string> = {
     "Die Entscheidung wurde nicht abgeschlossen. Prüfe die aktuelle Anfrage und versuche es erneut.",
   "chat.decision.processing": "Entscheidung wird verarbeitet…",
   "chat.decision.save": "Inaktive Version speichern",
+  "chat.decision.externalTool": "{connector}: Werkzeug „{tool}“ ausführen?",
 
   "chat.context.help": "Informationen zum Arbeitskontext",
   "chat.context.description":

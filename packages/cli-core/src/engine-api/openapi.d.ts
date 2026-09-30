@@ -20750,6 +20750,11 @@ export interface components {
                             }[];
                             default?: string | number | boolean | string[];
                         }[];
+                        external_tool?: {
+                            connector: string;
+                            tool: string;
+                            hint?: string;
+                        };
                     };
                     expires_at: string;
                 } | null;
