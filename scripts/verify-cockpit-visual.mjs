@@ -173,6 +173,9 @@ const routes = [
   // The old address of Zugriff in deinem Namen, with a callback result in its
   // query: it must land on the grants tab of Zugangsdaten and say the sentence.
   "connections?failed=denied&name=Postfach",
+  // Benachrichtigungen: the seeded rule's event list and a hostile long one,
+  // each entry named, beside channels in every delivery state.
+  "notifications",
   "settings",
   // The sign-in providers live in their own section; the list alone opens on
   // the first one.
@@ -2678,6 +2681,8 @@ function markerFor(route) {
   if (path === "settings" && query.startsWith("section="))
     return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
   if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
+  // Benachrichtigungen is photographed once its rules — the fixture's point — are in.
+  if (path === "notifications") return '[data-testid="notifications-rules"]';
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
     return `[data-testid="catalog-${path}"]`;
@@ -2973,6 +2978,41 @@ async function assertUnhealthyConnectorsOnly(page, label) {
     if (!rows.includes(shown)) throw new Error(`${label}: ${shown} is unhealthy and missing`);
   for (const hidden of ["Reporting API", "Warehouse"])
     if (rows.includes(hidden)) throw new Error(`${label}: ${hidden} is listed but not unhealthy`);
+}
+
+/**
+ * A rule's event list reads as its events, and fits its card.
+ *
+ * The seeded inbox rule names five catalogued events: none may be printed as
+ * the engine's value. The hostile rule carries one event this build has no
+ * name for: exactly that one is. And the long machine value must wrap — it
+ * once widened every rule past its card, which clips instead of scrolling, so
+ * the page-level overflow check never saw it.
+ */
+async function assertNotificationRules(page, label) {
+  const machineValues = (index) =>
+    page
+      .locator(`[data-testid="notifications-rule-${index}"] [data-machine-value="true"]`)
+      .allInnerTexts();
+  if ((await machineValues(0)).length !== 0)
+    throw new Error(`${label}: the seeded rule prints an event as the engine's value`);
+  // The unknown event, and the workflow glob beside it — nothing else.
+  const hostile = (await machineValues(2)).join(" | ");
+  if (
+    hostile !==
+    "vendor.custom_integration.quarterly_reconciliation_completed_with_warnings | billing-*"
+  )
+    throw new Error(`${label}: the hostile rule marks ${hostile}, not its one unknown event`);
+  const clipped = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="notifications-rules"]');
+    if (!card) return ["the rules card is missing"];
+    const edge = card.getBoundingClientRect().right;
+    return [...card.querySelectorAll('[data-testid^="notifications-rule-"]')]
+      .filter((rule) => rule.getBoundingClientRect().right > edge + 1)
+      .map((rule) => rule.getAttribute("data-testid"));
+  });
+  if (clipped.length > 0)
+    throw new Error(`${label}: rules wider than their card: ${clipped.join(", ")}`);
 }
 
 /** A link that names the log's verbs arrives as a chip the reader can lift. */
@@ -3843,6 +3883,8 @@ for (const locale of variants) {
         );
       if (route.startsWith("connectors?health="))
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "notifications")
+        await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
