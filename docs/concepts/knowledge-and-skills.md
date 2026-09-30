@@ -137,6 +137,13 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
+A connector authored from a description, rather than a template, gets a
+`connector_capability` Skill Candidate when its first green probe saves it: a
+deterministic write-up of the server's tools, their read/write claims, the data
+paths and paging the tool descriptions name, and the server's quoted
+instructions. Approved, it loads as a connector Skill wherever that connector is
+in play.
+
 External coding-agent sessions (Claude Code, Codex) feed the same queue: a
 SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
 distillation, and the agent can save an explicitly taught rule mid-session via

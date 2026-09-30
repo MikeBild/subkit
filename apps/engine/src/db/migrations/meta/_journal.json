@@ -512,6 +512,13 @@
       "when": 1790768908188,
       "tag": "0072_default_inbox_rule_actionable",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790772478789,
+      "tag": "0073_connector_capability_candidate",
+      "breakpoints": true
     }
   ]
 }

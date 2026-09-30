@@ -142,6 +142,11 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   // via the `save_learning` tool. Always lands as `proposed` — the human
   // curation gate is the whole point of the capture loop.
   "session_learning",
+  // Navigation guide for a connector authored from a description (no
+  // template skill), built deterministically from its green probe: tools
+  // with their read/write claim, data paths and paging named in the tool
+  // descriptions. A decision like any other proposed candidate.
+  "connector_capability",
 ]);
 
 export const skillCandidates = pgTable(
