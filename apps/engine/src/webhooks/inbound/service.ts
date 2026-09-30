@@ -21,6 +21,7 @@ import { logger } from "../../logging/logger.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
 import { admitWebhookExecution } from "./admission.ts";
+import { type InboundHoldReason, recordInboundAdmission } from "./admission-state.ts";
 import { markSeenIfNew, wasSeen } from "./dedup.ts";
 import { verifyGitHub } from "./verifiers/github.ts";
 import { verifyStandard } from "./verifiers/standard-webhooks.ts";
@@ -510,6 +511,32 @@ export interface HandleInboundOptions {
   boss: PgBoss;
 }
 
+/** Standing admission state is a projection of the delivery just answered:
+ *  failing to record it must not turn that answer into a 500. */
+async function holdInboundAdmission(
+  db: Db,
+  row: { tenant_id: string; id: string },
+  now: number | undefined,
+  reason: InboundHoldReason | null,
+): Promise<void> {
+  try {
+    await recordInboundAdmission(
+      db,
+      { tenant_id: row.tenant_id, inbound_id: row.id, observed_at: new Date(now ?? Date.now()) },
+      reason,
+    );
+  } catch (err) {
+    logger.warn({
+      module: "webhooks",
+      action: "inbound.admission_state_failed",
+      msg: "could not record the hook's admission state; the delivery was answered regardless",
+      tenant_id: row.tenant_id,
+      inbound_id: row.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export async function handleInbound(
   opts: HandleInboundOptions,
   input: HandleInboundInput,
@@ -858,6 +885,8 @@ export async function handleInbound(
       },
       db,
     );
+    if (code === "execution_authority_required" || code === "execution_authority_unavailable")
+      await holdInboundAdmission(db, row, input.now, code);
     return { status: "denied", reason: code, inbound_id: row.id, hint };
   }
   const execution_id = admitted.execution_id;
@@ -870,7 +899,10 @@ export async function handleInbound(
     // Unattended deliveries use only an explicitly reviewed production authority.
     execution_mode: "prod",
   };
-  if (admitted.status === "queued") await boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+  if (admitted.status === "queued") {
+    await boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
+    await holdInboundAdmission(db, row, input.now, null);
+  }
   // Mark only after durable enqueue. A failed send leaves the same reservation
   // retryable; a lost response reuses the job UUID, never a second charged run.
   const fresh = await markSeenIfNew(db, {

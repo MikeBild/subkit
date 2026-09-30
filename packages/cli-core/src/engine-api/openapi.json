@@ -19897,6 +19897,7 @@
                           "enum": [
                             "failing_group",
                             "held_schedule",
+                            "held_inbound_hook",
                             "connector"
                           ]
                         },
@@ -29336,7 +29337,7 @@
         "tags": [
           "workflows"
         ],
-        "summary": "Read verified readiness of this workflow's schedules",
+        "summary": "Read verified readiness of this workflow's schedules and inbound hooks",
         "security": [
           {
             "bearerAuth": []
@@ -29418,10 +29419,94 @@
                           "next_run_at"
                         ]
                       }
+                    },
+                    "inbound_hooks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "inbound_hook_id": {
+                            "type": "string"
+                          },
+                          "workflow_id": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "paused",
+                              "activation_required",
+                              "input_required",
+                              "repair_required",
+                              "approval_required",
+                              "authorized",
+                              "verification_unavailable"
+                            ]
+                          },
+                          "ready": {
+                            "type": "boolean"
+                          },
+                          "environment": {
+                            "type": "string",
+                            "enum": [
+                              "prod"
+                            ]
+                          },
+                          "admission_hold": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "reason_code": {
+                                "type": "string",
+                                "enum": [
+                                  "execution_authority_required",
+                                  "execution_authority_unavailable"
+                                ]
+                              },
+                              "observed_at": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "reason_code",
+                              "observed_at"
+                            ]
+                          },
+                          "last_refused_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "last_refused_reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "inbound_hook_id",
+                          "workflow_id",
+                          "slug",
+                          "state",
+                          "ready",
+                          "environment",
+                          "admission_hold",
+                          "last_refused_at",
+                          "last_refused_reason"
+                        ]
+                      }
                     }
                   },
                   "required": [
-                    "schedules"
+                    "schedules",
+                    "inbound_hooks"
                   ]
                 }
               }

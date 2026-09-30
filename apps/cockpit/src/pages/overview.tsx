@@ -17,6 +17,7 @@ import { useSession } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
 import { useReviewDecisions } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
+import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-card";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { LoadFailed } from "@/components/failure-state";
@@ -537,7 +538,7 @@ function ReviewBody({
   const canDecidePatches = session.permissions.includes("workflow:write");
   const canDecideSkills =
     session.permissions.includes("skill:write") && session.permissions.includes("skill:activate");
-  const { decisions, held } = review;
+  const { decisions, held, heldHooks } = review;
 
   const decide = useMutation({
     mutationFn: async (input: {
@@ -562,7 +563,7 @@ function ReviewBody({
       // decision fails. The sheet stays until the answer, so a refusal is read
       // on the card it is about.
       const remaining = decisions.filter((entry) => entry.id !== input.item.id).length;
-      const settles = remaining === 0 && held.length === 0;
+      const settles = remaining === 0 && held.length === 0 && heldHooks.length === 0;
       if (settles && item) hideAttentionEntry(item);
       return { settles };
     },
@@ -672,6 +673,9 @@ function ReviewBody({
       {held.map((schedule) => (
         <ScheduleReviewCard key={schedule.id} schedule={schedule} />
       ))}
+      {heldHooks.map((hook) => (
+        <InboundHookReviewCard key={hook.inbound_hook_id} hook={hook} />
+      ))}
       {decisions.map((entry, index) => (
         <DecisionCard
           key={entry.id}
@@ -689,7 +693,7 @@ function ReviewBody({
           onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
         />
       ))}
-      {decisions.length === 0 && held.length === 0 ? (
+      {decisions.length === 0 && held.length === 0 && heldHooks.length === 0 ? (
         <div className="grid gap-3" data-testid="attention-review-empty">
           {elsewhere ?? (
             <p className="text-sm text-muted-foreground">{t("overview.sheet.nothingOpen")}</p>

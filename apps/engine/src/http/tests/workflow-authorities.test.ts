@@ -864,5 +864,5 @@ test("held report preparation works for a saved draft and cannot grant, activate
   expect((await app.request(`${f.base}/automation-status`)).status).toBe(401);
   const status = await app.request(`${f.base}/automation-status`, { headers: browserHeaders });
   expect(status.status).toBe(200);
-  expect(await status.json()).toEqual({ schedules: [] });
+  expect(await status.json()).toEqual({ schedules: [], inbound_hooks: [] });
 });

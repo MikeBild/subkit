@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import {
   type HeldSchedule,
+  type InboundHookAutomation,
+  listHeldInboundHooks,
   listHeldSchedules,
   listProposedPatchCandidates,
   listProposedSkillCandidates,
@@ -67,6 +69,8 @@ export interface ReviewDecisions {
   failed: boolean;
   decisions: DecidableItem[];
   held: HeldSchedule[];
+  /** The workflow's hooks whose deliveries are refused — held like a schedule. */
+  heldHooks: InboundHookAutomation[];
   names: NameIndex;
   canReadRuns: boolean;
   refetch: () => void;
@@ -95,17 +99,28 @@ export function useReviewDecisions(
     queryFn: async () => {
       if (target.kind === "skills") {
         const skills = await listProposedSkillCandidates();
-        return { patches: [], skills: skills.items, held: [] as HeldSchedule[] };
+        return {
+          patches: [],
+          skills: skills.items,
+          held: [] as HeldSchedule[],
+          heldHooks: [] as InboundHookAutomation[],
+        };
       }
-      if (target.kind !== "workflow") return { patches: [], skills: [], held: [] };
-      const [patches, held] = await Promise.all([
+      if (target.kind !== "workflow") return { patches: [], skills: [], held: [], heldHooks: [] };
+      const [patches, held, heldHooks] = await Promise.all([
         listProposedPatchCandidates(target.workflowId),
         listHeldSchedules(),
+        // The automation status is read with `schedule:read`; without it the
+        // sheet shows what it may, rather than failing as a whole.
+        permissions.includes("schedule:read")
+          ? listHeldInboundHooks(target.workflowId)
+          : ([] as InboundHookAutomation[]),
       ]);
       return {
         patches: patches.items,
         skills: [],
         held: held.filter((schedule) => schedule.workflow_id === target.workflowId),
+        heldHooks,
       };
     },
   });
@@ -137,6 +152,7 @@ export function useReviewDecisions(
     failed: Boolean(query.error ?? query.failureReason),
     decisions,
     held: query.data?.held ?? [],
+    heldHooks: query.data?.heldHooks ?? [],
     names,
     canReadRuns: permissions.includes("execution:read"),
     refetch: () => void query.refetch(),

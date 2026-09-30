@@ -10,6 +10,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   sessions,
+  webhooksInbound,
   workflowExecutionAuthorities,
   workflowsSchedules,
   workflowVersions,
@@ -135,12 +136,30 @@ async function lockLiveSession(tx: Executor, session: Awaited<ReturnType<typeof 
   if (!live) fail("human_session_expired", "the human session has expired or was revoked");
 }
 
-async function resolveGrantedScheduleHold(
+async function resolveGrantedAdmissionHolds(
   authority: typeof workflowExecutionAuthorities.$inferSelect,
   activeVersion: string | null,
   tx: Executor,
 ) {
   if (activeVersion !== authority.workflow_version_id) return;
+  // A hook's deliveries only ever run in production. A live grant is what its
+  // hold was waiting for; the next delivery is the first run, so nothing else
+  // moves. The UPDATE's row lock serializes with a refusal being recorded.
+  if (authority.execution_environment === "prod")
+    await tx
+      .update(webhooksInbound)
+      .set({ admission_hold: null })
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, authority.tenant_id),
+          eq(webhooksInbound.workflow_id, authority.workflow_id),
+          sql`${webhooksInbound.admission_hold} IS NOT NULL`,
+          sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
+          sql`${authority.valid_until}::timestamptz > clock_timestamp()`,
+          sql`${authority.reserved_runs} < ${authority.max_runs}`,
+          sql`${authority.revoked_at}::timestamptz IS NULL`,
+        ),
+      );
   const schedules = await tx
     .select({ id: workflowsSchedules.id, input: workflowsSchedules.input })
     .from(workflowsSchedules)
@@ -362,7 +381,7 @@ export async function grantWorkflowAuthority(
       workflow.lifecycle = "active";
     }
     if (existing) {
-      await resolveGrantedScheduleHold(
+      await resolveGrantedAdmissionHolds(
         existing,
         workflow.lifecycle === "active" ? workflow.current_version_id : null,
         tx,
@@ -412,7 +431,7 @@ export async function grantWorkflowAuthority(
       },
       tx,
     );
-    await resolveGrantedScheduleHold(
+    await resolveGrantedAdmissionHolds(
       authority,
       workflow.lifecycle === "active" ? workflow.current_version_id : null,
       tx,
