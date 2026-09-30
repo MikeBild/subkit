@@ -5,10 +5,12 @@
 // the words, the fallbacks and the one case that may be red.
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { translate } from "@/lib/i18n";
 import {
   deliveryState,
-  eventPatternLabel,
+  eventPatternLabels,
   platformLabel,
   ruleNameLabel,
   ruleTarget,
@@ -18,9 +20,24 @@ import {
 const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
 
+// The engine's own words, read from its source: the seeded rule's pattern and
+// the event catalogue. A moved file or a renamed constant fails the reads
+// below instead of passing on an empty list.
+const ENGINE_SRC = resolve(import.meta.dir, "../../../engine/src");
+const SEEDED_EVENT_PATTERN =
+  /DEFAULT_CLI_INBOX_EVENT_PATTERN =\s*"([^"]+)"/.exec(
+    readFileSync(resolve(ENGINE_SRC, "db/seed.ts"), "utf8"),
+  )?.[1] ?? "";
+const CATALOG_SOURCE = readFileSync(resolve(ENGINE_SRC, "webhooks/events/catalog.ts"), "utf8");
+const ENGINE_EVENT_TYPES = [
+  ...CATALOG_SOURCE.slice(CATALOG_SOURCE.indexOf("export const EVENT_CATALOG")).matchAll(
+    /^ {2}"([a-z_]+(?:\.[a-z_]+)+)": \{/gm,
+  ),
+].map((match) => match[1] as string);
+
 const SEEDED_RULE = {
   name: "sk CLI inbox (default)",
-  event_pattern: "*",
+  event_pattern: SEEDED_EVENT_PATTERN,
   workflow_pattern: "*",
   target_workspace_id: "_cli",
   target_channel_id: "_inbox",
@@ -37,10 +54,13 @@ const SLACK = {
 
 describe("rules", () => {
   test("`*` reads as every event and every workflow", () => {
-    expect(eventPatternLabel("*", de)).toEqual({
-      text: de("notifications.events.all"),
-      machine: false,
-    });
+    expect(eventPatternLabels("*", de)).toEqual([
+      { text: de("notifications.events.all"), machine: false },
+    ]);
+    // A list that holds `*` matches every event, whatever else it names.
+    expect(eventPatternLabels("execution.failed, *", de)).toEqual([
+      { text: de("notifications.events.all"), machine: false },
+    ]);
     expect(workflowPatternLabel("", de)).toEqual({
       text: de("notifications.workflows.all"),
       machine: false,
@@ -48,14 +68,60 @@ describe("rules", () => {
   });
 
   test("an area glob is named; any other pattern is the engine's glob, marked", () => {
-    expect(eventPatternLabel("execution.*", de).text).toBe(
-      de("notifications.events.area", { area: de("notifications.eventArea.execution") }),
-    );
-    expect(eventPatternLabel("execution.fai*", de)).toEqual({
-      text: "execution.fai*",
-      machine: true,
-    });
+    expect(eventPatternLabels("execution.*", de)).toEqual([
+      {
+        text: de("notifications.events.area", { area: de("notifications.eventArea.execution") }),
+        machine: false,
+      },
+    ]);
+    expect(eventPatternLabels("execution.fai*", de)).toEqual([
+      { text: "execution.fai*", machine: true },
+    ]);
     expect(workflowPatternLabel("ga4-*", de)).toEqual({ text: "ga4-*", machine: true });
+  });
+
+  test("the seeded rule's list reads as its events, each by name", () => {
+    expect(SEEDED_EVENT_PATTERN.split(",").length).toBeGreaterThan(1);
+    const labels = eventPatternLabels(SEEDED_RULE.event_pattern, de);
+    expect(labels.map((label) => label.text)).toEqual([
+      "Fehlgeschlagene Läufe",
+      "Anmeldung beim Connector fehlgeschlagen",
+      "Anmeldung abgelehnt",
+      "Connector-Zustand geändert",
+      "Reparatur vorgeschlagen",
+    ]);
+    expect(labels.every((label) => !label.machine)).toBe(true);
+  });
+
+  test("a list is read part by part, as the engine matches it", () => {
+    // Spaces and empty entries are the engine's to ignore; only the unknown
+    // part is the machine value.
+    expect(
+      eventPatternLabels(" execution.failed ,, vendor.custom_event, connector.* ", de),
+    ).toEqual([
+      { text: de("notifications.event.execution.failed"), machine: false },
+      { text: "vendor.custom_event", machine: true },
+      {
+        text: de("notifications.events.area", { area: de("notifications.eventArea.connector") }),
+        machine: false,
+      },
+    ]);
+  });
+
+  test("every event the engine catalogues has a name in both languages", () => {
+    expect(ENGINE_EVENT_TYPES.length).toBeGreaterThan(10);
+    for (const locale of ["de", "en"] as const) {
+      const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+        translate(locale, key, values);
+      for (const type of ENGINE_EVENT_TYPES) {
+        const [label] = eventPatternLabels(type, t);
+        expect({ type, locale, machine: label?.machine }).toEqual({
+          type,
+          locale,
+          machine: false,
+        });
+      }
+    }
   });
 
   test("the seeded inbox rule gets a name; an operator's rule keeps theirs", () => {
