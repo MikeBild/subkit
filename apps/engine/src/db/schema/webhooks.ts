@@ -40,6 +40,14 @@ export const webhooksInbound = pgTable(
      *  `trigger` rows; `crud` rows continue to emit the legacy
      *  `webhook.inbound.received` / `webhook.inbound.denied`. */
     origin: text("origin").notNull().default("crud"),
+    /** The last delivery the execution-authority gate refused, kept until one
+     *  is admitted or a person grants authority — the webhook counterpart of
+     *  `workflows_schedules.admission_hold`. Without it a hook refused on
+     *  every delivery was visible only to whoever read the audit log. */
+    admission_hold: jsonb("admission_hold").$type<{
+      reason_code: "execution_authority_required" | "execution_authority_unavailable";
+      observed_at: string;
+    }>(),
     ...timestamps,
   },
   (t) => [uniqueIndex("webhooks_inbound_tenant_slug_key").on(t.tenant_id, t.slug)],

@@ -94,6 +94,10 @@ export interface PaletteOperationSpec {
   suffix: string;
   /** Audit and operator-facing identity of what is being called. */
   target: string;
+  /** One line a person reads next to the approval question: the server's
+   *  display title, or the opening of its own description. Never the
+   *  model-facing `description`, which carries schemas and gate prose. */
+  hint?: string;
   description: string;
   inputSchema: Record<string, unknown>;
   toCall: (args: Record<string, unknown>) =>
@@ -132,9 +136,11 @@ function toolPaletteSpec(
       : "",
     `External MCP tool (connector ${connector_slug}). Asks for confirmation before running, whatever the server claims about it.`,
   ].filter((s) => s.length > 0);
+  const hint = approvalHint(title && title !== descriptor.name ? title : descriptor.description);
   return {
     suffix: descriptor.name,
     target: descriptor.name,
+    ...(hint ? { hint } : {}),
     description: parts.join(" — "),
     inputSchema: descriptor.inputSchema,
     toCall: (args) => ({
@@ -142,6 +148,15 @@ function toolPaletteSpec(
       call: { operation: "call_tool", tool: descriptor.name, arguments: args },
     }),
   };
+}
+
+const APPROVAL_HINT_MAX = 160;
+
+/** The first line of server prose, clipped to one readable line. */
+function approvalHint(text: string | undefined): string | undefined {
+  const line = text?.trim().split(/\r?\n/, 1)[0]?.trim();
+  if (!line) return undefined;
+  return line.length > APPROVAL_HINT_MAX ? `${line.slice(0, APPROVAL_HINT_MAX - 1)}…` : line;
 }
 
 /** Every palette entry one connected server contributes: its remote tools
@@ -224,6 +239,7 @@ export async function buildExternalMcpTools(
         name,
         connector_slug: server.slug,
         connector_id: server.connector_id,
+        connector_name: server.display_name,
         spec,
       });
     }
@@ -235,6 +251,8 @@ interface BuildOneParams extends BuildExternalMcpToolsParams {
   name: string;
   connector_slug: string;
   connector_id: string;
+  /** The name a person reads in the approval — never the prefixed tool id. */
+  connector_name: string;
   spec: PaletteOperationSpec;
 }
 
@@ -285,8 +303,19 @@ function buildOneExternalMcpTool(
 async function executeExternalMcpTool(
   p: BuildOneParams & { rawArgs: Record<string, unknown>; abortSignal?: AbortSignal },
 ): Promise<WrappedToolOutput> {
-  const { ctx, signals, events, db, name, connector_slug, connector_id, spec, principal, rawArgs } =
-    p;
+  const {
+    ctx,
+    signals,
+    events,
+    db,
+    name,
+    connector_slug,
+    connector_id,
+    connector_name,
+    spec,
+    principal,
+    rawArgs,
+  } = p;
   const startedAt = Date.now();
 
   // Defence in depth — production callers always source ctx.tenant_id and
@@ -566,15 +595,24 @@ async function executeExternalMcpTool(
       // approval on a human answer and never performs the remote call itself.
       // The handle rides on the persisted row the harness reads; every
       // client-facing projection strips it via `withoutApprovalHandle`.
+      // The question names what a person recognises — the connector as it was
+      // registered and the tool as the server calls it — not the prefixed
+      // palette id. `external_tool` carries the same subject as data, so a
+      // client renders it in its own language instead of parsing the prose.
       const elicitationInput: Record<string, unknown> = {
         kind: "external_write",
-        question: `Policy requires confirmation before running the external MCP tool ${name} (server ${connector_slug}). Proceed?`,
+        question: `Run the tool "${spec.suffix}" on ${connector_name}?`,
+        external_tool: {
+          connector: connector_name,
+          tool: spec.suffix,
+          ...(spec.hint ? { hint: spec.hint } : {}),
+        },
         target: { tool: name, connector_slug, remote_tool: spec.target },
         pending_output: { connector_slug, remote_tool: spec.target, input_keys: inputKeys },
         commit_intent: {
           kind: "grant_relayed_tool_call",
           payload: { tool: name, approval_id: confirm_id },
-          description: `Approve the external MCP tool ${name} so it can run.`,
+          description: spec.hint ?? `Lets the tool "${spec.suffix}" on ${connector_name} run once.`,
         },
         // Persist the human-reachable link, not just mention it to the model.
         // Withholding it here left the operator with no channel at all on a
@@ -582,7 +620,7 @@ async function executeExternalMcpTool(
         // bridge unable to recognise the row.
         ...(requested.approval_url ? { approval_url: requested.approval_url } : {}),
       };
-      const elicitationSummary = `Run external MCP tool ${name} (server ${connector_slug})`;
+      const elicitationSummary = `Run "${spec.suffix}" on ${connector_name}`;
       const elicitation = await createElicitation(
         {
           tenant_id: ctx.tenant_id,

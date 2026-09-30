@@ -16,6 +16,7 @@ import {
   conversationHidden,
   conversations,
   skillCandidates,
+  webhooksInbound,
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
@@ -120,8 +121,9 @@ async function readWorkflowFacts(
     return created;
   };
 
-  const [held, groups, patches] = await Promise.allSettled([
-    // The overview's `blocked` predicate, row for row.
+  const [held, heldHooks, groups, patches] = await Promise.allSettled([
+    // The overview's `blocked` predicate, row for row: held schedules, then
+    // hooks whose deliveries the authority gate refuses.
     db
       .select({
         workflow_id: workflows.id,
@@ -145,17 +147,42 @@ async function readWorkflowFacts(
           sql`${workflows.lifecycle} <> 'archived'`,
         ),
       ),
+    db
+      .select({
+        workflow_id: workflows.id,
+        name: workflows.name,
+        hold: webhooksInbound.admission_hold,
+      })
+      .from(webhooksInbound)
+      .innerJoin(
+        workflows,
+        and(
+          eq(workflows.id, webhooksInbound.workflow_id),
+          eq(workflows.tenant_id, webhooksInbound.tenant_id),
+        ),
+      )
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, tenantId),
+          eq(webhooksInbound.active, true),
+          sql`${webhooksInbound.admission_hold} IS NOT NULL`,
+          isNull(workflows.deleted_at),
+          sql`${workflows.lifecycle} <> 'archived'`,
+        ),
+      ),
     collectFailureGroups(db, tenantId, DECISION_FAILURE_WINDOW_HOURS, now).then(
       failingScheduledGroups,
     ),
     readOpenPatchDecisions(db, tenantId),
   ]);
 
-  if (held.status === "fulfilled") {
+  if (held.status === "fulfilled" && heldHooks.status === "fulfilled") {
     sources.schedules = "answered";
-    for (const row of held.value) {
+    for (const row of [...held.value, ...heldHooks.value]) {
       if (!row.hold) continue;
-      factFor(row.workflow_id, row.name).held = row.hold;
+      const fact = factFor(row.workflow_id, row.name);
+      // One item per workflow: the first hold speaks for it.
+      if (!fact.held) fact.held = row.hold;
     }
   } else sources.schedules = "failed";
 

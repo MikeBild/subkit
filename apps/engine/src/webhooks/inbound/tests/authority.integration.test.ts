@@ -4,13 +4,18 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   auditLog,
   executions,
+  webhooksInbound,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
 } from "../../../db/schema/index.ts";
+import { buildAttention } from "../../../operator/attention.ts";
+import { getOperationalOverview } from "../../../operator/operational-overview.ts";
 import { EXECUTION_RUN_QUEUE } from "../../../queue/queues.ts";
+import { inboundHookAutomationView } from "../../../scheduler/workflow-automation-view.ts";
 import { databaseNow } from "../../../test-helpers/database-clock.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { wasSeen } from "../dedup.ts";
 import { handleInbound } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
@@ -85,6 +90,58 @@ describe("webhook execution authority admission", () => {
     expect(await receive(input)).toMatchObject({ status: "ok" });
     expect(await reserved(authority.id)).toBe(1);
     expect((await rows())[0]?.execution_authority_id).toBe(authority.id);
+  });
+
+  test("a hook the authority gate refuses reads as blocked until a delivery is admitted", async () => {
+    const hold = async () =>
+      (
+        await ctx.db
+          .select({ hold: webhooksInbound.admission_hold })
+          .from(webhooksInbound)
+          .where(
+            and(eq(webhooksInbound.tenant_id, ctx.tenantId), eq(webhooksInbound.id, bindingId)),
+          )
+      )[0]?.hold;
+    expect(await receive(delivery("refused-1"))).toMatchObject({
+      status: "denied",
+      reason: "execution_authority_unavailable",
+    });
+    const first = await hold();
+    expect(first?.reason_code).toBe("execution_authority_unavailable");
+    // The same refusal again is the same standing state, not a new one.
+    await receive(delivery("refused-2", '{"invoice":2}', 60));
+    expect(await hold()).toEqual(first);
+
+    // The workflow's automation status names the hook, in a schedule's words.
+    const [status] = await inboundHookAutomationView(ctx.tenantId, ctx.workflowId, ctx.db);
+    expect(status).toMatchObject({
+      inbound_hook_id: bindingId,
+      slug: "authorized-events",
+      state: "approval_required",
+      ready: false,
+      environment: "prod",
+      admission_hold: first,
+      last_refused_reason: "execution_authority_unavailable",
+    });
+    expect(status?.last_refused_at).not.toBeNull();
+
+    // Every place that counts what needs a person counts it.
+    const overview = await getOperationalOverview(ctx.db, ctx.tenantId);
+    expect(overview.core.blocked.value).toBe(1);
+    expect(
+      overview.core.health.causes.filter((cause) => cause.kind === "held_inbound_hook"),
+    ).toMatchObject([{ id: ctx.workflowId, reason: "held_for_review" }]);
+    const { items } = await buildAttention(ctx.db, adminPrincipal(ctx.tenantId));
+    expect(items.find((item) => item.id === `workflow:${ctx.workflowId}`)).toMatchObject({
+      class: "stopped",
+      reason: "execution_authority_unavailable",
+    });
+
+    await ctx.grantAuthority("prod", 1);
+    expect(await receive(delivery("admitted", '{"invoice":3}', 120))).toMatchObject({
+      status: "ok",
+    });
+    expect(await hold()).toBeNull();
   });
 
   test("development authority does not authorize a production webhook", async () => {

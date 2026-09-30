@@ -1,3 +1,4 @@
+import type { ExternalToolSubject } from "./resume.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 // Conversation types shared across the service, loop, tool palette,
 // and HTTP / MCP layers.
@@ -869,6 +870,7 @@ export interface ConversationResumeSummary {
       intent_kind?: string;
       authorization_url?: string;
       fields?: ResumeFormField[];
+      external_tool?: ExternalToolSubject;
     };
     summary: string;
     /** When this approval lapses — mirrors `ResumeSummary` in `resume.ts`;

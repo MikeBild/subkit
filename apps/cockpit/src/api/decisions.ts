@@ -1,5 +1,5 @@
 import { ApiError, apiRequest } from "./client";
-import type { components } from "./schema";
+import type { components, paths } from "./schema";
 
 export type PatchCandidate = components["schemas"]["PatchCandidate"];
 export type PatchCandidateList = components["schemas"]["PatchCandidateListResponse"];
@@ -111,6 +111,16 @@ export function listSkillCandidateEvidence(
 }
 
 export type HeldSchedule = components["schemas"]["ScheduleEntry"];
+export type InboundHookAutomation =
+  paths["/v1/workflows/{id}/automation-status"]["get"]["responses"][200]["content"]["application/json"]["inbound_hooks"][number];
+
+/** A workflow's inbound hooks whose deliveries the authority gate refuses. */
+export async function listHeldInboundHooks(workflowId: string): Promise<InboundHookAutomation[]> {
+  const result = await apiRequest<{ inbound_hooks: InboundHookAutomation[] }>(
+    `/v1/workflows/${encodeURIComponent(workflowId)}/automation-status`,
+  );
+  return result.inbound_hooks.filter((hook) => hook.admission_hold);
+}
 export async function listHeldSchedules(): Promise<HeldSchedule[]> {
   const result = await apiRequest<{ schedules: HeldSchedule[] }>("/v1/schedules");
   return result.schedules.filter((schedule) => !schedule.paused && schedule.admission_hold);
