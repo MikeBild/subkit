@@ -43,7 +43,7 @@ const Health = Metric.extend({
   ),
   causes: z.array(
     z.object({
-      kind: z.enum(["failing_group", "held_schedule", "connector"]),
+      kind: z.enum(["failing_group", "held_schedule", "held_inbound_hook", "connector"]),
       id: z.string(),
       label: z
         .string()
