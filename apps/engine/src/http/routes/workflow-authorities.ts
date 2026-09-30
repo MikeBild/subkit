@@ -74,6 +74,23 @@ const previewSchema = z
     preparation_required: z.boolean().optional(),
     content_items: z.array(z.object({ id: z.string().uuid(), label: z.string() })).optional(),
     unavailable_steps: z.array(z.string()),
+    // Which connector keeps one of this workflow's own steps from running in
+    // the previewed environment, and why — the same predicate a run's
+    // admission refuses with (409 `prepared_credential_unavailable`), so a
+    // client can say before the run what it would be refused for. Advisory: a
+    // step whose connector cannot be found at all is not listed here, and the
+    // run's refusal stays the authority. Beside the manifest, never inside it.
+    unavailable_connectors: z
+      .array(
+        z.object({
+          step_id: z.string(),
+          connector_id: z.string().uuid(),
+          connector_slug: z.string(),
+          connector_name: z.string(),
+          reason: z.enum(["disabled", "needs_reauth", "credential_unavailable"]),
+        }),
+      )
+      .optional(),
     // Why a declared folder was refused, in the terms a human can act on: the
     // key the step really wrote and the folder that does not contain it. The
     // manifest carries only the issue code; without this the reviewer is told
@@ -366,9 +383,21 @@ function translate(error: unknown): never {
     authority_revoked: 409,
     authority_preparation_ambiguous: 409,
     authority_preparation_failed: 409,
+    // A preparation run refused before its first step: the connector it names
+    // must be fixed, and the input it was given did not fit the workflow.
+    prepared_credential_unavailable: 409,
+    input_schema_violation: 400,
   };
+  const details = (error as { details?: unknown })?.details;
   if (typeof code === "string" && statuses[code])
-    throw new HttpError(statuses[code], code, (error as Error).message);
+    throw new HttpError(
+      statuses[code],
+      code,
+      (error as Error).message,
+      details && typeof details === "object" && !Array.isArray(details)
+        ? (details as Record<string, unknown>)
+        : undefined,
+    );
   throw error;
 }
 
