@@ -1,7 +1,8 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
+import { absolute, runHref } from "@/app/links";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n-context";
+import {
+  blockedSentenceKey,
+  blockingConnector,
+  connectorFix,
+  connectorLabel,
+  defaultEnvironment,
+  RUN_ENVIRONMENTS,
+  type RunEnvironment,
+  refusedConnector,
+  runPreviewKey,
+  type UnavailableConnector,
+} from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import {
   buildInput,
@@ -33,38 +46,83 @@ import {
   missingRequired,
 } from "@/lib/workflow-inputs";
 
-type Environment = "dev" | "prod";
-
 interface InputSchemaResponse {
   source: InputSchemaSource;
   schema: Record<string, unknown> | null;
 }
 
 interface RunOutcome {
-  execution?: { id?: string; status?: string };
+  execution_id?: string;
   status?: string;
+}
+
+type Failure =
+  | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
+  | { kind: "failed"; executionId: string | null };
+
+/**
+ * Whether each environment can run the version POST /v1/executions runs, as
+ * the authority preview says — a read, never a run, asked only while the
+ * dialog is open.
+ */
+function useRunAvailability(
+  workflowId: string,
+  versionId: string | null,
+  enabled: boolean,
+): { settled: boolean; blocked: Record<RunEnvironment, UnavailableConnector | null> } {
+  const previews = useQueries({
+    queries: RUN_ENVIRONMENTS.map((environment) => ({
+      queryKey: runPreviewKey(workflowId, versionId ?? "", environment),
+      enabled: enabled && versionId !== null,
+      retry: false,
+      queryFn: () =>
+        apiRequest<unknown>(
+          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId ?? "")}/authority-preview?environment=${environment}`,
+        ),
+    })),
+  });
+  return {
+    // Without a version there is nothing to ask; a failed read is settled too
+    // and blocks nothing.
+    settled: versionId === null || previews.every((preview) => !preview.isPending),
+    blocked: {
+      dev: blockingConnector(previews[0]?.data),
+      prod: blockingConnector(previews[1]?.data),
+    },
+  };
 }
 
 /**
  * Runs the workflow that is actually stored, in a chosen environment — as
  * opposed to the test run, which executes a temporary copy. Production is
  * never one click away: it takes a stated confirmation first.
+ *
+ * Before anything runs, each environment is checked against the version the
+ * run would use. One whose connector cannot serve it is offered disabled with
+ * the reason and the way to fix it — the dialog used to let the run start and
+ * print the engine's "internal error" instead.
  */
 export function RunWorkflowDialog({
   workflowId,
   workflowName,
   version,
+  versionId,
 }: {
   workflowId: string;
   workflowName: string;
   version: string | null;
+  /** The record's `current_version_id` — what POST /v1/executions runs, not the draft. */
+  versionId: string | null;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [environment, setEnvironment] = useState<Environment>("dev");
+  const [chosen, setChosen] = useState<RunEnvironment | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ status: string; executionId: string | null } | null>(
+    null,
+  );
+  const [failure, setFailure] = useState<Failure | null>(null);
 
   const schema = useQuery({
     queryKey: ["workflow", workflowId, "input-schema"],
@@ -76,13 +134,27 @@ export function RunWorkflowDialog({
   });
   const fields = inputFields(schema.data?.schema ?? null);
   const missing = missingRequired(fields, values);
+  const availability = useRunAvailability(workflowId, versionId, open);
+  // The reader's choice stands; until there is one, the first environment that
+  // can run — decided once both answers are in, never guessed before.
+  const environment =
+    chosen ?? (availability.settled ? defaultEnvironment(availability.blocked) : null);
+  const blockedHere = environment ? availability.blocked[environment] : null;
+
+  const environmentWord = (value: RunEnvironment) => t(`run.environment.${value}`);
+  const blockedSentence = (value: RunEnvironment, connector: UnavailableConnector) => {
+    const key = blockedSentenceKey(connector.reason);
+    return key
+      ? t(key, { environment: environmentWord(value), connector: connectorLabel(connector) })
+      : t("run.failed");
+  };
 
   const run = useMutation({
-    mutationFn: () =>
+    mutationFn: (target: RunEnvironment) =>
       apiRequest<RunOutcome>("/v1/executions", {
         method: "POST",
         // The environment travels as a header; the run body has no field for it.
-        headers: { "x-subkit-environment": environment },
+        headers: { "x-subkit-environment": target },
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
@@ -91,15 +163,36 @@ export function RunWorkflowDialog({
       }),
     onSuccess: (result) => {
       setConfirming(false);
-      const status = result.execution?.status ?? result.status;
+      setFailure(null);
       // Engine statuses are English identifiers; they get a word first.
-      setOutcome(status ? statusLabel(t, status) : t("run.started"));
+      setOutcome({
+        status: result.status ? statusLabel(t, result.status) : t("run.started"),
+        executionId: result.execution_id ?? null,
+      });
     },
-    onError: (error) => {
+    onError: (error, target) => {
       setConfirming(false);
-      setOutcome(error instanceof Error ? error.message : t("run.failed"));
+      setOutcome(null);
+      // Never the engine's own message: a sentence the reader can act on, and
+      // the run itself when one was recorded.
+      const refused = refusedConnector(error);
+      if (refused) {
+        setFailure({
+          kind: "connector",
+          environment: refused.environment ?? target,
+          connector: refused,
+        });
+        return;
+      }
+      const details = (error as { details?: Record<string, unknown> | null }).details;
+      setFailure({
+        kind: "failed",
+        executionId: typeof details?.execution_id === "string" ? details.execution_id : null,
+      });
     },
   });
+
+  const failureFix = failure?.kind === "connector" ? connectorFix(failure.connector) : null;
 
   return (
     <Dialog
@@ -109,6 +202,8 @@ export function RunWorkflowDialog({
         if (!next) {
           setConfirming(false);
           setOutcome(null);
+          setFailure(null);
+          setChosen(null);
         }
       }}
     >
@@ -128,21 +223,59 @@ export function RunWorkflowDialog({
 
         <Field>
           <FieldLabel htmlFor="workflow-run-environment">{t("run.environment")}</FieldLabel>
-          <Select value={environment} onValueChange={(next) => setEnvironment(next as Environment)}>
+          <Select
+            value={environment ?? ""}
+            onValueChange={(next) => {
+              setChosen(next as RunEnvironment);
+              setConfirming(false);
+              setFailure(null);
+            }}
+          >
             <SelectTrigger id="workflow-run-environment" data-testid="workflow-run-environment">
-              <SelectValue />
+              <SelectValue placeholder={t("common.loading")} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="dev" data-testid="workflow-run-environment-dev">
-                  {t("run.environment.dev")}
-                </SelectItem>
-                <SelectItem value="prod" data-testid="workflow-run-environment-prod">
-                  {t("run.environment.prod")}
-                </SelectItem>
+                {RUN_ENVIRONMENTS.map((value) => {
+                  const blocked = availability.blocked[value];
+                  return (
+                    <SelectItem
+                      key={value}
+                      value={value}
+                      disabled={blocked !== null}
+                      data-testid={`workflow-run-environment-${value}`}
+                    >
+                      {blocked ? blockedSentence(value, blocked) : environmentWord(value)}
+                    </SelectItem>
+                  );
+                })}
               </SelectGroup>
             </SelectContent>
           </Select>
+          {/* A closed select hides its options, so the reason stands here too. */}
+          {RUN_ENVIRONMENTS.map((value) => {
+            const blocked = availability.blocked[value];
+            if (!blocked) return null;
+            const fix = connectorFix(blocked);
+            return (
+              <p
+                key={value}
+                className="text-sm text-muted-foreground"
+                data-testid={`workflow-run-blocked-${value}`}
+              >
+                {blockedSentence(value, blocked)}.{" "}
+                {fix && (
+                  <a
+                    href={absolute(fix.href)}
+                    className="underline underline-offset-4"
+                    data-testid={`workflow-run-blocked-${value}-remedy`}
+                  >
+                    {t(fix.labelKey)}
+                  </a>
+                )}
+              </p>
+            );
+          })}
         </Field>
 
         {fields.length > 0 && (
@@ -184,8 +317,47 @@ export function RunWorkflowDialog({
 
         {outcome && (
           <p className="text-sm" data-testid="workflow-run-outcome">
-            {t("run.outcome", { outcome })}
+            {t("run.outcome", { outcome: outcome.status })}{" "}
+            {outcome.executionId && (
+              <a
+                href={absolute(runHref(outcome.executionId))}
+                className="underline underline-offset-4"
+                data-testid="workflow-run-outcome-link"
+              >
+                {t("run.failedWithLink")}
+              </a>
+            )}
           </p>
+        )}
+
+        {failure && (
+          <Alert variant="destructive" data-testid="workflow-run-error">
+            <AlertDescription>
+              <p>
+                {failure.kind === "connector"
+                  ? `${blockedSentence(failure.environment, failure.connector)}.`
+                  : t("run.failed")}
+              </p>
+              {failureFix && (
+                <a
+                  href={absolute(failureFix.href)}
+                  className="font-medium underline underline-offset-4"
+                  data-testid="workflow-run-error-remedy"
+                >
+                  {t(failureFix.labelKey)}
+                </a>
+              )}
+              {failure.kind === "failed" && failure.executionId && (
+                <a
+                  href={absolute(runHref(failure.executionId))}
+                  className="font-medium underline underline-offset-4"
+                  data-testid="workflow-run-error-run"
+                >
+                  {t("run.failedWithLink")}
+                </a>
+              )}
+            </AlertDescription>
+          </Alert>
         )}
 
         <DialogFooter>
@@ -193,14 +365,17 @@ export function RunWorkflowDialog({
             {t("common.cancel")}
           </Button>
           <Button
-            disabled={run.isPending || missing.length > 0}
+            disabled={
+              run.isPending || missing.length > 0 || environment === null || blockedHere !== null
+            }
             data-testid="workflow-run-submit"
             onClick={() => {
+              if (!environment) return;
               if (environment === "prod" && !confirming) {
                 setConfirming(true);
                 return;
               }
-              run.mutate();
+              run.mutate(environment);
             }}
           >
             {run.isPending

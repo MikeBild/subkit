@@ -8,13 +8,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, actorType, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
   assertExecutionAuthorityCurrent,
-  auditAdmissionRefusal,
   finalizeExecution,
   type RunExecutionSource,
   runExecution,
@@ -26,6 +25,7 @@ import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { admissionRefusal } from "./admission-errors.ts";
 import {
   type ClientDeclaredRunSource,
   RunBodySchema,
@@ -58,7 +58,8 @@ const runExecutionRoute = createRoute({
       content: { "application/json": { schema: ErrorSchema } },
     },
     409: {
-      description: "Execution authority or replay boundary no longer matches",
+      description:
+        "Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -222,32 +223,12 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
         }
       } catch (error) {
-        if ((error as Error).message?.startsWith("workflow not found"))
-          throw new NotFoundError("workflow");
-        const code = (error as { code?: string }).code;
-        if (code === "input_schema_violation")
-          throw new HttpError(400, code, (error as Error).message);
-        if (
-          code?.startsWith("execution_") ||
-          code === "workflow_version_unavailable" ||
-          code === "workflow_version_not_active" ||
-          code === "workflow_archived"
-        ) {
-          await auditAdmissionRefusal(
-            {
-              tenant_id: principal.tenant_id,
-              reason: code,
-              message: (error as Error).message,
-              workflow_id: body.workflow_id,
-              request_source,
-              actor_id: principal.id ?? null,
-              actor_type: actorType(principal),
-            },
-            db,
-          );
-          throw new HttpError(409, code, (error as Error).message);
-        }
-        throw error;
+        return admissionRefusal(error, {
+          db,
+          principal,
+          workflow_id: body.workflow_id,
+          request_source,
+        });
       }
       if (admitted.replayed && admitted.status !== "queued") {
         return c.json(
@@ -305,22 +286,36 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           202,
         );
       }
-      const result = await runExecution({
-        db,
-        tenant_id: principal.tenant_id,
-        source: {
-          kind: "saved",
-          workflow_id: body.workflow_id,
-          version_id: admitted.workflow_version_id,
-        },
-        input: admitted.input,
-        options: {
-          existing_execution_id: admitted.execution_id,
+      // A refusal before the first step — a connector the prepared run cannot
+      // use — is the same kind of answer as one at admission: a 409 that
+      // names what to fix, never a 500. The engine has already failed the row.
+      let result: Awaited<ReturnType<typeof runExecution>>;
+      try {
+        result = await runExecution({
+          db,
+          tenant_id: principal.tenant_id,
+          source: {
+            kind: "saved",
+            workflow_id: body.workflow_id,
+            version_id: admitted.workflow_version_id,
+          },
+          input: admitted.input,
+          options: {
+            existing_execution_id: admitted.execution_id,
+            principal,
+            execution_mode,
+            request_source,
+          },
+        });
+      } catch (error) {
+        return admissionRefusal(error, {
+          db,
           principal,
-          execution_mode,
+          workflow_id: body.workflow_id,
           request_source,
-        },
-      });
+          execution_id: admitted.execution_id,
+        });
+      }
       return c.json(
         {
           ...result,
