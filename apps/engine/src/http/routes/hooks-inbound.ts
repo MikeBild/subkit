@@ -10,8 +10,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/index.ts";
+import { HmacVerifierConfig } from "../../webhooks/inbound/verifiers/hmac.ts";
 import * as svc from "../../webhooks/index.ts";
-import { NotFoundError } from "../errors.ts";
+import { BadRequestError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -22,7 +23,7 @@ const InboundSchema = z
     tenant_id: z.string(),
     slug: z.string(),
     workflow_id: z.string(),
-    verifier: z.enum(["standard", "github", "stripe", "custom"]),
+    verifier: z.enum(["standard", "github", "stripe", "hmac", "custom"]),
     active: z.boolean(),
     /** Provenance — `crud` for direct API-managed bindings, `trigger`
      *  for rows reverse-bound by a workflow's `webhook` trigger.
@@ -42,7 +43,7 @@ const CreateBody = z
   .object({
     slug: z.string().min(1),
     workflow_id: z.string().uuid(),
-    verifier: z.enum(["standard", "github", "stripe", "custom"]),
+    verifier: z.enum(["standard", "github", "stripe", "hmac", "custom"]),
     secret: z.string().min(1),
     native_verifier_config: z.record(z.string(), z.unknown()).optional(),
     active: z.boolean().optional(),
@@ -152,6 +153,20 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+    // The hmac verifier is driven entirely by its config; reject a bad one
+    // here instead of storing a binding that denies every delivery.
+    let nativeConfig = body.native_verifier_config ?? null;
+    if (body.verifier === "hmac") {
+      const parsed = HmacVerifierConfig.safeParse(nativeConfig?.hmac);
+      if (!parsed.success) {
+        throw new BadRequestError(
+          `native_verifier_config.hmac is invalid: ${parsed.error.issues
+            .map((i) => `${i.path.join(".") || "hmac"}: ${i.message}`)
+            .join("; ")}`,
+        );
+      }
+      nativeConfig = { ...nativeConfig, hmac: parsed.data };
+    }
     const row = await svc.createInbound(
       {
         tenant_id: principal.tenant_id,
@@ -160,7 +175,7 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
         workflow_id: body.workflow_id,
         verifier: body.verifier === "custom" ? "standard" : body.verifier,
         secret: body.secret,
-        native_verifier_config: body.native_verifier_config ?? null,
+        native_verifier_config: nativeConfig,
         ...(body.active !== undefined ? { active: body.active } : {}),
       },
       db,

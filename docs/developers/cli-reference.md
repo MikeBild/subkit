@@ -731,10 +731,13 @@ Manage inbound webhook bindings
 
 #### `sk hooks create`
 
-Create an inbound webhook binding
+Create an inbound webhook binding. The signing secret is read from a file (or - for stdin), never from an argument.
 
+- `--slug` (string, required) — Public path: POST /v1/hooks/<slug>
 - `--workflow-id` (string, required) — Workflow id to bind
-- `--event` (string) — Event type filter
+- `--verifier` (string, default: standard) — Signature scheme: standard | github | stripe | hmac
+- `--secret-file` (string, required) — File holding the shared signing secret (- reads stdin)
+- `--config-file` (string) — JSON file for native_verifier_config, e.g. {"hmac": {...}} for the hmac verifier
 
 #### `sk hooks delete`
 

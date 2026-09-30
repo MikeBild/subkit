@@ -166,21 +166,63 @@ The `verify` value you write on the **trigger** is NOT the value stored in the
 | `github-hmac` | `github` | `{ source, events }` | GitHub (`X-Hub-Signature-256` header) |
 | `none` | `standard` | `{ source, events, skip: true }` | Standard verifier in **skip** mode — signature check bypassed |
 
-The stored `verifier` column is therefore always one of **`standard`, `github`,
-`stripe`** — never `none`. `verify: "none"` does not disable the verifier; it selects
+A trigger therefore only ever stores **`standard`, `github` or `stripe`** — never
+`none`. The fourth stored verifier, `hmac`, is only created through the CRUD API (see
+[Senders with their own HMAC scheme](#senders-with-their-own-hmac-scheme)). `verify: "none"` does not disable the verifier; it selects
 the `standard` verifier and sets `native_verifier_config.skip = true`, which makes the
 driver synthesize a normalized event (from the `webhook-*` headers, or a body hash)
 and skip the signature check. This is the only place `skip` is honored.
 
 > **Do NOT set `verifier: "none"` (or any value outside `standard` / `github` /
-> `stripe`) on a `webhooks_inbound` row.** At ingress the driver looks up
+> `stripe` / `hmac`) on a `webhooks_inbound` row.** At ingress the driver looks up
 > `VERIFIERS[row.verifier]`; an unrecognized value has no verifier, so the request is
 > denied with `reason: "unknown_verifier"` and **HTTP 401** before any workflow runs.
 > The authenticated CRUD endpoint (`POST /v1/webhooks/inbound`) only accepts
-> `verifier ∈ { standard, github, stripe, custom }` (`custom` is an alias that stores
+> `verifier ∈ { standard, github, stripe, hmac, custom }` (`custom` is an alias that stores
 > `standard`) — a literal `"none"` is rejected by request validation. To reproduce the
 > trigger's `verify: "none"` behaviour via CRUD, create the row with
 > `verifier: "standard"` and `native_verifier_config: { "skip": true }`.
+
+### Senders with their own HMAC scheme
+
+Some senders sign with a shared-secret HMAC but use neither the Standard Webhooks,
+GitHub nor Stripe header layout. Bind them with `verifier: "hmac"` and describe the
+sender's scheme in `native_verifier_config.hmac`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `signature_header` | yes | Header carrying the signature. |
+| `id_header` | yes | Header with a per-delivery id that stays the same across retries — the replay-dedup key. |
+| `signature_prefix` | no (`""`) | Literal prefix stripped before decoding, e.g. `v1=`. |
+| `encoding` | no (`hex`) | Digest encoding: `hex` or `base64`. |
+| `signed_payload` | no (`{body}`) | Template of the signed string. Placeholders: `{timestamp}`, `{id}`, `{body}` (required). |
+| `timestamp_header` | when the template uses `{timestamp}` | Unix-seconds header; turns on the replay window. |
+| `tolerance_seconds` | no (`300`) | Allowed clock skew for `timestamp_header`. |
+| `type_header` / `type_field` | no | Event type from a header, or from a top-level field of the JSON body. Without either the type is `"unknown"`. |
+
+The digest is always HMAC-SHA256 with the stored secret as the key, computed over the
+raw body exactly as received. `POST /v1/webhooks/inbound` rejects an invalid `hmac`
+object with **400**, so a misconfigured binding is never stored. Example for a sender
+that sends `X-Example-Signature: v1=<hex(HMAC(secret, "v1:<timestamp>:<body>"))>`:
+
+```bash
+cat > hmac.json <<'JSON'
+{
+  "hmac": {
+    "signature_header": "X-Example-Signature",
+    "signature_prefix": "v1=",
+    "signed_payload": "v1:{timestamp}:{body}",
+    "timestamp_header": "X-Example-Timestamp",
+    "id_header": "X-Example-Message-Id",
+    "type_field": "eventType"
+  }
+}
+JSON
+sk hooks create --slug example-events --workflow-id <workflow-id> \
+  --verifier hmac --secret-file ./signing-secret.txt --config-file ./hmac.json
+```
+
+The secret is read from a file (`-` for stdin), never from a command-line argument.
 
 ### Public ingress: `POST /v1/hooks/{slug}`
 
@@ -252,7 +294,10 @@ Denial reasons you may see as `401 { error: "denied", reason: … }`:
 | `missing_standard_webhooks_headers` | One of `webhook-id` / `webhook-timestamp` / `webhook-signature` absent. |
 | `bad_signature` | HMAC did not match — wrong or unsynced shared secret. |
 | `timestamp_outside_window` | `webhook-timestamp` more than 5 min from engine clock. |
-| `unknown_verifier` | Stored `verifier` is not `standard`/`github`/`stripe` (e.g. someone set `none`). The 401 body includes a `hint` naming the accepted values and the `verify: "none" → standard + skip` mapping. |
+| `missing_hmac_headers` | `hmac` verifier: the configured signature or id header is absent. |
+| `bad_hmac_signature_format` | `hmac` verifier: wrong prefix, or the digest is not valid `hex`/`base64` of the right length. |
+| `bad_hmac_config` | `hmac` verifier: the stored `native_verifier_config.hmac` is invalid. |
+| `unknown_verifier` | Stored `verifier` is not `standard`/`github`/`stripe`/`hmac` (e.g. someone set `none`). The 401 body includes a `hint` naming the accepted values and the `verify: "none" → standard + skip` mapping. |
 | `event_not_subscribed` | `webhook-type` not in the workflow's non-empty `events[]`. |
 | `inactive` | The binding row is disabled (`active = false`). |
 
