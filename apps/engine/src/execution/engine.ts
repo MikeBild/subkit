@@ -174,10 +174,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     const execution_id = p.options?.existing_execution_id;
     if (execution_id) {
       const { code, details } = error as { code?: unknown; details?: unknown };
-      const step_id =
+      const named =
         details && typeof details === "object" && !Array.isArray(details)
-          ? (details as { step_id?: unknown }).step_id
-          : null;
+          ? (details as { step_id?: unknown; connector_id?: unknown; reason?: unknown })
+          : {};
+      // Only the connector refusal is announced as refused: every other early
+      // throw (input schema, depth, definition) is a failure someone may have
+      // to act on, and keeps its `execution.failed`.
+      const refused = code === "prepared_credential_unavailable";
       // A finalize that cannot be written (database gone) must not replace the
       // refusal the caller is about to report; the queue worker retries its own.
       await finalizeExecution(
@@ -187,11 +191,22 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         "failed",
         null,
         {
-          step_id: typeof step_id === "string" ? step_id : null,
+          step_id: typeof named.step_id === "string" ? named.step_id : null,
           error_code: typeof code === "string" ? code : "execution_error",
           error_message: error instanceof Error ? error.message : String(error),
+          ...(refused && typeof named.reason === "string"
+            ? {
+                connector: {
+                  connector_id: typeof named.connector_id === "string" ? named.connector_id : null,
+                  reason: named.reason,
+                },
+              }
+            : {}),
         },
         ["queued"],
+        null,
+        "none",
+        refused,
       ).catch(() => undefined);
     }
     throw error;

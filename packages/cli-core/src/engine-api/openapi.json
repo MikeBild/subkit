@@ -9298,16 +9298,40 @@
                       "aborted",
                       "connector_missing",
                       "budget_exhausted",
+                      "connector_unavailable",
+                      "refused_before_start",
                       "driver_error",
                       "preview_unsupported",
                       "unknown",
                       null
                     ]
+                  },
+                  "connector": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "connector_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "connector_id",
+                      "reason"
+                    ]
                   }
                 },
                 "required": [
                   "step_key",
-                  "cause_class"
+                  "cause_class",
+                  "connector"
                 ]
               }
             },
@@ -9474,6 +9498,8 @@
               "aborted",
               "connector_missing",
               "budget_exhausted",
+              "connector_unavailable",
+              "refused_before_start",
               "driver_error",
               "preview_unsupported",
               "unknown",
@@ -9484,6 +9510,27 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "connector": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "connector_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "connector_id",
+              "reason"
             ]
           },
           "steps": {
@@ -9532,6 +9579,7 @@
           "failed_step",
           "cause_class",
           "error_code",
+          "connector",
           "steps",
           "output_contract"
         ]
@@ -12786,6 +12834,8 @@
                   "aborted",
                   "connector_missing",
                   "budget_exhausted",
+                  "connector_unavailable",
+                  "refused_before_start",
                   "driver_error",
                   "preview_unsupported",
                   "unknown"
@@ -18851,6 +18901,8 @@
           "aborted",
           "connector_missing",
           "budget_exhausted",
+          "connector_unavailable",
+          "refused_before_start",
           "driver_error",
           "preview_unsupported",
           "unknown"
@@ -19222,6 +19274,8 @@
               "aborted",
               "connector_missing",
               "budget_exhausted",
+              "connector_unavailable",
+              "refused_before_start",
               "driver_error",
               "preview_unsupported",
               "unknown",
@@ -20189,6 +20243,8 @@
                             "aborted",
                             "connector_missing",
                             "budget_exhausted",
+                            "connector_unavailable",
+                            "refused_before_start",
                             "driver_error",
                             "preview_unsupported",
                             "unknown",
@@ -22113,6 +22169,7 @@
             "enum": [
               "execution.succeeded",
               "execution.failed",
+              "execution.refused",
               "workflow.updated",
               "connector.oauth.refreshed",
               "connector.oauth.callback_succeeded",

@@ -20,6 +20,7 @@
 // The grammar is defined here, next to the driver that owns the slug half
 // of it, and enforced by `connectors_slug_shape_check` in the database.
 
+import type { AuditActorType } from "../../audit/types.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -34,6 +35,7 @@ import { type McpConnectorRow, parseAuthConfig } from "../../mcp/client/registry
 import { MCP_WIRE_METHOD, type RemoteCall } from "../../mcp/client/remote-call.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { McpConnectorConfigSchema } from "../config-schemas.ts";
+import type { EgressInput } from "../egress.ts";
 import { CONNECTOR_SLUG_RE, type ConnectorView } from "../types.ts";
 import type { DriverProbeResult, ProbeErrorCode } from "./index.ts";
 
@@ -370,6 +372,45 @@ export interface McpInvokeResult {
   /** For a tool call, the model-facing name this call would be addressed
    *  by. Absent for the two operations that address no tool. */
   tool_name?: string;
+}
+
+/**
+ * The egress record of one MCP operation, whichever surface issued it. A
+ * workflow step and a chat palette entry both wrap their call in
+ * `withEgressAudit` with this input, so "what left the tenant" reads the same
+ * for both. The pool's `mcp_external_tool.invoked` row stays the one a call
+ * COUNTS by; this row answers the egress question and is not counted.
+ */
+export function mcpEgressInput(p: {
+  executor: Db;
+  tenant_id: string;
+  actor_id: string | null;
+  actor_type: AuditActorType;
+  connector: { id: string; slug: string; url: string | null };
+  call: RemoteCall;
+  source: NonNullable<EgressInput["source"]>;
+  execution_id?: string | null;
+  workflow_id?: string | null;
+  step_id?: string | null;
+}): EgressInput {
+  return {
+    executor: p.executor,
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    actor_type: p.actor_type,
+    connector_id: p.connector.id,
+    connector_slug: p.connector.slug,
+    driver: "mcp",
+    // Resolved inside the pool, which owns the session and its credential;
+    // the wrapper never sees the row id.
+    credential_id: null,
+    operation: MCP_WIRE_METHOD[p.call.operation],
+    url: p.connector.url,
+    source: p.source,
+    ...(p.execution_id !== undefined ? { execution_id: p.execution_id } : {}),
+    ...(p.workflow_id !== undefined ? { workflow_id: p.workflow_id } : {}),
+    ...(p.step_id !== undefined ? { step_id: p.step_id } : {}),
+  };
 }
 
 /**

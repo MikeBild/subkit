@@ -11,6 +11,7 @@ describe("executionOutcomeLine", () => {
         failed_step: { step_key: "fetch", kind: "request" },
         cause_class: "auth_failed",
         error_code: "http_4xx",
+        connector: null,
         steps,
         output_contract: "none",
       }),
@@ -25,6 +26,7 @@ describe("executionOutcomeLine", () => {
       failed_step: null,
       cause_class: null,
       error_code: null,
+      connector: null,
       steps: { total: 2, succeeded: 1, failed: 0, held: 1, skipped: 0 },
       output_contract: "none",
     });

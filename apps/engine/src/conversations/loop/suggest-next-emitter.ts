@@ -7,18 +7,19 @@
 //   - Called exactly once per turn, AFTER `events.push({ type:
 //     "completed", ... })` and BEFORE the SSE outcome envelope.
 //   - Builds the suggestion-service params from the buffered events
-//     plus a default Anthropic-Haiku model invoker.
+//     plus the default suggestion-model invoker on the tenant route.
 //   - Returns the `next_suggestion` TurnEvent for the loop to push.
 //   - NEVER throws — a swallowed failure becomes `{ suggestion: null,
 //     reason: "error" }` so the parent turn always closes cleanly.
 
-import { generateText, type LanguageModel, type ModelMessage } from "ai";
 import { and, desc, eq } from "drizzle-orm";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
-import { initializeModel } from "../../llm/core/model-init.ts";
+import { AiSdkModel } from "../../llm/core/ai-sdk-model.ts";
+import { resolveModelRoute } from "../../llm/core/invoke.ts";
+import { detectConfiguredProvider, ProviderMisconfiguredError } from "../../llm/core/model-init.ts";
 import type { RecentMessage } from "../../llm/core/suggestion-prompt.ts";
 import { logger } from "../../logging/logger.ts";
 import { nextSuggestion } from "../streaming.ts";
@@ -140,7 +141,7 @@ export async function buildNextSuggestionFrame(
       conversation_id: params.conversation_id,
       recent_messages: recent,
       last_assistant_text: lastAssistantText,
-      model_invoker: params.model_invoker ?? defaultSuggestNextModelInvoker,
+      model_invoker: params.model_invoker ?? suggestNextModelInvoker(params.db),
     };
     if (params.client_suppress !== undefined) callParams.client_suppress = params.client_suppress;
     if (params.loaded_skills) callParams.loaded_skills = params.loaded_skills;
@@ -356,73 +357,76 @@ function extractTextRaw(content: unknown): string {
 }
 
 /**
- * Default model invoker — direct AI SDK call with a small Haiku-class
- * model and a 30-token output cap. Bypasses the heavy AiSdkModel
- * wrapper because suggestion generation never needs fallback,
- * tool-loop iteration, or context assembly. Provider misconfiguration
- * collapses to `text: null` so the suggestion service emits
- * `reason: "empty"` and the turn closes cleanly.
+ * Default model invoker — the small `suggestion_model` with a 30-token
+ * output cap, on the tenant's route: the same provider and key as the main
+ * turn, and the same fallback model and provider. A refused primary (usage
+ * limit, overload) is retried on the fallback inside `AiSdkModel` under the
+ * one rule every LLM caller shares, so the suggestion survives exactly the
+ * outages the turn itself survives. Provider misconfiguration collapses to
+ * `text: null` so the suggestion service emits `reason: "empty"` and the
+ * turn closes cleanly.
  *
  * Design note: do NOT route this through `core/invoke.ts` /
  * `assembleContext`. That path pulls in skills, knowledge, docs,
  * runtime context, and a full system prompt — exactly the wiring the
  * `suggestion-prompt.ts` assembler is designed to avoid. Re-routing
  * would re-introduce the 1M-token empty-turn class of bug we already
- * fought once. The structural casts on `messages` / `model` below
- * (lines through `unknown` to `ModelMessage` / `LanguageModel`) are
- * load-bearing here: they bridge the engine's `SubkitLlmMessage`
- * shape to the AI SDK's `ModelMessage` without a runtime adapter.
+ * fought once. `AiSdkModel` is the model call alone, without that
+ * assembly.
  */
-const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
-  call: SuggestNextModelInvocation,
-): Promise<SuggestNextModelResult> => {
-  let resolved: Awaited<ReturnType<typeof initializeModel>>;
-  try {
-    const modelId = getConfig(call.tenant_id).llm.suggestion_model;
-    // Pass the tenant so provider + key resolution matches the main turn.
-    // Without it, `initializeModel` reads global config and threw
-    // `invalid x-api-key` on every turn (conversation 661e7ad1) even
-    // though the main turn's model call succeeded.
-    resolved = await initializeModel({ defaultModel: modelId, tenantId: call.tenant_id });
-  } catch (err) {
-    logger.warn({
-      module: "conversations",
-      action: "suggest_next.model_init_failed",
-      msg: "could not resolve suggestion model — emitting empty",
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { text: null };
-  }
-  if (resolved.provider === "mock") return { text: null };
+function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
+  return async (call: SuggestNextModelInvocation): Promise<SuggestNextModelResult> => {
+    // Tenant-scoped resolution throughout: without the tenant the provider
+    // and key came from global config and threw `invalid x-api-key` on every
+    // turn (conversation 661e7ad1) while the main turn's call succeeded.
+    if (detectConfiguredProvider({ tenantId: call.tenant_id }) === "mock") return { text: null };
+    let model: AiSdkModel;
+    try {
+      const route = await resolveModelRoute(call.tenant_id, db);
+      if (route.provider === "mock") return { text: null };
+      const suggestionModel = getConfig(call.tenant_id).llm.suggestion_model;
+      model = new AiSdkModel({
+        tenantId: call.tenant_id,
+        providerOverride: route.provider,
+        defaultModel: suggestionModel,
+        modelOverride: suggestionModel,
+        fallback: {
+          tenantId: call.tenant_id,
+          providerOverride: route.fallback_provider,
+          defaultModel: route.fallback,
+          modelOverride: route.fallback,
+        },
+      });
+    } catch (err) {
+      return modelInitFailed(err);
+    }
 
-  // SubkitLlmMessage and ai-sdk's `ModelMessage` are structurally
-  // compatible — both `{ role, content }` with the same role enum
-  // and a string-or-parts content. The cast goes through `unknown`
-  // to satisfy the no-any rule while documenting the boundary.
-  // `resolved.model` is typed as the engine's wrapper-friendly
-  // `LanguageModel | string` union; here we only land in this branch
-  // when `provider !== "mock"`, so it is always the real
-  // `LanguageModel`.
-  const messages = call.messages as unknown as ModelMessage[];
-  const model = resolved.model as unknown as LanguageModel;
-  const result = await generateText({
-    model,
-    system: call.system,
-    messages,
-    // The replayed converse `messages` may include a {role:"system"} entry
-    // (memory injection / date prepend); AI SDK 7 rejects those unless opted in.
-    allowSystemInMessages: true,
-    maxOutputTokens: SUGGEST_MAX_OUTPUT_TOKENS,
-    temperature: SUGGEST_TEMPERATURE,
-  });
-  return {
-    text: result.text ?? null,
-    model: resolved.modelId,
-    usage: {
-      input_tokens: Number(result.usage?.inputTokens ?? 0),
-      output_tokens: Number(result.usage?.outputTokens ?? 0),
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
-    },
+    let result: Awaited<ReturnType<AiSdkModel["generateText"]>>;
+    try {
+      result = await model.generateText(
+        [{ role: "system", content: call.system }, ...call.messages],
+        { temperature: SUGGEST_TEMPERATURE, maxOutputTokens: SUGGEST_MAX_OUTPUT_TOKENS },
+      );
+    } catch (err) {
+      // The model resolves on first use, so a misconfigured provider
+      // surfaces here rather than at construction.
+      if (err instanceof ProviderMisconfiguredError) return modelInitFailed(err);
+      throw err;
+    }
+    return {
+      text: result.response || null,
+      model: result.model_used,
+      usage: result.usage,
+    };
   };
-};
+}
+
+function modelInitFailed(err: unknown): SuggestNextModelResult {
+  logger.warn({
+    module: "conversations",
+    action: "suggest_next.model_init_failed",
+    msg: "could not resolve suggestion model — emitting empty",
+    error: err instanceof Error ? err.message : String(err),
+  });
+  return { text: null };
+}

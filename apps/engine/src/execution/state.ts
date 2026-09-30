@@ -253,6 +253,14 @@ export interface ExecutionFailureDetail {
   step_id: string | null;
   error_code: string;
   error_message: string;
+  /** A run refused for a connector: which one, as resolved in the run's
+   *  environment, and why it cannot serve — so a reader can open it. */
+  connector?: RefusedConnector;
+}
+
+export interface RefusedConnector {
+  connector_id: string | null;
+  reason: string;
 }
 
 // Non-terminal statuses. A finalize may only move a row OUT of one of
@@ -277,6 +285,11 @@ export async function finalizeExecution(
   // engine's own completion knows it; every other terminal path (cancel,
   // timeout, crash) evaluated nothing and records `none`.
   output_contract: OutputContractVerdict = "none",
+  // A run refused before its first step closes `failed` like any other, but
+  // is announced as `execution.refused`: the caller was told the moment it
+  // asked, nothing ran, and `execution.failed` is what puts a run in a
+  // person's inbox. The refusal itself is audited where it is answered.
+  refused = false,
 ): Promise<void> {
   // workflow_id is NULL for draft and step runs; observability code must
   // handle the null case (e.g. report duration without workflow breakdown).
@@ -321,7 +334,7 @@ export async function finalizeExecution(
     await writeEvent(tx, {
       tenant_id,
       channel: "execution.status",
-      type: `execution.${status}`,
+      type: refused ? "execution.refused" : `execution.${status}`,
       payload: {
         execution_id,
         status,
