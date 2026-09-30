@@ -2524,6 +2524,7 @@ const EN = {
   "notifications.eventArea.repair": "repairs",
   "notifications.event.execution.succeeded": "Successful runs",
   "notifications.event.execution.failed": "Failed runs",
+  "notifications.event.execution.refused": "Runs refused before start",
   "notifications.event.workflow.updated": "Workflow changed",
   "notifications.event.connector.oauth.refreshed": "Connector sign-in renewed",
   "notifications.event.connector.oauth.callback_succeeded": "Connector sign-in completed",
@@ -5575,6 +5576,7 @@ const DE: Record<TranslationKey, string> = {
   "notifications.eventArea.repair": "Reparaturen",
   "notifications.event.execution.succeeded": "Erfolgreiche Läufe",
   "notifications.event.execution.failed": "Fehlgeschlagene Läufe",
+  "notifications.event.execution.refused": "Vor dem Start abgelehnte Läufe",
   "notifications.event.workflow.updated": "Workflow geändert",
   "notifications.event.connector.oauth.refreshed": "Anmeldung beim Connector erneuert",
   "notifications.event.connector.oauth.callback_succeeded":

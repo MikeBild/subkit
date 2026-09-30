@@ -63,6 +63,7 @@ const EVENT_AREA_KEYS: Readonly<Record<string, TranslationKey>> = {
 const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
   "execution.succeeded": "notifications.event.execution.succeeded",
   "execution.failed": "notifications.event.execution.failed",
+  "execution.refused": "notifications.event.execution.refused",
   "workflow.updated": "notifications.event.workflow.updated",
   "connector.oauth.refreshed": "notifications.event.connector.oauth.refreshed",
   "connector.oauth.callback_succeeded": "notifications.event.connector.oauth.callback_succeeded",
