@@ -16,7 +16,7 @@ import {
   type PersistedFailureClass,
   type PreviewClassification,
 } from "./classify.ts";
-import type { OutputContractVerdict } from "./state.ts";
+import type { OutputContractVerdict, RefusedConnector } from "./state.ts";
 
 export type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
 
@@ -25,6 +25,8 @@ export interface ExecutionOutcome {
   failed_step: { step_key: string; kind: string } | null;
   cause_class: PreviewClassification | null;
   error_code: string | null;
+  /** The connector a refused run named, so a reader can open and reconnect it. */
+  connector: RefusedConnector | null;
   steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
   output_contract: OutputContractVerdict;
 }
@@ -33,6 +35,7 @@ export interface ExecutionOutcome {
 export interface ExecutionFailureSummary {
   step_key: string | null;
   cause_class: PreviewClassification | null;
+  connector: RefusedConnector | null;
 }
 
 type ExecutionRow = typeof executions.$inferSelect;
@@ -88,6 +91,16 @@ export function pickStoppingStep<
     if (named.length > 0) return named[named.length - 1] ?? null;
   }
   return failed[failed.length - 1] ?? null;
+}
+
+/** The connector a run was refused for, as the refusal recorded it on the row. */
+export function refusedConnector(failure: ExecutionRow["failure"]): RefusedConnector | null {
+  const connector = failure?.connector;
+  if (!connector || typeof connector.reason !== "string") return null;
+  return {
+    connector_id: typeof connector.connector_id === "string" ? connector.connector_id : null,
+    reason: connector.reason,
+  };
 }
 
 /**
@@ -163,6 +176,7 @@ export function deriveExecutionOutcome(
     failed_step,
     cause_class: cause?.classification ?? null,
     error_code: cause?.error_code ?? null,
+    connector: kind === "failed" ? refusedConnector(exec.failure) : null,
     steps: { total: rows.length + unrun, succeeded, failed, held, skipped },
     output_contract:
       exec.output_contract && OUTPUT_CONTRACT_VERDICTS.has(exec.output_contract)
@@ -266,6 +280,7 @@ export async function loadFailureSummaries(
     out.set(exec.id, {
       step_key: stopping?.step_key ?? exec.failure?.step_id ?? null,
       cause_class: cause?.classification ?? null,
+      connector: refusedConnector(exec.failure),
     });
   }
   return out;

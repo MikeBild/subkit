@@ -18,7 +18,7 @@ import {
 } from "../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { invalidateTenantState } from "../operator/index.ts";
-import { createSkill } from "../skills/service.ts";
+import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
 import { skillReviewDigest, toView } from "./candidate-view.ts";
 import {
@@ -855,6 +855,13 @@ export async function approveSkillCandidate(
       .where(eq(skillCandidates.id, p.candidate_id))
       .returning();
 
+    // An active connector-capability skill replaces the one an earlier
+    // catalog produced; a draft waits for its own activation to do so.
+    const retired_skill_ids =
+      skill.status === "active"
+        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill.id, p.actor_id ?? null)
+        : [];
+
     await auditAwait(
       {
         tenant_id: p.tenant_id,
@@ -867,6 +874,7 @@ export async function approveSkillCandidate(
         metadata: {
           promoted_skill_id: skill.id,
           pattern_kind: row.pattern_kind,
+          ...(retired_skill_ids.length > 0 ? { retired_skill_ids } : {}),
         },
       },
       tx,

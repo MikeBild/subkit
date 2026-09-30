@@ -12,6 +12,7 @@ import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { remedyFor } from "@/lib/remedy";
+import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
 import { isExecutionRecord, latestFailedRun, stepConnectorId } from "@/pages/runs-model";
@@ -121,6 +122,8 @@ export function WorkflowCause({
     workflowId,
     executionId: failedRun?.id ?? null,
     patch: patch.data?.items?.[0] ?? null,
+    // A run refused for its connector ran no step; the list row carries the
+    // connector the refusal named.
     authState: connectorId
       ? {
           connectorId,
@@ -129,7 +132,9 @@ export function WorkflowCause({
               ? connectorAuthState(connector.data)
               : "unproven",
         }
-      : null,
+      : cause === "connector_unavailable"
+        ? refusedSignIn(failure?.connector)
+        : null,
     canRun: permissions.includes("workflow:run"),
     canChat: permissions.includes("conversation:write"),
     prompt: t("remedy.chatPrompt"),

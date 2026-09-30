@@ -19285,7 +19285,11 @@ export interface components {
             failure: {
                 step_key: string | null;
                 /** @enum {string|null} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                connector: {
+                    connector_id: string | null;
+                    reason: string;
+                } | null;
             } | null;
         };
         Execution: {
@@ -19320,8 +19324,12 @@ export interface components {
                 kind: string;
             } | null;
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown" | null;
             error_code: string | null;
+            connector: {
+                connector_id: string | null;
+                reason: string;
+            } | null;
             steps: {
                 total: number;
                 succeeded: number;
@@ -20168,7 +20176,7 @@ export interface components {
                 /** @description Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error. */
                 code: string;
                 /** @enum {string} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown";
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown";
             } | null;
             /** @description Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing. */
             recorded: boolean;
@@ -21593,7 +21601,7 @@ export interface components {
             guidance: string | null;
         };
         /** @enum {string} */
-        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown";
+        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown";
         OperatorDigestPatch: {
             id: string;
             workflow_id: string | null;
@@ -21673,7 +21681,7 @@ export interface components {
                 name: string | null;
             } | null;
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown" | null;
             counts: {
                 patches?: number;
                 failures?: number;
@@ -21879,7 +21887,7 @@ export interface components {
                         /** @description Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording. */
                         detail: string | null;
                         /** @enum {string|null} */
-                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "driver_error" | "preview_unsupported" | "unknown" | null;
                         drilldown: {
                             path: string;
                             label_id: string;
@@ -22324,7 +22332,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
+            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
             payload: {
                 [key: string]: unknown;
             };

@@ -24,9 +24,10 @@ import { logger } from "../../logging/logger.ts";
 import { recordLlmFallbackInvocation } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../../observability/tracing.ts";
-import { classifyProviderError, isFallbackEligible } from "../provider-errors.ts";
+import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type {
   SubkitLlm,
+  SubkitLlmAnsweredBy,
   SubkitLlmMessage,
   SubkitLlmObjectGeneratorInput,
   SubkitLlmObjectResponse,
@@ -281,7 +282,8 @@ export class AiSdkModel implements SubkitLlm {
     metadata?: SubkitLlmTelemetryMetadata;
     /** Optional caller abort signal; merged with the per-call timeout. */
     signal?: AbortSignal;
-  }): Promise<Awaited<ReturnType<typeof generateText>>> {
+    maxOutputTokens?: number;
+  }): Promise<SubkitLlmAnsweredBy & { result: Awaited<ReturnType<typeof generateText>> }> {
     const primary = await this.ensureInit();
     // Bound EVERY provider round-trip: a per-call hard timeout merged with the
     // optional caller signal. Even with no caller signal, the call cannot
@@ -308,6 +310,7 @@ export class AiSdkModel implements SubkitLlm {
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
     if (params.toolChoice) callOpts.toolChoice = params.toolChoice;
+    if (params.maxOutputTokens !== undefined) callOpts.maxOutputTokens = params.maxOutputTokens;
     if (params.metadata) {
       // AI SDK 7 dropped TelemetryOptions.metadata; the replacement is a
       // typed runtimeContext surfaced into telemetry via includeRuntimeContext.
@@ -327,23 +330,26 @@ export class AiSdkModel implements SubkitLlm {
       // `generateText` returns a resolved result object (no streaming here),
       // so the instrument bracket is behaviour-transparent — it times the
       // primary model round-trip and rethrows on provider error.
-      return await instrument({
+      const result = await instrument({
         module: "llm",
         action: "model.call",
         fields: { model: primary.modelId },
         fn: () => this.gt(callOpts),
       });
+      return { result, model_used: primary.modelId, fell_back: false };
     } catch (err) {
       // A timed-out or caller-aborted call surfaces as a clean typed error
       // (mapped to `timeout` by classifyProviderError) rather than a hang. We
       // do NOT fall back here: the timeout already represents a wedged call,
       // and a caller abort means the work is no longer wanted.
       if (isAbortError(err)) throw new LlmCallAbortedError(timeoutMs, isCallerAborted());
-      if (!this.fallbackResolved || !isFallbackEligible(err)) throw err;
-      const kind = classifyProviderError(err);
-      if (kind === "quota_exhausted" && this.fallbackResolved.provider === primary.provider) {
+      if (
+        !this.fallbackResolved ||
+        !shouldFallBack(err, primary.provider, this.fallbackResolved.provider)
+      ) {
         throw err;
       }
+      const kind = classifyProviderError(err);
       recordLlmFallbackInvocation({
         from: primary.modelId,
         to: this.fallbackResolved.modelId,
@@ -361,13 +367,20 @@ export class AiSdkModel implements SubkitLlm {
         ...callOpts,
         model: this.fallbackResolved.model,
       };
+      const fallbackModelId = this.fallbackResolved.modelId;
       try {
-        return await instrument({
+        const result = await instrument({
           module: "llm",
           action: "model.call",
-          fields: { model: this.fallbackResolved.modelId },
+          fields: { model: fallbackModelId },
           fn: () => this.gt(fbOpts),
         });
+        return {
+          result,
+          model_used: fallbackModelId,
+          fell_back: true,
+          primary_error: err instanceof Error ? err.message : String(err),
+        };
       } catch (fbErr) {
         if (isAbortError(fbErr)) throw new LlmCallAbortedError(timeoutMs, isCallerAborted());
         throw fbErr;
@@ -381,6 +394,7 @@ export class AiSdkModel implements SubkitLlm {
       temperature?: number;
       metadata?: SubkitLlmTelemetryMetadata;
       signal?: AbortSignal;
+      maxOutputTokens?: number;
     },
   ): Promise<SubkitLlmResponse> {
     const prepared = withCurrentDate(messages);
@@ -390,12 +404,14 @@ export class AiSdkModel implements SubkitLlm {
     };
     if (opts?.metadata) params.metadata = opts.metadata;
     if (opts?.signal) params.signal = opts.signal;
-    const result = await this.callWithFallback(params);
+    if (opts?.maxOutputTokens !== undefined) params.maxOutputTokens = opts.maxOutputTokens;
+    const { result, ...answeredBy } = await this.callWithFallback(params);
     const newMessages = [
       ...prepared,
       ...((result.response.messages as unknown as SubkitLlmMessage[]) ?? []),
     ];
     return {
+      ...answeredBy,
       response: result.text,
       messages: newMessages,
       finish_reason: (result.finishReason ?? "stop") as SubkitLlmResponse["finish_reason"],
@@ -430,6 +446,9 @@ export class AiSdkModel implements SubkitLlm {
       cache_creation_tokens: 0,
     };
 
+    // The model of the last answered iteration carries the result; a loop that
+    // fell back on any iteration fell back, and keeps the refusal that moved it.
+    let answeredBy: SubkitLlmAnsweredBy = { model_used: this.modelId, fell_back: false };
     const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
     let attempts = 0;
     while (finalResult === undefined && abortReason === undefined) {
@@ -439,6 +458,7 @@ export class AiSdkModel implements SubkitLlm {
           response: `max_attempts_exceeded after ${attempts} tool-loop iterations`,
           messages: convo,
           usage: aggregatedUsage,
+          ...answeredBy,
         };
       }
       attempts += 1;
@@ -451,7 +471,13 @@ export class AiSdkModel implements SubkitLlm {
       if (temperature !== undefined) cwfParams.temperature = temperature;
       if (input.metadata) cwfParams.metadata = input.metadata;
       if (input.signal) cwfParams.signal = input.signal;
-      const result = await this.callWithFallback(cwfParams);
+      const { result, ...answered } = await this.callWithFallback(cwfParams);
+      const primaryError = answeredBy.primary_error ?? answered.primary_error;
+      answeredBy = {
+        model_used: answered.model_used,
+        fell_back: answeredBy.fell_back || answered.fell_back,
+        ...(primaryError !== undefined ? { primary_error: primaryError } : {}),
+      };
 
       aggregatedUsage = {
         input_tokens: aggregatedUsage.input_tokens + Number(result.usage?.inputTokens ?? 0),
@@ -472,6 +498,7 @@ export class AiSdkModel implements SubkitLlm {
           response: `LLM finished abnormally: ${result.finishReason}`,
           messages: convo,
           usage: aggregatedUsage,
+          ...answeredBy,
         };
       }
 
@@ -500,6 +527,7 @@ export class AiSdkModel implements SubkitLlm {
           response: "no tool calls produced by model",
           messages: convo,
           usage: aggregatedUsage,
+          ...answeredBy,
         };
       }
     }
@@ -510,6 +538,7 @@ export class AiSdkModel implements SubkitLlm {
         response: abortReason,
         messages: convo,
         usage: aggregatedUsage,
+        ...answeredBy,
       };
     }
 
@@ -518,6 +547,7 @@ export class AiSdkModel implements SubkitLlm {
       response: finalResult as T,
       messages: convo,
       usage: aggregatedUsage,
+      ...answeredBy,
     };
   }
 }

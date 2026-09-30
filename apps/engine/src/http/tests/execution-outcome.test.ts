@@ -227,7 +227,11 @@ describe("execution list failure", () => {
     type Item = {
       id: string;
       status: string;
-      failure: { step_key: string | null; cause_class: string | null } | null;
+      failure: {
+        step_key: string | null;
+        cause_class: string | null;
+        connector: { connector_id: string | null; reason: string } | null;
+      } | null;
     };
     const list = async (query: string) => {
       const res = await fetch(`${ctx.baseUrl}/v1/executions?${query}`, { headers: auth() });
@@ -244,7 +248,11 @@ describe("execution list failure", () => {
     const own = await list(`workflow_id=${workflowId}&limit=50`);
     expect(own).toHaveLength(12);
     for (const item of own) {
-      expect(item.failure).toEqual({ step_key: "fetch", cause_class: "auth_failed" });
+      expect(item.failure).toEqual({
+        step_key: "fetch",
+        cause_class: "auth_failed",
+        connector: null,
+      });
     }
 
     await list(`workflow_id=${workflowId}&limit=1`);
