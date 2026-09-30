@@ -13,14 +13,14 @@ import { cliNotificationInbox } from "../../db/schema/notifications.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../../notifications/service.ts";
 import { classifyEvent } from "../../webhooks/events/catalog.ts";
-import type { ChatDelivery } from "../types.ts";
+import type { ChatDelivery, OutboundSendResult } from "../types.ts";
 
 export class SkCliAdapter implements NotificationAdapter {
   readonly platform = "sk_cli" as const;
 
   constructor(private readonly db: Db) {}
 
-  async send(delivery: ChatDelivery): Promise<{ platform_message_id: string }> {
+  async send(delivery: ChatDelivery): Promise<OutboundSendResult> {
     const notification = delivery.notification;
     const severity = notification?.severity ?? "info";
     const event_type = notification?.event_type ?? "notification";
@@ -29,10 +29,10 @@ export class SkCliAdapter implements NotificationAdapter {
     // list route has to be a SQL predicate underneath the cursor, or
     // paging returns short and empty pages.
     const classification = classifyEvent(event_type, event_payload);
-    // A row is a task, not a log line. Everything the `*` default rule
-    // matches still arrives here, but only an event a person has to act on
-    // becomes a row; a step start or a routine success is acknowledged and
-    // dropped. Before this, production held 614k unread step events.
+    // A row is a task, not a log line. Only an event a person has to act on
+    // becomes a row; anything else a rule routes here (a step start, a
+    // routine success) is reported back as skipped, so the dispatcher does
+    // not log it as a sent message either.
     if (!classification.actionable) {
       logger.debug({
         module: "notifications",
@@ -40,7 +40,7 @@ export class SkCliAdapter implements NotificationAdapter {
         tenant_id: delivery.tenant_id,
         event_type,
       });
-      return { platform_message_id: `skipped:${event_type}` };
+      return { skipped: "not_actionable" };
     }
 
     const inserted = await this.db
