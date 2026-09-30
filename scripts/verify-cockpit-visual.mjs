@@ -2390,7 +2390,7 @@ async function mockApi(route) {
           id: "rule-everything",
           name: "Alles an die Bereitschaft",
           event_pattern:
-            "execution.succeeded,execution.failed,workflow.updated,connector.oauth.refreshed,connector.oauth.callback_succeeded,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed,patch.applied,apikey.rotated,conversation.committed,schedule.*,vendor.custom_integration.quarterly_reconciliation_completed_with_warnings",
+            "execution.succeeded,execution.failed,execution.refused,workflow.updated,connector.oauth.refreshed,connector.oauth.callback_succeeded,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed,patch.applied,apikey.rotated,conversation.committed,schedule.*,vendor.custom_integration.quarterly_reconciliation_completed_with_warnings",
           workflow_pattern: "billing-*",
           severity: "warn",
           target_workspace_id: "T0001",
