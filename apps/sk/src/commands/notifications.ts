@@ -147,7 +147,7 @@ const rulesListCmd = defineCommand({
       const { items } = await client.listNotificationRules();
       emitList(
         !!args.json,
-        ["id", "event_type", "channel_id", "active"],
+        ["id", "name", "event_pattern", "target_channel_id", "active"],
         items as Record<string, unknown>[],
       );
     } catch (err) {
@@ -182,16 +182,34 @@ const rulesGetCmd = defineCommand({
 const rulesCreateCmd = defineCommand({
   meta: { name: "create", description: "Create a notification rule" },
   args: {
-    event: { type: "string", required: true, description: "Event type" },
-    "channel-id": { type: "string", required: true, description: "Channel id" },
+    event: {
+      type: "string",
+      required: true,
+      description:
+        "Event pattern: an event type, a glob like execution.*, or a comma-separated list",
+    },
+    "workspace-id": {
+      type: "string",
+      required: true,
+      description: "Target workspace id (the chat workspace the channel lives in)",
+    },
+    "channel-id": { type: "string", required: true, description: "Target channel id" },
+    name: { type: "string", description: "Rule name (default: the event pattern)" },
+    severity: {
+      type: "string",
+      description: "Severity floor: debug, info, warn, error or critical (default: info)",
+    },
   },
   async run({ args }) {
     const client = makeClient();
     try {
       printJson(
         await client.createNotificationRule({
-          event_type: args.event,
-          channel_id: args["channel-id"],
+          name: args.name ?? args.event,
+          event_pattern: args.event,
+          target_workspace_id: args["workspace-id"],
+          target_channel_id: args["channel-id"],
+          ...(args.severity ? { severity: args.severity } : {}),
         }),
       );
     } catch (err) {

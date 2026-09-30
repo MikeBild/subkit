@@ -12,6 +12,8 @@
 //   - AC6: `notifications rules list --json` returns an array.
 //   - AC7: A rule seeded directly via HTTP appears in the rules list.
 //   - AC8: `notifications rules delete <id>` outputs "deleted".
+//   - AC9: `notifications rules create --event … --workspace-id … --channel-id …`
+//          creates a rule the engine accepts (`event_pattern` + target pair).
 // Spec refs: docs/developers/input-surfaces.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -322,6 +324,23 @@ describe("journey 40: sk notifications CLI", () => {
   test("AC8: notifications rules delete outputs 'deleted'", async () => {
     const { stdout } = await runPlain(notificationsCommand, ["rules", "delete", ruleId]);
     expect(stdout).toContain("deleted");
+  });
+
+  test("AC9: notifications rules create sends the engine's rule shape", async () => {
+    const { stdout } = await run(
+      notificationsCommand,
+      ["rules", "create"],
+      ["--event", "execution.failed", "--workspace-id", "W_TEST", "--channel-id", "C_ALERTS"],
+    );
+    const body = JSON.parse(extractLastJson(stdout)) as Record<string, unknown>;
+    expect(body.event_pattern).toBe("execution.failed");
+    expect(body.target_workspace_id).toBe("W_TEST");
+    expect(body.target_channel_id).toBe("C_ALERTS");
+    expect(typeof body.name).toBe("string");
+
+    const res = await journeyFetch(ctx, "/v1/notifications/rules");
+    const { items } = (await res.json()) as { items: Array<{ id: string }> };
+    expect(items.map((r) => r.id)).toContain(body.id as string);
   });
 
   test("AC10: deleting a non-existent channel id returns an error", async () => {
