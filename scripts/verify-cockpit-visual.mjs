@@ -14,6 +14,7 @@ import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
+import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
@@ -3970,6 +3971,9 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
         fullPage: false,
       }),
+    );
+    await verifyConnectorDetail(page, stand, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
     );
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
