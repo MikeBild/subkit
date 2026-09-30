@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { isDangerousTool } from "../dangerous-tools.ts";
-import { getApprovalMode, resolveToolMode } from "../tool-policies.ts";
+import { decideToolMode, getApprovalMode, resolveToolMode } from "../tool-policies.ts";
 
 const FAKE_MCP_TOOL = "mcp_examplemcp__create_page";
 const FAKE_MCP_TOOL_2 = "mcp_acme__search_items";
@@ -164,5 +164,53 @@ describe("getApprovalMode — mcp_ prefix", () => {
 
   it("getApprovalMode returns auto for unknown non-mcp tools (regression guard)", () => {
     expect(getApprovalMode("unknown_tool_xyz")).toBe("auto");
+  });
+});
+
+describe("decideToolMode — operator trust (connector_trust)", () => {
+  it("a trusted mcp tool runs without confirmation, and the rule is named", () => {
+    expect(
+      decideToolMode({
+        tool: FAKE_MCP_TOOL,
+        category: "tenant_write",
+        input: {},
+        overrides: {},
+        connector_trust: true,
+      }),
+    ).toEqual({ mode: "no_confirm", rule: "connector_trust" });
+  });
+
+  it("permission_mode plan outranks operator trust", () => {
+    expect(
+      decideToolMode({
+        tool: FAKE_MCP_TOOL,
+        category: "tenant_write",
+        input: {},
+        overrides: {},
+        permission_mode: "plan",
+        connector_trust: true,
+      }),
+    ).toEqual({ mode: "confirm_before_execution", rule: "permission_mode" });
+  });
+
+  it("the inline-credential safeguard outranks operator trust", () => {
+    // `update_connector_draft` declares credential slots; a filled one must
+    // confirm even when a caller claims trust for the call.
+    expect(
+      decideToolMode({
+        tool: "update_connector_draft",
+        category: "draft_write",
+        input: { config: { api_key: "sk-inline" } },
+        overrides: {},
+        connector_trust: true,
+      }),
+    ).toEqual({ mode: "confirm_before_execution", rule: "inline_credential" });
+  });
+
+  it("without trust an mcp tool keeps confirming", () => {
+    expect(
+      decideToolMode({ tool: FAKE_MCP_TOOL, category: "tenant_write", input: {}, overrides: {} })
+        .mode,
+    ).toBe("confirm_before_execution");
   });
 });
