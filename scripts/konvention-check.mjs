@@ -1278,8 +1278,55 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         mode: "connection",
         environment: "prod",
         connection: { id: ID, name: "wiki", state: "expired" },
+        header_names: [],
         updated_at: days(2),
       });
+    // The connector's runtime: calls in the week, a failure the page must word
+    // as its cause class (never the remote's text), no MCP session (an HTTP
+    // connector has none).
+    if (path === `/v1/connectors/${ID}/runtime`)
+      return json(route, {
+        last_success_at: days(1),
+        last_failure: { at: days(2), code: "4xx_auth", cause_class: "auth_failed" },
+        recorded: true,
+        mcp_session: null,
+      });
+    if (path === "/v1/stats/connectors")
+      return json(route, {
+        bucket: "day",
+        tz: "UTC",
+        from: url.searchParams.get("from") ?? days(7),
+        to: url.searchParams.get("to") ?? days(0),
+        groups: [],
+        totals: {
+          calls: {
+            total: 42,
+            by_outcome: { success: 39, denied: 1, error: 2 },
+            by_status_class: { "2xx": 39, "4xx_auth": 2, no_status: 1 },
+          },
+          latency_ms: { total: 5_040, avg: 120, p50: 110, p95: 300, p99: 420, max: 500 },
+        },
+      });
+    if (path === `/v1/connectors/${ID}/mcp/inspect`)
+      return json(route, {
+        connector_id: ID,
+        slug: "reporting-api-0",
+        tools: [
+          { name: "search_items", description: "Einträge suchen", claims: "read" },
+          { name: "create_item", description: "Eintrag anlegen", claims: "write" },
+        ],
+        capabilities: { tools: true, resources: false, prompts: false },
+        instructions: null,
+        server_version: null,
+      });
+    if (path === `/v1/connectors/${ID}/mcp/tool-confirmation`) {
+      const body = JSON.parse(request.postData() ?? "{}");
+      return json(route, {
+        tool: body.tool,
+        confirm: body.confirm,
+        tools_without_confirmation: body.confirm ? [] : [body.tool],
+      });
+    }
     // Vorbereitete Änderungen: one waits, so Einstellungen shows the section.
     if (path === "/v1/secret-approvals")
       return json(route, {

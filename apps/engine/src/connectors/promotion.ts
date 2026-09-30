@@ -16,6 +16,7 @@ import {
   credentials,
   endUserCredentials,
 } from "../db/schema/index.ts";
+import { withoutMcpTrustList } from "./mcp-tool-trust.ts";
 
 export type ConnectorPromotionStrategy = "copy" | "move";
 
@@ -250,7 +251,9 @@ export async function promoteConnector(
           driver: source.driver,
           environment: "prod",
           auth_type: source.auth_type,
-          config: source.config,
+          // A copy starts by asking before every remote tool call: the
+          // operator's per-tool trust was granted to the dev connector.
+          config: withoutMcpTrustList(source.config),
           base_url: source.base_url,
           dsn: source.dsn,
           operator_quirks: source.operator_quirks,

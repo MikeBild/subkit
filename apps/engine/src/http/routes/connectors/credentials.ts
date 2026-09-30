@@ -1,4 +1,5 @@
 // Credential attachment for a connector:
+//   GET  /v1/connectors/{id}/credential              — how it signs in, never the material
 //   POST /v1/connectors/{id}/credentials             — non-oauth credential
 //   POST /v1/connectors/{id}/end-user-credentials    — end-user-scoped
 
@@ -55,6 +56,8 @@ const CredentialSummary = z
     mode: z.string(),
     environment: z.enum(["dev", "prod"]),
     connection: ConnectionSummarySchema.nullable(),
+    /** The header names a `header` credential sends — names only, never values. */
+    header_names: z.array(z.string()),
     updated_at: z.string(),
   })
   .nullable()
