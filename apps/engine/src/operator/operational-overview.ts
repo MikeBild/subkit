@@ -322,6 +322,12 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
         JOIN workflows w ON w.id = h.workflow_id AND w.tenant_id = h.tenant_id
        WHERE h.tenant_id = ${tenantId} AND h.active AND h.admission_hold IS NOT NULL
          AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
+         -- A workflow already held by its schedule is one blocked workflow, as
+         -- the attention list shows it — not one more per hook.
+         AND NOT EXISTS (
+           SELECT 1 FROM workflows_schedules s
+            WHERE s.tenant_id = h.tenant_id AND s.workflow_id = h.workflow_id
+              AND NOT s.paused AND s.admission_hold IS NOT NULL)
     ), finished AS (
       SELECT status, source_kind, request_source FROM executions
        WHERE tenant_id = ${tenantId} AND finished_at >= now() - interval '24 hours'
@@ -810,6 +816,10 @@ async function readHealthCauses(
           JOIN workflows w ON w.id = h.workflow_id AND w.tenant_id = h.tenant_id
          WHERE h.tenant_id = ${tenantId} AND h.active AND h.admission_hold IS NOT NULL
            AND w.deleted_at IS NULL AND w.lifecycle <> 'archived'
+           AND NOT EXISTS (
+             SELECT 1 FROM workflows_schedules s
+              WHERE s.tenant_id = h.tenant_id AND s.workflow_id = h.workflow_id
+                AND NOT s.paused AND s.admission_hold IS NOT NULL)
       ) held
        ORDER BY created_at, workflow_id
        LIMIT ${MAX_HEALTH_CAUSES}`),
