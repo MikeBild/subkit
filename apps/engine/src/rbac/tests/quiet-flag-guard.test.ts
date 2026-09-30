@@ -92,6 +92,10 @@ const ALLOWED = new Set<string>([
   // automation-status projects hook rows and refusal reasons by what the reader
   // may see; a reader without inbound_hook:read / audit:read is routine.
   "apps/engine/src/http/routes/workflow-authorities.ts",
+  // The model's automation context and review tool project hooks and refusal
+  // reasons by what the reader may see — the same probes as that route.
+  "apps/engine/src/conversations/automation-context.ts",
+  "apps/engine/src/conversations/tools/review-workflow-automation.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",
