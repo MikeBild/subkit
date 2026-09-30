@@ -123,7 +123,8 @@ export function ConnectorCredentials({
   const body = credentialBody(authType, token, header);
 
   return (
-    <Card data-testid="connector-credentials">
+    // The anchor "Neu verbinden" lands on, from the run dialog and the page's own action.
+    <Card id="connector-credentials" className="scroll-mt-6" data-testid="connector-credentials">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
           {t("connectorCredentials.title")}
