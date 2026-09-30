@@ -6555,7 +6555,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Execution authority or replay boundary no longer matches */
+                /** @description Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -6688,7 +6688,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Original execution is not rerunnable */
+                /** @description Original execution is not rerunnable, or the rerun was refused before it started. `prepared_credential_unavailable` carries `details` naming `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -18220,6 +18220,15 @@ export interface components {
                 label: string;
             }[];
             unavailable_steps: string[];
+            unavailable_connectors?: {
+                step_id: string;
+                /** Format: uuid */
+                connector_id: string;
+                connector_slug: string;
+                connector_name: string;
+                /** @enum {string} */
+                reason: "disabled" | "needs_reauth" | "credential_unavailable";
+            }[];
             boundary_contradictions?: {
                 step_id: string;
                 declared_prefix: string;

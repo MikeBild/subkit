@@ -6,6 +6,10 @@ import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import {
+  connectorUnavailability,
+  type FoundConnectorUnavailability,
+} from "../execution/connector-availability.ts";
 import { authorityConnectorConfiguration } from "./authority-configuration.ts";
 import { authorityExecutionShape, type ResolvedCallShape } from "./authority-execution-shape.ts";
 import { contradictedStorageBoundaries } from "./boundary-evidence.ts";
@@ -56,6 +60,16 @@ const inputSchema = z
     execution_options_digest: z.string().regex(/^[a-f0-9]{64}$/),
   })
   .strict();
+
+/** A connector that cannot serve one of this workflow's own steps in the
+ *  previewed environment. Reported beside the manifest, never inside it. */
+export interface UnavailableConnector {
+  step_id: string;
+  connector_id: string;
+  connector_slug: string;
+  connector_name: string;
+  reason: FoundConnectorUnavailability;
+}
 
 /** Targets shown to people omit userinfo, query values and fragments. The
  * exact authored request and full connector configuration remain digest-bound.
@@ -133,6 +147,10 @@ export async function resolveWorkflowEffectManifest(
   const own = await resolveBindings(input, definition, db, options);
   const bindings = own.bindings;
   const unavailable_steps = own.unavailable_steps;
+  // The root's own steps only: a run's admission resolves this workflow's
+  // connectors, not those of a workflow it calls, and a connector listed here
+  // blocks an environment in the run dialog.
+  const unavailable_connectors = own.unavailable_connectors;
   const storage_refusals = own.storage_refusals;
   const request_refusals = own.request_refusals;
   const contentShapes = own.contentShapes;
@@ -200,6 +218,7 @@ export async function resolveWorkflowEffectManifest(
       ? { execution_shape: authorityExecutionShape(definition, bindings, callShapes) }
       : {}),
     unavailable_steps,
+    unavailable_connectors,
     storage_refusals,
     request_refusals,
     ...(contradictions.length > 0 ? { boundary_contradictions: contradictions } : {}),
@@ -236,6 +255,10 @@ async function resolveBindings(
     options.report_boundaries === undefined ? undefined : { boundaries: options.report_boundaries };
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
+  // Which connector keeps a step from running, and why — decided by the same
+  // predicate the run admission refuses with, so the run dialog can say
+  // beforehand what the run would be refused for.
+  const unavailable_connectors: UnavailableConnector[] = [];
   // Why an s3 step compiled no boundary. Reported beside the manifest, never
   // inside it: this is repair evidence, and the digest must not depend on it.
   const storage_refusals: Array<{
@@ -263,13 +286,19 @@ async function resolveBindings(
     if (step.connector_id && !system) continue;
     const connector = system?.connector;
     const credentials = await system?.getAuthorityMetadata();
-    if (
-      connector &&
-      (!connector.enabled ||
-        connector.needs_reauth ||
-        (connector.auth_type !== "none" && !credentials?.available))
-    )
+    const unavailability = connector
+      ? connectorUnavailability(connector, credentials, connector.auth_type !== "none")
+      : null;
+    if (connector && unavailability) {
       unavailable_steps.push(step.id);
+      unavailable_connectors.push({
+        step_id: step.id,
+        connector_id: connector.id,
+        connector_slug: connector.slug,
+        connector_name: connector.display_name,
+        reason: unavailability,
+      });
+    }
     const driver = system?.driver ?? "http";
     let target: string | null = null;
     try {
@@ -415,7 +444,14 @@ async function resolveBindings(
       binding.target = shape.target;
     }
   }
-  return { bindings, unavailable_steps, storage_refusals, request_refusals, contentShapes };
+  return {
+    bindings,
+    unavailable_steps,
+    unavailable_connectors,
+    storage_refusals,
+    request_refusals,
+    contentShapes,
+  };
 }
 
 /** One `call` step's target, resolved one level deep.
