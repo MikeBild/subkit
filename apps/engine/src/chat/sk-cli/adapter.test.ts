@@ -8,7 +8,8 @@
 //   - send() inserts exactly ONE cli_notification_inbox row scoped to
 //     delivery.tenant_id, with the severity / event_type / event_payload
 //     carried from delivery.notification — for an ACTIONABLE event. A row is
-//     a task: an informational or unknown event is acknowledged and dropped.
+//     a task: an informational or unknown event leaves no row and is reported
+//     back as `{ skipped: "not_actionable" }`.
 //   - Returns { platform_message_id } = the row's bigserial id (as string).
 //   - A second send() adds a second row; the cursor advances monotonically.
 //   - Cross-tenant isolation: a delivery for tenant A never appears in
@@ -20,7 +21,7 @@ import { tenants } from "../../db/schema/index.ts";
 import { cliNotificationInbox } from "../../db/schema/notifications.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { classifyEvent } from "../../webhooks/events/catalog.ts";
-import type { ChatDelivery } from "../types.ts";
+import type { ChatDelivery, OutboundSendResult } from "../types.ts";
 import { SkCliAdapter } from "./adapter.ts";
 
 let testDb: TestDb;
@@ -47,6 +48,12 @@ beforeAll(async () => {
 afterAll(async () => {
   await testDb.cleanup();
 }, 30_000);
+
+/** The inserted row's id; fails the test when the adapter skipped instead. */
+function messageId(result: OutboundSendResult): string {
+  if ("skipped" in result) throw new Error(`expected an inbox row, got skipped: ${result.skipped}`);
+  return result.platform_message_id;
+}
 
 function makeDelivery(
   tenantId: string,
@@ -93,7 +100,7 @@ describe("SkCliAdapter.send", () => {
 
     expect(after.length).toBe(before.length + 1);
 
-    const row = after.find((r) => String(r.id) === result.platform_message_id);
+    const row = after.find((r) => String(r.id) === messageId(result));
     expect(row).toBeDefined();
     expect(row?.severity).toBe("error");
     expect(row?.event_type).toBe("connector.auth_failed");
@@ -111,9 +118,9 @@ describe("SkCliAdapter.send", () => {
         },
       }),
     );
-    expect(typeof result.platform_message_id).toBe("string");
+    expect(typeof messageId(result)).toBe("string");
     // The id should parse to a positive integer.
-    const id = Number(result.platform_message_id);
+    const id = Number(messageId(result));
     expect(Number.isInteger(id) && id > 0).toBe(true);
   });
 
@@ -138,8 +145,8 @@ describe("SkCliAdapter.send", () => {
       }),
     );
 
-    const id1 = Number(r1.platform_message_id);
-    const id2 = Number(r2.platform_message_id);
+    const id1 = Number(messageId(r1));
+    const id2 = Number(messageId(r2));
     expect(id2).toBeGreaterThan(id1);
   });
 
@@ -161,7 +168,7 @@ describe("SkCliAdapter.send", () => {
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantBId));
 
-    const leaked = inboxB.find((row) => String(row.id) === r.platform_message_id);
+    const leaked = inboxB.find((row) => String(row.id) === messageId(r));
     expect(leaked).toBeUndefined();
   });
 
@@ -180,13 +187,13 @@ describe("SkCliAdapter.send", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    const row = rows.find((r) => String(r.id) === result.platform_message_id);
+    const row = rows.find((r) => String(r.id) === messageId(result));
     expect(row?.severity).toBe("critical");
     expect(row?.event_type).toBe("execution.failed");
     expect(row?.event_payload).toMatchObject(payload);
   });
 
-  test("delivery without notification fields is not a task: no row, acknowledged as skipped", async () => {
+  test("delivery without notification fields is not a task: no row, reported as skipped", async () => {
     const adapter = new SkCliAdapter(testDb.db);
     // Delivery with no .notification field at all.
     const bare: ChatDelivery = {
@@ -205,7 +212,7 @@ describe("SkCliAdapter.send", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    expect(result.platform_message_id).toBe("skipped:notification");
+    expect(result).toEqual({ skipped: "not_actionable" });
     expect(after.length).toBe(before.length);
   });
 
@@ -224,7 +231,7 @@ describe("SkCliAdapter.send", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    const row = rows.find((r) => String(r.id) === result.platform_message_id);
+    const row = rows.find((r) => String(r.id) === messageId(result));
     const expected = classifyEvent("connector.auth_failed", {
       connector_id: connectorId,
       reason: "credential_rejected",
@@ -251,7 +258,7 @@ describe("SkCliAdapter.send", () => {
       .select()
       .from(cliNotificationInbox)
       .where(eq(cliNotificationInbox.tenant_id, tenantAId));
-    expect(result.platform_message_id).toBe("skipped:not.a.catalog.event");
+    expect(result).toEqual({ skipped: "not_actionable" });
     expect(after.length).toBe(before.length);
     expect(after.every((row) => row.actionable)).toBe(true);
   });

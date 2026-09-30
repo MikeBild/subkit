@@ -122,7 +122,7 @@ export async function dispatchAdminListSlash(
       for (const rule of rules.items) {
         const r = rule as Record<string, unknown>;
         lines.push(
-          `  ${String(r.id ?? "").slice(0, 8)}  ${String(r.event_type ?? "").padEnd(24)}  → ch:${String(r.channel_id ?? "").slice(0, 8)}`,
+          `  ${String(r.id ?? "").slice(0, 8)}  ${String(r.event_pattern ?? "").padEnd(24)}  → ${String(r.target_workspace_id ?? "")}/${String(r.target_channel_id ?? "")}`,
         );
       }
       return panify(ctx, "notifications", lines);
