@@ -15,6 +15,7 @@ import { inspectAutomationReview } from "../../conversations/automation-review.t
 import {
   connectors,
   executionSteps,
+  executions,
   patchCandidates,
   sessions,
   users,
@@ -77,7 +78,7 @@ async function seed() {
   });
 }
 
-async function refusedGrantedRun(workflow_id: string, version_id: string) {
+async function refusedGrantedRun(workflow_id: string, version_id: string, max_runs = 1) {
   const db = ctx.testDb.db;
   const review = await previewWorkflowAuthority(
     {
@@ -97,7 +98,7 @@ async function refusedGrantedRun(workflow_id: string, version_id: string) {
       execution_environment: "dev",
       valid_from: now.toISOString(),
       valid_until: new Date(now.getTime() + 3_600_000).toISOString(),
-      max_runs: 1,
+      max_runs,
     },
     { db, request: grantRequest, principal },
   );
@@ -345,4 +346,83 @@ test("another governance refusal is not relabelled as a changed approval", async
   expect(
     diagnosis?.diagnoses.filter((entry) => entry.code === "execution_authority_changed"),
   ).toEqual([]);
+});
+
+/**
+ * A later run of the same version, as its rows record it: admitted under the
+ * refused run's approval (or none), a minute after it, with `step_key`
+ * completed.
+ */
+async function laterRun(
+  workflow_id: string,
+  step_key: string,
+  options: { held?: boolean; granted?: boolean } = {},
+) {
+  const db = ctx.testDb.db;
+  const [refused] = await db
+    .select()
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, ctx.tenantId),
+        eq(executions.workflow_id, workflow_id),
+        eq(executions.status, "failed"),
+      ),
+    )
+    .limit(1);
+  if (!refused) throw new Error("no refused run to follow");
+  const later = new Date((await databaseNow(db)).getTime() + 60_000);
+  // An approved run is admitted queued — the database reserves its run then.
+  const [run] = await db
+    .insert(executions)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      workflow_version_id: refused.workflow_version_id,
+      execution_authority_id: options.granted === false ? null : refused.execution_authority_id,
+      hold_writes: options.held === true,
+      status: "queued",
+      request_source: "scheduler",
+      execution_mode: refused.execution_mode,
+      created_at: later,
+    })
+    .returning();
+  if (!run) throw new Error("later run insert failed");
+  await db
+    .update(executions)
+    .set({ status: "succeeded", finished_at: later })
+    .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, run.id)));
+  await db.insert(executionSteps).values({
+    tenant_id: ctx.tenantId,
+    execution_id: run.id,
+    step_key,
+    kind: "request",
+    status: "succeeded",
+    held: options.held === true,
+    started_at: later,
+    finished_at: later,
+  });
+}
+
+const changedApproval = async (workflow_id: string) =>
+  (await diagnoseWorkflow(ctx.testDb.db, ctx.tenantId, workflow_id, "dev"))?.diagnoses.filter(
+    (entry) => entry.code === "execution_authority_changed",
+  ) ?? [];
+
+test("a refusal is history once a later granted run of the version got past that step", async () => {
+  const wf = await seed();
+  // Room on the approval for the granted runs that follow the refusal.
+  await refusedGrantedRun(wf.workflow_id, wf.version_id, 5);
+  expect(await changedApproval(wf.workflow_id)).toHaveLength(1);
+
+  // Success elsewhere, a preparation (held, and never under an approval), and
+  // an ungranted run prove nothing about whether the approval fits this step.
+  await laterRun(wf.workflow_id, "compose");
+  await laterRun(wf.workflow_id, "send_email", { held: true, granted: false });
+  await laterRun(wf.workflow_id, "send_email", { granted: false });
+  expect(await changedApproval(wf.workflow_id)).toHaveLength(1);
+
+  // A loop iteration of the step is the step.
+  await laterRun(wf.workflow_id, "send_email[0]");
+  expect(await changedApproval(wf.workflow_id)).toEqual([]);
 });

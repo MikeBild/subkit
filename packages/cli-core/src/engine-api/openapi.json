@@ -5887,7 +5887,27 @@
             "type": "string"
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "not_json_raw",
+              "not_base64url",
+              "not_utf8",
+              "header_control_byte",
+              "header_folded",
+              "header_not_allowed",
+              "header_duplicate",
+              "missing_headers",
+              "sender_invalid",
+              "recipient_invalid",
+              "extra_recipients",
+              "multipart_unsupported",
+              "content_type_unsupported",
+              "transfer_encoding_unsupported",
+              "body_not_base64",
+              "recipient_differs",
+              "sender_differs",
+              "content_type_differs"
+            ]
           },
           "subject": {
             "type": "object",
@@ -9494,6 +9514,33 @@
                       null
                     ]
                   },
+                  "refusal_reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "not_json_raw",
+                      "not_base64url",
+                      "not_utf8",
+                      "header_control_byte",
+                      "header_folded",
+                      "header_not_allowed",
+                      "header_duplicate",
+                      "missing_headers",
+                      "sender_invalid",
+                      "recipient_invalid",
+                      "extra_recipients",
+                      "multipart_unsupported",
+                      "content_type_unsupported",
+                      "transfer_encoding_unsupported",
+                      "body_not_base64",
+                      "recipient_differs",
+                      "sender_differs",
+                      "content_type_differs",
+                      null
+                    ]
+                  },
                   "connector": {
                     "type": [
                       "object",
@@ -9519,6 +9566,7 @@
                 "required": [
                   "step_key",
                   "cause_class",
+                  "refusal_reason",
                   "connector"
                 ]
               }
@@ -9701,6 +9749,33 @@
               "null"
             ]
           },
+          "refusal_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "not_json_raw",
+              "not_base64url",
+              "not_utf8",
+              "header_control_byte",
+              "header_folded",
+              "header_not_allowed",
+              "header_duplicate",
+              "missing_headers",
+              "sender_invalid",
+              "recipient_invalid",
+              "extra_recipients",
+              "multipart_unsupported",
+              "content_type_unsupported",
+              "transfer_encoding_unsupported",
+              "body_not_base64",
+              "recipient_differs",
+              "sender_differs",
+              "content_type_differs",
+              null
+            ]
+          },
           "connector": {
             "type": [
               "object",
@@ -9768,6 +9843,7 @@
           "failed_step",
           "cause_class",
           "error_code",
+          "refusal_reason",
           "connector",
           "steps",
           "output_contract"

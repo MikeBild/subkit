@@ -102,10 +102,20 @@ function normalizeConversationResult(r: ToolResult): ToolEnvelope {
   // the tool didn't set the structured `details` field — older tools
   // put diagnostic info there.
   const details = r.details !== undefined ? r.details : r.data;
+  // Most refusals name their own code and sentence inside that payload
+  // (`run_workflow`'s `workflow_activation_required`). The envelope is what an
+  // MCP client reads first; leaving the code in `details` under a generic
+  // `tool_failed` hid exactly the word that says what to do next — the word
+  // HTTP returns at the top level. The tool's own code wins; `tool_failed`
+  // remains for a refusal that names none.
+  const own = (field: "error_code" | "message"): string | undefined => {
+    const value = (details as Record<string, unknown> | null | undefined)?.[field];
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  };
   return {
     status: "error",
-    error_code: r.error_code ?? "tool_failed",
-    message: r.message ?? "tool returned ok=false",
+    error_code: r.error_code ?? own("error_code") ?? "tool_failed",
+    message: r.message ?? own("message") ?? "tool returned ok=false",
     ...(details !== undefined ? { details } : {}),
     ...(r.next_best_actions ? { next_best_actions: r.next_best_actions } : {}),
   };

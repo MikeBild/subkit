@@ -58,10 +58,36 @@ describe("deriveExecutionOutcome", () => {
       failed_step: { step_key: "send", kind: "request" },
       cause_class: "auth_failed",
       error_code: "http_4xx",
+      refusal_reason: null,
       connector: null,
       steps: { total: 3, succeeded: 1, failed: 1, held: 0, skipped: 1 },
       output_contract: "none",
     });
+  });
+
+  test("a changed approval names the report rule the stopping step broke", () => {
+    const refused = (error: unknown) =>
+      deriveExecutionOutcome(
+        {
+          status: "failed",
+          failure: {
+            step_id: "send",
+            error_code: "execution_authority_changed",
+            error_message: "refused",
+          },
+          output_contract: "none",
+        },
+        [row({ step_key: "send", status: "failed", error, started_at: at(1) })],
+        def,
+      ).refusal_reason;
+    expect(refused({ code: "execution_authority_changed", reason: "not_utf8" })).toBe("not_utf8");
+    expect(refused({ code: "execution_authority_changed", reason: "recipient_differs" })).toBe(
+      "recipient_differs",
+    );
+    // A reason no rule defines, or one carried by another code, names nothing.
+    expect(refused({ code: "execution_authority_changed", reason: "made_up" })).toBeNull();
+    expect(refused({ code: "http_4xx", reason: "not_utf8" })).toBeNull();
+    expect(refused({ code: "execution_authority_changed" })).toBeNull();
   });
 
   test("refused: a run refused for its connector names the connector and reads connector_unavailable", () => {
