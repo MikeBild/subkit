@@ -10,12 +10,15 @@
 //     candidate exists for the workflow.
 //   - AC3: After a preparation run the diagnosis offers no fixer for the step
 //     either — whatever the review then says, no encoder patch is proposed.
+//   - AC4: A held capture recorded before message inspections existed (no
+//     inspection on the step) reads as missing evidence — remedy `prepare` —
+//     not as a defect the author has to fix.
 // Spec refs: docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { patchCandidates } from "../../db/schema/index.ts";
+import { executionSteps, executions, patchCandidates } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { proposeGateRepairs } from "../../self-healing/index.ts";
 import { GMAIL_SEND_TARGET } from "../../workflows/report-delivery-boundary.ts";
@@ -133,5 +136,25 @@ describe("journey 71: a buildMimeMessage report is told to prepare, never patche
       environment: "dev",
     });
     expect(await candidates()).toEqual([]);
+  });
+  test("AC4: a capture that predates inspections asks for a preparation", async () => {
+    // The newest held run as an older engine stored it: no inspection and no
+    // proposal on the report step.
+    const [held] = await ctx.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(and(eq(executions.workflow_id, wf.id), eq(executions.hold_writes, true)));
+    if (!held) throw new Error("missing held run");
+    await ctx.db
+      .update(executionSteps)
+      .set({
+        request_meta: sql`${executionSteps.request_meta} #- '{extras,report_delivery_inspection}'::text[] #- '{extras,report_delivery_proposal}'::text[]`,
+      })
+      .where(
+        and(eq(executionSteps.execution_id, held.id), eq(executionSteps.step_key, "send_email")),
+      );
+    const send = (await diagnosis()).find((entry) => entry.subject.step_id === "send_email");
+    expect(send).toMatchObject({ code: "report_delivery_unobserved", remedy_kind: "prepare" });
+    expect(send?.fixer).toBeUndefined();
   });
 });

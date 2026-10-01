@@ -449,14 +449,16 @@ async function requestDiagnosis(
     case "report_delivery_unobserved":
     case "report_delivery_contradicted": {
       const reason = heldReason(input, step_id);
-      // Unobserved without a recorded reason: the capture predates the
-      // recording, or the step never materialized — look at that run.
+      // Unobserved without a recorded reason. A capture that predates message
+      // inspections recorded nothing about this step: the evidence is missing,
+      // not the message wrong, and a fresh preparation records it. Only a
+      // capture that did inspect and still observed nothing is the author's.
       if (code === "report_delivery_unobserved" && !reason)
         return {
           code,
           subject,
           evidence: heldRun ? { execution_id: heldRun } : {},
-          remedy_kind: "author",
+          remedy_kind: heldInspected(input, step_id) ? "author" : "prepare",
         };
       return {
         code,
