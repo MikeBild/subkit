@@ -121,15 +121,18 @@ function strictBase64(encoded: string): Buffer | null {
   return decoded.toString("base64") === encoded ? decoded : null;
 }
 
+// An unquoted display name: RFC 5322 atext words separated by spaces. Every
+// special — `()<>[]:;@\,."` — is outside it, so a group (`Team: a@x;`), a
+// comment, a quoted-pair or a second address can never hide in the name.
+const DISPLAY_NAME = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?: +[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
+
 /** The bare address of exactly one mailbox, `addr` or `Name <addr>`. A display
- * name is printable ASCII without `,<>"`: a quoted name is refused rather than
+ * name is atext words and spaces only: a quoted name is refused rather than
  * parsed, so no spelling of the value can carry a second address. */
 function mailboxAddress(value: string): string | null {
   if (mailbox.safeParse(value).success) return value;
   const named = /^([^<>]*?)[ \t]*<([^<>]*)>$/.exec(value);
-  if (!named) return null;
-  const name = named[1]!;
-  if (!name.trim() || !/^[\x20-\x7e]+$/.test(name) || /[,<>"]/.test(name)) return null;
+  if (!named || !DISPLAY_NAME.test(named[1]!)) return null;
   return mailbox.safeParse(named[2]).success ? named[2]! : null;
 }
 

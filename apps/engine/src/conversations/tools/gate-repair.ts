@@ -23,14 +23,15 @@ export const diagnoseWorkflowTool: ConversationTool = {
     "with its gate code, the report gate's own reason when it named one (for example `not_utf8`), " +
     "the remedy kind (`patch`, `prepare`, `declare`, `reconnect`, `author`), a `fixer` when a " +
     "deterministic repair exists, and `candidate_id` when that repair is already waiting for " +
-    "review. Reads only; diagnoses the draft when there is one.",
+    "review. Reads only; diagnoses the draft when there is one (`is_current: false`).",
   inputSchema: DiagnoseInput,
   category: "tenant_read",
   permission: { action: "workflow:read", resourceType: "workflow", resourceIdArg: "workflow_id" },
   use_case:
     "A schedule or webhook is held, a granted run was refused, or the user asks why automatic runs are not approved.",
   important_notes: [
-    "Only a diagnosis with `fixer` can be repaired with propose_workflow_repair; the others name what a person has to do.",
+    "Only a diagnosis with `fixer` AND `is_current: true` can be repaired with propose_workflow_repair; the others name what a person has to do.",
+    "`is_current: false` is a draft: propose_workflow_repair repairs the active version only, so make the `fixer`'s change in the draft itself (or apply the draft and diagnose again).",
     "`prepare` means a held preparation run is missing — nothing needs to change in the definition.",
   ],
   example_input: { workflow_id: "00000000-0000-4000-8000-000000000000", environment: "prod" },
@@ -72,7 +73,7 @@ export const proposeWorkflowRepairTool: ConversationTool = {
   visible_when_readonly: true,
   inert_proposal: true,
   use_case:
-    "diagnose_workflow returned a diagnosis with a `fixer` and no `candidate_id`, and the user wants it repaired.",
+    "diagnose_workflow returned `is_current: true` and a diagnosis with a `fixer` and no `candidate_id`, and the user wants it repaired.",
   important_notes: [
     "Creates a review-queue proposal only; approving it happens in the patch-candidate review.",
     "Refused when the active version offers no such repair — diagnose again after any change.",
