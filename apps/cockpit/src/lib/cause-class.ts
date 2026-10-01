@@ -26,6 +26,7 @@ const CAUSE_CLASS_KEYS = {
   budget_exhausted: "cause.budget_exhausted",
   connector_unavailable: "cause.connector_unavailable",
   refused_before_start: "cause.refused_before_start",
+  authority_mismatch: "cause.authority_mismatch",
   driver_error: "cause.driver_error",
   preview_unsupported: "cause.preview_unsupported",
   unknown: "cause.unknown",
