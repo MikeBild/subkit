@@ -367,8 +367,9 @@ const DRAFT_FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = 
     "No preparation can observe this report step on this version, or its declaration " +
     "contradicts what was observed. This diagnosis is of the saved draft, not the active " +
     "version, so no repair can be proposed for it. Fix it in the draft: set the step's " +
-    "`report_delivery` to the addresses a successful preparation of this draft observed, save, " +
-    "and review again. Or apply the draft and diagnose the active version again.",
+    "`report_delivery` to the addresses a successful preparation of this draft observed " +
+    "(diagnose_workflow's `evidence.observed`), save, and review again. Or apply the draft and " +
+    "diagnose the active version again.",
 };
 
 /**
