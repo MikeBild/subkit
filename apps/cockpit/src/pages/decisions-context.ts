@@ -77,6 +77,7 @@ const DRIFT_KIND_LABEL: Record<string, TranslationKey> = {
   stdlib_version_drift: "decisions.drift.stdlibVersion",
   validation_failed: "decisions.drift.validationFailed",
   endpoint_contract: "decisions.drift.endpointContract",
+  gate_block: "decisions.drift.gateBlock",
 };
 
 const PROPOSAL_KIND_LABEL: Record<string, TranslationKey> = {
@@ -86,6 +87,7 @@ const PROPOSAL_KIND_LABEL: Record<string, TranslationKey> = {
   add_header: "decisions.change.addHeader",
   rate_limited: "decisions.change.rateLimited",
   other: "decisions.change.other",
+  gate_fix: "decisions.change.gateFix",
 };
 
 /** The word for a drift kind, or null when the engine sent one we do not know. */
