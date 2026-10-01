@@ -291,7 +291,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
         {facts.map(([label, value, full]) => (
           // `min-w-0`, or one long label or value sets this column's minimum
           // width and the sheet clips it on a phone.
-          <div key={label} className="grid min-w-0 gap-1 border-b pb-2">
+          <div key={label} className="grid min-w-0 grid-cols-1 gap-1 border-b pb-2 break-words">
             <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
             {/* `title` only where the row shows a shortened identifier — the
                 whole value has to stay copyable, but a tooltip repeating text

@@ -2757,7 +2757,10 @@ async function assertViewport(page, label) {
           return true;
         })
         .slice(0, 3)
-        .map((node) => node.getAttribute("data-testid") ?? node.tagName);
+        .map(
+          (node) =>
+            `${node.getAttribute("data-testid") ?? node.tagName} "${(node.textContent ?? "").trim().slice(0, 40)}"`,
+        );
     }),
   );
   if (clipped.length)
