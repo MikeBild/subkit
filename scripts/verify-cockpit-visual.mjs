@@ -2732,6 +2732,17 @@ async function assertViewport(page, label) {
     throw new Error(`${label} has horizontal overflow`);
   // An open sheet clips what pokes past its edge instead of widening the page,
   // so the page check above stays green over a sheet cut off mid-sentence.
+  // Measured once the sheet has come to rest: mid-slide its children and its
+  // edge are read in different frames and a resting sheet looks cut off.
+  await page.waitForFunction(
+    // The sheets' own slide, not the page's endless pulses and spinners.
+    () =>
+      [...document.querySelectorAll('[role="dialog"]')].every((sheet) =>
+        sheet.getAnimations().every((animation) => animation.playState !== "running"),
+      ),
+    undefined,
+    { timeout: 5_000 },
+  );
   const clipped = await page.evaluate(() =>
     [...document.querySelectorAll('[role="dialog"]')].flatMap((sheet) => {
       const edge = sheet.getBoundingClientRect().right;
