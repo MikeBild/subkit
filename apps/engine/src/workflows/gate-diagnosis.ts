@@ -457,7 +457,8 @@ async function requestDiagnosis(
 
 /**
  * The newest recorded successful inspection of this very step against the
- * report target, from any held run of this workflow in this environment.
+ * report target, from a held run of exactly the diagnosed version in this
+ * environment.
  * The declaration copies what a run observed — never what a transform's
  * source text appears to say.
  */
@@ -480,6 +481,9 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
       and(
         eq(executionSteps.tenant_id, input.tenant_id),
         eq(executions.workflow_id, input.workflow_id),
+        // Only this version's runs: another version's message may be built
+        // and addressed differently, and its observation proves nothing here.
+        eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         eq(executions.hold_writes, true),
         sql`(${executionSteps.step_key} = ${step_id} OR ${executionSteps.step_key} ~ ${`^${escapeRegex(step_id)}\\[[0-9]+\\]$`})`,
