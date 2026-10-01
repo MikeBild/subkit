@@ -50,7 +50,9 @@ interface SendCall {
 function createStubBoss(calls: SendCall[]): PgBoss {
   return {
     send: async (queue: string, payload: unknown) => {
-      calls.push({ queue, payload });
+      // Runs only: a held schedule's gate-diagnosis request on the repair
+      // queue spends no authorized run.
+      if (queue !== "workflow.repair") calls.push({ queue, payload });
       return "stub-job-id";
     },
     schedule: async () => undefined,
