@@ -4839,6 +4839,14 @@ export interface paths {
                                 kind: "inbound_hook";
                                 slug: string;
                             };
+                            diagnoses?: {
+                                code: string;
+                                step_id: string;
+                                /** @enum {string} */
+                                remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+                                fixer?: string;
+                                candidate_id?: string;
+                            }[];
                         };
                     };
                 };
@@ -21532,7 +21540,7 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other";
+            kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other" | "gate_fix";
             description: string;
             patch: {
                 [key: string]: unknown;
@@ -21545,6 +21553,14 @@ export interface components {
             kind: "request" | "transform";
             data_selector?: string;
             expression?: string;
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
         } | null;
         PatchCandidateDryRunResponse: {
             ok: boolean;
@@ -22006,7 +22022,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract" | "gate_block";
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
@@ -22014,7 +22030,7 @@ export interface components {
         };
         SelfHealingScanUnanchored: {
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract" | "gate_block";
             /** @enum {string} */
             reason: "hook_surface_not_supported" | "no_workflow_anchor";
             resource_id: string;
