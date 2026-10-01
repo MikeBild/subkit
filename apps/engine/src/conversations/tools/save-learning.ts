@@ -31,6 +31,7 @@ export const saveLearningTool: ConversationTool = {
   // the coding-agent capture loop's explicit channel; authoring principals
   // see no other tenant_write. RBAC `skill:propose` still gates it.
   visible_when_readonly: true,
+  inert_proposal: true,
   use_case:
     "The user corrects you, states a rule ('never X', 'always Y'), or asks to remember something for future sessions.",
   important_notes: [
