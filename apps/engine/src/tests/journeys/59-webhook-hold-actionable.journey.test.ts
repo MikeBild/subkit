@@ -9,6 +9,7 @@
 //     and starts no run — never a silent run over `{}`.
 //   - AC3: Preparing with a sample delivery starts a held run with exactly
 //     that input; a sample that violates the input schema is refused (400).
+//     A step the run could not observe comes back as a diagnosis.
 // Spec refs: docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -156,7 +157,12 @@ describe("journey: a refused webhook is actionable", () => {
     };
     const res = await prepare({ input: sample });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ prepared: true });
+    // The sample's `raw` is no readable message, so the run observed nothing:
+    // the answer says so instead of a bare green "prepared".
+    expect(await res.json()).toEqual({
+      prepared: true,
+      diagnoses: [{ code: "report_delivery_unobserved", step_id: "notify", remedy_kind: "author" }],
+    });
     const runs = await heldRuns();
     expect(runs.map((run) => run.input)).toContainEqual(sample);
   });
