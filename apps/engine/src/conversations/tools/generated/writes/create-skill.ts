@@ -65,7 +65,13 @@ export const createSkillTool: ConversationTool = {
     "onto the existing candidate; revised content files a fresh candidate next to it.",
   inputSchema: CreateSkillInput,
   category: "tenant_write",
+  inert_proposal: true,
   permission: { action: "skill:write", resourceType: "skill" },
+  use_case:
+    "The user asks to propose, suggest or draft a skill — global, or for a connector or workflow (pass its id).",
+  important_notes: [
+    "This is how a skill is proposed from a conversation: call it yourself. Never send the user to the REST API, a curl command, or an admin for a skill proposal.",
+  ],
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = CreateSkillInput.parse(rawArgs);
     try {

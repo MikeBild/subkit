@@ -14,7 +14,11 @@ import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
-import { applyPatchToWorkflowDag, type PatchApplyFailure } from "./patch-apply.ts";
+import {
+  applyPatchToWorkflowDag,
+  candidateDriftKind,
+  type PatchApplyFailure,
+} from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
 export type AutoApplyResult =
@@ -84,8 +88,12 @@ export async function autoApplyPatch(
   const currentVersion = cvRows[0];
   if (!currentVersion) return { applied: false, reason: "version_missing" };
 
-  const stepKey = await resolvePatchStepKey(tx, params.tenant_id, params.candidate_id);
-  const patched = applyPatchToWorkflowDag(currentVersion.dag, stepKey, params.proposal);
+  const { stepKey, driftKind } = await resolvePatchStepKey(
+    tx,
+    params.tenant_id,
+    params.candidate_id,
+  );
+  const patched = applyPatchToWorkflowDag(currentVersion.dag, stepKey, params.proposal, driftKind);
   if (!patched.ok) return { applied: false, reason: patched.reason };
 
   const newDag = {
@@ -173,7 +181,7 @@ async function resolvePatchStepKey(
   tx: Executor,
   tenant_id: string,
   candidate_id: string,
-): Promise<string | null> {
+): Promise<{ stepKey: string | null; driftKind: string | null }> {
   const rows = await tx
     .select({ diff: patchCandidates.diff })
     .from(patchCandidates)
@@ -183,5 +191,8 @@ async function resolvePatchStepKey(
   const diff =
     raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 
-  return resolveCandidateStepKey(tenant_id, diff, tx);
+  return {
+    stepKey: await resolveCandidateStepKey(tenant_id, diff, tx),
+    driftKind: candidateDriftKind(diff),
+  };
 }

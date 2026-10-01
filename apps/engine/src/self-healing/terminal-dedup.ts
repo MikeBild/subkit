@@ -42,6 +42,14 @@ export function signalFingerprint(signal: DriftSignal): string {
       });
     case "validation_failed":
       return stableStringify({ kind: signal.kind, expression: signal.expression });
+    case "gate_block":
+      return stableStringify({
+        kind: signal.kind,
+        code: signal.code,
+        reason: signal.reason,
+        fixer: signal.fixer,
+        step_id: signal.step_id,
+      });
     case "schema_diff":
       return stableStringify({
         ...signal,
