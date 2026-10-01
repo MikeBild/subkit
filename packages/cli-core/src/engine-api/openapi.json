@@ -30197,6 +30197,9 @@
                           "code": {
                             "type": "string"
                           },
+                          "reason": {
+                            "type": "string"
+                          },
                           "step_id": {
                             "type": "string"
                           },

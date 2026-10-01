@@ -4841,6 +4841,7 @@ export interface paths {
                             };
                             diagnoses?: {
                                 code: string;
+                                reason?: string;
                                 step_id: string;
                                 /** @enum {string} */
                                 remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
