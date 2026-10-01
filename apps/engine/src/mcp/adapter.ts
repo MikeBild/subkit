@@ -230,6 +230,11 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
     principal: opts.principal,
     connector_id: null,
     workflow_id: null,
+    // A direct MCP call has no conversation to render a card or a follow-up
+    // prompt into — the same no-human-channel surface as a backgrounded MCP
+    // turn. Left unset, tools took it for an attended chat and answered with
+    // a review card nobody could see.
+    surface: "mcp",
     engineClient,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},

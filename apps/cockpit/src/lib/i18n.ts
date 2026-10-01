@@ -96,6 +96,9 @@ const EN = {
   "chat.automationCard.review.title": "Ready for your review",
   "chat.automationCard.review.hint":
     "Review the destinations and limits below. Approving allows future scheduled runs; no run starts now.",
+  "chat.automationCard.apply.title": "Saved change waits to be applied",
+  "chat.automationCard.apply.hint":
+    "Review the saved change below. Applying it makes it the version that runs, and you can allow a bounded number of runs. No run starts now.",
   "chat.automationCard.unknown.title": "Current status needs checking",
   "chat.automationCard.unknown.hint":
     "Open the check below to read the current workflow status. This does not start a run.",
@@ -3083,6 +3086,9 @@ const DE: Record<TranslationKey, string> = {
   "chat.automationCard.review.title": "Bereit für deine Prüfung",
   "chat.automationCard.review.hint":
     "Prüfe unten Ziele und Grenzen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt startet kein Lauf.",
+  "chat.automationCard.apply.title": "Gespeicherte Änderung wartet auf Übernahme",
+  "chat.automationCard.apply.hint":
+    "Prüfe unten die gespeicherte Änderung. Übernimmst du sie, läuft künftig diese Version, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
   "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
   "chat.automationCard.unknown.hint":
     "Öffne die Prüfung unten, um den aktuellen Stand des Ablaufs abzurufen. Dabei startet kein Lauf.",
