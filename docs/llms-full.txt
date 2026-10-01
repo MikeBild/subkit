@@ -12465,6 +12465,19 @@ the `discover_*` probes, every `draft_write` authoring tool, every
 `tenant_write` mutation, and external-MCP tools. Connector access on chat is
 metadata-only.
 
+### Inert proposals stay reachable
+
+A `tenant_write` tool whose only effect is filing a PROPOSED item into a human
+review queue declares `inert_proposal: true`: `create_skill` and `save_learning`. Nothing live changes until a person approves the item, so
+`tool-policies.ts` pins these tools `neverGate`. On the authoring surfaces (web,
+`sk`), the authoring palette offers them without a skill load. The step router
+keeps them in every narrowed stage, including the discover phase of a
+connector- or workflow-targeted conversation. Without this rule, "propose a
+skill for this connector" had no tool to call, and the model sent the user to
+the REST API instead. Tools that decide, such as `approve_skill_candidate`, are
+not proposals and do not carry the flag. The chat allow-list and the MCP tiers
+keep their own filters.
+
 ### Catalog grouping on the read tools
 
 `list_workflows` and `find_workflow` return a derived `category` (the catalog

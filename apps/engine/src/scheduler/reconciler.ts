@@ -32,6 +32,7 @@ import {
   enqueueKnowledgeIngest,
   INGEST_KNOWLEDGE_QUEUE,
 } from "../queue/handlers/ingest-knowledge.ts";
+import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import {
   calendarGateSkipReason,
@@ -1402,7 +1403,14 @@ export class SchedulerReconciler {
         (error.code === "execution_authority_required" ||
           error.code === "execution_authority_unavailable")
       ) {
-        await recordScheduleAdmission(this.opts.db, audit, error.code);
+        // A schedule that becomes held asks once for a gate diagnosis.
+        if (await recordScheduleAdmission(this.opts.db, audit, error.code))
+          await enqueueGateDiagnosis(this.opts.boss, this.opts.db, {
+            tenant_id: payload.tenant_id,
+            workflow_id: payload.workflow_id,
+            environment: payload.execution_mode ?? "prod",
+            source: "schedule",
+          });
       }
       throw error;
     });

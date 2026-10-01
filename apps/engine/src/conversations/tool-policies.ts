@@ -376,6 +376,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "no_confirm",
     neverGate: true,
   },
+  // propose_workflow_repair files an INERT `proposed` patch candidate; the
+  // person's approval in the patch-candidate review is the confirmation.
+  propose_workflow_repair: {
+    defaultMode: "no_confirm",
+    neverGate: true,
+  },
   run_workflow: {
     // All generic starts now use local admission; a flag cannot grant writes.
     // Explicit stricter user policies still apply through the normal resolver.

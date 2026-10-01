@@ -43,10 +43,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionFixtures, patchCandidates } from "../db/schema/index.ts";
+import { executionFixtures, type patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
@@ -68,6 +67,7 @@ import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from ".
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 import { resolvePathRewrite } from "./patch-apply.ts";
+import { persistPatchCandidate } from "./persist-candidate.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import {
@@ -657,111 +657,66 @@ async function processDriftSignalLocked(
 
   let closed = false;
   const txOut = await db.transaction(async (tx) => {
-    const [candidate] = await tx
-      .insert(patchCandidates)
-      .values({
-        tenant_id: ctx.tenant_id,
-        workflow_id: ctx.workflow_id,
-        // Endpoint anchor for the refresh-or-skip dedup on the next
-        // proactive scan. Null for workflow-scoped signals.
-        connector_id: ctx.connector_id ?? null,
-        endpoint_key: ctx.endpoint_key ?? null,
-        classification: decision.classification,
-        // Only stamp `fixture_id` on the row when the dry-run gate
-        // actually ran against this fixture. Proactive scans load
-        // the fixture (so connector+endpoint match a recorded one)
-        // but skip the gate because they have no concrete persisted
-        // step to apply the patch to in-memory — stamping the id
-        // would mislead operators into thinking the patch was
-        // dry-run-validated.
-        ...(fixture && ctx.dry_run_step ? { fixture_id: fixture.id } : {}),
-        diff: {
-          base_version_id: baseVersionId,
-          drift_signal: signal,
-          drift_diff: diff,
-          proposal,
-          classification_reasons: decision.reasons,
-          dry_run: {
-            ok: dryRunOk,
-            error: dryRunError ?? null,
-            fixture_id: fixture?.id ?? null,
-            // Records that we never even ran the gate — useful when
-            // operators read the candidate diff and wonder why
-            // dry_run.ok is false.
-            skipped: !ctx.dry_run_step || !fixture,
-          },
-          policy,
-          step_id: ctx.step_id,
-          // The definition anchor the apply path rewrites. Persisted next to
-          // the execution anchor so approving never has to guess the step.
-          workflow_step_id: ctx.workflow_step_id ?? null,
-          execution_id: ctx.execution_id,
-          source: ctx.source,
-          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
-          ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
-        },
-        status: "proposed",
-      })
-      .returning();
-    assertInsertRow(candidate, "patch_candidates");
-    // Readiness before any announcement: a provably undecidable candidate is
-    // closed at birth — closure audit only, no proposed audit/notification.
-    closed = await closeIfUndecidable(tx, candidate, "proposal");
-    if (closed) return { candidate, appliedVersionId: null };
-
-    // Only stamp `fixture_id` on the audit metadata when the dry-run
-    // gate actually ran against it. Mirrors the same predicate used
-    // for the patch_candidates.fixture_id column above so forensic
-    // queries on the audit row never imply a candidate was fixture-
-    // validated when the gate was skipped (proactive scans).
+    // Only stamp `fixture_id` when the dry-run gate actually ran against this
+    // fixture. Proactive scans load the fixture (so connector+endpoint match a
+    // recorded one) but skip the gate because they have no concrete persisted
+    // step to apply the patch to in-memory — stamping the id would mislead
+    // operators into thinking the patch was dry-run-validated.
     const gatedFixtureId = fixture && ctx.dry_run_step ? fixture.id : null;
-    await auditAwait(
-      {
-        tenant_id: ctx.tenant_id,
-        actor_type: "system",
-        action: AuditAction.PATCH_CANDIDATE_PROPOSED,
-        resource_type: "patch_candidate",
-        resource_id: candidate.id,
-        result: "success",
-        metadata: {
-          workflow_id: ctx.workflow_id,
-          classification: decision.classification,
-          policy,
-          drift_kind: signal.kind,
-          fixture_id: gatedFixtureId,
-          dry_run_ok: dryRunOk,
-          dry_run_skipped: !ctx.dry_run_step || !fixture,
-          reasons: decision.reasons,
-          source: ctx.source,
-          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
-        },
-      },
-      tx,
-    );
-
-    log.selfHealing.patch.proposed({
-      candidate_id: candidate.id,
+    const persisted = await persistPatchCandidate(tx, {
+      tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,
-      tenant_id: ctx.tenant_id,
+      // Endpoint anchor for the refresh-or-skip dedup on the next proactive
+      // scan. Null for workflow-scoped signals.
+      connector_id: ctx.connector_id ?? null,
+      endpoint_key: ctx.endpoint_key ?? null,
       classification: decision.classification,
-      policy,
-      dry_run_ok: dryRunOk,
-      auto_apply: autoApply,
-    });
-    await writeEvent(tx, {
-      tenant_id: ctx.tenant_id,
-      channel: "notification.emitted",
-      type: "patch.proposed",
-      payload: {
-        patch_candidate_id: candidate.id,
-        workflow_id: ctx.workflow_id,
-        classification: decision.classification,
+      fixture_id: gatedFixtureId,
+      diff: {
+        base_version_id: baseVersionId,
+        drift_signal: signal,
+        drift_diff: diff,
+        proposal,
+        classification_reasons: decision.reasons,
+        dry_run: {
+          ok: dryRunOk,
+          error: dryRunError ?? null,
+          fixture_id: fixture?.id ?? null,
+          // Records that we never even ran the gate — useful when operators
+          // read the candidate diff and wonder why dry_run.ok is false.
+          skipped: !ctx.dry_run_step || !fixture,
+        },
+        policy,
+        step_id: ctx.step_id,
+        // The definition anchor the apply path rewrites. Persisted next to
+        // the execution anchor so approving never has to guess the step.
+        workflow_step_id: ctx.workflow_step_id ?? null,
+        execution_id: ctx.execution_id,
+        source: ctx.source,
+        ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+        ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),
+      },
+      audit_metadata: {
+        policy,
+        drift_kind: signal.kind,
+        fixture_id: gatedFixtureId,
+        dry_run_ok: dryRunOk,
+        dry_run_skipped: !ctx.dry_run_step || !fixture,
+        reasons: decision.reasons,
+        source: ctx.source,
+        ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
+      },
+      event_payload: {
         policy,
         dry_run_ok: dryRunOk,
         source: ctx.source,
         ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
       },
+      log_fields: { policy, dry_run_ok: dryRunOk, auto_apply: autoApply },
     });
+    const candidate = persisted.candidate;
+    closed = persisted.closed;
+    if (closed) return { candidate, appliedVersionId: null };
 
     let appliedVersionId: string | null = null;
     if (autoApply) {

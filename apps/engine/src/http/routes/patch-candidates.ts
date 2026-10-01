@@ -31,7 +31,11 @@ import {
   readPatchReadinessBatch,
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
-import { GrantWorkflowAuthoritySchema, grantWorkflowAuthority } from "../../workflows/index.ts";
+import {
+  GrantWorkflowAuthoritySchema,
+  grantWorkflowAuthority,
+  ReportDeliveryBoundarySchema,
+} from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -181,6 +185,7 @@ const StepShapeSchema = z
     kind: z.enum(["request", "transform"]),
     data_selector: z.string().optional(),
     expression: z.string().optional(),
+    report_delivery: ReportDeliveryBoundarySchema.optional(),
   })
   .openapi("PatchCandidateStepShape");
 
@@ -447,6 +452,11 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
           hint: "this candidate came from a proactive scan with no failing-step snapshot — run the workflow once so the engine captures one, then re-scan",
         },
       );
+    }
+    if (outcome.status === "gate_fix") {
+      throw HttpError.withEnvelope(409, "not_replayable", "a gate repair has no fixture replay", {
+        hint: "prepare the candidate (POST /v1/patch-candidates/{id}/prepare) and let a held preparation run of the prepared version show the request the gate now sees",
+      });
     }
     if (outcome.status === "no_fixture") {
       throw HttpError.withEnvelope(409, "conflict", "no execution fixture to replay against", {

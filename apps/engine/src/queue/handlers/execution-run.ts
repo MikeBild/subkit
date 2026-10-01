@@ -12,7 +12,7 @@ import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { runExecution } from "../../execution/engine.ts";
-import { finalizeExecution } from "../../execution/state.ts";
+import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
 import { log, logger } from "../../logging/logger.ts";
 import {
@@ -21,7 +21,7 @@ import {
 } from "../../self-healing/step-snapshot.ts";
 import { withJobContext } from "../job-context.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
-import { enqueueRepair } from "./workflow-repair.ts";
+import { enqueueGateDiagnosis, enqueueRepair } from "./workflow-repair.ts";
 
 export interface RegisterExecutionRunOptions {
   boss: PgBoss;
@@ -107,6 +107,54 @@ async function maybeEnqueueRepair(
   }
 }
 
+/**
+ * Gate-diagnosis producer for authorized runs. `maybeEnqueueRepair` skips them
+ * on purpose — an authorized run's self-healing stays off — but an authorized
+ * run the boundary refused at dispatch is exactly the case a person cannot
+ * read: the approval "no longer fits" and nothing says which step or why. That
+ * is a property of the version, so it gets the deterministic gate diagnosis,
+ * never the LLM loop. Best-effort like the repair producer.
+ */
+async function maybeEnqueueGateDiagnosis(
+  boss: PgBoss,
+  db: Db,
+  p: { tenant_id: string; workflow_id: string; execution_id: string },
+): Promise<void> {
+  try {
+    const [execution] = await db
+      .select({
+        authority: executions.execution_authority_id,
+        version_id: executions.workflow_version_id,
+        environment: executions.execution_mode,
+        failure: executions.failure,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, p.tenant_id), eq(executions.id, p.execution_id)))
+      .limit(1);
+    if (!execution?.authority || !execution.version_id) return;
+    const code = execution.failure?.error_code;
+    if (!code || !GOVERNANCE_REFUSALS.has(code)) return;
+    await enqueueGateDiagnosis(boss, db, {
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id,
+      version_id: execution.version_id,
+      environment: execution.environment,
+      source: "dispatch",
+    });
+  } catch (err) {
+    logger.warn({
+      module: "self-healing",
+      action: "gate_diagnosis.enqueue_failed",
+      msg: "gate diagnosis enqueue failed — execution outcome unaffected",
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
@@ -175,11 +223,13 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       duration_ms: Date.now() - started,
     });
     if (result.status === "failed") {
-      await maybeEnqueueRepair(boss, db, {
+      const failed = {
         tenant_id: data.tenant_id,
         workflow_id: data.workflow_id,
         execution_id: result.execution_id,
-      });
+      };
+      await maybeEnqueueRepair(boss, db, failed);
+      await maybeEnqueueGateDiagnosis(boss, db, failed);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

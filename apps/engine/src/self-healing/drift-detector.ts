@@ -274,6 +274,14 @@ export function renderDriftDiff(signal: DriftSignal): string {
       if (signal.successor_uri) lines.push(`successor_uri: ${signal.successor_uri}`);
       return lines.join("\n");
     }
+    case "gate_block":
+      return [
+        `kind: gate_block`,
+        `code: ${signal.code}`,
+        `reason: ${signal.reason ?? "(none)"}`,
+        `fixer: ${signal.fixer}`,
+        `step_id: ${signal.step_id}`,
+      ].join("\n");
   }
 }
 

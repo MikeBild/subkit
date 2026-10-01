@@ -57,6 +57,9 @@ export interface PolicyDecisionInput {
   classification: "safe" | "unsafe";
   fixture_passed: boolean;
   has_fixture: boolean;
+  /** The drift the candidate heals. A `gate_block` repair is never applied
+   *  without a person, whatever the policy says. */
+  drift_kind?: string | undefined;
 }
 
 /**
@@ -75,7 +78,9 @@ export interface PolicyDecisionInput {
 export function shouldAutoApply(d: PolicyDecisionInput): boolean {
   let result = false;
   let reason = "unknown";
-  if (d.policy === "never-auto") {
+  if (d.drift_kind === "gate_block") {
+    reason = "gate_repair_requires_review";
+  } else if (d.policy === "never-auto") {
     reason = "policy=never-auto";
   } else if (d.policy === "safe-patches") {
     // Safe + fixture → require the dry-run to pass. Safe + no fixture

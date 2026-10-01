@@ -7,6 +7,9 @@
 // object-with-property-shapes. Anything we cannot classify widens
 // to `"unknown"`.
 
+import type { GateFixer } from "../workflows/gate-fix.ts";
+import type { ReportDeliveryBoundary } from "../workflows/report-delivery-boundary.ts";
+
 export type SchemaShape =
   | { type: "string" | "number" | "boolean" | "null" | "unknown" }
   | { type: "array"; items: SchemaShape }
@@ -92,6 +95,21 @@ export type DriftSignal =
       sunset: string | null;
       /** Vendor-announced replacement URI, when known. */
       successor_uri: string | null;
+    }
+  | {
+      // An approval gate refused a step, and a named deterministic fixer can
+      // remove the cause. Not a drift of the connector: the workflow itself
+      // produced something the gate cannot approve. Never auto-applied — a
+      // person reviews every gate repair (`shouldAutoApply`).
+      kind: "gate_block";
+      /** The gate's code: a manifest issue, a boundary refusal, or a refused
+       *  dispatch. */
+      code: string;
+      /** The report gate's own refusal reason, when it named one. */
+      reason: string | null;
+      fixer: GateFixer;
+      /** The step the gate refused. */
+      step_id: string;
     };
 
 // The classifier output. A PatchDecision says whether the engine may
@@ -113,6 +131,14 @@ export interface WorkflowRepairJob {
   step_id: string | null;
   connector_id?: string | null;
   endpoint_key?: string | null;
+  /** Set when the execution-authority gate, not a failing endpoint, raised the
+   * job: a held hook or schedule, or an authorized run refused at dispatch.
+   * Such a job is diagnosed deterministically and never runs the LLM loop. */
+  trigger?: "gate_block";
+  /** The workflow version the gate refused — required with `trigger`. */
+  version_id?: string;
+  /** Environment the refusal happened in — required with `trigger`. */
+  environment?: "dev" | "prod";
 }
 
 // The minimum shape the fixture-runner needs from a step. Mirrors the
@@ -126,6 +152,8 @@ export interface DryRunStep {
   data_selector?: string | undefined;
   response_filters?: unknown;
   expression?: string | undefined;
+  /** A declared report recipient — shown in a review, never dry-run. */
+  report_delivery?: ReportDeliveryBoundary | undefined;
 }
 
 export interface DryRunFixture {

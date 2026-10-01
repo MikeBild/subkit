@@ -211,7 +211,7 @@ function addNames(target: Set<string>, names: ReadonlySet<string>): void {
  *                        already sees the connector palette.
  */
 export function filterByAuthoringPalette<
-  T extends { name: string; category?: ConversationTool["category"] },
+  T extends { name: string; category?: ConversationTool["category"]; inert_proposal?: boolean },
 >(tools: readonly T[], _draft: DraftDocument, loadedSkills: ReadonlySet<string>): T[] {
   const allowed = new Set<string>();
   addNames(allowed, ALWAYS_VISIBLE);
@@ -235,7 +235,14 @@ export function filterByAuthoringPalette<
   // any point — listing workflows, fetching audit entries, checking engine
   // status, browsing knowledge sources. Filtering them by skill would create
   // dead-ends for ordinary "what's there?" turns.
-  return tools.filter((tool) => allowed.has(tool.name) || tool.category === "tenant_read");
+  // An inert proposal (a skill candidate, a session learning) changes nothing
+  // live until a person approves it; hiding it behind a skill load left "file
+  // a skill proposal" without a verb, and the model sent the user to the REST
+  // API instead.
+  return tools.filter(
+    (tool) =>
+      allowed.has(tool.name) || tool.category === "tenant_read" || tool.inert_proposal === true,
+  );
 }
 
 // ── Chat read-only palette ──────────────────────────────────────────────────

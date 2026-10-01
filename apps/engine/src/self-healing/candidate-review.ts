@@ -17,9 +17,10 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { type PatchProposal, PatchProposalSchema } from "../llm/flows/repair.ts";
+import { ReportDeliveryBoundarySchema } from "../workflows/report-delivery-boundary.ts";
 import { type PatchReadiness, readPatchReadiness } from "./candidate-readiness.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
-import { applyPatchToWorkflowDag } from "./patch-apply.ts";
+import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { buildDryRunStep, loadStepSnapshot, resolveCandidateStepKey } from "./step-snapshot.ts";
 import type { DryRunStep } from "./types.ts";
 
@@ -60,6 +61,8 @@ function projectStep(step: Record<string, unknown>): DryRunStep | null {
   const projected: DryRunStep = { id, kind };
   if (typeof step.data_selector === "string") projected.data_selector = step.data_selector;
   if (typeof step.expression === "string") projected.expression = step.expression;
+  const declared = ReportDeliveryBoundarySchema.safeParse(step.report_delivery);
+  if (declared.success) projected.report_delivery = declared.data;
   return projected;
 }
 
@@ -133,7 +136,12 @@ export async function previewPatchCandidate(
     const current = steps.find((s) => s && typeof s === "object" && s.id === target.step_key);
     if (current) before_step = projectStep(current);
     if (before_step && envelope.proposal) {
-      const patched = applyPatchToWorkflowDag(target.dag, target.step_key, envelope.proposal);
+      const patched = applyPatchToWorkflowDag(
+        target.dag,
+        target.step_key,
+        envelope.proposal,
+        candidateDriftKind(envelope.raw),
+      );
       if (patched.ok) {
         after_step = projectStep(patched.after);
         changed_paths = patched.changed_paths;
@@ -168,7 +176,11 @@ export type CandidateDryRunOutcome =
   | { status: "not_found" }
   | { status: "no_proposal" }
   | { status: "no_step" }
-  | { status: "no_fixture" };
+  | { status: "no_fixture" }
+  /** A gate repair changes what a request materializes, not how a recorded
+   *  response is projected: its proof is a held preparation of the prepared
+   *  version, never a fixture replay. */
+  | { status: "gate_fix" };
 
 export async function dryRunPatchCandidate(
   params: { tenant_id: string; candidate_id: string; actor_id: string | null },
@@ -189,6 +201,7 @@ export async function dryRunPatchCandidate(
   if (!row) return { status: "not_found" };
   const envelope = readCandidateDiff(row.diff);
   if (!envelope.proposal) return { status: "no_proposal" };
+  if (envelope.proposal.kind === "gate_fix") return { status: "gate_fix" };
   if (!envelope.step_id) return { status: "no_step" };
 
   const snapshot = await loadStepSnapshot(params.tenant_id, envelope.step_id, db);

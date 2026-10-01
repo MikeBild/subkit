@@ -1,0 +1,341 @@
+// User story: As an operator whose approved finding e-mail is refused at the
+// wire because its transform encodes the message one byte per character, I am
+// told the cause and offered the one mechanical repair, review its exact
+// change like any other fix, and after approving it the next approved run
+// sends.
+// Acceptance criteria:
+//   - AC1: GET /v1/workflows/{id}/diagnosis names the refused report step with
+//     reason `not_utf8`, remedy `patch` and fixer `use_utf8_encoder`.
+//   - AC2: POST /v1/workflows/{id}/repairs files one reviewable candidate; a
+//     second request returns the same candidate, and the diagnosis carries
+//     its id.
+//   - AC3: The candidate's preview shows the transform switching to
+//     `sk.base64UrlEncodeUtf8(`; approving it creates a new version whose
+//     approved run passes dispatch and sends exactly once.
+//   - AC4: The same diagnosis and proposal are reachable over MCP through
+//     `diagnose_workflow` and `propose_workflow_repair`.
+// Spec refs: docs/concepts/governance-and-audit.md
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { eq } from "drizzle-orm";
+import {
+  browserSessionCookie,
+  signBrowserCsrf,
+  signBrowserSession,
+} from "../../auth/browser-session.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { sessions, users, workflows } from "../../db/schema/index.ts";
+import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
+import { runExecution } from "../../execution/engine.ts";
+import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import {
+  grantWorkflowAuthority,
+  previewWorkflowAuthority,
+} from "../../workflows/execution-authorities.ts";
+import { GMAIL_SEND_TARGET } from "../../workflows/report-delivery-boundary.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
+
+let ctx: JourneyCtx;
+let principal: ResolvedPrincipal;
+let grantRequest: Request;
+
+// A real finding mailer's shape: "—" in the subject, "·" in the body, and the
+// whole message through the byte-per-character encoder.
+const ENCODER = [
+  "const subject = '[watchkit page] api.example.com — certificate expires';",
+  "const html = '<p>watchkit.finding · api.example.com · ' + input.input.at + '</p>';",
+  "const msg = 'From: ops@example.com\\r\\nTo: ops@example.com\\r\\nSubject: ' + subject +",
+  "  '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n' + html;",
+  "return { raw: sk.base64UrlEncode(msg) };",
+].join("\n");
+
+function steps() {
+  return [
+    { kind: "transform", id: "compose", language: "javascript", expression: ENCODER },
+    {
+      kind: "request",
+      id: "send_email",
+      method: "POST",
+      url: GMAIL_SEND_TARGET,
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+      body: { raw: "${scope.compose.data.raw}" },
+      report_delivery: {
+        kind: "gmail_report",
+        to: "ops@example.com",
+        from: "ops@example.com",
+        content_type: "text/html",
+      },
+      max_retries: 0,
+    },
+  ];
+}
+
+interface Diagnosis {
+  code: string;
+  reason?: string;
+  subject: { step_id: string };
+  evidence: { execution_id?: string };
+  remedy_kind: string;
+  fixer?: string;
+  candidate_id?: string;
+}
+
+async function currentVersion(workflow_id: string): Promise<string> {
+  const [row] = await ctx.db
+    .select({ id: workflows.current_version_id })
+    .from(workflows)
+    .where(eq(workflows.id, workflow_id));
+  if (!row?.id) throw new Error("workflow has no current version");
+  return row.id;
+}
+
+/** Grant the current version, run it once as the scheduler would, and count
+ *  what actually reached the mail endpoint. */
+async function grantAndRun(workflow_id: string) {
+  const version_id = await currentVersion(workflow_id);
+  const review = await previewWorkflowAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      workflow_version_id: version_id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  expect(review.eligible_for_repeated_runs).toBe(true);
+  const now = await databaseNow(ctx.db);
+  await grantWorkflowAuthority(
+    workflow_id,
+    {
+      workflow_version_id: version_id,
+      expected_manifest_digest: review.digest,
+      execution_environment: "dev",
+      valid_from: now.toISOString(),
+      valid_until: new Date(now.getTime() + 3_600_000).toISOString(),
+      max_runs: 1,
+    },
+    { db: ctx.db, request: grantRequest, principal },
+  );
+  let sends = 0;
+  const remote = Object.assign(
+    async () => {
+      sends += 1;
+      return Response.json({ id: "sent" });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  return withDriverFetchForTests(remote, async () => {
+    const input = { at: "2026-01-01T00:00:00Z" };
+    const admitted = await admitAuthorizedWorkflowExecution(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        execution_environment: "dev",
+        request_source: "scheduler",
+        input,
+      },
+      ctx.db,
+    );
+    const result = await runExecution({
+      tenant_id: ctx.tenantId,
+      db: ctx.db,
+      source: { kind: "saved", workflow_id },
+      input,
+      options: { existing_execution_id: admitted.execution_id, principal },
+    });
+    return { result, sends };
+  });
+}
+
+async function diagnosis(workflow_id: string): Promise<Diagnosis[]> {
+  const res = await journeyFetch(ctx, `/v1/workflows/${workflow_id}/diagnosis?environment=dev`);
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { diagnoses: Diagnosis[] }).diagnoses;
+}
+
+async function connect(): Promise<Client> {
+  const transport = new StreamableHTTPClientTransport(new URL(ctx.mcpUrl), {
+    requestInit: { headers: { authorization: `Bearer ${ctx.apiKey}` } },
+  });
+  const client = new Client({ name: "subkit-journey", version: "0.0.0" });
+  await client.connect(transport as unknown as Transport);
+  return client;
+}
+
+function toolData(result: unknown): Record<string, unknown> {
+  const structured = (result as { structuredContent?: unknown }).structuredContent;
+  if (structured && typeof structured === "object") return structured as Record<string, unknown>;
+  const text = (result as { content?: Array<{ type: string; text?: string }> }).content?.find(
+    (part) => part.type === "text",
+  )?.text;
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+beforeAll(async () => {
+  ctx = await createJourneyCtx("gate-repair-watchkit");
+  const now = await databaseNow(ctx.db);
+  const [user] = await ctx.db
+    .insert(users)
+    .values({ tenant_id: ctx.tenantId, email: "approver@example.com", role: "admin" })
+    .returning();
+  if (!user) throw new Error("missing user");
+  const [session] = await ctx.db
+    .insert(sessions)
+    .values({
+      tenant_id: ctx.tenantId,
+      user_id: user.id,
+      expires_at: new Date(now.getTime() + 3_600_000),
+    })
+    .returning();
+  if (!session) throw new Error("missing session");
+  const identity = { tenant_id: ctx.tenantId, user_id: user.id, session_id: session.id };
+  principal = {
+    provider: "session",
+    kind: "user",
+    id: user.id,
+    tenant_id: ctx.tenantId,
+    roles: ["admin"],
+    session_id: session.id,
+  };
+  grantRequest = new Request("https://example.test/grant", {
+    method: "POST",
+    headers: {
+      cookie: browserSessionCookie(await signBrowserSession(identity)),
+      "x-subkit-csrf": await signBrowserCsrf(identity),
+    },
+  });
+}, JOURNEY_HOOK_TIMEOUT);
+
+afterAll(async () => {
+  if (ctx?.cleanup) await ctx.cleanup();
+}, JOURNEY_HOOK_TIMEOUT);
+
+describe("journey 70: a refused report is repaired by a reviewed deterministic fix", () => {
+  test("AC1–AC3 over HTTP: diagnose, propose once, preview, approve, send", async () => {
+    const wf = await seedWorkflow(ctx, {
+      slug: "finding-mail",
+      name: "Finding mail",
+      steps: steps(),
+    });
+    const refused = await grantAndRun(wf.id);
+    expect(refused.result.status).toBe("failed");
+    expect(refused.sends).toBe(0);
+
+    // AC1
+    const before = await diagnosis(wf.id);
+    const block = before.find((entry) => entry.subject.step_id === "send_email");
+    expect(block).toMatchObject({
+      reason: "not_utf8",
+      remedy_kind: "patch",
+      fixer: "use_utf8_encoder",
+    });
+    expect(block?.evidence.execution_id).toBe(refused.result.execution_id);
+    expect(block?.candidate_id).toBeUndefined();
+
+    // AC2
+    const propose = () =>
+      journeyFetch(ctx, `/v1/workflows/${wf.id}/repairs`, {
+        method: "POST",
+        body: JSON.stringify({
+          step_id: "send_email",
+          fixer: "use_utf8_encoder",
+          environment: "dev",
+        }),
+      });
+    const first = await propose();
+    expect(first.status).toBe(201);
+    const { candidate_id } = (await first.json()) as { candidate_id: string };
+    const second = await propose();
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { candidate_id: string }).candidate_id).toBe(candidate_id);
+    const attached = (await diagnosis(wf.id)).find(
+      (entry) => entry.subject.step_id === "send_email",
+    );
+    expect(attached?.candidate_id).toBe(candidate_id);
+
+    // AC3
+    const previewRes = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/preview`);
+    expect(previewRes.status).toBe(200);
+    const preview = (await previewRes.json()) as {
+      reviewable: boolean;
+      review_digest: string;
+      before_step: { id: string; expression?: string };
+      after_step: { id: string; expression?: string };
+    };
+    expect(preview.reviewable).toBe(true);
+    expect(preview.before_step.id).toBe("compose");
+    expect(preview.before_step.expression).toContain("sk.base64UrlEncode(msg)");
+    expect(preview.after_step.expression).toContain("sk.base64UrlEncodeUtf8(msg)");
+    // A fixture replay cannot prove a gate repair; the route says so instead
+    // of passing a check that exercised nothing.
+    const dryRun = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/dry-run`, {
+      method: "POST",
+    });
+    expect(dryRun.status).toBe(409);
+    expect(((await dryRun.json()) as { code?: string }).code).toBe("not_replayable");
+    const approve = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ expected_review_digest: preview.review_digest }),
+    });
+    expect(approve.status).toBe(200);
+    const applied = (await approve.json()) as { applied: boolean; workflow_version_id: string };
+    expect(applied.applied).toBe(true);
+    expect(await currentVersion(wf.id)).toBe(applied.workflow_version_id);
+
+    const repaired = await grantAndRun(wf.id);
+    expect(repaired.result.status).toBe("succeeded");
+    expect(repaired.sends).toBe(1);
+    // The new version carries no gate block for the step any more.
+    expect((await diagnosis(wf.id)).filter((entry) => entry.fixer)).toEqual([]);
+  });
+
+  test("AC4 over MCP: diagnose_workflow and propose_workflow_repair", async () => {
+    const wf = await seedWorkflow(ctx, {
+      slug: "finding-mail-mcp",
+      name: "Finding mail MCP",
+      steps: steps(),
+    });
+    await grantAndRun(wf.id);
+    const client = await connect();
+    try {
+      const diagnosed = toolData(
+        await client.callTool({
+          name: "diagnose_workflow",
+          arguments: { workflow_id: wf.id, environment: "dev" },
+        }),
+      );
+      const diagnoses = ((diagnosed.data ?? diagnosed) as { diagnoses?: Diagnosis[] }).diagnoses;
+      expect(diagnoses?.find((entry) => entry.subject.step_id === "send_email")).toMatchObject({
+        reason: "not_utf8",
+        fixer: "use_utf8_encoder",
+      });
+      const proposed = toolData(
+        await client.callTool({
+          name: "propose_workflow_repair",
+          arguments: {
+            workflow_id: wf.id,
+            environment: "dev",
+            step_id: "send_email",
+            fixer: "use_utf8_encoder",
+          },
+        }),
+      );
+      const candidate_id = ((proposed.data ?? proposed) as { candidate_id?: string }).candidate_id;
+      expect(typeof candidate_id).toBe("string");
+      const res = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/preview`);
+      expect(res.status).toBe(200);
+    } finally {
+      await client.close();
+    }
+  });
+});
