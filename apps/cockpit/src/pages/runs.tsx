@@ -97,7 +97,7 @@ function EvidenceBlock({
     <section className="grid gap-2">
       <h3 className="text-sm font-medium">{title}</h3>
       <pre
-        className={`rounded-lg border p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap ${
+        className={`rounded-lg border p-3 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap ${
           tone === "error" ? "border-destructive/40 bg-destructive/5" : "bg-muted/40"
         }`}
         data-testid={testId}
@@ -283,7 +283,10 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
   ];
 
   return (
-    <div className="grid gap-5 p-4">
+    // One column that may shrink below its content: without it, a long
+    // unbroken token (a resolved URL in an error) sizes the track and the
+    // sheet clips everything at its edge.
+    <div className="grid grid-cols-1 gap-5 p-4">
       <dl className="grid grid-cols-2 gap-3" data-testid="run-detail-facts">
         {facts.map(([label, value, full]) => (
           <div key={label} className="grid gap-1 border-b pb-2">
@@ -393,7 +396,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
                         : formatRunDuration(locale, step.duration_ms)}
                     </p>
                     {stepError && (
-                      <pre className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
+                      <pre className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap">
                         {hideTechnicalIdentifiers(stepError, t("tool.referenceHiddenInline"))}
                       </pre>
                     )}

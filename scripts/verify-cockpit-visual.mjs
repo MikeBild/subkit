@@ -1678,6 +1678,11 @@ async function mockApi(route) {
             code: "request_outside_declared_boundary",
             message:
               "This request is outside the folder boundary its step declares: the content is 337858 bytes but `s3.scope.max_bytes` is 131072. Nothing was sent.",
+            // One unbroken token wider than the sheet: a real refused send
+            // carries its resolved URL, and that once stretched the sheet's
+            // grid past its own edge.
+            resolved_url:
+              "https://storage.example.com/berichtsablage/reports/2026/products/write_products_full_export_with_a_very_long_object_key_that_never_breaks.json",
           },
           output_preview: null,
           result_preview: "null",
@@ -2725,6 +2730,27 @@ async function assertViewport(page, label) {
     geometry.contentWidth > geometry.contentClientWidth + 1
   )
     throw new Error(`${label} has horizontal overflow`);
+  // An open sheet clips what pokes past its edge instead of widening the page,
+  // so the page check above stays green over a sheet cut off mid-sentence.
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll('[role="dialog"]')].flatMap((sheet) => {
+      const edge = sheet.getBoundingClientRect().right;
+      return [...sheet.querySelectorAll("*")]
+        .filter((node) => {
+          if (node.getBoundingClientRect().right <= edge + 1) return false;
+          // Content inside its own horizontal scroller is reachable, not cut.
+          for (let up = node.parentElement; up && up !== sheet; up = up.parentElement) {
+            const x = window.getComputedStyle(up).overflowX;
+            if (x === "auto" || x === "scroll") return false;
+          }
+          return true;
+        })
+        .slice(0, 3)
+        .map((node) => node.getAttribute("data-testid") ?? node.tagName);
+    }),
+  );
+  if (clipped.length)
+    throw new Error(`${label} has a sheet cut off at its edge: ${clipped.join(", ")}`);
   if (
     geometry.bodyHeight > geometry.viewportHeight + 1 ||
     geometry.contentBottom > geometry.viewportHeight + 1
