@@ -221,8 +221,20 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     const marker = transcript().locator('[data-testid$="-answer-to"]');
     if (!(await marker.isVisible()))
       throw new Error("The reply is not marked as the answer to the question");
-    if (!(await transcript().innerText()).includes(value))
-      throw new Error("The answer is not shown in the transcript");
+    // The marker can render a frame before the refetched reply text does;
+    // wait for the words rather than reading the transcript once.
+    await page
+      .waitForFunction(
+        (expected) =>
+          (document.querySelector('[data-testid="chat-transcript"]')?.textContent ?? "").includes(
+            expected,
+          ),
+        value,
+        { timeout: 10_000 },
+      )
+      .catch(() => {
+        throw new Error("The answer is not shown in the transcript");
+      });
   };
   await page.route(detailPattern, detail);
   await page.route(appendPattern, append);
