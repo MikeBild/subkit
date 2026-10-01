@@ -15,6 +15,7 @@ import {
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
+  respondToChatText,
   respondToToolCall,
   sendConversationTurn,
   setConversationHidden,
@@ -160,6 +161,8 @@ import {
   turnFailureCause,
   userMessageCount,
 } from "./chat-session";
+import { type ChatText, chatText, questionExcerpt, questionIsInTranscript } from "./chat-text";
+import { ChatTextCard } from "./chat-text-card";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 import { budgetPressure, budgetSummary } from "./usage-model";
 
@@ -749,8 +752,11 @@ function ChatMessage({
   approval,
   choice,
   form,
+  text = null,
   onForm,
   onChoice,
+  onText = () => {},
+  answersQuestion = false,
   approvalBusy,
   approvalError,
   onApproval,
@@ -766,8 +772,13 @@ function ChatMessage({
   approval: ChatApproval | null;
   choice: ChatChoice | null;
   form: ChatForm | null;
+  /** The pending free-text question; its card replaces its tool row. */
+  text?: ChatText | null;
   onForm: (id: string, output: Record<string, unknown>) => void;
   onChoice: (id: string, value: string) => void;
+  onText?: (id: string, value: string) => void;
+  /** This user message is the answer to a text question, not a new request. */
+  answersQuestion?: boolean;
   approvalBusy: boolean;
   approvalError: boolean;
   onApproval: (id: string, approved: boolean) => void;
@@ -797,6 +808,15 @@ function ChatMessage({
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
         <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
           {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
+          {answersQuestion ? (
+            <span
+              className="font-normal text-muted-foreground"
+              data-testid={`chat-message-${messageIndex}-answer-to`}
+            >
+              {" · "}
+              {t("chat.text.answerTo")}
+            </span>
+          ) : null}
         </MessageHeader>
         {groups.map((group) => {
           if (group.kind === "background") {
@@ -863,6 +883,17 @@ function ChatMessage({
                 error={approvalError}
                 onAnswer={onForm}
                 testId={`chat-message-${messageIndex}-form`}
+              />
+            );
+          if (text?.toolCallId === tool.toolCallId)
+            return (
+              <ChatTextCard
+                key={`${message.id}-text-question-${partIndex}`}
+                text={text}
+                busy={approvalBusy}
+                error={approvalError}
+                onAnswer={onText}
+                testId={`chat-message-${messageIndex}-text-question`}
               />
             );
           if (choice?.toolCallId === tool.toolCallId) {
@@ -932,6 +963,27 @@ function ChatMessage({
                       stale,
                     });
           const notRun = didNotRun(verdict);
+          // An answered text question stays readable: the question is what
+          // the next message (marked as its answer) replies to.
+          const askedQuestion =
+            tool.type === "dynamic-tool" && tool.toolName === "ask_user_text"
+              ? (tool.input as { question?: unknown } | undefined)?.question
+              : undefined;
+          if (typeof askedQuestion === "string" && askedQuestion.trim() && outcomeKey !== null)
+            return (
+              <div
+                key={`${message.id}-asked-${partIndex}`}
+                className="rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                data-testid={`chat-message-${messageIndex}-asked-${partIndex}`}
+              >
+                <p className="text-xs text-muted-foreground">
+                  {t("chat.text.answeredQuestion")} · {t(outcomeKey)}
+                </p>
+                <p className="mt-1 whitespace-pre-line">
+                  {hideTechnicalIdentifiers(askedQuestion, t("tool.referenceHiddenInline"))}
+                </p>
+              </div>
+            );
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
@@ -1354,12 +1406,14 @@ export function ChatPage() {
       elicitationId,
       approved,
       choiceValue,
+      textValue,
       formOutput,
     }: {
       toolCallId?: string;
       elicitationId?: string;
       approved?: boolean;
       choiceValue?: string;
+      textValue?: string;
       formOutput?: Record<string, unknown>;
     }) => {
       setStreamedText("");
@@ -1370,7 +1424,9 @@ export function ChatPage() {
           ? respondToChatForm(activeId ?? "", elicitationId, formOutput, onTurnEvent)
           : choiceValue !== undefined
             ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
-            : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
+            : textValue !== undefined
+              ? respondToChatText(activeId ?? "", elicitationId, textValue, onTurnEvent)
+              : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
         : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
     },
     onSuccess: () => {
@@ -1402,6 +1458,12 @@ export function ChatPage() {
     send.reset();
     decide.mutate({ elicitationId, choiceValue });
   };
+  const submitText = (elicitationId: string, textValue: string) => {
+    if (decisionLock.current || send.isPending || decide.isPending) return;
+    decisionLock.current = true;
+    send.reset();
+    decide.mutate({ elicitationId, textValue });
+  };
   const submitForm = (elicitationId: string, formOutput: Record<string, unknown>) => {
     if (decisionLock.current || send.isPending || decide.isPending) return;
     decisionLock.current = true;
@@ -1428,6 +1490,26 @@ export function ChatPage() {
   const pendingDecision = chatApproval(detail.data);
   const pendingChoice = chatChoice(detail.data);
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
+  const pendingText = useMemo(() => chatText(detail.data), [detail.data]);
+  // A question with no tool row to stand beside — parked from prose, or a
+  // call the transcript did not anchor — is shown below the transcript.
+  const pendingTextInline = pendingText ? questionIsInTranscript(pendingText, messages) : false;
+  // The user messages that answer a text question: the engine projects each
+  // answer as a message carrying the question's id.
+  const answerMessageIds = useMemo(
+    () =>
+      new Set(
+        (detail.data?.tool_calls ?? []).flatMap((call) => {
+          const output = call.output as { status?: unknown; elicitation_id?: unknown } | null;
+          return call.tool === "ask_user_text" &&
+            output?.status === "resolved" &&
+            typeof output.elicitation_id === "string"
+            ? [output.elicitation_id]
+            : [];
+        }),
+      ),
+    [detail.data],
+  );
   const createdResources = detail.data?.created_resources ?? [];
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   // Everything this conversation is known to be about: what it made, and what
@@ -1552,11 +1634,16 @@ export function ChatPage() {
     conversationFailureKind(detail.error ?? detail.failureReason) === "missing";
   const listFailed = queryView(conversations, () => false) === "error";
   const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
+  // A text question is answered by the next message — said in so many words,
+  // naming the question, so a message is never an answer by surprise.
   const composerHint =
     pendingChoice || pendingForm
       ? { text: t("chat.choice.hint"), visible: true }
-      : resume?.pending_approval?.tool_name === "ask_user_text" && !send.isPending
-        ? { text: t("chat.replyHint"), visible: false }
+      : pendingText && !send.isPending
+        ? {
+            text: t("chat.text.composerHint", { question: questionExcerpt(pendingText.question) }),
+            visible: true,
+          }
         : null;
   // The mode in force: the one being picked, the one the conversation was
   // started in — or, while a conversation begun here loads its detail, the
@@ -1740,7 +1827,14 @@ export function ChatPage() {
             {send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked" ? (
               <>
                 <AlertTitle>{t("chat.failed")}</AlertTitle>
-                <AlertDescription>{t("chat.pendingQuestionRequired")}</AlertDescription>
+                <AlertDescription>
+                  {t(
+                    (send.error.details?.pending_elicitation as { tool_name?: unknown } | undefined)
+                      ?.tool_name === "ask_user_text"
+                      ? "chat.text.blocked"
+                      : "chat.pendingQuestionRequired",
+                  )}
+                </AlertDescription>
               </>
             ) : (
               <>
@@ -1846,18 +1940,25 @@ export function ChatPage() {
                           pendingDecision?.toolCallId ??
                           pendingChoice?.toolCallId ??
                           pendingForm?.toolCallId ??
+                          pendingText?.toolCallId ??
                           null
                         }
                         approval={pendingDecision}
                         choice={pendingChoice}
                         form={pendingForm}
+                        text={pendingText}
                         onForm={submitForm}
                         onChoice={submitChoice}
+                        onText={submitText}
+                        answersQuestion={answerMessageIds.has(message.id)}
                         approvalBusy={send.isPending || decide.isPending}
                         approvalError={
                           decide.isError &&
                           decide.variables?.elicitationId ===
-                            (pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id)
+                            (pendingDecision?.id ??
+                              pendingChoice?.id ??
+                              pendingForm?.id ??
+                              pendingText?.id)
                         }
                         onApproval={submitApproval}
                         nameFor={nameFor}
@@ -1872,7 +1973,7 @@ export function ChatPage() {
                           ])
                         }
                         onReauth={(action) => {
-                          if (pendingDecision || pendingChoice || pendingForm) {
+                          if (pendingDecision || pendingChoice || pendingForm || pendingText) {
                             setContextOpen(true);
                             return;
                           }
@@ -1986,11 +2087,21 @@ export function ChatPage() {
                   </MessageScrollerItem>
                 )}
                 <MessageScrollerItem data-testid="chat-next-action">
+                  {pendingText && !pendingTextInline && (
+                    <ChatTextCard
+                      text={pendingText}
+                      busy={send.isPending || decide.isPending}
+                      error={decide.isError && decide.variables?.elicitationId === pendingText.id}
+                      onAnswer={submitText}
+                      testId="chat-text-question"
+                    />
+                  )}
                   {resume?.unsaved &&
                     targetWorkflowId &&
                     !pendingDecision &&
                     !pendingChoice &&
                     !pendingForm &&
+                    !pendingText &&
                     status === "ready" && (
                       <Alert className="bg-accent/10" data-testid="chat-preparation-next-step">
                         <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
@@ -2013,6 +2124,7 @@ export function ChatPage() {
                     !pendingDecision &&
                     !pendingChoice &&
                     !pendingForm &&
+                    !pendingText &&
                     status === "ready" && (
                       <Alert className="bg-accent/10" data-testid="chat-schedule-next-step">
                         <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
@@ -2099,10 +2211,11 @@ export function ChatPage() {
                 </span>
               </div>
             )}
-            {/* Where the answer goes. A text question says it in the field's
-                placeholder and, for a screen reader, here; a choice or form
-                disables the field, and a disabled field's placeholder is too
-                faint to read — so that hint is shown. */}
+            {/* Where the answer goes, shown above the field. A text question
+                names itself here: a placeholder alone ("your answer to the
+                question") was the only sign of a question nobody could see,
+                and the next message was taken as its answer. A choice or form
+                disables the field and points at its card. */}
             {composerHint ? (
               <p
                 id="chat-composer-hint"
@@ -2121,13 +2234,9 @@ export function ChatPage() {
                   send.isPending || decide.isPending || Boolean(pendingChoice || pendingForm)
                 }
                 status={status}
-                // Where to answer is said where the answer goes: in the field.
-                // A separate line above it repeated what the header badge and
-                // the card in the transcript already said.
+                // While a text question waits, the field takes its answer.
                 placeholder={
-                  composerHint && !composerHint.visible
-                    ? composerHint.text
-                    : t("chat.composer.placeholder")
+                  pendingText ? t("chat.text.placeholder") : t("chat.composer.placeholder")
                 }
                 describedBy={composerHint ? "chat-composer-hint" : undefined}
                 onStop={() => cancel.mutate()}
@@ -2173,6 +2282,17 @@ export function ChatPage() {
                 testId="chat-context-form"
               />
             )}
+            {pendingText && (
+              <div className="p-4">
+                <ChatTextCard
+                  text={pendingText}
+                  busy={send.isPending || decide.isPending}
+                  error={decide.isError && decide.variables?.elicitationId === pendingText.id}
+                  onAnswer={submitText}
+                  testId="chat-context-text-question"
+                />
+              </div>
+            )}
             {pendingDecision && (
               <div className="p-4 pb-0">
                 <ChatApprovalCard
@@ -2203,7 +2323,7 @@ export function ChatPage() {
                 <dd className="mt-1 font-medium">
                   {decide.isPending
                     ? t("chat.decision.processing")
-                    : pendingChoice || pendingForm
+                    : pendingChoice || pendingForm || pendingText
                       ? t("chat.choice.title")
                       : resumeStageLabel(resume?.stage, t)}
                 </dd>
@@ -2214,7 +2334,7 @@ export function ChatPage() {
                   {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
-              {!pendingDecision && !pendingChoice && !pendingForm && (
+              {!pendingDecision && !pendingChoice && !pendingForm && !pendingText && (
                 <div data-testid="chat-context-next-action">
                   <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
                   <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
