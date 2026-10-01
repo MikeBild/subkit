@@ -119,9 +119,12 @@ export function planUtf8EncoderFix(
 export function planReportDeliveryDeclaration(
   definition: unknown,
   subject_step_id: string,
+  /** The observed addresses and content type; `kind` is implied. */
   observed: unknown,
 ): GateFixPlan | null {
-  const boundary = ReportDeliveryBoundarySchema.safeParse(observed);
+  const boundary = ReportDeliveryBoundarySchema.safeParse(
+    observed && typeof observed === "object" ? { kind: "gmail_report", ...observed } : observed,
+  );
   const subject = stepById(definition, subject_step_id);
   if (!boundary.success || subject?.kind !== "request" || subject.method !== "POST") return null;
   // A declaration the observation contradicts is replaced by what was observed;

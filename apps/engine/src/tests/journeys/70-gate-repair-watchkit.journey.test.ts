@@ -276,6 +276,13 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     expect(preview.before_step.id).toBe("compose");
     expect(preview.before_step.expression).toContain("sk.base64UrlEncode(msg)");
     expect(preview.after_step.expression).toContain("sk.base64UrlEncodeUtf8(msg)");
+    // A fixture replay cannot prove a gate repair; the route says so instead
+    // of passing a check that exercised nothing.
+    const dryRun = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/dry-run`, {
+      method: "POST",
+    });
+    expect(dryRun.status).toBe(409);
+    expect(((await dryRun.json()) as { code?: string }).code).toBe("not_replayable");
     const approve = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/approve`, {
       method: "POST",
       body: JSON.stringify({ expected_review_digest: preview.review_digest }),
