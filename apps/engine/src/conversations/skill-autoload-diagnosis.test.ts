@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { loadEmbeddedSkillSeeds } from "../skills/seed.ts";
+import { REPORT_MESSAGE_REFUSALS } from "../workflows/report-delivery-boundary.ts";
 import {
   type ActivationRecord,
   autoloadForDiagnoses,
@@ -31,9 +32,29 @@ describe("autoloadForDiagnoses", () => {
       "report_delivery_unprepared",
       "report_delivery_unobserved",
       "report_delivery_unreachable",
+      "report_delivery_contradicted",
     ]) {
       expect(autoloadForDiagnoses([code], shippedCatalog(), [])).toContain("governed-delivery");
     }
+  });
+
+  test("every reason the report profile refuses a message loads governed-delivery", () => {
+    // A new refusal reason the skill does not list would leave that refusal
+    // unexplained; this fails the moment the two drift apart.
+    for (const reason of [
+      ...REPORT_MESSAGE_REFUSALS,
+      "recipient_differs",
+      "sender_differs",
+      "content_type_differs",
+    ]) {
+      expect(autoloadForDiagnoses([reason], shippedCatalog(), [])).toContain("governed-delivery");
+    }
+  });
+
+  test("the authoring-only skill stays out of the read-only chat surface", () => {
+    expect(
+      autoloadForDiagnoses(["report_delivery_unobserved"], shippedCatalog(), [], "chat"),
+    ).not.toContain("governed-delivery");
   });
 
   test("an unrelated diagnosis loads nothing, an already-loaded skill is not repeated", () => {
@@ -84,6 +105,18 @@ describe("diagnosisCodesFromToolResult", () => {
     ).toEqual(
       ["no_boundary", "report_delivery_unobserved", "report_message_multiple_recipients"].sort(),
     );
+  });
+
+  test("reads the codes of a gate diagnosis list", () => {
+    expect(
+      diagnosisCodesFromToolResult({
+        workflow_id: "w",
+        diagnoses: [
+          { code: "execution_authority_changed", subject: { step_id: "send" } },
+          { code: "report_delivery_unreachable", subject: { step_id: "send" } },
+        ],
+      }).sort(),
+    ).toEqual(["execution_authority_changed", "report_delivery_unreachable"]);
   });
 
   test("a result without guidance yields nothing", () => {

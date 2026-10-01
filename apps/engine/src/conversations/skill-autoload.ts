@@ -290,24 +290,29 @@ export function autoloadForDiagnoses(
 
 /**
  * Diagnosis codes a tool result reports: every `code` and `reason` of a
- * `repair_guidance` list, at the top level or one object down (a draft save
- * nests it under `automation_readiness`). Deliberately shallow — guidance is
- * a contract of the result's own shape, not something to dig out of
- * arbitrary payload data.
+ * `repair_guidance` or gate `diagnoses` list, at the top level or one object
+ * down (a draft save nests guidance under `automation_readiness`).
+ * Deliberately shallow — both lists are a contract of the result's own shape,
+ * not something to dig out of arbitrary payload data.
  */
 export function diagnosisCodesFromToolResult(result: unknown): string[] {
   const codes = new Set<string>();
-  const collect = (guidance: unknown): void => {
-    if (!Array.isArray(guidance)) return;
-    for (const item of guidance) {
+  const collect = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
       const entry = pickObject(item);
       if (typeof entry.code === "string" && entry.code) codes.add(entry.code);
       if (typeof entry.reason === "string" && entry.reason) codes.add(entry.reason);
     }
   };
+  const visit = (value: unknown): void => {
+    const node = pickObject(value);
+    collect(node.repair_guidance);
+    collect(node.diagnoses);
+  };
   const root = pickObject(result);
-  collect(root.repair_guidance);
-  for (const value of Object.values(root)) collect(pickObject(value).repair_guidance);
+  visit(root);
+  for (const value of Object.values(root)) visit(value);
   return [...codes];
 }
 
