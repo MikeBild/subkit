@@ -810,11 +810,10 @@ function ChatMessage({
           {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
           {answersQuestion ? (
             <span
-              className="font-normal text-muted-foreground"
+              className="ml-1 font-normal text-muted-foreground"
               data-testid={`chat-message-${messageIndex}-answer-to`}
             >
-              {" · "}
-              {t("chat.text.answerTo")}
+              · {t("chat.text.answerTo")}
             </span>
           ) : null}
         </MessageHeader>

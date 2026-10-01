@@ -2084,7 +2084,7 @@ const EN = {
   "chat.text.submit": "Answer",
   "chat.text.invalid": "This answer does not have the format the question asks for.",
   "chat.text.blocked":
-    "A question is waiting for you. Your message was not sent as its answer — read the question above and answer it.",
+    "A question is waiting for you. Your message was not sent as its answer and is still in the composer.",
   "chat.text.answeredQuestion": "Question",
   "chat.text.answerTo": "Answer to the question",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
@@ -5131,7 +5131,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.text.submit": "Antworten",
   "chat.text.invalid": "Diese Antwort hat nicht das Format, nach dem die Rückfrage fragt.",
   "chat.text.blocked":
-    "Eine Rückfrage wartet auf dich. Deine Nachricht wurde nicht als Antwort gesendet – lies die Rückfrage oben und beantworte sie.",
+    "Eine Rückfrage wartet auf dich. Deine Nachricht wurde nicht als Antwort gesendet und steht noch im Eingabefeld.",
   "chat.text.answeredQuestion": "Rückfrage",
   "chat.text.answerTo": "Antwort auf die Rückfrage",
   "chat.pendingQuestionRequired":
