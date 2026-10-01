@@ -18,6 +18,9 @@
 //     the step) asks for a preparation, the preparation is NOT refused as
 //     "already bindable" although the review reads eligible, and afterwards
 //     the diagnosis names `not_utf8` with its fixer — no loop.
+//   - AC6: Without a supplied input, the preparation replays the refused
+//     run's own delivery — not a call that branches away before the send —
+//     so the refused step is actually inspected.
 // Spec refs: docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -105,7 +108,10 @@ async function currentVersion(workflow_id: string): Promise<string> {
 
 /** Grant the current version, run it once as the scheduler would, and count
  *  what actually reached the mail endpoint. */
-async function grantAndRun(workflow_id: string) {
+async function grantAndRun(
+  workflow_id: string,
+  input: Record<string, unknown> = { at: "2026-01-01T00:00:00Z" },
+) {
   const version_id = await currentVersion(workflow_id);
   const review = await previewWorkflowAuthority(
     {
@@ -139,7 +145,6 @@ async function grantAndRun(workflow_id: string) {
     { preconnect: () => {} },
   ) as typeof fetch;
   return withDriverFetchForTests(remote, async () => {
-    const input = { at: "2026-01-01T00:00:00Z" };
     const admitted = await admitAuthorizedWorkflowExecution(
       {
         tenant_id: ctx.tenantId,
@@ -386,5 +391,54 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
       remedy_kind: "patch",
       fixer: "use_utf8_encoder",
     });
+  });
+  test("AC6: the preparation replays the refused run's delivery", async () => {
+    // Only a finding reaches the mail; a heartbeat branches away before it.
+    const wf = await seedWorkflow(ctx, {
+      slug: "finding-mail-branching",
+      name: "Finding mail branching",
+      steps: [
+        {
+          kind: "transform",
+          id: "kind",
+          language: "javascript",
+          expression: "return { k: input.input.kind ?? 'heartbeat' };",
+        },
+        {
+          kind: "branch",
+          id: "worth_telling",
+          when: "kind.data.k = 'finding'",
+          then_steps: ["compose", "send_email"],
+          else_steps: [],
+        },
+        ...steps(),
+      ],
+    });
+    const refused = await grantAndRun(wf.id, { at: "2026-01-01T00:00:00Z", kind: "finding" });
+    expect(refused.result.status).toBe("failed");
+    await ctx.db
+      .update(executionSteps)
+      .set({ error: sql`${executionSteps.error} - 'reason'` })
+      .where(
+        and(
+          eq(executionSteps.tenant_id, ctx.tenantId),
+          eq(executionSteps.execution_id, refused.result.execution_id),
+        ),
+      );
+    const version_id = await currentVersion(wf.id);
+    const prepared = await withDriverFetchForTests(
+      Object.assign(async () => Response.json({ id: "held" }), {
+        preconnect: () => {},
+      }) as typeof fetch,
+      () =>
+        journeyFetch(ctx, `/v1/workflows/${wf.id}/versions/${version_id}/prepare-authority`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ environment: "dev" }),
+        }),
+    );
+    expect(((await prepared.json()) as { prepared?: boolean }).prepared).toBe(true);
+    const after = (await diagnosis(wf.id)).find((entry) => entry.subject.step_id === "send_email");
+    expect(after).toMatchObject({ reason: "not_utf8", fixer: "use_utf8_encoder" });
   });
 });
