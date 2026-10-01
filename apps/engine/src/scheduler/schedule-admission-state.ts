@@ -8,13 +8,15 @@ import { inspectScheduleAutomation } from "./automation-status.ts";
 
 /** Preserve the last refused admission across restarts, without creating a
  * decision on every scheduler tick. Only the owner of the cadence claim may
- * change it; a stale worker cannot overwrite a later successful admission. */
+ * change it; a stale worker cannot overwrite a later successful admission.
+ * Returns whether the standing state changed — the edge a caller reacts to
+ * once, not on every refused tick. */
 export async function recordScheduleAdmission(
   db: Db,
   context: { tenant_id: string; schedule_id: string; claimed_at: Date },
   reason: "execution_authority_required" | "execution_authority_unavailable" | null,
-): Promise<void> {
-  await db.transaction(async (tx) => {
+): Promise<boolean> {
+  const changedState = await db.transaction(async (tx) => {
     // Serialize with human grants. A refusal observed before a grant must not
     // resurrect its cleared decision after that grant commits.
     if (reason) {
@@ -30,7 +32,7 @@ export async function recordScheduleAdmission(
           ),
         )
         .for("update");
-      if (!schedule || (await inspectScheduleAutomation(schedule, tx)).ready) return;
+      if (!schedule || (await inspectScheduleAutomation(schedule, tx)).ready) return false;
     }
     const hold = reason
       ? { reason_code: reason, observed_at: context.claimed_at.toISOString() }
@@ -48,7 +50,7 @@ export async function recordScheduleAdmission(
         ),
       )
       .returning({ id: workflowsSchedules.id });
-    if (!changed.length) return;
+    if (!changed.length) return false;
     await auditAwait(
       {
         tenant_id: context.tenant_id,
@@ -72,6 +74,8 @@ export async function recordScheduleAdmission(
       },
       tx,
     );
+    return true;
   });
   invalidateTenantState(context.tenant_id);
+  return changedState;
 }

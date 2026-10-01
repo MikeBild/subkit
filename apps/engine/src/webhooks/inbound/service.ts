@@ -18,6 +18,7 @@ import { type Db, type Executor, getDb } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
 import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
 import { logger } from "../../logging/logger.ts";
+import { enqueueGateDiagnosis } from "../../queue/handlers/workflow-repair.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
 import { admitWebhookExecution } from "./admission.ts";
@@ -514,19 +515,31 @@ export interface HandleInboundOptions {
 }
 
 /** Standing admission state is a projection of the delivery just answered:
- *  failing to record it must not turn that answer into a 500. */
+ *  failing to record it must not turn that answer into a 500. A hook that
+ *  becomes held asks once for a gate diagnosis of the version it refused;
+ *  further refusals with the same reason change nothing and ask nothing. */
 async function holdInboundAdmission(
   db: Db,
   row: { tenant_id: string; id: string },
   now: number | undefined,
   reason: InboundHoldReason | null,
+  gate?: { boss: PgBoss; workflow_id: string; version_id: string },
 ): Promise<void> {
   try {
-    await recordInboundAdmission(
+    const changed = await recordInboundAdmission(
       db,
       { tenant_id: row.tenant_id, inbound_id: row.id, observed_at: new Date(now ?? Date.now()) },
       reason,
     );
+    if (changed && reason && gate)
+      await enqueueGateDiagnosis(gate.boss, db, {
+        tenant_id: row.tenant_id,
+        workflow_id: gate.workflow_id,
+        version_id: gate.version_id,
+        // Hooks deliver to production only.
+        environment: "prod",
+        source: "inbound_hook",
+      });
   } catch (err) {
     logger.warn({
       module: "webhooks",
@@ -888,7 +901,11 @@ export async function handleInbound(
       db,
     );
     if (code === "execution_authority_required" || code === "execution_authority_unavailable")
-      await holdInboundAdmission(db, row, input.now, code);
+      await holdInboundAdmission(db, row, input.now, code, {
+        boss,
+        workflow_id: row.workflow_id,
+        version_id: wf.current_version_id,
+      });
     return { status: "denied", reason: code, inbound_id: row.id, hint };
   }
   const execution_id = admitted.execution_id;
