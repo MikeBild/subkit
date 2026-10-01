@@ -16,6 +16,10 @@ export const PatchProposalSchema = z
       "add_header",
       "rate_limited",
       "other",
+      // A deterministic repair for a step an approval gate refused. Never
+      // produced by the model (the runtime schema below omits it): only the
+      // gate-repair service writes it, with ops a named fixer computed.
+      "gate_fix",
     ]),
     description: z.string(),
     patch: z.record(z.string(), z.unknown()),
@@ -39,6 +43,8 @@ const PatchProposalRuntimeSchema = z.object({
 });
 
 export type PatchProposal = z.infer<typeof PatchProposalSchema>;
+/** What the model may propose: every kind except the deterministic `gate_fix`. */
+export type ModelPatchProposal = z.infer<typeof PatchProposalRuntimeSchema>;
 
 export interface PreviousRepairAttempt {
   proposal: PatchProposal;
@@ -81,7 +87,7 @@ export interface RepairParams {
 }
 
 export interface RepairResult {
-  patch_proposal: PatchProposal;
+  patch_proposal: ModelPatchProposal;
   raw_text: string;
   included_skill_ids: string[];
   included_chunk_ids: string[];
@@ -167,7 +173,7 @@ export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairR
     `Propose a minimal patch that restores compatibility.${attemptHint}`,
   ].join("\n");
 
-  const r = await invoke<PatchProposal>(
+  const r = await invoke<ModelPatchProposal>(
     {
       flow: "repair",
       tenant_id: p.tenant_id,

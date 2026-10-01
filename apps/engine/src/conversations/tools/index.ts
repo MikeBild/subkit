@@ -312,6 +312,17 @@ export interface ConversationTool {
    *  the provider filter reads this flag instead of a hand-curated name
    *  set, so the exemption and its rationale live on the tool itself. */
   readonly visible_when_readonly?: boolean;
+  /** tenant_write only: the tool's sole effect is filing a PROPOSED item
+   *  into a human review queue — nothing live changes until a person
+   *  approves it elsewhere, so the approve step is the confirmation
+   *  (`tool-policies.ts` pins such a tool `neverGate`). An explicit request
+   *  for a proposal must be answerable wherever the user can author: the
+   *  authoring palette lists the tool without a skill load, and the step
+   *  router keeps it in every narrowed stage, including the discover phase
+   *  of a connector- or workflow-targeted conversation. The read-only chat
+   *  channel and the MCP tiers keep their own filters. A tool that decides
+   *  (approves, activates, promotes) is never a proposal. */
+  readonly inert_proposal?: boolean;
   /** The mirror of `visible_when_readonly`, for reads: this tool is a step of
    *  BUILDING a definition, not of using one, so it belongs to the authoring
    *  tiers even though its category is `tenant_read`.
