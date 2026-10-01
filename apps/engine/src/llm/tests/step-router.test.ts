@@ -705,3 +705,26 @@ describe("palette-only tools (saved workflows, connected MCP servers)", () => {
     expect(active).not.toContain("wf_weekly-report");
   });
 });
+
+describe("an inert proposal survives every narrowed stage", () => {
+  const withProposal: Record<string, ConversationTool> = {
+    ...TOOLS,
+    create_skill: { ...fakeTool("create_skill", "tenant_write")[1], inert_proposal: true },
+  };
+
+  test.each([
+    "connector_targeted",
+    "workflow_targeted",
+    "connector_draft_started",
+    "workflow_previewed",
+    "diagnosing",
+  ] as const)("%s keeps the proposal and still withholds other tenant writes", (stage) => {
+    const active = prepareStep(
+      baseParams({ toolsByName: withProposal, signals: { stage } }),
+    )?.activeTools;
+    expect(active).toBeDefined();
+    expect(active).toContain("create_skill");
+    expect(active).not.toContain("delete_workflow");
+    expect(active).not.toContain("save_workflow_draft");
+  });
+});

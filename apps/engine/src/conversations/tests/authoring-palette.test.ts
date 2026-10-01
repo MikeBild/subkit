@@ -16,6 +16,7 @@ import {
   withWorkflowExecution,
   withWorkflowPersisted,
 } from "../authoring-state.ts";
+import { TOOL_POLICIES } from "../tool-policies.ts";
 import {
   CONNECTOR_AUTHORING_SKILL,
   filterByAuthoringPalette,
@@ -210,5 +211,36 @@ describe("authoring tool palette — skill-gated visibility", () => {
       (tool) => tool.name,
     );
     expect(visible).toContain("run_workflow");
+  });
+});
+
+// An inert proposal files a PROPOSED item behind a human review gate and
+// changes nothing live. Hiding `create_skill` behind a skill load left "file a
+// skill proposal" without a verb on every authoring surface, and the model sent
+// the user to the REST API instead.
+describe("authoring tool palette — inert proposals", () => {
+  const proposals = listTools().filter((t) => t.inert_proposal === true);
+
+  test("only tools that file a review-queue proposal carry the flag", () => {
+    expect(proposals.map((t) => t.name).sort()).toEqual(["create_skill", "save_learning"]);
+  });
+
+  test("each is a tenant write whose approve step is its confirmation", () => {
+    for (const t of proposals) {
+      expect(t.category).toBe("tenant_write");
+      expect(TOOL_POLICIES[t.name]?.defaultMode).toBe("no_confirm");
+      expect(TOOL_POLICIES[t.name]?.neverGate).toBe(true);
+    }
+  });
+
+  test("they are offered with no skill loaded; the approve decision is not", () => {
+    const visible = filterByAuthoringPalette(
+      listTools(),
+      createEmptyDraftDocument(),
+      NO_SKILLS,
+    ).map((tool) => tool.name);
+    expect(visible).toContain("create_skill");
+    expect(visible).toContain("save_learning");
+    expect(visible).not.toContain("approve_skill_candidate");
   });
 });
