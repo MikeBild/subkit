@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Bot } from "lucide-react";
 import { useState } from "react";
-import { getConversation, sendConversationTurn } from "@/api/client";
+import { ApiError, getConversation, sendConversationTurn } from "@/api/client";
 import { absolute, chatNewHref, conversationHref } from "@/app/links";
 import type { ToolPart } from "@/components/ai-elements/tool";
 import { AutomationToolCard } from "@/components/cockpit/automation-grant";
@@ -176,11 +176,27 @@ export function AgentPanel({
               {t("agentPanel.thinking")}
             </p>
           )}
-          {ask.isError && (
-            <p className="text-sm text-destructive" data-testid="agent-panel-error">
-              {t("agentPanel.failed")}
-            </p>
-          )}
+          {ask.isError &&
+            (ask.error instanceof ApiError &&
+            ask.error.code === "pending_elicitation_blocked" &&
+            conversationId ? (
+              // The conversation waits on a question this panel cannot show.
+              // A message typed here is not its answer; the chat shows it.
+              <p className="text-sm text-destructive" data-testid="agent-panel-waiting">
+                {t("agentPanel.questionWaiting")}{" "}
+                <a
+                  className="underline underline-offset-4"
+                  href={absolute(conversationHref(conversationId))}
+                  data-testid="agent-panel-waiting-link"
+                >
+                  {t("agentPanel.openConversation")}
+                </a>
+              </p>
+            ) : (
+              <p className="text-sm text-destructive" data-testid="agent-panel-error">
+                {t("agentPanel.failed")}
+              </p>
+            ))}
         </div>
 
         <div className="grid gap-2 border-t p-4">
