@@ -97,7 +97,10 @@ function AuditDetail({
   const evidence = auditEvidenceBlocks(current);
 
   return (
-    <div className="grid gap-5 p-4">
+    // One column that may shrink below its content: without it, a long
+    // unbroken token (a resolved URL in an error) sizes the track and the
+    // sheet clips everything at its edge.
+    <div className="grid grid-cols-1 gap-5 p-4">
       <dl className="grid grid-cols-2 gap-3" data-testid="audit-detail-facts">
         {facts.map((fact) => (
           // `min-w-0`, or a 36-character id sets this column's minimum width
@@ -141,7 +144,7 @@ function AuditDetail({
         <section key={block.kind} className="grid gap-2">
           <h3 className="text-sm font-medium">{t(EVIDENCE_KEYS[block.kind])}</h3>
           <pre
-            className="rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+            className="rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap"
             data-testid={`audit-detail-${block.kind}`}
           >
             {block.text}

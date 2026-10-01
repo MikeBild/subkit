@@ -326,7 +326,7 @@ function DecisionDetailPanel({
     return (
       <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
         <DetailBlock heading={t("decisions.detail.skillBody")} testId={`${testId}-body`}>
-          <DetailText className="max-w-prose text-sm break-words whitespace-pre-wrap">
+          <DetailText className="max-w-prose text-sm wrap-anywhere whitespace-pre-wrap">
             {detail.body}
           </DetailText>
         </DetailBlock>
