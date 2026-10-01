@@ -18,6 +18,7 @@ import type { PatchProposal } from "../llm/flows/repair.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import {
   diagnoseWorkflow,
+  findGateCandidate,
   type GateDiagnosis,
   gateEndpointKey,
   planForDiagnosis,
@@ -157,7 +158,7 @@ async function proposeOne(
   const signal: DriftSignal = {
     kind: "gate_block",
     code: diagnosis.code,
-    reason: null,
+    reason: diagnosis.reason ?? null,
     fixer,
     step_id,
   };
@@ -171,9 +172,18 @@ async function proposeOne(
     base_version_id: target.version_id,
     workflow_step_id: plan.step_id,
   };
+  // The same block under the same gate code, through the drift dedup every
+  // candidate uses; then the same repair recorded under another code for this
+  // version — a rejection of it is the person's answer to this one too.
   const existing =
     (await findActiveEndpointCandidate(tx, anchor)) ??
-    (await findMatchingTerminalEndpointCandidate(tx, { ...anchor, step_id: null }));
+    (await findMatchingTerminalEndpointCandidate(tx, { ...anchor, step_id: null })) ??
+    (await findGateCandidate(
+      tx,
+      { ...target, workflow_version_id: target.version_id },
+      { step_id, fixer },
+      ["proposed", "applied", "rejected"],
+    ));
   if (existing)
     return { candidate_id: existing.id, step_id, fixer, status: existing.status, created: false };
   const patch: GateFixPatch = {

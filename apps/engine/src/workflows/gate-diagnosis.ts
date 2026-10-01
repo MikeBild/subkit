@@ -11,6 +11,7 @@
 // It only reads. Proposing a repair is `proposeGateRepairs` in self-healing;
 // this module looks up a candidate that already exists, never creates one.
 
+import { z } from "@hono/zod-openapi";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import {
@@ -25,14 +26,18 @@ import type { ManifestIssueCode } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import {
   type GateFixer,
+  GateFixerSchema,
   type GateFixPlan,
   planReportDeliveryDeclaration,
   planUtf8EncoderFix,
 } from "./gate-fix.ts";
 import {
   GMAIL_SEND_TARGET,
+  REPORT_MESSAGE_REFUSALS,
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
+  type ReportDeliveryRefusal,
+  type ReportMessageRefusal,
 } from "./report-delivery-boundary.ts";
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
@@ -51,12 +56,15 @@ export type GateRemedyKind = "patch" | "prepare" | "declare" | "reconnect" | "au
 
 export interface GateDiagnosis {
   code: GateDiagnosisCode;
+  /** The report gate's own rule the message broke (or how it differs from
+   *  its declaration), when the gate named one. */
+  reason?: ReportDeliveryRefusal;
   subject: { step_id: string; field?: string };
   evidence: {
     /** The run the diagnosis rests on, when it rests on one. */
     execution_id?: string;
     /** Addresses a successful inspection observed — never message content. */
-    observed?: { to: string; from: string; content_type: ReportDeliveryBoundary["content_type"] };
+    observed?: Omit<ReportDeliveryBoundary, "kind">;
   };
   remedy_kind: GateRemedyKind;
   /** Present only when a deterministic fixer computes the repair. */
@@ -74,6 +82,38 @@ export interface WorkflowDiagnosis {
   is_current: boolean;
   diagnoses: GateDiagnosis[];
 }
+
+/** The wire shape of a diagnosis — the same object every surface returns. */
+export const GateDiagnosisSchema = z
+  .object({
+    code: z.string(),
+    reason: z.string().optional(),
+    subject: z.object({ step_id: z.string(), field: z.string().optional() }),
+    evidence: z.object({
+      execution_id: z.string().uuid().optional(),
+      observed: z
+        .object({
+          to: z.string(),
+          from: z.string(),
+          content_type: ReportDeliveryBoundarySchema.shape.content_type,
+        })
+        .optional(),
+    }),
+    remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+    fixer: GateFixerSchema.optional(),
+    candidate_id: z.string().uuid().optional(),
+  })
+  .openapi("GateDiagnosis");
+
+export const WorkflowDiagnosisSchema = z
+  .object({
+    workflow_id: z.string().uuid(),
+    workflow_version_id: z.string().uuid().nullable(),
+    environment: z.enum(["dev", "prod"]),
+    is_current: z.boolean(),
+    diagnoses: z.array(GateDiagnosisSchema),
+  })
+  .openapi("WorkflowDiagnosis");
 
 type Preview = Awaited<ReturnType<typeof previewWorkflowAuthority>>;
 type HeldEvidence = Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
@@ -246,15 +286,23 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
   }
   if (refused) {
     const reason = refusalReason(refused.error);
-    const plan = reason ? encoderPlan(input.definition, refused.step_id, reason) : null;
-    out.push({
-      code: "execution_authority_changed",
-      subject: { step_id: refused.step_id },
-      evidence: { execution_id: refused.execution_id },
-      ...(plan
-        ? { remedy_kind: "patch", fixer: "use_utf8_encoder" }
-        : { remedy_kind: reason ? "author" : "prepare" }),
-    });
+    const subject = { step_id: refused.step_id };
+    out.push(
+      reason
+        ? {
+            code: "execution_authority_changed",
+            reason,
+            subject,
+            ...(await reportRemedy(db, input, refused.step_id, reason, refused.execution_id)),
+          }
+        : {
+            // No rule named: the approval itself no longer fits this version.
+            code: "execution_authority_changed",
+            subject,
+            evidence: { execution_id: refused.execution_id },
+            remedy_kind: "prepare",
+          },
+    );
   }
   return out;
 }
@@ -277,16 +325,67 @@ export function planForDiagnosis(
 }
 
 /** The report gate's refusal reason recorded on a refused step, if any. */
-function refusalReason(error: unknown): string | null {
+function refusalReason(error: unknown): ReportDeliveryRefusal | null {
   const reason = (error as { reason?: unknown } | null)?.reason;
-  return typeof reason === "string" ? reason : null;
+  return typeof reason === "string" && REPORT_DELIVERY_REFUSALS.has(reason)
+    ? (reason as ReportDeliveryRefusal)
+    : null;
 }
 
-/** Reasons a binary encoder produces, and the UTF-8 encoder removes. */
-const ENCODER_REASONS: ReadonlySet<string> = new Set(["not_utf8", "header_control_byte"]);
+const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
+const REPORT_DELIVERY_REFUSALS: ReadonlySet<string> = new Set([
+  ...REPORT_MESSAGE_REFUSALS,
+  "recipient_differs",
+  "sender_differs",
+  "content_type_differs",
+] satisfies ReportDeliveryRefusal[]);
 
-function encoderPlan(definition: unknown, step_id: string, reason: string): GateFixPlan | null {
-  return ENCODER_REASONS.has(reason) ? planUtf8EncoderFix(definition, step_id) : null;
+/** Refusals a byte-per-character encoder produces and the UTF-8 one removes. */
+const ENCODER_REASONS: ReadonlySet<string> = new Set([
+  "not_utf8",
+  "header_control_byte",
+] satisfies ReportMessageRefusal[]);
+
+/** The newest held capture's refusal of the report profile for this step. */
+function heldReason(input: DiagnosisInput, step_id: string): ReportMessageRefusal | null {
+  const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
+  return step?.report_refusal ?? null;
+}
+
+/**
+ * What removes a report refusal, decided by its reason.
+ *
+ * - A message the binary encoder broke: swap the encoder, when exactly one
+ *   whole-string reference leads to exactly one encoder call; else author it.
+ * - Any other message outside the profile: author it — no fixer guesses MIME.
+ * - No message refusal at all (a step no preparation reaches, or a message
+ *   addressed differently from its declaration): declare what a successful
+ *   inspection of this very step observed, when one was recorded.
+ */
+async function reportRemedy(
+  db: Executor,
+  input: DiagnosisInput,
+  step_id: string,
+  reason: ReportDeliveryRefusal | null,
+  execution_id: string | undefined,
+): Promise<Pick<GateDiagnosis, "evidence" | "remedy_kind" | "fixer">> {
+  const evidence = execution_id ? { execution_id } : {};
+  if (reason && ENCODER_REASONS.has(reason))
+    return planUtf8EncoderFix(input.definition, step_id)
+      ? { evidence, remedy_kind: "patch", fixer: "use_utf8_encoder" }
+      : { evidence, remedy_kind: "author" };
+  if (reason && MESSAGE_REFUSALS.has(reason)) return { evidence, remedy_kind: "author" };
+  const observation = await successfulObservation(db, input, step_id);
+  const plan = observation
+    ? planReportDeliveryDeclaration(input.definition, step_id, observation.observed)
+    : null;
+  return plan && observation
+    ? {
+        evidence: { execution_id: observation.execution_id, observed: observation.observed },
+        remedy_kind: "declare",
+        fixer: "declare_report_delivery",
+      }
+    : { evidence, remedy_kind: "declare" };
 }
 
 async function requestDiagnosis(
@@ -296,29 +395,34 @@ async function requestDiagnosis(
   code: RequestBoundaryRefusal,
 ): Promise<GateDiagnosis> {
   const subject = { step_id };
-  if (code === "report_delivery_unprepared")
-    return { code, subject, evidence: {}, remedy_kind: "prepare" };
-  if (code === "report_delivery_unreachable") {
-    const observation = await successfulObservation(db, input, step_id);
-    const plan = observation
-      ? planReportDeliveryDeclaration(input.definition, step_id, observation.observed)
-      : null;
-    return plan && observation
-      ? {
+  const heldRun = input.held ? input.held.execution_id : undefined;
+  switch (code) {
+    case "report_delivery_unprepared":
+      return { code, subject, evidence: {}, remedy_kind: "prepare" };
+    case "report_delivery_unreachable":
+      return { code, subject, ...(await reportRemedy(db, input, step_id, null, undefined)) };
+    case "report_delivery_unobserved":
+    case "report_delivery_contradicted": {
+      const reason = heldReason(input, step_id);
+      // Unobserved without a recorded reason: the capture predates the
+      // recording, or the step never materialized — look at that run.
+      if (code === "report_delivery_unobserved" && !reason)
+        return {
           code,
           subject,
-          evidence: { execution_id: observation.execution_id, observed: observation.observed },
-          remedy_kind: "declare",
-          fixer: "declare_report_delivery",
-        }
-      : { code, subject, evidence: {}, remedy_kind: "declare" };
+          evidence: heldRun ? { execution_id: heldRun } : {},
+          remedy_kind: "author",
+        };
+      return {
+        code,
+        ...(reason ? { reason } : {}),
+        subject,
+        ...(await reportRemedy(db, input, step_id, reason, heldRun)),
+      };
+    }
+    default:
+      return { code, subject, evidence: {}, remedy_kind: "author" };
   }
-  return {
-    code,
-    subject,
-    evidence: input.held ? { execution_id: input.held.execution_id } : {},
-    remedy_kind: "author",
-  };
 }
 
 /**
@@ -356,9 +460,20 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
   for (const row of rows) {
     const meta = row.meta as {
       url?: unknown;
-      extras?: { held?: boolean; report_delivery_proposal?: unknown };
+      extras?: {
+        held?: boolean;
+        report_delivery_proposal?: unknown;
+        report_delivery_inspection?: { ok?: unknown };
+      };
     } | null;
-    if (meta?.extras?.held !== true || meta.url !== GMAIL_SEND_TARGET) continue;
+    // Only a capture that recorded a successful inspection: a proposal
+    // without its verdict predates the recording and proves nothing here.
+    if (
+      meta?.extras?.held !== true ||
+      meta.url !== GMAIL_SEND_TARGET ||
+      meta.extras.report_delivery_inspection?.ok !== true
+    )
+      continue;
     const observed = ReportDeliveryBoundarySchema.safeParse(meta.extras.report_delivery_proposal);
     if (!observed.success) continue;
     const { to, from, content_type } = observed.data;
@@ -400,47 +515,60 @@ function collapse(diagnoses: GateDiagnosis[]): GateDiagnosis[] {
   return out;
 }
 
+/**
+ * Gate-repair candidates proposed against exactly this version, newest first.
+ *
+ * Matched by the step and the fixer, not by the gate code: a held preview and
+ * a refused granted run name the same cause under different codes, and the
+ * repair they call for is one and the same.
+ */
+export async function findGateCandidate(
+  db: Executor,
+  input: { tenant_id: string; workflow_id: string; workflow_version_id: string },
+  match: { step_id: string; fixer: GateFixer },
+  statuses: ReadonlyArray<"proposed" | "applied" | "rejected" | "superseded" | "inapplicable">,
+) {
+  const rows = await db
+    .select({ id: patchCandidates.id, status: patchCandidates.status, diff: patchCandidates.diff })
+    .from(patchCandidates)
+    .where(
+      and(
+        eq(patchCandidates.tenant_id, input.tenant_id),
+        eq(patchCandidates.workflow_id, input.workflow_id),
+        inArray(patchCandidates.status, [...statuses]),
+        sql`${patchCandidates.endpoint_key} LIKE 'gate:%'`,
+        sql`${patchCandidates.diff}->>'base_version_id' = ${input.workflow_version_id}`,
+      ),
+    )
+    .orderBy(desc(patchCandidates.created_at), desc(patchCandidates.id));
+  return (
+    rows.find((row) => {
+      const signal = (
+        row.diff as { drift_signal?: { kind?: unknown; step_id?: unknown; fixer?: unknown } } | null
+      )?.drift_signal;
+      return (
+        signal?.kind === "gate_block" &&
+        signal.step_id === match.step_id &&
+        signal.fixer === match.fixer
+      );
+    }) ?? null
+  );
+}
+
 /** Attach the open gate-repair candidate for each fixable diagnosis. */
 async function attachCandidates(
   db: Executor,
   input: { tenant_id: string; workflow_id: string; workflow_version_id: string },
   diagnoses: GateDiagnosis[],
 ) {
-  const fixable = diagnoses.filter((diagnosis) => diagnosis.fixer);
-  if (fixable.length === 0) return;
-  const rows = await db
-    .select({
-      id: patchCandidates.id,
-      endpoint_key: patchCandidates.endpoint_key,
-      diff: patchCandidates.diff,
-    })
-    .from(patchCandidates)
-    .where(
-      and(
-        eq(patchCandidates.tenant_id, input.tenant_id),
-        eq(patchCandidates.workflow_id, input.workflow_id),
-        eq(patchCandidates.status, "proposed"),
-        inArray(
-          patchCandidates.endpoint_key,
-          fixable.map((diagnosis) => gateEndpointKey(diagnosis.code)),
-        ),
-      ),
-    )
-    .orderBy(desc(patchCandidates.created_at));
-  for (const diagnosis of fixable) {
-    const match = rows.find((row) => {
-      const diff = row.diff as {
-        base_version_id?: unknown;
-        drift_signal?: { kind?: unknown; step_id?: unknown; fixer?: unknown };
-      } | null;
-      return (
-        row.endpoint_key === gateEndpointKey(diagnosis.code) &&
-        diff?.base_version_id === input.workflow_version_id &&
-        diff.drift_signal?.kind === "gate_block" &&
-        diff.drift_signal.step_id === diagnosis.subject.step_id &&
-        diff.drift_signal.fixer === diagnosis.fixer
-      );
-    });
-    if (match) diagnosis.candidate_id = match.id;
+  for (const diagnosis of diagnoses) {
+    if (!diagnosis.fixer) continue;
+    const open = await findGateCandidate(
+      db,
+      input,
+      { step_id: diagnosis.subject.step_id, fixer: diagnosis.fixer },
+      ["proposed"],
+    );
+    if (open) diagnosis.candidate_id = open.id;
   }
 }

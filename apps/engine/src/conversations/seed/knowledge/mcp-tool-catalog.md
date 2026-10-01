@@ -293,6 +293,15 @@ Proposed (not auto-applied) improvements.
   directly callable so the coding-agent capture loop closes in-session; the
   client's native destructive-write dialog is the explicit operator approval and
   RBAC `skill:write` stays the hard gate.
+- Gate repairs: `diagnose_workflow` **[product]** — why the approval gate holds a
+  workflow (`{ workflow_id, environment? }`): each refused step with its gate
+  code, the report gate's reason when it named one (e.g. `not_utf8`), a
+  `remedy_kind` (`patch`, `prepare`, `declare`, `reconnect`, `author`), a `fixer`
+  when a deterministic repair exists, and `candidate_id` when it already waits for
+  review. `propose_workflow_repair` **[product]** (`{ workflow_id, step_id, fixer,
+  environment? }`) files that repair as a PROPOSED patch candidate — the engine
+  computes the change, nothing applies until an operator approves it, and a
+  repeat call returns the same candidate.
 - Capability gaps: `list_capability_gaps` **[product]**.
 - Session learnings: `save_learning` **[product]** — explicitly capture a durable
   rule the user taught in the current session as a PROPOSED `session_learning`
