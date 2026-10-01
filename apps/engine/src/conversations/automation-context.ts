@@ -30,5 +30,11 @@ export async function renderAutomationContext(
       : {}),
   });
   const statuses = [...(review?.schedules ?? []), ...(review?.inbound_hooks ?? [])];
-  return `${rule}\nCurrent scheduling evidence (read-only; live state is separate from review of the latest saved draft. Use review.issues to repair that draft, not issues of the older active version. Eligibility alone never means authority): ${JSON.stringify(statuses)}\nrepair_required: prepare a supported fixed boundary; do not declare repair complete from a green preview. approval_required: human review is still needed. activation_required: saved draft is not active. paused: automatic runs are disabled. authorized: permission exists now, subject to recheck when due.`;
+  // A saved change waits for a person whether or not anything starts the
+  // workflow automatically; without it a manual workflow read as "nothing to
+  // review" while its run was refused for want of exactly that review.
+  const savedChange = review?.saved_change
+    ? `\nSaved change waiting to be applied (version ${review.saved_change.workflow_version_id}, ${review.saved_change.environment}): nothing runs it until a person applies it in the review card; call review_workflow_automation to show that card.`
+    : "";
+  return `${rule}${savedChange}\nCurrent scheduling evidence (read-only; live state is separate from review of the latest saved draft. Use review.issues to repair that draft, not issues of the older active version. Eligibility alone never means authority): ${JSON.stringify(statuses)}\nrepair_required: prepare a supported fixed boundary; do not declare repair complete from a green preview. approval_required: human review is still needed. activation_required: saved draft is not active. paused: automatic runs are disabled. authorized: permission exists now, subject to recheck when due.`;
 }

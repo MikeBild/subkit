@@ -6,7 +6,7 @@
 // the draft was saved, and the human got a card that said "still blocked".
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { workflows, workflowsSchedules, workflowVersions } from "../../db/schema/index.ts";
 import { savedDraftReadiness } from "../tools/saved-draft-readiness.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -102,11 +102,23 @@ test("the corrected boundary is reported eligible", async () => {
   expect(readiness?.issues).toBeUndefined();
 });
 
-test("a workflow nobody scheduled asks for no recurring permission", async () => {
-  expect(
-    await savedDraftReadiness(
-      toolCtx(),
-      await seed({ variables: { "input.space": { enum: ["reports"] } }, scheduled: false }),
-    ),
-  ).toBeNull();
+test("an unscheduled saved change still hands over to the review that applies it", async () => {
+  const id = await seed({ variables: { "input.space": { enum: ["reports"] } }, scheduled: false });
+  const readiness = await savedDraftReadiness(toolCtx(), id);
+  // No recurring permission is asked for, but nothing runs the change until a
+  // person applies it — without this the author reached for run_workflow and
+  // met a refusal naming a dialog it had never shown.
+  expect(readiness?.issues).toBeUndefined();
+  expect(readiness?.message).toContain("review_workflow_automation");
+  expect(readiness?.message).not.toMatch(/curl -|\/v1\//);
+  // Once applied, nothing waits and nothing is said.
+  const [row] = await ctx.testDb.db
+    .select({ draft: workflows.draft_version_id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, id)));
+  await ctx.testDb.db
+    .update(workflows)
+    .set({ current_version_id: row?.draft ?? null, draft_version_id: null })
+    .where(eq(workflows.id, id));
+  expect(await savedDraftReadiness(toolCtx(), id)).toBeNull();
 });

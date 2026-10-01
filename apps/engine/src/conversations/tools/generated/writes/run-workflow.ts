@@ -29,6 +29,7 @@ import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 import { workflowInputSlot } from "../../workflow-input-normalize.ts";
+import { activationRequiredRefusal } from "./activation-required.ts";
 import { detectRepairLoop } from "./repair-loop-history.ts";
 
 const Input = z
@@ -191,19 +192,11 @@ export const runWorkflowTool: ConversationTool = {
       return {
         ok: false,
         data: withStatus(
-          {
-            error_code: "workflow_activation_required",
-            message:
-              "The saved change needs human review in the cockpit chat. Use the saved-change review dialog shown in this chat to apply it and allow bounded runs. Do not ask the user to call an API or leave the chat. No live run has occurred. " +
-              // Without this the request for a preview ended here: the author
-              // showed the review card for a change it had not re-checked.
-              "To PREVIEW the saved change itself, use `dry_run_workflow`: it runs this chat's draft with writes held and activates nothing.",
+          await activationRequiredRefusal(ctx, {
             workflow_id: workflowId,
-            draft_version_id: bound?.version_id ?? wf.draft_version_id,
-            current_version_id: wf.current_version_id,
-            next_best_actions: ["dry_run_workflow"],
-            user_action: "review_saved_change_in_chat",
-          },
+            draft_version_id: bound?.version_id ?? wf.draft_version_id ?? null,
+            current_version_id: wf.current_version_id ?? null,
+          }),
           "failed",
         ),
       };
