@@ -294,6 +294,7 @@ const prepareReport = createRoute({
               .array(
                 z.object({
                   code: z.string(),
+                  reason: z.string().optional(),
                   step_id: z.string(),
                   remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
                   fixer: z.string().optional(),

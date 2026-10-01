@@ -148,6 +148,7 @@ export async function prepareReportAuthority(
   );
   const diagnoses = (diagnosis?.diagnoses ?? []).map((entry) => ({
     code: entry.code,
+    ...(entry.reason ? { reason: entry.reason } : {}),
     step_id: entry.subject.step_id,
     remedy_kind: entry.remedy_kind,
     ...(entry.fixer ? { fixer: entry.fixer } : {}),

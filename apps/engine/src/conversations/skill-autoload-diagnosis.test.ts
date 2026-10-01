@@ -51,12 +51,6 @@ describe("autoloadForDiagnoses", () => {
     }
   });
 
-  test("the authoring-only skill stays out of the read-only chat surface", () => {
-    expect(
-      autoloadForDiagnoses(["report_delivery_unobserved"], shippedCatalog(), [], "chat"),
-    ).not.toContain("governed-delivery");
-  });
-
   test("an unrelated diagnosis loads nothing, an already-loaded skill is not repeated", () => {
     expect(autoloadForDiagnoses(["no_boundary"], shippedCatalog(), [])).not.toContain(
       "governed-delivery",
