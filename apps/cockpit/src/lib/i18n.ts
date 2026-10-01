@@ -3002,6 +3002,8 @@ const EN = {
   "settings.help.ui.statusline.format": "How much the status line under the sk prompt shows.",
   "settings.help.ui.theme": "Colours of the sk terminal. auto follows the terminal.",
   "settings.help.ui.title.format": "What the sk terminal window title shows.",
+  "decisions.drift.gateBlock": "The approval gate refused a step",
+  "decisions.change.gateFix": "Deterministic repair",
 } as const;
 
 export type TranslationKey = keyof typeof EN;
@@ -6071,6 +6073,8 @@ const DE: Record<TranslationKey, string> = {
   "settings.help.ui.statusline.format": "Wie viel die Statuszeile unter der sk-Eingabe zeigt.",
   "settings.help.ui.theme": "Farben des sk-Terminals. „auto“ folgt dem Terminal.",
   "settings.help.ui.title.format": "Was der Fenstertitel des sk-Terminals zeigt.",
+  "decisions.drift.gateBlock": "Die Freigabe hat einen Schritt abgewiesen",
+  "decisions.change.gateFix": "Festgelegte Reparatur",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {

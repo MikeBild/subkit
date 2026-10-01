@@ -383,6 +383,23 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
     permission: "schedule:read",
   },
   review_workflow_automation: { permission: "schedule:read" },
+  // The gate diagnosis reads one workflow's saved version and run evidence;
+  // the repair proposal files an inert candidate against it. Both are scoped
+  // to the workflow they name.
+  diagnose_workflow: {
+    permission: "workflow:read",
+    resource: (args) => {
+      const id = (args as { workflow_id?: unknown }).workflow_id;
+      return typeof id === "string" && id.length > 0 ? { type: "workflow", id } : null;
+    },
+  },
+  propose_workflow_repair: {
+    permission: "workflow:write",
+    resource: (args) => {
+      const id = (args as { workflow_id?: unknown }).workflow_id;
+      return typeof id === "string" && id.length > 0 ? { type: "workflow", id } : null;
+    },
+  },
 };
 
 /** Fall back to the tool's OWN `permission` declaration when the table above

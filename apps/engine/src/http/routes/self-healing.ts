@@ -64,6 +64,7 @@ const SignalTypeEnum = z.enum([
   "jsonata_path_miss",
   "http_status_new_shape",
   "endpoint_contract",
+  "gate_block",
 ]);
 
 const ScanCandidateSchema = z

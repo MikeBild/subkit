@@ -41,7 +41,9 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persi
 import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
 import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
 import {
+  autoloadForDiagnoses,
   autoloadForToolCall,
+  diagnosisCodesFromToolResult,
   loadActivationCatalog,
   reaffirmLoadedForTurn,
 } from "../../skill-autoload.ts";
@@ -130,6 +132,65 @@ function committedWorkflowIdFromResult(result: ToolResult): string | null {
     if (record.already_persisted === true || record.version_changed === false) return null;
   }
   return workflowId;
+}
+
+/**
+ * Result-driven skill autoload. The before-dispatch matcher sees only the
+ * tool and its input; a refusal a RESULT names (`repair_guidance[].code` /
+ * `.reason`) is the moment the skill explaining it pays for itself. Re-reads
+ * `loaded_skills` because the tool itself may have changed them (`load_skill`).
+ * Best-effort, like the pre-dispatch autoload: it never fails the tool call.
+ */
+async function autoloadForResultDiagnoses(
+  db: Db,
+  ctx: ToolContext,
+  tool: string,
+  resultPayload: unknown,
+): Promise<void> {
+  const codes = diagnosisCodesFromToolResult(resultPayload);
+  if (codes.length === 0) return;
+  try {
+    const [row] = await db
+      .select({ loaded_skills: conversations.loaded_skills, turn_count: conversations.turn_count })
+      .from(conversations)
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      )
+      .limit(1);
+    const entries = parseLoadedSkills(row?.loaded_skills, () => {});
+    const additions = autoloadForDiagnoses(
+      codes,
+      await loadActivationCatalog(ctx.tenant_id, db),
+      entries.map((e) => e.slug),
+      ctx.surface,
+    );
+    if (additions.length === 0) return;
+    const turn = row?.turn_count ?? 0;
+    await db
+      .update(conversations)
+      .set({
+        loaded_skills: [...entries, ...additions.map((slug) => ({ slug, last_turn: turn }))],
+      })
+      .where(
+        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
+      );
+    logger.debug({
+      module: "conversations.skill_autoload",
+      action: "skill_autoload.diagnosis_applied",
+      conversation_id: ctx.conversation_id,
+      tool,
+      diagnosis_codes: codes,
+      added_skills: additions,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "conversations.skill_autoload",
+      action: "skill_autoload.failed",
+      conversation_id: ctx.conversation_id,
+      tool,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function wrapOne(
@@ -1429,6 +1490,7 @@ export function wrapOne(
           status: result.ok ? "success" : "error",
         });
         await updateToolCallOutput(db, toolCallId, resultPayload, toolCallOutcome(result));
+        await autoloadForResultDiagnoses(db, ctx, inner.name, resultPayload);
 
         // Draft snapshot after every successful draft_write tool. Gives
         // the operator a rollback target if the next edit goes wrong;

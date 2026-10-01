@@ -6,6 +6,7 @@ import { inboundHookAutomationView } from "../scheduler/workflow-automation-view
 import type { WorkflowEffectManifest } from "../workflows/effect-manifest.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { workflowExecutionEnvironment } from "../workflows/execution-environment.ts";
+import { diagnoseWorkflow } from "../workflows/gate-diagnosis.ts";
 import { repairGuidanceForIssues } from "../workflows/issue-remedies.ts";
 import { inspectHeldPreviewEvidence } from "../workflows/report-delivery-proposal.ts";
 import { getWorkflow } from "../workflows/service.ts";
@@ -140,34 +141,33 @@ async function reviewEnvironment(
   { is_draft }: { is_draft: boolean },
 ): Promise<EnvironmentReview> {
   try {
-    const preview = version_id
-      ? await previewWorkflowAuthority(
-          {
-            tenant_id,
-            workflow_id,
-            workflow_version_id: version_id,
-            execution_environment: environment,
-          },
-          db,
-        )
+    const input = version_id
+      ? {
+          tenant_id,
+          workflow_id,
+          workflow_version_id: version_id,
+          execution_environment: environment,
+        }
       : null;
+    const preview = input ? await previewWorkflowAuthority(input, db) : null;
+    const held = input ? await inspectHeldPreviewEvidence(input, db) : null;
+    // The same diagnosis every other surface reads, built from the preview
+    // and the held evidence this review already holds.
+    const diagnosis =
+      version_id && preview
+        ? await diagnoseWorkflow(db, tenant_id, workflow_id, environment, {
+            version_id,
+            preview,
+            held,
+          })
+        : null;
     return {
       workflow_version_id: version_id,
       is_draft,
       eligible_for_repeated_runs: preview?.eligible_for_repeated_runs ?? false,
       issues: preview?.manifest.issues ?? [],
       unavailable_steps: preview?.unavailable_steps ?? [],
-      preview_evidence: version_id
-        ? await inspectHeldPreviewEvidence(
-            {
-              tenant_id,
-              workflow_id,
-              workflow_version_id: version_id,
-              execution_environment: environment,
-            },
-            db,
-          )
-        : null,
+      preview_evidence: held,
       // The remedy travels with the diagnosis. Joining over `issues` (not
       // over `effects`) is what makes a storage or child-call problem
       // carry its fix too — the old construction only ever matched one
@@ -177,6 +177,7 @@ async function reviewEnvironment(
         preview?.manifest.effects ?? [],
         preview?.storage_refusals ?? [],
         preview?.request_refusals ?? [],
+        diagnosis?.diagnoses ?? [],
       ),
     };
   } catch {

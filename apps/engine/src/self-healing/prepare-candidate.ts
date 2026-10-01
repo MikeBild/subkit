@@ -7,7 +7,7 @@ import { PatchProposalSchema } from "../llm/flows/repair.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { PatchDecisionError } from "./candidate-decision.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
-import { applyPatchToWorkflowDag } from "./patch-apply.ts";
+import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
 /** Persist an immutable review target. Neither activation nor execution is performed. */
@@ -69,6 +69,7 @@ export async function preparePatchCandidate(
       base?.dag,
       await resolveCandidateStepKey(params.tenant_id, diff, tx),
       proposal,
+      candidateDriftKind(diff),
     );
     if (!patch.ok) throw new PatchDecisionError(patch.reason);
     const [version] = await tx

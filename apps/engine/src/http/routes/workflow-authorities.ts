@@ -287,6 +287,21 @@ const prepareReport = createRoute({
             /** With `input_required`: what starts this workflow, whose
              *  delivery the preparation needs as `input`. */
             trigger: z.object({ kind: z.literal("inbound_hook"), slug: z.string() }).optional(),
+            /** With `prepared: true`: why the review still refuses a step
+             *  after the preparation ran — code, step and remedy, never the
+             *  message the step would have sent. Absent when nothing is left. */
+            diagnoses: z
+              .array(
+                z.object({
+                  code: z.string(),
+                  reason: z.string().optional(),
+                  step_id: z.string(),
+                  remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+                  fixer: z.string().optional(),
+                  candidate_id: z.string().optional(),
+                }),
+              )
+              .optional(),
           }),
         },
       },
