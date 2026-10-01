@@ -14,7 +14,10 @@ export function executionOutcomeLine(outcome: ExecutionOutcome | null | undefine
   if (outcome.failed_step) {
     parts.push(`at step ${outcome.failed_step.step_key} (${outcome.failed_step.kind})`);
   }
-  const cause = [outcome.cause_class, outcome.error_code].filter(Boolean).join(", ");
+  // The refusal reason says which rule of the approval the step broke.
+  const cause = [outcome.cause_class, outcome.error_code, outcome.refusal_reason]
+    .filter(Boolean)
+    .join(", ");
   if (cause) parts.push(`· ${cause}`);
   const s = outcome.steps;
   parts.push(

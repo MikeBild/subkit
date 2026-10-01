@@ -3014,6 +3014,61 @@ const EN = {
   "settings.help.ui.title.format": "What the sk terminal window title shows.",
   "decisions.drift.gateBlock": "The approval gate refused a step",
   "decisions.change.gateFix": "Deterministic repair",
+  "refusal.reason.not_json_raw": "The request does not carry the message as its “raw” field",
+  "refusal.reason.not_base64url": "The message is not correctly encoded as Base64url",
+  "refusal.reason.not_utf8": "The message is not correctly encoded as UTF-8",
+  "refusal.reason.header_control_byte": "A message header contains a forbidden control character",
+  "refusal.reason.header_folded": "A message header is wrapped across several lines",
+  "refusal.reason.header_not_allowed": "The message carries a header a report may not carry",
+  "refusal.reason.header_duplicate": "A message header appears more than once",
+  "refusal.reason.missing_headers": "The message lacks a required header",
+  "refusal.reason.sender_invalid": "The sender address is not valid",
+  "refusal.reason.recipient_invalid": "The recipient address is not valid",
+  "refusal.reason.extra_recipients": "The message goes to more than one recipient",
+  "refusal.reason.multipart_unsupported":
+    "The message is put together from parts in a way reports do not allow",
+  "refusal.reason.content_type_unsupported":
+    "The message's content format is not allowed for reports",
+  "refusal.reason.transfer_encoding_unsupported":
+    "The message's transfer encoding is not allowed for reports",
+  "refusal.reason.body_not_base64": "The message body is not correctly encoded as Base64",
+  "refusal.reason.recipient_differs": "The recipient differs from the approval",
+  "refusal.reason.sender_differs": "The sender differs from the approval",
+  "refusal.reason.content_type_differs": "The message format differs from the approval",
+  "refusal.reason.sentence": "{reason}.",
+  "authority.refusal.report_delivery_contradicted":
+    "A trial run reached this step, and the e-mail it would have sent does not match what the step declares: the message is outside the report format, or goes to a different address. As declared, every run would be refused at sending. Change the step or its declaration so the two agree.",
+  "diagnosis.title": "What holds this workflow",
+  "diagnosis.description": "The approval refuses these steps. Each says what removes the block.",
+  "diagnosis.step": "Step “{step}”",
+  "diagnosis.code.execution_authority_changed": "The approval no longer fits what this step sends.",
+  "diagnosis.code.connector_unavailable":
+    "The connector of this step is not available in this environment.",
+  "diagnosis.remedy.patch": "A fixed repair exists for this.",
+  "diagnosis.remedy.declare":
+    "Name the sender and recipient on the step itself, as a run observed them.",
+  "diagnosis.remedy.prepare":
+    "A trial run — which holds back everything it would send — shows what this step sends, so it can be approved.",
+  "diagnosis.remedy.reconnect": "Connect the connector again in this environment.",
+  "diagnosis.remedy.author": "This has to be changed in the workflow itself.",
+  "diagnosis.repair": "Repair automatically",
+  "diagnosis.repairRejected":
+    "A repair for this was rejected for this version. Fix it in the chat instead.",
+  "diagnosis.repairApplied": "The repair for this has already been applied.",
+  "diagnosis.repairStale": "The repair no longer fits this version.",
+  "diagnosis.repairFailed": "The repair could not be proposed.",
+  "diagnosis.draftOnly":
+    "This concerns the prepared version. A repair can be proposed once it is the active one.",
+  "diagnosis.prepare": "Run the preparation again",
+  "diagnosis.prepared": "Trial run finished — the diagnosis is up to date.",
+  "diagnosis.prepareInFlight": "A trial run for this workflow is already in progress.",
+  "diagnosis.prepareNeedsSample":
+    "This workflow starts from a webhook, and the trial run needs a sample call. Open the approval to supply one.",
+  "diagnosis.prepareNotRun": "The trial run did not start.",
+  "diagnosis.prepareFailed": "The trial run could not be started.",
+  "diagnosis.openApproval": "Open the approval",
+  "diagnosis.chatPrompt": "The approval refuses step “{step}”. How do I fix it?",
+  "diagnosis.loadFailed": "Why the approval holds this workflow could not be loaded.",
 } as const;
 
 export type TranslationKey = keyof typeof EN;
@@ -6095,6 +6150,65 @@ const DE: Record<TranslationKey, string> = {
   "settings.help.ui.title.format": "Was der Fenstertitel des sk-Terminals zeigt.",
   "decisions.drift.gateBlock": "Die Freigabe hat einen Schritt abgewiesen",
   "decisions.change.gateFix": "Festgelegte Reparatur",
+  "refusal.reason.not_json_raw": "Die Anfrage enthält die Nachricht nicht im Feld „raw“",
+  "refusal.reason.not_base64url": "Die Nachricht ist nicht korrekt als Base64url kodiert",
+  "refusal.reason.not_utf8": "Die Nachricht ist nicht korrekt als UTF-8 kodiert",
+  "refusal.reason.header_control_byte":
+    "Eine Kopfzeile der Nachricht enthält ein unzulässiges Steuerzeichen",
+  "refusal.reason.header_folded": "Eine Kopfzeile der Nachricht ist über mehrere Zeilen umbrochen",
+  "refusal.reason.header_not_allowed":
+    "Die Nachricht enthält eine Kopfzeile, die ein Bericht nicht haben darf",
+  "refusal.reason.header_duplicate": "Eine Kopfzeile kommt in der Nachricht mehrfach vor",
+  "refusal.reason.missing_headers": "Der Nachricht fehlt eine vorgeschriebene Kopfzeile",
+  "refusal.reason.sender_invalid": "Die Absenderadresse ist ungültig",
+  "refusal.reason.recipient_invalid": "Die Empfängeradresse ist ungültig",
+  "refusal.reason.extra_recipients": "Die Nachricht geht an mehr als einen Empfänger",
+  "refusal.reason.multipart_unsupported":
+    "Die Nachricht ist aus Teilen zusammengesetzt, wie es Berichte nicht erlauben",
+  "refusal.reason.content_type_unsupported":
+    "Das Format des Nachrichteninhalts ist für Berichte nicht erlaubt",
+  "refusal.reason.transfer_encoding_unsupported":
+    "Die Übertragungskodierung der Nachricht ist für Berichte nicht erlaubt",
+  "refusal.reason.body_not_base64": "Der Nachrichteninhalt ist nicht korrekt als Base64 kodiert",
+  "refusal.reason.recipient_differs": "Empfänger weicht von der Freigabe ab",
+  "refusal.reason.sender_differs": "Absender weicht von der Freigabe ab",
+  "refusal.reason.content_type_differs": "Das Nachrichtenformat weicht von der Freigabe ab",
+  "refusal.reason.sentence": "{reason}.",
+  "authority.refusal.report_delivery_contradicted":
+    "Ein Probelauf hat diesen Schritt erreicht, und die E-Mail, die er verschickt hätte, passt nicht zu dem, was am Schritt angegeben ist: Die Nachricht liegt außerhalb des Berichtsformats oder geht an eine andere Adresse. So angegeben würde jeder Lauf beim Senden abgewiesen. Passe den Schritt oder seine Angabe an, damit beides übereinstimmt.",
+  "diagnosis.title": "Was diesen Workflow aufhält",
+  "diagnosis.description":
+    "Die Freigabe weist diese Schritte ab. Zu jedem steht, was die Sperre aufhebt.",
+  "diagnosis.step": "Schritt „{step}“",
+  "diagnosis.code.execution_authority_changed":
+    "Die Freigabe passt nicht mehr zu dem, was dieser Schritt sendet.",
+  "diagnosis.code.connector_unavailable":
+    "Der Konnektor dieses Schritts ist in dieser Umgebung nicht verfügbar.",
+  "diagnosis.remedy.patch": "Dafür gibt es eine festgelegte Reparatur.",
+  "diagnosis.remedy.declare":
+    "Gib Absender und Empfänger am Schritt selbst an, so wie ein Lauf sie beobachtet hat.",
+  "diagnosis.remedy.prepare":
+    "Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, was dieser Schritt sendet, damit es freigegeben werden kann.",
+  "diagnosis.remedy.reconnect": "Verbinde den Konnektor in dieser Umgebung erneut.",
+  "diagnosis.remedy.author": "Das muss im Workflow selbst geändert werden.",
+  "diagnosis.repair": "Automatisch reparieren",
+  "diagnosis.repairRejected":
+    "Eine Reparatur dafür wurde für diese Version abgelehnt. Behebe es stattdessen im Chat.",
+  "diagnosis.repairApplied": "Die Reparatur dafür wurde bereits übernommen.",
+  "diagnosis.repairStale": "Die Reparatur passt nicht mehr zu dieser Version.",
+  "diagnosis.repairFailed": "Die Reparatur konnte nicht vorgeschlagen werden.",
+  "diagnosis.draftOnly":
+    "Das betrifft die vorbereitete Version. Eine Reparatur lässt sich vorschlagen, sobald sie die aktive ist.",
+  "diagnosis.prepare": "Vorbereitung erneut ausführen",
+  "diagnosis.prepared": "Probelauf abgeschlossen — die Diagnose ist aktuell.",
+  "diagnosis.prepareInFlight": "Für diesen Workflow läuft bereits ein Probelauf.",
+  "diagnosis.prepareNeedsSample":
+    "Dieser Workflow startet per Webhook, und der Probelauf braucht einen Beispielaufruf. Öffne dazu die Freigabe.",
+  "diagnosis.prepareNotRun": "Der Probelauf wurde nicht gestartet.",
+  "diagnosis.prepareFailed": "Der Probelauf konnte nicht gestartet werden.",
+  "diagnosis.openApproval": "Freigabe öffnen",
+  "diagnosis.chatPrompt": "Die Freigabe weist Schritt „{step}“ ab. Wie behebe ich das?",
+  "diagnosis.loadFailed": "Warum die Freigabe diesen Workflow aufhält, ließ sich nicht laden.",
 };
 
 export const CATALOGS: Record<Locale, Record<TranslationKey, string>> = {

@@ -18443,7 +18443,8 @@ export interface components {
         };
         GateDiagnosis: {
             code: string;
-            reason?: string;
+            /** @enum {string} */
+            reason?: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs";
             subject: {
                 step_id: string;
                 field?: string;
@@ -19472,6 +19473,8 @@ export interface components {
                 step_key: string | null;
                 /** @enum {string|null} */
                 cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                /** @enum {string|null} */
+                refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
                 connector: {
                     connector_id: string | null;
                     reason: string;
@@ -19512,6 +19515,8 @@ export interface components {
             /** @enum {string|null} */
             cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
             error_code: string | null;
+            /** @enum {string|null} */
+            refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
             connector: {
                 connector_id: string | null;
                 reason: string;
