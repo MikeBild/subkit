@@ -57,11 +57,22 @@ export async function prepareReportAuthority(
     },
     db,
   );
-  if (preview.eligible_for_repeated_runs) return { prepared: false, reason: "already_bindable" };
-  // A held run helps whenever something is unbound: the report profile asks for
-  // it by name, and every other refused step needs exactly the same evidence.
-  if (!preview.preparation_required && (preview.manifest?.issues?.length ?? 0) === 0)
-    return { prepared: false, reason: "nothing_to_prepare" };
+  // A review can read as bindable while granted runs are still refused at
+  // dispatch — the approval fits the declaration, the materialized message
+  // does not. When the diagnosis asks for a preparation to name that refusal,
+  // refusing it here as "already bindable" would leave the reader in a loop.
+  const awaitingEvidence = async () =>
+    (
+      await diagnoseWorkflow(db, input.tenant_id, input.workflow_id, input.execution_environment, {
+        version_id: input.workflow_version_id,
+      })
+    )?.diagnoses.some((entry) => entry.remedy_kind === "prepare") ?? false;
+  const unbound = preview.preparation_required || (preview.manifest?.issues?.length ?? 0) > 0;
+  if ((preview.eligible_for_repeated_runs || !unbound) && !(await awaitingEvidence()))
+    return {
+      prepared: false,
+      reason: preview.eligible_for_repeated_runs ? "already_bindable" : "nothing_to_prepare",
+    };
   const start = await preparationInput(input, db);
   if ("trigger" in start) return start;
   // One preparation at a time for one version in one environment.
