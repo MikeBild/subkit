@@ -579,3 +579,10 @@ export function getTool(name: string): ConversationTool | undefined {
 export function listTools(): ConversationTool[] {
   return [...registry.values()];
 }
+
+// Gate diagnosis and its deterministic repair — why the approval gate holds a
+// workflow, and the reviewed fix a named fixer computes for it.
+import { diagnoseWorkflowTool, proposeWorkflowRepairTool } from "./gate-repair.ts";
+
+register(diagnoseWorkflowTool);
+register(proposeWorkflowRepairTool);
