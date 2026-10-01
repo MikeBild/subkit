@@ -686,7 +686,93 @@ test("a recipient the author declares is reviewed, and the runtime still holds i
     ).toString("base64url");
     const refused = await f.run(elsewhere);
     expect(refused.status).toBe("failed");
-    expect(refused.steps[0]?.error).toMatchObject({ code: "execution_authority_changed" });
+    expect(refused.steps[0]?.error).toMatchObject({
+      code: "execution_authority_changed",
+      reason: "recipient_differs",
+    });
     expect(sent).toBe(1);
   });
+});
+
+test("a declared recipient is contradicted only by what this version's preparation saw", async () => {
+  // The declaration is believed until a held capture of this very step shows
+  // otherwise. A capture recorded before inspections were recorded is no
+  // evidence either way; a refused message or a different address is.
+  const f = await fixture();
+  const db = ctx.testDb.db;
+  const [version] = await db
+    .select()
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, f.wf.version_id));
+  const dag = version?.dag as { steps: Array<Record<string, unknown>> };
+  const declaration = {
+    kind: "gmail_report",
+    to: "recipient@example.test",
+    from: "sender@example.test",
+    content_type: "text/html",
+  };
+  await db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        ...dag,
+        steps: dag.steps.map((step) =>
+          step.id === "send" ? { ...step, report_delivery: declaration } : step,
+        ),
+      },
+    })
+    .where(eq(workflowVersions.id, f.wf.version_id));
+  const [run] = await db
+    .insert(executions)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      workflow_version_id: f.wf.version_id,
+      source_kind: "saved",
+      status: "succeeded",
+      request_source: "api",
+      execution_mode: "dev",
+      hold_writes: true,
+    })
+    .returning();
+  const [row] = await db
+    .insert(executionSteps)
+    .values({
+      tenant_id: ctx.tenantId,
+      execution_id: run?.id as string,
+      step_key: "send",
+      step_index: 0,
+      kind: "request",
+      status: "succeeded",
+      request_meta: { driver: "http", url: GMAIL_SEND_TARGET, extras: { held: true } },
+    })
+    .returning();
+  const capture = (extras: Record<string, unknown>) =>
+    db
+      .update(executionSteps)
+      .set({
+        request_meta: { driver: "http", url: GMAIL_SEND_TARGET, extras: { held: true, ...extras } },
+      })
+      .where(eq(executionSteps.id, row?.id as string));
+  const verdict = async () => {
+    const preview = await f.inspect();
+    return {
+      eligible: preview.eligible_for_repeated_runs,
+      reason: preview.request_refusals.find((entry) => entry.step_id === "send")?.reason,
+    };
+  };
+
+  expect(await verdict()).toEqual({ eligible: true, reason: undefined });
+  await capture({ report_delivery_inspection: { ok: false, reason: "not_utf8" } });
+  expect(await verdict()).toEqual({ eligible: false, reason: "report_delivery_contradicted" });
+  await capture({
+    report_delivery_inspection: { ok: true },
+    report_delivery_proposal: { ...declaration, to: "other@example.test" },
+  });
+  expect(await verdict()).toEqual({ eligible: false, reason: "report_delivery_contradicted" });
+  await capture({
+    report_delivery_inspection: { ok: true },
+    report_delivery_proposal: declaration,
+  });
+  expect(await verdict()).toEqual({ eligible: true, reason: undefined });
 });
