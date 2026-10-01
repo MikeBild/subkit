@@ -5,6 +5,7 @@ import {
 import {
   GMAIL_SEND_TARGET,
   inspectReportMessage,
+  reportInspectionRecord,
 } from "../../../workflows/report-delivery-boundary.ts";
 import {
   describeRequestBoundaryViolation,
@@ -802,7 +803,14 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         `Execution authority could not be verified: ${(error as { code?: string }).code ?? "authority_check_failed"}; review the current boundary.`,
         "authority_invalid",
         undefined,
-        { reason: (error as { code?: string }).code ?? "authority_check_failed" },
+        {
+          reason: (error as { code?: string }).code ?? "authority_check_failed",
+          // Which rule of the approved boundary the request broke, when the
+          // boundary says so. It travels to the step error beside the code.
+          ...(typeof (error as { reason?: unknown }).reason === "string"
+            ? { refusal_reason: (error as { reason: string }).reason }
+            : {}),
+        },
       );
     }
   };
@@ -869,6 +877,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       method: held.method,
       url: held.url,
     };
+    // Every held capture of the report endpoint records its verdict — a
+    // refusal too, with its reason — so the review can say why a preparation
+    // that reached the step observed nothing usable, and can tell a declared
+    // recipient that this very message contradicts.
     const report =
       held.method === "POST" && held.url === GMAIL_SEND_TARGET
         ? inspectReportMessage(held.body)
@@ -890,7 +902,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           ...held.request_meta?.extras,
           ...(proof ? { prepared_request_proof: proof } : {}),
           ...(review ? { prepared_request_review: review } : {}),
-          ...(report ? { report_delivery_proposal: report.boundary } : {}),
+          ...(report ? { report_delivery_inspection: reportInspectionRecord(report) } : {}),
+          ...(report?.ok ? { report_delivery_proposal: report.boundary } : {}),
           ...(contentRevision ? { content_revision_proposal: contentRevision } : {}),
         },
       },
