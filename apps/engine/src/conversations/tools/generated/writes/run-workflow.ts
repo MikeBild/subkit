@@ -26,6 +26,7 @@ import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
+import { buildAutomationReview } from "../../review-workflow-automation.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
 import { workflowInputSlot } from "../../workflow-input-normalize.ts";
@@ -188,13 +189,24 @@ export const runWorkflowTool: ConversationTool = {
       !wf.current_version_id ||
       (bound?.persistence_kind === "draft" && bound.version_id !== wf.current_version_id)
     ) {
+      // The refusal carries the review it points at. It used to promise "the
+      // review dialog shown in this chat" while nothing showed one: for a
+      // workflow without schedule or webhook the review had no card, and the
+      // author, left with a promise and no dialog, offered an API call
+      // instead. The same builder as `review_workflow_automation`, so the
+      // refusal and the dialog cannot disagree.
+      const automationReview = await buildAutomationReview(ctx, workflowId);
+      const inCard = automationReview?.presentation === "automation_readiness_card";
       return {
         ok: false,
         data: withStatus(
           {
             error_code: "workflow_activation_required",
             message:
-              "The saved change needs human review in the cockpit chat. Use the saved-change review dialog shown in this chat to apply it and allow bounded runs. Do not ask the user to call an API or leave the chat. No live run has occurred. " +
+              (inCard
+                ? "The saved change needs human review. The review card for it is shown in this chat with this result: there the person applies it and allows bounded runs. Point to that card in one short sentence. "
+                : `The saved change needs human review. ${automationReview?.review_url ? "Give the person review_url: there, signed in, they apply it and allow bounded runs. " : ""}`) +
+              "Never offer an API call, a command, or leaving the conversation as a way around it, and never run an older version instead. No live run has occurred. " +
               // Without this the request for a preview ended here: the author
               // showed the review card for a change it had not re-checked.
               "To PREVIEW the saved change itself, use `dry_run_workflow`: it runs this chat's draft with writes held and activates nothing.",
@@ -203,6 +215,8 @@ export const runWorkflowTool: ConversationTool = {
             current_version_id: wf.current_version_id,
             next_best_actions: ["dry_run_workflow"],
             user_action: "review_saved_change_in_chat",
+            ...(automationReview?.review_url ? { review_url: automationReview.review_url } : {}),
+            ...(automationReview ? { automation_review: automationReview } : {}),
           },
           "failed",
         ),
