@@ -72,9 +72,12 @@ describe("tools/registry — providers (active)", () => {
     // behaves like the always-on wf_ palette; RBAC still gates execution).
     // save_learning is an inert `proposed` candidate behind the human
     // approve gate — the capture loop's explicit channel stays callable.
+    // propose_workflow_repair likewise files an inert gate-repair candidate
+    // that only a human can apply.
     // Every other tenant_write stays hidden under readOnly.
     expect(writes.map((d) => d.name).sort()).toEqual([
       "approve_skill_candidate",
+      "propose_workflow_repair",
       "run_workflow",
       "save_learning",
     ]);
