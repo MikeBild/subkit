@@ -4,6 +4,11 @@
 // optionally a connector / endpoint key. The handler calls into the
 // self-healing service, which runs the full loop (drift → LLM →
 // classify → fixture → auto-apply or park) end-to-end.
+//
+// A job raised by the execution-authority gate (`trigger: "gate_block"`)
+// takes the other branch: the version is diagnosed and every fixable
+// diagnosis becomes at most one reviewable candidate. No model is asked and
+// nothing applies itself.
 
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
@@ -11,6 +16,7 @@ import type { Db } from "../../db/client.ts";
 import { workflows } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
+import { proposeGateRepairs } from "../../self-healing/gate-repairs.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import type { WorkflowRepairJob } from "../../self-healing/types.ts";
 import { withJobContext } from "../job-context.ts";
@@ -20,6 +26,44 @@ export const WORKFLOW_REPAIR_QUEUE = "workflow.repair" as const;
 export interface RegisterWorkflowRepairOptions {
   boss: PgBoss;
   db: Db;
+}
+
+async function handleGateBlock(
+  job: Job<WorkflowRepairJob>,
+  db: Db,
+  started: number,
+): Promise<void> {
+  const data = job.data;
+  try {
+    if (!data.version_id || !data.environment)
+      throw new Error("a gate_block job carries version_id and environment");
+    const outcomes = await proposeGateRepairs(db, {
+      tenant_id: data.tenant_id,
+      workflow_id: data.workflow_id,
+      version_id: data.version_id,
+      environment: data.environment,
+    });
+    log.queue.job.completed({
+      msg: "workflow.repair gate job completed",
+      queue: WORKFLOW_REPAIR_QUEUE,
+      job_id: job.id,
+      trigger: data.trigger,
+      version_id: data.version_id,
+      candidates_created: outcomes.filter((o) => o.created).length,
+      candidates_existing: outcomes.filter((o) => !o.created).length,
+      duration_ms: Date.now() - started,
+    });
+  } catch (err) {
+    log.queue.job.failed({
+      msg: "workflow.repair gate job failed",
+      queue: WORKFLOW_REPAIR_QUEUE,
+      job_id: job.id,
+      trigger: data.trigger,
+      error: err instanceof Error ? err.message : String(err),
+      duration_ms: Date.now() - started,
+    });
+    throw err;
+  }
 }
 
 async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
@@ -34,6 +78,7 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
     step_id: data.step_id,
   });
   const started = Date.now();
+  if (data.trigger === "gate_block") return await handleGateBlock(job, db, started);
   // rss baseline around the LLM-heavy self-healing loop, so the success
   // log attributes the transient to THIS tenant's repair run.
   const rssBefore = readMemoryUsage().rss;
