@@ -86,7 +86,10 @@ export const dryRunPatchCandidateTool: ConversationTool = {
         ok: false,
         data: {
           error: outcome.status,
-          hint: "no replayable step/fixture material — run the workflow once so the engine captures a fixture, then retry",
+          hint:
+            outcome.status === "gate_fix"
+              ? "a gate repair has no fixture replay: its proof is a held preparation run of the prepared version — preview it and let the person prepare and approve it"
+              : "no replayable step/fixture material — run the workflow once so the engine captures a fixture, then retry",
         },
       };
     }
