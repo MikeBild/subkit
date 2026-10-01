@@ -32,6 +32,7 @@ import {
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
 import { GrantWorkflowAuthoritySchema, grantWorkflowAuthority } from "../../workflows/index.ts";
+import { ReportDeliveryBoundarySchema } from "../../workflows/report-delivery-boundary.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -181,6 +182,7 @@ const StepShapeSchema = z
     kind: z.enum(["request", "transform"]),
     data_selector: z.string().optional(),
     expression: z.string().optional(),
+    report_delivery: ReportDeliveryBoundarySchema.optional(),
   })
   .openapi("PatchCandidateStepShape");
 

@@ -19,6 +19,8 @@
 // commit transaction.
 
 import type { PatchProposal } from "../llm/flows/repair.ts";
+import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { applyGateFixOps, GateFixPatchSchema, replanGateFix } from "../workflows/gate-fix.ts";
 
 /**
  * The projection slots a patch may rewrite. Structurally satisfied by both
@@ -134,7 +136,13 @@ export type PatchApplyFailure =
   /** The rewrite left the step byte-identical — nothing to version. */
   | "no_change"
   /** The stored DAG has no readable `steps` array. */
-  | "malformed_dag";
+  | "malformed_dag"
+  /** A `gate_fix` that did not come from a gate refusal. Only the gate-repair
+   *  service may carry one; anything else is refused, never applied. */
+  | "gate_fix_without_gate_block"
+  /** The stored `gate_fix` operations are not what its fixer computes against
+   *  this definition — the steps moved since it was proposed. */
+  | "gate_fix_mismatch";
 
 export type PatchApplyOutcome =
   | {
@@ -145,6 +153,12 @@ export type PatchApplyOutcome =
       changed_paths: string[];
     }
   | { ok: false; reason: PatchApplyFailure };
+
+/** The drift kind a candidate's stored diff recorded, or null. */
+export function candidateDriftKind(diff: unknown): string | null {
+  const signal = (diff as { drift_signal?: { kind?: unknown } } | null)?.drift_signal;
+  return typeof signal?.kind === "string" ? signal.kind : null;
+}
 
 function readSteps(dag: unknown): Record<string, unknown>[] | null {
   if (!dag || typeof dag !== "object" || Array.isArray(dag)) return null;
@@ -167,6 +181,9 @@ export function applyPatchToWorkflowDag(
   dag: unknown,
   step_key: string | null,
   patch: PatchProposal,
+  /** The kind of the drift signal the candidate recorded. A `gate_fix` is
+   *  executable only when it is `gate_block`. */
+  drift_kind?: string | null,
 ): PatchApplyOutcome {
   if (!step_key) return { ok: false, reason: "no_step_anchor" };
   const steps = readSteps(dag);
@@ -175,6 +192,9 @@ export function applyPatchToWorkflowDag(
   const index = steps.findIndex((s) => s && typeof s === "object" && s.id === step_key);
   if (index < 0) return { ok: false, reason: "step_not_found" };
   const before = steps[index] as Record<string, unknown>;
+
+  if (patch.kind === "gate_fix")
+    return applyGateFix(dag, steps, index, step_key, patch, drift_kind);
 
   const kind = before.kind;
   if (kind !== "request" && kind !== "transform") {
@@ -200,4 +220,64 @@ export function applyPatchToWorkflowDag(
     after,
     changed_paths,
   };
+}
+
+/**
+ * A gate fix is re-planned against the definition it would change and must
+ * reproduce the stored operations exactly: the fixer, not the stored value,
+ * decides what is written. A definition that moved since the proposal yields
+ * a different plan (or none) and the fix is refused.
+ */
+function applyGateFix(
+  dag: unknown,
+  steps: Record<string, unknown>[],
+  index: number,
+  step_key: string,
+  patch: PatchProposal,
+  drift_kind: string | null | undefined,
+): PatchApplyOutcome {
+  if (drift_kind !== "gate_block") return { ok: false, reason: "gate_fix_without_gate_block" };
+  const parsed = GateFixPatchSchema.safeParse(patch.patch);
+  if (!parsed.success || parsed.data.step_id !== step_key)
+    return { ok: false, reason: "patch_not_applicable" };
+  const plan = replanGateFix(dag, parsed.data);
+  if (!plan) {
+    // Already repaired: the cause the fixer removes is gone from this version.
+    if (parsed.data.fixer === "use_utf8_encoder" && alreadyUtf8(steps[index]))
+      return { ok: false, reason: "no_change" };
+    if (
+      parsed.data.fixer === "declare_report_delivery" &&
+      workflowJsonDigest(steps[index]?.report_delivery ?? null) ===
+        workflowJsonDigest(parsed.data.ops[0]?.value ?? null)
+    )
+      return { ok: false, reason: "no_change" };
+    return { ok: false, reason: "gate_fix_mismatch" };
+  }
+  if (
+    plan.step_id !== step_key ||
+    workflowJsonDigest(plan.ops) !== workflowJsonDigest(parsed.data.ops)
+  )
+    return { ok: false, reason: "gate_fix_mismatch" };
+  const before = steps[index] as Record<string, unknown>;
+  const after = applyGateFixOps(before, plan.ops);
+  const changed_paths = diffStepPaths(before, after);
+  if (changed_paths.length === 0) return { ok: false, reason: "no_change" };
+  const nextSteps = [...steps];
+  nextSteps[index] = after;
+  return {
+    ok: true,
+    dag: { ...(dag as Record<string, unknown>), steps: nextSteps },
+    before,
+    after,
+    changed_paths,
+  };
+}
+
+function alreadyUtf8(step: Record<string, unknown> | undefined): boolean {
+  const expression = step?.expression;
+  return (
+    typeof expression === "string" &&
+    expression.includes("sk.base64UrlEncodeUtf8(") &&
+    !/(?<![\w$.])sk\.base64UrlEncode\(/.test(expression)
+  );
 }

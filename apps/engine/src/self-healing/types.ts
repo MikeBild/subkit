@@ -7,6 +7,9 @@
 // object-with-property-shapes. Anything we cannot classify widens
 // to `"unknown"`.
 
+import type { GateFixer } from "../workflows/gate-fix.ts";
+import type { ReportDeliveryBoundary } from "../workflows/report-delivery-boundary.ts";
+
 export type SchemaShape =
   | { type: "string" | "number" | "boolean" | "null" | "unknown" }
   | { type: "array"; items: SchemaShape }
@@ -92,6 +95,21 @@ export type DriftSignal =
       sunset: string | null;
       /** Vendor-announced replacement URI, when known. */
       successor_uri: string | null;
+    }
+  | {
+      // An approval gate refused a step, and a named deterministic fixer can
+      // remove the cause. Not a drift of the connector: the workflow itself
+      // produced something the gate cannot approve. Never auto-applied — a
+      // person reviews every gate repair (`shouldAutoApply`).
+      kind: "gate_block";
+      /** The gate's code: a manifest issue, a boundary refusal, or a refused
+       *  dispatch. */
+      code: string;
+      /** The report gate's own refusal reason, when it named one. */
+      reason: string | null;
+      fixer: GateFixer;
+      /** The step the gate refused. */
+      step_id: string;
     };
 
 // The classifier output. A PatchDecision says whether the engine may
@@ -126,6 +144,8 @@ export interface DryRunStep {
   data_selector?: string | undefined;
   response_filters?: unknown;
   expression?: string | undefined;
+  /** A declared report recipient — shown in a review, never dry-run. */
+  report_delivery?: ReportDeliveryBoundary | undefined;
 }
 
 export interface DryRunFixture {
