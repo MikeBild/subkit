@@ -19,6 +19,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { createSecretVersion } from "../../runtime-config/service.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
@@ -237,7 +238,9 @@ test("cron queue retries reuse one authorized reservation and stop at its run li
   });
   const sends: { execution_id: string; job_id: string }[] = [];
   const boss = {
-    async send(_queue: string, job: { execution_id: string }, options: { id: string }) {
+    async send(queue: string, job: { execution_id: string }, options: { id: string }) {
+      // The held schedule also asks for one gate diagnosis; only runs count here.
+      if (queue !== EXECUTION_RUN_QUEUE) return null;
       sends.push({ execution_id: job.execution_id, job_id: options.id });
       if (sends.length === 1) throw new Error("fixture queue unavailable");
       return options.id;
