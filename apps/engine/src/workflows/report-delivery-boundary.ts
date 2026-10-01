@@ -59,92 +59,250 @@ export type ReportDeliveryInspectionRecord =
   | { ok: true }
   | { ok: false; reason: ReportMessageRefusal };
 
-/** Narrow MIME profile, shared by proposal and dispatch. Unsupported MIME is
- * not guessed: additional recipients, folded/duplicate headers, attachments,
- * forwarding headers and encoded addresses all require concrete-run review. */
-export function inspectReportMessage(body: unknown): ReportMessageInspection {
-  const refuse = (reason: ReportMessageRefusal) => ({ ok: false, reason }) as const;
+type Refused = { ok: false; reason: ReportMessageRefusal };
+const refuse = (reason: ReportMessageRefusal): Refused => ({ ok: false, reason });
+
+const ENVELOPE_HEADERS = new Set([
+  "from",
+  "to",
+  "subject",
+  "mime-version",
+  "content-type",
+  "content-transfer-encoding",
+]);
+const PART_HEADERS = new Set(["content-type", "content-transfer-encoding"]);
+const TRANSFER_ENCODINGS = new Set(["7bit", "8bit", "base64"]);
+const TEXT_TYPE = /^(text\/(?:plain|html))(?:;\s*charset="?utf-8"?)?$/i;
+const ALTERNATIVE_TYPE = /^multipart\/alternative;\s*boundary=(?:"([^"]*)"|([^\s";]+))$/i;
+// RFC 2046 boundary characters, without the space it permits mid-boundary.
+const BOUNDARY = /^[0-9A-Za-z'()+_,./:=?-]{1,70}$/;
+// One whole RFC 2047 B-encoded UTF-8 word: the unit sk.buildMimeMessage folds.
+const ENCODED_WORD = /^=\?utf-8\?b\?([A-Za-z0-9+/]+={0,2})\?=$/i;
+// Every control byte except the tab RFC 5322 allows inside a field body.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: reject ambiguous MIME control bytes
+const CONTROL_BYTE = /[\x00-\x08\x0a-\x1f\x7f]/;
+const FIELD = /^([A-Za-z0-9-]+):[ \t]*(.*)$/;
+
+function strictUtf8(bytes: Uint8Array): string | null {
   try {
-    const value = typeof body === "string" ? JSON.parse(body) : body;
-    if (
-      !value ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      Object.keys(value).length !== 1 ||
-      typeof value.raw !== "string" ||
-      value.raw.length > 1_000_000
-    )
-      return refuse("not_json_raw");
-    if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value.raw)) return refuse("not_base64url");
-    const bytes = Buffer.from(value.raw, "base64url");
-    if (bytes.toString("base64url") !== value.raw.replace(/=+$/, ""))
-      return refuse("not_base64url");
-    let message: string;
-    try {
-      message = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    } catch {
-      return refuse("not_utf8");
-    }
-    const end = message.indexOf("\r\n\r\n");
-    if (end < 0 || end > 16_384) return refuse("missing_headers");
-    const headers = new Map<string, string>();
-    for (const line of message.slice(0, end).split("\r\n")) {
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: reject ambiguous MIME control bytes
-      const match = /^([A-Za-z-]+):[ \t]*([^\r\n\x00-\x1f\x7f]*)$/.exec(line);
-      if (!match) return refuse("header_not_allowed");
-      const key = match[1]!.toLowerCase();
-      if (headers.has(key)) return refuse("header_duplicate");
-      if (
-        ![
-          "from",
-          "to",
-          "subject",
-          "mime-version",
-          "content-type",
-          "content-transfer-encoding",
-        ].includes(key)
-      )
-        return refuse("header_not_allowed");
-      headers.set(key, match[2]!.trim());
-    }
-    if (headers.get("mime-version") !== "1.0" || !headers.has("subject"))
-      return refuse("missing_headers");
-    const content = /^(text\/(?:plain|html))(?:;\s*charset="?utf-8"?)?$/i.exec(
-      headers.get("content-type") ?? "",
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function strictBase64(encoded: string): Buffer | null {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))
+    return null;
+  const decoded = Buffer.from(encoded, "base64");
+  return decoded.toString("base64") === encoded ? decoded : null;
+}
+
+/** The bare address of exactly one mailbox, `addr` or `Name <addr>`. A display
+ * name is printable ASCII without `,<>"`: a quoted name is refused rather than
+ * parsed, so no spelling of the value can carry a second address. */
+function mailboxAddress(value: string): string | null {
+  if (mailbox.safeParse(value).success) return value;
+  const named = /^([^<>]*?)[ \t]*<([^<>]*)>$/.exec(value);
+  if (!named) return null;
+  const name = named[1]!;
+  if (!name.trim() || !/^[\x20-\x7e]+$/.test(name) || /[,<>"]/.test(name)) return null;
+  return mailbox.safeParse(named[2]).success ? named[2]! : null;
+}
+
+/** One mailbox too many is a different finding from a malformed one, because
+ * its remedy is different. */
+function addressRefusal(
+  value: string,
+  invalid: "sender_invalid" | "recipient_invalid",
+): ReportMessageRefusal {
+  const pieces = value.split(",").map((piece) => piece.trim());
+  return invalid === "recipient_invalid" &&
+    pieces.length > 1 &&
+    pieces.every((piece) => mailboxAddress(piece) !== null)
+    ? "extra_recipients"
+    : invalid;
+}
+
+/** The subject as a reader sees it. It routes nothing, so a value that is not
+ * wholly encoded words is shown as written. */
+function subjectText(words: string[]): string {
+  const bytes: Buffer[] = [];
+  for (const word of words) {
+    const payload = ENCODED_WORD.exec(word)?.[1];
+    const decoded = payload ? strictBase64(payload) : null;
+    if (!decoded) return words.join(" ");
+    bytes.push(decoded);
+  }
+  return strictUtf8(Buffer.concat(bytes)) ?? words.join(" ");
+}
+
+function decodeBody(body: string, encoding: string | undefined): { text: string } | Refused {
+  if (encoding !== "base64") return { text: body };
+  const decoded = strictBase64(body.replace(/\r\n/g, ""));
+  if (!decoded) return refuse("body_not_base64");
+  const text = strictUtf8(decoded);
+  return text === null ? refuse("not_utf8") : { text };
+}
+
+/** One part of a multipart/alternative report: a single text body with only
+ * its type and transfer encoding. No nesting, no disposition, nothing else. */
+function inspectPart(part: string): { type: string; text: string } | Refused {
+  const end = part.indexOf("\r\n\r\n");
+  if (end < 0) return refuse("multipart_unsupported");
+  const headers = new Map<string, string>();
+  for (const line of part.slice(0, end).split("\r\n")) {
+    if (CONTROL_BYTE.test(line)) return refuse("header_control_byte");
+    if (/^[ \t]/.test(line)) return refuse("header_folded");
+    const field = FIELD.exec(line);
+    const key = field?.[1]?.toLowerCase();
+    if (!field || !key || !PART_HEADERS.has(key)) return refuse("multipart_unsupported");
+    if (headers.has(key)) return refuse("header_duplicate");
+    headers.set(key, field[2]!.trim());
+  }
+  const contentType = headers.get("content-type");
+  const type = TEXT_TYPE.exec(contentType ?? "");
+  if (!type)
+    return refuse(
+      contentType === undefined || /^multipart\//i.test(contentType)
+        ? "multipart_unsupported"
+        : "content_type_unsupported",
     );
-    if (!content) return refuse("content_type_unsupported");
-    if (
-      headers.has("content-transfer-encoding") &&
-      !["7bit", "8bit", "base64"].includes(headers.get("content-transfer-encoding")!)
-    )
-      return refuse("transfer_encoding_unsupported");
-    if (!mailbox.safeParse(headers.get("from")).success) return refuse("sender_invalid");
-    if (!mailbox.safeParse(headers.get("to")).success) return refuse("recipient_invalid");
-    const boundary: ReportDeliveryBoundary = {
-      kind: "gmail_report",
-      to: headers.get("to")!,
-      from: headers.get("from")!,
-      content_type: content[1]!.toLowerCase() as "text/plain" | "text/html",
-    };
-    let text = message.slice(end + 4);
-    if (headers.get("content-transfer-encoding") === "base64") {
-      // Decode only the single text body. Envelope headers remain exact and
-      // multipart messages/attachments remain outside this report profile.
-      const encoded = text.replace(/\r\n/g, "");
-      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))
-        return refuse("body_not_base64");
-      const decoded = Buffer.from(encoded, "base64");
-      if (decoded.toString("base64") !== encoded) return refuse("body_not_base64");
-      try {
-        text = new TextDecoder("utf-8", { fatal: true }).decode(decoded);
-      } catch {
-        return refuse("not_utf8");
-      }
-    }
-    return { ok: true, boundary, subject: headers.get("subject")!, text };
+  const encoding = headers.get("content-transfer-encoding")?.toLowerCase();
+  if (encoding !== undefined && !TRANSFER_ENCODINGS.has(encoding))
+    return refuse("transfer_encoding_unsupported");
+  const body = decodeBody(part.slice(end + 4), encoding);
+  return "ok" in body ? body : { type: type[1]!.toLowerCase(), text: body.text };
+}
+
+/** Exactly two parts, text/plain then text/html, between one opening and one
+ * closing delimiter: no preamble, and nothing after the close but an empty
+ * line. Yields the HTML part, which is what the reader sees. */
+function inspectAlternative(body: string, boundary: string): { text: string } | Refused {
+  const open = `--${boundary}\r\n`;
+  const separator = `\r\n--${boundary}\r\n`;
+  const close = `\r\n--${boundary}--`;
+  if (!body.startsWith(open)) return refuse("multipart_unsupported");
+  const closeAt = body.indexOf(close, open.length);
+  if (closeAt < 0) return refuse("multipart_unsupported");
+  const tail = body.slice(closeAt + close.length);
+  if (tail !== "" && tail !== "\r\n") return refuse("multipart_unsupported");
+  const parts = body.slice(open.length, closeAt).split(separator);
+  if (parts.length !== 2 || parts.some((part) => part.includes(`\r\n--${boundary}`)))
+    return refuse("multipart_unsupported");
+  const plain = inspectPart(parts[0]!);
+  if ("ok" in plain) return plain;
+  const html = inspectPart(parts[1]!);
+  if ("ok" in html) return html;
+  if (plain.type !== "text/plain" || html.type !== "text/html")
+    return refuse("multipart_unsupported");
+  return { text: html.text };
+}
+
+/** Narrow MIME profile, shared by proposal and dispatch. Unsupported MIME is
+ * not guessed: additional recipients, folded or duplicate headers, attachments,
+ * nested parts, forwarding headers and encoded addresses all require
+ * concrete-run review. What it accepts is what sk.buildMimeMessage produces for
+ * one sender and one recipient: a named or bare mailbox, a subject folded into
+ * whole encoded words, and a single text body or a text/plain + text/html
+ * alternative. Only the extracted addresses are compared, never display names. */
+export function inspectReportMessage(body: unknown): ReportMessageInspection {
+  let value: unknown;
+  try {
+    value = typeof body === "string" ? JSON.parse(body) : body;
   } catch {
     return refuse("not_json_raw");
   }
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 1 ||
+    typeof (value as { raw?: unknown }).raw !== "string" ||
+    (value as { raw: string }).raw.length > 1_000_000
+  )
+    return refuse("not_json_raw");
+  const raw = (value as { raw: string }).raw;
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(raw)) return refuse("not_base64url");
+  const bytes = Buffer.from(raw, "base64url");
+  if (bytes.toString("base64url") !== raw.replace(/=+$/, "")) return refuse("not_base64url");
+  const message = strictUtf8(bytes);
+  if (message === null) return refuse("not_utf8");
+  const end = message.indexOf("\r\n\r\n");
+  if (end < 0 || end > 16_384) return refuse("missing_headers");
+
+  const headers = new Map<string, string>();
+  const subjectWords: string[] = [];
+  let previous: string | null = null;
+  for (const line of message.slice(0, end).split("\r\n")) {
+    if (CONTROL_BYTE.test(line)) return refuse("header_control_byte");
+    if (/^[ \t]/.test(line)) {
+      // Only the subject may continue, and only as whole encoded words: the
+      // shape sk.buildMimeMessage emits, and one no other header can hide in.
+      const word = line.slice(1);
+      if (previous !== "subject" || line[0] !== " " || !ENCODED_WORD.test(word))
+        return refuse("header_folded");
+      subjectWords.push(word);
+      continue;
+    }
+    const field = FIELD.exec(line);
+    const key = field?.[1]?.toLowerCase();
+    if (!field || !key || !ENVELOPE_HEADERS.has(key)) return refuse("header_not_allowed");
+    if (headers.has(key)) return refuse("header_duplicate");
+    const fieldValue = field[2]!.trim();
+    headers.set(key, fieldValue);
+    if (key === "subject") subjectWords.push(fieldValue);
+    previous = key;
+  }
+  const from = headers.get("from");
+  const to = headers.get("to");
+  const contentType = headers.get("content-type");
+  if (
+    from === undefined ||
+    to === undefined ||
+    contentType === undefined ||
+    !headers.has("subject") ||
+    headers.get("mime-version") !== "1.0"
+  )
+    return refuse("missing_headers");
+  // A folded subject is encoded words throughout, never text that happens to
+  // continue on one.
+  if (subjectWords.length > 1 && !ENCODED_WORD.test(subjectWords[0]!))
+    return refuse("header_folded");
+
+  const sender = mailboxAddress(from);
+  if (!sender) return refuse(addressRefusal(from, "sender_invalid"));
+  const recipient = mailboxAddress(to);
+  if (!recipient) return refuse(addressRefusal(to, "recipient_invalid"));
+
+  const encoding = headers.get("content-transfer-encoding")?.toLowerCase();
+  if (encoding !== undefined && !TRANSFER_ENCODINGS.has(encoding))
+    return refuse("transfer_encoding_unsupported");
+  const single = TEXT_TYPE.exec(contentType);
+  const alternative = single ? null : ALTERNATIVE_TYPE.exec(contentType);
+  let content: ReportDeliveryBoundary["content_type"];
+  let decoded: { text: string } | Refused;
+  if (single) {
+    content = single[1]!.toLowerCase() as "text/plain" | "text/html";
+    decoded = decodeBody(message.slice(end + 4), encoding);
+  } else if (alternative) {
+    const delimiter = alternative[1] ?? alternative[2]!;
+    if (!BOUNDARY.test(delimiter)) return refuse("multipart_unsupported");
+    // The parts carry their own encoding; the container is never encoded.
+    if (encoding === "base64") return refuse("transfer_encoding_unsupported");
+    content = "multipart/alternative";
+    decoded = inspectAlternative(message.slice(end + 4), delimiter);
+  } else
+    return refuse(
+      /^multipart\//i.test(contentType) ? "multipart_unsupported" : "content_type_unsupported",
+    );
+  if ("ok" in decoded) return decoded;
+  return {
+    ok: true,
+    boundary: { kind: "gmail_report", to: recipient, from: sender, content_type: content },
+    subject: subjectText(subjectWords),
+    text: decoded.text,
+  };
 }
 
 /** The one comparison between a reviewed boundary and an inspected message,
