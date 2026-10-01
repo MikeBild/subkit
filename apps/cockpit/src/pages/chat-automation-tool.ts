@@ -14,15 +14,50 @@ function automationRows(data: Record<string, unknown>): unknown[] {
   ];
 }
 
+/** A saved change that waits to be applied, with the environment a run of it
+ *  would use. A workflow nothing starts automatically has only this. */
+function savedChange(
+  data: Record<string, unknown>,
+): { environment: "dev" | "prod"; review: unknown } | null {
+  const change = data.saved_change;
+  if (!record(change)) return null;
+  const { environment } = change;
+  if (environment !== "dev" && environment !== "prod") return null;
+  return { environment, review: change.review };
+}
+
+/**
+ * The review payload of a tool part: a `review_workflow_automation` result, or
+ * the `run_workflow` refusal that carries the same review. The refusal promises
+ * the dialog in which the person applies the saved change; without reading it
+ * here, that promise pointed at nothing.
+ */
+function reviewData(tool: ToolPart): Record<string, unknown> | null {
+  if (tool.state !== "output-available" || !record(tool.output)) return null;
+  const name = toolNameOf(tool);
+  if (name === "review_workflow_automation") {
+    if (tool.output.ok === false) return null;
+    return record(tool.output.data) ? tool.output.data : tool.output;
+  }
+  if (name === "run_workflow") {
+    const data = record(tool.output.data) ? tool.output.data : tool.output;
+    if (data.error_code !== "workflow_activation_required") return null;
+    return record(data.automation_review) ? data.automation_review : null;
+  }
+  return null;
+}
+
 export function chatAutomationSummary(
   tool: ToolPart,
-): "authorized" | "repair" | "review" | "unknown" {
-  if (!chatAutomationTool(tool) || !record(tool.output)) return "unknown";
-  const data = record(tool.output.data) ? tool.output.data : tool.output;
+): "authorized" | "repair" | "review" | "apply" | "unknown" {
+  if (!chatAutomationTool(tool)) return "unknown";
+  const data = reviewData(tool);
+  if (!data) return "unknown";
   const rows = automationRows(data)
     .filter(record)
     .filter((row) => row.workflow_id === data.workflow_id);
-  if (rows.length === 0) return "unknown";
+  // Nothing starts it automatically: the saved change is the whole decision.
+  if (rows.length === 0) return savedChange(data) ? "apply" : "unknown";
   if (rows.every((row) => row.state === "authorized" && row.ready === true)) return "authorized";
   const blocked = rows.filter(
     (row) => record(row.review) && row.review.eligible_for_repeated_runs === false,
@@ -36,20 +71,18 @@ export function chatAutomationSummary(
 }
 
 export function chatAutomationTool(tool: ToolPart) {
-  if (toolNameOf(tool) !== "review_workflow_automation" || tool.state !== "output-available")
-    return null;
-  if (!record(tool.output) || tool.output.ok === false) return null;
-  const data = record(tool.output.data) ? tool.output.data : tool.output;
+  const data = reviewData(tool);
   if (
-    data.kind !== "workflow_automation_review" ||
+    data?.kind !== "workflow_automation_review" ||
     typeof data.workflow_id !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.workflow_id) ||
     !Array.isArray(data.schedules)
   )
     return null;
+  const change = savedChange(data);
   const environments = [
-    ...new Set<"dev" | "prod">(
-      automationRows(data).flatMap(
+    ...new Set<"dev" | "prod">([
+      ...automationRows(data).flatMap(
         (row): Array<"dev" | "prod"> =>
           record(row) &&
           row.workflow_id === data.workflow_id &&
@@ -57,7 +90,8 @@ export function chatAutomationTool(tool: ToolPart) {
             ? [row.environment]
             : [],
       ),
-    ),
+      ...(change ? [change.environment] : []),
+    ]),
   ];
   return { workflowId: data.workflow_id, environments };
 }
