@@ -154,7 +154,7 @@ The gate sits on top of hard quality gates:
 |---|---|
 | Connector save | Blocked until `inspect`, `validate`, `probe` checkpoints are fresh |
 | Workflow commit | Blocked until `inspect`, `validate`, `preview` checkpoints are fresh |
-| Workflow run | Uses the exact inspected active version; an inactive saved draft returns `workflow_activation_required`, rather than running an older active version |
+| Workflow run | Uses the exact inspected active version; an inactive saved draft returns `workflow_activation_required`, rather than running an older active version. The refusal carries the saved-change review: in the cockpit chat it is the review card where a person applies the change and allows bounded runs — also for a workflow with no schedule or webhook; over MCP it carries a `review_url` to the workflow's cockpit page |
 | Connector persistence | A green `probe_connector_draft` calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`), returns `auto_saved: true` |
 | Workflow persistence | In `auto`, a green judged dry-run may call `commitWorkflowAtomic` inline. In `ask`/`plan`, it returns `save_required` and `save_workflow_draft` uses the human gate. |
 | Force overrides | `force_save: true` (after a failed probe) and `force_commit: true` (after a failed dry-run) go through the explicit `ask_user_confirm` carrier so the deviation is auditable |

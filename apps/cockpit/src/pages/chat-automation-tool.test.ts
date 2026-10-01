@@ -74,3 +74,48 @@ test("failed and mismatched review results cannot create permission buttons", ()
     )?.environments,
   ).toEqual([]);
 });
+test("a saved change without schedule or webhook is a card in the run's environment", () => {
+  const review = {
+    ok: true,
+    data: {
+      ...data,
+      schedules: [],
+      inbound_hooks: [],
+      saved_change: { environment: "dev", review: { eligible_for_repeated_runs: true } },
+    },
+  };
+  expect(chatAutomationTool(part(review))).toEqual({ workflowId: id, environments: ["dev"] });
+  expect(chatAutomationSummary(part(review))).toBe("apply");
+  expect(
+    chatAutomationTool(part({ ok: true, data: { ...data, schedules: [], saved_change: null } }))
+      ?.environments,
+  ).toEqual([]);
+});
+test("the run refusal that promises the review dialog carries it", () => {
+  const automation_review = {
+    ...data,
+    schedules: [],
+    saved_change: { environment: "dev", review: { eligible_for_repeated_runs: false } },
+  };
+  const refusal = (output: unknown) =>
+    ({
+      type: "dynamic-tool",
+      toolName: "run_workflow",
+      toolCallId: "run",
+      state: "output-available",
+      input: { workflow: id },
+      output,
+    }) as ToolPart;
+  const refused = refusal({
+    ok: false,
+    data: { error_code: "workflow_activation_required", automation_review },
+  });
+  expect(chatAutomationTool(refused)).toEqual({ workflowId: id, environments: ["dev"] });
+  expect(chatAutomationSummary(refused)).toBe("apply");
+  expect(
+    chatAutomationTool(
+      refusal({ ok: false, data: { error_code: "workflow_not_found", automation_review } }),
+    ),
+  ).toBeNull();
+  expect(chatAutomationTool(refusal({ ok: true, data: { automation_review } }))).toBeNull();
+});
