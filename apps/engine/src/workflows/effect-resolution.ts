@@ -29,7 +29,11 @@ import {
   type ResolvedEffectBinding,
 } from "./effect-manifest.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
-import { hasRuntimeValue, supportsReportDelivery } from "./report-delivery-boundary.ts";
+import {
+  hasRuntimeValue,
+  reportDeliveryDiscrepancy,
+  supportsReportDelivery,
+} from "./report-delivery-boundary.ts";
 import {
   proposeReportDeliveryBoundaries,
   type ReportDeliveryBoundaries,
@@ -345,17 +349,31 @@ async function resolveBindings(
     // statement: an observation says what one run happened to do, this says
     // what every run may do. Only for a step the profile actually covers —
     // elsewhere it would be a field with no meaning that a reviewer still reads.
-    const declaredDelivery =
+    const statedDelivery =
       step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
+    // A statement is believed until this very version shows otherwise: a
+    // preparation reached the step with a message the profile refuses, or one
+    // addressed differently. Approving it then would approve a send the wire
+    // refuses on every run — and there is no observation to fall back on,
+    // because the author said something else.
+    const contradicted =
+      statedDelivery !== null &&
+      (reportEvidence?.inspections?.get(step.id) ?? []).some(
+        (observation) =>
+          !observation.ok || reportDeliveryDiscrepancy(statedDelivery, observation.boundary),
+      );
+    const declaredDelivery = contradicted ? null : statedDelivery;
     let boundary: RequestBoundary | null = null;
     if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
       // A report e-mail or a content publication has its own stricter review
       // (the recipient, the receipts). `boundary` must not be a way around it.
       const stricter = supportsReportDelivery(step, target) || contentShape !== null;
       const profile = stricter
-        ? declaredDelivery
-          ? null
-          : profileRefusal(step.id, contentShape !== null, reportEvidence)
+        ? contradicted
+          ? "report_delivery_contradicted"
+          : declaredDelivery
+            ? null
+            : profileRefusal(step.id, contentShape !== null, reportEvidence)
         : undefined;
       // The profile produced a boundary, so nothing is refused. Reporting one
       // anyway made every healthy report step carry a refusal on every preview
@@ -389,7 +407,9 @@ async function resolveBindings(
       ...(boundary ? { boundary } : {}),
       ...(declaredDelivery
         ? { report_delivery: declaredDelivery }
-        : reportEvidence?.boundaries[step.id] && supportsReportDelivery(step, target)
+        : !contradicted &&
+            reportEvidence?.boundaries[step.id] &&
+            supportsReportDelivery(step, target)
           ? { report_delivery: reportEvidence.boundaries[step.id] }
           : {}),
       connector_id: step.connector_id ?? null,
