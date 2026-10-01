@@ -8,7 +8,10 @@
 // that moved in between yields no plan instead of a guess.
 
 import { z } from "@hono/zod-openapi";
-import { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
+import {
+  type ReportDeliveryBoundary,
+  ReportDeliveryBoundarySchema,
+} from "./report-delivery-boundary.ts";
 
 export const GATE_FIXERS = ["use_utf8_encoder", "declare_report_delivery"] as const;
 export const GateFixerSchema = z.enum(GATE_FIXERS);
@@ -120,12 +123,27 @@ export function planReportDeliveryDeclaration(
 ): GateFixPlan | null {
   const boundary = ReportDeliveryBoundarySchema.safeParse(observed);
   const subject = stepById(definition, subject_step_id);
-  if (!boundary.success || !subject || subject.kind !== "request") return null;
-  if (subject.report_delivery !== undefined || subject.method !== "POST") return null;
+  if (!boundary.success || subject?.kind !== "request" || subject.method !== "POST") return null;
+  // A declaration the observation contradicts is replaced by what was observed;
+  // one that already says exactly that leaves nothing to repair.
+  const declared = ReportDeliveryBoundarySchema.safeParse(subject.report_delivery);
+  if (declared.success && sameBoundary(declared.data, boundary.data)) return null;
   return {
     step_id: subject_step_id,
-    ops: [{ op: "add", path: "/report_delivery", value: boundary.data }],
+    ops: [
+      {
+        op: subject.report_delivery === undefined ? "add" : "replace",
+        path: "/report_delivery",
+        value: boundary.data,
+      },
+    ],
   };
+}
+
+function sameBoundary(a: ReportDeliveryBoundary, b: ReportDeliveryBoundary): boolean {
+  return (
+    a.kind === b.kind && a.to === b.to && a.from === b.from && a.content_type === b.content_type
+  );
 }
 
 /** Re-plan a stored fix against a definition and say whether it still holds. */
@@ -133,7 +151,7 @@ export function replanGateFix(definition: unknown, patch: GateFixPatch): GateFix
   if (patch.fixer === "use_utf8_encoder")
     return planUtf8EncoderFix(definition, patch.subject_step_id);
   const declared = patch.ops[0];
-  if (declared?.op !== "add" || declared.path !== "/report_delivery") return null;
+  if (declared?.path !== "/report_delivery") return null;
   return planReportDeliveryDeclaration(definition, patch.subject_step_id, declared.value);
 }
 
