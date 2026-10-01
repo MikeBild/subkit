@@ -12,6 +12,11 @@ const mime = (headers = "", to = "recipient@example.test", text = "Report") => (
     `From: sender@example.test\r\nTo: ${to}\r\nSubject: Today's report\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8${headers}\r\n\r\n${text}`,
   ).toString("base64url"),
 });
+/** The accepted inspection, or null when the profile refused the message. */
+const observed = (body: unknown) => {
+  const inspection = inspectReportMessage(body);
+  return inspection.ok ? inspection : null;
+};
 const boundary = {
   kind: "gmail_report" as const,
   to: "recipient@example.test",
@@ -26,7 +31,7 @@ const request = (body: unknown) => ({
 });
 
 test("changing report contents keeps the reviewed recipient and sender", () => {
-  expect(inspectReportMessage(mime())?.boundary).toEqual(boundary);
+  expect(observed(mime())?.boundary).toEqual(boundary);
   expect(() =>
     assertReportDelivery(boundary, request(mime("", boundary.to, "Tomorrow's new report"))),
   ).not.toThrow();
@@ -39,7 +44,7 @@ test("built-in MIME helper reports retain their envelope and decode for review",
     clock: null,
   });
   const body = { raw: result.output!.raw };
-  expect(inspectReportMessage(body)).toEqual({ boundary, subject: "Daily report", text: html });
+  expect(observed(body)).toEqual({ ok: true, boundary, subject: "Daily report", text: html });
   expect(() => assertReportDelivery(boundary, request(body))).not.toThrow();
   expect(() =>
     assertReportDelivery({ ...boundary, to: "other@example.test" }, request(body)),
@@ -48,14 +53,12 @@ test("built-in MIME helper reports retain their envelope and decode for review",
 test("encoded report body rejects malformed bytes and never introduces recipients", () => {
   const header = "\r\nContent-Transfer-Encoding: base64";
   for (const text of ["%%%", "YQ", "YR==", "/w==", "YQ==\n", "YQ==\r\nBcc: hidden@example.test"])
-    expect(inspectReportMessage(mime(header, boundary.to, text))).toBeNull();
+    expect(observed(mime(header, boundary.to, text))).toBeNull();
   const text = "Bcc: hidden@example.test\r\nContent-Type: multipart/mixed";
   const body = mime(header, boundary.to, Buffer.from(text).toString("base64"));
-  expect(inspectReportMessage(body)?.text).toBe(text);
-  expect(inspectReportMessage(body)?.boundary).toEqual(boundary);
-  expect(
-    inspectReportMessage(mime(`${header}\r\nBcc: hidden@example.test`, boundary.to, "YQ==")),
-  ).toBeNull();
+  expect(observed(body)?.text).toBe(text);
+  expect(observed(body)?.boundary).toEqual(boundary);
+  expect(observed(mime(`${header}\r\nBcc: hidden@example.test`, boundary.to, "YQ=="))).toBeNull();
 });
 test("recipient injection, unsupported MIME and extra payload options fail closed", () => {
   for (const headers of [
@@ -69,13 +72,13 @@ test("recipient injection, unsupported MIME and extra payload options fail close
     "\nBcc: hidden@example.test",
     "\r\nX-Test: abc",
   ]) {
-    expect(inspectReportMessage(mime(headers))).toBeNull();
+    expect(observed(mime(headers))).toBeNull();
     expect(() => assertReportDelivery(boundary, request(mime(headers)))).toThrow();
   }
   expect(() => assertReportDelivery(boundary, request(mime("", "other@example.test")))).toThrow();
-  expect(inspectReportMessage({ ...mime(), threadId: "other-thread" })).toBeNull();
-  expect(inspectReportMessage({ raw: "%%%" })).toBeNull();
-  expect(inspectReportMessage(mime("", "Name <recipient@example.test>"))).toBeNull();
+  expect(observed({ ...mime(), threadId: "other-thread" })).toBeNull();
+  expect(observed({ raw: "%%%" })).toBeNull();
+  expect(observed(mime("", "Name <recipient@example.test>"))).toBeNull();
   expect(() =>
     assertReportDelivery(boundary, { ...request(mime()), url: `${GMAIL_SEND_TARGET}?extra=true` }),
   ).toThrow();
@@ -113,11 +116,11 @@ test("Unicode report MIME uses the UTF-8 encoder; legacy byte truncation is reje
     input: { text },
     clock: null,
   });
-  expect(inspectReportMessage({ raw: correct.output })?.boundary).toEqual(boundary);
+  expect(observed({ raw: correct.output })?.boundary).toEqual(boundary);
   const legacy = await runJs<string>({
     code: "return sk.base64UrlEncode(input.text);",
     input: { text },
     clock: null,
   });
-  expect(inspectReportMessage({ raw: legacy.output })).toBeNull();
+  expect(observed({ raw: legacy.output })).toBeNull();
 });
