@@ -241,7 +241,8 @@ const GMAIL_REPORT_REMEDY =
   "the rule the message broke (`not_utf8`, `header_control_byte`, `extra_recipients`, …) — start " +
   "there. Build the message with sk.buildMimeMessage({from, to, subject, html, text}); it " +
   "produces exactly what the review accepts: ONE sender and ONE recipient, each `addr` or " +
-  '`Name <addr>` (a printable-ASCII name without `,<>"`; only the address is compared), a ' +
+  "`Name <addr>` (a name of plain ASCII words and spaces — no quotes, comments, `:` `;` `@` " +
+  "`,` `.` or other punctuation that structures an address; only the address is compared), a " +
   "Unicode subject, and a text/html or text/plain body or both as multipart/alternative. If a " +
   "transform assembles MIME itself, it needs From, To, Subject, MIME-Version: 1.0 and " +
   "Content-Type, unfolded, and it must be encoded with sk.base64UrlEncodeUtf8, never " +

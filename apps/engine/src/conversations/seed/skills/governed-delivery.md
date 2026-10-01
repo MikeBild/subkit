@@ -47,8 +47,9 @@ and refuses anything it cannot read exactly:
   only `From`, `To`, `Subject`, `MIME-Version: 1.0`, `Content-Type` and
   `Content-Transfer-Encoding` (`7bit`, `8bit` or `base64`), each once, unfolded.
 - **Display names are allowed** (`Reports <reports@example.com>`); sender and
-  recipient are compared by address. A name is plain printable ASCII without
-  quotes, commas or angle brackets — a quoted name is refused, not parsed.
+  recipient are compared by address. A name is plain ASCII words and spaces —
+  no quotes, parentheses, `:` `;` `@` `,` `.` or other address punctuation; a
+  quoted name or a comment is refused, not parsed.
   Never put a second address in `To`: that is `extra_recipients`.
 - **Content**: a single `text/plain` or `text/html` body, or one
   `multipart/alternative` with exactly two parts, `text/plain` then
