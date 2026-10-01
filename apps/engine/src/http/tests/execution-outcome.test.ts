@@ -231,6 +231,7 @@ describe("execution list failure", () => {
         step_key: string | null;
         cause_class: string | null;
         connector: { connector_id: string | null; reason: string } | null;
+        refusal_reason: string | null;
       } | null;
     };
     const list = async (query: string) => {
@@ -252,6 +253,7 @@ describe("execution list failure", () => {
         step_key: "fetch",
         cause_class: "auth_failed",
         connector: null,
+        refusal_reason: null,
       });
     }
 
