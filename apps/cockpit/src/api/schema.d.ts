@@ -18119,7 +18119,7 @@ export interface components {
                     to: string;
                     from: string;
                     /** @enum {string} */
-                    content_type: "text/plain" | "text/html";
+                    content_type: "text/plain" | "text/html" | "multipart/alternative";
                 };
                 content_publication?: {
                     /** @enum {string} */
@@ -18391,7 +18391,7 @@ export interface components {
                 to: string;
                 from: string;
                 /** @enum {string} */
-                content_type: "text/plain" | "text/html";
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
             };
             headers?: {
                 [key: string]: string;
