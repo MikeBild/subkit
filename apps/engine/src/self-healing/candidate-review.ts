@@ -176,7 +176,11 @@ export type CandidateDryRunOutcome =
   | { status: "not_found" }
   | { status: "no_proposal" }
   | { status: "no_step" }
-  | { status: "no_fixture" };
+  | { status: "no_fixture" }
+  /** A gate repair changes what a request materializes, not how a recorded
+   *  response is projected: its proof is a held preparation of the prepared
+   *  version, never a fixture replay. */
+  | { status: "gate_fix" };
 
 export async function dryRunPatchCandidate(
   params: { tenant_id: string; candidate_id: string; actor_id: string | null },
@@ -197,6 +201,7 @@ export async function dryRunPatchCandidate(
   if (!row) return { status: "not_found" };
   const envelope = readCandidateDiff(row.diff);
   if (!envelope.proposal) return { status: "no_proposal" };
+  if (envelope.proposal.kind === "gate_fix") return { status: "gate_fix" };
   if (!envelope.step_id) return { status: "no_step" };
 
   const snapshot = await loadStepSnapshot(params.tenant_id, envelope.step_id, db);
