@@ -69,9 +69,13 @@ export interface GateDiagnosis {
     observed?: Omit<ReportDeliveryBoundary, "kind">;
   };
   remedy_kind: GateRemedyKind;
-  /** Present only when a deterministic fixer computes the repair. */
+  /** Present only when a deterministic fixer computes the repair. It can be
+   *  proposed only when the diagnosis `is_current`; on a draft it names the
+   *  change to make in the draft. */
   fixer?: GateFixer;
-  /** The open repair candidate for this diagnosis, when one was proposed. */
+  /** The open repair candidate for this diagnosis, when one was proposed.
+   *  Candidates are filed against the active version only, so a draft's
+   *  diagnosis never carries one. */
   candidate_id?: string;
 }
 
@@ -192,7 +196,9 @@ export async function diagnoseWorkflow(
   const diagnoses = collapse(
     await buildDiagnoses(db, { ...input, definition: version.dag, preview, held, refused }),
   );
-  await attachCandidates(db, input, diagnoses);
+  // A repair is filed against the active version only (`proposeGateRepair`
+  // re-diagnoses that one), so only its diagnosis can point at a candidate.
+  if (base.is_current) await attachCandidates(db, input, diagnoses);
   return { ...base, diagnoses };
 }
 
@@ -457,7 +463,8 @@ async function requestDiagnosis(
 
 /**
  * The newest recorded successful inspection of this very step against the
- * report target, from any held run of this workflow in this environment.
+ * report target, from a held run of exactly the diagnosed version in this
+ * environment.
  * The declaration copies what a run observed — never what a transform's
  * source text appears to say.
  */
@@ -480,6 +487,9 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
       and(
         eq(executionSteps.tenant_id, input.tenant_id),
         eq(executions.workflow_id, input.workflow_id),
+        // Only this version's runs: another version's message may be built
+        // and addressed differently, and its observation proves nothing here.
+        eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         eq(executions.hold_writes, true),
         sql`(${executionSteps.step_key} = ${step_id} OR ${executionSteps.step_key} ~ ${`^${escapeRegex(step_id)}\\[[0-9]+\\]$`})`,

@@ -30,7 +30,7 @@ const diagnosisRoute = createRoute({
   tags: ["workflows"],
   summary: "Why the approval gate holds this workflow, and what removes it",
   description:
-    "Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. Read-only.",
+    "Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.",
   security: [{ bearerAuth: [] }],
   request: {
     params: workflowParam,

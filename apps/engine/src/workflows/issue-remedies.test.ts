@@ -195,3 +195,57 @@ test("a child's issue says which workflow to repair it in", () => {
   expect(prefix).toContain("review this workflow again");
   expect(calledWorkflowPrefix("run_child", null)).toContain("it starts");
 });
+
+test("a draft's deterministic repair is described, never offered for proposal", () => {
+  // propose_workflow_repair files against the ACTIVE version only. Offered on
+  // a draft, it either refuses or repairs a version nobody was looking at.
+  const encoder = {
+    code: "report_delivery_contradicted" as const,
+    reason: "not_utf8" as const,
+    subject: { step_id: "send_email" },
+    evidence: {},
+    remedy_kind: "patch" as const,
+    fixer: "use_utf8_encoder" as const,
+  };
+  const declaration = {
+    code: "execution_authority_changed" as const,
+    reason: "recipient_differs" as const,
+    subject: { step_id: "send_other" },
+    evidence: {
+      execution_id: "00000000-0000-4000-8000-000000000001",
+      observed: {
+        to: "ops@example.com",
+        from: "ops@example.com",
+        content_type: "text/html" as const,
+      },
+    },
+    remedy_kind: "declare" as const,
+    fixer: "declare_report_delivery" as const,
+  };
+  const issues = [{ step_id: "send_email", code: "dynamic_request" as const }];
+  const effects = [{ step_id: "send_email", driver: "http" as const, target: GMAIL }];
+  const guidance = (is_current: boolean) =>
+    repairGuidanceForIssues(issues, effects, [], [], {
+      is_current,
+      diagnoses: [encoder, declaration],
+    });
+
+  const active = guidance(true);
+  expect(active.map((entry) => entry.fixer)).toEqual([
+    "use_utf8_encoder",
+    "declare_report_delivery",
+  ]);
+  for (const entry of active) expect(entry.instruction).toContain("propose_workflow_repair");
+
+  const draft = guidance(false);
+  expect(draft.map((entry) => entry.step_id)).toEqual(["send_email", "send_other"]);
+  for (const entry of draft) {
+    expect(entry.fixer).toBeUndefined();
+    expect(entry.candidate_id).toBeUndefined();
+    expect(entry.instruction).not.toContain("propose_workflow_repair");
+    expect(entry.instruction).toContain("draft");
+  }
+  // The same change, to make in the draft itself.
+  expect(draft[0]?.instruction).toContain("sk.base64UrlEncodeUtf8(");
+  expect(draft[1]?.instruction).toContain("report_delivery");
+});
