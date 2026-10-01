@@ -105,7 +105,10 @@ function AuditDetail({
         {facts.map((fact) => (
           // `min-w-0`, or a 36-character id sets this column's minimum width
           // and pushes the sheet wider than the phone it is read on.
-          <div key={fact.label} className="grid min-w-0 gap-1 border-b pb-2">
+          <div
+            key={fact.label}
+            className="grid min-w-0 grid-cols-1 gap-1 border-b pb-2 break-words"
+          >
             <dt className="text-xs font-medium text-muted-foreground">{fact.label}</dt>
             <dd className="text-sm break-words">
               {fact.value === null ? (
