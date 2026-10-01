@@ -16,10 +16,14 @@ import {
   withWorkflowExecution,
   withWorkflowPersisted,
 } from "../authoring-state.ts";
+import { DANGEROUS_TOOLS_SET } from "../dangerous-tools.ts";
 import { TOOL_POLICIES } from "../tool-policies.ts";
 import {
+  CHAT_READONLY_TOOLS,
   CONNECTOR_AUTHORING_SKILL,
   filterByAuthoringPalette,
+  filterByChatReadOnlyPalette,
+  REVIEW_DECISIONS,
   WORKFLOW_AUTHORING_SKILL,
 } from "../tools/authoring-palette.ts";
 import { listTools } from "../tools/index.ts";
@@ -233,7 +237,7 @@ describe("authoring tool palette — inert proposals", () => {
     }
   });
 
-  test("they are offered with no skill loaded; the approve decision is not", () => {
+  test("they are offered with no skill loaded", () => {
     const visible = filterByAuthoringPalette(
       listTools(),
       createEmptyDraftDocument(),
@@ -241,6 +245,46 @@ describe("authoring tool palette — inert proposals", () => {
     ).map((tool) => tool.name);
     expect(visible).toContain("create_skill");
     expect(visible).toContain("save_learning");
-    expect(visible).not.toContain("approve_skill_candidate");
+  });
+
+  test("a decision is never flagged as a proposal", () => {
+    for (const name of REVIEW_DECISIONS) {
+      expect(listTools().find((t) => t.name === name)?.inert_proposal).not.toBe(true);
+    }
+  });
+});
+
+// `create_skill` tells the user a candidate can be approved "right here". The
+// decision that does so must be on the same authoring palette — behind its own
+// confirm gate, never on the read-only chat surface.
+describe("authoring tool palette — review decisions", () => {
+  test("the set is exactly the skill-candidate approval", () => {
+    expect([...REVIEW_DECISIONS].sort()).toEqual(["approve_skill_candidate"]);
+  });
+
+  test("each is a registered tenant write behind the confirm gate", () => {
+    for (const name of REVIEW_DECISIONS) {
+      expect(listTools().find((t) => t.name === name)?.category).toBe("tenant_write");
+      expect(DANGEROUS_TOOLS_SET.has(name)).toBe(true);
+      expect(TOOL_POLICIES[name]?.defaultMode).toBe("confirm_before_execution");
+      expect(TOOL_POLICIES[name]?.neverGate).not.toBe(true);
+    }
+  });
+
+  test("they are offered on the authoring palette with no skill loaded", () => {
+    const visible = filterByAuthoringPalette(
+      listTools(),
+      createEmptyDraftDocument(),
+      NO_SKILLS,
+    ).map((tool) => tool.name);
+    for (const name of REVIEW_DECISIONS) expect(visible).toContain(name);
+  });
+
+  test("the read-only chat surface never lists them", () => {
+    const chat = filterByChatReadOnlyPalette(listTools()).map((tool) => tool.name);
+    for (const name of REVIEW_DECISIONS) {
+      expect(CHAT_READONLY_TOOLS.has(name)).toBe(false);
+      expect(chat).not.toContain(name);
+    }
   });
 });
