@@ -586,11 +586,12 @@ test("a preparation that is already running is refused with a reason, not starte
   expect(runs).toHaveLength(1);
 });
 
-test("two preparations at once still produce one held run", async () => {
+test("two preparations at once never run side by side", async () => {
   // The concurrent case, asserting only what does not depend on interleaving:
-  // however the two calls arrive, the workflow ends up with one held run and
-  // not two. Which of them is refused, and on which of the two checks, is the
-  // machine's business.
+  // the lock promises one preparation AT A TIME, not one ever. When the first
+  // finishes before the second reaches the lock, a second held run is a
+  // legitimate repeat; what must never happen is two held runs overlapping.
+  // Which call is refused, and on which check, is the machine's business.
   const f = await fixture();
   const input = {
     tenant_id: ctx.tenantId,
@@ -603,7 +604,7 @@ test("two preparations at once still produce one held run", async () => {
     prepareReportAuthority(input, ctx.testDb.db, f.principal),
   ]);
   const runs = await ctx.testDb.db
-    .select({ id: executions.id })
+    .select({ started: executions.started_at, finished: executions.finished_at })
     .from(executions)
     .where(
       and(
@@ -611,8 +612,15 @@ test("two preparations at once still produce one held run", async () => {
         eq(executions.workflow_id, f.wf.workflow_id),
         eq(executions.hold_writes, true),
       ),
-    );
-  expect(runs).toHaveLength(1);
+    )
+    .orderBy(executions.started_at);
+  expect(runs.length).toBeGreaterThanOrEqual(1);
+  expect(runs.length).toBeLessThanOrEqual(2);
+  if (runs.length === 2) {
+    const [first, second] = runs;
+    expect(first?.finished).not.toBeNull();
+    expect(second!.started!.getTime()).toBeGreaterThanOrEqual(first!.finished!.getTime());
+  }
 });
 
 test("a recipient the author declares is reviewed, and the runtime still holds it to the wire", async () => {
