@@ -471,8 +471,17 @@ jobs:
           # own history (still the full history of the pushed branch). On a
           # pull_request the scope narrows further to the PR's own commits
           # (base..head), so a fork PR is scanned on exactly what it adds.
+          #
+          # A push is scanned on exactly what it adds (before..sha): every
+          # earlier commit was scanned when it was pushed, and rescanning the
+          # whole, ever-growing history on each push pushed this job past its
+          # cap. Only a push without a usable predecessor (a new branch, a
+          # force-push onto history this clone lacks) scans the full history.
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             LOG_OPTS="${BASE_SHA}..${HEAD_SHA}"
+          elif [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+            && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            LOG_OPTS="${BEFORE_SHA}..${GITHUB_SHA}"
           else
             LOG_OPTS="$GITHUB_SHA"
           fi
@@ -482,6 +491,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
       - name: Upload gitleaks report
         if: always()
         uses: actions/upload-artifact@v7
