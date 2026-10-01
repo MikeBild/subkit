@@ -14,7 +14,7 @@
 //     approved run passes dispatch and sends exactly once.
 //   - AC4: The same diagnosis and proposal are reachable over MCP through
 //     `diagnose_workflow` and `propose_workflow_repair`.
-// Spec refs: docs/concepts/self-healing.md
+// Spec refs: docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
