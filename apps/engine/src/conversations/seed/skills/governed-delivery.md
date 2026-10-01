@@ -7,7 +7,7 @@ activates_when: [{"kind":"diagnosis","codes":["report_delivery_unprepared","repo
 side_effects: read
 idempotency: none
 maturity: stable
-tags: [authoring, governance, report-delivery, repair, authoring-only]
+tags: [authoring, governance, report-delivery, repair]
 version: 1
 ---
 
@@ -47,13 +47,18 @@ and refuses anything it cannot read exactly:
   only `From`, `To`, `Subject`, `MIME-Version: 1.0`, `Content-Type` and
   `Content-Transfer-Encoding` (`7bit`, `8bit` or `base64`), each once, unfolded.
 - **Display names are allowed** (`Reports <reports@example.com>`); sender and
-  recipient are compared by address.
-- **Content**: a single `text/plain` or `text/html` part, or one
-  `multipart/alternative` with exactly a text and an HTML part. No attachments.
+  recipient are compared by address. A name is plain printable ASCII without
+  quotes, commas or angle brackets — a quoted name is refused, not parsed.
+  Never put a second address in `To`: that is `extra_recipients`.
+- **Content**: a single `text/plain` or `text/html` body, or one
+  `multipart/alternative` with exactly two parts, `text/plain` then
+  `text/html`. No attachments, no nested multiparts.
 - **UTF-8 throughout.** Build the message with `sk.buildMimeMessage({ from, to,
   subject, text?, html? })`, which encodes headers and bodies correctly, or
-  encode a hand-built message with `sk.base64UrlEncodeUtf8(mime)`. Never use
-  `btoa` on a string with non-ASCII characters.
+  encode a hand-built message with `sk.base64UrlEncodeUtf8(mime)`. Never
+  `sk.base64UrlEncode`: it writes one byte per character, so "—" or "·"
+  becomes invalid UTF-8 and the gate refuses with `not_utf8` or
+  `header_control_byte`.
 
 ## What is never the fix
 
@@ -79,10 +84,12 @@ and refuses anything it cannot read exactly:
 
 ## Tools
 
-Use `diagnose_workflow` to read why the gate refuses a workflow: per refused
-step it returns the code, what kind of act removes the block (`patch`,
-`prepare`, `declare`, `reconnect`, `author`) and, when a deterministic fixer
-computes the repair, the fixer's name. Use `propose_workflow_repair` to turn a
-diagnosis into a patch candidate a human reviews — a repair is a proposal,
-never an applied change. After a repair lands, prepare again: a new version has
-no observation of its own.
+Use `diagnose_workflow` to read why the gate holds a workflow: per refused step
+it returns the gate code, the report gate's own `reason` when it named one
+(for example `not_utf8`), what kind of act removes the block (`patch`,
+`prepare`, `declare`, `reconnect`, `author`), a `fixer` when a deterministic
+repair exists, and `candidate_id` when that repair already waits for review.
+Use `propose_workflow_repair` with the step and fixer to file that repair as a
+proposed patch candidate — a proposal a person approves, never an applied
+change; calling it again returns the same candidate. After a repair lands,
+prepare again: a new version has no observation of its own.
