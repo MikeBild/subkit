@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { listHeldInboundHooks, listHeldSchedules } from "@/api/decisions";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
+import { WorkflowGateDiagnosis } from "@/components/cockpit/workflow-diagnosis";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -345,6 +346,19 @@ export function WorkflowAuthorities({
           <p className="text-sm">{t("authority.hookHeldHint", { slug: hookHold.slug })}</p>
         </div>
       )}
+      {/* Why the gate holds it and what removes that — in the environment the
+          approval itself is judged in, once that is known. */}
+      <WorkflowGateDiagnosis
+        workflowId={workflowId}
+        environment={
+          history.isPending || holds.isPending || hookHolds.isPending
+            ? null
+            : reviewEnvironment(
+                items,
+                hold ?? (hookHold ? { execution_mode: hookHold.environment } : undefined),
+              )
+        }
+      />
       {history.isPending && <p role="status">{t("common.loading")}</p>}
       {history.error && (
         <Alert variant="destructive">

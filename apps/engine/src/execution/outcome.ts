@@ -12,6 +12,10 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { executionSteps, type executions, workflowVersions } from "../db/schema/index.ts";
 import {
+  type ReportDeliveryRefusal,
+  reportRefusalReason,
+} from "../workflows/report-delivery-boundary.ts";
+import {
   classifyPersistedFailure,
   type PersistedFailureClass,
   type PreviewClassification,
@@ -25,6 +29,9 @@ export interface ExecutionOutcome {
   failed_step: { step_key: string; kind: string } | null;
   cause_class: PreviewClassification | null;
   error_code: string | null;
+  /** Which rule of the approved boundary the stopping step broke, when the
+   *  refusal named one (`not_utf8`, `recipient_differs`, …). */
+  refusal_reason: ReportDeliveryRefusal | null;
   /** The connector a refused run named, so a reader can open and reconnect it. */
   connector: RefusedConnector | null;
   steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
@@ -35,6 +42,7 @@ export interface ExecutionOutcome {
 export interface ExecutionFailureSummary {
   step_key: string | null;
   cause_class: PreviewClassification | null;
+  refusal_reason: ReportDeliveryRefusal | null;
   connector: RefusedConnector | null;
 }
 
@@ -176,6 +184,7 @@ export function deriveExecutionOutcome(
     failed_step,
     cause_class: cause?.classification ?? null,
     error_code: cause?.error_code ?? null,
+    refusal_reason: stopping ? reportRefusalReason(stopping.error) : null,
     connector: kind === "failed" ? refusedConnector(exec.failure) : null,
     steps: { total: rows.length + unrun, succeeded, failed, held, skipped },
     output_contract:
@@ -280,6 +289,7 @@ export async function loadFailureSummaries(
     out.set(exec.id, {
       step_key: stopping?.step_key ?? exec.failure?.step_id ?? null,
       cause_class: cause?.classification ?? null,
+      refusal_reason: stopping ? reportRefusalReason(stopping.error) : null,
       connector: refusedConnector(exec.failure),
     });
   }

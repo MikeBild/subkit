@@ -33,6 +33,9 @@ const REFUSAL_KEYS = [
   "report_delivery_unprepared",
   "report_delivery_unobserved",
   "report_delivery_unreachable",
+  // A trial run reached the step and saw a message its declaration would
+  // refuse at sending — outside the report format, or addressed elsewhere.
+  "report_delivery_contradicted",
   "connector_adds_query",
   "target_unresolved",
   "path_unsupported",
@@ -61,6 +64,11 @@ const REFUSAL_KEYS = [
 ] as const;
 export type RefusalKey = (typeof REFUSAL_KEYS)[number];
 const KNOWN_REFUSALS = new Set<string>(REFUSAL_KEYS);
+
+/** The sentence key for a refusal code, when this build has one. */
+export function refusalSentenceKey(code: string): `authority.refusal.${RefusalKey}` | undefined {
+  return KNOWN_REFUSALS.has(code) ? `authority.refusal.${code as RefusalKey}` : undefined;
+}
 
 /** One reason, ready to render: a heading, the step it belongs to, and the
  *  concrete values when the engine supplied them. */
