@@ -7,6 +7,7 @@ import {
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
   type ReportDeliveryInspectionRecord,
+  type ReportMessageRefusal,
 } from "./report-delivery-boundary.ts";
 
 export type ReportDeliveryBoundaries = Record<string, ReportDeliveryBoundary>;
@@ -25,6 +26,11 @@ export type ReportDeliveryBoundaries = Record<string, ReportDeliveryBoundary>;
  * Absent when the boundaries came from a granted authority — there is no gap to
  * explain, and inventing one would report a refusal on a healthy step.
  */
+/** One held capture's verdict, with the boundary it observed when it was ok. */
+export type ReportDeliveryObservation =
+  | { ok: true; boundary: ReportDeliveryBoundary }
+  | { ok: false; reason: ReportMessageRefusal };
+
 export interface ReportDeliveryEvidence {
   boundaries: ReportDeliveryBoundaries;
   /** False when no preparation run exists for this version and environment. */
@@ -37,7 +43,7 @@ export interface ReportDeliveryEvidence {
    * the recording contributes nothing, which is no evidence either way. Absent
    * altogether when the boundaries came from a granted authority.
    */
-  inspections?: ReadonlyMap<string, ReadonlyArray<ReportDeliveryInspectionRecord>>;
+  inspections?: ReadonlyMap<string, ReadonlyArray<ReportDeliveryObservation>>;
 }
 
 const InspectionRecordSchema = z.union([
@@ -104,9 +110,10 @@ export async function inspectHeldPreviewEvidence(
         report_boundary_observed: ReportDeliveryBoundarySchema.safeParse(
           extras?.report_delivery_proposal,
         ).success,
-        // Which rule of the report profile the message broke, so a repair
-        // starts at that rule instead of at a guess about the MIME.
-        ...(inspection && !inspection.ok ? { report_refusal: inspection.reason } : {}),
+        // The held step's own verdict under the same name it is stored with,
+        // so a repair starts at the rule the message broke instead of at a
+        // guess about the MIME.
+        ...(inspection ? { report_delivery_inspection: inspection } : {}),
       };
     }),
   };
@@ -171,7 +178,7 @@ export async function proposeReportDeliveryBoundaries(
     );
   const boundaries: ReportDeliveryBoundaries = {};
   const reached = new Set<string>();
-  const inspections = new Map<string, ReportDeliveryInspectionRecord[]>();
+  const inspections = new Map<string, ReportDeliveryObservation[]>();
   for (const step of steps) {
     // A loop body records `send[0]`, `send[1]`, … — the same step.
     const key = step.key.replace(/\[[0-9]+\]$/, "");
@@ -184,7 +191,14 @@ export async function proposeReportDeliveryBoundaries(
     );
     if (metadata?.extras?.held === true && proposal.success) boundaries[key] = proposal.data;
     const inspection = metadata?.extras?.held === true ? recordedInspection(metadata.extras) : null;
-    if (inspection) inspections.set(key, [...(inspections.get(key) ?? []), inspection]);
+    const observation: ReportDeliveryObservation | null = !inspection
+      ? null
+      : !inspection.ok
+        ? inspection
+        : proposal.success
+          ? { ok: true, boundary: proposal.data }
+          : null;
+    if (observation) inspections.set(key, [...(inspections.get(key) ?? []), observation]);
   }
   return { boundaries, prepared: true, reached, inspections };
 }
