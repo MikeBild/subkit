@@ -69,6 +69,9 @@ const ADDITIVE_WRITES: ReadonlySet<string> = new Set([
   // Creates an inert `proposed` skill candidate — the human approve gate
   // is downstream, so gating the proposal itself buys no safety.
   "save_learning",
+  // Files an inert `proposed` patch candidate; approving it is the
+  // operator's act on the patch-candidate review.
+  "propose_workflow_repair",
 ]);
 
 /**

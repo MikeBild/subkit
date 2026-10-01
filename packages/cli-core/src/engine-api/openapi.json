@@ -5841,6 +5841,191 @@
           "run_limit_is_request_limit"
         ]
       },
+      "WorkflowDiagnosis": {
+        "type": "object",
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "is_current": {
+            "type": "boolean"
+          },
+          "diagnoses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GateDiagnosis"
+            }
+          }
+        },
+        "required": [
+          "workflow_id",
+          "workflow_version_id",
+          "environment",
+          "is_current",
+          "diagnoses"
+        ]
+      },
+      "GateDiagnosis": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "object",
+            "properties": {
+              "step_id": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step_id"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "execution_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "observed": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "text/plain",
+                      "text/html",
+                      "multipart/alternative"
+                    ]
+                  }
+                },
+                "required": [
+                  "to",
+                  "from",
+                  "content_type"
+                ]
+              }
+            }
+          },
+          "remedy_kind": {
+            "type": "string",
+            "enum": [
+              "patch",
+              "prepare",
+              "declare",
+              "reconnect",
+              "author"
+            ]
+          },
+          "fixer": {
+            "type": "string",
+            "enum": [
+              "use_utf8_encoder",
+              "declare_report_delivery"
+            ]
+          },
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "code",
+          "subject",
+          "evidence",
+          "remedy_kind"
+        ]
+      },
+      "ProposeWorkflowRepairResponse": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "step_id": {
+            "type": "string"
+          },
+          "fixer": {
+            "type": "string",
+            "enum": [
+              "use_utf8_encoder",
+              "declare_report_delivery"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "step_id",
+          "fixer",
+          "status",
+          "created"
+        ]
+      },
+      "ProposeWorkflowRepairBody": {
+        "type": "object",
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fixer": {
+            "type": "string",
+            "enum": [
+              "use_utf8_encoder",
+              "declare_report_delivery"
+            ]
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ],
+            "default": "prod"
+          }
+        },
+        "required": [
+          "step_id",
+          "fixer"
+        ],
+        "additionalProperties": false
+      },
       "WorkflowDraft": {
         "type": "object",
         "properties": {
@@ -13717,6 +13902,9 @@
           },
           {
             "$ref": "#/components/schemas/SkillActivationStepKind"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationDiagnosis"
           }
         ],
         "discriminator": {
@@ -13729,7 +13917,8 @@
             "connector_template": "#/components/schemas/SkillActivationConnectorTemplate",
             "connector_recipe_match": "#/components/schemas/SkillActivationConnectorRecipeMatch",
             "intent_keyword": "#/components/schemas/SkillActivationIntentKeyword",
-            "step_kind": "#/components/schemas/SkillActivationStepKind"
+            "step_kind": "#/components/schemas/SkillActivationStepKind",
+            "diagnosis": "#/components/schemas/SkillActivationDiagnosis"
           }
         }
       },
@@ -13911,6 +14100,29 @@
         "required": [
           "kind",
           "step_kinds"
+        ]
+      },
+      "SkillActivationDiagnosis": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "diagnosis"
+            ]
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "kind",
+          "codes"
         ]
       },
       "SkillListResponse": {
@@ -18578,7 +18790,8 @@
               "change_type",
               "add_header",
               "rate_limited",
-              "other"
+              "other",
+              "gate_fix"
             ]
           },
           "description": {
@@ -18621,6 +18834,40 @@
           },
           "expression": {
             "type": "string"
+          },
+          "report_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_report"
+                ]
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/html",
+                  "multipart/alternative"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "to",
+              "from",
+              "content_type"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -20806,7 +21053,8 @@
               "validation_failed",
               "jsonata_path_miss",
               "http_status_new_shape",
-              "endpoint_contract"
+              "endpoint_contract",
+              "gate_block"
             ]
           },
           "classification": {
@@ -20845,7 +21093,8 @@
               "validation_failed",
               "jsonata_path_miss",
               "http_status_new_shape",
-              "endpoint_contract"
+              "endpoint_contract",
+              "gate_block"
             ]
           },
           "reason": {
@@ -29939,6 +30188,44 @@
                         "kind",
                         "slug"
                       ]
+                    },
+                    "diagnoses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "step_id": {
+                            "type": "string"
+                          },
+                          "remedy_kind": {
+                            "type": "string",
+                            "enum": [
+                              "patch",
+                              "prepare",
+                              "declare",
+                              "reconnect",
+                              "author"
+                            ]
+                          },
+                          "fixer": {
+                            "type": "string"
+                          },
+                          "candidate_id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "step_id",
+                          "remedy_kind"
+                        ]
+                      }
                     }
                   },
                   "required": [
@@ -30703,6 +30990,142 @@
           },
           "409": {
             "description": "Invalid, unavailable or unauthorized authority boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/diagnosis": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Why the approval gate holds this workflow, and what removes it",
+        "description": "Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. Read-only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "prod"
+              ],
+              "default": "prod"
+            },
+            "required": false,
+            "name": "environment",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDiagnosis"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/repairs": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Propose a deterministic repair for a step the approval gate refused",
+        "description": "Files the repair the active version's diagnosis offers for this step and fixer as a reviewable patch candidate (never applied automatically). Returns the existing candidate when one already covers the block (200) — including a rejected one, which keeps holding for this version. Review and apply through /v1/patch-candidates/{id}.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeWorkflowRepairBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An existing candidate covers this repair",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposeWorkflowRepairResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Proposed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposeWorkflowRepairResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No such repair is available for the active version",
             "content": {
               "application/json": {
                 "schema": {

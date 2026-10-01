@@ -151,6 +151,10 @@ describe("conversation tools — registration", () => {
     // for a bad commit. Distinct from `restore_draft_snapshot`, which only
     // rewinds the conversation's unsaved draft.
     "restore_workflow_version",
+    // Why the approval gate holds a workflow, and the reviewed deterministic
+    // repair a named fixer files for it.
+    "diagnose_workflow",
+    "propose_workflow_repair",
   ] as const;
 
   test("the expected tool palette is registered", () => {

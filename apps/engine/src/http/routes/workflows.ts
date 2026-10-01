@@ -29,6 +29,7 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
+import { registerWorkflowDiagnosisRoutes } from "./workflow-diagnosis.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
 import {
   serializeOne,
@@ -461,6 +462,7 @@ const inputSchemaRoute = createRoute({
 
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowAuthorityRoutes(app);
+  registerWorkflowDiagnosisRoutes(app);
   registerWorkflowDraftRoutes(app);
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin

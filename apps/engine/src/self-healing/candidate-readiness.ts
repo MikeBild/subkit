@@ -9,7 +9,7 @@ import {
 } from "../db/schema/index.ts";
 import { PatchProposalSchema } from "../llm/flows/repair.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
-import { applyPatchToWorkflowDag } from "./patch-apply.ts";
+import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { isExecutionStepId, resolveCandidateStepKey } from "./step-snapshot.ts";
 
 export const PatchReadinessSchema = z
@@ -31,10 +31,12 @@ export function evaluatePatchReadiness(input: {
   step_key: string | null;
   version_id: string | null;
   dag: unknown;
+  /** The drift kind the candidate recorded; a `gate_fix` needs `gate_block`. */
+  drift_kind?: string | null;
 }): PatchReadiness {
   const proposal = PatchProposalSchema.safeParse(input.proposal);
   const outcome = proposal.success
-    ? applyPatchToWorkflowDag(input.dag, input.step_key, proposal.data)
+    ? applyPatchToWorkflowDag(input.dag, input.step_key, proposal.data, input.drift_kind)
     : null;
   const reason =
     input.status !== "proposed"
@@ -94,6 +96,7 @@ export async function readPatchReadiness(
     tenant_id,
     status: candidate.status,
     proposal: diff?.proposal,
+    drift_kind: candidateDriftKind(diff),
     step_key: await resolveCandidateStepKey(tenant_id, diff ?? {}, db),
     version_id: version?.id ?? null,
     dag: version?.dag,
@@ -151,6 +154,7 @@ export async function readPatchReadinessBatch(
       tenant_id,
       status: candidate.status,
       proposal: diff.proposal,
+      drift_kind: candidateDriftKind(diff),
       step_key:
         typeof diff.workflow_step_id === "string"
           ? diff.workflow_step_id

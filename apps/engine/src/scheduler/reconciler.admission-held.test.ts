@@ -45,9 +45,12 @@ test("missing authority stays held and retryable; later approval admits exactly 
     .returning();
   if (!schedule) throw new Error("fixture schedule missing");
   const sent: unknown[] = [];
+  const gateJobs: unknown[] = [];
   const boss = {
-    send: async (_queue: string, payload: unknown) => {
-      sent.push(payload);
+    send: async (queue: string, payload: unknown) => {
+      // A held schedule asks once for a gate diagnosis on the repair queue;
+      // only the execution queue counts as a run.
+      (queue === "workflow.repair" ? gateJobs : sent).push(payload);
       return "job";
     },
   } as unknown as PgBoss;
@@ -63,6 +66,10 @@ test("missing authority stays held and retryable; later approval admits exactly 
     await reconciler.reconcileWorkflowSchedules(now);
     await reconciler.reconcileWorkflowSchedules(now);
     expect(sent).toHaveLength(0);
+    // The hold is one edge: two refused ticks ask for one diagnosis.
+    expect(gateJobs).toEqual([
+      expect.objectContaining({ workflow_id, trigger: "gate_block", environment: "prod" }),
+    ]);
     expect(error).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(2);
     expect(warn.mock.calls[0]?.[0]).toMatchObject({
@@ -183,9 +190,12 @@ test("dynamic effects require concrete review and stay out of the execution queu
     .returning();
   if (!schedule) throw new Error("fixture schedule missing");
   const sent: unknown[] = [];
+  const gateJobs: unknown[] = [];
   const boss = {
-    send: async (_queue: string, payload: unknown) => {
-      sent.push(payload);
+    send: async (queue: string, payload: unknown) => {
+      // A held schedule asks once for a gate diagnosis on the repair queue;
+      // only the execution queue counts as a run.
+      (queue === "workflow.repair" ? gateJobs : sent).push(payload);
       return "job";
     },
   } as unknown as PgBoss;
@@ -196,6 +206,7 @@ test("dynamic effects require concrete review and stay out of the execution queu
       new Date("2026-06-05T12:00:00Z"),
     );
     expect(sent).toHaveLength(0);
+    expect(gateJobs).toHaveLength(1);
     expect(error).not.toHaveBeenCalled();
     expect(warn.mock.calls[0]?.[0]).toMatchObject({
       action: "schedule.admission_held",

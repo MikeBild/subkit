@@ -259,6 +259,64 @@ export function reaffirmLoadedForTurn(
 }
 
 /**
+ * Slugs to autoload after a tool RESULT reported these diagnosis codes.
+ * Matches only `diagnosis` rules, exactly. The before-dispatch matcher
+ * (`autoloadForToolCall`) cannot see a result, and the refusal a result
+ * names is exactly when the skill explaining it is worth its tokens.
+ */
+export function autoloadForDiagnoses(
+  codes: readonly string[],
+  catalog: readonly ActivationRecord[],
+  currently_loaded: readonly string[],
+  surface?: string,
+): string[] {
+  if (codes.length === 0) return [];
+  const have = new Set(currently_loaded);
+  const seen = new Set(codes);
+  const out = new Set<string>();
+  for (const rec of catalog) {
+    if (have.has(rec.slug)) continue;
+    if (rec.maturity === "experimental") continue;
+    if (suppressedOnSurface(rec, surface)) continue;
+    if (
+      rec.activates_when.some(
+        (rule) => rule.kind === "diagnosis" && rule.codes.some((code) => seen.has(code)),
+      )
+    )
+      out.add(rec.slug);
+  }
+  return rankAndOrder(out, catalog);
+}
+
+/**
+ * Diagnosis codes a tool result reports: every `code` and `reason` of a
+ * `repair_guidance` or gate `diagnoses` list, at the top level or one object
+ * down (a draft save nests guidance under `automation_readiness`).
+ * Deliberately shallow — both lists are a contract of the result's own shape,
+ * not something to dig out of arbitrary payload data.
+ */
+export function diagnosisCodesFromToolResult(result: unknown): string[] {
+  const codes = new Set<string>();
+  const collect = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const entry = pickObject(item);
+      if (typeof entry.code === "string" && entry.code) codes.add(entry.code);
+      if (typeof entry.reason === "string" && entry.reason) codes.add(entry.reason);
+    }
+  };
+  const visit = (value: unknown): void => {
+    const node = pickObject(value);
+    collect(node.repair_guidance);
+    collect(node.diagnoses);
+  };
+  const root = pickObject(result);
+  visit(root);
+  for (const value of Object.values(root)) visit(value);
+  return [...codes];
+}
+
+/**
  * Slugs to load on conversation boot. These are the skills with at
  * least one `kind:"baseline"` activation rule. Used by
  * `conversations/service.ts` when seeding `loaded_skills` on first
@@ -301,9 +359,11 @@ function matchesToolCall(
       case "step_kind":
         if (rule.step_kinds.some((k) => stepKinds.has(k))) return true;
         break;
-      // baseline + intent_keyword are not relevant to tool-call autoload.
+      // baseline + intent_keyword are not relevant to tool-call autoload;
+      // diagnosis fires on the tool's RESULT (`autoloadForDiagnoses`).
       case "baseline":
       case "intent_keyword":
+      case "diagnosis":
         break;
     }
   }
@@ -335,10 +395,11 @@ function matchesUserTurn(
         if (templates.has(rule.template.toLowerCase())) return true;
         break;
       // tool / tool_arg / step_kind are not relevant to user-turn autoload —
-      // they only fire on tool-call signals.
+      // they only fire on tool-call signals; diagnosis only on tool results.
       case "tool":
       case "tool_arg":
       case "step_kind":
+      case "diagnosis":
         break;
     }
   }
