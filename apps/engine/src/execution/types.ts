@@ -422,6 +422,10 @@ export interface StepErrorDetail {
   guidance?: string;
   /** Tool names the LLM should reach for next (fetch_connector_docs, ...). */
   next_best_actions?: string[];
+  /** Which rule of an approved boundary a governance refusal broke (for a
+   *  report e-mail: `not_utf8`, `recipient_differs`, …). `code` says that the
+   *  approval no longer fits; this says why. */
+  reason?: string;
 }
 
 /**
