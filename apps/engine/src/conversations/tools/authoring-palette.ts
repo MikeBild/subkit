@@ -183,6 +183,19 @@ const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution
  */
 const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
 
+/**
+ * Review decisions a person takes on a proposal filed in this conversation.
+ * Unlike an `inert_proposal`, each one DECIDES — so it is never ungated: every
+ * member is in `DANGEROUS_TOOLS_SET` with `confirm_before_execution`, and the
+ * human's click on the confirm card is the approval. `create_skill` tells the
+ * user a candidate can be approved "right here"; without this set the verb it
+ * names was missing from every web and `sk` palette. Approving a skill
+ * candidate yields only a DRAFT skill — activation stays a separate action.
+ * The step router keeps these in every narrowed stage; the read-only chat
+ * surface never lists them.
+ */
+export const REVIEW_DECISIONS: ReadonlySet<string> = new Set(["approve_skill_candidate"]);
+
 function addNames(target: Set<string>, names: ReadonlySet<string>): void {
   for (const name of names) target.add(name);
 }
@@ -218,6 +231,7 @@ export function filterByAuthoringPalette<
   addNames(allowed, RELEVANT_READS);
   addNames(allowed, ALWAYS_AVAILABLE_CLEANUP);
   addNames(allowed, ALWAYS_AVAILABLE_EXECUTION);
+  addNames(allowed, REVIEW_DECISIONS);
 
   if (loadedSkills.has(CONNECTOR_AUTHORING_SKILL)) {
     addNames(allowed, CONNECTOR_AUTHORING);
