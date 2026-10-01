@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions, webhooksInbound } from "../db/schema/index.ts";
@@ -27,9 +27,11 @@ import { normalizeWorkflowRunInput } from "./run-input.ts";
  *
  * The held run needs the input a real start would give it. A schedule carries
  * its own; a webhook's input is a delivery, and a refused delivery is not kept.
- * For a hook-started workflow the reviewer supplies a sample delivery, and
- * until they do the answer is `input_required` — a run over `{}` observes a
- * workflow that never runs that way, and its evidence describes nothing.
+ * For a hook-started workflow the reviewer's sample wins; without one the
+ * newest admitted delivery serves, and only when there is none either is the
+ * answer `input_required` — a run over `{}` observes a workflow that never runs
+ * that way, and its evidence describes nothing. The delivery itself never
+ * appears in the answer.
  *
  * This cannot activate a version, send a message or create an execution grant.
  */
@@ -137,8 +139,9 @@ export async function prepareReportAuthority(
 
 /**
  * The one input both the execution row and the run receive: the reviewer's
- * sample, else the single schedule's, else — only when no hook starts this
- * workflow with a delivery — an empty one.
+ * sample, else the single schedule's, else the newest admitted delivery of the
+ * hook that starts this workflow, else — only when no hook starts it — an empty
+ * one.
  */
 async function preparationInput(
   input: Parameters<typeof prepareReportAuthority>[0],
@@ -191,12 +194,57 @@ async function preparationInput(
       )
       .orderBy(webhooksInbound.slug)
       .limit(1);
-    if (hook)
+    if (hook) {
+      const admitted = await latestAdmittedDelivery(input, db);
+      if (admitted !== undefined) return { input: admitted };
       return {
         prepared: false,
         reason: "input_required",
         trigger: { kind: "inbound_hook", slug: hook.slug },
       };
+    }
   }
   return { input: {} };
+}
+
+/**
+ * The newest delivery the engine admitted for this workflow, when it still fits
+ * the version under review.
+ *
+ * Only admitted deliveries leave an execution row (`admitWebhookExecution`); a
+ * refused one is audited and dropped, so this can never resurrect a payload the
+ * gate turned away. Any version of the workflow counts — the version under
+ * review is usually the new one that has not admitted anything yet — but the
+ * sample must satisfy THIS version's input schema. One that no longer does is
+ * not an error the reviewer caused: the answer falls back to asking for a
+ * sample rather than refusing the preparation.
+ */
+async function latestAdmittedDelivery(
+  input: Parameters<typeof prepareReportAuthority>[0],
+  db: Db,
+): Promise<unknown | undefined> {
+  const [row] = await db
+    .select({ input: executions.input })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, input.tenant_id),
+        eq(executions.workflow_id, input.workflow_id),
+        eq(executions.execution_mode, "prod"),
+        eq(executions.request_source, "webhook"),
+        isNotNull(executions.input),
+      ),
+    )
+    .orderBy(desc(executions.created_at), desc(executions.id))
+    .limit(1);
+  if (!row) return undefined;
+  const sample = row.input;
+  const { def } = await resolveDefinition(db, input.tenant_id, {
+    kind: "saved",
+    workflow_id: input.workflow_id,
+    version_id: input.workflow_version_id,
+  });
+  if (def.input_schema && !validateAgainstJsonSchema(sample, def.input_schema, "$input").valid)
+    return undefined;
+  return sample;
 }
