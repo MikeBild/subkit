@@ -16,6 +16,7 @@ import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { envelopeToMcpResponse } from "../../mcp/adapter.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { grantApproval, hashToolArgs, requestApproval } from "../approval.ts";
 import { dispatchTool } from "../dispatcher.ts";
@@ -410,6 +411,59 @@ describe("tools/dispatcher (active)", () => {
       expect(envelope.message).toBe("no thing");
       expect(envelope.next_best_actions).toEqual(["create_thing"]);
     }
+  });
+
+  test("a refusal that names its code in its payload reaches MCP with that code on top", async () => {
+    const descriptor: ToolDescriptor = {
+      name: "_test_legacy_refusal",
+      description: "legacy refusal",
+      category: "tenant_read",
+      inputSchema: { type: "object" },
+    };
+    let payload: Record<string, unknown> = {};
+    const provider: ToolProvider = {
+      name: "LegacyRefusalProvider",
+      list: () => [descriptor],
+      resolve: (n) =>
+        n === descriptor.name
+          ? {
+              descriptor,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => ({ ok: false, data: payload }),
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([provider]);
+    const overMcp = async () =>
+      envelopeToMcpResponse(
+        await dispatchTool(
+          { registry, db: DB_STUB, principal: PRINCIPAL, buildMcpStubCtx: () => ({}) as never },
+          { surface: "mcp", name: descriptor.name, args: {} },
+        ),
+      );
+
+    payload = {
+      error_code: "workflow_activation_required",
+      message: "The saved change needs human review.",
+      review_url: "https://engine.example.test/cockpit/workflows/w1",
+      status: "failed",
+    };
+    const refused = await overMcp();
+    expect(refused.isError).toBe(true);
+    const body = JSON.parse(refused.content[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(body.error_code).toBe("workflow_activation_required");
+    expect(body.message).toBe("The saved change needs human review.");
+    // The rest of the refusal stays where it was: nothing is dropped.
+    expect(body.details).toEqual(payload);
+
+    // A refusal that names no code still says it failed — never an empty code.
+    payload = { status: "failed" };
+    const bare = JSON.parse((await overMcp()).content[0]?.text ?? "{}") as Record<string, unknown>;
+    expect(bare.error_code).toBe("tool_failed");
+    expect(bare.message).toBe("tool returned ok=false");
   });
 });
 

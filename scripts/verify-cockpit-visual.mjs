@@ -18,6 +18,7 @@ import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
+import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
@@ -1167,6 +1168,17 @@ async function mockApi(route) {
   }
   if (/^\/v1\/workflows\/[^/]+\/automation-status$/.test(path))
     return json(route, { schedules: [], inbound_hooks: [] });
+  // Nothing holds a workflow unless a scenario says so: an empty diagnosis,
+  // not the catch-all list below passed off as one.
+  const diagnosed = /^\/v1\/workflows\/([^/]+)\/diagnosis$/.exec(path);
+  if (diagnosed)
+    return json(route, {
+      workflow_id: diagnosed[1],
+      workflow_version_id: null,
+      environment: url.searchParams.get("environment") ?? "prod",
+      is_current: false,
+      diagnoses: [],
+    });
   if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
   if (path === "/v1/attention") return json(route, attentionAnswer());
   if (path === "/v1/conversations" && request.method() === "GET") {
@@ -4051,6 +4063,11 @@ for (const locale of variants) {
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+        fullPage: false,
+      }),
+    );
+    await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
         fullPage: false,
       }),
     );

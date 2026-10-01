@@ -41,14 +41,37 @@ export const REPORT_MESSAGE_REFUSALS = [
 export type ReportMessageRefusal = (typeof REPORT_MESSAGE_REFUSALS)[number];
 
 /** A message inside the profile that still is not the one that was reviewed. */
-export type ReportDeliveryDiscrepancy =
-  | "recipient_differs"
-  | "sender_differs"
-  | "content_type_differs";
+export const REPORT_DELIVERY_DISCREPANCIES = [
+  "recipient_differs",
+  "sender_differs",
+  "content_type_differs",
+] as const;
+export type ReportDeliveryDiscrepancy = (typeof REPORT_DELIVERY_DISCREPANCIES)[number];
 
 /** Why a report dispatch was refused: the message is outside the profile, or
- * inside it and addressed differently from its reviewed boundary. */
-export type ReportDeliveryRefusal = ReportMessageRefusal | ReportDeliveryDiscrepancy;
+ * inside it and addressed differently from its reviewed boundary. The one list
+ * of reasons a refused step can carry — every reader that names one in words
+ * is checked against it. */
+export const REPORT_DELIVERY_REFUSALS = [
+  ...REPORT_MESSAGE_REFUSALS,
+  ...REPORT_DELIVERY_DISCREPANCIES,
+] as const;
+export type ReportDeliveryRefusal = (typeof REPORT_DELIVERY_REFUSALS)[number];
+// Unnamed on purpose: a named component behind `.nullable()` is rendered by
+// the client generator as an intersection that drops the `null`.
+export const ReportDeliveryRefusalSchema = z.enum(REPORT_DELIVERY_REFUSALS);
+
+const KNOWN_REFUSALS: ReadonlySet<string> = new Set(REPORT_DELIVERY_REFUSALS);
+
+/** The report gate's refusal reason recorded on a refused step's error, when
+ *  the error is the changed-approval refusal and names a known rule. */
+export function reportRefusalReason(error: unknown): ReportDeliveryRefusal | null {
+  const record = error as { code?: unknown; reason?: unknown } | null;
+  if (record?.code !== "execution_authority_changed") return null;
+  return typeof record.reason === "string" && KNOWN_REFUSALS.has(record.reason)
+    ? (record.reason as ReportDeliveryRefusal)
+    : null;
+}
 
 export type ReportMessageInspection =
   | { ok: true; boundary: ReportDeliveryBoundary; subject: string; text: string }

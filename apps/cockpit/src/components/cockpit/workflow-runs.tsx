@@ -3,6 +3,7 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, runHref, runsHref } from "@/app/links";
 import { CauseFix } from "@/components/cockpit/cause-fix";
+import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -161,6 +162,11 @@ export function WorkflowCause({
           {lead}
           {causeLabel ? <LabelText label={causeLabel} /> : null}
           {tail}
+          <RefusalReasonLine
+            reason={failure?.refusal_reason}
+            testId="workflow-cause-refusal-reason"
+            className="mt-1 block"
+          />
         </>
       }
       guidance={healthReason}
@@ -225,6 +231,11 @@ export function RecentRuns({ workflowId }: { workflowId: string }) {
                     {cause && cause !== "ok" ? (
                       <span className="min-w-0 truncate text-muted-foreground">
                         <LabelText label={causeClassLabel(cause, t)} />
+                        <RefusalReasonLine
+                          reason={run.failure?.refusal_reason}
+                          testId={`workflow-recent-run-${index}-refusal-reason`}
+                          className="inline before:content-['_·_']"
+                        />
                       </span>
                     ) : null}
                   </span>
