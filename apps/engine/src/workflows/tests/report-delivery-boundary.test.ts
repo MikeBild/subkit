@@ -173,8 +173,9 @@ const reasonOf = (body: unknown) => {
 test("a named mailbox is accepted and compared by its address alone", () => {
   for (const from of [
     "Upraft Auth <sender@example.test>",
-    "Ops-Team (daily) <sender@example.test>",
-    // Printable ASCII the rule admits; the name is shown, never compared.
+    "Ops-Team daily <sender@example.test>",
+    "O'Brien & Sons+Co <sender@example.test>",
+    // An encoded word is atext throughout; the name is shown, never compared.
     "=?UTF-8?B?w4Q=?= <sender@example.test>",
   ])
     expect(observed(envelope(fields({ From: from }), "x"))?.boundary.from).toBe(
@@ -199,6 +200,53 @@ test("a named mailbox is accepted and compared by its address alone", () => {
     "extra_recipients",
   );
   expect(reasonOf(envelope(fields({ To: "not an address" }), "x"))).toBe("recipient_invalid");
+});
+
+test("an unquoted display name is atext and spaces only, so it cannot carry structure", () => {
+  // Each of these names a mailbox besides the one in angle brackets, or
+  // hides one in a comment: RFC 5322 group syntax, a comment, an address
+  // in the name, an obsolete route, a quoted-pair, a dotted phrase.
+  for (const to of [
+    "Team: attacker@evil.example; <recipient@example.test>",
+    "Team: <recipient@example.test>",
+    "Team; <recipient@example.test>",
+    "attacker@evil.example <recipient@example.test>",
+    "Ops (attacker@evil.example) <recipient@example.test>",
+    "Ops (daily) <recipient@example.test>",
+    "Ops [x] <recipient@example.test>",
+    "Ops\\ Team <recipient@example.test>",
+    "Dr. Ops <recipient@example.test>",
+    '"Team: attacker@evil.example;" <recipient@example.test>',
+    '"Ops\\" <x@evil.example>" <recipient@example.test>',
+    "Ops\tTeam <recipient@example.test>",
+  ])
+    expect([to, reasonOf(envelope(fields({ To: to }), "x"))]).toEqual([to, "recipient_invalid"]);
+  for (const from of [
+    "Team: attacker@evil.example; <sender@example.test>",
+    "Ops (daily) <sender@example.test>",
+  ])
+    expect([from, reasonOf(envelope(fields({ From: from }), "x"))]).toEqual([
+      from,
+      "sender_invalid",
+    ]);
+  // The separator before the angle bracket may still be a tab.
+  expect(
+    observed(envelope(fields({ To: "Ops Team\t<recipient@example.test>" }), "x"))?.boundary,
+  ).toEqual(boundary);
+});
+
+test("sk.buildMimeMessage keeps a display name ASCII, so every name it writes is reviewable", async () => {
+  const build = async (from: string) =>
+    runJs<{ raw: string }>({
+      code: "return { raw: sk.buildMimeMessage(input).raw };",
+      input: { from, to: boundary.to, subject: "Bericht – Größe", text: "x" },
+      clock: null,
+    });
+  const named = await build("Upraft Auth <sender@example.test>");
+  expect(observed(named.output!)?.boundary.from).toBe("sender@example.test");
+  // A non-ASCII name is refused by the helper itself, never encoded into an
+  // address field the review would have to decode.
+  await expect(build("Größe <sender@example.test>")).rejects.toThrow("from must be ASCII");
 });
 
 test("a subject folds only into whole encoded words", () => {
