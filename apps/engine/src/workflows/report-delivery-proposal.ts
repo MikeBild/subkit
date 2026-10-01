@@ -110,9 +110,10 @@ export async function inspectHeldPreviewEvidence(
         report_boundary_observed: ReportDeliveryBoundarySchema.safeParse(
           extras?.report_delivery_proposal,
         ).success,
-        // Which rule of the report profile the message broke, so a repair
-        // starts at that rule instead of at a guess about the MIME.
-        ...(inspection && !inspection.ok ? { report_refusal: inspection.reason } : {}),
+        // The held step's own verdict under the same name it is stored with,
+        // so a repair starts at the rule the message broke instead of at a
+        // guess about the MIME.
+        ...(inspection ? { report_delivery_inspection: inspection } : {}),
       };
     }),
   };
