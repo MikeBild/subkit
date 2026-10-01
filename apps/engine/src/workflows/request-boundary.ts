@@ -248,6 +248,10 @@ export type RequestBoundaryRefusal =
   | "report_delivery_unprepared"
   | "report_delivery_unobserved"
   | "report_delivery_unreachable"
+  // The author declared the recipient, and a preparation of this very version
+  // reached the step with a message that is outside the profile or addressed
+  // differently. The declaration would be refused at the wire on every run.
+  | "report_delivery_contradicted"
   | "stricter_profile_applies";
 
 const MASK = "__subkit_var_";
