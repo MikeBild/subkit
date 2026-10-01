@@ -246,6 +246,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
         executionId: current.id,
         patch: patch.data?.items?.[0] ?? null,
         authState,
+        held: outcome?.cause_class === "authority_mismatch",
         canRun: session.permissions.includes("workflow:run"),
         canChat: session.permissions.includes("conversation:write"),
         prompt: t("remedy.chatPrompt"),

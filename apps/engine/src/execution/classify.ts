@@ -32,6 +32,10 @@ export const PREVIEW_CLASSIFICATIONS = [
   // Closed before it ever ran — a preparation refused and stranded, later
   // failed by the engine. Nothing reached a step, so nothing failed in one.
   "refused_before_start",
+  // The run's approval no longer covers what it would do (the workflow, its
+  // targets or the approved bounds moved). A governance answer, not a
+  // rejected sign-in: the remedy is to review the approval again.
+  "authority_mismatch",
   "driver_error",
   "preview_unsupported",
   "unknown",
@@ -158,6 +162,9 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   // rejected sign-in.
   if (code === "prepared_credential_unavailable") return "connector_unavailable";
   if (code === "orphaned_preparation") return "refused_before_start";
+  // "Execution authority could not be verified" contains "auth"; the message
+  // matcher below would read it as a rejected sign-in.
+  if (code.startsWith("execution_authority_")) return "authority_mismatch";
   // Before the generic matchers: "llm_quota_exhausted" carries the word
   // "exceeded" in its message and would otherwise be read as a timeout,
   // sending a reader to look at durations while the cause is money.
@@ -167,7 +174,7 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   if (/unresolved|placeholder/.test(message) || code === "placeholder_unresolved") {
     return "placeholder_unresolved";
   }
-  if (/401|403|unauthori[sz]ed|forbidden|auth/i.test(message)) return "auth_failed";
+  if (/401|403|unauthori[sz]ed|forbidden|\bauth\b|authenticat/i.test(message)) return "auth_failed";
   if (/timeout|timed out|exceeded/i.test(message)) return "timeout";
   if (/abort/i.test(message)) return "aborted";
   return "driver_error";
@@ -238,6 +245,8 @@ export function humanizeClassification(
       return `The run was refused before it started: ${message}`;
     case "refused_before_start":
       return `The run was refused before it started and never ran.`;
+    case "authority_mismatch":
+      return `The run's approval no longer matches what it would do — review the approval again.`;
     case "preview_unsupported":
       return `This step kind cannot be run in isolation yet.`;
     case "driver_error":
