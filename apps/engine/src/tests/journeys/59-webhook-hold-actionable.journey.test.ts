@@ -161,7 +161,14 @@ describe("journey: a refused webhook is actionable", () => {
     // the answer says so instead of a bare green "prepared".
     expect(await res.json()).toEqual({
       prepared: true,
-      diagnoses: [{ code: "report_delivery_unobserved", step_id: "notify", remedy_kind: "author" }],
+      diagnoses: [
+        {
+          code: "report_delivery_unobserved",
+          reason: "missing_headers",
+          step_id: "notify",
+          remedy_kind: "author",
+        },
+      ],
     });
     const runs = await heldRuns();
     expect(runs.map((run) => run.input)).toContainEqual(sample);
