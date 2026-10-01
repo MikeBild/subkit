@@ -26,6 +26,7 @@ function outcome(kind: ExecutionOutcome["kind"], partial: Partial<ExecutionOutco
     failed_step: null,
     cause_class: null,
     error_code: null,
+    refusal_reason: null,
     connector: null,
     steps: { total: 2, succeeded: 1, failed: 0, held: 1, skipped: 0 },
     output_contract: "none",

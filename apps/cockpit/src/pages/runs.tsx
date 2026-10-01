@@ -13,6 +13,7 @@ import { CauseFix } from "@/components/cockpit/cause-fix";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { PageFrame } from "@/components/cockpit/page-frame";
+import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -304,9 +305,18 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
           testId="run-detail-cause"
           status={{ tone: verdict.tone ?? "critical", label: verdict.label }}
           cause={
-            <span data-testid="run-detail-outcome">
-              <OutcomeText sentence={sentence} />
-            </span>
+            <>
+              <span data-testid="run-detail-outcome">
+                <OutcomeText sentence={sentence} />
+              </span>
+              {/* Which rule the approval refused the step for — the cause
+                  class says only THAT it no longer fits. */}
+              <RefusalReasonLine
+                reason={outcome?.refusal_reason}
+                testId="run-detail-refusal-reason"
+                className="mt-1 block"
+              />
+            </>
           }
           guidance={stepGuidance(failing)}
           remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
@@ -574,6 +584,11 @@ export function RunsPage() {
           return cause && cause !== "ok" ? (
             <span data-testid="runs-cause">
               <LabelText label={causeClassLabel(cause, t)} />
+              <RefusalReasonLine
+                reason={run.failure?.refusal_reason}
+                testId="runs-refusal-reason"
+                className="block text-xs text-muted-foreground"
+              />
             </span>
           ) : null;
         },

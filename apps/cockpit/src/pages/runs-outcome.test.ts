@@ -22,6 +22,7 @@ function outcome(partial: Partial<ExecutionOutcome> = {}): ExecutionOutcome {
     failed_step: { step_key: "publish-report", kind: "request" },
     cause_class: "auth_failed",
     error_code: "http_401",
+    refusal_reason: null,
     connector: null,
     steps: { total: 3, succeeded: 2, failed: 1, held: 0, skipped: 0 },
     output_contract: "none",
