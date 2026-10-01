@@ -5,9 +5,11 @@
 // self-healing service, which runs the full loop (drift → LLM →
 // classify → fixture → auto-apply or park) end-to-end.
 
+import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { workflows } from "../../db/schema/index.ts";
+import { log, logger } from "../../logging/logger.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import type { WorkflowRepairJob } from "../../self-healing/types.ts";
@@ -105,4 +107,79 @@ export async function enqueueRepair(
     singletonKey,
     singletonSeconds: REPAIR_SINGLETON_SECONDS,
   });
+}
+
+/**
+ * Ask for a gate diagnosis of a workflow the execution-authority gate refused:
+ * a held hook, a held schedule, or an authorized run refused at dispatch.
+ *
+ * Every one of those refusals repeats — a hook on each delivery, a schedule on
+ * each tick — and the diagnosis is a property of the version, not of the
+ * attempt. One job per (tenant, workflow, version) per window; the candidate
+ * dedup inside the diagnosis is the second guard. The version defaults to the
+ * workflow's active one, which is the version a hook or schedule would start.
+ *
+ * Best-effort: the refusal has already been answered and audited, and a queue
+ * failure here must not change that answer.
+ */
+export async function enqueueGateDiagnosis(
+  boss: PgBoss,
+  db: Db,
+  p: {
+    tenant_id: string;
+    workflow_id: string;
+    environment: "dev" | "prod";
+    version_id?: string | null;
+    execution_id?: string | null;
+    source: "inbound_hook" | "schedule" | "dispatch";
+  },
+): Promise<string | null> {
+  try {
+    let version_id = p.version_id ?? null;
+    if (!version_id) {
+      const [workflow] = await db
+        .select({ version_id: workflows.current_version_id })
+        .from(workflows)
+        .where(and(eq(workflows.tenant_id, p.tenant_id), eq(workflows.id, p.workflow_id)))
+        .limit(1);
+      version_id = workflow?.version_id ?? null;
+    }
+    if (!version_id) return null;
+    const payload: WorkflowRepairJob = {
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id ?? null,
+      step_id: null,
+      trigger: "gate_block",
+      version_id,
+      environment: p.environment,
+    };
+    const jobId = await boss.send(WORKFLOW_REPAIR_QUEUE, payload, {
+      singletonKey: `${p.tenant_id}:${p.workflow_id}:gate:${version_id}`,
+      singletonSeconds: REPAIR_SINGLETON_SECONDS,
+    });
+    logger.info({
+      module: "self-healing",
+      action: jobId ? "gate_diagnosis.enqueued" : "gate_diagnosis.enqueue_deduped",
+      msg: jobId
+        ? "gate refusal enqueued for diagnosis"
+        : "gate diagnosis suppressed — singleton window already holds a job for this version",
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      version_id,
+      source: p.source,
+    });
+    return jobId;
+  } catch (err) {
+    logger.warn({
+      module: "self-healing",
+      action: "gate_diagnosis.enqueue_failed",
+      msg: "gate diagnosis enqueue failed — the refusal stands as answered",
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      source: p.source,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

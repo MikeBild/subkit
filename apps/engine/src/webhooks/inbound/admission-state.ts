@@ -12,12 +12,15 @@ export type InboundHoldReason = "execution_authority_required" | "execution_auth
  * `recordScheduleAdmission`. Each refused delivery is already audited on its
  * own; this is the standing state, and it moves only on a change: a hold
  * with the same reason is not rewritten, an admitted delivery clears it.
+ *
+ * Returns whether the standing state changed — the edge a caller reacts to
+ * once, not on every refused delivery.
  */
 export async function recordInboundAdmission(
   db: Db,
   context: { tenant_id: string; inbound_id: string; observed_at: Date },
   reason: InboundHoldReason | null,
-): Promise<void> {
+): Promise<boolean> {
   const changed = await db.transaction(async (tx) => {
     // Serialize with human grants: a production grant locks every hook of the
     // workflow, held or not, before it clears their holds
@@ -58,4 +61,5 @@ export async function recordInboundAdmission(
     return rows.length > 0;
   });
   if (changed) invalidateTenantState(context.tenant_id);
+  return changed;
 }
