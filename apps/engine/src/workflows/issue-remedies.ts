@@ -18,7 +18,7 @@
 // own the conversation.
 
 import type { ManifestIssueCode } from "./effect-manifest.ts";
-import type { GateDiagnosis, GateDiagnosisCode } from "./gate-diagnosis.ts";
+import type { GateDiagnosis, GateDiagnosisCode, WorkflowDiagnosis } from "./gate-diagnosis.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
@@ -332,7 +332,8 @@ export interface RepairGuidance {
   /** The report gate's own refusal reason, when it named one. */
   reason?: GateDiagnosis["reason"];
   remedy_kind?: GateDiagnosis["remedy_kind"];
-  /** A deterministic repair exists: `propose_workflow_repair` files it. */
+  /** A deterministic repair exists for the ACTIVE version:
+   *  `propose_workflow_repair` files it. Never set on a draft's guidance. */
   fixer?: GateDiagnosis["fixer"];
   /** That repair is already waiting for review. */
   candidate_id?: string;
@@ -352,9 +353,31 @@ const FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = {
     "inspection of this step, as a patch candidate a person reviews.",
 };
 
+/** The same repairs on a version that is not the active one. The proposal
+ *  path files against the active version only, so a draft is told the change
+ *  to make in the draft itself — or to activate it and diagnose again. */
+const DRAFT_FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = {
+  use_utf8_encoder:
+    "The report message is encoded one byte per character, so a non-ASCII character in it is " +
+    "not UTF-8 and the gate refuses the message. This diagnosis is of the saved draft, not the " +
+    "active version, so no repair can be proposed for it. Fix it in the draft: in the transform " +
+    "that builds the message, replace `sk.base64UrlEncode(` with `sk.base64UrlEncodeUtf8(`, " +
+    "save, and review again. Or apply the draft and diagnose the active version again.",
+  declare_report_delivery:
+    "No preparation can observe this report step on this version, or its declaration " +
+    "contradicts what was observed. This diagnosis is of the saved draft, not the active " +
+    "version, so no repair can be proposed for it. Fix it in the draft: set the step's " +
+    "`report_delivery` to the addresses a successful preparation of this draft observed, save, " +
+    "and review again. Or apply the draft and diagnose the active version again.",
+};
+
 /**
  * Guidance for every issue that has a known remedy, in issue order, joined
  * with the gate diagnosis of the same step.
+ *
+ * A diagnosis of a version that is not the active one (a draft) keeps its
+ * remedy but loses `fixer` and `candidate_id`: the proposal path repairs the
+ * active version only, so offering it here would repair the wrong version.
  *
  * A step with `missing_binding` never reaches `effects` at all (the compiler
  * skips it), so the driver is looked up leniently and an unknown one simply
@@ -367,8 +390,11 @@ export function repairGuidanceForIssues(
   effects: ReadonlyArray<{ step_id: string; driver: Driver; target: string | null }>,
   storageRefusals: ReadonlyArray<{ step_id: string; reason: StorageBoundaryRefusal }> = [],
   requestRefusals: ReadonlyArray<{ step_id: string; reason: RequestBoundaryRefusal }> = [],
-  diagnoses: ReadonlyArray<GateDiagnosis> = [],
+  diagnosis: Pick<WorkflowDiagnosis, "is_current" | "diagnoses"> | null = null,
 ): RepairGuidance[] {
+  const diagnoses = diagnosis?.diagnoses ?? [];
+  const proposable = diagnosis?.is_current === true;
+  const fixerRemedy = proposable ? FIXER_REMEDY : DRAFT_FIXER_REMEDY;
   const byStep = new Map(effects.map((effect) => [effect.step_id, effect]));
   const refusalByStep = new Map(storageRefusals.map((entry) => [entry.step_id, entry.reason]));
   const requestRefusalByStep = new Map(
@@ -384,9 +410,9 @@ export function repairGuidanceForIssues(
     const refusal = refusalByStep.get(issue.step_id);
     // `no_boundary` has no entry on purpose: that IS the generic http case.
     const requestRefusal = requestRefusalByStep.get(issue.step_id);
-    const diagnosis = diagnosisFor(diagnoses, issue.step_id, [issue.code, requestRefusal, refusal]);
+    const matched = diagnosisFor(diagnoses, issue.step_id, [issue.code, requestRefusal, refusal]);
     const instruction =
-      (diagnosis?.fixer ? FIXER_REMEDY[diagnosis.fixer] : undefined) ??
+      (matched?.fixer ? fixerRemedy[matched.fixer] : undefined) ??
       (effect?.driver === "s3" && refusal ? STORAGE_REFUSAL_REMEDY[refusal] : undefined) ??
       (effect?.driver === "http" && requestRefusal
         ? REQUEST_REFUSAL_REMEDY[requestRefusal]
@@ -398,21 +424,21 @@ export function repairGuidanceForIssues(
     const key = `${issue.step_id}:${issue.code}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (diagnosis) joined.add(diagnosis);
+    if (matched) joined.add(matched);
     guidance.push({
       step_id: issue.step_id,
       code: issue.code,
       instruction,
-      ...diagnosisFields(diagnosis),
+      ...diagnosisFields(matched, proposable),
     });
   }
-  for (const diagnosis of diagnoses) {
-    if (!diagnosis.fixer || joined.has(diagnosis)) continue;
+  for (const entry of diagnoses) {
+    if (!entry.fixer || joined.has(entry)) continue;
     guidance.push({
-      step_id: diagnosis.subject.step_id,
-      code: diagnosis.code,
-      instruction: FIXER_REMEDY[diagnosis.fixer],
-      ...diagnosisFields(diagnosis),
+      step_id: entry.subject.step_id,
+      code: entry.code,
+      instruction: fixerRemedy[entry.fixer],
+      ...diagnosisFields(entry, proposable),
     });
   }
   return guidance;
@@ -429,12 +455,12 @@ function diagnosisFor(
   return ofStep.find((entry) => codes.includes(entry.code)) ?? ofStep.find((entry) => entry.fixer);
 }
 
-function diagnosisFields(diagnosis: GateDiagnosis | undefined) {
+function diagnosisFields(diagnosis: GateDiagnosis | undefined, proposable: boolean) {
   if (!diagnosis) return {};
   return {
     ...(diagnosis.reason ? { reason: diagnosis.reason } : {}),
     remedy_kind: diagnosis.remedy_kind,
-    ...(diagnosis.fixer ? { fixer: diagnosis.fixer } : {}),
-    ...(diagnosis.candidate_id ? { candidate_id: diagnosis.candidate_id } : {}),
+    ...(proposable && diagnosis.fixer ? { fixer: diagnosis.fixer } : {}),
+    ...(proposable && diagnosis.candidate_id ? { candidate_id: diagnosis.candidate_id } : {}),
   };
 }

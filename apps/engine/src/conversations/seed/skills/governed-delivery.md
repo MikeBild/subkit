@@ -92,5 +92,8 @@ it returns the gate code, the report gate's own `reason` when it named one
 repair exists, and `candidate_id` when that repair already waits for review.
 Use `propose_workflow_repair` with the step and fixer to file that repair as a
 proposed patch candidate — a proposal a person approves, never an applied
-change; calling it again returns the same candidate. After a repair lands,
+change; calling it again returns the same candidate. It repairs the active
+version only: when the diagnosis says `is_current: false` it is of the saved
+draft, so make the fixer's change in the draft itself (or apply the draft and
+diagnose again) instead of proposing. After a repair lands,
 prepare again: a new version has no observation of its own.

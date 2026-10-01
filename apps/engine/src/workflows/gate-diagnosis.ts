@@ -69,9 +69,13 @@ export interface GateDiagnosis {
     observed?: Omit<ReportDeliveryBoundary, "kind">;
   };
   remedy_kind: GateRemedyKind;
-  /** Present only when a deterministic fixer computes the repair. */
+  /** Present only when a deterministic fixer computes the repair. It can be
+   *  proposed only when the diagnosis `is_current`; on a draft it names the
+   *  change to make in the draft. */
   fixer?: GateFixer;
-  /** The open repair candidate for this diagnosis, when one was proposed. */
+  /** The open repair candidate for this diagnosis, when one was proposed.
+   *  Candidates are filed against the active version only, so a draft's
+   *  diagnosis never carries one. */
   candidate_id?: string;
 }
 
@@ -192,7 +196,9 @@ export async function diagnoseWorkflow(
   const diagnoses = collapse(
     await buildDiagnoses(db, { ...input, definition: version.dag, preview, held, refused }),
   );
-  await attachCandidates(db, input, diagnoses);
+  // A repair is filed against the active version only (`proposeGateRepair`
+  // re-diagnoses that one), so only its diagnosis can point at a candidate.
+  if (base.is_current) await attachCandidates(db, input, diagnoses);
   return { ...base, diagnoses };
 }
 
