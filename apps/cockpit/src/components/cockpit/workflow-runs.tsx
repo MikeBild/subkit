@@ -135,6 +135,7 @@ export function WorkflowCause({
       : cause === "connector_unavailable"
         ? refusedSignIn(failure?.connector)
         : null,
+    held: cause === "authority_mismatch",
     canRun: permissions.includes("workflow:run"),
     canChat: permissions.includes("conversation:write"),
     prompt: t("remedy.chatPrompt"),
