@@ -214,6 +214,8 @@ export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDeta
       detail.next_best_actions = healthHint.next_best_actions;
     }
   }
+  const refusalReason = (err as { meta?: Record<string, unknown> } | null)?.meta?.refusal_reason;
+  if (typeof refusalReason === "string") detail.reason = refusalReason;
   const resolvedUrl = pickResolvedUrl(request_meta);
   if (resolvedUrl) detail.resolved_url = resolvedUrl;
   const unresolved = pickUnresolvedPlaceholders(request_meta);
