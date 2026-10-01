@@ -18,6 +18,7 @@
 // own the conversation.
 
 import type { ManifestIssueCode } from "./effect-manifest.ts";
+import type { GateDiagnosis, GateDiagnosisCode } from "./gate-diagnosis.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
@@ -304,26 +305,59 @@ export function remedyFor(
   return REMEDIES[code]?.[driver] ?? null;
 }
 
+/** One remedy, joined with what the gate diagnosis knows about the step. */
+export interface RepairGuidance {
+  step_id: string;
+  code: GateDiagnosisCode;
+  instruction: string;
+  /** The report gate's own refusal reason, when it named one. */
+  reason?: GateDiagnosis["reason"];
+  remedy_kind?: GateDiagnosis["remedy_kind"];
+  /** A deterministic repair exists: `propose_workflow_repair` files it. */
+  fixer?: GateDiagnosis["fixer"];
+  /** That repair is already waiting for review. */
+  candidate_id?: string;
+}
+
+const FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = {
+  use_utf8_encoder:
+    "The report message is encoded one byte per character, so a non-ASCII character in it is " +
+    "not UTF-8 and the gate refuses the message. A deterministic repair exists: " +
+    "`propose_workflow_repair` with this `step_id` and `fixer` files the change " +
+    "(`sk.base64UrlEncode(` becomes `sk.base64UrlEncodeUtf8(` in the transform that builds the " +
+    "message) as a patch candidate a person reviews. Do not hand-edit the encoder in parallel.",
+  declare_report_delivery:
+    "No preparation can observe this report step on this version, or its declaration " +
+    "contradicts what was observed. A deterministic repair exists: `propose_workflow_repair` " +
+    "with this `step_id` and `fixer` files a declaration copied from a recorded successful " +
+    "inspection of this step, as a patch candidate a person reviews.",
+};
+
 /**
- * Guidance for every issue that has a known remedy, in issue order.
+ * Guidance for every issue that has a known remedy, in issue order, joined
+ * with the gate diagnosis of the same step.
  *
  * A step with `missing_binding` never reaches `effects` at all (the compiler
  * skips it), so the driver is looked up leniently and an unknown one simply
- * yields no entry rather than a wrong one.
+ * yields no entry rather than a wrong one. A diagnosis with a fixer that no
+ * issue covers — a granted run refused at the wire while the version itself
+ * reviews clean — still gets an entry: it is the one block a person can act on.
  */
 export function repairGuidanceForIssues(
   issues: ReadonlyArray<{ step_id: string; code: ManifestIssueCode }>,
   effects: ReadonlyArray<{ step_id: string; driver: Driver; target: string | null }>,
   storageRefusals: ReadonlyArray<{ step_id: string; reason: StorageBoundaryRefusal }> = [],
   requestRefusals: ReadonlyArray<{ step_id: string; reason: RequestBoundaryRefusal }> = [],
-): Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> {
+  diagnoses: ReadonlyArray<GateDiagnosis> = [],
+): RepairGuidance[] {
   const byStep = new Map(effects.map((effect) => [effect.step_id, effect]));
   const refusalByStep = new Map(storageRefusals.map((entry) => [entry.step_id, entry.reason]));
   const requestRefusalByStep = new Map(
     requestRefusals.map((entry) => [entry.step_id, entry.reason]),
   );
   const seen = new Set<string>();
-  const guidance: Array<{ step_id: string; code: ManifestIssueCode; instruction: string }> = [];
+  const joined = new Set<GateDiagnosis>();
+  const guidance: RepairGuidance[] = [];
   for (const issue of issues) {
     const effect = byStep.get(issue.step_id);
     // The specific refusal wins over the generic storage remedy. `no_scope`
@@ -331,7 +365,9 @@ export function repairGuidanceForIssues(
     const refusal = refusalByStep.get(issue.step_id);
     // `no_boundary` has no entry on purpose: that IS the generic http case.
     const requestRefusal = requestRefusalByStep.get(issue.step_id);
+    const diagnosis = diagnosisFor(diagnoses, issue.step_id, [issue.code, requestRefusal, refusal]);
     const instruction =
+      (diagnosis?.fixer ? FIXER_REMEDY[diagnosis.fixer] : undefined) ??
       (effect?.driver === "s3" && refusal ? STORAGE_REFUSAL_REMEDY[refusal] : undefined) ??
       (effect?.driver === "http" && requestRefusal
         ? REQUEST_REFUSAL_REMEDY[requestRefusal]
@@ -343,7 +379,43 @@ export function repairGuidanceForIssues(
     const key = `${issue.step_id}:${issue.code}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    guidance.push({ step_id: issue.step_id, code: issue.code, instruction });
+    if (diagnosis) joined.add(diagnosis);
+    guidance.push({
+      step_id: issue.step_id,
+      code: issue.code,
+      instruction,
+      ...diagnosisFields(diagnosis),
+    });
+  }
+  for (const diagnosis of diagnoses) {
+    if (!diagnosis.fixer || joined.has(diagnosis)) continue;
+    guidance.push({
+      step_id: diagnosis.subject.step_id,
+      code: diagnosis.code,
+      instruction: FIXER_REMEDY[diagnosis.fixer],
+      ...diagnosisFields(diagnosis),
+    });
   }
   return guidance;
+}
+
+/** The diagnosis of a step that explains one of these codes; failing that,
+ *  the step's fixable one. */
+function diagnosisFor(
+  diagnoses: ReadonlyArray<GateDiagnosis>,
+  step_id: string,
+  codes: ReadonlyArray<string | undefined>,
+): GateDiagnosis | undefined {
+  const ofStep = diagnoses.filter((entry) => entry.subject.step_id === step_id);
+  return ofStep.find((entry) => codes.includes(entry.code)) ?? ofStep.find((entry) => entry.fixer);
+}
+
+function diagnosisFields(diagnosis: GateDiagnosis | undefined) {
+  if (!diagnosis) return {};
+  return {
+    ...(diagnosis.reason ? { reason: diagnosis.reason } : {}),
+    remedy_kind: diagnosis.remedy_kind,
+    ...(diagnosis.fixer ? { fixer: diagnosis.fixer } : {}),
+    ...(diagnosis.candidate_id ? { candidate_id: diagnosis.candidate_id } : {}),
+  };
 }
