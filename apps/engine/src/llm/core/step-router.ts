@@ -400,6 +400,9 @@ function activeToolsForStage(
       }
       const t = toolsByName[n];
       if (!t) return false;
+      // An inert proposal changes nothing live, so the stage's reason to
+      // narrow does not apply to it: a person can ask for one at any stage.
+      if (t.inert_proposal === true) return true;
       if (
         activeAuthoringResource &&
         t.authoring_resource &&
