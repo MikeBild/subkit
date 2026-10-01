@@ -505,6 +505,9 @@ export async function finalizeStepRow(
             // The message names the two values a reader needs (what was asked
             // for, what was approved). It is engine-authored prose, not payload.
             detail: String(result.error.message ?? "").slice(0, 500),
+            // Which rule of the approved boundary broke, when the boundary
+            // said so — the same value the step row keeps beside the code.
+            ...(result.error.reason ? { refusal_reason: result.error.reason } : {}),
           },
         },
         tx,
