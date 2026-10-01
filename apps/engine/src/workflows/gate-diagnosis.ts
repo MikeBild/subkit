@@ -349,7 +349,8 @@ const ENCODER_REASONS: ReadonlySet<string> = new Set([
 /** The newest held capture's refusal of the report profile for this step. */
 function heldReason(input: DiagnosisInput, step_id: string): ReportMessageRefusal | null {
   const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
-  return step?.report_refusal ?? null;
+  const inspection = step?.report_delivery_inspection;
+  return inspection && !inspection.ok ? inspection.reason : null;
 }
 
 /**
