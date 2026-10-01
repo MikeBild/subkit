@@ -30,8 +30,20 @@ export async function savedDraftReadiness(
   } catch {
     return null;
   }
-  // Nothing scheduled means nothing asks for recurring permission.
-  if (!review || review.schedules.length === 0) return null;
+  if (!review) return null;
+  // Nothing scheduled means nothing asks for recurring permission — but a
+  // saved change still waits for a person to apply it before anything runs.
+  // Without saying so here, the author of a manual workflow had no handover,
+  // reached for `run_workflow`, and met a refusal that named a dialog it had
+  // never shown.
+  if (review.schedules.length === 0) {
+    if (!review.saved_change) return null;
+    return {
+      eligible_for_repeated_runs: review.saved_change.review.eligible_for_repeated_runs === true,
+      message:
+        "The saved change is not applied yet: nothing runs it until a person applies it. Hand over with `review_workflow_automation` — its card is where they apply it and allow bounded runs. Do not call `run_workflow` first, and never offer an API call or command instead.",
+    };
+  }
   const reviews = review.schedules.map((schedule) => schedule.review);
   if (reviews.some((entry) => entry.verification_unavailable)) return null;
   const issues = new Map<string, { step_id: string; code: string }>();
