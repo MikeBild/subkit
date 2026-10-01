@@ -426,3 +426,92 @@ test("a refusal is history once a later granted run of the version got past that
   await laterRun(wf.workflow_id, "send_email[0]");
   expect(await changedApproval(wf.workflow_id)).toEqual([]);
 });
+
+test("a declaration is never copied from what another version observed", async () => {
+  const db = ctx.testDb.db;
+  // Version 1 sends correctly encoded mail; a preparation observes it.
+  const wf = await createWorkflowRow(ctx, {
+    name: "Finding mail across versions",
+    slug: `finding-mail-${++sequence}`,
+    steps: [
+      {
+        kind: "transform",
+        id: "compose",
+        language: "javascript",
+        expression: ENCODER.replace("sk.base64UrlEncode(", "sk.base64UrlEncodeUtf8("),
+      },
+      {
+        kind: "request",
+        id: "send_email",
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+        body: { raw: "${scope.compose.data.raw}" },
+        report_delivery: {
+          kind: "gmail_report",
+          to: "ops@example.com",
+          from: "ops@example.com",
+          content_type: "text/html",
+        },
+        max_retries: 0,
+      },
+    ],
+  });
+  await preparation(wf.workflow_id);
+  // Version 2 is a different message to a different declared recipient, and
+  // has never been prepared. Its granted run is refused as addressed
+  // differently from its declaration.
+  const [v1] = await db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, wf.version_id));
+  const dag = JSON.parse(
+    JSON.stringify(v1?.dag)
+      .replace("sk.base64UrlEncodeUtf8(", "sk.base64UrlEncode(")
+      .replace('"to":"ops@example.com"', '"to":"other@example.com"'),
+  );
+  const [v2] = await db
+    .insert(workflowVersions)
+    .values({ tenant_id: ctx.tenantId, workflow_id: wf.workflow_id, version: 2, dag })
+    .returning();
+  if (!v2) throw new Error("version insert failed");
+  await db
+    .update(workflows)
+    .set({ current_version_id: v2.id })
+    .where(and(eq(workflows.id, wf.workflow_id), eq(workflows.tenant_id, ctx.tenantId)));
+  await refusedGrantedRun(wf.workflow_id, v2.id);
+  const [refusedRun] = await db
+    .select({ id: executions.id })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, ctx.tenantId),
+        eq(executions.workflow_version_id, v2.id),
+        eq(executions.status, "failed"),
+      ),
+    );
+  if (!refusedRun) throw new Error("no refused run on version 2");
+  await db
+    .update(executionSteps)
+    .set({ error: { code: "execution_authority_changed", reason: "recipient_differs" } })
+    .where(
+      and(
+        eq(executionSteps.tenant_id, ctx.tenantId),
+        eq(executionSteps.execution_id, refusedRun.id),
+        eq(executionSteps.step_key, "send_email"),
+      ),
+    );
+
+  const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
+  expect(diagnosis).toMatchObject({ workflow_version_id: v2.id, is_current: true });
+  const refused = diagnosis?.diagnoses.find(
+    (entry) => entry.code === "execution_authority_changed",
+  );
+  expect(refused).toMatchObject({ reason: "recipient_differs", remedy_kind: "declare" });
+  expect(refused?.fixer).toBeUndefined();
+  expect(refused?.evidence.observed).toBeUndefined();
+  expect(diagnosis?.diagnoses.some((entry) => entry.fixer === "declare_report_delivery")).toBe(
+    false,
+  );
+  expect(await proposeGateRepairs(db, target(wf.workflow_id, v2.id))).toEqual([]);
+});
