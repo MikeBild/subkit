@@ -31,8 +31,11 @@ import {
   readPatchReadinessBatch,
   rejectPatchCandidate,
 } from "../../self-healing/index.ts";
-import { GrantWorkflowAuthoritySchema, grantWorkflowAuthority } from "../../workflows/index.ts";
-import { ReportDeliveryBoundarySchema } from "../../workflows/report-delivery-boundary.ts";
+import {
+  GrantWorkflowAuthoritySchema,
+  grantWorkflowAuthority,
+  ReportDeliveryBoundarySchema,
+} from "../../workflows/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";

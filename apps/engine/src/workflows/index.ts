@@ -29,6 +29,7 @@ export * from "./gate-fix.ts";
 export * from "./input-schema-synth.ts";
 export { prepareReportAuthority } from "./prepare-report-authority.ts";
 export * from "./prior-workflows.ts";
+export { ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
 export { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 export * from "./service.ts";
 export * from "./types.ts";
