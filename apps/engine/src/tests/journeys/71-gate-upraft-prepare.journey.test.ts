@@ -10,7 +10,7 @@
 //     candidate exists for the workflow.
 //   - AC3: After a preparation run the diagnosis offers no fixer for the step
 //     either — whatever the review then says, no encoder patch is proposed.
-// Spec refs: docs/concepts/self-healing.md
+// Spec refs: docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
