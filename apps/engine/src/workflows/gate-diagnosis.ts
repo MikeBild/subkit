@@ -334,7 +334,11 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     });
   }
   if (refused) {
-    const reason = reportRefusalReason(refused.error);
+    // A refusal recorded before refusals named their rule carries no reason.
+    // The newest held capture of this very step can still name it: the same
+    // message, inspected without sending. Only with neither is a preparation
+    // the remedy — it is what records the missing evidence.
+    const reason = reportRefusalReason(refused.error) ?? heldReason(input, refused.step_id);
     const subject = { step_id: refused.step_id };
     out.push(
       reason
@@ -345,11 +349,10 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
             ...(await reportRemedy(db, input, refused.step_id, reason, refused.execution_id)),
           }
         : {
-            // No rule named: the approval itself no longer fits this version.
             code: "execution_authority_changed",
             subject,
             evidence: { execution_id: refused.execution_id },
-            remedy_kind: "prepare",
+            remedy_kind: heldInspected(input, refused.step_id) ? "author" : "prepare",
           },
     );
   }
@@ -380,6 +383,12 @@ const ENCODER_REASONS: ReadonlySet<string> = new Set([
   "not_utf8",
   "header_control_byte",
 ] satisfies ReportMessageRefusal[]);
+
+/** Whether the newest held capture inspected this step's message at all. */
+function heldInspected(input: DiagnosisInput, step_id: string): boolean {
+  const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
+  return step?.report_delivery_inspection !== undefined;
+}
 
 /** The newest held capture's refusal of the report profile for this step. */
 function heldReason(input: DiagnosisInput, step_id: string): ReportMessageRefusal | null {
