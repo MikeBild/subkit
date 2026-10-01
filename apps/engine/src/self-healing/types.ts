@@ -113,6 +113,14 @@ export interface WorkflowRepairJob {
   step_id: string | null;
   connector_id?: string | null;
   endpoint_key?: string | null;
+  /** Set when the execution-authority gate, not a failing endpoint, raised the
+   * job: a held hook or schedule, or an authorized run refused at dispatch.
+   * Such a job is diagnosed deterministically and never runs the LLM loop. */
+  trigger?: "gate_block";
+  /** The workflow version the gate refused — required with `trigger`. */
+  version_id?: string;
+  /** Environment the refusal happened in — required with `trigger`. */
+  environment?: "dev" | "prod";
 }
 
 // The minimum shape the fixture-runner needs from a step. Mirrors the
