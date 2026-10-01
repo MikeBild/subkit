@@ -61,19 +61,24 @@ export async function prepareReportAuthority(
   // dispatch — the approval fits the declaration, the materialized message
   // does not. When the diagnosis asks for a preparation to name that refusal,
   // refusing it here as "already bindable" would leave the reader in a loop.
-  const awaitingEvidence = async () =>
+  const asking =
     (
       await diagnoseWorkflow(db, input.tenant_id, input.workflow_id, input.execution_environment, {
         version_id: input.workflow_version_id,
       })
-    )?.diagnoses.some((entry) => entry.remedy_kind === "prepare") ?? false;
+    )?.diagnoses.filter((entry) => entry.remedy_kind === "prepare") ?? [];
   const unbound = preview.preparation_required || (preview.manifest?.issues?.length ?? 0) > 0;
-  if ((preview.eligible_for_repeated_runs || !unbound) && !(await awaitingEvidence()))
+  if ((preview.eligible_for_repeated_runs || !unbound) && asking.length === 0)
     return {
       prepared: false,
       reason: preview.eligible_for_repeated_runs ? "already_bindable" : "nothing_to_prepare",
     };
-  const start = await preparationInput(input, db);
+  // The evidence a refused run needs is that run's own delivery: it reached
+  // the refused step. The newest admitted call may be one that branches away
+  // before it (a heartbeat beside a finding), and a preparation on that would
+  // succeed while inspecting nothing.
+  const replay = input.input === undefined ? await refusedRunInput(db, input, asking) : undefined;
+  const start = replay !== undefined ? { input: replay } : await preparationInput(input, db);
   if ("trigger" in start) return start;
   // One preparation at a time for one version in one environment.
   //
@@ -176,6 +181,35 @@ export async function prepareReportAuthority(
  * hook that starts this workflow, else — only when no hook starts it — an empty
  * one.
  */
+/** The stored input of the newest refused run a preparation diagnosis names,
+ *  when it belongs to this workflow version and environment. */
+async function refusedRunInput(
+  db: Db,
+  input: Parameters<typeof prepareReportAuthority>[0],
+  asking: { evidence?: { execution_id?: string } }[],
+): Promise<unknown> {
+  const ids = asking.flatMap((entry) =>
+    entry.evidence?.execution_id ? [entry.evidence.execution_id] : [],
+  );
+  if (ids.length === 0) return undefined;
+  const [run] = await db
+    .select({ input: executions.input })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, input.tenant_id),
+        eq(executions.workflow_id, input.workflow_id),
+        eq(executions.workflow_version_id, input.workflow_version_id),
+        eq(executions.execution_mode, input.execution_environment),
+        inArray(executions.id, ids),
+        isNotNull(executions.input),
+      ),
+    )
+    .orderBy(desc(executions.created_at))
+    .limit(1);
+  return run?.input ?? undefined;
+}
+
 async function preparationInput(
   input: Parameters<typeof prepareReportAuthority>[0],
   db: Db,
