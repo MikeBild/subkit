@@ -20390,7 +20390,7 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
-        SkillActivation: components["schemas"]["SkillActivationBaseline"] | components["schemas"]["SkillActivationTool"] | components["schemas"]["SkillActivationToolArg"] | components["schemas"]["SkillActivationConnectorDriver"] | components["schemas"]["SkillActivationConnectorTemplate"] | components["schemas"]["SkillActivationConnectorRecipeMatch"] | components["schemas"]["SkillActivationIntentKeyword"] | components["schemas"]["SkillActivationStepKind"];
+        SkillActivation: components["schemas"]["SkillActivationBaseline"] | components["schemas"]["SkillActivationTool"] | components["schemas"]["SkillActivationToolArg"] | components["schemas"]["SkillActivationConnectorDriver"] | components["schemas"]["SkillActivationConnectorTemplate"] | components["schemas"]["SkillActivationConnectorRecipeMatch"] | components["schemas"]["SkillActivationIntentKeyword"] | components["schemas"]["SkillActivationStepKind"] | components["schemas"]["SkillActivationDiagnosis"];
         SkillActivationBaseline: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -20455,6 +20455,14 @@ export interface components {
              */
             kind: "step_kind";
             step_kinds: ("request" | "transform" | "call" | "wait" | "wait_for_event" | "branch" | "parallel" | "loop" | "tool")[];
+        };
+        SkillActivationDiagnosis: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "diagnosis";
+            codes: string[];
         };
         SkillListResponse: {
             items: components["schemas"]["Skill"][];
