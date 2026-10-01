@@ -2184,6 +2184,8 @@ const EN = {
   "agentPanel.send": "Ask",
   "agentPanel.thinking": "Working on the answer…",
   "agentPanel.failed": "The question could not be answered.",
+  "agentPanel.questionWaiting":
+    "The assistant is waiting for your answer to its question in this conversation.",
   "agentPanel.noAnswer": "No written answer came back for this question.",
   "agentPanel.openConversation": "Open the conversation",
   "agentPanel.openChat": "Open in chat",
@@ -5239,6 +5241,8 @@ const DE: Record<TranslationKey, string> = {
   "agentPanel.send": "Fragen",
   "agentPanel.thinking": "Antwort wird erarbeitet …",
   "agentPanel.failed": "Die Frage konnte nicht beantwortet werden.",
+  "agentPanel.questionWaiting":
+    "Der Assistent wartet in dieser Unterhaltung auf deine Antwort auf seine Rückfrage.",
   "agentPanel.noAnswer": "Auf diese Frage kam keine schriftliche Antwort zurück.",
   "agentPanel.openConversation": "Unterhaltung öffnen",
   "agentPanel.openChat": "Im Chat öffnen",
