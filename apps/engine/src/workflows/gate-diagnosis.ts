@@ -21,7 +21,6 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { GOVERNANCE_REFUSALS } from "../execution/state.ts";
 import type { ManifestIssueCode } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import {
@@ -225,7 +224,11 @@ async function newestRefusedStep(
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         isNotNull(executions.execution_authority_id),
-        inArray(sql<string>`${executionSteps.error}->>'code'`, [...GOVERNANCE_REFUSALS]),
+        // Only the refusal that says the approval no longer fits the
+        // materialized request. Other governance refusals (a request outside a
+        // declared boundary, an authority that ran out) are not this block and
+        // are diagnosed by the preview, not relabelled here.
+        sql`${executionSteps.error}->>'code' = 'execution_authority_changed'`,
       ),
     )
     .orderBy(desc(executions.created_at), desc(executionSteps.started_at))

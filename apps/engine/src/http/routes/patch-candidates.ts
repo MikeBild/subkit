@@ -453,6 +453,11 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         },
       );
     }
+    if (outcome.status === "gate_fix") {
+      throw HttpError.withEnvelope(409, "not_replayable", "a gate repair has no fixture replay", {
+        hint: "prepare the candidate (POST /v1/patch-candidates/{id}/prepare) and let a held preparation run of the prepared version show the request the gate now sees",
+      });
+    }
     if (outcome.status === "no_fixture") {
       throw HttpError.withEnvelope(409, "conflict", "no execution fixture to replay against", {
         hint: "run the workflow once so the engine captures a fixture, then retry the dry-run",

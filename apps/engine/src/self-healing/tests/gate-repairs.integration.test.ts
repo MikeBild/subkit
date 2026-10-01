@@ -11,11 +11,15 @@ import {
   signBrowserSession,
 } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { inspectAutomationReview } from "../../conversations/automation-review.ts";
 import {
+  connectors,
+  executionSteps,
   patchCandidates,
   sessions,
   users,
   workflows,
+  workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
@@ -34,6 +38,7 @@ import {
 import { diagnoseWorkflow } from "../../workflows/gate-diagnosis.ts";
 import { GMAIL_SEND_TARGET } from "../../workflows/report-delivery-boundary.ts";
 import { rejectPatchCandidate } from "../candidate-decision.ts";
+import { previewPatchCandidate } from "../candidate-review.ts";
 import { proposeGateRepairs } from "../gate-repairs.ts";
 
 let ctx: EngineTestCtx;
@@ -237,4 +242,107 @@ test("a draft is diagnosed but never repaired", async () => {
   const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
   expect(diagnosis).toMatchObject({ workflow_version_id: draft.id, is_current: false });
   expect(await proposeGateRepairs(db, target(wf.workflow_id, draft.id))).toEqual([]);
+});
+
+test("a contradicted declaration on a connector-backed send is declared from what was observed", async () => {
+  const db = ctx.testDb.db;
+  const [gmail] = await db
+    .insert(connectors)
+    .values({
+      tenant_id: ctx.tenantId,
+      slug: `gmail-${++sequence}`,
+      display_name: "Gmail",
+      driver: "http",
+      auth_type: "none",
+      base_url: "https://gmail.googleapis.com",
+      config: {},
+      environment: "dev",
+    })
+    .returning();
+  if (!gmail) throw new Error("connector insert failed");
+  const wf = await createWorkflowRow(ctx, {
+    name: "Finding mail via connector",
+    slug: `finding-mail-${++sequence}`,
+    steps: [
+      {
+        kind: "transform",
+        id: "compose",
+        language: "javascript",
+        expression: ENCODER.replace("sk.base64UrlEncode(", "sk.base64UrlEncodeUtf8("),
+      },
+      {
+        kind: "request",
+        id: "send_email",
+        connector_id: gmail.id,
+        method: "POST",
+        path: "/gmail/v1/users/me/messages/send",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+        body: { raw: "${scope.compose.data.raw}" },
+        report_delivery: {
+          kind: "gmail_report",
+          to: "other@example.com",
+          from: "ops@example.com",
+          content_type: "text/html",
+        },
+        max_retries: 0,
+      },
+    ],
+  });
+  await preparation(wf.workflow_id);
+  const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
+  const send = diagnosis?.diagnoses.find((entry) => entry.subject.step_id === "send_email");
+  expect(send).toMatchObject({
+    code: "report_delivery_contradicted",
+    remedy_kind: "declare",
+    fixer: "declare_report_delivery",
+    evidence: { observed: { to: "ops@example.com", from: "ops@example.com" } },
+  });
+  const [proposed] = await proposeGateRepairs(db, target(wf.workflow_id, wf.version_id));
+  if (!proposed) throw new Error("no candidate proposed");
+  const preview = await previewPatchCandidate(ctx.tenantId, proposed.candidate_id, db);
+  expect(preview?.reviewable).toBe(true);
+  expect(preview?.after_step?.report_delivery).toMatchObject({ to: "ops@example.com" });
+  expect(preview?.before_step?.report_delivery).toMatchObject({ to: "other@example.com" });
+  // The reviewer sees which run the declaration was copied from.
+  expect(preview?.proposal?.patch).toMatchObject({
+    source_execution_id: send?.evidence.execution_id,
+  });
+});
+
+test("the automation review carries the repair and its candidate", async () => {
+  const wf = await seed();
+  await refusedGrantedRun(wf.workflow_id, wf.version_id);
+  const [proposed] = await proposeGateRepairs(ctx.testDb.db, target(wf.workflow_id, wf.version_id));
+  await ctx.testDb.db.insert(workflowsSchedules).values({
+    tenant_id: ctx.tenantId,
+    workflow_id: wf.workflow_id,
+    cron: "0 7 * * *",
+    execution_mode: "dev",
+    input: {},
+  });
+  const review = await inspectAutomationReview(ctx.testDb.db, ctx.tenantId, wf.workflow_id);
+  const guidance = review?.schedules[0]?.review.repair_guidance ?? [];
+  expect(guidance.find((entry) => entry.step_id === "send_email")).toMatchObject({
+    fixer: "use_utf8_encoder",
+    remedy_kind: "patch",
+    reason: "not_utf8",
+    candidate_id: proposed?.candidate_id,
+  });
+});
+
+test("another governance refusal is not relabelled as a changed approval", async () => {
+  const wf = await seed();
+  await refusedGrantedRun(wf.workflow_id, wf.version_id);
+  const db = ctx.testDb.db;
+  // The same refused row, as if a declared request boundary had refused it.
+  await db
+    .update(executionSteps)
+    .set({ error: { code: "request_outside_declared_boundary", message: "outside" } })
+    .where(
+      and(eq(executionSteps.tenant_id, ctx.tenantId), eq(executionSteps.step_key, "send_email")),
+    );
+  const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
+  expect(
+    diagnosis?.diagnoses.filter((entry) => entry.code === "execution_authority_changed"),
+  ).toEqual([]);
 });
