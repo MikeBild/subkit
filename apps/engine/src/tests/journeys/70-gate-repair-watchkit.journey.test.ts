@@ -14,20 +14,24 @@
 //     approved run passes dispatch and sends exactly once.
 //   - AC4: The same diagnosis and proposal are reachable over MCP through
 //     `diagnose_workflow` and `propose_workflow_repair`.
+//   - AC5: A refusal recorded before refusals named their rule (no reason on
+//     the step) asks for a preparation, the preparation is NOT refused as
+//     "already bindable" although the review reads eligible, and afterwards
+//     the diagnosis names `not_utf8` with its fixer — no loop.
 // Spec refs: docs/concepts/governance-and-audit.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   browserSessionCookie,
   signBrowserCsrf,
   signBrowserSession,
 } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { sessions, users, workflows } from "../../db/schema/index.ts";
+import { executionSteps, sessions, users, workflows } from "../../db/schema/index.ts";
 import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
@@ -337,5 +341,50 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     } finally {
       await client.close();
     }
+  });
+  test("AC5: a reasonless refusal is prepared, then named and fixable", async () => {
+    const wf = await seedWorkflow(ctx, {
+      slug: "finding-mail-legacy",
+      name: "Finding mail legacy",
+      steps: steps(),
+    });
+    const refused = await grantAndRun(wf.id);
+    expect(refused.result.status).toBe("failed");
+    // The refusal as an older engine stored it: the code, no reason.
+    await ctx.db
+      .update(executionSteps)
+      .set({ error: sql`${executionSteps.error} - 'reason'` })
+      .where(
+        and(
+          eq(executionSteps.tenant_id, ctx.tenantId),
+          eq(executionSteps.execution_id, refused.result.execution_id),
+        ),
+      );
+    const before = (await diagnosis(wf.id)).find((entry) => entry.subject.step_id === "send_email");
+    expect(before).toMatchObject({ code: "execution_authority_changed", remedy_kind: "prepare" });
+    expect(before?.reason).toBeUndefined();
+
+    const version_id = await currentVersion(wf.id);
+    const prepared = await withDriverFetchForTests(
+      Object.assign(async () => Response.json({ id: "held" }), {
+        preconnect: () => {},
+      }) as typeof fetch,
+      () =>
+        journeyFetch(ctx, `/v1/workflows/${wf.id}/versions/${version_id}/prepare-authority`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ environment: "dev", input: { at: "2026-01-01T00:00:00Z" } }),
+        }),
+    );
+    const body = (await prepared.json()) as { prepared?: boolean; reason?: string };
+    expect(body.reason).not.toBe("already_bindable");
+    expect(body.prepared).toBe(true);
+
+    const after = (await diagnosis(wf.id)).find((entry) => entry.subject.step_id === "send_email");
+    expect(after).toMatchObject({
+      reason: "not_utf8",
+      remedy_kind: "patch",
+      fixer: "use_utf8_encoder",
+    });
   });
 });
