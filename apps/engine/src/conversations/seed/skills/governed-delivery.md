@@ -3,7 +3,7 @@ slug: governed-delivery
 scope: global
 title: Governed Report Delivery
 description: Why a report e-mail step is refused by the execution gate, the exact message shape the report profile accepts, and how to repair it — prepare or declare, never `boundary`, never another mail provider.
-activates_when: [{"kind":"diagnosis","codes":["report_delivery_unprepared","report_delivery_unobserved","report_delivery_unreachable"]},{"kind":"tool","tool":"diagnose_workflow"},{"kind":"tool","tool":"propose_workflow_repair"}]
+activates_when: [{"kind":"diagnosis","codes":["report_delivery_unprepared","report_delivery_unobserved","report_delivery_unreachable","report_delivery_contradicted","not_json_raw","not_base64url","not_utf8","header_control_byte","header_folded","header_not_allowed","header_duplicate","missing_headers","sender_invalid","recipient_invalid","extra_recipients","multipart_unsupported","content_type_unsupported","transfer_encoding_unsupported","body_not_base64","recipient_differs","sender_differs","content_type_differs"]},{"kind":"tool","tool":"diagnose_workflow"},{"kind":"tool","tool":"propose_workflow_repair"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -74,11 +74,15 @@ and refuses anything it cannot read exactly:
 | `report_delivery_unprepared` | No preparation exists for this version and environment. | Prepare once; nothing is sent. |
 | `report_delivery_unobserved` | A preparation reached the step but the message was unreadable (unresolved placeholder, extra header, second recipient, wrong encoding). | Fix how the message is built, then prepare again. |
 | `report_delivery_unreachable` | A preparation exists but never reached the step. | Make the branch reachable without the held write, or declare `report_delivery`. |
+| `report_delivery_contradicted` | The step declares `report_delivery`, and a preparation of this version reached it with a message outside the profile or addressed differently. | Fix the message so it matches the declaration; never widen the declaration to the message. |
+| `execution_authority_changed` | An approved run was refused at dispatch. The step error's `reason` names the rule: a profile refusal such as `not_utf8` or `extra_recipients`, or `recipient_differs` / `sender_differs` / `content_type_differs`. | `not_utf8` and `header_control_byte` come from a one-byte-per-character encoder: switch to `sk.base64UrlEncodeUtf8` or `sk.buildMimeMessage`. |
 
 ## Tools
 
-Use `diagnose_workflow` to read why the gate refuses a workflow: it returns one
-code and reason per refused step. Use `propose_workflow_repair` to turn a
+Use `diagnose_workflow` to read why the gate refuses a workflow: per refused
+step it returns the code, what kind of act removes the block (`patch`,
+`prepare`, `declare`, `reconnect`, `author`) and, when a deterministic fixer
+computes the repair, the fixer's name. Use `propose_workflow_repair` to turn a
 diagnosis into a patch candidate a human reviews — a repair is a proposal,
 never an applied change. After a repair lands, prepare again: a new version has
 no observation of its own.
