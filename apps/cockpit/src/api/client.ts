@@ -194,38 +194,24 @@ export async function sendConversationTurn(
 ): Promise<ConversationRun> {
   if (input.conversationId) {
     const path = `/v1/conversations/${encodeURIComponent(input.conversationId)}`;
-    const answerText = (id: string) =>
-      streamConversation(
-        `${path}/elicitations/${encodeURIComponent(id)}/respond`,
-        { output: { value: input.message } },
-        onEvent,
-      );
     // A typed reply answers a text question; it never becomes a boolean approval.
+    // Only a question the reader was shown routes here: one that appeared after
+    // the snapshot was read fails the append (`pending_elicitation_blocked`)
+    // and comes back to the page, which shows it — a message written without
+    // seeing the question is never taken as its answer.
     if (input.pendingElicitation?.tool_name === "ask_user_text") {
-      return answerText(input.pendingElicitation.id);
-    }
-    try {
-      return await streamConversation(
-        `${path}/messages`,
-        { message: input.message, ...withReferences(input.references) },
+      return respondToChatText(
+        input.conversationId,
+        input.pendingElicitation.id,
+        input.message,
         onEvent,
       );
-    } catch (error) {
-      // A question may have appeared after the detail snapshot was read. The
-      // append guard did not persist the message, so resolve that exact prompt once.
-      const pending =
-        error instanceof ApiError && error.code === "pending_elicitation_blocked"
-          ? error.details?.pending_elicitation
-          : null;
-      if (
-        isRecord(pending) &&
-        pending.tool_name === "ask_user_text" &&
-        typeof pending.id === "string"
-      ) {
-        return answerText(pending.id);
-      }
-      throw error;
     }
+    return streamConversation(
+      `${path}/messages`,
+      { message: input.message, ...withReferences(input.references) },
+      onEvent,
+    );
   }
   return streamConversation(
     "/v1/conversations",
@@ -253,6 +239,20 @@ export function cancelConversation(id: string): Promise<unknown> {
 }
 
 export function respondToChatChoice(
+  conversationId: string,
+  elicitationId: string,
+  value: string,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return streamConversation(
+    `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
+    { output: { value } },
+    onEvent,
+  );
+}
+
+/** The reader's typed answer to a free-text question, passed on verbatim. */
+export function respondToChatText(
   conversationId: string,
   elicitationId: string,
   value: string,
