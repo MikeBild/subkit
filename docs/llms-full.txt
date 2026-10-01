@@ -12478,6 +12478,19 @@ the REST API instead. Tools that decide, such as `approve_skill_candidate`, are
 not proposals and do not carry the flag. The chat allow-list and the MCP tiers
 keep their own filters.
 
+### Review decisions stay reachable behind the confirm gate
+
+`create_skill` tells the user that a candidate can be approved in the same
+conversation. The decision that does this is listed in `REVIEW_DECISIONS` in
+`authoring-palette.ts`. Today the set holds only `approve_skill_candidate`.
+The authoring palette offers these tools on web and `sk` without a skill load,
+and the step router keeps them in every narrowed stage. Unlike a proposal, a
+decision is never ungated. Each one is in `DANGEROUS_TOOLS_SET` with
+`confirm_before_execution`, so the turn pauses on an approval card. Only a
+person's confirmation runs it. Approving a skill candidate creates a draft
+skill, and activation remains a separate action. The read-only chat surface
+never lists these tools.
+
 ### Catalog grouping on the read tools
 
 `list_workflows` and `find_workflow` return a derived `category` (the catalog

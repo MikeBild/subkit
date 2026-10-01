@@ -10,6 +10,7 @@
 
 import type { LanguageModel, ModelMessage, ToolChoice, ToolSet } from "ai";
 import type { ConversationSurface } from "../../conversations/agent/types.ts";
+import { REVIEW_DECISIONS } from "../../conversations/tools/authoring-palette.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
@@ -403,6 +404,9 @@ function activeToolsForStage(
       // An inert proposal changes nothing live, so the stage's reason to
       // narrow does not apply to it: a person can ask for one at any stage.
       if (t.inert_proposal === true) return true;
+      // Approving that proposal belongs to the same conversation; its own
+      // confirm gate, not the stage, is what holds it back.
+      if (REVIEW_DECISIONS.has(n)) return true;
       if (
         activeAuthoringResource &&
         t.authoring_resource &&
