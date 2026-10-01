@@ -59,14 +59,23 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
   let recorded = [reviewTurn];
   let refuse = false;
   const outcome = (route) =>
-    refuse
-      ? route.fulfill({ status: 500, json: { code: "internal_error", message: "boom" } })
-      : route.fulfill({
-          status: 200,
-          contentType: "text/event-stream",
-          // An outcome and nothing else: the turn streamed no words.
-          body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "active" })}\n\n`,
-        });
+    refuse === "question"
+      ? route.fulfill({
+          status: 409,
+          json: {
+            code: "pending_elicitation_blocked",
+            message: "resolve the pending dialog",
+            details: { pending_elicitation: { id: "q", tool_name: "ask_user_text" } },
+          },
+        })
+      : refuse
+        ? route.fulfill({ status: 500, json: { code: "internal_error", message: "boom" } })
+        : route.fulfill({
+            status: 200,
+            contentType: "text/event-stream",
+            // An outcome and nothing else: the turn streamed no words.
+            body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "active" })}\n\n`,
+          });
   const start = (route) =>
     route.request().method() === "POST" ? outcome(route) : route.fallback();
   const detail = (route) =>
@@ -138,6 +147,15 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
     refuse = true;
     await ask("Noch einmal?");
     await panel.getByTestId("agent-panel-error").waitFor();
+
+    // The conversation waits on a text question the panel cannot show: the
+    // message is not taken as its answer, and the way to the question is named.
+    refuse = "question";
+    await ask("Und das Wetter?");
+    await panel.getByTestId("agent-panel-waiting").waitFor();
+    const waitingHref = await panel.getByTestId("agent-panel-waiting-link").getAttribute("href");
+    if (!waitingHref?.includes(`/chat/${conversationId}`))
+      throw new Error(`The waiting question does not link its conversation: ${waitingHref}`);
 
     // Every question has something under it.
     const questions = await panel.locator('[data-testid^="agent-panel-question-"]').count();
