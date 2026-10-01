@@ -177,7 +177,7 @@ async function reviewEnvironment(
         preview?.manifest.effects ?? [],
         preview?.storage_refusals ?? [],
         preview?.request_refusals ?? [],
-        diagnosis?.diagnoses ?? [],
+        diagnosis,
       ),
     };
   } catch {

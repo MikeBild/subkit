@@ -301,7 +301,9 @@ Proposed (not auto-applied) improvements.
   review. `propose_workflow_repair` **[product]** (`{ workflow_id, step_id, fixer,
   environment? }`) files that repair as a PROPOSED patch candidate — the engine
   computes the change, nothing applies until an operator approves it, and a
-  repeat call returns the same candidate.
+  repeat call returns the same candidate. Only the active version is repaired:
+  a diagnosis with `is_current: false` is of the draft, whose fix is made in
+  the draft.
 - Capability gaps: `list_capability_gaps` **[product]**.
 - Session learnings: `save_learning` **[product]** — explicitly capture a durable
   rule the user taught in the current session as a PROPOSED `session_learning`
