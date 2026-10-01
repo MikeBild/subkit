@@ -92,6 +92,17 @@ export const SkillActivationSchema = z
           .min(1),
       })
       .openapi("SkillActivationStepKind"),
+
+    // A tool RESULT names one of these diagnosis codes — a
+    // `repair_guidance[].code` or `.reason` from a readiness or gate
+    // diagnosis. Exact match, like every other rule: the skill that explains
+    // a refusal lands in context the moment the refusal is reported.
+    z
+      .object({
+        kind: z.literal("diagnosis"),
+        codes: z.array(z.string().min(1)).min(1),
+      })
+      .openapi("SkillActivationDiagnosis"),
   ])
   .openapi("SkillActivation");
 

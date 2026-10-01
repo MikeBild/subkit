@@ -33,6 +33,9 @@ import externalChatIntegration from "../conversations/seed/skills/external-chat-
 import githubGraphqlBasics from "../conversations/seed/skills/github-graphql-basics.md" with {
   type: "text",
 };
+import governedDelivery from "../conversations/seed/skills/governed-delivery.md" with {
+  type: "text",
+};
 import graphqlAuthoringRecipe from "../conversations/seed/skills/graphql-authoring-recipe.md" with {
   type: "text",
 };
@@ -93,6 +96,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "error-recovery.md", content: errorRecovery },
   { file: "external-chat-integration.md", content: externalChatIntegration },
   { file: "github-graphql-basics.md", content: githubGraphqlBasics },
+  { file: "governed-delivery.md", content: governedDelivery },
   { file: "graphql-authoring-recipe.md", content: graphqlAuthoringRecipe },
   { file: "graphql-connectors.md", content: graphqlConnectors },
   { file: "http-connectors.md", content: httpConnectors },

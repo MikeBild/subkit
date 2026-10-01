@@ -13715,6 +13715,9 @@
           },
           {
             "$ref": "#/components/schemas/SkillActivationStepKind"
+          },
+          {
+            "$ref": "#/components/schemas/SkillActivationDiagnosis"
           }
         ],
         "discriminator": {
@@ -13727,7 +13730,8 @@
             "connector_template": "#/components/schemas/SkillActivationConnectorTemplate",
             "connector_recipe_match": "#/components/schemas/SkillActivationConnectorRecipeMatch",
             "intent_keyword": "#/components/schemas/SkillActivationIntentKeyword",
-            "step_kind": "#/components/schemas/SkillActivationStepKind"
+            "step_kind": "#/components/schemas/SkillActivationStepKind",
+            "diagnosis": "#/components/schemas/SkillActivationDiagnosis"
           }
         }
       },
@@ -13909,6 +13913,29 @@
         "required": [
           "kind",
           "step_kinds"
+        ]
+      },
+      "SkillActivationDiagnosis": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "diagnosis"
+            ]
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "kind",
+          "codes"
         ]
       },
       "SkillListResponse": {
