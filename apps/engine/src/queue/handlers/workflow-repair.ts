@@ -200,7 +200,9 @@ export async function enqueueGateDiagnosis(
       environment: p.environment,
     };
     const jobId = await boss.send(WORKFLOW_REPAIR_QUEUE, payload, {
-      singletonKey: `${p.tenant_id}:${p.workflow_id}:gate:${version_id}`,
+      // Per environment: each one diagnoses its own held runs and connectors,
+      // so a refusal in one must not suppress the other's diagnosis.
+      singletonKey: `${p.tenant_id}:${p.workflow_id}:gate:${p.environment}:${version_id}`,
       singletonSeconds: REPAIR_SINGLETON_SECONDS,
     });
     logger.info({
@@ -208,10 +210,11 @@ export async function enqueueGateDiagnosis(
       action: jobId ? "gate_diagnosis.enqueued" : "gate_diagnosis.enqueue_deduped",
       msg: jobId
         ? "gate refusal enqueued for diagnosis"
-        : "gate diagnosis suppressed — singleton window already holds a job for this version",
+        : "gate diagnosis suppressed — singleton window already holds a job for this version and environment",
       tenant_id: p.tenant_id,
       workflow_id: p.workflow_id,
       version_id,
+      environment: p.environment,
       source: p.source,
     });
     return jobId;
