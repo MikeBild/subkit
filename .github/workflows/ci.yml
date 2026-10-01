@@ -220,11 +220,13 @@ jobs:
     # means the next honest addition to the sweep fails as a timeout, which
     # reads like a hang and is only growth.
     #
-    # 40 is ~1.7x the measured runtime: still short enough that a genuinely
-    # stuck browser fails the job rather than burning the budget, and wide
-    # enough that adding a route is a decision about coverage rather than
-    # about the clock.
-    timeout-minutes: 40
+    # 40 was ~1.7x that runtime. The sweep has since grown to about 1150
+    # frames and three consecutive green runs took 33–36 minutes; one run hit
+    # the 40-minute cap and was cancelled, which read like a hang and was only
+    # growth. 60 keeps the same ~1.7x rule: a genuinely stuck browser still
+    # fails the job, and adding a route stays a decision about coverage rather
+    # than about the clock.
+    timeout-minutes: 60
     env:
       TZ: UTC
       LANG: C.UTF-8
