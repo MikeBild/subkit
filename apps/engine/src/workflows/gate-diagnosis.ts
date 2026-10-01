@@ -12,7 +12,8 @@
 // this module looks up a candidate that already exists, never creates one.
 
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Executor } from "../db/client.ts";
 import {
   executionSteps,
@@ -36,7 +37,9 @@ import {
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
   type ReportDeliveryRefusal,
+  ReportDeliveryRefusalSchema,
   type ReportMessageRefusal,
+  reportRefusalReason,
 } from "./report-delivery-boundary.ts";
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
@@ -86,7 +89,7 @@ export interface WorkflowDiagnosis {
 export const GateDiagnosisSchema = z
   .object({
     code: z.string(),
-    reason: z.string().optional(),
+    reason: ReportDeliveryRefusalSchema.optional(),
     subject: z.object({ step_id: z.string(), field: z.string().optional() }),
     evidence: z.object({
       execution_id: z.string().uuid().optional(),
@@ -119,6 +122,8 @@ type HeldEvidence = Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
 
 /** A loop body records `send[0]`, `send[1]`, … — the same step. */
 const stepKeyOf = (key: string) => key.replace(/\[[0-9]+\]$/, "");
+/** The same suffix as a Postgres regular expression. */
+const LOOP_SUFFIX = "\\[[0-9]+\\]$";
 
 export function gateEndpointKey(code: string): string {
   return `gate:${code}`;
@@ -191,7 +196,8 @@ export async function diagnoseWorkflow(
   return { ...base, diagnoses };
 }
 
-/** The newest step a granted run of exactly this version was refused at.
+/** The newest step a granted run of exactly this version was refused at and
+ *  no later granted run of that version has since got past.
  *  Read from the step row — the run's own record — not from the audit log,
  *  whose reasons sit behind their own read permission. */
 async function newestRefusedStep(
@@ -203,6 +209,8 @@ async function newestRefusedStep(
     execution_environment: "dev" | "prod";
   },
 ) {
+  const laterStep = alias(executionSteps, "later_step");
+  const laterRun = alias(executions, "later_run");
   const [row] = await db
     .select({
       execution_id: executionSteps.execution_id,
@@ -229,6 +237,38 @@ async function newestRefusedStep(
         // declared boundary, an authority that ran out) are not this block and
         // are diagnosed by the preview, not relabelled here.
         sql`${executionSteps.error}->>'code' = 'execution_authority_changed'`,
+        // A refusal is history once a later granted run of the same version
+        // completed that very step for real: the approval fits again, and
+        // naming the old refusal would send a person to repair what works.
+        // "Later" is decided in SQL against the refused run's own timestamp —
+        // never a JavaScript Date, which drops the microseconds.
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(laterStep)
+            .innerJoin(
+              laterRun,
+              and(
+                eq(laterRun.id, laterStep.execution_id),
+                eq(laterRun.tenant_id, laterStep.tenant_id),
+              ),
+            )
+            .where(
+              and(
+                eq(laterStep.tenant_id, executionSteps.tenant_id),
+                eq(laterRun.workflow_id, executions.workflow_id),
+                eq(laterRun.workflow_version_id, executions.workflow_version_id),
+                eq(laterRun.execution_mode, executions.execution_mode),
+                isNotNull(laterRun.execution_authority_id),
+                eq(laterRun.hold_writes, false),
+                ne(laterRun.id, executions.id),
+                gt(laterRun.created_at, executions.created_at),
+                eq(laterStep.status, "succeeded"),
+                eq(laterStep.held, false),
+                sql`regexp_replace(${laterStep.step_key}, ${LOOP_SUFFIX}, '') = regexp_replace(${executionSteps.step_key}, ${LOOP_SUFFIX}, '')`,
+              ),
+            ),
+        ),
       ),
     )
     .orderBy(desc(executions.created_at), desc(executionSteps.started_at))
@@ -288,7 +328,7 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     });
   }
   if (refused) {
-    const reason = refusalReason(refused.error);
+    const reason = reportRefusalReason(refused.error);
     const subject = { step_id: refused.step_id };
     out.push(
       reason
@@ -327,21 +367,7 @@ export function planForDiagnosis(
   return null;
 }
 
-/** The report gate's refusal reason recorded on a refused step, if any. */
-function refusalReason(error: unknown): ReportDeliveryRefusal | null {
-  const reason = (error as { reason?: unknown } | null)?.reason;
-  return typeof reason === "string" && REPORT_DELIVERY_REFUSALS.has(reason)
-    ? (reason as ReportDeliveryRefusal)
-    : null;
-}
-
 const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
-const REPORT_DELIVERY_REFUSALS: ReadonlySet<string> = new Set([
-  ...REPORT_MESSAGE_REFUSALS,
-  "recipient_differs",
-  "sender_differs",
-  "content_type_differs",
-] satisfies ReportDeliveryRefusal[]);
 
 /** Refusals a byte-per-character encoder produces and the UTF-8 one removes. */
 const ENCODER_REASONS: ReadonlySet<string> = new Set([

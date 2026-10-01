@@ -7,7 +7,12 @@ import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
 import { PREVIEW_CLASSIFICATIONS, RequestMetaSchema } from "../../../execution/index.ts";
-import { ResponseFilterSchema, StepSchema, WorkflowDefSchema } from "../../../workflows/index.ts";
+import {
+  ReportDeliveryRefusalSchema,
+  ResponseFilterSchema,
+  StepSchema,
+  WorkflowDefSchema,
+} from "../../../workflows/index.ts";
 
 export const ExecSchema = z
   .object({
@@ -56,6 +61,8 @@ export const ExecutionOutcomeSchema = z
     failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
     cause_class: CauseClassSchema.nullable(),
     error_code: z.string().nullable(),
+    /** Which rule of the approved boundary the stopping step broke, when the refusal named one. */
+    refusal_reason: ReportDeliveryRefusalSchema.nullable(),
     connector: RefusedConnectorSchema,
     steps: z.object({
       total: z.number().int().nonnegative(),
@@ -82,6 +89,7 @@ export const ExecListItemSchema = ExecSchema.extend({
     .object({
       step_key: z.string().nullable(),
       cause_class: CauseClassSchema.nullable(),
+      refusal_reason: ReportDeliveryRefusalSchema.nullable(),
       connector: RefusedConnectorSchema,
     })
     .nullable(),
