@@ -1,0 +1,240 @@
+// One block, one repair: a held preparation and a refused granted run name the
+// same encoder cause under two gate codes, and the repair is filed once; a
+// person's rejection keeps holding for that version; a draft is diagnosed but
+// never repaired.
+
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import {
+  browserSessionCookie,
+  signBrowserCsrf,
+  signBrowserSession,
+} from "../../auth/browser-session.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  patchCandidates,
+  sessions,
+  users,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
+import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
+import { runExecution } from "../../execution/engine.ts";
+import {
+  createEngineCtx,
+  createWorkflowRow,
+  type EngineTestCtx,
+} from "../../execution/tests/setup.ts";
+import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import {
+  grantWorkflowAuthority,
+  previewWorkflowAuthority,
+} from "../../workflows/execution-authorities.ts";
+import { diagnoseWorkflow } from "../../workflows/gate-diagnosis.ts";
+import { GMAIL_SEND_TARGET } from "../../workflows/report-delivery-boundary.ts";
+import { rejectPatchCandidate } from "../candidate-decision.ts";
+import { proposeGateRepairs } from "../gate-repairs.ts";
+
+let ctx: EngineTestCtx;
+let principal: ResolvedPrincipal;
+let grantRequest: Request;
+let sequence = 0;
+
+const ENCODER = [
+  "const msg = 'From: ops@example.com\\r\\nTo: ops@example.com\\r\\nSubject: a — b' +",
+  "  '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n<p>·</p>';",
+  "return { raw: sk.base64UrlEncode(msg) };",
+].join("\n");
+
+async function seed() {
+  return createWorkflowRow(ctx, {
+    name: "Finding mail",
+    slug: `finding-mail-${++sequence}`,
+    steps: [
+      { kind: "transform", id: "compose", language: "javascript", expression: ENCODER },
+      {
+        kind: "request",
+        id: "send_email",
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+        body: { raw: "${scope.compose.data.raw}" },
+        report_delivery: {
+          kind: "gmail_report",
+          to: "ops@example.com",
+          from: "ops@example.com",
+          content_type: "text/html",
+        },
+        max_retries: 0,
+      },
+    ],
+  });
+}
+
+async function refusedGrantedRun(workflow_id: string, version_id: string) {
+  const db = ctx.testDb.db;
+  const review = await previewWorkflowAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      workflow_version_id: version_id,
+      execution_environment: "dev",
+    },
+    db,
+  );
+  const now = await databaseNow(db);
+  await grantWorkflowAuthority(
+    workflow_id,
+    {
+      workflow_version_id: version_id,
+      expected_manifest_digest: review.digest,
+      execution_environment: "dev",
+      valid_from: now.toISOString(),
+      valid_until: new Date(now.getTime() + 3_600_000).toISOString(),
+      max_runs: 1,
+    },
+    { db, request: grantRequest, principal },
+  );
+  const remote = Object.assign(async () => Response.json({ id: "sent" }), {
+    preconnect: () => {},
+  }) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    const admitted = await admitAuthorizedWorkflowExecution(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        execution_environment: "dev",
+        request_source: "scheduler",
+        input: {},
+      },
+      db,
+    );
+    await runExecution({
+      tenant_id: ctx.tenantId,
+      db,
+      source: { kind: "saved", workflow_id },
+      input: {},
+      options: { existing_execution_id: admitted.execution_id, principal },
+    });
+  });
+}
+
+async function preparation(workflow_id: string) {
+  await runExecution({
+    tenant_id: ctx.tenantId,
+    db: ctx.testDb.db,
+    source: { kind: "saved", workflow_id },
+    input: {},
+    options: { hold_writes: true, execution_mode: "dev", principal },
+  });
+}
+
+beforeAll(async () => {
+  ctx = await createEngineCtx("gate-repairs");
+  const db = ctx.testDb.db;
+  const now = await databaseNow(db);
+  const [user] = await db
+    .insert(users)
+    .values({ tenant_id: ctx.tenantId, email: "approver@example.com", role: "admin" })
+    .returning();
+  if (!user) throw new Error("missing user");
+  const [session] = await db
+    .insert(sessions)
+    .values({
+      tenant_id: ctx.tenantId,
+      user_id: user.id,
+      expires_at: new Date(now.getTime() + 3_600_000),
+    })
+    .returning();
+  if (!session) throw new Error("missing session");
+  const identity = { tenant_id: ctx.tenantId, user_id: user.id, session_id: session.id };
+  principal = {
+    provider: "session",
+    kind: "user",
+    id: user.id,
+    tenant_id: ctx.tenantId,
+    roles: ["admin"],
+    session_id: session.id,
+  };
+  grantRequest = new Request("https://example.test/grant", {
+    method: "POST",
+    headers: {
+      cookie: browserSessionCookie(await signBrowserSession(identity)),
+      "x-subkit-csrf": await signBrowserCsrf(identity),
+    },
+  });
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+const target = (workflow_id: string, version_id: string) => ({
+  tenant_id: ctx.tenantId,
+  workflow_id,
+  version_id,
+  environment: "dev" as const,
+});
+
+test("a held refusal and a granted refusal of the same cause file one candidate", async () => {
+  const wf = await seed();
+  await refusedGrantedRun(wf.workflow_id, wf.version_id);
+  await preparation(wf.workflow_id);
+  const diagnosis = await diagnoseWorkflow(ctx.testDb.db, ctx.tenantId, wf.workflow_id, "dev");
+  const fixable = diagnosis?.diagnoses.filter((entry) => entry.fixer) ?? [];
+  expect(fixable).toHaveLength(1);
+  expect(fixable[0]).toMatchObject({ reason: "not_utf8", fixer: "use_utf8_encoder" });
+
+  const first = await proposeGateRepairs(ctx.testDb.db, target(wf.workflow_id, wf.version_id));
+  const again = await proposeGateRepairs(ctx.testDb.db, target(wf.workflow_id, wf.version_id));
+  expect(first).toHaveLength(1);
+  expect(first[0]?.created).toBe(true);
+  expect(again).toEqual([{ ...first[0], created: false } as never]);
+  const rows = await ctx.testDb.db
+    .select()
+    .from(patchCandidates)
+    .where(eq(patchCandidates.workflow_id, wf.workflow_id));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.classification).toBe("unsafe");
+  expect(rows[0]?.diff).toMatchObject({ source: "gate_block" });
+});
+
+test("a rejection holds for the version it was given on", async () => {
+  const wf = await seed();
+  await refusedGrantedRun(wf.workflow_id, wf.version_id);
+  const [proposed] = await proposeGateRepairs(ctx.testDb.db, target(wf.workflow_id, wf.version_id));
+  if (!proposed) throw new Error("no candidate proposed");
+  await rejectPatchCandidate(
+    { tenant_id: ctx.tenantId, candidate_id: proposed.candidate_id, actor_id: null },
+    ctx.testDb.db,
+  );
+  const [again] = await proposeGateRepairs(ctx.testDb.db, target(wf.workflow_id, wf.version_id));
+  expect(again).toMatchObject({
+    candidate_id: proposed.candidate_id,
+    status: "rejected",
+    created: false,
+  });
+});
+
+test("a draft is diagnosed but never repaired", async () => {
+  const wf = await seed();
+  await refusedGrantedRun(wf.workflow_id, wf.version_id);
+  const db = ctx.testDb.db;
+  const [current] = await db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(eq(workflowVersions.id, wf.version_id));
+  const [draft] = await db
+    .insert(workflowVersions)
+    .values({ tenant_id: ctx.tenantId, workflow_id: wf.workflow_id, version: 2, dag: current?.dag })
+    .returning();
+  if (!draft) throw new Error("draft insert failed");
+  await db
+    .update(workflows)
+    .set({ draft_version_id: draft.id })
+    .where(and(eq(workflows.id, wf.workflow_id), eq(workflows.tenant_id, ctx.tenantId)));
+  const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
+  expect(diagnosis).toMatchObject({ workflow_version_id: draft.id, is_current: false });
+  expect(await proposeGateRepairs(db, target(wf.workflow_id, draft.id))).toEqual([]);
+});
