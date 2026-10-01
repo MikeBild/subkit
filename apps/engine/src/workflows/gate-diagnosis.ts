@@ -29,7 +29,11 @@ import {
   planReportDeliveryDeclaration,
   planUtf8EncoderFix,
 } from "./gate-fix.ts";
-import { GMAIL_SEND_TARGET, ReportDeliveryBoundarySchema } from "./report-delivery-boundary.ts";
+import {
+  GMAIL_SEND_TARGET,
+  type ReportDeliveryBoundary,
+  ReportDeliveryBoundarySchema,
+} from "./report-delivery-boundary.ts";
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
@@ -52,7 +56,7 @@ export interface GateDiagnosis {
     /** The run the diagnosis rests on, when it rests on one. */
     execution_id?: string;
     /** Addresses a successful inspection observed — never message content. */
-    observed?: { to: string; from: string; content_type: "text/plain" | "text/html" };
+    observed?: { to: string; from: string; content_type: ReportDeliveryBoundary["content_type"] };
   };
   remedy_kind: GateRemedyKind;
   /** Present only when a deterministic fixer computes the repair. */
