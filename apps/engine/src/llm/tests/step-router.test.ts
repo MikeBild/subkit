@@ -728,3 +728,26 @@ describe("an inert proposal survives every narrowed stage", () => {
     expect(active).not.toContain("save_workflow_draft");
   });
 });
+
+describe("a review decision survives every narrowed stage", () => {
+  const withDecision: Record<string, ConversationTool> = {
+    ...TOOLS,
+    approve_skill_candidate: fakeTool("approve_skill_candidate", "tenant_write")[1],
+  };
+
+  test.each([
+    "connector_targeted",
+    "workflow_targeted",
+    "connector_draft_started",
+    "workflow_previewed",
+    "diagnosing",
+  ] as const)("%s keeps the decision and still withholds other tenant writes", (stage) => {
+    const active = prepareStep(
+      baseParams({ toolsByName: withDecision, signals: { stage } }),
+    )?.activeTools;
+    expect(active).toBeDefined();
+    expect(active).toContain("approve_skill_candidate");
+    expect(active).not.toContain("delete_workflow");
+    expect(active).not.toContain("save_workflow_draft");
+  });
+});
