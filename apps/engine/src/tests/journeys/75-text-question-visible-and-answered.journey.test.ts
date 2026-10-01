@@ -18,7 +18,7 @@
 //   - AC4: A question the harness parked from prose (no tool call) is shown
 //          through `prompt.question`, answered over HTTP, and replayed to the
 //          model as the user's own turn after the assistant's question.
-// Spec refs: docs/concepts/conversations.md
+// Spec refs: docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
