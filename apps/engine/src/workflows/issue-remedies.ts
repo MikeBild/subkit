@@ -217,6 +217,17 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "content_type}`. A human approves that statement and the runtime still decodes the real message " +
     "and compares the recipient byte for byte, so a declaration that does not match is refused at " +
     "the wire. The alternative is to make the branch reachable without the held write.",
+  report_delivery_contradicted:
+    "This step declares its recipient in `report_delivery`, and a preparation of this very " +
+    "version reached the step with a message that contradicts it: either the message is outside " +
+    "the report profile, or it is addressed to a different recipient, from a different sender, or " +
+    "in a different content type. Every run would be refused at the wire. The held step's " +
+    "`report_delivery_inspection` names the reason. Repair the MESSAGE when the declaration is " +
+    "right — build it with sk.buildMimeMessage, or encode hand-built MIME with " +
+    "sk.base64UrlEncodeUtf8 rather than sk.base64UrlEncode. Correct the DECLARATION only when it " +
+    "is the declaration that is wrong (sk.buildMimeMessage with both html and text produces " +
+    "`multipart/alternative`). Do not remove the declaration to get past this, and do not add " +
+    "`boundary`. Save, let a preparation run, and recheck.",
   not_http_step:
     "`boundary` applies to plain HTTP request steps only. A storage step is bounded with " +
     "`s3.scope`; SQL, MCP, GraphQL, XML and multipart steps cannot be bounded yet.",
@@ -226,15 +237,22 @@ const GMAIL_REPORT_REMEDY =
   "A reviewed report boundary is not available yet; this alone does NOT establish malformed MIME. " +
   "First inspect the exact-version preview: did this email step materialize, or was it skipped " +
   "because an upstream request was held or failed? Repair the evidenced upstream cause before " +
-  "changing email construction. sk.buildMimeMessage is supported for single-part text/html or " +
-  "text/plain reports; Base64 content-transfer encoding is supported. Do not infer recipients from " +
-  "transform source code: review checks the materialized message. Changing report content IS " +
-  "supported. Keep method POST and endpoint fixed. Set body to an object with only raw, whose " +
-  "VALUE may be a dynamic reference to the encoded message. Inspect the encoding transform: " +
-  "decoded MIME MUST have explicit From and To mailbox addresses, Subject, MIME-Version: 1.0, " +
-  "Content-Type: text/html or text/plain; preserve agreed addresses. Do not replace report content " +
-  "with a constant. Save the repaired draft, open the real review card to prepare its held " +
-  "preview, and recheck eligibility. No message is sent by that preparation.";
+  "changing email construction. When the step was held, its `report_delivery_inspection` names " +
+  "the rule the message broke (`not_utf8`, `header_control_byte`, `extra_recipients`, …) — start " +
+  "there. Build the message with sk.buildMimeMessage({from, to, subject, html, text}); it " +
+  "produces exactly what the review accepts: ONE sender and ONE recipient, each `addr` or " +
+  '`Name <addr>` (a printable-ASCII name without `,<>"`; only the address is compared), a ' +
+  "Unicode subject, and a text/html or text/plain body or both as multipart/alternative. If a " +
+  "transform assembles MIME itself, it needs From, To, Subject, MIME-Version: 1.0 and " +
+  "Content-Type, unfolded, and it must be encoded with sk.base64UrlEncodeUtf8, never " +
+  "sk.base64UrlEncode: the latter keeps one byte per character, so `·` becomes a byte that is " +
+  "not UTF-8 (`not_utf8`) and `—` a control byte (`header_control_byte`). Cc, Bcc, Reply-To, " +
+  "custom headers, attachments and a second recipient stay outside this review. Changing report " +
+  "content IS supported. Keep method POST and endpoint fixed. Set body to an object with only " +
+  "raw, whose VALUE may be a dynamic reference to the encoded message. Do not infer recipients " +
+  "from transform source code: review checks the materialized message. Do not replace report " +
+  "content with a constant. Save the repaired draft, open the real review card to prepare its " +
+  "held preview, and recheck eligibility. No message is sent by that preparation.";
 
 const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>>>> = {
   dynamic_request: {
