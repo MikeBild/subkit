@@ -57,6 +57,7 @@ import {
 } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
+import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import {
@@ -232,7 +233,12 @@ export function wrapOne(
     // still receives the example via the `<example>` block
     // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
-    async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
+    async execute(modelArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
+      // A model sometimes double-encodes non-ASCII in an ask_user_* question
+      // (`hei\u00dfen`). Decode its human-facing text once, here where the
+      // arguments enter, so the tool-call row, the elicitation row and every
+      // frame built from them read the same readable text.
+      const rawArgs = decodeAskUserPromptEscapes(inner.name, modelArgs);
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.
       const prevChain = signals.toolChain;
