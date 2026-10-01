@@ -8,6 +8,7 @@ import { resolveDefinition } from "../execution/resolve-definition.ts";
 import { createExecution } from "../execution/state.ts";
 import { listSchedules } from "../scheduler/repo.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
+import { diagnoseWorkflow } from "./gate-diagnosis.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
 
 /**
@@ -134,7 +135,27 @@ export async function prepareReportAuthority(
     throw Object.assign(new Error("The preparation did not complete; external writes were held"), {
       code: "authority_preparation_failed",
     });
-  return { prepared: true as const };
+  // A preparation that ran and still left a step unbound — an unreadable
+  // message, a step it never reached — answers with WHY, so the reviewer is
+  // not left with a green "prepared" over a review that still refuses. The
+  // diagnosis names steps, codes and remedies; never the message contents.
+  const diagnosis = await diagnoseWorkflow(
+    db,
+    input.tenant_id,
+    input.workflow_id,
+    input.execution_environment,
+    { version_id: input.workflow_version_id },
+  );
+  const diagnoses = (diagnosis?.diagnoses ?? []).map((entry) => ({
+    code: entry.code,
+    step_id: entry.subject.step_id,
+    remedy_kind: entry.remedy_kind,
+    ...(entry.fixer ? { fixer: entry.fixer } : {}),
+    ...(entry.candidate_id ? { candidate_id: entry.candidate_id } : {}),
+  }));
+  return diagnoses.length > 0
+    ? { prepared: true as const, diagnoses }
+    : { prepared: true as const };
 }
 
 /**
