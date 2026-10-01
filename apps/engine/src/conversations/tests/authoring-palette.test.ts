@@ -222,7 +222,11 @@ describe("authoring tool palette — inert proposals", () => {
   const proposals = listTools().filter((t) => t.inert_proposal === true);
 
   test("only tools that file a review-queue proposal carry the flag", () => {
-    expect(proposals.map((t) => t.name).sort()).toEqual(["create_skill", "save_learning"]);
+    expect(proposals.map((t) => t.name).sort()).toEqual([
+      "create_skill",
+      "propose_workflow_repair",
+      "save_learning",
+    ]);
   });
 
   test("each is a tenant write whose approve step is its confirmation", () => {
