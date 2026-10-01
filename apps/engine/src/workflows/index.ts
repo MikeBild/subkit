@@ -24,6 +24,8 @@ export {
   previewWorkflowAuthority,
   revokeWorkflowAuthority,
 } from "./execution-authorities.ts";
+export * from "./gate-diagnosis.ts";
+export * from "./gate-fix.ts";
 export * from "./input-schema-synth.ts";
 export { prepareReportAuthority } from "./prepare-report-authority.ts";
 export * from "./prior-workflows.ts";

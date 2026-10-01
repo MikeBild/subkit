@@ -5424,6 +5424,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/diagnosis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Why the approval gate holds this workflow, and what removes it
+         * @description Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. Read-only.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    environment?: "dev" | "prod";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowDiagnosis"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/repairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose a deterministic repair for a step the approval gate refused
+         * @description Files the repair the active version's diagnosis offers for this step and fixer as a reviewable patch candidate (never applied automatically). Returns the existing candidate when one already covers the block (200) — including a rejected one, which keeps holding for this version. Review and apply through /v1/patch-candidates/{id}.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProposeWorkflowRepairBody"];
+                };
+            };
+            responses: {
+                /** @description An existing candidate covers this repair */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProposeWorkflowRepairResponse"];
+                    };
+                };
+                /** @description Proposed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProposeWorkflowRepairResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such repair is available for the active version */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/drafts": {
         parameters: {
             query?: never;
@@ -18298,6 +18422,59 @@ export interface components {
             /** @enum {boolean} */
             run_limit_is_request_limit: false;
         };
+        WorkflowDiagnosis: {
+            /** Format: uuid */
+            workflow_id: string;
+            /** Format: uuid */
+            workflow_version_id: string | null;
+            /** @enum {string} */
+            environment: "dev" | "prod";
+            is_current: boolean;
+            diagnoses: components["schemas"]["GateDiagnosis"][];
+        };
+        GateDiagnosis: {
+            code: string;
+            reason?: string;
+            subject: {
+                step_id: string;
+                field?: string;
+            };
+            evidence: {
+                /** Format: uuid */
+                execution_id?: string;
+                observed?: {
+                    to: string;
+                    from: string;
+                    /** @enum {string} */
+                    content_type: "text/plain" | "text/html" | "multipart/alternative";
+                };
+            };
+            /** @enum {string} */
+            remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+            /** @enum {string} */
+            fixer?: "use_utf8_encoder" | "declare_report_delivery";
+            /** Format: uuid */
+            candidate_id?: string;
+        };
+        ProposeWorkflowRepairResponse: {
+            /** Format: uuid */
+            candidate_id: string;
+            step_id: string;
+            /** @enum {string} */
+            fixer: "use_utf8_encoder" | "declare_report_delivery";
+            status: string;
+            created: boolean;
+        };
+        ProposeWorkflowRepairBody: {
+            step_id: string;
+            /** @enum {string} */
+            fixer: "use_utf8_encoder" | "declare_report_delivery";
+            /**
+             * @default prod
+             * @enum {string}
+             */
+            environment: "dev" | "prod";
+        };
         WorkflowDraft: {
             /** Format: uuid */
             workflow_id: string;
@@ -21524,7 +21701,7 @@ export interface components {
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
-            kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other";
+            kind: "update_field_path" | "rename_param" | "change_type" | "add_header" | "rate_limited" | "other" | "gate_fix";
             description: string;
             patch: {
                 [key: string]: unknown;
@@ -21537,6 +21714,14 @@ export interface components {
             kind: "request" | "transform";
             data_selector?: string;
             expression?: string;
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
         } | null;
         PatchCandidateDryRunResponse: {
             ok: boolean;
@@ -21998,7 +22183,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract" | "gate_block";
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
@@ -22006,7 +22191,7 @@ export interface components {
         };
         SelfHealingScanUnanchored: {
             /** @enum {string} */
-            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract";
+            signal_type: "stdlib_version_drift" | "schema_diff" | "validation_failed" | "jsonata_path_miss" | "http_status_new_shape" | "endpoint_contract" | "gate_block";
             /** @enum {string} */
             reason: "hook_surface_not_supported" | "no_workflow_anchor";
             resource_id: string;
