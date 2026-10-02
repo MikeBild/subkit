@@ -263,6 +263,11 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (await page.getByTestId("workflow-run-outcome").count())
       throw new Error(`${where} · refused: an outcome line stands beside the refusal`);
+    // The same press would be refused the same way: it is not offered again,
+    // and one line says why — until another environment is chosen.
+    if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
+      throw new Error(`${where} · refused: the refused run can be started again`);
+    await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
     await assertNoEngineWords(page, `${where} · refused`);
     await capture("run-dialog-refused");
 
@@ -277,6 +282,9 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     const failed = de ? "Der Lauf konnte nicht gestartet werden." : "The run could not be started.";
     if (!crashed.includes(failed))
       throw new Error(`${where} · crashed: the dialog says "${crashed}"`);
+    // A fault is not a refusal: trying again may work.
+    if (await page.getByTestId("workflow-run-submit").isDisabled())
+      throw new Error(`${where} · crashed: a fault disables another attempt`);
     await assertNoEngineWords(page, `${where} · crashed`);
 
     // ── A version in an earlier format: refused by its reason ────────────────
@@ -296,6 +304,9 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     for (const raw of ["definition format", "steps.0.language"])
       if (legacySaid.includes(raw))
         throw new Error(`${where} · legacy: the dialog prints the engine's "${raw}"`);
+    if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
+      throw new Error(`${where} · legacy: a version the engine refuses can be started again`);
+    await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
     await capture("run-dialog-legacy");
 
     // ── Fields are filled in by their type ───────────────────────────────────

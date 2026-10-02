@@ -1577,6 +1577,9 @@ const EN = {
     "Not started: this version is stored in an earlier format. Change the workflow in the chat to save it again.",
   "run.legacySteps":
     "Not started: this version is stored in an earlier format (steps: {steps}). Change the workflow in the chat to save it again.",
+  "run.approvalMissing":
+    "Not started ({environment}): no valid approval covers this run. Approve the workflow first.",
+  "run.refusedAgain": "Another attempt would be refused the same way.",
   "run.failedWithLink": "Open the run",
   "run.environment.blocked": "{environment}: {connector} must be reconnected",
   "run.environment.blockedDisabled": "{environment}: {connector} is switched off",
@@ -4877,6 +4880,9 @@ const DE: Record<TranslationKey, string> = {
     "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert. Ändere den Workflow im Chat, um ihn neu zu speichern.",
   "run.legacySteps":
     "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert (Schritte: {steps}). Ändere den Workflow im Chat, um ihn neu zu speichern.",
+  "run.approvalMissing":
+    "Nicht gestartet ({environment}): Für diesen Lauf gibt es keine gültige Freigabe. Gib den Workflow zuerst frei.",
+  "run.refusedAgain": "Ein weiterer Versuch würde genauso abgelehnt.",
   "run.failedWithLink": "Lauf ansehen",
   "run.environment.blocked": "{environment}: {connector} muss neu verbunden werden",
   "run.environment.blockedDisabled": "{environment}: {connector} ist ausgeschaltet",
