@@ -1,7 +1,6 @@
 // Workflow CRUD + version snapshots. Every upsert writes a new row in
 // `workflow_versions` and points `workflows.current_version_id` at it.
-// Restore is additive: it duplicates an old version's dag as a new version
-// with N+1, never overwriting history.
+// The stored versions themselves — history and restore — live in `versions.ts`.
 
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";

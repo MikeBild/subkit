@@ -9,23 +9,43 @@
 //   * History is newest first; `limit` / `offset` page it in the query and
 //     `total` is the exact count regardless of the page.
 
+//   * Both routes keep their permission gates: history needs `workflow:read`,
+//     restore needs `workflow:restore`.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import { apiKeys, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
+/** May read workflows, and nothing else — in particular not restore them. */
+const readKey = "wf_live_ro_history_test_key_000000001";
+/** Holds no workflow permission at all. */
+const unrelatedKey = "wf_live_no_history_test_key_000000001";
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("workflow_history");
+  await ctx.db.insert(apiKeys).values(
+    [
+      { key: readKey, scopes: ["workflow:read"] },
+      { key: unrelatedKey, scopes: ["skill:read"] },
+    ].map(({ key, scopes }) => ({
+      tenant_id: ctx.tenantId,
+      user_id: ctx.userId,
+      prefix: key.slice(0, 12),
+      token_sha256: createHash("sha256").update(key).digest("hex"),
+      scopes,
+    })),
+  );
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-const headers = (): Record<string, string> => ({
-  authorization: `Bearer ${ctx.apiKey}`,
+const headers = (key = ctx.apiKey): Record<string, string> => ({
+  authorization: `Bearer ${key}`,
   "content-type": "application/json",
 });
 
@@ -195,5 +215,20 @@ describe("workflow history pagination", () => {
     expect((await history(wf.id, "?limit=0")).status).toBe(400);
     expect((await history(wf.id, "?limit=201")).status).toBe(400);
     expect((await history(wf.id, "?offset=-1")).status).toBe(400);
+  });
+});
+
+describe("workflow history and restore permissions", () => {
+  test("history needs workflow:read; restore needs workflow:restore", async () => {
+    const wf = await createWorkflow("gated-history");
+    const historyUrl = `${ctx.baseUrl}/v1/workflows/${wf.id}/history`;
+    const restoreUrl = `${ctx.baseUrl}/v1/workflows/${wf.id}/restore/1`;
+    const restoreAs = (key: string) => fetch(restoreUrl, { method: "POST", headers: headers(key) });
+
+    expect((await fetch(historyUrl, { headers: headers(readKey) })).status).toBe(200);
+    expect((await fetch(historyUrl, { headers: headers(unrelatedKey) })).status).toBe(403);
+    // Reading the history is not a licence to make an old version live.
+    expect((await restoreAs(readKey)).status).toBe(403);
+    expect((await restoreAs(unrelatedKey)).status).toBe(403);
   });
 });
