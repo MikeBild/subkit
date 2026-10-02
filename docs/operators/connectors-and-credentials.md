@@ -227,8 +227,10 @@ an API version such as `Notion-Version`.
 A placeholder does not read around the mask. `${connector.<slug>.config.<path>}`
 resolves configuration — a region, an API version — and refuses a path that
 holds a masked value with `secret_withheld`; `get_connector` does not offer
-such a path. Reference a credential as `${cred.<slug>.<field>}`, or let the
-connector apply it.
+such a path. `${connector.<slug>.base_url}` is refused the same way when the
+URL itself carries a credential; a step on that connector names a path relative
+to it instead of a full URL. Reference a credential as `${cred.<slug>.<field>}`,
+or let the connector apply it.
 
 The mask is also a valid value to send back. A write that carries
 `***redacted***` where a secret is stored keeps the stored secret, so reading a

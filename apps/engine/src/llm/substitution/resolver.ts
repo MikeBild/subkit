@@ -25,7 +25,10 @@
 
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { connectorConfigPathCarriesSecret } from "../../connectors/public-view.ts";
+import {
+  baseUrlCarriesSecret,
+  connectorConfigPathCarriesSecret,
+} from "../../connectors/public-view.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
 import type { Db } from "../../db/client.ts";
@@ -265,7 +268,8 @@ export async function describeConnectorPlaceholders(
     (path) => !connectorConfigPathCarriesSecret(row.config, path),
   );
   return {
-    url: row.base_url ? `\${connector.${slug}.base_url}` : null,
+    url:
+      row.base_url && !baseUrlCarriesSecret(row.base_url) ? `\${connector.${slug}.base_url}` : null,
     credentials: creds.map((f) => `\${cred.${slug}.${f}}`),
     config: cfg.map((path) => `\${connector.${slug}.config.${path.join(".")}}`),
   };
@@ -492,6 +496,17 @@ async function resolveConnectorUrl(tok: Placeholder, ctx: ResolverContext): Prom
   }
   if (!row.base_url) {
     return { ok: false, code: "key_not_found", message: "connector has no base_url" };
+  }
+  // The same rule as a config path: a base_url that carries a credential — a
+  // userinfo password, a query key — is masked in every representation, and a
+  // token must not be the way around the mask. The driver reads the stored
+  // URL itself when a step names a path relative to the connector.
+  if (baseUrlCarriesSecret(row.base_url)) {
+    return {
+      ok: false,
+      code: "secret_withheld",
+      message: `connector.${tok.slug}.base_url carries a credential and is not readable through a token — use a path relative to the connector instead of a full URL`,
+    };
   }
   ctx.onAuthorityReference?.({
     connector_id: row.id,
