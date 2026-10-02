@@ -77,6 +77,8 @@ Never guess the version number. Restoring is not a repair: if you do not know wh
 
 A version saved under an earlier definition format stays in the history, marked `legacy`. It can be read but not restored — the restore is refused with `version_not_restorable` and names the step that no longer validates. Pick a version that is not marked, or save the definition again in the current format.
 
+The version that is live can be `legacy` too. The workflow still shows — in the list, on its page, in "how to call this" — marked `legacy`, as it is stored. Running it is refused with `workflow_version_legacy`, which names the steps that no longer validate. Save the definition again in the current format and activate that version.
+
 ### 3. "Prove that two runs produce identical output."
 
 **Wrong door — browser chat.** The client sees only what a tool hands back. It cannot compare two artefacts byte for byte, so it will answer the question by reasoning about it — which sounds like a proof and is not one.

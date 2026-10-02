@@ -3,7 +3,7 @@
 // take effect within one reconcile window. Unit-testable without
 // pg-boss because the table is the source of truth.
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -151,10 +151,13 @@ export async function listSchedules(
 ): Promise<ListResult<ScheduleRow>> {
   const tenantConds = [eq(workflowsSchedules.tenant_id, tenant_id)];
   if (workflow_id) tenantConds.push(eq(workflowsSchedules.workflow_id, workflow_id));
+  // Without an order the database returns rows in whatever order it finds
+  // them, and two reads of the same catalog can disagree.
   const rows = (await db
     .select()
     .from(workflowsSchedules)
-    .where(and(...tenantConds))) as ScheduleRow[];
+    .where(and(...tenantConds))
+    .orderBy(asc(workflowsSchedules.created_at), asc(workflowsSchedules.id))) as ScheduleRow[];
   return { rows, total: rows.length };
 }
 

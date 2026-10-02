@@ -24,8 +24,9 @@ import {
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
+import { legacyDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import type { WorkflowDef } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
@@ -86,6 +87,11 @@ export interface WorkflowView {
   health_state: string;
   health_reason: string | null;
   health_changed_at: Date | null;
+  /** True when the current version is stored in an earlier definition format
+   *  and no longer passes the schema. `definition` is then the stored dag as
+   *  written — readable, never executable: a run or an activation of it is
+   *  refused with `workflow_version_legacy`. */
+  legacy: boolean;
   definition: WorkflowDef;
   steps: WorkflowDef["steps"];
 }
@@ -137,8 +143,15 @@ async function workflowViewsFromRows(
   const byId = new Map(versions.map((v) => [v.id, v]));
   return rows.map((wf) => {
     const v = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
-    const def: WorkflowDef = v
-      ? WorkflowDefSchema.parse(v.dag)
+    // A read shows what is stored. One version written under an earlier
+    // schema must not take the workflow's page — or the whole list it is a
+    // row of — down with it; it is marked and left to the paths that act on
+    // a definition to refuse.
+    const stored = v ? readStoredDefinition(v.dag) : null;
+    const def: WorkflowDef = stored
+      ? stored.legacy
+        ? legacyDefinitionForRead(v?.dag, wf.name)
+        : stored.definition
       : ({ name: wf.name, steps: [] } as WorkflowDef);
     return {
       id: wf.id,
@@ -156,6 +169,7 @@ async function workflowViewsFromRows(
       health_state: wf.health_state,
       health_reason: wf.health_reason ?? null,
       health_changed_at: wf.health_changed_at ?? null,
+      legacy: stored?.legacy ?? false,
       definition: def,
       steps: def.steps,
     };
