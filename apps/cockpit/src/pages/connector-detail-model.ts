@@ -253,3 +253,18 @@ export function offersConnectionChoice(authType: string | null, credentialMode: 
 export function offersKeyReplacement(authType: string | null): boolean {
   return authType === "header" || authType === "bearer";
 }
+
+/** What the engine puts where a connector representation keeps a value secret. */
+export const SECRET_MASK = "***redacted***";
+
+/**
+ * A connector address for display. The engine masks a credential inside it —
+ * a password in the user part, a key in the query — with a fixed marker. That
+ * marker is not part of the address: shown as written it reads as a literal
+ * value, and copied it is an address that cannot work. The secret reads as
+ * kept (`•••`), and an address that carries one is not offered for copying.
+ */
+export function presentAddress(address: string): { shown: string; keepsSecret: boolean } {
+  const keepsSecret = address.includes(SECRET_MASK);
+  return { shown: keepsSecret ? address.split(SECRET_MASK).join("•••") : address, keepsSecret };
+}

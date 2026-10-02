@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { CATALOGS } from "@/lib/i18n";
 import {
+  callVerdict,
   HOOK_STATE_KEYS,
   hasFixedInput,
+  hiddenInvocationKey,
+  hiddenInvocationLists,
   type InvocationHook,
   type InvocationSchedule,
   initialInvocationMode,
@@ -41,6 +44,7 @@ describe("isWorkflowInvocation", () => {
     input: { sample: {} },
     output: {},
     authority: {},
+    visibility: { hooks: true, schedules: true },
     webhook_input_shape: {},
   };
 
@@ -147,5 +151,75 @@ describe("schedule rows", () => {
     expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("HTTP-Aufruf");
     expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("development");
     expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("HTTP call");
+  });
+});
+
+describe("a list the reader may not see", () => {
+  test("is named as hidden — never read as empty", () => {
+    const hidden = (hooks: boolean, schedules: boolean) =>
+      hiddenInvocationLists({ visibility: { hooks, schedules } });
+    expect(hidden(true, true)).toEqual([]);
+    expect(hiddenInvocationKey(hidden(true, true))).toBeNull();
+    expect(hiddenInvocationKey(hidden(false, true))).toBe("invocation.hidden.hooks");
+    expect(hiddenInvocationKey(hidden(true, false))).toBe("invocation.hidden.schedules");
+    expect(hiddenInvocationKey(hidden(false, false))).toBe("invocation.hidden.both");
+  });
+
+  test("the line says that there may be some, in both languages", () => {
+    for (const key of [
+      "invocation.hidden.hooks",
+      "invocation.hidden.schedules",
+      "invocation.hidden.both",
+    ] as const) {
+      expect(CATALOGS.de[key]).toContain("darfst du nicht sehen");
+      expect(CATALOGS.de[key]).not.toMatch(/[Kk]ein/);
+      expect(CATALOGS.en[key]).toContain("may not see");
+    }
+  });
+
+  test("an answer without the visibility is not an invocation", () => {
+    expect(
+      isWorkflowInvocation({
+        http: { path: "/v1/executions", body: {} },
+        mcp: {},
+        cli: {},
+        input: { sample: {} },
+        output: {},
+        authority: {},
+        webhook_input_shape: {},
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("what a call will be", () => {
+  const stored = { dev: "held_preview_only", prod: "live_run_allowed" } as const;
+  const invocation = { authority: stored, legacy: false };
+
+  test("live only where the panel shows the environment as approved", () => {
+    expect(callVerdict(invocation, "prod", "prod")).toBe("live");
+  });
+
+  test("a stored approval the panel does not confirm promises nothing", () => {
+    // The panel says repair, approval needed, not verified — or approves another environment.
+    expect(callVerdict(invocation, "prod", null)).toBe("unconfirmed");
+    expect(callVerdict(invocation, "prod", "dev")).toBe("unconfirmed");
+  });
+
+  test("no stored approval is a trial run, whatever the panel says", () => {
+    expect(callVerdict(invocation, "dev", null)).toBe("preview");
+    expect(callVerdict(invocation, "dev", "dev")).toBe("preview");
+  });
+
+  test("a version in an earlier format is refused in every environment", () => {
+    const legacy = { authority: stored, legacy: true };
+    expect(callVerdict(legacy, "prod", "prod")).toBe("refused");
+    expect(callVerdict(legacy, "dev", null)).toBe("refused");
+  });
+
+  test("the unconfirmed line promises no live run", () => {
+    expect(CATALOGS.de["invocation.http.unconfirmed"]).toContain("nicht bestätigt");
+    expect(CATALOGS.de["invocation.http.unconfirmed"]).toContain("Probelauf");
+    expect(CATALOGS.en["invocation.http.unconfirmed"]).toContain("not confirmed");
   });
 });

@@ -4,6 +4,8 @@
 // (§10.1), and the credential body a replaced key is posted as.
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
 import {
@@ -19,6 +21,8 @@ import {
   environmentLabel,
   offersConnectionChoice,
   offersKeyReplacement,
+  presentAddress,
+  SECRET_MASK,
   toolsWithoutConfirmation,
   transportLabel,
 } from "./connector-detail-model";
@@ -178,5 +182,34 @@ describe("the stored trust list", () => {
       toolsWithoutConfirmation({ config: { mcp: { tools_without_confirmation: ["b", "a"] } } }),
     ).toEqual(["a", "b"]);
     expect(toolsWithoutConfirmation({ config: {} })).toEqual([]);
+  });
+});
+
+describe("a connector address with a kept secret", () => {
+  test("shows the secret as kept, never as the engine's marker", () => {
+    const masked = presentAddress(
+      `https://reader:${SECRET_MASK}@db.example.org/reports?api_key=${SECRET_MASK}&format=json`,
+    );
+    expect(masked.keepsSecret).toBe(true);
+    expect(masked.shown).toBe("https://reader:•••@db.example.org/reports?api_key=•••&format=json");
+    expect(masked.shown).not.toContain("redacted");
+  });
+
+  test("an address without one is shown and copied as it is", () => {
+    const plain = presentAddress("https://api.example.org/v2?format=json");
+    expect(plain).toEqual({ shown: "https://api.example.org/v2?format=json", keepsSecret: false });
+  });
+
+  test("the marker is the engine's own", () => {
+    const shared = readFileSync(
+      resolve(import.meta.dir, "../../../../packages/shared/src/redaction.ts"),
+      "utf8",
+    );
+    expect(shared).toContain(`export const DEFAULT_REDACTED = "${SECRET_MASK}";`);
+  });
+
+  test("the note says the secret is kept, in both languages", () => {
+    expect(CATALOGS.de["connectorDetail.connection.secretKept"]).toContain("bleibt geheim");
+    expect(CATALOGS.en["connectorDetail.connection.secretKept"]).toContain("kept");
   });
 });
