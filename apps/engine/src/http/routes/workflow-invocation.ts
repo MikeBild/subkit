@@ -21,6 +21,7 @@ import {
   invokeRunBody,
   invokeRunUrl,
   renderInvokeSnippet,
+  shellQuote,
 } from "@shared/invoke-snippet.ts";
 import { sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -46,12 +47,21 @@ const HOOK_PATH_PREFIX = "/v1/hooks/";
 const JsonObject = z.record(z.string(), z.unknown());
 const Environment = z.enum(INVOKE_ENVIRONMENTS);
 const Snippets = z.object({ curl: z.string(), node: z.string(), python: z.string() });
-const RunAuthority = z.enum(["live_run_allowed", "held_preview_only"]);
+const RunAuthority = z
+  .enum(["live_run_allowed", "held_preview_only"])
+  .describe(
+    "`live_run_allowed`: an approval for the running version exists in this environment — unrevoked, inside its window, with runs left. It does NOT say the next run is admitted: admission also requires that the approval still matches the workflow's current effects and that those effects may run repeatedly, and holds or refuses the run otherwise. `held_preview_only`: no such approval; a call runs as a held preview that withholds writes.",
+  );
 
 const WorkflowInvocationSchema = z
   .object({
     workflow_id: z.string().uuid(),
     slug: z.string(),
+    legacy: z
+      .boolean()
+      .describe(
+        "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_legacy` until the workflow is saved again.",
+      ),
     /** The configured public address of this engine; null when
      *  `server.public_base_url` is unset. Never derived from the request. */
     base_url: z.string().nullable(),
@@ -71,6 +81,11 @@ const WorkflowInvocationSchema = z
        *  as `sk workflows invoke-snippet`. Null without a public address. */
       snippets: z.object({ dev: Snippets, prod: Snippets }).nullable(),
     }),
+    visibility: z
+      .object({ hooks: z.boolean(), schedules: z.boolean() })
+      .describe(
+        "Whether this caller may read the workflow's inbound hooks (`inbound_hook:read`) and schedules (`schedule:read`). When false the list is ABSENT, which is not the same as empty: the workflow may well have hooks or schedules this caller cannot see, so nothing about them — that there are none, or that all are approved — can be concluded.",
+      ),
     /** Absent when the caller may not read inbound hooks. */
     hooks: z
       .array(
@@ -95,9 +110,16 @@ const WorkflowInvocationSchema = z
           environment: z.literal("prod"),
         }),
       )
-      .optional(),
+      .optional()
+      .describe(
+        "The workflow's inbound hooks. Present — possibly empty — only when `visibility.hooks` is true.",
+      ),
     mcp: z.object({
-      tool_name: z.string(),
+      tool_name: z
+        .string()
+        .describe(
+          "The name this workflow's own tool has WHEN the MCP catalog publishes it. Not every saved workflow is published to every client: the catalog depends on the caller's permissions and mode and lists a bounded number of workflow tools. `fallback` works either way.",
+        ),
       /** Runs any saved workflow by slug — the way in when the client's tool
        *  list does not carry `tool_name`. */
       fallback: z.object({
@@ -118,7 +140,10 @@ const WorkflowInvocationSchema = z
           next_fire_at: z.string().nullable(),
         }),
       )
-      .optional(),
+      .optional()
+      .describe(
+        "The workflow's schedules. Present — possibly empty — only when `visibility.schedules` is true.",
+      ),
     cli: z.object({
       command: z.string(),
       /** Where the command runs: it sends no environment header. */
@@ -132,9 +157,9 @@ const WorkflowInvocationSchema = z
     output: z.object({ schema: JsonObject.nullable() }),
     /** What a hook delivery looks like as the workflow's `input`. */
     webhook_input_shape: z.record(z.string(), z.string()),
-    /** Per environment: whether a call without an explicit approval runs
-     *  live, or as a held preview that withholds writes. Advisory — decided
-     *  from the stored approvals; admission is the authority. */
+    /** Per environment: whether an approval for the running version exists.
+     *  Advisory — read from the stored approvals alone; admission, which also
+     *  checks the approval against the workflow's current effects, decides. */
     authority: z.object({ dev: RunAuthority, prod: RunAuthority }),
   })
   .openapi("WorkflowInvocation");
@@ -145,7 +170,7 @@ const invocationRoute = createRoute({
   tags: ["workflows"],
   summary: "How to call this workflow: HTTP, inbound hooks, MCP, schedules and CLI",
   description:
-    "Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; its MCP tool name; its schedules; the CLI command; the input and output schema with a sample input; and whether a run in each environment would have effects. `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`. Carries no credential: header names only, never a key or a signing secret.",
+    "Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; the MCP tool name it has when the catalog publishes it, and the `run_workflow` call that works regardless; its schedules; the CLI command; the input and output schema with a sample input; and, per environment, whether an approval for the running version exists (`authority` — advisory; admission decides). `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`; `visibility` says which, so an absent list is never mistaken for an empty one. Carries no credential: header names only, never a key or a signing secret.",
   security: [{ bearerAuth: [] }],
   request: { params: z.object({ id: z.string().uuid() }) },
   responses: {
@@ -163,9 +188,18 @@ function publicBaseUrl(): string | null {
   return configured ? configured.replace(/\/+$/, "") : null;
 }
 
-/** A JSON document as one single-quoted shell word. */
-function shellJson(value: unknown): string {
-  return `'${JSON.stringify(value).replaceAll("'", `'\\''`)}'`;
+// A slug that is safe as a bare shell word and cannot be read as an option.
+// A slug has no enforced shape, so anything else is not printed into a command
+// a reader pastes: the workflow id names the same workflow and is always safe.
+const PLAIN_SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/** The command that runs this workflow, as a line a shell reads as intended. */
+function cliRunCommand(
+  workflow: { id: string; slug: string },
+  input: Record<string, unknown>,
+): string {
+  const name = PLAIN_SLUG.test(workflow.slug) ? workflow.slug : workflow.id;
+  return `sk workflows run ${name} --input ${shellQuote(JSON.stringify(input))}`;
 }
 
 export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -221,6 +255,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
       {
         workflow_id: workflow.id,
         slug: workflow.slug,
+        legacy: workflow.legacy,
         base_url: baseUrl,
         http: {
           method: "POST" as const,
@@ -232,6 +267,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
             ? { dev: snippetsFor("dev", baseUrl), prod: snippetsFor("prod", baseUrl) }
             : null,
         },
+        visibility: { hooks: mayHooks, schedules: maySchedules },
         ...(hooks
           ? {
               hooks: hooks.map((hook) => {
@@ -279,7 +315,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
             }
           : {}),
         cli: {
-          command: `sk workflows run ${workflow.slug} --input ${shellJson(sample)}`,
+          command: cliRunCommand(workflow, sample),
           environment: "dev" as const,
         },
         input: { ...input, sample },

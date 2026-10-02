@@ -22,6 +22,7 @@ import { log } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
+import { requestUsedStoredCredential } from "../reauth.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
@@ -572,6 +573,9 @@ export interface ResolvedRequestPlan {
    *  re-running the lookup. */
   credential_id: string | null;
   auth_method: AppliedAuthMethod;
+  /** Whether the persisted credential is what authenticates this request —
+   *  see `requestUsedStoredCredential`. Only such a request can prove it live. */
+  stored_credential_used: boolean;
 }
 
 /**
@@ -619,6 +623,11 @@ export async function buildRequestPlan(
     headers["Idempotency-Key"] = p.idempotency_key;
   }
   const url = resolveUrl(p.connector.base_url, p.path_or_url);
+  // A query string the caller wrote into its path is caller-supplied query.
+  const callerQuery = {
+    ...Object.fromEntries(url.searchParams),
+    ...(p.query ?? {}),
+  };
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
@@ -631,6 +640,16 @@ export async function buildRequestPlan(
     credential_revision: credentialRevision,
     connection_authority: connectionAuthority,
     auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
+    // An override is the caller's material, not the persisted credential.
+    stored_credential_used:
+      p.credential_override === undefined &&
+      requestUsedStoredCredential({
+        credential,
+        home: p.connector.base_url,
+        url,
+        caller_headers: p.headers,
+        caller_query: callerQuery,
+      }),
   };
   // SSRF guard: block private/loopback/link-local targets, including
   // public names whose DNS resolves into private space.
@@ -683,6 +702,12 @@ export interface HttpExecutionResult {
    *  decoded (the decode mangles binary payloads irreversibly). The
    *  workflow dispatch path persists these as an engine-managed file. */
   body_raw?: Buffer;
+}
+
+/** A request made through a connector: the response, and whether the
+ *  connector's persisted credential is what authenticated it. */
+export interface ConnectorHttpResult extends HttpExecutionResult {
+  stored_credential_used: boolean;
 }
 
 /**
@@ -1100,7 +1125,7 @@ export async function executeConnectorHttpRequest(params: {
   timeout_ms?: number;
   credential_override?: DecryptedCredential | null;
   idempotency_key?: string;
-}): Promise<HttpExecutionResult> {
+}): Promise<ConnectorHttpResult> {
   const planArgs: ResolveConnectorRequestParams = {
     db: params.db,
     tenant_id: params.tenant_id,
@@ -1145,7 +1170,7 @@ export async function executeConnectorHttpRequest(params: {
   }
 
   const beforeDispatch = params.before_dispatch;
-  return await executePlannedHttpRequest({
+  const result = await executePlannedHttpRequest({
     tenant_id: params.tenant_id,
     method: params.method,
     url: plan.url,
@@ -1164,6 +1189,7 @@ export async function executeConnectorHttpRequest(params: {
         }
       : {}),
   });
+  return { ...result, stored_credential_used: plan.stored_credential_used };
 }
 
 export interface HttpProbeResult {

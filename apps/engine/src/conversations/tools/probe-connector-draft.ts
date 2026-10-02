@@ -8,8 +8,6 @@ import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { type McpProbeManifest, probeMcpConnector } from "../../connectors/drivers/mcp.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
-import { restoreMaskedConnectorSecrets } from "../../connectors/public-view.ts";
-import { getConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
@@ -29,6 +27,7 @@ import { saveConnectorAtomic } from "../persistence/save-connector.ts";
 import type { ConnectorDraftProbeSummary } from "../types.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { resolveDraftProbeSecrets } from "./probe-draft-secrets.ts";
 import { pickProbeRecoveryActions as pickFromShared, probeStatusHint } from "./probe-recovery.ts";
 import { truncateForLlm } from "./truncate.ts";
 
@@ -241,17 +240,10 @@ export const probeConnectorDraftTool: ConversationTool = {
         }),
       };
     }
-    // A draft bound to a saved connector was hydrated from its public
-    // projection, so it holds the mask where that connector stores a secret
-    // (a static header, the dsn password). This is where the draft becomes a
-    // request: the mask is resolved against the stored connector here, so the
-    // upstream receives the secret and the draft never has to carry it.
-    const saved = connector.saved_connector_id
-      ? await getConnector(ctx.tenant_id, connector.saved_connector_id, ctx.db)
-      : null;
-    const secrets = saved
-      ? restoreMaskedConnectorSecrets({ config: connector.config ?? {}, dsn: connector.dsn }, saved)
-      : { config: connector.config ?? {}, dsn: connector.dsn };
+    // This is where the draft becomes a request, so its masks are resolved
+    // against the stored connector here (see probe-draft-secrets.ts).
+    const secrets = await resolveDraftProbeSecrets(ctx.tenant_id, connector, ctx.db);
+    if (!secrets.ok) return { ok: false, data: buildGateError(currentDraft, secrets.refusal) };
     // Once the draft is bound to a saved connector, probe under that
     // connector's real id so the drivers resolve its credential from the
     // encrypted vault. A fresh (unsaved) draft keeps the synthetic id —
@@ -265,9 +257,9 @@ export const probeConnectorDraftTool: ConversationTool = {
       driver: effectiveDriver,
       environment: args.environment ?? connector.environment ?? "dev",
       auth_type: connector.auth_type ?? "none",
-      base_url: connector.base_url ?? null,
-      dsn: secrets.dsn ?? null,
-      config: secrets.config ?? {},
+      base_url: secrets.base_url,
+      dsn: secrets.dsn,
+      config: secrets.config,
       operator_quirks: {},
       template_slug: connector.template_slug ?? null,
       template_name: connector.template_name ?? null,

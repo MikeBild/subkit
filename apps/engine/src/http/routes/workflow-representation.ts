@@ -37,6 +37,11 @@ export const WorkflowSchema = z
     health_state: z.string(),
     health_reason: z.string().nullable(),
     health_changed_at: z.string().nullable(),
+    legacy: z
+      .boolean()
+      .describe(
+        "True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_legacy` until it is saved again in the current format.",
+      ),
     steps: z.array(z.unknown()),
     input_schema: z.record(z.string(), z.unknown()).nullable(),
     output_schema: z.record(z.string(), z.unknown()).nullable(),
@@ -110,6 +115,7 @@ export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) 
     health_state: w.health_state,
     health_reason: w.health_reason,
     health_changed_at: w.health_changed_at?.toISOString() ?? null,
+    legacy: w.legacy,
     steps: w.steps as unknown[],
     // Schema fields surfaced for non-MCP HTTP callers (CI smoke tests,
     // SDK clients, external orchestrators). MCP exposes them via the

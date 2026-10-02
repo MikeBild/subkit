@@ -49,7 +49,7 @@ import type { EventEnvelope } from "../../pubsub/types.ts";
 import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
-import { WorkflowDefSchema } from "../../workflows/types.ts";
+import { executableDefinition } from "../../workflows/stored-definition.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
@@ -674,7 +674,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       ),
     )
     .limit(1);
-  const definition = WorkflowDefSchema.parse(vRows[0]?.dag);
+  const definition = executableDefinition(vRows[0]?.dag);
   const totalSteps = definition.steps.length;
   const outputSchemaDeclared = definition.output_schema != null;
   let executionId: string;

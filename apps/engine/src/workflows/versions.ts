@@ -19,8 +19,13 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
+import {
+  describeVersionIssues,
+  readStoredDefinition,
+  type VersionIssue,
+} from "./stored-definition.ts";
 import { applyTriggerBindings } from "./trigger-bindings.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import type { WorkflowDef } from "./types.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface VersionView {
@@ -41,12 +46,16 @@ export interface ListWorkflowVersionsOptions {
   offset?: number;
 }
 
-export const WORKFLOW_VERSION_LIST_MAX_LIMIT = 1000;
+/** The largest page of versions one read returns. Every row carries its full
+ *  definition and is checked against the current schema, so a page is bounded. */
+export const WORKFLOW_VERSION_LIST_MAX_LIMIT = 200;
+/** The page a read gets when it names no `limit`. */
+export const WORKFLOW_VERSION_LIST_DEFAULT_LIMIT = 50;
 
 /** Versions of one workflow, newest first — the first page is the recent
  *  history, which is what a reader looking for the last good version wants.
- *  Without a `limit` the whole history (up to the cap) is returned, so a
- *  caller that does not page sees every version rather than a truncated one. */
+ *  `total` is the whole history's size, so a caller that wants all of it
+ *  pages with `offset` until it has that many. */
 export async function listWorkflowVersions(
   tenant_id: string,
   id: string,
@@ -55,7 +64,7 @@ export async function listWorkflowVersions(
 ): Promise<ListResult<VersionView>> {
   const db = exec ?? getDb();
   const limit = Math.min(
-    opts.limit ?? WORKFLOW_VERSION_LIST_MAX_LIMIT,
+    opts.limit ?? WORKFLOW_VERSION_LIST_DEFAULT_LIMIT,
     WORKFLOW_VERSION_LIST_MAX_LIMIT,
   );
   const offset = opts.offset ?? 0;
@@ -79,20 +88,12 @@ export async function listWorkflowVersions(
       workflow_id: r.workflow_id,
       version: r.version,
       dag: r.dag,
-      legacy: !WorkflowDefSchema.safeParse(r.dag).success,
+      legacy: readStoredDefinition(r.dag).legacy,
       note: r.note,
       created_at: r.created_at,
     })),
     total,
   };
-}
-
-export interface VersionIssue {
-  /** Dotted path into the stored definition, e.g. `steps.0.language`. */
-  path: string;
-  /** Id of the step the path points into, when it points into one. */
-  step_id: string | null;
-  message: string;
 }
 
 /** A stored version whose definition no longer passes the current schema. */
@@ -102,13 +103,8 @@ export class VersionNotRestorableError extends Error {
   readonly issues: VersionIssue[];
 
   constructor(version: number, issues: VersionIssue[]) {
-    const first = issues[0];
-    const where = first
-      ? `${first.step_id ? `step "${first.step_id}", ` : ""}${first.path || "definition"}: ${first.message}`
-      : "the stored definition is not a valid workflow";
-    const more = issues.length > 1 ? ` (and ${issues.length - 1} more)` : "";
     super(
-      `version ${version} no longer validates against the current workflow definition format — ${where}${more}`,
+      `version ${version} no longer validates against the current workflow definition format — ${describeVersionIssues(issues)}`,
     );
     this.name = "VersionNotRestorableError";
     this.version = version;
@@ -116,28 +112,12 @@ export class VersionNotRestorableError extends Error {
   }
 }
 
-function stepIdAt(dag: unknown, path: ReadonlyArray<PropertyKey>): string | null {
-  const index = path[1];
-  if (path[0] !== "steps" || typeof index !== "number") return null;
-  const steps = (dag as { steps?: unknown } | null)?.steps;
-  const step: unknown = Array.isArray(steps) ? steps[index] : undefined;
-  const id = (step as { id?: unknown } | null | undefined)?.id;
-  return typeof id === "string" ? id : null;
-}
-
 /** The stored dag as a current definition, or a `VersionNotRestorableError`
  *  naming the step and field that no longer validate. */
 function parseRestorableVersion(version: number, dag: unknown): WorkflowDef {
-  const parsed = WorkflowDefSchema.safeParse(dag);
-  if (parsed.success) return parsed.data;
-  throw new VersionNotRestorableError(
-    version,
-    parsed.error.issues.map((issue) => ({
-      path: issue.path.map(String).join("."),
-      step_id: stepIdAt(dag, issue.path),
-      message: issue.message,
-    })),
-  );
+  const stored = readStoredDefinition(dag);
+  if (stored.legacy) throw new VersionNotRestorableError(version, stored.issues);
+  return stored.definition;
 }
 
 export async function restoreWorkflowVersion(
