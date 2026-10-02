@@ -53,6 +53,15 @@ sk supports the authentication patterns enterprise systems actually use.
 token refresh, expiry detection, and rotation automatically. No workflow ever
 manages token lifecycle.
 
+There is one state the engine does not recover from by itself. A connector
+flagged `needs_reauth` is no longer refreshed: both the refresh before a
+request and the background keep-alive skip it, because its credential is
+believed dead and every further attempt would be a doomed call to the identity
+provider. While the access token is still valid, a successful probe, request
+step or `call_connector` clears the flag and refreshing resumes. Once the
+access token has expired, no call can succeed with it, so nothing clears the
+flag: such a connector comes back only by being authorised again.
+
 **Secrets live only in the Credential Vault** — encrypted at rest, never logged,
 never exposed outside the engine. Workflows and steps reference credentials by
 name, not by value. The full vault model and master-key rotation procedure are in
@@ -156,14 +165,26 @@ environment — a preview runs in `dev`, so a step that references the `prod`
 connector is refused for its same-slug `dev` twin when that twin is the one
 switched off — and the run reads `connector_unavailable`. Nothing falls back
 to the other environment's connector. The switch is asked before the circuit
-breaker, so a disabled connector is never reported as `circuit_open`.
+breaker, so a disabled connector is never reported as `circuit_open`. One
+refusal comes before it: a write whose connector exists only in the other
+environment fails with `connector_environment_mismatch`, whether that connector
+is enabled or not — switching it on would not let the write through.
+
+`call_connector` honours the switch too, in the chat tool and on
+`POST /v1/connectors/{id}/call`: a disabled connector answers
+`connector_disabled` with the connector and environment to enable, and nothing
+is sent.
 
 The circuit breaker itself counts only a remote that could not serve: a
 transport failure, a timeout, a `5xx` or a `429`. A `401`, a `404` or any
 other answered `4xx` is not counted and clears a partial count, because the
 remote did answer. A rejected credential shows up as `needs_reauth` instead,
-and the next successful authenticated call clears it — a request step, a
-probe, or `call_connector`.
+and the next successful call the stored credential authenticated clears it — a
+request step of any driver, a probe, or `call_connector`. A call proves
+nothing about the stored credential, and clears nothing, when it carried its
+own `Authorization` (or a header or query parameter under the credential's
+name), when it went to a full URL on another host, or when a GraphQL endpoint
+answered `200` with an `errors` array.
 
 Four fields are worth knowing when a remote misbehaves, and every one of them
 is written by the engine rather than copied from the upstream — a remote's own
@@ -190,19 +211,43 @@ short-circuited right now, and how close a closed breaker is to opening.
 A connector can carry secrets outside the credential vault: an OAuth client
 secret in `config.oauth.client_secret`, a header or query value in
 `config.static_headers` / `config.static_query`, the password inside a
-PostgreSQL `dsn`. No representation of a connector returns them. Every
-response that carries a connector — create, get, list, patch, enable, disable,
-the `get_connector` tool — shows the value as `***redacted***` and leaves the
-rest of the configuration readable: endpoints, scopes, header names, and the
-user, host and database of a `dsn`.
+PostgreSQL `dsn`, a password or query credential inside `base_url`. No
+representation of a connector returns them. Every response that carries a
+connector — create, get, list, patch, enable, disable, the `get_connector`
+tool — shows the value as `***redacted***` and leaves the rest of the
+configuration readable: endpoints, scopes, header names, and the user, host and
+database of a `dsn`.
+
+Header and query values are masked by default, whatever the header is called:
+a vendor may name a credential `X-Session-Id` or `sig`, and no list of names
+would catch them all. Only values under names that plainly carry no credential
+stay readable — `Accept`, `Content-Type`, `User-Agent`, a locale, a format,
+an API version such as `Notion-Version`.
+
+A placeholder does not read around the mask. `${connector.<slug>.config.<path>}`
+resolves configuration — a region, an API version — and refuses a path that
+holds a masked value with `secret_withheld`; `get_connector` does not offer
+such a path. Reference a credential as `${cred.<slug>.<field>}`, or let the
+connector apply it.
 
 The mask is also a valid value to send back. A write that carries
 `***redacted***` where a secret is stored keeps the stored secret, so reading a
 connector, changing one field and patching the result — `sk connectors get`
-followed by `sk connectors patch --file` — does not disturb it. Send the real
-value to rotate a secret. A mask with nothing stored behind it, such as a read
-definition posted as a new connector under a different slug, is refused with
-`422` and names the field; the engine never stores the mask.
+followed by `sk connectors patch --file` — does not disturb it, and probing a
+read definition (`POST /v1/connectors/probe`) sends the stored secret rather
+than the mask. Send the real value to rotate a secret.
+
+A kept secret stays with its destination. The mask is honoured only while the
+secret would still go where it was stored for: a `dsn` or `base_url` that is
+unchanged outside the masked part, an OAuth client secret whose
+`token_endpoint` and `issuer_url` are the stored ones, a header or query value
+whose `base_url` is the stored one. A write that keeps the mask and points the
+connector somewhere else is refused with `422` and says what moved — send the
+real value for the new destination. The same answer meets a mask with nothing
+stored behind it, such as a read definition posted as a new connector under a
+different slug, and a value that only contains the mask
+(`Bearer ***redacted***`). The engine never stores the mask and never sends it
+upstream.
 
 ## Health and validation
 
