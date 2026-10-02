@@ -48,7 +48,7 @@ import {
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import { bindExistingRun } from "./bound-run.ts";
-import { disabledConnectorRefusal, refusedConnectorOf } from "./connector-availability.ts";
+import { connectorStepRefusal, refusedConnectorOf } from "./connector-availability.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
@@ -651,9 +651,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       // branches. Half-open probing is untouched: past the reset window the
       // predicate stands down and the first iteration performs the probe.
       //
-      // A connector that is switched off refuses every iteration the same
-      // way, so it fails the container once too — and is asked first, as in
-      // the dispatcher, so it is never reported as an open breaker.
+      // A connector that is switched off, or a write that resolved to the
+      // other environment's connector, refuses every iteration the same way,
+      // so it fails the container once too — asked first and in the
+      // dispatcher's order, so it is never reported as an open breaker.
       let fanOutCircuitFailure: StepResult | null = null;
       if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
         const target = await getConnectorForEnvironment(
@@ -662,7 +663,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           execution_mode,
           db,
         );
-        const refusal = target ? disabledConnectorRefusal(target, step.id) : null;
+        const refusal = target ? connectorStepRefusal(target, step, execution_mode) : null;
         if (refusal) {
           fanOutCircuitFailure = {
             status: "failed",

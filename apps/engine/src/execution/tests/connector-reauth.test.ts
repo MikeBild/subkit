@@ -10,9 +10,14 @@
 //   2. Storm dedup: hitting the same connector twice on 401 emits only ONE event.
 //   3. Clear on success: a subsequent 200 clears the flag.
 //   4. 404 does NOT flag: non-auth error codes must not touch needs_reauth.
+//   5. Only a success the STORED credential earned clears: a step that sends
+//      its own Authorization proves nothing about it.
+//   6. A GraphQL step walks the same clearing edge as an HTTP step.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
+import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, events } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -27,6 +32,24 @@ import {
 let ctx: EngineTestCtx;
 let mock: MockServer;
 let connectorId: string;
+let graphqlConnectorId: string;
+/** What the GraphQL endpoint answers with; flipped per test. */
+let graphqlReply: unknown = { data: { viewer: { id: "1" } } };
+
+async function storeBearer(connector_id: string): Promise<void> {
+  await upsertCredential(
+    {
+      tenant_id: ctx.tenantId,
+      connector_id,
+      environment: "dev",
+      mode: "bearer",
+      // A fixture marker, not a credential.
+      value: { mode: "bearer", token: "fixture-stored-token-not-real" },
+      actor_id: null,
+    },
+    ctx.testDb.db,
+  );
+}
 
 beforeAll(async () => {
   ctx = await createEngineCtx("connector-reauth");
@@ -42,6 +65,10 @@ beforeAll(async () => {
     }
     if (req.url?.startsWith("/notfound")) {
       jsonResponse(res, 404, { error: "not found" });
+      return;
+    }
+    if (req.url?.startsWith("/graphql")) {
+      jsonResponse(res, 200, graphqlReply);
       return;
     }
     jsonResponse(res, 200, { ok: true });
@@ -62,6 +89,25 @@ beforeAll(async () => {
     })
     .returning();
   connectorId = c!.id;
+  // The flag is about this credential: a success clears it only when this is
+  // what authenticated the request.
+  await storeBearer(connectorId);
+
+  const [g] = await ctx.testDb.db
+    .insert(connectors)
+    .values({
+      tenant_id: ctx.tenantId,
+      slug: "reauth-graphql-mock",
+      display_name: "Reauth GraphQL Mock",
+      driver: "graphql",
+      environment: "dev",
+      auth_type: "bearer",
+      base_url: `${mock.baseUrl}/graphql`,
+      config: {},
+    })
+    .returning();
+  graphqlConnectorId = g!.id;
+  await storeBearer(graphqlConnectorId);
 });
 
 afterAll(async () => {
@@ -358,5 +404,70 @@ describe("connector re-auth — non-auth errors do not flag", () => {
     const connRow = await queryConnectorRow();
     expect(connRow.needs_reauth).toBe(false);
     expect(connRow.auth_failed_at).toBeNull();
+  });
+});
+
+describe("connector re-auth — only the stored credential's success clears", () => {
+  async function flag(connector_id: string): Promise<void> {
+    await ctx.testDb.db
+      .update(connectors)
+      .set({ needs_reauth: false, circuit_state: "closed", circuit_failure_count: 0 })
+      .where(eq(connectors.id, connector_id));
+    await markConnectorNeedsReauth(ctx.testDb.db, ctx.tenantId, connector_id, "seeded");
+  }
+
+  async function needsReauth(connector_id: string): Promise<boolean> {
+    const [row] = await ctx.testDb.db
+      .select({ needs_reauth: connectors.needs_reauth })
+      .from(connectors)
+      .where(eq(connectors.id, connector_id));
+    return row!.needs_reauth;
+  }
+
+  async function run(name: string, step: Record<string, unknown>) {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name,
+      steps: [{ kind: "request", id: "call", max_retries: 0, ...step }],
+    });
+    return runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+  }
+
+  test("an HTTP step that sends its own Authorization leaves the flag standing", async () => {
+    await flag(connectorId);
+    const result = await run("reauth-step-own-authorization", {
+      method: "GET",
+      connector_id: connectorId,
+      path: "/ok",
+      headers: { Authorization: "Bearer fixture-step-token-not-real" },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(await needsReauth(connectorId)).toBe(true);
+  });
+
+  test("a successful GraphQL step clears the flag", async () => {
+    graphqlReply = { data: { viewer: { id: "1" } } };
+    await flag(graphqlConnectorId);
+    const result = await run("reauth-graphql-clears", {
+      connector_id: graphqlConnectorId,
+      graphql: { query: "{ viewer { id } }" },
+    });
+    expect(result.status).toBe("succeeded");
+    expect(await needsReauth(graphqlConnectorId)).toBe(false);
+  });
+
+  test("a GraphQL step answered with errors does not", async () => {
+    graphqlReply = { data: null, errors: [{ message: "unauthenticated" }] };
+    await flag(graphqlConnectorId);
+    const result = await run("reauth-graphql-errors", {
+      connector_id: graphqlConnectorId,
+      graphql: { query: "{ viewer { id } }" },
+    });
+    expect(result.status).toBe("failed");
+    expect(await needsReauth(graphqlConnectorId)).toBe(true);
   });
 });

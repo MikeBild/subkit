@@ -155,6 +155,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this exact probe already failed and nothing changed since — do NOT re-probe with the same draft. Change the base_url / credential / config via update_connector_draft, or verify the endpoint via fetch_connector_docs / search_docs first",
   connector_secret_not_kept:
     "the draft shows ***redacted*** where the saved connector keeps a secret, and that mask stands for the stored secret only while the draft points where the saved connector does. The host, endpoint or connection string was changed (or the saved connector is gone), so nothing was sent. Either restore the saved destination with update_connector_draft, or collect the real value for the new destination with ask_user_form(sensitive:true). Never type the mask as a value.",
+  connector_disabled:
+    "the connector is switched off by an operator, so nothing was sent — the same refusal a workflow step on it gets. Do not retry, and do not look for another route to the same system. Tell the user which connector and environment is disabled (see `details`) and that it has to be enabled before it can be called; enabling it is their decision.",
   connector_not_found:
     "the connector id is unknown — call find_connector or list_connectors to discover the correct id",
   connector_has_no_base_url:
