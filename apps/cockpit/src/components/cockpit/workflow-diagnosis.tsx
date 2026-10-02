@@ -10,6 +10,7 @@ import { useSession } from "@/app/session";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { diagnosisCauseKey, diagnosisNote, type RepairStatus } from "@/lib/gate-diagnosis";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -30,6 +31,9 @@ export function workflowDiagnosisQuery(workflowId: string, environment: "dev" | 
         `/v1/workflows/${encodeURIComponent(workflowId)}/diagnosis?environment=${environment}`,
       ),
     retry: false,
+    // Like the approvals and the verified status it is read beside: a block
+    // that was removed elsewhere must not stay on the page until a reload.
+    refetchInterval: AUTOMATION_REFRESH_MS,
   } as const;
 }
 
@@ -103,9 +107,7 @@ function useGateRemedy({
       ),
     onSuccess: (result) => {
       onPrepared(preparedKey(result));
-      void client.invalidateQueries({ queryKey: ["workflow-authorities", workflowId] });
-      void client.invalidateQueries({ queryKey: ["workflow-automation-status", workflowId] });
-      void refresh();
+      void invalidateWorkflowAutomation(client, workflowId);
     },
     onError: () => onPrepared("diagnosis.prepareFailed"),
   });
@@ -356,10 +358,15 @@ export function DiagnosisTitleAction({
   diagnosis,
   environment,
   via,
+  variant = "outline",
+  testId = "detail-action",
 }: {
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
   via: "review" | "auto" | "prepare" | "chat";
+  /** `outline` beside a page title, whose filled action is taken; filled where it is the one act. */
+  variant?: "outline" | "default";
+  testId?: string;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -371,6 +378,8 @@ export function DiagnosisTitleAction({
       diagnosis={diagnosis}
       environment={environment}
       via={via}
+      variant={variant}
+      testId={testId}
       permissions={session.permissions}
       t={t}
     />
@@ -382,6 +391,8 @@ function DiagnosisTitleButton({
   diagnosis,
   environment,
   via,
+  variant,
+  testId,
   permissions,
   t,
 }: {
@@ -389,6 +400,8 @@ function DiagnosisTitleButton({
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
   via: "review" | "auto" | "prepare" | "chat";
+  variant: "outline" | "default";
+  testId: string;
   permissions: readonly string[];
   t: ReturnType<typeof useI18n>["t"];
 }) {
@@ -401,8 +414,8 @@ function DiagnosisTitleButton({
   });
   if (via === "review" && permissions.includes("workflow:write"))
     return (
-      <Button asChild variant="outline">
-        <a href={absolute(reviewHref)} data-testid="detail-action">
+      <Button asChild variant={variant}>
+        <a href={absolute(reviewHref)} data-testid={testId}>
           {t("remedy.reviewRepair")}
           <ArrowRight data-icon="inline-end" />
         </a>
@@ -411,10 +424,10 @@ function DiagnosisTitleButton({
   if (via === "auto" && entry.fixer && permissions.includes("workflow:write"))
     return (
       <Button
-        variant="outline"
+        variant={variant}
         disabled={repair.isPending}
         onClick={() => entry.fixer && repair.mutate(entry.fixer)}
-        data-testid="detail-action"
+        data-testid={testId}
       >
         <Wrench data-icon="inline-start" />
         {t("diagnosis.repair")}
@@ -423,18 +436,18 @@ function DiagnosisTitleButton({
   if (via === "prepare" && permissions.includes("workflow:run") && diagnosis.workflow_version_id)
     return (
       <Button
-        variant="outline"
+        variant={variant}
         disabled={prepare.isPending}
         onClick={() => prepare.mutate()}
-        data-testid="detail-action"
+        data-testid={testId}
       >
         {t("diagnosis.prepare")}
       </Button>
     );
   if (via === "chat" && permissions.includes("conversation:write"))
     return (
-      <Button asChild variant="outline">
-        <a href={absolute(chatHref)} data-testid="detail-action">
+      <Button asChild variant={variant}>
+        <a href={absolute(chatHref)} data-testid={testId}>
           <Bot data-icon="inline-start" />
           {t("remedy.chat")}
         </a>
