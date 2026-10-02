@@ -178,6 +178,15 @@ function rewriteUrlSecrets(url: string, rewrite: SecretRewrite): string {
 const maskSecret: SecretRewrite = (_slot, secret) =>
   secret.length > 0 ? CONNECTOR_SECRET_MASK : secret;
 
+/**
+ * Whether a `base_url` carries a credential the projection hides — a userinfo
+ * password or a query credential. Asked, like its config counterpart, by
+ * whatever would read the URL on a caller's behalf.
+ */
+export function baseUrlCarriesSecret(base_url: string): boolean {
+  return rewriteUrlSecrets(base_url, maskSecret) !== base_url;
+}
+
 /** A status text as it may be shown: a connection string a driver quoted in
  *  its error keeps its host and loses its password. */
 function maskStatusText(text: string): string {

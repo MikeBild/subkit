@@ -454,6 +454,34 @@ describe("a connector config token does not read a secret", () => {
     expect(JSON.stringify(typed)).not.toContain(CONFIG_SECRET);
   });
 
+  test("a base_url that carries a credential is withheld, and not offered", async () => {
+    const { tenant_id } = await seed({
+      slug: "sec3",
+      mode: "none",
+      baseUrl: `https://svc:${CONFIG_SECRET}@api.sec3.test/v2?sig=${CONFIG_SECRET}`,
+    });
+    const resolverCtx = { tenant_id, environment: "dev" as const, db: ctx.db };
+    const r = await resolveStringPlaceholders(`\${connector.sec3.base_url}/items`, resolverCtx);
+    expect(r.unresolved.map((u) => u.code)).toEqual(["secret_withheld"]);
+    expect(JSON.stringify(r)).not.toContain(CONFIG_SECRET);
+    expect((await describeConnectorPlaceholders("sec3", resolverCtx)).url).toBeNull();
+  });
+
+  test("a base_url without one resolves as before", async () => {
+    const { tenant_id } = await seed({
+      slug: "sec4",
+      mode: "none",
+      baseUrl: "https://api.sec4.test/v2?api-version=7.0",
+    });
+    const r = await resolveStringPlaceholders(`\${connector.sec4.base_url}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toBe("https://api.sec4.test/v2?api-version=7.0");
+  });
+
   test("the config around the secret still resolves", async () => {
     const { tenant_id } = await seed({ slug: "sec2", mode: "none", config });
     const r = await resolvePlaceholders(
