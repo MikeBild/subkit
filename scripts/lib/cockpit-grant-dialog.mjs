@@ -43,6 +43,8 @@ const WORDS = {
     refusedTitle: "Lauf abgelehnt",
     notApplied: "Gespeicherte Änderung noch nicht übernommen",
     ran: "ausgeführt",
+    onRequest: "Auf Abruf",
+    resume: "Fortsetzen",
   },
   en: {
     already: "Already approved until",
@@ -66,6 +68,8 @@ const WORDS = {
     refusedTitle: "Run refused",
     notApplied: "Saved change not applied yet",
     ran: "Ran ",
+    onRequest: "On request",
+    resume: "Resume",
   },
 };
 
@@ -432,6 +436,25 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
       throw new Error(
         `${where}: an approved workflow still offers ${await buttons.count()} buttons`,
       );
+
+    // ── On request: the page's calm state — never the approval dialog ────────
+    where = at("on request");
+    await openCard("manual");
+    const calm = card.getByTestId("chat-automation-tool-body");
+    if ((await calm.getAttribute("data-state")) !== "manual")
+      throw new Error(`${where}: the card is in "${await calm.getAttribute("data-state")}"`);
+    if (await buttons.count())
+      throw new Error(`${where}: a workflow nothing starts is offered a button`);
+    if (!(await card.innerText()).includes(words.onRequest))
+      throw new Error(`${where}: the card reads "${await card.innerText()}"`);
+    await capture("on-request");
+
+    // ── Paused: resuming, the page's own act ─────────────────────────────────
+    where = at("paused");
+    await openCard("paused");
+    if ((await buttons.count()) !== 1 || (await text(buttons)) !== words.resume)
+      throw new Error(`${where}: the card offers ${JSON.stringify(await buttons.allInnerTexts())}`);
+    if (await only.count()) throw new Error(`${where}: a paused workflow is offered the approval`);
   } finally {
     page.off("response", noteRefused);
     await page.unroute(detailPattern, detail);
