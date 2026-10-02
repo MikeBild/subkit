@@ -20,7 +20,7 @@
 // surface (CLI, MCP, converse) gets the same audit row + decision.
 
 import { z } from "@hono/zod-openapi";
-import { recordConnectorInvoked } from "../../audit/recorders/connector.ts";
+import { recordConnectorProbed } from "../../audit/recorders/connector.ts";
 import { probeConnector } from "../../connectors/drivers/index.ts";
 import { computeConnectorScopeDiff } from "../../connectors/oauth-scope-diff.ts";
 import { getConnector } from "../../connectors/service.ts";
@@ -62,28 +62,12 @@ export const testConnectorTool: ConversationTool = {
       connector,
     });
 
-    let url_host = "";
-    if (connector.base_url) {
-      try {
-        url_host = new URL(connector.base_url).host;
-      } catch {
-        url_host = connector.base_url;
-      }
-    }
-    await recordConnectorInvoked({
+    await recordConnectorProbed({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
       executor: ctx.db,
-      connector_id: connector.id,
-      connector_slug: connector.slug,
-      driver: connector.driver,
-      environment: connector.environment,
-      method: "PROBE",
-      path: "/",
-      url_host,
-      status_code: result.status ?? (result.ok ? 200 : 0),
-      latency_ms: result.latency_ms,
-      outcome: result.ok ? "success" : "error",
+      connector,
+      result,
       conversation_id: ctx.conversation_id,
     });
 

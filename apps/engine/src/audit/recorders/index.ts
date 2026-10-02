@@ -19,6 +19,7 @@ export {
   recordConnectorDiscovered,
   recordConnectorDraftCredentialRejected,
   recordConnectorInvoked,
+  recordConnectorProbed,
   recordConnectorSavedOverride,
   recordConnectorUpdated,
 } from "./connector.ts";
