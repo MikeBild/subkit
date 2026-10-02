@@ -145,6 +145,11 @@ export function WorkflowGateDiagnosis({
   const diagnosis = useQuery({
     ...workflowDiagnosisQuery(workflowId, environment),
     enabled: canRead && environment !== null,
+    // The panel around this block already made the read and repeats it on its
+    // own interval. Reading again on mount would put a FAILED read back to
+    // "pending", which takes the panel's state away, which unmounts this
+    // block, which mounts it again when the read fails — without end.
+    refetchOnMount: false,
   });
   if (!canRead || environment === null) return null;
   if (diagnosis.error)
