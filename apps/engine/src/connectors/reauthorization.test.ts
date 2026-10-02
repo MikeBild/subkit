@@ -11,18 +11,28 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { registerTenantStateCache } from "../operator/tenant-state.ts";
 import { now } from "../utils/clock.ts";
 import {
   persistCircuitState,
   recordCircuitFailure,
   resetCircuitBreaker,
 } from "./circuit-breaker.ts";
-import { completeConnectorReauthorization } from "./reauth.ts";
+import {
+  completeConnectorReauthorization,
+  flagConnectorAuthFailure,
+  settleConnectorReauthorization,
+} from "./reauth.ts";
 
 let testDb: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 let sequence = 0;
+// Every tenant whose cached views were dropped, in order.
+const invalidated: Array<string | undefined> = [];
+registerTenantStateCache((tenant) => {
+  invalidated.push(tenant);
+});
 
 beforeAll(async () => {
   testDb = await createTestDb("connector_reauthorization");
@@ -253,5 +263,64 @@ describe("completeConnectorReauthorization", () => {
     const row = await read(connector.id);
     expect(row.needs_reauth).toBe(true);
     expect(row.circuit_state).toBe("open");
+  });
+});
+
+describe("the tenant's cached views", () => {
+  test("are dropped when a connector starts or stops needing a sign-in", async () => {
+    const connector = await seedConnector();
+    const flagged = {
+      id: connector.id,
+      tenant_id: tenantId,
+      slug: connector.slug,
+      auth_type: "oauth2" as const,
+    };
+    invalidated.length = 0;
+    await flagConnectorAuthFailure(testDb.db, flagged, { reason: "credential rejected" });
+    expect(invalidated).toEqual([tenantId]);
+    // Hammering a flagged connector is no second edge.
+    await flagConnectorAuthFailure(testDb.db, flagged, { reason: "credential rejected" });
+    expect(invalidated).toEqual([tenantId]);
+
+    await completeConnectorReauthorization(testDb.db, {
+      tenant_id: tenantId,
+      connector_id: connector.id,
+    });
+    expect(invalidated).toEqual([tenantId, tenantId]);
+    // Nothing left to resolve: nothing to drop.
+    await completeConnectorReauthorization(testDb.db, {
+      tenant_id: tenantId,
+      connector_id: connector.id,
+    });
+    expect(invalidated).toEqual([tenantId, tenantId]);
+  });
+
+  test("are dropped when only the breaker was reset", async () => {
+    const connector = await seedConnector(OPEN);
+    invalidated.length = 0;
+    await completeConnectorReauthorization(testDb.db, {
+      tenant_id: tenantId,
+      connector_id: connector.id,
+    });
+    expect(invalidated).toEqual([tenantId]);
+  });
+});
+
+describe("settleConnectorReauthorization", () => {
+  test("resolves like the funnel, and never rejects", async () => {
+    const connector = await seedConnector({ ...OPEN, needs_reauth: true });
+    await settleConnectorReauthorization(testDb.db, {
+      tenant_id: tenantId,
+      connector_id: connector.id,
+    });
+    expect((await read(connector.id)).needs_reauth).toBe(false);
+    // A database that cannot be reached: the credential is stored by then, so
+    // the flow still succeeds and the failure is the log's.
+    const broken = {
+      execute: () => Promise.reject(new Error("connection refused")),
+    } as unknown as typeof testDb.db;
+    await expect(
+      settleConnectorReauthorization(broken, { tenant_id: tenantId, connector_id: connector.id }),
+    ).resolves.toBeUndefined();
   });
 });

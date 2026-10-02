@@ -34,8 +34,8 @@ import { IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
-  completeConnectorReauthorization,
   consumeSetupGrant,
+  settleConnectorReauthorization,
   validateSetupGrant,
 } from "../../../connectors/index.ts";
 import {
@@ -614,7 +614,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
       );
 
-      await completeConnectorReauthorization(db, {
+      await settleConnectorReauthorization(db, {
         tenant_id,
         connector_id,
         actor_id: created_by_actor_id,

@@ -62,9 +62,9 @@ import {
   recordConnectorMcpAuthorized,
 } from "../../../audit/index.ts";
 import {
-  completeConnectorReauthorization,
   type OAuthFlowOrigin,
   oauthFlowOrigin,
+  settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
 import { mcpOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -583,7 +583,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       await clearMcpConnectorFailure(db, server);
       // And resolve what a fresh authorization resolves for any connector:
       // the sign-in flag and the circuit breaker. Not the on/off switch.
-      await completeConnectorReauthorization(db, {
+      await settleConnectorReauthorization(db, {
         tenant_id,
         connector_id,
         actor_id: started_by_actor_id,

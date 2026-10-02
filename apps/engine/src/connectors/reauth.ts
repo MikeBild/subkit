@@ -28,6 +28,7 @@ import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { logger } from "../logging/logger.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import {
   type ConnectorAuthFailedPayload,
   ConnectorAuthFailedPayloadSchema,
@@ -109,6 +110,9 @@ export async function clearConnectorReauth(
     RETURNING id
   `);
   if (rows.rows.length === 0) return;
+  // A connector no longer needing a sign-in is an attention entry leaving:
+  // the cached views of this tenant are stale from here on.
+  invalidateTenantState(tenant_id);
   logger.info({
     module: "connectors",
     action: "connector.reauth.cleared",
@@ -172,6 +176,8 @@ export async function completeConnectorReauthorization(
   }
   const previous = await resetCircuitBreaker(db, p.tenant_id, p.connector_id);
   if (!previous) return;
+  // An open breaker reads as "degraded" in the reconciled health verdict.
+  invalidateTenantState(p.tenant_id);
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -189,6 +195,29 @@ export async function completeConnectorReauthorization(
     },
     db,
   );
+}
+
+/**
+ * `completeConnectorReauthorization` for a browser flow whose credential is
+ * already stored. Never rejects: past that point the flow has succeeded, and a
+ * failure here must not turn into a page that says "nothing was stored". The
+ * flag then clears on the next call the stored credential earns
+ * (`clearReauthIfProved`), and the log says why it waited.
+ */
+export function settleConnectorReauthorization(
+  db: Db,
+  p: { tenant_id: string; connector_id: string; actor_id?: string | null },
+): Promise<void> {
+  return completeConnectorReauthorization(db, p).catch((err) => {
+    logger.warn({
+      module: "connectors",
+      action: "connector.reauthorization.incomplete",
+      msg: "credential stored but the sign-in flag / breaker could not be reset",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 }
 
 // Header names that authenticate a request whatever the connector's own
@@ -440,7 +469,7 @@ export async function flagConnectorAuthFailure(
   connector: Pick<ConnectorView, "id" | "tenant_id" | "slug" | "auth_type">,
   opts: { reason: string; workflow_id?: string | null },
 ): Promise<{ transitioned: boolean }> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const { transitioned } = await markConnectorNeedsReauth(
       tx,
       connector.tenant_id,
@@ -460,4 +489,8 @@ export async function flagConnectorAuthFailure(
     }
     return { transitioned };
   });
+  // After the commit: a connector newly needing a sign-in is an attention
+  // entry appearing.
+  if (result.transitioned) invalidateTenantState(connector.tenant_id);
+  return result;
 }
