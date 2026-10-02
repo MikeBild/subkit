@@ -22,6 +22,20 @@ export {
   type FileLinkResourceType,
   MAX_INLINE_BYTES,
 } from "./files-constants.ts";
+export {
+  INVOKE_ENVIRONMENTS,
+  INVOKE_HEADER_NAMES,
+  INVOKE_RUN_PATH,
+  INVOKE_SNIPPET_LANGUAGES,
+  type InvokeEnvironment,
+  type InvokeSnippetLanguage,
+  type InvokeSnippetOptions,
+  invokeRunBody,
+  invokeRunUrl,
+  isInvokeEnvironment,
+  isInvokeSnippetLanguage,
+  renderInvokeSnippet,
+} from "./invoke-snippet.ts";
 export { type JsonlTrimOptions, trimJsonlFile } from "./jsonl-ring.ts";
 export type { LlmsPage, RenderLlmsIndexOptions } from "./llms-index.ts";
 export { OPTIONAL_PATHS, renderLlmsIndex } from "./llms-index.ts";

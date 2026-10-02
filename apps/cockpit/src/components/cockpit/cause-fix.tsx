@@ -29,6 +29,7 @@ export function CauseFix({
   guidance,
   since,
   remedy,
+  remedyVariant = "default",
   more,
   actions,
   testId = "cause-fix",
@@ -38,6 +39,11 @@ export function CauseFix({
   guidance?: string | null;
   since?: string | null;
   remedy?: CauseFixAction | null;
+  /**
+   * How the remedy weighs on its surface. Filled where it is the surface's one
+   * primary act (a run's sheet); `outline` on a page that already has one.
+   */
+  remedyVariant?: "default" | "outline";
   more?: readonly { label: string; href: string }[];
   /** Further acts beside the remedy (a rerun) — each brings its own confirmation. */
   actions?: ReactNode;
@@ -80,14 +86,19 @@ export function CauseFix({
       {remedy || actions || (more && more.length > 0) ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
           {remedy?.href ? (
-            <Button asChild size="sm">
+            <Button asChild size="sm" variant={remedyVariant}>
               <a href={absolute(remedy.href)} data-testid={`${testId}-remedy`}>
                 {remedy.label}
                 <ArrowRight data-icon="inline-end" />
               </a>
             </Button>
           ) : remedy?.onClick ? (
-            <Button size="sm" onClick={remedy.onClick} data-testid={`${testId}-remedy`}>
+            <Button
+              size="sm"
+              variant={remedyVariant}
+              onClick={remedy.onClick}
+              data-testid={`${testId}-remedy`}
+            >
               {remedy.label}
             </Button>
           ) : null}

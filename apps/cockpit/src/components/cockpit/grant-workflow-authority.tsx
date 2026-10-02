@@ -57,6 +57,7 @@ export function GrantWorkflowAuthority({
   triggerLabel,
   triggerVariant = "outline",
   triggerTestId = "authority-grant-open",
+  openRequest,
 }: {
   workflowId: string;
   versionId: string;
@@ -73,6 +74,12 @@ export function GrantWorkflowAuthority({
   triggerLabel?: string;
   triggerVariant?: "default" | "outline";
   triggerTestId?: string;
+  /**
+   * Opens the dialog from outside its own trigger: every change of this
+   * number is one request to open. With it the dialog renders no trigger of
+   * its own — the caller owns the buttons, so one dialog can answer several.
+   */
+  openRequest?: number;
 }) {
   const { t, dateTime, locale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -455,13 +462,27 @@ export function GrantWorkflowAuthority({
       prepare.reset();
     }
   }
+  const requested = useRef(openRequest);
+  // A request is the number changing, nothing else; openDialog is this render's own.
+  useEffect(() => {
+    if (openRequest === undefined || openRequest === requested.current) return;
+    requested.current = openRequest;
+    if (!disabled) openDialog(true);
+  }, [openRequest]);
   return (
     <Dialog open={open} onOpenChange={openDialog}>
-      <DialogTrigger asChild>
-        <Button variant={triggerVariant} size="sm" disabled={disabled} data-testid={triggerTestId}>
-          {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
-        </Button>
-      </DialogTrigger>
+      {openRequest === undefined && (
+        <DialogTrigger asChild>
+          <Button
+            variant={triggerVariant}
+            size="sm"
+            disabled={disabled}
+            data-testid={triggerTestId}
+          >
+            {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent
         closeLabel={t("common.close")}
         className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-2xl"

@@ -1,5 +1,12 @@
 import { exitCodeFor, reportCommandError } from "@cli-core/errors";
 import { emitGroupedList, emitList, printJson } from "@cli-core/format";
+import {
+  INVOKE_ENVIRONMENTS,
+  INVOKE_SNIPPET_LANGUAGES,
+  isInvokeEnvironment,
+  isInvokeSnippetLanguage,
+  renderInvokeSnippet,
+} from "@shared/invoke-snippet.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -172,80 +179,6 @@ export async function resolveWorkflowIdOrSlug(
   );
 }
 
-type SnippetLang = "curl" | "node" | "python";
-
-/** Render an authenticated, copy-paste snippet that runs a saved
- *  workflow against the engine's canonical `POST /v1/executions`
- *  surface (the same route `sk workflows run` posts to — see
- *  `client.runExecution`). The API key is always a `$SK_API_KEY`
- *  placeholder; the real key is never printed. The engine URL, tenant
- *  header, and workflow id are real so the snippet is ready to paste. */
-function renderInvokeSnippet(opts: {
-  lang: SnippetLang;
-  engineUrl: string;
-  workflowId: string;
-  tenant: string | null;
-}): string {
-  const { lang, engineUrl, workflowId, tenant } = opts;
-  const url = `${engineUrl.replace(/\/+$/, "")}/v1/executions`;
-  const body = {
-    source: "saved",
-    workflow_id: workflowId,
-    input: {},
-  };
-
-  if (lang === "curl") {
-    const lines = [`curl -sS -X POST '${url}' \\`, `  -H 'authorization: Bearer '"$SK_API_KEY" \\`];
-    if (tenant) lines.push(`  -H 'x-subkit-tenant: ${tenant}' \\`);
-    lines.push(`  -H 'content-type: application/json' \\`);
-    lines.push(`  -d '${JSON.stringify(body)}'`);
-    return lines.join("\n");
-  }
-
-  if (lang === "node") {
-    const headers: Record<string, string> = {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted verbatim into the user's Node snippet as a template-literal placeholder.
-      authorization: "Bearer ${process.env.SK_API_KEY}",
-      "content-type": "application/json",
-    };
-    if (tenant) headers["x-subkit-tenant"] = tenant;
-    const headerLines = Object.entries(headers)
-      .map(([k, v]) => `      "${k}": \`${v}\`,`)
-      .join("\n");
-    return [
-      `const res = await fetch("${url}", {`,
-      `  method: "POST",`,
-      `  headers: {`,
-      headerLines,
-      `  },`,
-      `  body: JSON.stringify(${JSON.stringify(body, null, 2).replace(/\n/g, "\n  ")}),`,
-      `});`,
-      `const result = await res.json();`,
-      `console.log(result);`,
-    ].join("\n");
-  }
-
-  // python (requests)
-  const headerEntries: string[] = [
-    `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
-    `        "content-type": "application/json",`,
-  ];
-  if (tenant) headerEntries.push(`        "x-subkit-tenant": "${tenant}",`);
-  return [
-    `import os`,
-    `import requests`,
-    ``,
-    `res = requests.post(`,
-    `    "${url}",`,
-    `    headers={`,
-    ...headerEntries,
-    `    },`,
-    `    json=${JSON.stringify(body)},`,
-    `)`,
-    `print(res.json())`,
-  ].join("\n");
-}
-
 const invokeSnippetCommand = defineCommand({
   meta: {
     name: "invoke-snippet",
@@ -259,25 +192,41 @@ const invokeSnippetCommand = defineCommand({
       description: "Snippet language: curl (default), node, or python",
       default: "curl",
     },
+    environment: {
+      type: "string",
+      description:
+        "Where the call runs: prod (default) or dev. Printed as the x-subkit-environment header.",
+      default: "prod",
+    },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const profile = resolveProfile();
-    const lang = String(args.lang) as SnippetLang;
-    if (!["curl", "node", "python"].includes(lang)) {
-      process.stderr.write(`invalid --lang '${lang}' (expected curl|node|python)\n`);
+    const lang = String(args.lang);
+    if (!isInvokeSnippetLanguage(lang)) {
+      process.stderr.write(
+        `invalid --lang '${lang}' (expected ${INVOKE_SNIPPET_LANGUAGES.join("|")})\n`,
+      );
+      process.exit(1);
+    }
+    const environment = String(args.environment);
+    if (!isInvokeEnvironment(environment)) {
+      process.stderr.write(
+        `invalid --environment '${environment}' (expected ${INVOKE_ENVIRONMENTS.join("|")})\n`,
+      );
       process.exit(1);
     }
     const workflowId = String(args.id);
     const engineUrl = profile.engine_url;
-    const tenant = profile.active_tenant_id ?? null;
-    const snippet = renderInvokeSnippet({ lang, engineUrl, workflowId, tenant });
+    // The one renderer the engine's workflow page uses too — the same inputs
+    // give the same bytes on both surfaces.
+    const snippet = renderInvokeSnippet({ lang, engineUrl, workflowId, environment });
 
     if (args.json) {
       printJson({
         workflow_id: workflowId,
         engine_url: engineUrl,
-        ...(tenant ? { tenant } : {}),
+        environment,
         route: "POST /v1/executions",
         lang,
         snippet,
@@ -287,6 +236,15 @@ const invokeSnippetCommand = defineCommand({
 
     process.stdout.write(`${pc.bold("Run this workflow from your app:")}\n\n`);
     process.stdout.write(`${snippet}\n\n`);
+    // The choice is stated, not implied: without the header the engine runs
+    // in development, which is not where a pasted production call belongs.
+    process.stdout.write(
+      `${pc.dim(
+        environment === "prod"
+          ? "Runs in production. Pass --environment dev to target development."
+          : "Runs in development. Pass --environment prod to target production.",
+      )}\n`,
+    );
     process.stdout.write(
       `${pc.dim("Set SK_API_KEY in your environment; the snippet never embeds your key in plaintext.")}\n`,
     );
