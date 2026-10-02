@@ -8,7 +8,7 @@
 //   the automation panel's own action, opening the approval where the reader
 //   stands. It used to be "Freigabe prüfen", a link that only scrolled to a
 //   section whose button had the same name — two signals and no act;
-// - a workflow whose development Gmail lost its sign-in → no authority review
+// - a workflow whose development Mail lost its sign-in → no authority review
 //   on page open (the run dialog asks that), so its state decides as usual;
 // - a workflow whose newest run failed                  → "Lauf untersuchen";
 // - a workflow with nothing wrong                       → "Im Chat ändern", a
@@ -23,7 +23,7 @@ const UNAVAILABLE = "e3b5d7f9-1a2c-4e46-8b60-5d7f9a1c3e28";
 const FAILED = "4f8a1c3e-6b2d-4a95-9e07-b1d3f5a7c942";
 const PLAIN = "c6d8e0f2-3a4b-4c5d-9e6f-7a8b9c0d1e53";
 const VERSION = "2b4d6f81-9a3c-4e5d-b7f0-1c3e5a7b9d64";
-const GMAIL_DEV = "8e0a2c4f-6b1d-4f37-a95c-3e5a7c9b1d76";
+const MAIL_DEV = "8e0a2c4f-6b1d-4f37-a95c-3e5a7c9b1d76";
 const EXPIRED_CONNECTOR = "5c7e9a1b-3d2f-4b68-8a04-6e8c0a2d4f87";
 const HEALTHY_CONNECTOR = "9d1f3b5c-7e4a-4c26-b813-2f4b6d8e0a98";
 const FAILED_RUN = "1a3c5e7f-9b2d-4f48-a6c0-8e0a2c4e6b19";
@@ -32,7 +32,7 @@ const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 const NAMES = {
-  [HELD]: "watchkit-finding-triage",
+  [HELD]: "finding-triage",
   [UNAVAILABLE]: "Tagesbericht versenden",
   [FAILED]: "Rechnungen abgleichen",
   [PLAIN]: "Wochenbericht",
@@ -61,13 +61,13 @@ function connectorRecord(id, expired) {
   return {
     id,
     tenant_id: id,
-    slug: expired ? "gmail" : "lager-api",
-    display_name: expired ? "Gmail" : "Lager-API",
+    slug: expired ? "mail" : "lager-api",
+    display_name: expired ? "Mail" : "Lager-API",
     description: null,
     driver: "http",
     environment: "dev",
     auth_type: expired ? "oauth2" : "none",
-    base_url: expired ? "https://gmail.googleapis.com" : "https://lager.example.org/api",
+    base_url: expired ? "https://mail.example.com" : "https://lager.example.org/api",
     dsn: null,
     config: {},
     operator_quirks: {},
@@ -107,9 +107,9 @@ function preview(workflowId, environment) {
       ? [
           {
             step_id: "send",
-            connector_id: GMAIL_DEV,
-            connector_slug: "gmail",
-            connector_name: "Gmail",
+            connector_id: MAIL_DEV,
+            connector_slug: "mail",
+            connector_name: "Mail",
             reason: "needs_reauth",
           },
         ]
@@ -121,6 +121,7 @@ function preview(workflowId, environment) {
       valid_until: "2026-08-11T09:00:00.000Z",
       max_runs: 1,
     },
+    suggested_bounds_basis: { kind: "manual" },
   };
 }
 
@@ -169,7 +170,7 @@ function detailApi(state) {
                   {
                     inbound_hook_id: "0c2e4a6b-8d1f-4e37-9a50-b2d4f6a8c015",
                     workflow_id: id,
-                    slug: "watchkit-findings",
+                    slug: "findings-inbox",
                     state: "approval_required",
                     ready: false,
                     environment: "prod",
@@ -273,7 +274,7 @@ export async function verifyDetailAction(page, stand, localeName, capture) {
     await page.getByTestId("authority-grant-cancel").click();
     await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
 
-    // ── A workflow whose development Gmail must be reconnected ───────────────
+    // ── A workflow whose development Mail must be reconnected ───────────────
     // The page does not run the authority review to choose its action: that
     // review is a full resolution, asked for when the run dialog opens (where
     // development is then offered disabled) and when a reviewer opens the

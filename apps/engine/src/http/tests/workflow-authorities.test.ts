@@ -987,3 +987,70 @@ test("automation-status shows hooks and refusal reasons only to readers of each"
   // A deactivated hook receives nothing, so it holds nothing.
   expect(full.map((hook) => hook.admission_hold)).toEqual([hold, null]);
 });
+
+test("a hook-started workflow is offered thirty days sized from its recent deliveries", async () => {
+  const f = await fixture();
+  const [hook] = await ctx.db
+    .insert(webhooksInbound)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id: f.workflow.id,
+      slug: `${f.workflow.slug}-hook`,
+      verifier: "standard",
+      secret_ciphertext: Buffer.alloc(1),
+      secret_iv: Buffer.alloc(1),
+      secret_auth_tag: Buffer.alloc(1),
+    })
+    .returning();
+  if (!hook) throw new Error("missing hook fixture");
+  const refusal = (id: string, age: string, reason: string) => ({
+    id,
+    ts: sql`clock_timestamp() - ${age}::interval`,
+    tenant_id: ctx.tenantId,
+    actor_type: "system",
+    action: "webhook.inbound.denied",
+    resource_type: "webhook_inbound",
+    resource_id: hook.id,
+    result: "denied",
+    reason,
+  });
+  await ctx.db.insert(auditLog).values([
+    refusal("00000000-0000-4000-8000-00000000b001", "1 hour", "execution_authority_required"),
+    refusal("00000000-0000-4000-8000-00000000b002", "2 days", "execution_authority_unavailable"),
+    // Not a call an approval would cover: never authentic, or too long ago.
+    refusal("00000000-0000-4000-8000-00000000b003", "3 hours", "signature_mismatch"),
+    refusal("00000000-0000-4000-8000-00000000b004", "40 days", "execution_authority_required"),
+  ]);
+  const bounds = async (environment: "dev" | "prod") => {
+    const res = await app.request(`${f.previewPath}?environment=${environment}`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      suggested_bounds: { valid_from: string; valid_until: string; max_runs: number };
+      suggested_bounds_basis: Record<string, unknown>;
+    };
+  };
+  const prod = await bounds("prod");
+  expect(
+    Date.parse(prod.suggested_bounds.valid_until) - Date.parse(prod.suggested_bounds.valid_from),
+  ).toBe(30 * 24 * 60 * 60_000);
+  expect(prod.suggested_bounds.max_runs).toBe(100);
+  // The bounds stay exactly what a grant accepts; the explanation sits beside them.
+  expect(Object.keys(prod.suggested_bounds).sort()).toEqual([
+    "max_runs",
+    "valid_from",
+    "valid_until",
+  ]);
+  expect(prod.suggested_bounds_basis).toEqual({
+    kind: "hook",
+    scheduled_runs: 0,
+    observed_deliveries: 2,
+    observed_days: 14,
+    minimum_applied: true,
+  });
+  // Hooks deliver to production only: a development review keeps one run.
+  const dev = await bounds("dev");
+  expect(dev.suggested_bounds.max_runs).toBe(1);
+  expect(dev.suggested_bounds_basis).toEqual({ kind: "manual" });
+});

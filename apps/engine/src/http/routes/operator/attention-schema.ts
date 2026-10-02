@@ -28,7 +28,7 @@ const AttentionItem = z
         "Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>.",
       ),
     class: z.enum(["stopped", "failing", "decide"]),
-    severity: z.enum(["critical", "urgent"]),
+    severity: z.enum(["critical", "urgent", "notice"]),
     kind: z.string(),
     subject: z
       .object({
@@ -44,7 +44,15 @@ const AttentionItem = z
         name: z.string().nullable().describe("The webhook's slug; null for a schedule."),
       })
       .nullable()
-      .describe("What a held workflow's refused starts come from. Null unless held."),
+      .describe(
+        "What starts the workflow. Null unless it is held or the item is about its approval.",
+      ),
+    approval: z
+      .object({ version: z.number().int(), environment: z.enum(["dev", "prod"]) })
+      .optional()
+      .describe(
+        "The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring.",
+      ),
     // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
     // `allOf` and the generated client loses the null.
     cause_class: z.enum(PREVIEW_CLASSIFICATIONS).nullable(),

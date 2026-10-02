@@ -577,6 +577,9 @@ export function attentionLine(item: AttentionItem): string {
     item.counts.failures ? plural(item.counts.failures, "failure", "failures") : null,
     item.counts.patches ? plural(item.counts.patches, "fix", "fixes") : null,
     item.counts.skills ? plural(item.counts.skills, "skill proposal", "skill proposals") : null,
+    // Which version waits, and where it runs.
+    item.approval ? `v${item.approval.version}` : null,
+    item.approval ? item.approval.environment : null,
   ].filter((part): part is string => part !== null);
   const tail = counts.length > 0 ? ` (${counts.join(", ")})` : "";
   const detail = item.detail ? ` — ${item.detail}` : "";

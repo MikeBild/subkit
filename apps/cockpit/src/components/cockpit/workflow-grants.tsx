@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -148,11 +149,10 @@ function RevokeGrant({ authority, testId }: { authority: WorkflowAuthority; test
         { method: "POST" },
       ),
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ["workflow-authorities", authority.workflow_id] });
-      await client.invalidateQueries({
-        queryKey: ["workflow-automation-status", authority.workflow_id],
-      });
-      await client.invalidateQueries({ queryKey: ["workflow-invocation", authority.workflow_id] });
+      // A revoked approval changes the verdict, the diagnosis and what the
+      // call block promises — and the attention list, once a start is refused.
+      await invalidateWorkflowAutomation(client, authority.workflow_id);
+      await client.invalidateQueries({ queryKey: ["attention"] });
       setOpen(false);
     },
   });

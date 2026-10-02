@@ -15,6 +15,7 @@ import {
   flattenInputFields,
   type InputField,
   inputFields,
+  inputForm,
   inputItemTypeKey,
   inputSampleText,
   inputTypeKey,
@@ -149,16 +150,27 @@ export function WorkflowInputOutput({
       />
     );
   const { input, output } = query.data;
-  const inputs = inputFields(input.schema);
+  const form = inputForm(input.schema);
+  const inputs = form.kind === "fields" ? form.fields : [];
   const outputs = inputFields(output.schema);
   return (
     <div className="grid gap-4 lg:grid-cols-2" data-testid="workflow-io">
       <section className={card} data-testid="workflow-input">
         <h2 className="text-sm font-semibold">{t("input.title")}</h2>
-        {inputs.length === 0 ? (
+        {form.kind === "none" ? (
           <p className={note} data-testid="workflow-input-none">
             {t("input.none")}
           </p>
+        ) : form.kind === "whole" ? (
+          // A schema that names no fields still takes input: say what, and where.
+          <>
+            <p className={note} data-testid="workflow-input-whole">
+              {t("input.whole", { type: t(inputTypeKey(form.field)) })}
+            </p>
+            <p className={note} data-testid="workflow-input-where">
+              {t("input.where")}
+            </p>
+          </>
         ) : (
           <>
             <FieldTable fields={inputs} withRequired testId="workflow-input-table" />

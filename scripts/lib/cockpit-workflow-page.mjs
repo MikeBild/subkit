@@ -20,10 +20,12 @@
 
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
-const WORKFLOW = "d2f4a6c8-1b3d-4e5f-8a7b-9c0d1e2f3a41";
+export const WORKFLOW = "d2f4a6c8-1b3d-4e5f-8a7b-9c0d1e2f3a41";
 const VERSION = "7e9a1c3b-5d2f-4b46-9e80-1a3c5e7f9b52";
 const DRAFT = "3b5d7f91-2a4c-4e68-b0c2-4e6a8c0e2f63";
 const SCHEDULE = "9c1e3a5b-7d4f-4a26-8b13-6f8a0c2e4d74";
+const DEV_SCHEDULE = "2e4a6c8d-1f3b-4d57-9a02-7b9d1f3a5c16";
+const REPAIR_CANDIDATE = "a8c0e2f4-6b1d-4f39-8c5e-0d2f4a6c8e27";
 const HOOK = "5a7c9e1f-3b2d-4f48-a6c0-8e0a2c4e6b85";
 const API_CONNECTOR = "1f3b5d7c-9e4a-4c26-b813-2f4b6d8e0a96";
 const MAIL_CONNECTOR = "8d0f2b4c-6e1a-4d37-9a5c-3e5a7c9b1da7";
@@ -35,7 +37,7 @@ const CREATOR = "2a4c6e80-1b3d-4f59-a7c1-5e7a9c1b3df2";
 const TENANT = "0c2e4a6b-8d1f-4e37-9a50-b2d4f6a8c003";
 const PUBLIC = "https://engine.example.org";
 const SLUG = "example-api-demo-fetch";
-const HOOK_SLUG = "upraft-auth-notify";
+const HOOK_SLUG = "auth-notify";
 
 const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -63,7 +65,9 @@ function record(state) {
     output_schema: OUTPUT_SCHEMA,
     trigger: null,
     schedule: null,
-    webhooks_active: state.scenario === "manual" ? 0 : 1,
+    // The number of ACTIVE hooks: a switched-off hook is not one.
+    webhooks_active:
+      state.scenario === "manual" || state.scenario === "paused" || state.scheduleOnly ? 0 : 1,
     effective_trigger: {
       kind: state.scenario === "manual" ? "request" : "webhook",
       source: state.scenario === "manual" ? "default" : "binding",
@@ -77,8 +81,13 @@ function record(state) {
         path: "/users",
         connector_id: API_CONNECTOR,
         query: { limit: 10 },
-        // A credential-shaped header: its presence is shown, never its value.
-        headers: { Accept: "application/json", Authorization: "Bearer plain-secret-token" },
+        // Two credential-shaped headers. A literal secret pasted into the
+        // definition is masked; a reference is configuration and shown as stored.
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer plain-secret-token",
+          "X-Api-Key": "{{credentials.api_key}}",
+        },
       },
       {
         id: "check_status",
@@ -99,7 +108,7 @@ function record(state) {
         id: "send_email",
         kind: "request",
         method: "POST",
-        path: "/gmail/v1/users/me/messages/send",
+        path: "/v1/messages/send",
         connector_id: MAIL_CONNECTOR,
         body: { to: "{{recipient}}", subject: "Bericht" },
       },
@@ -191,7 +200,7 @@ function invocation(state) {
             url: address ? `${address}/v1/hooks/${HOOK_SLUG}` : null,
             verifier: "hmac",
             signed: true,
-            signing_headers: ["x-upraft-signature", "x-upraft-delivery", "x-upraft-timestamp"],
+            signing_headers: ["x-example-signature", "x-example-delivery", "x-example-timestamp"],
             hmac: {
               algorithm: "sha256",
               encoding: "hex",
@@ -207,18 +216,19 @@ function invocation(state) {
       tool_name: `wf_${SLUG}`,
       fallback: { tool_name: "run_workflow", arguments: { workflow: SLUG, input: SAMPLE } },
     },
-    schedules: bound
-      ? [
-          {
-            cron: "0 7 * * *",
-            timezone: "Europe/Berlin",
-            environment: "prod",
-            input: { report: "daily" },
-            state: state.scenario === "paused" ? "paused" : approved ? "active" : "held",
-            next_fire_at: approved ? "2099-01-01T06:00:00.000Z" : null,
-          },
-        ]
-      : [],
+    schedules:
+      bound && !state.hookOnly
+        ? [
+            {
+              cron: "0 7 * * *",
+              timezone: "Europe/Berlin",
+              environment: "prod",
+              input: { report: "daily" },
+              state: state.scenario === "paused" ? "paused" : approved ? "active" : "held",
+              next_fire_at: approved ? "2099-01-01T06:00:00.000Z" : null,
+            },
+          ]
+        : [],
     cli: {
       command: `sk workflows run ${SLUG} --input '${JSON.stringify(SAMPLE)}'`,
       environment: "dev",
@@ -278,7 +288,7 @@ function authority(overrides = {}) {
           request_digest: "1".repeat(64),
           configuration_digest: "2".repeat(64),
           credential_binding_digest: "3".repeat(64),
-          target: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+          target: "https://mail.example.com/v1/messages/send",
           rewrites_target: false,
           operation: "POST",
           effect: "write",
@@ -298,6 +308,9 @@ function authorities(state) {
     ready_for_new_run: false,
   });
   const dev = authority({ id: DEV_GRANT, execution_environment: "dev" });
+  // Production approved while a development schedule still waits: the
+  // development approval is the one that does not exist yet.
+  if (state.devPending) return [authority(), revoked];
   if (state.scenario === "approved" || state.scenario === "repair")
     return [
       authority(state.expiring ? { remaining_runs: 1, reserved_runs: 29 } : {}),
@@ -318,38 +331,41 @@ const ROW_STATE = {
 function automationStatus(state) {
   if (state.scenario === "manual") return { schedules: [], inbound_hooks: [] };
   const rowState = ROW_STATE[state.scenario];
+  const row = (schedule_id, environment) => ({
+    schedule_id,
+    workflow_id: WORKFLOW,
+    state: environment === "dev" && state.devPending ? "approval_required" : rowState,
+    ready: rowState === "authorized" && !(environment === "dev" && state.devPending),
+    cron: "0 7 * * *",
+    timezone: "Europe/Berlin",
+    environment,
+    next_run_at: null,
+  });
   return {
-    schedules: [
-      {
-        schedule_id: SCHEDULE,
-        workflow_id: WORKFLOW,
-        state: rowState,
-        ready: rowState === "authorized",
-        cron: "0 7 * * *",
-        timezone: "Europe/Berlin",
-        environment: "prod",
-        next_run_at: null,
-      },
-    ],
-    inbound_hooks: [
-      {
-        inbound_hook_id: HOOK,
-        workflow_id: WORKFLOW,
-        slug: HOOK_SLUG,
-        state: rowState,
-        ready: rowState === "authorized",
-        environment: "prod",
-        admission_hold:
-          state.scenario === "grant"
-            ? {
-                reason_code: "execution_authority_required",
-                observed_at: "2026-08-10T08:30:00.000Z",
-              }
-            : null,
-        last_refused_at: null,
-        last_refused_reason: null,
-      },
-    ],
+    schedules: state.hookOnly
+      ? []
+      : [row(SCHEDULE, "prod"), ...(state.devSchedule ? [row(DEV_SCHEDULE, "dev")] : [])],
+    inbound_hooks: state.scheduleOnly
+      ? []
+      : [
+          {
+            inbound_hook_id: HOOK,
+            workflow_id: WORKFLOW,
+            slug: HOOK_SLUG,
+            state: rowState,
+            ready: rowState === "authorized",
+            environment: "prod",
+            admission_hold:
+              state.scenario === "grant"
+                ? {
+                    reason_code: "execution_authority_required",
+                    observed_at: "2026-08-10T08:30:00.000Z",
+                  }
+                : null,
+            last_refused_at: null,
+            last_refused_reason: null,
+          },
+        ],
   };
 }
 
@@ -359,8 +375,17 @@ function diagnosis(state) {
     workflow_version_id: state.scenario === "apply" ? DRAFT : VERSION,
     environment: "prod",
     is_current: state.scenario !== "apply",
-    diagnoses:
-      state.scenario === "repair"
+    diagnoses: state.trialNeeded
+      ? // The gate has not seen what the mail step sends: a trial run shows it.
+        [
+          {
+            code: "report_inspection_missing",
+            subject: { step_id: "send_email" },
+            evidence: {},
+            remedy_kind: "prepare",
+          },
+        ]
+      : state.scenario === "repair"
         ? [
             {
               code: "execution_authority_changed",
@@ -381,8 +406,50 @@ function diagnosis(state) {
   };
 }
 
-function preview(environment, versionId) {
+/**
+ * The review as the engine answers it. The suggestion follows what starts the
+ * workflow in the reviewed environment: a production review of a workflow
+ * with a daily schedule and a hook gets thirty days and both added up — a
+ * development review, where neither runs, the one-run default.
+ */
+function preview(environment, versionId, state) {
   const from = Date.now();
+  const started = state.scenario !== "manual" && (environment === "prod" || state.devSchedule);
+  const refused = state.unsupported || state.scenario === "repair";
+  const hooked = environment === "prod" && !state.scheduleOnly;
+  const scheduled = !state.hookOnly && started ? 30 : 0;
+  if (started)
+    return {
+      manifest: {
+        schema_version: 1,
+        workflow_id: WORKFLOW,
+        workflow_version_id: versionId,
+        execution_environment: environment,
+        effects: [],
+        issues: refused ? [{ step_id: "send_email", code: "dynamic_request" }] : [],
+      },
+      digest: "c".repeat(64),
+      eligible_for_repeated_runs: !refused,
+      preparation_required: Boolean(state.trialNeeded),
+      unavailable_steps: refused ? ["send_email"] : [],
+      execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      schedules: [],
+      suggested_bounds: {
+        valid_from: new Date(from).toISOString(),
+        valid_until: new Date(from + 30 * 86_400_000).toISOString(),
+        // 42 calls in 14 days, projected over 30 and doubled, plus the schedule's 30.
+        max_runs: scheduled + (hooked ? 180 : 0),
+      },
+      suggested_bounds_basis: hooked
+        ? {
+            kind: "hook",
+            scheduled_runs: scheduled,
+            observed_deliveries: 42,
+            observed_days: 14,
+            minimum_applied: false,
+          }
+        : { kind: "schedule", scheduled_runs: scheduled },
+    };
   return {
     manifest: {
       schema_version: 1,
@@ -403,18 +470,29 @@ function preview(environment, versionId) {
       valid_until: new Date(from + 86_400_000).toISOString(),
       max_runs: 1,
     },
+    suggested_bounds_basis: { kind: "manual" },
   };
 }
 
-function api(state) {
+export function api(state) {
   return async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
     if (path === `/v1/workflows/${WORKFLOW}`) return json(route, record(state));
     if (path === `/v1/workflows/${WORKFLOW}/invocation`) return json(route, invocation(state));
-    if (path === `/v1/workflows/${WORKFLOW}/draft`)
-      return json(route, { workflow_id: WORKFLOW, version_id: DRAFT, version: 10 });
+    // The version the record names as its draft: the saved change while one
+    // waits, otherwise the running version itself.
+    if (path === `/v1/workflows/${WORKFLOW}/draft`) {
+      const waiting = state.scenario === "apply";
+      return json(route, {
+        workflow_id: WORKFLOW,
+        version_id: waiting ? DRAFT : VERSION,
+        current_version_id: VERSION,
+        version: waiting ? 10 : 9,
+        definition: { name: "Example API Demo Fetch", steps: record(state).steps },
+      });
+    }
     if (path === `/v1/workflows/${WORKFLOW}/automation-status`)
       return json(route, automationStatus(state));
     if (path === `/v1/workflows/${WORKFLOW}/diagnosis`) {
@@ -435,41 +513,52 @@ function api(state) {
     );
     if (previewed) {
       state.previews += 1;
-      return json(route, preview(url.searchParams.get("environment"), previewed[1]));
+      return json(route, preview(url.searchParams.get("environment"), previewed[1], state));
+    }
+    if (/\/versions\/[^/]+\/prepare-authority$/.test(path) && request.method() === "POST") {
+      state.prepares?.push(request.postDataJSON());
+      return json(route, { prepared: true });
+    }
+    if (path === `/v1/workflows/${WORKFLOW}/boundary-proposals`)
+      return json(route, { proposals: [], unproposable: [] });
+    if (path === `/v1/workflows/${WORKFLOW}/repairs` && request.method() === "POST") {
+      state.repairs?.push(request.postDataJSON());
+      return json(route, { status: "proposed", candidate_id: REPAIR_CANDIDATE });
     }
     if (path === `/v1/schedules/${SCHEDULE}` && request.method() === "PUT") {
       state.resumed.push(request.postDataJSON());
       state.scenario = "grant";
       return json(route, { id: SCHEDULE, workflow_id: WORKFLOW, paused: false });
     }
-    if (path === "/v1/schedules")
-      return json(route, {
-        schedules:
-          state.scenario === "manual"
-            ? []
-            : [
-                {
-                  id: SCHEDULE,
-                  workflow_id: WORKFLOW,
-                  workflow_slug: SLUG,
-                  workflow_name: "Example API Demo Fetch",
-                  prepared_version_id: null,
-                  cron: "0 7 * * *",
-                  timezone: "Europe/Berlin",
-                  execution_mode: "prod",
-                  paused: state.scenario === "paused",
-                  admission_hold: null,
-                  input: { report: "daily" },
-                  created_at: "2026-06-01T08:00:00.000Z",
-                },
-              ],
-        total: state.scenario === "manual" ? 0 : 1,
+    if (path === "/v1/schedules") {
+      const schedule = (id, execution_mode) => ({
+        id,
+        workflow_id: WORKFLOW,
+        workflow_slug: SLUG,
+        workflow_name: "Example API Demo Fetch",
+        prepared_version_id: null,
+        cron: "0 7 * * *",
+        timezone: "Europe/Berlin",
+        execution_mode,
+        paused: state.scenario === "paused",
+        admission_hold: null,
+        input: { report: "daily" },
+        created_at: "2026-06-01T08:00:00.000Z",
       });
+      const schedules =
+        state.scenario === "manual" || state.hookOnly
+          ? []
+          : [
+              schedule(SCHEDULE, "prod"),
+              ...(state.devSchedule ? [schedule(DEV_SCHEDULE, "dev")] : []),
+            ];
+      return json(route, { schedules, total: schedules.length });
+    }
     if (path === "/v1/connectors")
       return json(route, {
         items: [
           { id: API_CONNECTOR, display_name: "Example API Demo" },
-          { id: MAIL_CONNECTOR, display_name: "Gmail" },
+          { id: MAIL_CONNECTOR, display_name: "Mail" },
         ],
         total: 2,
       });
@@ -479,7 +568,7 @@ function api(state) {
   };
 }
 
-const isPageApi = (url) => {
+export const isPageApi = (url) => {
   const { pathname, searchParams } = new URL(url);
   return (
     pathname.includes(WORKFLOW) ||
@@ -553,7 +642,7 @@ async function text(page, testId) {
 }
 
 /** Open the page in one scenario and wait until its state is said. */
-async function open(page, stand, state, scenario) {
+export async function open(page, stand, state, scenario) {
   state.scenario = scenario;
   await stand.visit(page, `workflows/${WORKFLOW}`);
   const panel = page.getByTestId("workflow-automation");
@@ -679,7 +768,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!hookUrl.includes(`${PUBLIC}/v1/hooks/${HOOK_SLUG}`))
       throw new Error(`${where}: the hook address reads "${hookUrl}"`);
     const signing = (await text(page, "workflow-invocation-hook-0-signing")) ?? "";
-    for (const part of ["HMAC-SHA256", "{timestamp}.{body}", "x-upraft-signature"])
+    for (const part of ["HMAC-SHA256", "{timestamp}.{body}", "x-example-signature"])
       if (!signing.includes(part)) throw new Error(`${where}: the signing line lacks ${part}`);
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.waiting)
       throw new Error(`${where}: a held hook is not shown as waiting`);
@@ -775,6 +864,14 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       .textContent();
     if (!command.includes(`sk workflows run ${SLUG} --input`))
       throw new Error(`${where}: the command reads "${command}"`);
+    // The command names no environment: the line says where it runs, and how
+    // to reach production instead.
+    const runsIn = (await text(page, "workflow-invocation-cli-environment")) ?? "";
+    if (
+      !runsIn.includes(localeName === "de" ? "Entwicklung" : "development") ||
+      !runsIn.includes("HTTP")
+    )
+      throw new Error(`${where}: the command line does not say where it runs: "${runsIn}"`);
 
     // ── Eingabe / Ausgabe ────────────────────────────────────────────────────
     const input = await page.getByTestId("workflow-input").innerText();
@@ -822,11 +919,13 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       '"limit": 10',
       "Accept: application/json",
       "Authorization: •••",
+      // A reference is what the step is configured with: byte for byte.
+      "X-Api-Key: {{credentials.api_key}}",
     ])
       if (!configuration.includes(part))
         throw new Error(`${where}: the request's configuration lacks "${part}"`);
     if (configuration.includes("plain-secret-token"))
-      throw new Error(`${where}: a credential-shaped header shows its value`);
+      throw new Error(`${where}: a literal secret in a header shows its value`);
     await page.getByTestId("workflow-step-2-toggle").click();
     // Read from the document, not from the layout: a block below the fold is
     // not laid out yet, and its text is there all the same.
@@ -986,6 +1085,19 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!applying.includes("v10") || !applying.includes("v9"))
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
     await capture("workflow-page-apply");
+
+    // ── Pausiert, only a hook: a line that says so, and no dead button ──────
+    where = at("paused hook");
+    state.hookOnly = true;
+    panel = await open(page, stand, state, "paused");
+    await expectState(page, panel, where, words, "paused", { action: null, title: words.change });
+    const hookOff = (await text(page, "workflow-automation-hook-off")) ?? "";
+    if (!/webhook/i.test(hookOff))
+      throw new Error(`${where}: a switched-off hook is not explained: "${hookOff}"`);
+    if (await panel.locator("button", { hasText: words.resume }).count())
+      throw new Error(`${where}: a hook that cannot be resumed offers resuming`);
+    await capture("workflow-page-paused-hook");
+    state.hookOnly = false;
 
     // ── Pausiert: resuming is the one act ────────────────────────────────────
     where = at("paused");

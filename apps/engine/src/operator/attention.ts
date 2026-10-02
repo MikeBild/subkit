@@ -63,7 +63,8 @@ export type AttentionSource = (typeof ATTENTION_SOURCES)[number];
 export type AttentionSourceState = "answered" | "failed" | "not_permitted";
 
 export type AttentionClass = "stopped" | "failing" | "decide";
-export type AttentionSeverity = "critical" | "urgent";
+/** `notice`: nothing waits on it yet — an approval that is about to end. */
+export type AttentionSeverity = "critical" | "urgent" | "notice";
 export type AttentionVerb =
   | "review"
   | "answer"
@@ -77,6 +78,10 @@ export const ATTENTION_REASONS = [
   "awaiting_answer",
   "execution_authority_required",
   "execution_authority_unavailable",
+  // Nothing was refused yet: the running version has no approval where its
+  // schedule or hook starts it, or the approval it has is about to end.
+  "version_awaiting_approval",
+  "approval_expiring",
   "scheduler_stale",
   "failing",
   "patch_proposed",
@@ -124,9 +129,12 @@ export interface AttentionItem {
     name: string | null;
   } | null;
   reason: AttentionReason;
-  /** What a held workflow's refused starts come from — a schedule or a named
-   *  webhook — so the sentence names the thing that waits. Null unless held. */
+  /** What starts the workflow — a schedule or a named webhook — so the sentence
+   *  names the thing that waits. Null unless held or an approval item. */
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
+  /** Which version an approval item is about, and where it runs. Only on
+   *  `version_awaiting_approval` and `approval_expiring`. */
+  approval?: { version: number; environment: "dev" | "prod" };
   /** The run classifier's class behind a failing workflow, else null. */
   cause_class: PreviewClassification | null;
   counts: { patches?: number; failures?: number; skills?: number };

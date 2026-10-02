@@ -113,8 +113,17 @@ import type { DiffLine } from "@/lib/line-diff";
 import { categoryMentionToken, reconcileReferences } from "@/lib/mentions";
 import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
-import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
-import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
+import { patchCandidateId, toolNameOf, toolPartVerdict } from "@/lib/tool-parts";
+import {
+  isStaleCall,
+  isWorkflowRunTool,
+  toolLabel,
+  toolOutcomeKey,
+  type WorkflowRunKind,
+  workflowRefusalKey,
+  workflowRunKind,
+  workflowRunTitleKey,
+} from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
@@ -390,24 +399,24 @@ function StarterCards({
 }
 
 /** What to call an action that gets a card of its own. `notRun` swaps the
- *  past tense for the honest form when the verdict says nothing ran. */
+ *  past tense for the honest form when the verdict says nothing ran, and
+ *  `run` says what a workflow call really was — a run, a trial, a refusal. */
 function actionLabel(
   t: Translate,
   toolName: string,
   notRun = false,
   workflowNameFor: (slug: string) => string | null = () => null,
+  run: WorkflowRunKind | null = null,
 ): string {
   const label = toolLabel(toolName);
-  if (label.kind === "workflow")
-    return t(notRun ? "tool.name.runNamedWorkflow.notRun" : "tool.name.runNamedWorkflow", {
-      // The name its author gave it when there is one; the slug otherwise. The
-      // slug is never dressed up — see `toolLabel`.
-      name: workflowNameFor(label.slug) ?? label.slug,
-    });
   if (label.kind === "literal") return label.text;
   if (label.kind === "background") return t(label.words.past);
-  if (notRun && label.key === "tool.name.runWorkflow") return t("tool.name.runWorkflow.notRun");
-  return t(label.key);
+  const runTitle = workflowRunTitleKey(label, notRun, run);
+  // The name its author gave it when there is one; the slug otherwise. The
+  // slug is never dressed up — see `toolLabel`.
+  const name = label.kind === "workflow" ? (workflowNameFor(label.slug) ?? label.slug) : "";
+  if (runTitle) return t(runTitle, { name });
+  return label.kind === "key" ? t(label.key) : name;
 }
 
 /** A verdict under which the action did not happen. */
@@ -962,6 +971,12 @@ function ChatMessage({
                       stale,
                     });
           const notRun = didNotRun(verdict);
+          // A workflow call says what it was: a run, a trial that sent
+          // nothing, or a refusal with the engine's reason beside it.
+          const runKind =
+            notRun || !isWorkflowRunTool(toolNameOf(tool)) ? null : workflowRunKind(tool.output);
+          const refusalKey = runKind === "refused" ? workflowRefusalKey(tool.output) : null;
+          const headerOutcomeKey = refusalKey ?? outcomeKey;
           // An answered text question stays readable: the question is what
           // the next message (marked as its answer) replies to.
           const askedQuestion =
@@ -994,16 +1009,22 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
-                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor)}
-                  outcomeKey={outcomeKey}
+                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor, runKind)}
+                  outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
               ) : (
                 <ToolHeader
                   type={tool.type}
                   state={tool.state}
-                  title={actionLabel(t, tool.type.replace(/^tool-/, ""), notRun, workflowNameFor)}
-                  outcomeKey={outcomeKey}
+                  title={actionLabel(
+                    t,
+                    tool.type.replace(/^tool-/, ""),
+                    notRun,
+                    workflowNameFor,
+                    runKind,
+                  )}
+                  outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
               )}

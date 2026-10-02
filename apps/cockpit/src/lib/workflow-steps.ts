@@ -151,17 +151,26 @@ function code(
 /** A header whose value is a credential, by its name. */
 const SENSITIVE_HEADER = /authorization|cookie|token|secret|password|api[-_]?key|signature/i;
 
+/** A reference the engine resolves at run time: `${…}` or `{{…}}`. */
+const REFERENCE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
+
 /**
- * A request's headers as name and value. A value under a credential-shaped
- * name is masked: the page is read over a shoulder, and the header's presence
- * is the fact a reader needs.
+ * A request's headers as name and value, as the step declares them.
+ *
+ * A definition holds references — `Bearer {{credentials.token}}`,
+ * `${input.id}` — and a reference is the configuration, not a secret: it is
+ * shown and copied byte for byte, like everything else in a fenced block. The
+ * one exception is a LITERAL value under a credential-shaped name, with no
+ * reference in it. That is a secret someone pasted into a definition, where it
+ * does not belong; the page is read over a shoulder, so it stays masked.
  */
 function headerLines(value: unknown): string | null {
   if (!record(value)) return null;
-  const lines = Object.entries(value).map(
-    ([name, entry]) =>
-      `${name}: ${SENSITIVE_HEADER.test(name) ? "•••" : typeof entry === "string" ? entry : JSON.stringify(entry)}`,
-  );
+  const lines = Object.entries(value).map(([name, entry]) => {
+    const shown = typeof entry === "string" ? entry : JSON.stringify(entry);
+    const literalSecret = SENSITIVE_HEADER.test(name) && !REFERENCE.test(shown);
+    return `${name}: ${literalSecret ? "•••" : shown}`;
+  });
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
@@ -319,7 +328,7 @@ function readKind(
             raw.expression,
           ),
           ...json("workflow.block.settings", raw.readability),
-          ...json("workflow.block.settings", raw.html_to_markdown),
+          ...json("workflow.block.settings", raw.markdown),
           ...json("workflow.block.settings", raw.structured_data),
         ],
       };

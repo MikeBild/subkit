@@ -2,13 +2,13 @@
 // engine's real schemas — and by the answers that refuse.
 //
 // The defect this stands on: "Ausführen" → "Entwicklung" → "Ausführen" showed
-// "Lauf: internal error". The development twin of the workflow's Gmail
+// "Lauf: internal error". The development twin of the workflow's Mail
 // connector had lost its sign-in; the engine threw, the route answered 500 and
 // the dialog printed the raw message. Now:
 //
 // 1. The dialog reads the authority preview for the version POST really runs
 //    (`current_version_id`, never the draft) in both environments. The
-//    development preview names Gmail as needing a new sign-in, so development
+//    development preview names Mail as needing a new sign-in, so development
 //    is offered disabled, with the reason in words, and production — the first
 //    environment that can run — is the default. Production still asks first.
 // 2. The preview is advisory. When it said nothing and the run is refused with
@@ -25,7 +25,7 @@ import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 const WORKFLOW_ID = "6c1e7f24-3b9a-4d05-8e61-2f7a9c4d1b83";
 const CURRENT_VERSION_ID = "b82d4f19-7c3e-4a60-9d15-e4a6c8f0b217";
 const DRAFT_VERSION_ID = "1f5a9e3c-8b2d-4c71-a064-d3b7e9f2c518";
-const DEV_GMAIL_ID = "d94b2e61-5a8f-4c3d-b7e0-9f1a2c6d8e45";
+const DEV_MAIL_ID = "d94b2e61-5a8f-4c3d-b7e0-9f1a2c6d8e45";
 const REFUSED_RUN_ID = "3e7c1a95-2d4b-4f68-a0c9-8b5e1d7f3a26";
 
 const json = (route, body, status = 200) =>
@@ -36,7 +36,7 @@ const RECORD = {
   tenant_id: WORKFLOW_ID,
   name: "Tagesbericht versenden",
   slug: "tagesbericht",
-  description: "Schickt den Tagesbericht per Gmail.",
+  description: "Schickt den Tagesbericht per Mail.",
   lifecycle: "active",
   current_version: 4,
   current_version_id: CURRENT_VERSION_ID,
@@ -51,11 +51,11 @@ const RECORD = {
   updated_at: "2026-08-10T09:00:00.000Z",
 };
 
-const GMAIL_REFUSAL = {
+const MAIL_REFUSAL = {
   step_id: "send",
-  connector_id: DEV_GMAIL_ID,
-  connector_slug: "gmail",
-  connector_name: "Gmail",
+  connector_id: DEV_MAIL_ID,
+  connector_slug: "mail",
+  connector_name: "Mail",
 };
 
 /** WorkflowAuthorityPreview, as the engine shapes it. */
@@ -72,7 +72,7 @@ function preview(environment, unavailable) {
     digest: "a".repeat(64),
     eligible_for_repeated_runs: false,
     unavailable_steps: unavailable ? ["send"] : [],
-    unavailable_connectors: unavailable ? [{ ...GMAIL_REFUSAL, reason: "needs_reauth" }] : [],
+    unavailable_connectors: unavailable ? [{ ...MAIL_REFUSAL, reason: "needs_reauth" }] : [],
     request_refusals: [],
     storage_refusals: [],
     execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
@@ -82,6 +82,7 @@ function preview(environment, unavailable) {
       valid_until: "2026-08-11T09:00:00.000Z",
       max_runs: 1,
     },
+    suggested_bounds_basis: { kind: "manual" },
   };
 }
 
@@ -98,7 +99,7 @@ const TYPED_SCHEMA = {
   },
 };
 
-/** `variant`: "blocked" (the preview names Gmail), "refused" (it does not, the
+/** `variant`: "blocked" (the preview names Mail), "refused" (it does not, the
  *  run is refused with 409), "crashed" (the run answers 500), "typed" (the
  *  workflow declares typed inputs; the run is refused as in "refused"). */
 function runDialogApi(state) {
@@ -138,9 +139,9 @@ function runDialogApi(state) {
         route,
         {
           code: "prepared_credential_unavailable",
-          message: 'Connector "gmail" in dev must be reconnected before this workflow can run.',
+          message: 'Connector "mail" in dev must be reconnected before this workflow can run.',
           details: {
-            ...GMAIL_REFUSAL,
+            ...MAIL_REFUSAL,
             environment: "dev",
             reason: "needs_reauth",
             execution_id: REFUSED_RUN_ID,
@@ -196,15 +197,15 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
       throw new Error(`${where}: production was never checked`);
     const sentence = (await blocked.innerText()).trim();
     const expected = de
-      ? "Entwicklung: Gmail muss neu verbunden werden"
-      : "Development: Gmail must be reconnected";
+      ? "Entwicklung: Mail muss neu verbunden werden"
+      : "Development: Mail must be reconnected";
     if (!sentence.includes(expected))
       throw new Error(`${where}: the blocked line reads "${sentence}", not "${expected}"`);
     const reconnect = await page
       .getByTestId("workflow-run-blocked-dev-remedy")
       .getAttribute("href");
-    if (reconnect !== `/cockpit/connectors/${DEV_GMAIL_ID}#connector-credentials`)
-      throw new Error(`${where}: the blocked line leads to ${reconnect}, not Gmail's sign-in`);
+    if (reconnect !== `/cockpit/connectors/${DEV_MAIL_ID}#connector-credentials`)
+      throw new Error(`${where}: the blocked line leads to ${reconnect}, not Mail's sign-in`);
     const chosen = await text(page, "workflow-run-environment");
     if (!chosen?.includes(de ? "Produktion" : "Production"))
       throw new Error(`${where}: the default is "${chosen}", not the first environment that runs`);
@@ -243,8 +244,8 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!said.includes(expected))
       throw new Error(`${where} · refused: the dialog says "${said}", not "${expected}"`);
     const remedy = await page.getByTestId("workflow-run-error-remedy").getAttribute("href");
-    if (remedy !== `/cockpit/connectors/${DEV_GMAIL_ID}#connector-credentials`)
-      throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Gmail's sign-in`);
+    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}#connector-credentials`)
+      throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (await page.getByTestId("workflow-run-outcome").count())
       throw new Error(`${where} · refused: an outcome line stands beside the refusal`);
     await assertNoEngineWords(page, `${where} · refused`);

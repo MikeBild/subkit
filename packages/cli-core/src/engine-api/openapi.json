@@ -5704,6 +5704,72 @@
               "valid_until",
               "max_runs"
             ]
+          },
+          "suggested_bounds_basis": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "manual"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "schedule"
+                    ]
+                  },
+                  "scheduled_runs": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "scheduled_runs"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "hook"
+                    ]
+                  },
+                  "scheduled_runs": {
+                    "type": "integer"
+                  },
+                  "observed_deliveries": {
+                    "type": "integer"
+                  },
+                  "observed_days": {
+                    "type": "integer"
+                  },
+                  "minimum_applied": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "scheduled_runs",
+                  "observed_deliveries",
+                  "observed_days",
+                  "minimum_applied"
+                ]
+              }
+            ]
           }
         },
         "required": [
@@ -5713,7 +5779,8 @@
           "unavailable_steps",
           "execution_shape",
           "schedules",
-          "suggested_bounds"
+          "suggested_bounds",
+          "suggested_bounds_basis"
         ]
       },
       "AuthorityExecutionShape": {
@@ -19968,7 +20035,8 @@
             "type": "string",
             "enum": [
               "critical",
-              "urgent"
+              "urgent",
+              "notice"
             ]
           },
           "kind": {
@@ -20012,6 +20080,8 @@
               "awaiting_answer",
               "execution_authority_required",
               "execution_authority_unavailable",
+              "version_awaiting_approval",
+              "approval_expiring",
               "scheduler_stale",
               "failing",
               "patch_proposed",
@@ -20054,7 +20124,27 @@
               "kind",
               "name"
             ],
-            "description": "What a held workflow's refused starts come from. Null unless held."
+            "description": "What starts the workflow. Null unless it is held or the item is about its approval."
+          },
+          "approval": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer"
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              }
+            },
+            "required": [
+              "version",
+              "environment"
+            ],
+            "description": "The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring."
           },
           "cause_class": {
             "type": [

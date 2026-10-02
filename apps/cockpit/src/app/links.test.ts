@@ -34,10 +34,13 @@ import {
   recordHref,
   reviewFromUrl,
   routerPath,
+  routerTarget,
   runHref,
   runsHref,
   settingsHref,
   usageHref,
+  WORKFLOW_AUTOMATION_ANCHOR,
+  workflowAutomationHref,
   workflowHref,
   workflowsHref,
 } from "./links";
@@ -87,6 +90,15 @@ describe("router-relative, and absolute only on request", () => {
     expect(routerPath("/cockpit?review=skills")).toBe("/?review=skills");
     expect(routerPath(`/cockpit/connectors/${ID}`)).toBe(`/connectors/${ID}`);
     expect(routerPath("/runs")).toBe("/runs");
+    // A fragment is not part of the path: the router takes it apart.
+    expect(routerTarget(`/cockpit/workflows/${ID}#workflow-automation`)).toEqual({
+      to: `/workflows/${ID}`,
+      hash: WORKFLOW_AUTOMATION_ANCHOR,
+    });
+    expect(routerTarget(`/cockpit/connectors/${ID}`)).toEqual({ to: `/connectors/${ID}` });
+    expect(routerTarget("/cockpit?review=skills")).toEqual({ to: "/?review=skills" });
+    const panel = routerTarget(`/cockpit/workflows/${ID}#workflow-automation`);
+    expect(`${panel.to}#${panel.hash}`).toBe(workflowAutomationHref(ID));
     for (const href of ["/cockpit", "/cockpit?review=skills", `/cockpit/connectors/${ID}`])
       expect(absolute(routerPath(href))).toBe(href);
   });

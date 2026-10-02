@@ -137,14 +137,41 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
   await route(`**/v1/workflows/${workflowId}`, (r) =>
     fulfill(r, {
       id: workflowId,
+      name: "Daily report",
+      slug: "daily-report",
+      lifecycle: "active",
+      current_version: completed ? 3 : 2,
       current_version_id: completed ? draftId : activeId,
       draft_version_id: completed ? null : draftId,
+      webhooks_active: 0,
     }),
   );
+  // The verified row, as the engine answers it: the card reads the workflow's
+  // CURRENT state from here, not from the tool result it was rendered for.
   await route(`**/v1/workflows/${workflowId}/automation-status`, (r) =>
     fulfill(r, {
-      schedules: [{ ready: completed, next_run_at: "2026-10-01T08:00:00.000Z", timezone: "UTC" }],
+      schedules: [
+        {
+          schedule_id: workflowId,
+          workflow_id: workflowId,
+          state: completed ? "authorized" : "approval_required",
+          ready: completed,
+          cron: "0 8 * * *",
+          timezone: "UTC",
+          environment: "prod",
+          next_run_at: "2026-10-01T08:00:00.000Z",
+        },
+      ],
       inbound_hooks: [],
+    }),
+  );
+  await route(`**/v1/workflows/${workflowId}/diagnosis?*`, (r) =>
+    fulfill(r, {
+      workflow_id: workflowId,
+      workflow_version_id: completed ? draftId : activeId,
+      environment: "prod",
+      is_current: completed,
+      diagnoses: [],
     }),
   );
   await route(`**/v1/workflows/${workflowId}/draft`, (r) =>
@@ -176,7 +203,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
                 step_id: "send",
                 effect: "write",
                 operation: "POST",
-                target: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                target: "https://mail.example.com/v1/messages/send",
                 report_delivery: {
                   kind: "gmail_report",
                   from: "sender@example.test",
@@ -329,6 +356,7 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
         valid_until: new Date(preparedAt + 86400000).toISOString(),
         max_runs: 3,
       },
+      suggested_bounds_basis: { kind: "schedule", scheduled_runs: 3 },
     });
   });
   await route(`**/v1/workflows/${workflowId}/execution-authorities`, (r) => {
