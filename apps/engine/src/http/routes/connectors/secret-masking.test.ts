@@ -86,6 +86,14 @@ async function storedOAuthSecret(): Promise<string | undefined> {
   return cfg?.client_secret;
 }
 
+async function storedDsn(): Promise<string | null | undefined> {
+  const [row] = await ctx.db
+    .select({ dsn: connectors.dsn })
+    .from(connectors)
+    .where(eq(connectors.id, postgresConnectorId));
+  return row?.dsn;
+}
+
 beforeAll(async () => {
   ctx = await createHttpTestServer("connector-secret-masking");
 }, 60_000);
@@ -197,19 +205,92 @@ describe("a representation written back keeps the stored secret", () => {
     expect(stored.timeout_ms).toBe(9000);
   });
 
-  test("a masked dsn moves the host and keeps the password", async () => {
-    const res = await send("PATCH", `/v1/connectors/${postgresConnectorId}`, {
-      dsn: `postgres://app_user:${CONNECTOR_SECRET_MASK}@replica.acme.test:5432/app`,
-    });
+  test("the masked dsn written back as read keeps the password", async () => {
+    const read = (await (await send("GET", `/v1/connectors/${postgresConnectorId}`)).json()) as {
+      dsn: string;
+    };
+    const res = await send("PATCH", `/v1/connectors/${postgresConnectorId}`, { dsn: read.dsn });
     expect(res.status).toBe(200);
-    expectNoSecret(await res.text());
-    const [row] = await ctx.db
-      .select({ dsn: connectors.dsn })
-      .from(connectors)
-      .where(eq(connectors.id, postgresConnectorId));
-    expect(row?.dsn).toBe(`postgres://app_user:${DSN_SECRET}@replica.acme.test:5432/app`);
+    expect(await storedDsn()).toBe(`postgres://app_user:${DSN_SECRET}@db.acme.test:5432/app`);
+  });
+});
+
+describe("a kept secret does not follow a changed destination", () => {
+  test("a masked dsn on another host is refused and the stored dsn is untouched", async () => {
+    const res = await send("PATCH", `/v1/connectors/${postgresConnectorId}`, {
+      dsn: `postgres://app_user:${CONNECTOR_SECRET_MASK}@other-host.acme.test:5432/app`,
+    });
+    expect(res.status).toBe(422);
+    const text = await res.text();
+    expect(text).toContain("send the real value");
+    expectNoSecret(text);
+    expect(await storedDsn()).toBe(`postgres://app_user:${DSN_SECRET}@db.acme.test:5432/app`);
   });
 
+  test("the real password moves the dsn to another host", async () => {
+    const dsn = `postgres://app_user:${DSN_SECRET}@replica.acme.test:5432/app`;
+    const res = await send("PATCH", `/v1/connectors/${postgresConnectorId}`, { dsn });
+    expect(res.status).toBe(200);
+    expectNoSecret(await res.text());
+    expect(await storedDsn()).toBe(dsn);
+  });
+
+  test("a masked client secret with another token endpoint is refused", async () => {
+    const before = await storedOAuthSecret();
+    const read = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as {
+      config: { oauth: Json } & Json;
+    };
+    const res = await send("PATCH", `/v1/connectors/${oauthConnectorId}`, {
+      config: {
+        ...read.config,
+        oauth: { ...read.config.oauth, token_endpoint: "https://login.elsewhere.test/token" },
+      },
+    });
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("config.oauth.token_endpoint changed");
+    expect(await storedOAuthSecret()).toBe(before);
+    const view = await getConnector(ctx.tenantId, oauthConnectorId, ctx.db);
+    expect(view?.config.oauth).toMatchObject({ token_endpoint: "https://login.acme.test/token" });
+  });
+
+  test("a masked static header with another base_url is refused", async () => {
+    const read = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as {
+      config: Json;
+    };
+    const res = await send("PATCH", `/v1/connectors/${oauthConnectorId}`, {
+      base_url: "https://api.elsewhere.test/v2",
+      config: read.config,
+    });
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("base_url changed");
+    const view = await getConnector(ctx.tenantId, oauthConnectorId, ctx.db);
+    expect(view?.base_url).toBe("https://api.acme.test/v2");
+  });
+
+  test("re-posting a read definition under its own slug with another base_url is refused", async () => {
+    const read = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as {
+      config: Json;
+    };
+    const res = await send("POST", "/v1/connectors", {
+      ...oauthDefinition(),
+      base_url: "https://api.elsewhere.test/v2",
+      config: read.config,
+    });
+    expect(res.status).toBe(422);
+    const view = await getConnector(ctx.tenantId, oauthConnectorId, ctx.db);
+    expect(view?.base_url).toBe("https://api.acme.test/v2");
+  });
+
+  test("a value that only contains the mask is refused, never stored", async () => {
+    const res = await send("PATCH", `/v1/connectors/${oauthConnectorId}`, {
+      config: { static_headers: { Authorization: `Bearer ${CONNECTOR_SECRET_MASK}` } },
+    });
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("config.static_headers.Authorization");
+  });
+});
+
+describe("a representation written back keeps the stored secret, or takes a new one", () => {
   test("a real value in place of the mask rotates the secret", async () => {
     const read = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as {
       config: { oauth: Json } & Json;

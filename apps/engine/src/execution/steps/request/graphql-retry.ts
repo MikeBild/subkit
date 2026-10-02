@@ -23,6 +23,8 @@ import {
 } from "../../../connectors/drivers/http.ts";
 import type { EgressInput } from "../../../connectors/egress.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
+import { classifyConnectorHealth } from "../../../connectors/health.ts";
+import { clearReauthIfProved } from "../../../connectors/reauth.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import { graphqlEndpointKey, recordSuccessShape } from "../../../schema-versions/service.ts";
@@ -216,6 +218,16 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
       error: { code: "graphql_error", message: "no response received" },
     };
   }
+
+  // The re-auth clearing edge (connectors/reauth.ts), as an HTTP step walks
+  // it: an answer the stored credential earned lifts the flag. A reply with
+  // `errors`, or a step that sent its own `Authorization`, proves nothing.
+  await clearReauthIfProved(p.queryArgs.db, p.queryArgs.connector, {
+    status: lastRes.status,
+    health: classifyConnectorHealth(lastRes.status, lastRes.headers),
+    stored_credential_used: lastRes.stored_credential_used,
+    body: lastRes.body,
+  });
 
   const gqlErrors = graphqlErrorMessages(lastRes.body);
   const httpOk = lastRes.status >= 200 && lastRes.status < 300;

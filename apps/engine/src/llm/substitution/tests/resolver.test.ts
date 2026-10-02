@@ -419,6 +419,88 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
   });
 });
 
+// A fixture marker, not a credential.
+const CONFIG_SECRET = "fixture-config-secret-not-real";
+
+describe("a connector config token does not read a secret", () => {
+  const config = {
+    api_version: "2024-01",
+    static_headers: { Accept: "application/json", "X-Session-Id": CONFIG_SECRET },
+    oauth: {
+      token_endpoint: "https://login.sec1.test/token",
+      client_secret: CONFIG_SECRET,
+      token_request_body_mapping: { assertion: CONFIG_SECRET },
+    },
+  };
+
+  test.each([
+    "oauth.client_secret",
+    "oauth.token_request_body_mapping.assertion",
+    "static_headers.X-Session-Id",
+    // A subtree is the secret it contains.
+    "oauth",
+    "static_headers",
+  ])("config.%s is withheld from a string and from a typed value", async (path) => {
+    const { tenant_id } = await seed({ slug: "sec1", mode: "none", config });
+    const token = `\${connector.sec1.config.${path}}`;
+    const resolverCtx = { tenant_id, environment: "dev" as const, db: ctx.db };
+
+    const text = await resolveStringPlaceholders(`v=${token}`, resolverCtx);
+    expect(text.unresolved.map((u) => u.code)).toEqual(["secret_withheld"]);
+    expect(JSON.stringify(text)).not.toContain(CONFIG_SECRET);
+
+    const typed = await resolvePlaceholdersTypePreserving({ body: token }, resolverCtx);
+    expect(typed.unresolved.map((u) => u.code)).toEqual(["secret_withheld"]);
+    expect(JSON.stringify(typed)).not.toContain(CONFIG_SECRET);
+  });
+
+  test("a base_url that carries a credential is withheld, and not offered", async () => {
+    const { tenant_id } = await seed({
+      slug: "sec3",
+      mode: "none",
+      baseUrl: `https://svc:${CONFIG_SECRET}@api.sec3.test/v2?sig=${CONFIG_SECRET}`,
+    });
+    const resolverCtx = { tenant_id, environment: "dev" as const, db: ctx.db };
+    const r = await resolveStringPlaceholders(`\${connector.sec3.base_url}/items`, resolverCtx);
+    expect(r.unresolved.map((u) => u.code)).toEqual(["secret_withheld"]);
+    expect(JSON.stringify(r)).not.toContain(CONFIG_SECRET);
+    expect((await describeConnectorPlaceholders("sec3", resolverCtx)).url).toBeNull();
+  });
+
+  test("a base_url without one resolves as before", async () => {
+    const { tenant_id } = await seed({
+      slug: "sec4",
+      mode: "none",
+      baseUrl: "https://api.sec4.test/v2?api-version=7.0",
+    });
+    const r = await resolveStringPlaceholders(`\${connector.sec4.base_url}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toBe("https://api.sec4.test/v2?api-version=7.0");
+  });
+
+  test("the config around the secret still resolves", async () => {
+    const { tenant_id } = await seed({ slug: "sec2", mode: "none", config });
+    const r = await resolvePlaceholders(
+      {
+        version: `\${connector.sec2.config.api_version}`,
+        accept: `\${connector.sec2.config.static_headers.Accept}`,
+        token_endpoint: `\${connector.sec2.config.oauth.token_endpoint}`,
+      },
+      { tenant_id, environment: "dev", db: ctx.db },
+    );
+    expect(r.unresolved).toEqual([]);
+    expect(r.value).toEqual({
+      version: "2024-01",
+      accept: "application/json",
+      token_endpoint: "https://login.sec1.test/token",
+    });
+  });
+});
+
 describe("describeConnectorPlaceholders", () => {
   test("returns placeholder tokens the LLM should use", async () => {
     const { tenant_id } = await seed({
@@ -436,6 +518,29 @@ describe("describeConnectorPlaceholders", () => {
     expect(d.url).toBe(`\${connector.dsc1.base_url}`);
     expect(d.credentials).toEqual([`\${cred.dsc1.token}`]);
     expect(d.config).toEqual([`\${connector.dsc1.config.region}`]);
+  });
+
+  test("a path that holds a secret is not offered as a token", async () => {
+    const { tenant_id } = await seed({
+      slug: "dsc2",
+      mode: "none",
+      config: {
+        region: "eu",
+        static_headers: { Accept: "application/json", "X-Session-Id": CONFIG_SECRET },
+        oauth: { token_endpoint: "https://login.dsc2.test/token", client_secret: CONFIG_SECRET },
+      },
+    });
+    const d = await describeConnectorPlaceholders("dsc2", {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+    });
+    // jsonb does not keep key order.
+    expect([...d.config].sort()).toEqual([
+      `\${connector.dsc2.config.oauth.token_endpoint}`,
+      `\${connector.dsc2.config.region}`,
+      `\${connector.dsc2.config.static_headers.Accept}`,
+    ]);
   });
 
   test("missing connector → empty placeholders with null url", async () => {

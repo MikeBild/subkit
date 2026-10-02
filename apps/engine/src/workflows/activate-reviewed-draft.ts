@@ -3,8 +3,8 @@ import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
+import { executableDefinition, readStoredDefinition } from "./stored-definition.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
-import { WorkflowDefSchema } from "./types.ts";
 
 /** Internal to the human-authority transaction; never a model-callable activation shortcut. */
 export async function activateReviewedDraft(
@@ -47,9 +47,13 @@ export async function activateReviewedDraft(
   };
   const target = await readVersion(versionId);
   if (!target) throw new Error("reviewed workflow version unavailable");
-  const definition = WorkflowDefSchema.parse(target.dag);
+  const definition = executableDefinition(target.dag);
   const previous = expectedCurrent ? await readVersion(expectedCurrent) : null;
-  const oldDefinition = previous ? WorkflowDefSchema.parse(previous.dag) : null;
+  // The version being replaced may itself be legacy — activating a newer one
+  // is how such a workflow is repaired. Its trigger is then unknown, which
+  // reads as "changed" below.
+  const stored = previous ? readStoredDefinition(previous.dag) : null;
+  const oldDefinition = stored && !stored.legacy ? stored.definition : null;
   await tx
     .update(workflows)
     .set({

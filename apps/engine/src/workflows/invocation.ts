@@ -63,12 +63,13 @@ export function sampleFromSchema(
   const required = Array.isArray(schema.required)
     ? schema.required.filter((name): name is string => typeof name === "string")
     : [];
-  const sample: Record<string, unknown> = {};
-  for (const [name, raw] of Object.entries(schema.properties)) {
-    if (required.length > 0 && !required.includes(name)) continue;
-    sample[name] = placeholder(name, record(raw) ? raw : {}, depth);
-  }
-  return sample;
+  // `fromEntries` defines every key as a property; assigning `sample[name]`
+  // would set the prototype for a property named `__proto__` and lose it.
+  return Object.fromEntries(
+    Object.entries(schema.properties)
+      .filter(([name]) => required.length === 0 || required.includes(name))
+      .map(([name, raw]) => [name, placeholder(name, record(raw) ? raw : {}, depth)]),
+  );
 }
 
 /**
@@ -88,15 +89,18 @@ export function workflowSampleInput(
 export type RunAuthorityMode = "live_run_allowed" | "held_preview_only";
 
 /**
- * Whether a run without an explicit approval would be admitted as a live run
- * in each environment, or would run as a held preview that withholds writes.
+ * Per environment: whether an approval for the version runs use EXISTS —
+ * unrevoked, inside its window and not used up.
  *
- * Decided from the stored approvals alone: one that is unrevoked, inside its
- * window and not used up, for the version runs use. It does NOT recompute the
- * effect manifest, so an approval a later change has invalidated still reads
- * as live here — admission stays the authority and refuses or holds such a
- * run. The full check is `GET …/automation-status`; this answer is the cheap
- * one a page can afford on every open.
+ * That is all `live_run_allowed` says. Admission asks two more things this
+ * does not: that the approval's effect manifest still matches the workflow's
+ * current effects, and that those effects are eligible for repeated runs. An
+ * approval a later connector or credential change has invalidated therefore
+ * still reads `live_run_allowed` here while admission holds or refuses the
+ * run. Recomputing the manifest resolves every connector and credential the
+ * workflow touches, per environment; the full check is
+ * `GET …/automation-status`, and this is the cheap answer a page can afford
+ * on every open. The schema and the docs describe it as exactly that.
  */
 export async function workflowRunAuthority(
   db: Executor,

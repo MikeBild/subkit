@@ -192,6 +192,89 @@ describe("POST /v1/connectors/probe", () => {
   });
 });
 
+describe("POST /v1/connectors/probe — a definition read back from the API", () => {
+  // A fixture marker, not a credential.
+  const HEADER_SECRET = "fixture-probe-header-not-real";
+  const MASK = "***redacted***";
+  let readBackId: string | undefined;
+
+  // The import tests below match a spec against the saved connectors; this
+  // one must not be there to be found.
+  afterAll(async () => {
+    if (!readBackId) return;
+    await fetch(`${ctx.baseUrl}/v1/connectors/${readBackId}`, {
+      method: "DELETE",
+      headers: adminAuth(),
+    });
+  });
+
+  async function readBack(): Promise<Record<string, unknown>> {
+    const created = await post("/v1/connectors", {
+      name: "Read Back",
+      slug: "read-back",
+      driver: "http",
+      environment: "dev",
+      base_url: mockBaseUrl,
+      auth_type: "none",
+      config: { static_headers: { "X-Session-Id": HEADER_SECRET } },
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    readBackId = id;
+    const read = await fetch(`${ctx.baseUrl}/v1/connectors/${id}`, { headers: adminAuth() });
+    const body = (await read.json()) as Record<string, unknown>;
+    expect((body.config as { static_headers: Record<string, string> }).static_headers).toEqual({
+      "X-Session-Id": MASK,
+    });
+    // The fields of the representation a definition is made of.
+    return {
+      name: body.display_name,
+      slug: body.slug,
+      driver: body.driver,
+      environment: body.environment,
+      base_url: body.base_url,
+      auth_type: body.auth_type,
+      config: body.config,
+    };
+  }
+
+  test("the upstream receives the stored secret, never the mask", async () => {
+    const definition = await readBack();
+    received = [];
+    const res = await post("/v1/connectors/probe", { connector: definition });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(received.length).toBeGreaterThan(0);
+    for (const request of received) {
+      expect(request.headers["x-session-id"]).toBe(HEADER_SECRET);
+    }
+  });
+
+  test("the same definition under a slug nothing is stored for is refused before any request", async () => {
+    const definition = await readBack();
+    received = [];
+    const res = await post("/v1/connectors/probe", {
+      connector: { ...definition, slug: "read-back-copy" },
+    });
+    expect(res.status).toBe(422);
+    expect(await res.text()).toContain("config.static_headers.X-Session-Id");
+    expect(received).toEqual([]);
+  });
+
+  test("the same definition pointed at another host is refused before any request", async () => {
+    const definition = await readBack();
+    received = [];
+    const res = await post("/v1/connectors/probe", {
+      connector: { ...definition, base_url: "http://127.0.0.1:9/elsewhere" },
+    });
+    expect(res.status).toBe(422);
+    const text = await res.text();
+    expect(text).toContain("base_url changed");
+    expect(text).not.toContain(HEADER_SECRET);
+    expect(received).toEqual([]);
+  });
+});
+
 describe("POST /v1/connectors/import", () => {
   test("a curl command becomes a draft, and nothing is saved", async () => {
     const before = await connectorCount();
