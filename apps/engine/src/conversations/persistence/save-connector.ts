@@ -59,15 +59,21 @@ export function connectorFieldPatch(
 ): UpdateConnectorInput {
   const patch: UpdateConnectorInput = {};
   if (!connector) return patch;
-  if (connector.base_url !== undefined && connector.base_url !== (existing.base_url ?? undefined)) {
+  // A draft hydrated from the saved connector carries the masked dsn, and the
+  // masked base_url when that holds a credential. Either is the stored value,
+  // not an edit.
+  const shown = toPublicConnector(existing);
+  if (
+    connector.base_url !== undefined &&
+    connector.base_url !== (existing.base_url ?? undefined) &&
+    connector.base_url !== (shown.base_url ?? undefined)
+  ) {
     patch.base_url = connector.base_url;
   }
-  // A draft hydrated from the saved connector carries the masked dsn. That
-  // is the stored value, not an edit.
   if (
     connector.dsn !== undefined &&
     connector.dsn !== (existing.dsn ?? undefined) &&
-    connector.dsn !== (toPublicConnector(existing).dsn ?? undefined)
+    connector.dsn !== (shown.dsn ?? undefined)
   ) {
     patch.dsn = connector.dsn;
   }
