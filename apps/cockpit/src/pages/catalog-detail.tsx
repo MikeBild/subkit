@@ -1,12 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, RefreshCw, ShieldCheck } from "lucide-react";
+import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { apiRequest, apiText, listConversationsAbout } from "@/api/client";
+import { apiRequest, apiText } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, conversationHref } from "@/app/links";
 import { useRecordCrumb } from "@/app/record-crumb";
-import { AgentPanel } from "@/components/cockpit/agent-panel";
 import {
   ConnectorCredentials,
   useConnectorCredential,
@@ -18,29 +16,17 @@ import {
   ConnectorTechnicalFacts,
   ConnectorWorkflows,
 } from "@/components/cockpit/connector-detail";
+import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { DetailAction } from "@/components/cockpit/detail-action";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
-import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
+import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
-import { WorkflowAuthorities } from "@/components/cockpit/workflow-authorities";
-import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
-import { RecentRuns, WorkflowCause, WorkflowHealthBadge } from "@/components/cockpit/workflow-runs";
+import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   authStateLabel,
   type ConnectorAuthState,
@@ -49,7 +35,6 @@ import {
   needsRenewal,
 } from "@/lib/connector-auth-state";
 import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
-import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { asInspect, type McpInspect } from "@/pages/connector-detail-model";
@@ -133,55 +118,6 @@ function renderDetailValue(
 }
 
 /**
- * The conversations people had about this object. Provenance is structural
- * here, as in the reference model: you see them where the object is, and the
- * global chat list stays a way back into your own work.
- */
-function ConversationsAbout({
-  target,
-}: {
-  target: { workflow_id?: string; connector_id?: string };
-}) {
-  const { t, locale } = useI18n();
-  const query = useQuery({
-    queryKey: ["conversations", "about", target.workflow_id, target.connector_id],
-    queryFn: () => listConversationsAbout(target),
-  });
-  const items = query.data?.items ?? [];
-  return (
-    <section className="grid gap-2" data-testid="detail-conversations">
-      <h2 className="text-sm font-semibold">{t("catalog.conversations.title")}</h2>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="detail-conversations-empty">
-          {t("catalog.conversations.empty")}
-        </p>
-      ) : (
-        <ul className="grid gap-1">
-          {items.map((conversation, index) => (
-            <li key={conversation.id}>
-              <a
-                className="flex items-baseline justify-between gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                href={absolute(conversationHref(conversation.id))}
-                aria-label={t("catalog.conversations.open")}
-                data-testid={`detail-conversation-${index}`}
-              >
-                <span className="min-w-0 truncate">{conversation.title || t("chat.untitled")}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatRelativeTime(
-                    locale,
-                    conversation.last_activity_at ?? conversation.updated_at,
-                  )}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/**
  * A connector's own state, in place of a lifecycle it does not have: whether
  * it signs in (§11), whether a person switched it off, and the engine's
  * health verdict when that is not ok. The bar used to fall back to "Aktiv"
@@ -218,15 +154,17 @@ function ConnectorStateBadges({
   );
 }
 
+/**
+ * The state row under a record's title. A workflow has none: its version and
+ * whether it may run stand in its automation panel (`workflow-page.tsx`).
+ */
 function GovernanceBar({
   record,
   canWrite,
-  workflow = false,
   connectorAuth = null,
 }: {
   record: RecordValue;
   canWrite: boolean;
-  workflow?: boolean;
   /** Set for a connector: its sign-in state replaces the lifecycle word. */
   connectorAuth?: ConnectorAuthState | null;
 }) {
@@ -248,9 +186,7 @@ function GovernanceBar({
       {connectorAuth ? (
         <ConnectorStateBadges record={record} authState={connectorAuth} />
       ) : (
-        <Badge variant="outline">
-          {workflow && status === "active" ? t("authority.versionActive") : statusLabel(t, status)}
-        </Badge>
+        <Badge variant="outline">{statusLabel(t, status)}</Badge>
       )}
       {version !== undefined && <Badge variant="secondary">v{String(version)}</Badge>}
       <span className="text-muted-foreground">
@@ -281,61 +217,6 @@ function Overview({ record }: { record: RecordValue }) {
       ))}
     </dl>
   );
-}
-
-function WorkflowBody({
-  id,
-  record,
-  canRun,
-}: {
-  id: string;
-  record: RecordValue;
-  canRun: boolean;
-}) {
-  const { t } = useI18n();
-  const steps = Array.isArray(record.steps)
-    ? record.steps.filter((step): step is RecordValue => Boolean(step) && typeof step === "object")
-    : [];
-  return (
-    <Tabs defaultValue="steps">
-      <TabsList>
-        <TabsTrigger value="steps" data-testid="workflow-tab-dag">
-          {t("detail.workflow")}
-        </TabsTrigger>
-        <TabsTrigger value="overview" data-testid="workflow-tab-overview">
-          {t("detail.overview")}
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent value="steps" className="pt-4">
-        <WorkflowGallery
-          key={`${id}:${String(record.current_version_id ?? "none")}`}
-          workflowId={id}
-          versionId={
-            typeof record.current_version_id === "string" ? record.current_version_id : null
-          }
-          steps={steps}
-          definition={workflowDraftDefinition(record, steps)}
-          canRun={canRun}
-        />
-      </TabsContent>
-      <TabsContent value="overview" className="pt-4">
-        <Overview record={record} />
-      </TabsContent>
-    </Tabs>
-  );
-}
-
-/** The saved workflow replayed as a draft, so a test run never touches the stored version. */
-function workflowDraftDefinition(
-  record: RecordValue,
-  steps: readonly RecordValue[],
-): Record<string, unknown> {
-  return {
-    name: typeof record.name === "string" ? record.name : "Test run",
-    ...(typeof record.slug === "string" ? { slug: record.slug } : {}),
-    ...(typeof record.description === "string" ? { description: record.description } : {}),
-    steps,
-  };
 }
 
 function SkillBody({
@@ -498,76 +379,6 @@ function FileBody({ id, record }: { id: string; record: RecordValue }) {
   );
 }
 
-function MetadataDialog({
-  resource,
-  id,
-  record,
-}: {
-  resource: Exclude<DetailResource, "files">;
-  id: string;
-  record: RecordValue;
-}) {
-  const { t } = useI18n();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState(recordTitle(record));
-  const mutation = useMutation({
-    mutationFn: () => {
-      const path =
-        resource === "workflows"
-          ? `/v1/workflows/${encodeURIComponent(id)}/metadata`
-          : `${ENDPOINTS[resource]}/${encodeURIComponent(id)}`;
-      const body =
-        resource === "skills" ? { title: name, expected_version: record.version } : { name };
-      return apiRequest<RecordValue>(path, { method: "PATCH", body: JSON.stringify(body) });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      toast.success(t("detail.saved"));
-      await queryClient.invalidateQueries({ queryKey: ["catalog-detail", resource, id] });
-    },
-  });
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Button variant="outline" onClick={() => setOpen(true)} data-testid="detail-edit-metadata">
-        <Pencil data-icon="inline-start" />
-        {t("detail.editMetadata")}
-      </Button>
-      <DialogContent data-testid="detail-metadata-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("detail.editMetadata")}</DialogTitle>
-          <DialogDescription>{t("detail.editMetadataDescription")}</DialogDescription>
-        </DialogHeader>
-        <Field>
-          <FieldLabel htmlFor="detail-record-name">{t("common.name")}</FieldLabel>
-          <Input
-            id="detail-record-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            data-testid="detail-metadata-name"
-          />
-        </Field>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            data-testid="detail-metadata-cancel"
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={!name.trim() || name === recordTitle(record) || mutation.isPending}
-            onClick={() => mutation.mutate()}
-            data-testid="detail-metadata-save"
-          >
-            {t("common.saveChanges")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function CatalogDetailPage({
   resource,
   permissions,
@@ -671,6 +482,19 @@ export function CatalogDetailPage({
       </div>
     );
 
+  // A workflow has a page of its own: its state, how it is called, what it
+  // takes and does. The frame below is for the records that are one document.
+  if (resource === "workflows")
+    return (
+      <WorkflowPage
+        id={id}
+        record={record}
+        title={recordTitle(record)}
+        purpose={recordPurpose(record)}
+        permissions={permissions}
+      />
+    );
+
   return (
     <main
       data-family-surface="detail"
@@ -686,11 +510,6 @@ export function CatalogDetailPage({
             <h1 className="truncate text-2xl font-semibold tracking-tight">
               {recordTitle(record)}
             </h1>
-            {resource === "workflows" ? (
-              <WorkflowHealthBadge
-                state={typeof record.health_state === "string" ? record.health_state : null}
-              />
-            ) : null}
           </div>
           {/* The record's OWN description when it has one — what this thing is
               for, in the words of whoever built it. Where it has none the line
@@ -702,21 +521,13 @@ export function CatalogDetailPage({
           ) : null}
         </div>
         <div data-family-slot="detail-actions" className="flex flex-wrap gap-2">
-          {resource === "workflows" && permissions.includes("workflow:run") && (
-            <RunWorkflowDialog
-              workflowId={id}
-              workflowName={recordTitle(record)}
-              version={record.current_version === undefined ? null : String(record.current_version)}
-              versionId={
-                typeof record.current_version_id === "string" ? record.current_version_id : null
-              }
-            />
-          )}
-          {resource === "workflows" && permissions.includes("conversation:write") && (
-            <AgentPanel workflowId={id} workflowName={recordTitle(record)} />
-          )}
           {resource !== "files" && canWrite && (
-            <MetadataDialog resource={resource} id={id} record={record} />
+            <MetadataDialog
+              resource={resource}
+              id={id}
+              title={recordTitle(record)}
+              version={record.version}
+            />
           )}
           {canTest && (
             <Button
@@ -738,12 +549,7 @@ export function CatalogDetailPage({
           />
         </div>
       </header>
-      <GovernanceBar
-        record={record}
-        canWrite={canWrite}
-        workflow={resource === "workflows"}
-        connectorAuth={connectorAuth}
-      />
+      <GovernanceBar record={record} canWrite={canWrite} connectorAuth={connectorAuth} />
       {resource === "connectors" && probe.data && (
         <div className="border-b px-6 py-4" data-testid="connector-probe-result">
           <p
@@ -781,39 +587,6 @@ export function CatalogDetailPage({
         data-family-slot="detail-main"
         className={`flex min-h-0 flex-1 flex-col gap-5 p-6${resource === "connectors" ? " [&>*]:shrink-0" : ""}`}
       >
-        {resource === "workflows" ? (
-          <WorkflowCause
-            workflowId={id}
-            healthState={typeof record.health_state === "string" ? record.health_state : null}
-            healthReason={typeof record.health_reason === "string" ? record.health_reason : null}
-            healthChangedAt={
-              typeof record.health_changed_at === "string" ? record.health_changed_at : null
-            }
-            permissions={permissions}
-          />
-        ) : null}
-        {resource === "workflows" && permissions.includes("execution:read") ? (
-          <RecentRuns workflowId={id} />
-        ) : null}
-        {resource === "workflows" ? (
-          <WorkflowAuthorities
-            workflowId={id}
-            workflow={{
-              current_version_id:
-                typeof record.current_version_id === "string" ? record.current_version_id : null,
-              draft_version_id:
-                typeof record.draft_version_id === "string" ? record.draft_version_id : null,
-              current_version:
-                typeof (record.version ?? record.current_version) === "number"
-                  ? ((record.version as number) ?? (record.current_version as number))
-                  : null,
-            }}
-            canWrite={canWrite}
-          />
-        ) : null}
-        {resource === "workflows" ? (
-          <WorkflowBody id={id} record={record} canRun={permissions.includes("workflow:run")} />
-        ) : null}
         {resource === "skills" ? <SkillBody id={id} record={record} canWrite={canWrite} /> : null}
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
@@ -856,11 +629,8 @@ export function CatalogDetailPage({
         permissions.includes("workflow:read") ? (
           <ConnectorWorkflows slug={record.slug} />
         ) : null}
-        {(resource === "workflows" || resource === "connectors") &&
-        permissions.includes("conversation:read") ? (
-          <ConversationsAbout
-            target={resource === "workflows" ? { workflow_id: id } : { connector_id: id }}
-          />
+        {resource === "connectors" && permissions.includes("conversation:read") ? (
+          <ConversationsAbout target={{ connector_id: id }} />
         ) : null}
         {resource === "connectors" ? <ConnectorTechnicalFacts record={record} id={id} /> : null}
       </div>

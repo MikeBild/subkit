@@ -13,7 +13,11 @@
 // capability paths (route_layering invariant). The route reporting a set the
 // MCP surface never publishes is the defect these three exist to prevent, so
 // they belong together and behind one door.
-export { assembleCatalog } from "./capabilities/catalog-budget.ts";
+export {
+  assembleCatalog,
+  RUN_WORKFLOW_TOOL,
+  workflowToolName,
+} from "./capabilities/catalog-budget.ts";
 export { listWorkflowTools } from "./capabilities/tools-helpers.ts";
 export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {

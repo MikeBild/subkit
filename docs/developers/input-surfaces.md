@@ -149,6 +149,22 @@ Inline previews require tenant-level `workflow:run`. A resource grant on one
 saved workflow does not authorize an arbitrary inline definition: adding a
 `workflow_id` to a draft or step request cannot borrow that grant.
 
+### How a saved workflow is called
+
+`GET /v1/workflows/{id}/invocation` requires resource-scoped `workflow:read` and
+answers, in one read, every way to start the workflow: the run request
+(`POST /v1/executions`) with its header names, an example body and ready-to-paste
+snippets per environment; the inbound hooks with their signing scheme and header
+names; the MCP tool name with the `run_workflow` fallback; the schedules; the CLI
+command; the input and output schema with a sample input; and, per environment,
+whether a run without an explicit approval would be live or a held preview.
+Addresses come from `server.public_base_url` only — `http.url`, `hooks[].url` and
+`http.snippets` are `null` until it is configured, never derived from the request.
+`hooks` and `schedules` are present only for callers holding `inbound_hook:read`
+and `schedule:read`. The response carries no credential: no key, no token, no hook
+signing secret. The snippets are rendered by the same function as
+`sk workflows invoke-snippet`. See [Calling a workflow](../authors/calling-workflows.md).
+
 ### Durable workflow draft API
 
 `POST /v1/workflows/drafts` accepts `{definition}` and requires `workflow:write`.

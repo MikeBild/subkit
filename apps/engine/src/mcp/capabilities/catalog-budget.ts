@@ -54,6 +54,17 @@ import { type McpMode, modeFlags } from "../mode-resolver.ts";
 import { listConversationTools } from "./conversations.ts";
 
 export const TOOL_PREFIX = "wf_";
+
+/** The name a saved workflow is published under: `wf_<slug>`. */
+export function workflowToolName(slug: string): string {
+  return `${TOOL_PREFIX}${slug}`;
+}
+
+/**
+ * The tool that runs any saved workflow by slug. A workflow the palette cap
+ * leaves out of `tools/list` stays reachable through it.
+ */
+export const RUN_WORKFLOW_TOOL = "run_workflow";
 // Default size of the per-workflow `wf_` palette; matches the converse cap. The
 // only bound left on the catalog — trimmed-out workflows stay reachable via
 // `find_workflow` / `run_workflow(slug)`.

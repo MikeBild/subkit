@@ -117,6 +117,7 @@ deployment — index first, then fetch just the pages they need.
 | [repl-tour.md](authors/repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [choosing-your-surface.md](authors/choosing-your-surface.md) | Which door for which job — changing a definition versus running one, with seven worked examples. |
 | [authoring-workflows.md](authors/authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
+| [calling-workflows.md](authors/calling-workflows.md) | Call a saved workflow from your app, a webhook, an AI client, a schedule or a terminal — what to send, what comes back, and why an unapproved call is only a trial run. |
 | [custom-skills.md](authors/custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
 | [knowledge-sources.md](authors/knowledge-sources.md) | Upload, tag, and refresh the documents the AI grounds its proposals in. |
 | [asking-your-knowledge.md](authors/asking-your-knowledge.md) | Ask questions where you work and trust the answer: sourced, quote-checked, honestly refused when the knowledge isn't there. |

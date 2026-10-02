@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { attentionHref, chatNewHref, connectorHref, runHref, workflowHref } from "@/app/links";
+import {
+  attentionHref,
+  chatNewHref,
+  connectorHref,
+  runHref,
+  workflowAutomationHref,
+} from "@/app/links";
 import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
 
 const WF = "0b6f2d4e-91c3-4a7e-8d52-3f1e6a9c7b20";
@@ -57,7 +63,7 @@ describe("remedyFor", () => {
         authState: { connectorId: CONNECTOR, state: "expired" },
         failedRunId: RUN,
       },
-      { kind: "grant", href: `${workflowHref(WF)}#workflow-authorities` },
+      { kind: "grant", href: workflowAutomationHref(WF) },
     ],
     [
       "a repair proposal still wins over a hold",

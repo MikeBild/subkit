@@ -1,3 +1,5 @@
+import { openWorkflowMenuEntry } from "./cockpit-workflow-page.mjs";
+
 /**
  * The side panel beside a workflow answers every question: with words, with
  * the card the turn handed over, or with a sentence that no answer came and
@@ -109,7 +111,9 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
   };
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("agent-panel-open").click();
+    // Asking is one of the further actions beside the title, not a button of
+    // its own next to the page's one filled action.
+    await openWorkflowMenuEntry(page, "ask");
     const panel = page.getByTestId("agent-panel");
     await panel.waitFor();
 

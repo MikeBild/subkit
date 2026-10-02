@@ -205,6 +205,28 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
     await page.goBack();
     await sheet.waitFor({ state: "hidden" });
+
+    // On the workflow's own page the held hook is the one state — "approval
+    // needed", judged in production, where a hook's deliveries run — with the
+    // hook named in the panel and no badge beside it.
+    await stand.visit(page, `workflows/${workflowId}`);
+    const panel = page.getByTestId("workflow-automation");
+    await page.getByTestId("workflow-automation-action").waitFor();
+    if ((await panel.getAttribute("data-state")) !== "grant")
+      throw new Error(
+        `A held webhook reads as "${await panel.getAttribute("data-state")}", not as approval needed`,
+      );
+    if (!(await page.getByTestId("workflow-automation-triggers").innerText()).includes(slug))
+      throw new Error("The panel does not name the webhook it is about");
+    if (
+      !(await page.getByTestId("workflow-automation-headline").innerText()).includes(
+        locale === "de" ? "Produktion" : "Production",
+      )
+    )
+      throw new Error("A webhook's approval is not judged in production");
+    if (await page.getByTestId("authority-hook-held").count())
+      throw new Error("The held webhook is announced a second time by a badge");
+    await capture("workflow-page");
   } finally {
     for (const [pattern, handler] of routes) await page.unroute(pattern, handler);
   }
