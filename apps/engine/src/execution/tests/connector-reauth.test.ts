@@ -262,6 +262,11 @@ describe("connector re-auth — storm dedup (false→true edge only)", () => {
     // Connector stays flagged.
     const connRow = await queryConnectorRow();
     expect(connRow.needs_reauth).toBe(true);
+    // The flag is the whole report. A rejected credential is an answer from
+    // the remote, so neither 401 counts toward the circuit breaker — counting
+    // them used to open it and replace "reconnect" with `circuit_open`.
+    expect(connRow.circuit_failure_count).toBe(0);
+    expect(connRow.circuit_state).toBe("closed");
   });
 });
 

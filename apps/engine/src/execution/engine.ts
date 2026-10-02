@@ -48,6 +48,7 @@ import {
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import { bindExistingRun } from "./bound-run.ts";
+import { disabledConnectorRefusal, refusedConnectorOf } from "./connector-availability.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
   bodyEnvelopeForLoopAccumulator,
@@ -649,6 +650,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       // minutes). Fail ONCE at the container instead of scheduling N
       // branches. Half-open probing is untouched: past the reset window the
       // predicate stands down and the first iteration performs the probe.
+      //
+      // A connector that is switched off refuses every iteration the same
+      // way, so it fails the container once too — and is asked first, as in
+      // the dispatcher, so it is never reported as an open breaker.
       let fanOutCircuitFailure: StepResult | null = null;
       if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
         const target = await getConnectorForEnvironment(
@@ -657,7 +662,15 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           execution_mode,
           db,
         );
-        if (target && isCircuitOpenBlocking(target)) {
+        const refusal = target ? disabledConnectorRefusal(target, step.id) : null;
+        if (refusal) {
+          fanOutCircuitFailure = {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - forEachStart,
+            error: refusal,
+          };
+        } else if (target && isCircuitOpenBlocking(target)) {
           logger.warn({
             module: "execution",
             action: "for_each.circuit_open_preflight",
@@ -1969,6 +1982,9 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     failure: validationError ?? lastError,
   });
   finalStatus = settled.status;
+  // A step refused for its connector names it on the run too, so a reader of
+  // the failed run can open the connector that has to be fixed.
+  const refusedConnector = settled.failure ? refusedConnectorOf(settled.failure) : null;
 
   // Offload top-level execution result.
   const offload = await maybeOffload(db, {
@@ -1994,6 +2010,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           step_id: failedStepId,
           error_code: settled.failure.code,
           error_message: settled.failure.message,
+          ...(refusedConnector ? { connector: refusedConnector } : {}),
         }
       : null,
     undefined,

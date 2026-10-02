@@ -342,7 +342,7 @@ defaults and are operator-tunable.
 | Per-execution / per-step timeouts | Runaway workflows consuming resources indefinitely |
 | Per-tenant token budgets | Unbounded AI usage costs |
 | API rate limits | A single caller monopolizing capacity |
-| Connector circuit breakers | Cascading failure from a degraded external boundary — after N consecutive failures the circuit opens and requests fail fast until recovery |
+| Connector circuit breakers | Cascading failure from a degraded external boundary — after N consecutive availability failures (transport error, timeout, `5xx`, `429`) the circuit opens and requests fail fast until recovery; an answered `4xx` such as `401` or `404` is not counted |
 | Queue depth caps | Unbounded work accumulation |
 
 When a circuit breaker trips, the audit log records it and the event stream delivers a

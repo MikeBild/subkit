@@ -42,6 +42,7 @@ import {
   connectorHealthHint,
   parseDeprecation,
 } from "../health.ts";
+import { callProvedCredentialLive, clearReauthOnSuccess } from "../reauth.ts";
 import { getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -386,6 +387,13 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   // anonymous-200). Classify so the audit row and the LLM-facing envelope
   // both reflect that instead of recording a blind "success".
   const health = dispatch ? classifyConnectorHealth(status, dispatch.headers) : "ok";
+
+  // The re-auth clearing edge is "a successful authenticated call proves the
+  // credential is live" (see connectors/reauth.ts). A request step and a probe
+  // each close it; this call reaches the remote through neither.
+  if (dispatch && callProvedCredentialLive(connector, status, health)) {
+    await clearReauthOnSuccess(req.db, connector);
+  }
 
   // Phase 2: per-call health counter — a climbing non-ok share for a slug is
   // the leading signal of connector drift (rotated credential, removed
