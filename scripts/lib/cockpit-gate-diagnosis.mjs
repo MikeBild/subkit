@@ -237,6 +237,30 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await section.waitFor();
     if ((await section.locator("li[data-code]").count()) !== 4)
       throw new Error("The diagnosis does not list every refused step");
+    // The diagnosis lives inside the automation panel, whose state it decides —
+    // once on the page, and its first block's act is the one beside the title.
+    const automation = page.getByTestId("workflow-automation");
+    if ((await automation.getByTestId("workflow-diagnosis").count()) !== 1)
+      throw new Error("The diagnosis is not part of the automation panel");
+    if ((await page.getByTestId("workflow-diagnosis").count()) !== 1)
+      throw new Error("The diagnosis stands on the page twice");
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="workflow-automation"]')
+          ?.getAttribute("data-state") === "repair",
+    );
+    if (await page.getByTestId("workflow-automation-action").count())
+      throw new Error("The panel repeats the diagnosis' act as a second button");
+    const titled = (await page.getByTestId("detail-action").innerText()).trim();
+    if (titled !== (de ? "Automatisch reparieren" : "Repair automatically"))
+      throw new Error(`The action beside the title reads "${titled}", not the first block's act`);
+    // The page's filled action is "Ausführen"; no act inside the panel
+    // competes with it.
+    const filled = await automation
+      .locator('button[data-variant="default"], a[data-variant="default"]')
+      .count();
+    if (filled !== 0) throw new Error(`The panel carries ${filled} filled actions`);
 
     // The cause, in the reader's words — the precise rule, not the code.
     const encoder = await item(0).getByTestId("workflow-diagnosis-0-cause").innerText();
@@ -304,6 +328,12 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await item(0).getByTestId("workflow-diagnosis-0-review").waitFor();
     if (await item(0).getByTestId("workflow-diagnosis-0-repair").count())
       throw new Error("A filed repair is offered for filing again");
+    // … and so does the action beside the title: the same act, the same place.
+    const reviewHref = await page.getByTestId("detail-action").getAttribute("href");
+    if (
+      reviewHref !== (await item(0).getByTestId("workflow-diagnosis-0-review").getAttribute("href"))
+    )
+      throw new Error(`The title leads to ${reviewHref}, not to the filed repair`);
 
     // A draft is diagnosed, never repaired: the engine would refuse it.
     current = false;
