@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Bot, KeyRound, SearchCheck, ShieldCheck } from "lucide-react";
 import { apiRequest } from "@/api/client";
-import { listHeldInboundHooks, listHeldSchedules } from "@/api/decisions";
 import { absolute } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
@@ -10,7 +9,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { type Remedy, remedyFor } from "@/lib/remedy";
 import { FAILED_RUN_STATUSES } from "@/pages/runs-model";
 
-type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
+type DetailResource = "connectors" | "knowledge" | "skills" | "files";
 
 const ICONS: Record<Remedy["kind"], typeof Bot> = {
   review_repair: ShieldCheck,
@@ -21,7 +20,8 @@ const ICONS: Record<Remedy["kind"], typeof Bot> = {
   chat: Bot,
 };
 
-function ActionLink({ remedy }: { remedy: Remedy }) {
+/** A remedy as the action beside a record's title. */
+export function RemedyLink({ remedy }: { remedy: Remedy }) {
   const { t } = useI18n();
   const Icon = ICONS[remedy.kind];
   // On a record's own page the conversation is where the record is changed;
@@ -38,67 +38,48 @@ function ActionLink({ remedy }: { remedy: Remedy }) {
 }
 
 /**
- * The next step a workflow's state asks for, in `remedyFor`'s order: a held
- * schedule or webhook → review the approval; a failed newest run → investigate
- * it (its page names a lost sign-in and leads to the connector); otherwise a
- * conversation that opens with the intent to change this workflow.
+ * A workflow page's ordinary action, for when its automation state asks for
+ * nothing: a failed newest run → investigate it (its page names a lost sign-in
+ * and leads to the connector); otherwise a conversation that opens with the
+ * intent to change this workflow.
+ *
+ * What the automation state asks for — approving, applying a saved change,
+ * repairing — is decided by `lib/automation-state.ts` and takes precedence;
+ * the page shows this only when that has no pending step.
  *
  * Only reads the page already makes. Which connector keeps an environment from
  * running is asked when the run dialog opens, not on every page view: the
- * authority preview is a full review, and the approval section counts on it
- * being asked only for what a reviewer chose.
+ * authority preview is a full review.
  */
-function WorkflowAction({
-  workflowId,
-  name,
-  permissions,
-}: {
-  workflowId: string;
-  name: string;
-  permissions: readonly string[];
-}) {
+export function useWorkflowRemedy(
+  workflowId: string,
+  name: string,
+  permissions: readonly string[],
+): Remedy | null {
   const { t } = useI18n();
-  // The same reads, under the same keys, as the approval section below.
-  const scheduleHolds = useQuery({
-    queryKey: ["workflow-schedule-holds"],
-    queryFn: listHeldSchedules,
-    refetchInterval: 30_000,
-    retry: false,
-  });
-  const hookHolds = useQuery({
-    queryKey: ["workflow-automation-status", workflowId, "held-hooks"],
-    queryFn: () => listHeldInboundHooks(workflowId),
-    refetchInterval: 30_000,
-    retry: false,
-  });
-  const held =
-    Boolean(scheduleHolds.data?.some((schedule) => schedule.workflow_id === workflowId)) ||
-    (hookHolds.data?.length ?? 0) > 0;
-  const canReadRuns = permissions.includes("execution:read");
-  // The same read as the recent runs below.
+  // The same read as the recent runs on the page.
   const recent = useQuery({
     queryKey: ["workflow-recent-runs", workflowId],
-    enabled: canReadRuns,
+    enabled: permissions.includes("execution:read"),
     queryFn: () =>
       apiRequest<{ items?: { id: string; status: string }[] }>(
         `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=5`,
       ),
   });
   const newest = recent.data?.items?.[0];
-  const remedy = remedyFor({
+  return remedyFor({
     workflowId,
-    held,
     failedRunId: newest && FAILED_RUN_STATUSES.has(newest.status) ? newest.id : null,
     canRun: permissions.includes("workflow:run"),
     canChat: permissions.includes("conversation:write"),
     prompt: t("detail.changePrompt", { name }),
   });
-  return remedy ? <ActionLink remedy={remedy} /> : null;
 }
 
 /**
  * The action beside a record's title, chosen by its state — never a fixed
- * chat button that filled its own label in as the question.
+ * chat button that filled its own label in as the question. A workflow's is
+ * chosen on its own page (`workflow-page.tsx`), from its automation state.
  */
 export function DetailAction({
   resource,
@@ -113,8 +94,6 @@ export function DetailAction({
   connectorAuth: ConnectorAuthState | null;
   permissions: readonly string[];
 }) {
-  if (resource === "workflows")
-    return <WorkflowAction workflowId={id} name={name} permissions={permissions} />;
   if (resource === "connectors") {
     // A lost sign-in is the one thing only a person can fix here; otherwise
     // "Verbindung testen" already stands beside the title.
@@ -124,7 +103,7 @@ export function DetailAction({
       canRun: false,
       canChat: false,
     });
-    return remedy ? <ActionLink remedy={remedy} /> : null;
+    return remedy ? <RemedyLink remedy={remedy} /> : null;
   }
   if (resource === "files") return null;
   return <RecordChatAction name={name} permissions={permissions} />;
@@ -137,5 +116,5 @@ function RecordChatAction({ name, permissions }: { name: string; permissions: re
     canChat: permissions.includes("conversation:write"),
     prompt: t("detail.changeRecordPrompt", { name }),
   });
-  return remedy ? <ActionLink remedy={remedy} /> : null;
+  return remedy ? <RemedyLink remedy={remedy} /> : null;
 }
