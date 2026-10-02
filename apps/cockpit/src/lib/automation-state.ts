@@ -196,45 +196,49 @@ export function automationTriggers(
   schedules: readonly ScheduleLike[] | null,
 ): AutomationTrigger[] {
   const paused = new Map((schedules ?? []).map((schedule) => [schedule.id, schedule.paused]));
-  const fromStatus: AutomationTrigger[] = status
-    ? [
-        ...status.schedules.map(
-          (row): AutomationTrigger => ({
-            kind: "schedule",
-            id: row.schedule_id,
-            cron: row.cron,
-            timezone: row.timezone,
-            slug: null,
-            environment: row.environment,
-            paused: row.state === "paused" || paused.get(row.schedule_id) === true,
-            nextRunAt: row.next_run_at,
-          }),
-        ),
-        ...status.inbound_hooks.map(
-          (row): AutomationTrigger => ({
-            kind: "hook",
-            id: null,
-            cron: null,
-            timezone: null,
-            slug: row.slug,
-            environment: "prod",
-            paused: row.state === "paused",
-            nextRunAt: null,
-          }),
-        ),
-      ]
-    : [];
-  if (status) return fromStatus;
-  return (schedules ?? []).map((schedule) => ({
-    kind: "schedule",
-    id: schedule.id,
-    cron: schedule.cron,
-    timezone: schedule.timezone,
-    slug: null,
-    environment: schedule.execution_mode,
-    paused: schedule.paused,
-    nextRunAt: null,
-  }));
+  const listed = (schedules ?? []).map(
+    (schedule): AutomationTrigger => ({
+      kind: "schedule",
+      id: schedule.id,
+      cron: schedule.cron,
+      timezone: schedule.timezone,
+      slug: null,
+      environment: schedule.execution_mode,
+      paused: schedule.paused,
+      nextRunAt: null,
+    }),
+  );
+  if (!status) return listed;
+  // The verified row leads; a schedule only the list knows is still one — two
+  // reads of the same table taken a moment apart must not lose a trigger.
+  const verified = new Set(status.schedules.map((row) => row.schedule_id));
+  return [
+    ...status.schedules.map(
+      (row): AutomationTrigger => ({
+        kind: "schedule",
+        id: row.schedule_id,
+        cron: row.cron,
+        timezone: row.timezone,
+        slug: null,
+        environment: row.environment,
+        paused: row.state === "paused" || paused.get(row.schedule_id) === true,
+        nextRunAt: row.next_run_at,
+      }),
+    ),
+    ...listed.filter((trigger) => trigger.id !== null && !verified.has(trigger.id)),
+    ...status.inbound_hooks.map(
+      (row): AutomationTrigger => ({
+        kind: "hook",
+        id: null,
+        cron: null,
+        timezone: null,
+        slug: row.slug,
+        environment: "prod",
+        paused: row.state === "paused",
+        nextRunAt: null,
+      }),
+    ),
+  ];
 }
 
 /**
@@ -373,8 +377,10 @@ export function automationState(input: AutomationInputs): AutomationState {
     };
   }
 
-  // 4. Not verifiable is not approved.
-  if (input.authorities === null || rows.includes("verification_unavailable")) {
+  // 4. Not verifiable is not approved — and not calm either: when neither
+  //    read of the schedules answered, "nothing starts it" is a guess.
+  const triggersUnread = input.schedules === null && input.status === null;
+  if (input.authorities === null || triggersUnread || rows.includes("verification_unavailable")) {
     return { ...base, state: "unknown", facts, ...shown(null), primaryAction: null };
   }
 

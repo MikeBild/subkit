@@ -7,6 +7,7 @@ import {
   type InvocationSchedule,
   initialInvocationMode,
   invocationModes,
+  isWorkflowInvocation,
   SCHEDULE_STATE_KEYS,
   verifierName,
 } from "@/lib/workflow-invocation";
@@ -30,6 +31,30 @@ const schedule: InvocationSchedule = {
   state: "active",
   next_fire_at: null,
 };
+
+describe("isWorkflowInvocation", () => {
+  const answer = {
+    http: { path: "/v1/executions", body: {} },
+    mcp: {},
+    cli: {},
+    input: { sample: {} },
+    output: {},
+    authority: {},
+    webhook_input_shape: {},
+  };
+
+  test("an answer with the parts the page reads is one", () => {
+    expect(isWorkflowInvocation(answer)).toBe(true);
+  });
+
+  test("a 200 that carries something else is a failed read", () => {
+    expect(isWorkflowInvocation({ items: [], total: 0 })).toBe(false);
+    expect(isWorkflowInvocation(null)).toBe(false);
+    expect(isWorkflowInvocation([])).toBe(false);
+    expect(isWorkflowInvocation({ ...answer, http: { path: "/v1/executions" } })).toBe(false);
+    expect(isWorkflowInvocation({ ...answer, input: {} })).toBe(false);
+  });
+});
 
 describe("invocationModes", () => {
   test("a request, a tool call and the command line always exist", () => {

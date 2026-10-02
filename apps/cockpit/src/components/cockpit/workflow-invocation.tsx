@@ -30,6 +30,7 @@ import {
   type InvocationSchedule,
   initialInvocationMode,
   invocationModes,
+  isWorkflowInvocation,
   SCHEDULE_STATE_KEYS,
   SNIPPET_LANGUAGES,
   type SnippetLanguage,
@@ -62,8 +63,13 @@ const SNIPPET_NAMES: Record<SnippetLanguage, string> = {
 export function useWorkflowInvocation(workflowId: string) {
   return useQuery({
     queryKey: ["workflow-invocation", workflowId],
-    queryFn: () =>
-      apiRequest<Invocation>(`/v1/workflows/${encodeURIComponent(workflowId)}/invocation`),
+    queryFn: async (): Promise<Invocation> => {
+      const answer = await apiRequest<unknown>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`,
+      );
+      if (!isWorkflowInvocation(answer)) throw new Error("not an invocation answer");
+      return answer;
+    },
   });
 }
 
