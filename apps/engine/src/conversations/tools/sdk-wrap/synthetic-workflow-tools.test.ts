@@ -20,6 +20,7 @@ import { tenants } from "../../../db/schema/identity.ts";
 import {
   conversationElicitations,
   conversations,
+  webhooksInbound,
   workflows,
   workflowsSchedules,
   workflowVersions,
@@ -489,6 +490,49 @@ test("saved workflow execution follows its schedule environment and ignores paus
     .where(
       and(eq(workflowsSchedules.tenant_id, tenantId), eq(workflowsSchedules.workflow_id, wf.id)),
     );
+  expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("dev");
+});
+
+test("a hook-started workflow is judged in production, where its deliveries run", async () => {
+  const [wf] = await tdb.db
+    .insert(workflows)
+    .values({
+      tenant_id: tenantId,
+      name: "Hook environment",
+      slug: "hook-environment",
+      lifecycle: "active",
+    })
+    .returning();
+  if (!wf) throw new Error("missing workflow");
+  const [hook] = await tdb.db
+    .insert(webhooksInbound)
+    .values({
+      tenant_id: tenantId,
+      workflow_id: wf.id,
+      slug: "hook-environment",
+      verifier: "standard",
+      secret_ciphertext: Buffer.alloc(1),
+      secret_iv: Buffer.alloc(1),
+      secret_auth_tag: Buffer.alloc(1),
+    })
+    .returning();
+  if (!hook) throw new Error("missing hook");
+  // The hook alone decides: one saved change, one environment to review.
+  expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("prod");
+  // A development schedule beside it is a real ambiguity, as two schedules are.
+  const [schedule] = await tdb.db
+    .insert(workflowsSchedules)
+    .values({ tenant_id: tenantId, workflow_id: wf.id, cron: "0 8 * * *", execution_mode: "dev" })
+    .returning();
+  if (!schedule) throw new Error("missing schedule");
+  await expect(workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).rejects.toMatchObject({
+    code: "workflow_environment_ambiguous",
+  });
+  // A deactivated hook receives nothing and decides nothing.
+  await tdb.db
+    .update(webhooksInbound)
+    .set({ active: false })
+    .where(and(eq(webhooksInbound.tenant_id, tenantId), eq(webhooksInbound.id, hook.id)));
   expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("dev");
 });
 
