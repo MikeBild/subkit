@@ -1,4 +1,10 @@
-import { attentionHref, chatNewHref, connectorHref, runHref, workflowHref } from "@/app/links";
+import {
+  attentionHref,
+  chatNewHref,
+  connectorHref,
+  runHref,
+  workflowAutomationHref,
+} from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 /**
@@ -37,8 +43,9 @@ export interface RemedyInput {
     section?: "credentials";
   } | null;
   /**
-   * The authority gate holds this workflow's schedule or webhook: its runs are
-   * refused until someone reviews the approval, whatever else is changed.
+   * The authority gate refused this run: the approval no longer fits what the
+   * workflow does. The way out is the workflow's automation panel, which says
+   * the state and offers the one act that changes it.
    */
   held?: boolean;
   /** The workflow's newest run, when it failed — the evidence to read first. */
@@ -62,8 +69,8 @@ export interface RemedyInput {
  * 1. A repair proposal is already waiting → review it. Starting a chat about a
  *    problem the engine has already proposed a fix for sends the reader to
  *    rediscover it.
- * 2. The authority gate holds the workflow → review the approval. Its runs are
- *    refused until then.
+ * 2. The authority gate refused the run → the workflow's automation panel,
+ *    where the state is said and the approval is given or repaired.
  * 3. A connector's sign-in expired → sign in again. No workflow change fixes a
  *    credential.
  * 4. The newest run failed → investigate that run before changing anything.
@@ -85,7 +92,7 @@ export function remedyFor(input: RemedyInput): Remedy | null {
     return {
       kind: "grant",
       labelKey: "remedy.grant",
-      href: `${workflowHref(input.workflowId)}#workflow-authorities`,
+      href: workflowAutomationHref(input.workflowId),
     };
   }
   if (input.authState) {

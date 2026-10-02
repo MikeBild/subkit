@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { translate } from "@/lib/i18n";
 import {
   connectorNameOf,
   type ExecutionStep,
-  humaniseTechnicalValues,
+  formatDuration,
   joinStepsWithLastRun,
+  maskIdentifiers,
   readStepDefinition,
+  type StepBlock,
+  stepEssenceText,
   stepResultPreview,
   workflowStepKindKey,
 } from "./workflow-steps";
+
+const UUID = "457df8bc-2fe7-4a44-8dba-0acfa31821c5";
+/** A workflow placeholder as an author writes it — text, not a template. */
+const PLACEHOLDER = ["$", "{input.name}"].join("");
+const de: Parameters<typeof stepEssenceText>[1] = (key, values) => translate("de", key, values);
+const en: Parameters<typeof stepEssenceText>[1] = (key, values) => translate("en", key, values);
 
 function runStep(overrides: Partial<ExecutionStep> & { step_key: string }): ExecutionStep {
   return {
@@ -22,37 +33,284 @@ function runStep(overrides: Partial<ExecutionStep> & { step_key: string }): Exec
     output_preview: null,
     error: null,
     request_meta: null,
-    started_at: "2026-08-17T10:00:00.000Z",
-    finished_at: "2026-08-17T10:00:01.000Z",
+    started_at: "2030-08-17T10:00:00.000Z",
+    finished_at: "2030-08-17T10:00:01.000Z",
     ...overrides,
   } as ExecutionStep;
 }
+
+const read = (step: Record<string, unknown>) => readStepDefinition(step, 0);
+const essence = (step: Record<string, unknown>, connector: string | null = null) =>
+  stepEssenceText(read(step), de, { connector });
+const block = (blocks: readonly StepBlock[], labelKey: StepBlock["labelKey"]) =>
+  blocks.find((entry) => entry.labelKey === labelKey);
 
 describe("step definition", () => {
   test("names a step without an id by its position instead of leaving it blank", () => {
     expect(readStepDefinition({ kind: "request" }, 2).id).toBe("step-3");
   });
 
-  test("picks the first recognisable detail of the step", () => {
-    expect(
-      readStepDefinition({ id: "a", kind: "transform", expression: "x => x.id" }, 0).detail,
-    ).toBe("x => x.id");
-    expect(readStepDefinition({ id: "b", kind: "request", path: "/orders" }, 0).detail).toBe(
-      "/orders",
+  test("a kind this build does not know says nothing it cannot back", () => {
+    const definition = read({ id: "x", kind: "future_kind" });
+    expect(definition.essence).toEqual({ kind: "other" });
+    expect(definition.blocks).toEqual([]);
+    expect(essence({ id: "x", kind: "future_kind" })).toBe("");
+    expect(workflowStepKindKey("future_kind")).toBe("workflow.stepType");
+  });
+});
+
+describe("request steps", () => {
+  const step = {
+    id: "fetch_data",
+    kind: "request",
+    method: "POST",
+    path: "/users",
+    query: { limit: 10, active: true },
+    headers: { Accept: "application/json", Authorization: "Bearer plain-token" },
+    body: { name: PLACEHOLDER, parent: UUID },
+    max_retries: 2,
+    side_effects: "write",
+    timeout_ms: 30_000,
+    on_error: "continue",
+  };
+
+  test("the line says method, path and the connector", () => {
+    expect(essence(step, "Example API")).toBe("POST /users · Example API");
+    expect(essence({ id: "a", kind: "request", url: "https://api.example.org/x" })).toBe(
+      "GET https://api.example.org/x",
     );
   });
 
-  test("keeps UUID-shaped references out of a step's visible configuration", () => {
+  test("the configuration shows the request line, query, headers and body", () => {
+    const { blocks } = read(step);
+    expect(block(blocks, "workflow.block.request")?.code).toBe("POST /users");
+    expect(block(blocks, "workflow.block.query")?.code).toBe(
+      JSON.stringify({ limit: 10, active: true }, null, 2),
+    );
+    expect(block(blocks, "workflow.block.body")?.code).toBe(
+      JSON.stringify({ name: PLACEHOLDER, parent: UUID }, null, 2),
+    );
+  });
+
+  test("a credential-shaped header shows that it is sent, not what", () => {
+    const headers = block(read(step).blocks, "workflow.block.headers")?.code ?? "";
+    expect(headers).toContain("Accept: application/json");
+    expect(headers).toContain("Authorization: •••");
+    expect(headers).not.toContain("plain-token");
+  });
+
+  test("retries, effect, time limit and error handling are facts", () => {
+    expect(read(step).facts).toEqual([
+      { labelKey: "workflow.fact.retries", value: "2" },
+      { labelKey: "catalog.sideEffects", valueKey: "sideEffects.write" },
+      { labelKey: "workflow.fact.timeout", value: "30 s" },
+      { labelKey: "workflow.fact.onError", valueKey: "workflow.fact.onErrorContinue" },
+    ]);
+    // The default — fail on error, no retries — is not worth a row.
+    expect(read({ id: "a", kind: "request", path: "/x", on_error: "fail" }).facts).toEqual([]);
+  });
+
+  test("a SQL request names its statement and shows it whole", () => {
+    const sql = {
+      id: "load",
+      kind: "request",
+      method: "SELECT",
+      connector_id: UUID,
+      sql: { query: "\n  SELECT id, name\n  FROM customers\n  WHERE id = $1", params: [42] },
+    };
+    expect(essence(sql, "Lager-DB")).toBe("SQL · SELECT id, name · Lager-DB");
+    const { blocks } = read(sql);
+    expect(block(blocks, "workflow.block.sql")?.language).toBe("sql");
+    expect(block(blocks, "workflow.block.sql")?.code).toBe(sql.sql.query);
+    expect(block(blocks, "workflow.block.sqlParams")?.code).toBe("[\n  42\n]");
+    // There is no HTTP request line for a statement.
+    expect(block(blocks, "workflow.block.request")).toBeUndefined();
+  });
+
+  test("a GraphQL request shows its query and variables", () => {
+    const graphql = {
+      id: "issues",
+      kind: "request",
+      connector_id: UUID,
+      graphql: { operation: "query", query: "query Issues { issues { id } }", variables: { n: 5 } },
+    };
+    expect(essence(graphql)).toBe("GraphQL · query Issues { issues { id } }");
+    const { blocks } = read(graphql);
+    expect(block(blocks, "workflow.block.graphql")?.language).toBe("graphql");
+    expect(block(blocks, "workflow.block.variables")?.code).toBe('{\n  "n": 5\n}');
+  });
+
+  test("an object-storage request names its key", () => {
+    const s3 = {
+      id: "store",
+      kind: "request",
+      method: "PUT",
+      connector_id: UUID,
+      s3: { key: "reports/latest.json" },
+    };
+    expect(essence(s3)).toBe("Speicher · reports/latest.json");
+    expect(block(read(s3).blocks, "workflow.block.storage")?.code).toContain("reports/latest.json");
+  });
+
+  test("a tool call on a remote server names the tool and shows its arguments", () => {
+    const mcp = {
+      id: "notify",
+      kind: "request",
+      connector_id: UUID,
+      mcp: { operation: "call_tool", tool: "send_message", arguments: { channel: "ops" } },
+    };
+    expect(essence(mcp)).toBe("MCP · send_message");
+    expect(block(read(mcp).blocks, "workflow.block.arguments")?.code).toBe(
+      '{\n  "channel": "ops"\n}',
+    );
+  });
+});
+
+describe("control-flow steps", () => {
+  test("a branch says its condition and where each way leads", () => {
+    const step = {
+      id: "check_status",
+      kind: "branch",
+      when: "fetch_data.status = 200",
+      then_steps: ["shape_success"],
+      else_steps: ["shape_failure"],
+    };
+    expect(read(step).essence).toEqual({
+      kind: "branch",
+      when: "fetch_data.status = 200",
+      thenSteps: ["shape_success"],
+      elseSteps: ["shape_failure"],
+    });
+    expect(essence(step)).toBe("wenn fetch_data.status = 200 → shape_success, sonst shape_failure");
+    expect(stepEssenceText(read(step), en, { connector: null })).toBe(
+      "if fetch_data.status = 200 → shape_success, else shape_failure",
+    );
+    expect(block(read(step).blocks, "workflow.block.condition")?.code).toBe(
+      "fetch_data.status = 200",
+    );
+  });
+
+  test("a branch without an else names only the one way", () => {
+    expect(essence({ id: "b", kind: "branch", when: "ok", then_steps: ["a", "b"] })).toBe(
+      "wenn ok → a, b",
+    );
+  });
+
+  test("a loop says what it iterates over and which steps it runs", () => {
     expect(
-      readStepDefinition(
-        {
-          id: "load",
-          kind: "request",
-          path: "/v1/databases/457df8bc-2fe7-4a44-8dba-0acfa31821c5",
-        },
-        0,
-      ).detail,
-    ).toBe("/v1/databases/Referenz");
+      essence({ id: "each", kind: "loop", over: "fetch.data.items", body: ["send", "log"] }),
+    ).toBe("für jedes Element aus fetch.data.items: send, log");
+    const selector = read({
+      id: "each",
+      kind: "loop",
+      data_selector: "(sourceData) => sourceData.fetch.data",
+      body: ["send"],
+      fail_fast: true,
+    });
+    expect(selector.essence).toEqual({
+      kind: "loop",
+      over: "(sourceData) => sourceData.fetch.data",
+      body: ["send"],
+    });
+    expect(selector.facts).toEqual([
+      { labelKey: "workflow.fact.failFast", valueKey: "common.yes" },
+    ]);
+    // The loop's own source is not repeated as an output selector.
+    expect(block(selector.blocks, "workflow.block.selector")).toBeUndefined();
+  });
+
+  test("inline iteration on any step is shown as written", () => {
+    const step = { id: "a", kind: "request", path: "/x", for_each: "(s) => s.list.data" };
+    expect(block(read(step).blocks, "workflow.block.forEach")?.code).toBe("(s) => s.list.data");
+  });
+
+  test("parallel steps list their branches", () => {
+    const step = { id: "fan", kind: "parallel", branches: [["a", "b"], ["c"]] };
+    expect(read(step).essence).toEqual({ kind: "parallel", branches: [["a", "b"], ["c"]] });
+    expect(essence(step)).toBe("gleichzeitig: a, b ‖ c");
+  });
+
+  test("a call names the workflow it runs, never its identifier", () => {
+    const step = {
+      id: "sub",
+      kind: "call",
+      workflow_id: UUID,
+      workflow_slug: "send-report",
+      input: { a: 1 },
+    };
+    expect(read(step).essence).toEqual({ kind: "call", workflowId: UUID, slug: "send-report" });
+    expect(essence(step)).toBe("startet send-report");
+    expect(essence({ id: "sub", kind: "call", workflow_id: UUID })).toBe(
+      "startet einen anderen Workflow",
+    );
+    expect(
+      stepEssenceText(read(step), de, { connector: null, calledWorkflow: "Bericht senden" }),
+    ).toBe("startet Bericht senden");
+    expect(block(read(step).blocks, "workflow.block.input")?.code).toBe('{\n  "a": 1\n}');
+  });
+
+  test("a wait says how long", () => {
+    expect(essence({ id: "pause", kind: "wait", duration_ms: 90_000 })).toBe("wartet 90 s");
+    expect(essence({ id: "pause", kind: "wait" })).toBe("Wartezeit");
+  });
+
+  test("a wait for an event names the event and its limit", () => {
+    const step = {
+      id: "approval",
+      kind: "wait_for_event",
+      event_name: "invoice.approved",
+      match: { path: "outcome", equals: "approved" },
+      timeout_ms: 7_200_000,
+      on_timeout: "escalate",
+    };
+    expect(read(step).essence).toEqual({
+      kind: "wait_for_event",
+      event: "invoice.approved",
+      timeoutMs: 7_200_000,
+      onTimeout: "escalate",
+    });
+    expect(essence(step)).toBe("wartet auf invoice.approved, höchstens 2 h");
+    expect(block(read(step).blocks, "workflow.block.match")?.code).toContain('"outcome"');
+    // The limit is in the sentence; it is not a second fact below it.
+    expect(read(step).facts).toEqual([]);
+  });
+
+  test("a transformation names its language and shows the expression whole", () => {
+    const expression = `return { id: "${UUID}", at: "2030-08-25T22:00:00.000Z" };`;
+    const step = { id: "shape", kind: "transform", expression };
+    expect(essence(step)).toBe("JavaScript");
+    const code = block(read(step).blocks, "workflow.block.expression");
+    expect(code?.language).toBe("javascript");
+    // Payload: byte for byte, identifiers and instants included.
+    expect(code?.code).toBe(expression);
+    expect(essence({ id: "md", kind: "transform", language: "html-to-markdown" })).toBe(
+      "HTML → Markdown",
+    );
+  });
+});
+
+describe("what stands outside a fenced block", () => {
+  test("an identifier in the one-line essence is masked", () => {
+    const step = { id: "load", kind: "request", path: `/v1/databases/${UUID}` };
+    expect(essence(step)).toBe("GET /v1/databases/…");
+    expect(maskIdentifiers(`run/${UUID} failed`)).toBe("run/… failed");
+  });
+
+  test("the same value in the step's block is left whole", () => {
+    const step = { id: "load", kind: "request", path: `/v1/databases/${UUID}` };
+    expect(block(read(step).blocks, "workflow.block.request")?.code).toBe(
+      `GET /v1/databases/${UUID}`,
+    );
+  });
+});
+
+describe("durations", () => {
+  test("use the largest unit that keeps them whole", () => {
+    expect(formatDuration(250)).toBe("250 ms");
+    expect(formatDuration(1_500)).toBe("1.5 s");
+    expect(formatDuration(90_000)).toBe("90 s");
+    expect(formatDuration(300_000)).toBe("5 min");
+    expect(formatDuration(7_200_000)).toBe("2 h");
   });
 });
 
@@ -102,39 +360,15 @@ describe("step result preview", () => {
     expect(stepResultPreview(null)).toBeNull();
   });
 
-  test("humanises references and timestamps inside structured output", () => {
+  test("a run's output is payload: references and instants stay as the run wrote them", () => {
+    const output = { run_id: UUID, finished_at: "2030-08-25T22:00:00.000Z" };
+    expect(stepResultPreview(runStep({ step_key: "a", output_preview: output }))).toBe(
+      JSON.stringify(output, null, 2),
+    );
+    const legacy = `{"id":"${UUID}","finished_at":"2030-08-25T22:00:00.000Z"}`;
     expect(
-      stepResultPreview(
-        runStep({
-          step_key: "a",
-          output_preview: {
-            run_id: "457df8bc-2fe7-4a44-8dba-0acfa31821c5",
-            finished_at: "2026-08-25T22:00:00.000Z",
-          },
-        }),
-      ),
-    ).toBe('{\n  "run_id": "Referenz",\n  "finished_at": "25.08.2026, 22:00 UTC"\n}');
-  });
-
-  test("humanises references and timestamps in the legacy string preview too", () => {
-    expect(
-      stepResultPreview(
-        runStep({
-          step_key: "a",
-          output_preview: null,
-          result_preview:
-            '{"id":"457df8bc-2fe7-4a44-8dba-0acfa31821c5","finished_at":"2026-08-25T22:00:00.000Z"}',
-        }),
-      ),
-    ).toBe('{"id":"Referenz","finished_at":"25.08.2026, 22:00 UTC"}');
-  });
-
-  test("humanises technical values embedded in paths and error text", () => {
-    expect(
-      humaniseTechnicalValues(
-        "run/457df8bc-2fe7-4a44-8dba-0acfa31821c5 failed at 2026-08-25T22:00:00Z",
-      ),
-    ).toBe("run/Referenz failed at 25.08.2026, 22:00 UTC");
+      stepResultPreview(runStep({ step_key: "a", output_preview: null, result_preview: legacy })),
+    ).toBe(legacy);
   });
 });
 
@@ -158,21 +392,33 @@ describe("the connector a step uses", () => {
     const definition = readStepDefinition({ id: "a", connector_id: "unknown-id" }, 0);
     expect(connectorNameOf(definition, names)).toBeNull();
   });
-
-  test("prefers a slug the step names directly", () => {
-    const definition = readStepDefinition({ id: "a", connector: "radar-api" }, 0);
-    expect(connectorNameOf(definition, names)).toBe("radar-api");
-  });
 });
 
-describe("workflow step vocabulary", () => {
-  test("maps engine enums to human-facing catalogue keys", () => {
-    expect(workflowStepKindKey("request")).toBe("workflow.kind.request");
-    expect(workflowStepKindKey("transform")).toBe("workflow.kind.transform");
-    expect(workflowStepKindKey("loop")).toBe("workflow.kind.loop");
+describe("step kinds", () => {
+  // Read from the engine's own schema, so a step kind added there fails here
+  // until this reader knows what it does.
+  const source = readFileSync(
+    new URL("../../../engine/src/workflows/types.ts", import.meta.url).pathname,
+    "utf8",
+  );
+  const steps = source.slice(
+    source.indexOf("export const RequestStepSchema"),
+    source.indexOf("export const StepSchema"),
+  );
+  const kinds = [...steps.matchAll(/^ {4}kind: z\.literal\("([a-z_]+)"\)/gm)].map(
+    (match) => match[1] ?? "",
+  );
+
+  test("the engine's step schema is read", () => {
+    expect(kinds).toContain("request");
+    expect(kinds).toContain("wait_for_event");
+    expect(kinds.length).toBeGreaterThanOrEqual(8);
   });
 
-  test("does not leak a new engine enum into the interface", () => {
-    expect(workflowStepKindKey("future_kind")).toBe("workflow.stepType");
+  test("every kind of the engine's step schema has a word and a reading", () => {
+    for (const kind of kinds) {
+      expect(workflowStepKindKey(kind), kind).not.toBe("workflow.stepType");
+      expect<string>(read({ id: "x", kind }).essence.kind, kind).toBe(kind);
+    }
   });
 });
