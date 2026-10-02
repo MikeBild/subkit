@@ -16,6 +16,7 @@ export * from "./oauth-scope-diff.ts";
 export * from "./oauth-start.ts";
 export * from "./oauth-start-grant.ts";
 export * from "./promotion.ts";
+export * from "./public-view.ts";
 export * from "./reauth.ts";
 export * from "./runtime.ts";
 export * from "./service.ts";
