@@ -30,10 +30,11 @@ import {
 //   - GET / HEAD / OPTIONS: retry on 5xx + 429 + connection errors
 //   - POST / PUT / PATCH / DELETE: retry only on 429 + connection errors
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
+import { persistCircuitState, recordCircuitFailure } from "../../../connectors/circuit-breaker.ts";
 import { filenameFromResponse } from "../../../connectors/drivers/file-promotion.ts";
 import type { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
 import {
@@ -71,7 +72,7 @@ import {
 import { clearReauthIfProved, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { Db } from "../../../db/client.ts";
-import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
+import { connectorEndpointSchemas } from "../../../db/schema/index.ts";
 import type { ResolvedFile } from "../../../files/resolver.ts";
 import { recordUsage } from "../../../llm/accounting/budget.ts";
 import {
@@ -152,88 +153,6 @@ import {
 } from "./side-effects.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
-
-/**
- * Persist a circuit-breaker state write. Drizzle builders are lazy — a bare
- * `void db.update(...)` never dispatches SQL — so every circuit write must be
- * awaited (or `.catch()`-chained) to take effect. The returned promise never
- * rejects: the step result must not depend on circuit bookkeeping, and on the
- * failure path a DB error here must not mask the original request error.
- */
-async function persistCircuitState(
-  db: Db,
-  connector: { tenant_id: string; id: string },
-  set: { circuit_state: "closed" | "half-open"; circuit_failure_count?: number },
-): Promise<void> {
-  try {
-    await db.update(connectors).set(set).where(eq(connectors.id, connector.id));
-    logger.info({
-      module: "connectors",
-      action: "connector.circuit.transition",
-      tenant_id: connector.tenant_id,
-      connector_id: connector.id,
-      circuit_state: set.circuit_state,
-    });
-  } catch (err) {
-    logger.warn({
-      module: "connectors",
-      action: "connector.circuit.update_failed",
-      msg: "circuit-breaker state write failed",
-      tenant_id: connector.tenant_id,
-      connector_id: connector.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-/**
- * Record a request failure against the connector's circuit breaker in ONE
- * atomic statement: the increment reads the column (not a stale snapshot, so
- * concurrent failures cannot lose updates) and the same UPDATE flips the
- * circuit open when the new count reaches the threshold. Logs exactly once on
- * the open transition. Never rejects (see persistCircuitState).
- */
-async function recordCircuitFailure(
-  db: Db,
-  connector: { tenant_id: string; id: string },
-): Promise<void> {
-  try {
-    const rows = await db
-      .update(connectors)
-      .set({
-        circuit_failure_count: sql`${connectors.circuit_failure_count} + 1`,
-        circuit_opened_at: sql`CASE WHEN ${connectors.circuit_failure_count} + 1 >= ${connectors.circuit_threshold} AND ${connectors.circuit_state} <> 'open' THEN now() ELSE ${connectors.circuit_opened_at} END`,
-        circuit_state: sql`CASE WHEN ${connectors.circuit_failure_count} + 1 >= ${connectors.circuit_threshold} THEN 'open' ELSE ${connectors.circuit_state} END`,
-      })
-      .where(eq(connectors.id, connector.id))
-      .returning({
-        circuit_state: connectors.circuit_state,
-        circuit_failure_count: connectors.circuit_failure_count,
-        circuit_threshold: connectors.circuit_threshold,
-      });
-    const row = rows[0];
-    if (row?.circuit_state === "open" && row.circuit_failure_count === row.circuit_threshold) {
-      logger.warn({
-        module: "connectors",
-        action: "connector.circuit.opened",
-        msg: "connector circuit breaker opened — requests blocked until reset",
-        tenant_id: connector.tenant_id,
-        connector_id: connector.id,
-        circuit_failure_count: row.circuit_failure_count,
-        circuit_threshold: row.circuit_threshold,
-      });
-    }
-  } catch (err) {
-    logger.warn({
-      module: "connectors",
-      action: "connector.circuit.update_failed",
-      msg: "circuit-breaker failure write failed",
-      tenant_id: connector.tenant_id,
-      connector_id: connector.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
 
 /**
  * The ONE circuit-breaker recorder, for every driver.

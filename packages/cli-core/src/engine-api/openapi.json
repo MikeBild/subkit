@@ -13486,6 +13486,12 @@
               "type": "string"
             }
           },
+          "missing_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "updated_at": {
             "type": "string"
           }
@@ -13495,6 +13501,7 @@
           "environment",
           "connection",
           "header_names",
+          "missing_scopes",
           "updated_at"
         ]
       },
@@ -35087,6 +35094,9 @@
               }
             }
           },
+          "303": {
+            "description": "Signed in — back to the connector's page in the Cockpit"
+          },
           "400": {
             "description": "Bad request (HTML)",
             "content": {
@@ -35727,6 +35737,9 @@
                 }
               }
             }
+          },
+          "303": {
+            "description": "Authorized — back to the connector's page in the Cockpit"
           },
           "400": {
             "description": "Bad request (HTML)",

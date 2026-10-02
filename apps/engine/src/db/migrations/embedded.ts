@@ -92,6 +92,7 @@ import sql0071WebhookAdmissionHold from "./0071_webhook_admission_hold.sql" with
 import sql0072DefaultInboxRuleActionable from "./0072_default_inbox_rule_actionable.sql" with { type: "text" };
 import sql0073ConnectorCapabilityCandidate from "./0073_connector_capability_candidate.sql" with { type: "text" };
 import sql0074FailOrphanedPreparations from "./0074_fail_orphaned_preparations.sql" with { type: "text" };
+import sql0075OauthFlowOrigin from "./0075_oauth_flow_origin.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -191,6 +192,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0072_default_inbox_rule_actionable": sql0072DefaultInboxRuleActionable,
   "0073_connector_capability_candidate": sql0073ConnectorCapabilityCandidate,
   "0074_fail_orphaned_preparations": sql0074FailOrphanedPreparations,
+  "0075_oauth_flow_origin": sql0075OauthFlowOrigin,
 };
 
 const journal = journalMeta as unknown as Journal;

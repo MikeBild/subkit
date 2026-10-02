@@ -17,7 +17,7 @@ import {
 } from "../../audit/recorders/index.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { toPublicConnector } from "../../connectors/public-view.ts";
-import { clearConnectorReauth } from "../../connectors/reauth.ts";
+import { completeConnectorReauthorization } from "../../connectors/reauth.ts";
 import { createConnector, getConnector, updateConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { ConnectorView, UpdateConnectorInput } from "../../connectors/types.ts";
@@ -273,7 +273,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         await updateConnector(ctx.tenant_id, existing.id, fieldPatch, ctx.actor_id, ctx.db);
       }
 
-      // Write-sequence contract: persistCredential → clearConnectorReauth →
+      // Write-sequence contract: persistCredential → completeConnectorReauthorization →
       // recordConnectorUpdated run as separate statements on `ctx.db`, NOT a
       // single transaction. A wrapping `ctx.db.transaction(...)` is
       // deliberately NOT used: `upsertCredential` (via persistCredential)
@@ -283,7 +283,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       // path uses. The failure mode is benign and self-healing — if a later
       // step throws after the credential lands, the worst case is
       // `needs_reauth` stays true (the next authed call clears it via
-      // clearConnectorReauth) and/or the connector-side credential_rotated
+      // clearReauthIfProved) and/or the connector-side credential_rotated
       // audit row is missing. There is never a partial credential write.
       let credential_persisted = false;
       if (p.credential) {
@@ -304,15 +304,17 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       clearDraftCredential(ctx.conversation_id);
       // A fresh credential just landed on a connector that may have been
       // flagged `needs_reauth` (the repair flow). Clear the flag + failure
-      // provenance so the connector reads healthy immediately, rather than
-      // waiting for the next live authed call. Gate on `credential_persisted`
-      // so a pure field-edit re-issue (no new secret) never falsely clears a
-      // genuinely-dead credential's flag. `clearConnectorReauth` self-audits
-      // the true→false transition (CONNECTOR_REAUTH_CLEARED), so the state
-      // change carries its own audit row independent of the credential_rotated
-      // row below; pass actor_id so it attributes to the operator.
+      // provenance and close the breaker so the connector reads healthy
+      // immediately, rather than waiting for the next live authed call. Gate
+      // on `credential_persisted` so a pure field-edit re-issue (no new
+      // secret) never falsely clears a genuinely-dead credential's flag. Each
+      // edge audits itself (CONNECTOR_REAUTH_CLEARED, CONNECTOR_CIRCUIT_RESET),
+      // independent of the credential_rotated row below; pass actor_id so
+      // they attribute to the operator.
       if (credential_persisted) {
-        await clearConnectorReauth(ctx.db, ctx.tenant_id, existing.id, {
+        await completeConnectorReauthorization(ctx.db as Db, {
+          tenant_id: ctx.tenant_id,
+          connector_id: existing.id,
           actor_id: ctx.actor_id,
         });
       }

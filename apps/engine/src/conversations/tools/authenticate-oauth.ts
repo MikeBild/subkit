@@ -38,6 +38,7 @@ import {
   OAuthApprovalInputSchema,
 } from "@shared/elicitation-constants.ts";
 import { and, desc, eq, gt } from "drizzle-orm";
+import type { OAuthFlowOrigin } from "../../connectors/oauth-origin.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
@@ -417,6 +418,9 @@ export const authenticateOAuthTool: ConversationTool = {
       // the authorization endpoint; null when no scope param was sent
       // (the IdP applies its default consent set).
       requested_scopes: cfgWithScope.scope ?? null,
+      // The link is handed out in a conversation; that is where the person
+      // returns to, whichever client the conversation runs in.
+      origin: "chat" satisfies OAuthFlowOrigin,
     });
 
     const connectorLabel = connector.display_name ?? connector.slug;

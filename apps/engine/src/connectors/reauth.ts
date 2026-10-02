@@ -11,6 +11,8 @@
 // State machine (per connector, tenant-scoped):
 //   healthy ──auth failure──▶ needs_reauth=true  (markConnectorNeedsReauth)
 //   needs_reauth=true ──successful authed call──▶ healthy  (clearConnectorReauth)
+//   needs_reauth=true ──a person re-authorised it──▶ healthy
+//                                          (completeConnectorReauthorization)
 //
 // The false→true transition is the *only* edge that emits a notification — a
 // failing connector hammered N times per minute must not produce N
@@ -30,7 +32,9 @@ import {
   type ConnectorAuthFailedPayload,
   ConnectorAuthFailedPayloadSchema,
 } from "../pubsub/types.ts";
+import { resetCircuitBreaker } from "./circuit-breaker.ts";
 import type { ConnectorHealth } from "./health.ts";
+import { setConnectorHealth } from "./health-state.ts";
 import type { ConnectorView } from "./types.ts";
 
 /**
@@ -124,6 +128,64 @@ export async function clearConnectorReauth(
       result: "success",
       reason: "credential_recovered",
       metadata: {},
+    },
+    db,
+  );
+}
+
+/**
+ * What a person's fresh authorization resolves, for every flow that issues or
+ * replaces a connector's credential on a person's behalf — the OAuth callback,
+ * the MCP authorization callback, the credential-setup portal, the credential
+ * route and a re-issue in chat. One funnel, so no surface can store a new
+ * credential and leave the connector reading as it did before.
+ *
+ * It clears the sign-in flag (and the mirror of it in the stored health
+ * verdict) and closes the circuit breaker: the failures it counted were
+ * against the credential that was just replaced. Each edge writes its own
+ * audit row; a connector with nothing to resolve writes none.
+ *
+ * It does NOT switch a disabled connector on. `enabled` is the one bit only a
+ * person sets, and signing in is not that decision.
+ *
+ * Not for a token refresh: a refresh rotates material without anyone having
+ * authorised anything, and proves nothing about a rejected credential.
+ */
+export async function completeConnectorReauthorization(
+  db: Db,
+  p: { tenant_id: string; connector_id: string; actor_id?: string | null },
+): Promise<void> {
+  const actor_id = p.actor_id ?? null;
+  await clearConnectorReauth(db, p.tenant_id, p.connector_id, { actor_id });
+  const stored = await db.execute<{ slug: string }>(sql`
+    SELECT slug FROM connectors
+     WHERE id = ${p.connector_id} AND tenant_id = ${p.tenant_id}
+       AND health_state = 'needs_reauth'
+  `);
+  const mirrored = stored.rows[0];
+  if (mirrored) {
+    await setConnectorHealth(
+      db,
+      { id: p.connector_id, tenant_id: p.tenant_id, slug: mirrored.slug },
+      { state: "ok", reason: "re-authorised — a new credential was stored" },
+    );
+  }
+  const previous = await resetCircuitBreaker(db, p.tenant_id, p.connector_id);
+  if (!previous) return;
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: actor_id ? "user" : "system",
+      actor_id,
+      action: AuditAction.CONNECTOR_CIRCUIT_RESET,
+      resource_type: "connector",
+      resource_id: p.connector_id,
+      result: "success",
+      reason: "reauthorized",
+      metadata: {
+        from_state: previous.circuit_state,
+        failure_count: previous.circuit_failure_count,
+      },
     },
     db,
   );

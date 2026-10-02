@@ -1,10 +1,10 @@
-import { escapeHtml } from "../../connectors/index.ts";
 import { scrubString } from "../../logging/index.ts";
 import {
   APPROVAL_CLAIM_WINDOW_MS,
   APPROVAL_PORTAL_PATH,
   type ApprovalPortalView,
 } from "../../tools/index.ts";
+import { escapeHtml } from "./oauth/shared.ts";
 import { AUTH_UI_DIGEST, AUTH_UI_STYLES, type AuthLocale } from "./oauth/ui.ts";
 import { approvalCopy } from "./tool-approval-copy.ts";
 

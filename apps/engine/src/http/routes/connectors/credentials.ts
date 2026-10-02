@@ -58,6 +58,10 @@ const CredentialSummary = z
     connection: ConnectionSummarySchema.nullable(),
     /** The header names a `header` credential sends — names only, never values. */
     header_names: z.array(z.string()),
+    /** Permissions the connector asks its provider for that the last sign-in
+     *  did not grant. Empty when all were, when none are asked for, and when
+     *  the grant was never recorded — it is a statement, never a guess. */
+    missing_scopes: z.array(z.string()),
     updated_at: z.string(),
   })
   .nullable()
@@ -90,7 +94,12 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       connector.environment,
       db,
     );
-    return c.json(summary, 200);
+    if (!summary) return c.json(null, 200);
+    const diff = await connectorSvc.computeConnectorScopeDiff(db, principal.tenant_id, connector);
+    return c.json(
+      { ...summary, missing_scopes: diff?.partial_grant === true ? diff.missing : [] },
+      200,
+    );
   });
 
   app.openapi(credentialsRoute, async (c) => {
@@ -128,6 +137,11 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+      await connectorSvc.completeConnectorReauthorization(db, {
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+        actor_id: principal.id,
+      });
       return c.json({ id: row.id }, 201);
     }
 
@@ -155,6 +169,13 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
+    // A person replaced the credential: the same resolution as a sign-in at
+    // the provider — the sign-in flag and the breaker, never the on/off switch.
+    await connectorSvc.completeConnectorReauthorization(db, {
+      tenant_id: principal.tenant_id,
+      connector_id: id,
+      actor_id: principal.id,
+    });
     return c.json({ id: row.id }, 201);
   });
 }
