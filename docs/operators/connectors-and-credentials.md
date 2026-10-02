@@ -165,6 +165,11 @@ and arm a backoff that survives an engine restart — so a server that has been
 refusing for an hour is not handed a full-rate retry just because the process
 bounced.
 
+The same two reads report the circuit breaker behind that verdict:
+`circuit_state` (`closed`, `open`, `half-open`), `circuit_opened_at` and
+`circuit_failure_count`. They are read-only and say why a call is being
+short-circuited right now, and how close a closed breaker is to opening.
+
 ### Secrets in a connector representation
 
 A connector can carry secrets outside the credential vault: an OAuth client
