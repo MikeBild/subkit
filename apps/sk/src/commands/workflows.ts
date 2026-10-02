@@ -5,7 +5,6 @@ import {
   INVOKE_SNIPPET_LANGUAGES,
   isInvokeEnvironment,
   isInvokeSnippetLanguage,
-  renderInvokeSnippet,
 } from "@shared/invoke-snippet.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -16,6 +15,11 @@ import {
   type RunExecutionResponse,
 } from "../engine-client.ts";
 import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
+import {
+  INVOCATION_LOOKUP_TIMEOUT_MS,
+  type LocalSnippetReason,
+  resolveInvokeSnippet,
+} from "../lib/invoke-snippet-source.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
@@ -179,6 +183,12 @@ export async function resolveWorkflowIdOrSlug(
   );
 }
 
+const LOCAL_SNIPPET_NOTES: Record<LocalSnippetReason, string> = {
+  engine_unreachable: "The engine could not be reached.",
+  workflow_unknown: "The engine does not know this workflow id.",
+  no_public_address: "The engine has no public address configured (server.public_base_url).",
+};
+
 const invokeSnippetCommand = defineCommand({
   meta: {
     name: "invoke-snippet",
@@ -217,25 +227,53 @@ const invokeSnippetCommand = defineCommand({
       process.exit(1);
     }
     const workflowId = String(args.id);
-    const engineUrl = profile.engine_url;
-    // The one renderer the engine's workflow page uses too — the same inputs
-    // give the same bytes on both surfaces.
-    const snippet = renderInvokeSnippet({ lang, engineUrl, workflowId, environment });
+    // The engine's snippet — the one the workflow page shows, with the
+    // workflow's sample input and the engine's public address. Rendered here
+    // only when the engine cannot answer (see lib/invoke-snippet-source.ts).
+    let resolved: Awaited<ReturnType<typeof resolveInvokeSnippet>>;
+    try {
+      resolved = await resolveInvokeSnippet({
+        client: new EngineClient({
+          engine_url: profile.engine_url,
+          api_key: profile.api_key,
+          tenant: profile.active_tenant_id,
+          fetchImpl: (input, init) =>
+            globalThis.fetch(input, {
+              ...init,
+              signal: AbortSignal.timeout(INVOCATION_LOOKUP_TIMEOUT_MS),
+            }),
+        }),
+        profileEngineUrl: profile.engine_url,
+        workflowId,
+        lang,
+        environment,
+      });
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+    const { snippet } = resolved;
 
     if (args.json) {
       printJson({
         workflow_id: workflowId,
-        engine_url: engineUrl,
+        engine_url: resolved.engine_url,
         environment,
         route: "POST /v1/executions",
         lang,
         snippet,
+        source: resolved.source,
+        ...(resolved.local_reason ? { local_reason: resolved.local_reason } : {}),
       });
       return;
     }
 
     process.stdout.write(`${pc.bold("Run this workflow from your app:")}\n\n`);
     process.stdout.write(`${snippet}\n\n`);
+    if (resolved.local_reason) {
+      process.stdout.write(
+        `${pc.yellow(`${LOCAL_SNIPPET_NOTES[resolved.local_reason]} This snippet uses your profile's engine URL and an empty input — fill in the workflow's input before you run it.`)}\n`,
+      );
+    }
     // The choice is stated, not implied: without the header the engine runs
     // in development, which is not where a pasted production call belongs.
     process.stdout.write(

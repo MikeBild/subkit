@@ -2,22 +2,29 @@
 //
 // One case per way in — a plain request workflow, a schedule, an inbound hook
 // with a fixed signing scheme, one with a generic HMAC scheme and one that
-// accepts unsigned deliveries — and the three things the read must never do:
-// name an address the operator did not configure, show bindings the caller
-// may not read elsewhere, or carry a secret.
+// accepts unsigned deliveries — and the things the read must never do: name an
+// address the operator did not configure, show bindings the caller may not
+// read elsewhere, let a hidden list pass for an empty one, carry a secret,
+// print a command a shell reads differently than it looks, or answer for
+// another tenant's workflow.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { renderInvokeSnippet } from "@shared/invoke-snippet.ts";
 import { eq, sql } from "drizzle-orm";
-import { getConfig, setConfigKey } from "../../config/loader.ts";
 import {
   apiKeys,
+  tenants,
   users,
   webhooksInbound,
   workflowExecutionAuthorities,
+  workflows,
+  workflowVersions,
 } from "../../db/schema/index.ts";
 import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { withConfigKey } from "../../test-helpers/config-override.ts";
+import { createWorkflow as createWorkflowIn } from "../../workflows/index.ts";
+import { RunBodySchema } from "../routes/executions/schemas.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const PUBLIC_URL = "https://engine.example.com";
@@ -25,18 +32,14 @@ const PUBLIC_URL = "https://engine.example.com";
 const SECRET_MARK = "hook-signing-secret-never-returned";
 
 let ctx: HttpTestServer;
-let priorBaseUrl: string | undefined;
 let counter = 0;
 let readers = 0;
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("workflow_invocation");
-  priorBaseUrl = getConfig().server.public_base_url;
-  await setConfigKey("server.public_base_url", `${PUBLIC_URL}/`, { force: true });
 });
 
 afterAll(async () => {
-  await setConfigKey("server.public_base_url", priorBaseUrl ?? "", { force: true });
   await ctx.cleanup();
 });
 
@@ -48,6 +51,8 @@ const headers = (key = ctx.apiKey): Record<string, string> => ({
 interface Invocation {
   workflow_id: string;
   slug: string;
+  legacy: boolean;
+  visibility: { hooks: boolean; schedules: boolean };
   base_url: string | null;
   http: {
     method: string;
@@ -106,12 +111,23 @@ async function createWorkflow(extra: Record<string, unknown> = {}) {
   return (await res.json()) as { id: string; slug: string; current_version_id: string };
 }
 
-async function invocation(id: string, key = ctx.apiKey) {
-  const res = await fetch(`${ctx.baseUrl}/v1/workflows/${id}/invocation`, {
-    headers: headers(key),
+// The public address is process-wide config. It is set for the length of one
+// request and put back, so no other suite ever runs under this file's value.
+async function invocation(id: string, key = ctx.apiKey, publicUrl = `${PUBLIC_URL}/`) {
+  return withConfigKey("server.public_base_url", publicUrl, async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows/${id}/invocation`, {
+      headers: headers(key),
+    });
+    const text = await res.text();
+    return { status: res.status, text, body: JSON.parse(text) as Invocation };
   });
-  const text = await res.text();
-  return { status: res.status, text, body: JSON.parse(text) as Invocation };
+}
+
+/** The `-d` argument of a curl snippet, as the shell would hand it to curl. */
+function curlBody(snippet: string): unknown {
+  const word = snippet.slice(snippet.lastIndexOf("  -d ") + "  -d ".length);
+  if (!word.startsWith("'") || !word.endsWith("'")) throw new Error(`not one quoted word: ${word}`);
+  return JSON.parse(word.slice(1, -1).replaceAll(`'\\''`, "'"));
 }
 
 async function bindHook(
@@ -306,12 +322,12 @@ describe("GET /v1/workflows/{id}/invocation", () => {
       "hmac",
       {
         hmac: {
-          signature_header: "X-Upraft-Signature",
+          signature_header: "X-Example-Signature",
           signature_prefix: "sha256=",
           encoding: "hex",
           signed_payload: "{timestamp}.{body}",
-          timestamp_header: "X-Upraft-Timestamp",
-          id_header: "X-Upraft-Delivery",
+          timestamp_header: "X-Example-Timestamp",
+          id_header: "X-Example-Delivery",
         },
       },
       {
@@ -329,7 +345,7 @@ describe("GET /v1/workflows/{id}/invocation", () => {
         url: `${PUBLIC_URL}/v1/hooks/invocation-hmac`,
         verifier: "hmac",
         signed: true,
-        signing_headers: ["x-upraft-signature", "x-upraft-delivery", "x-upraft-timestamp"],
+        signing_headers: ["x-example-signature", "x-example-delivery", "x-example-timestamp"],
         hmac: {
           algorithm: "sha256",
           encoding: "hex",
@@ -397,6 +413,8 @@ describe("GET /v1/workflows/{id}/invocation", () => {
     expect(plain.status).toBe(200);
     expect("hooks" in plain.body).toBe(false);
     expect("schedules" in plain.body).toBe(false);
+    // Absent is not empty: the answer says the lists were withheld.
+    expect(plain.body.visibility).toEqual({ hooks: false, schedules: false });
     expect(plain.text).not.toContain("invocation-projected");
     // The run call itself needs nothing more than reading the workflow.
     expect(plain.body.http.url).toBe(`${PUBLIC_URL}/v1/executions`);
@@ -407,6 +425,7 @@ describe("GET /v1/workflows/{id}/invocation", () => {
     );
     expect(hooks.body.hooks?.map((hook) => hook.slug)).toEqual(["invocation-projected"]);
     expect("schedules" in hooks.body).toBe(false);
+    expect(hooks.body.visibility).toEqual({ hooks: true, schedules: false });
 
     const schedules = await invocation(
       wf.id,
@@ -414,6 +433,13 @@ describe("GET /v1/workflows/{id}/invocation", () => {
     );
     expect(schedules.body.schedules).toEqual([]);
     expect("hooks" in schedules.body).toBe(false);
+    // A reader of schedules sees an empty list where there are none; the
+    // hooks it cannot read are withheld, and it is told so — it cannot
+    // conclude that this workflow has no hook.
+    expect(schedules.body.visibility).toEqual({ hooks: false, schedules: true });
+
+    const all = await invocation(wf.id);
+    expect(all.body.visibility).toEqual({ hooks: true, schedules: true });
   });
 
   test("a caller who may not read the workflow is refused", async () => {
@@ -432,19 +458,206 @@ describe("GET /v1/workflows/{id}/invocation", () => {
   test("without a configured public address no URL is invented", async () => {
     const wf = await createWorkflow();
     await bindHook(wf.id, "invocation-no-address", "standard", null);
-    await setConfigKey("server.public_base_url", "", { force: true });
-    try {
-      const { body, text } = await invocation(wf.id);
-      expect(body.base_url).toBeNull();
-      expect(body.http.url).toBeNull();
-      expect(body.http.snippets).toBeNull();
-      expect(body.http.path).toBe("/v1/executions");
-      expect(body.hooks?.[0]?.url).toBeNull();
-      expect(body.hooks?.[0]?.path).toBe("/v1/hooks/invocation-no-address");
-      // Never the address the request happened to arrive at.
-      expect(text).not.toContain(new URL(ctx.baseUrl).host);
-    } finally {
-      await setConfigKey("server.public_base_url", `${PUBLIC_URL}/`, { force: true });
-    }
+    const { body, text } = await invocation(wf.id, ctx.apiKey, "");
+    expect(body.base_url).toBeNull();
+    expect(body.http.url).toBeNull();
+    expect(body.http.snippets).toBeNull();
+    expect(body.http.path).toBe("/v1/executions");
+    expect(body.hooks?.[0]?.url).toBeNull();
+    expect(body.hooks?.[0]?.path).toBe("/v1/hooks/invocation-no-address");
+    // Never the address the request happened to arrive at.
+    expect(text).not.toContain(new URL(ctx.baseUrl).host);
+  });
+
+  test("another tenant's workflow is not found", async () => {
+    const [other] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "invocation-other-tenant", display_name: "Other tenant" })
+      .returning();
+    if (!other) throw new Error("missing tenant fixture");
+    const foreign = await createWorkflowIn(
+      {
+        tenant_id: other.id,
+        actor_id: null,
+        def: {
+          name: "invocation-foreign",
+          steps: [{ kind: "transform", id: "out", expression: "return { ok: true };" }],
+        },
+      },
+      ctx.db,
+    );
+    if (!foreign.workflow) throw new Error(`foreign workflow invalid: ${foreign.errors}`);
+    // The workflow exists — in its own tenant.
+    const [row] = await ctx.db
+      .select({ tenant_id: workflows.tenant_id })
+      .from(workflows)
+      .where(eq(workflows.id, foreign.workflow.id));
+    expect(row?.tenant_id).toBe(other.id);
+
+    const { status, text } = await invocation(foreign.workflow.id);
+    expect(status).toBe(404);
+    expect(text).not.toContain("invocation-foreign");
   });
 });
+
+describe("the run request the snippets send", () => {
+  test("every snippet's body is one the run route accepts", async () => {
+    const wf = await createWorkflow({
+      input_schema: {
+        type: "object",
+        properties: { recipient_email: { type: "string" }, limit: { type: "integer", default: 5 } },
+        required: ["recipient_email", "limit"],
+      },
+    });
+    const { body } = await invocation(wf.id);
+    for (const environment of ["dev", "prod"] as const) {
+      // Parsed with the route's own schema, so a snippet cannot drift from
+      // what `POST /v1/executions` takes.
+      const sent = RunBodySchema.parse(curlBody(body.http.snippets?.[environment].curl ?? ""));
+      expect(sent).toMatchObject({
+        source: "saved",
+        workflow_id: wf.id,
+        input: { recipient_email: "<recipient_email>", limit: 5 },
+      });
+    }
+    expect(RunBodySchema.parse(body.http.body)).toMatchObject({ source: "saved" });
+  });
+
+  test("a sample key named __proto__ reaches the body in every language", async () => {
+    const wf = await createWorkflow({
+      input_schema: {
+        type: "object",
+        properties: { ["__proto__"]: { type: "string" }, name: { type: "string" } },
+        required: ["__proto__", "name"],
+      },
+    });
+    const { body } = await invocation(wf.id);
+    // jsonb does not keep key order, so the keys are compared as a set.
+    expect(Object.keys(body.input.sample).sort()).toEqual(["__proto__", "name"]);
+    const snippets = body.http.snippets?.prod;
+    expect(Object.keys((curlBody(snippets?.curl ?? "") as { input: object }).input).sort()).toEqual(
+      ["__proto__", "name"],
+    );
+    expect(snippets?.node).toContain(`["__proto__"]: "<__proto__>"`);
+    expect(snippets?.python).toContain(`"__proto__": "<__proto__>"`);
+  });
+});
+
+describe("the copyable command", () => {
+  async function commandFor(slug: string): Promise<{ id: string; command: string }> {
+    const wf = await createWorkflow();
+    // A slug has no enforced shape, so one can be stored that a shell would
+    // read as more than a word.
+    await ctx.db.update(workflows).set({ slug }).where(eq(workflows.id, wf.id));
+    return { id: wf.id, command: (await invocation(wf.id)).body.cli.command };
+  }
+
+  test.each(["x'; touch /tmp/owned; echo '", "$(touch /tmp/owned)", "a b", "--help", "a`id`"])(
+    "a slug a shell would not read as one plain word is never printed: %s",
+    async (slug) => {
+      const { id, command } = await commandFor(slug);
+      expect(command).not.toContain(slug);
+      expect(command).toBe(`sk workflows run ${id} --input '{}'`);
+    },
+  );
+
+  test("a plain slug is printed as it is", async () => {
+    const { command } = await commandFor("daily-report_2");
+    expect(command).toBe("sk workflows run daily-report_2 --input '{}'");
+  });
+
+  test("an apostrophe in the sample cannot end the input word early", async () => {
+    const wf = await createWorkflow({ input_schema_sample: { note: "it's $HOME" } });
+    const { body } = await invocation(wf.id);
+    expect(body.cli.command).toBe(
+      `sk workflows run ${wf.slug} --input '{"note":"it'\\''s $HOME"}'`,
+    );
+  });
+});
+
+// Two shapes an earlier engine wrote and today's schema refuses: a transform in
+// a language that was retired, with a trigger and an input reference around it
+// for the readers to walk, and a step kind that no longer exists at all.
+const LEGACY_STEPS = {
+  "a retired transform language": [
+    {
+      kind: "transform",
+      id: "old",
+      language: "jsonata",
+      expression: "$.items[city = $input.city]",
+    },
+  ],
+  "a retired step kind": [{ kind: "retired_step_kind", id: "old", note: "an earlier schema" }],
+} as const;
+
+describe.each(Object.entries(LEGACY_STEPS))(
+  "a workflow whose current version is stored in an earlier format — %s",
+  (_shape, steps) => {
+    async function legacyWorkflow() {
+      const wf = await createWorkflow({ description: "kept readable" });
+      // Written straight to the row: the current write path would refuse it.
+      await ctx.db
+        .update(workflowVersions)
+        .set({
+          dag: {
+            name: "legacy",
+            description: "kept readable",
+            trigger: { kind: "schedule", cron: "0 6 * * *" },
+            input_schema: { type: "object", properties: { city: { type: "string" } } },
+            steps,
+          },
+        })
+        .where(eq(workflowVersions.id, wf.current_version_id));
+      return wf;
+    }
+
+    test("is still readable: the workflow, the list it is a row of, and how to call it", async () => {
+      const wf = await legacyWorkflow();
+
+      const single = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, { headers: headers() });
+      expect(single.status).toBe(200);
+      const view = (await single.json()) as { legacy: boolean; steps: Array<{ id: string }> };
+      expect(view.legacy).toBe(true);
+      // What is stored is what is shown.
+      expect(view.steps.map((step) => step.id)).toEqual(["old"]);
+
+      const list = await fetch(`${ctx.baseUrl}/v1/workflows?limit=200`, { headers: headers() });
+      expect(list.status).toBe(200);
+      const items = ((await list.json()) as { items: Array<{ id: string; legacy: boolean }> })
+        .items;
+      expect(items.find((item) => item.id === wf.id)?.legacy).toBe(true);
+      // One legacy row does not take the others down with it.
+      expect(items.some((item) => item.id !== wf.id && item.legacy === false)).toBe(true);
+
+      const called = await invocation(wf.id);
+      expect(called.status).toBe(200);
+      expect(called.body.legacy).toBe(true);
+      expect(called.body.http.body.workflow_id).toBe(wf.id);
+      // The readers walk the stored definition as written.
+      expect(called.body.input.sample).toEqual({ city: "<city>" });
+    });
+
+    test("is refused by name when it is run", async () => {
+      const wf = await legacyWorkflow();
+      const res = await fetch(`${ctx.baseUrl}/v1/executions`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ source: "saved", workflow_id: wf.id, input: {} }),
+      });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as {
+        code: string;
+        message: string;
+        details?: { issues?: Array<{ step_id: string }> };
+      };
+      expect(body.code).toBe("workflow_version_legacy");
+      expect(body.message).toContain("earlier definition format");
+      expect(body.details?.issues?.[0]?.step_id).toBe("old");
+    });
+
+    test("a current-format workflow says it is not legacy", async () => {
+      const wf = await createWorkflow();
+      expect((await invocation(wf.id)).body.legacy).toBe(false);
+    });
+  },
+);

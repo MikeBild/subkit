@@ -61,9 +61,40 @@ export function invokeRunBody(
   return { source: "saved", workflow_id: workflowId, input };
 }
 
-/** A JSON document inside a single-quoted shell word. */
-function shellQuoted(json: string): string {
-  return json.replaceAll("'", `'\\''`);
+/**
+ * A string as one single-quoted shell word. Inside single quotes the shell
+ * reads every character literally — `$`, a backslash, a backtick — except the
+ * quote itself, which closes the word, is written escaped, and reopens it.
+ */
+export function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * A JSON value as a JavaScript expression, indented like `JSON.stringify`
+ * does. It differs from JSON in one key: in an object literal `"__proto__": x`
+ * sets the prototype instead of defining a property, so the key would be gone
+ * from the body the snippet sends. Written as a computed key it is a property
+ * like any other.
+ */
+function javascriptLiteral(value: unknown, indent: string): string {
+  const inner = `${indent}  `;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    const items = value.map((item) => `${inner}${javascriptLiteral(item ?? null, inner)}`);
+    return `[\n${items.join(",\n")}\n${indent}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .map(([key, entry]) => {
+        const name = key === "__proto__" ? `["__proto__"]` : JSON.stringify(key);
+        return `${inner}${name}: ${javascriptLiteral(entry, inner)}`;
+      });
+    if (entries.length === 0) return "{}";
+    return `{\n${entries.join(",\n")}\n${indent}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
@@ -73,17 +104,17 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
 
   if (lang === "curl") {
     return [
-      `curl -sS -X POST '${url}' \\`,
+      `curl -sS -X POST ${shellQuote(url)} \\`,
       `  -H 'authorization: Bearer '"$SK_API_KEY" \\`,
       `  -H 'x-subkit-environment: ${environment}' \\`,
       `  -H 'content-type: application/json' \\`,
-      `  -d '${shellQuoted(JSON.stringify(body))}'`,
+      `  -d ${shellQuote(JSON.stringify(body))}`,
     ].join("\n");
   }
 
   if (lang === "node") {
     return [
-      `const res = await fetch("${url}", {`,
+      `const res = await fetch(${JSON.stringify(url)}, {`,
       `  method: "POST",`,
       `  headers: {`,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted verbatim into the reader's Node snippet as a template-literal placeholder.
@@ -91,7 +122,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
       `    "x-subkit-environment": "${environment}",`,
       `    "content-type": "application/json",`,
       `  },`,
-      `  body: JSON.stringify(${JSON.stringify(body, null, 2).replace(/\n/g, "\n  ")}),`,
+      `  body: JSON.stringify(${javascriptLiteral(body, "  ")}),`,
       `});`,
       `const result = await res.json();`,
       `console.log(result);`,
@@ -103,7 +134,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
     `import requests`,
     ``,
     `res = requests.post(`,
-    `    "${url}",`,
+    `    ${JSON.stringify(url)},`,
     `    headers={`,
     `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
     `        "x-subkit-environment": "${environment}",`,
