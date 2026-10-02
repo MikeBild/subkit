@@ -18,6 +18,7 @@ import { createDeterministicUuidFactory } from "../../../test-helpers/determinis
 import { hydrateDraftFromSavedConnector } from "../../authoring-state/normalize.ts";
 import { connectorFieldPatch } from "../../persistence/save-connector.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
+import { dryRunTransformTool } from "../dry-run-transform.ts";
 import { getConnectorTool } from "../generated/connectors.ts";
 import { updateConnectorTool } from "../generated/writes/update-connector.ts";
 import type { ToolContext } from "../index.ts";
@@ -144,6 +145,23 @@ describe("update_connector fed a get_connector result keeps the secret", () => {
     // The same resolution `oauth/start` and the refresh worker go through.
     const oauth = await resolveConnectorOAuthConfig(ctx.testDb.db, ctx.tenant_id, view);
     expect(oauth?.client_secret).toBe(CLIENT_SECRET);
+  });
+});
+
+describe("dry_run_transform does not look a connector token up", () => {
+  const token = `\${connector.acme-oauth.config.oauth.client_secret}`;
+
+  test("a connector config token is refused instead of resolved into the result", async () => {
+    const result = await dryRunTransformTool.execute(toolContext(), {
+      expression: `secret=${token}`,
+      sample_data: { input: {} },
+      dialect: "template",
+    });
+    expect(JSON.stringify(result)).not.toContain(CLIENT_SECRET);
+    expect(result.ok).toBe(false);
+    const error = (result.data as { error: { code: string; message: string } }).error;
+    expect(error.code).toBe("placeholder_unresolved");
+    expect(error.message).toContain(token);
   });
 });
 
