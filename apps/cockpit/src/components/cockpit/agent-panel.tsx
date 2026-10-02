@@ -15,7 +15,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import { chatAutomationTool } from "@/pages/chat-automation-tool";
+import { chatAutomationTool, liveAutomationReviews } from "@/pages/chat-automation-tool";
 import { groupMessageParts } from "@/pages/chat-transcript";
 
 interface PanelTurn {
@@ -78,6 +78,7 @@ export function AgentPanel({
   const { t } = useI18n();
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<PanelTurn[]>([]);
+  const liveCards = new Set(liveAutomationReviews(turns.flatMap((turn) => turn.cards)).values());
   const [conversationId, setConversationId] = useState<string | null>(null);
 
   const ask = useMutation({
@@ -148,9 +149,13 @@ export function AgentPanel({
                     )}
                   </p>
                 )}
-                {turn.cards.map((tool) => (
-                  <AutomationToolCard key={tool.toolCallId} tool={tool} />
-                ))}
+                {/* The newest review of a workflow is its one card: an earlier
+                    one would offer the same button a second time. */}
+                {turn.cards
+                  .filter((tool) => liveCards.has(tool.toolCallId))
+                  .map((tool) => (
+                    <AutomationToolCard key={tool.toolCallId} tool={tool} />
+                  ))}
                 {turn.texts.length === 0 && turn.cards.length === 0 && (
                   <p
                     className="text-sm text-muted-foreground"

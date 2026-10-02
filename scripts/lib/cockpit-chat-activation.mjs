@@ -1,5 +1,7 @@
+import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
+
 /** Chat stays on the exact saved draft through review, conflict and completion. */
-export async function verifyChatActivation(page, stand, conversation, _locale) {
+export async function verifyChatActivation(page, stand, conversation, locale) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(
     async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
@@ -547,11 +549,20 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     opaque = true;
     await page.reload();
     await action.waitFor();
-    const inTranscript = await page
-      .getByTestId("chat-transcript")
-      .getByTestId("chat-schedule-next-step")
-      .count();
-    if (inTranscript !== 1) throw new Error("Next action is outside the chronological transcript");
+    // The review card stands in the chronological transcript and is the one
+    // way into the approval there: the held-schedule hand-off, which would
+    // open the same review under another name, is not rendered beside it.
+    if (
+      (await page.getByTestId("chat-transcript").getByTestId("chat-automation-tool").count()) !== 1
+    )
+      throw new Error("The review card is outside the chronological transcript");
+    if (await page.getByTestId("chat-schedule-next-step").count())
+      throw new Error("The held-schedule hand-off repeats the review card's way into the approval");
+    await page.waitForLoadState("networkidle");
+    await assertSingleTriggers(page, `${locale}/chat-activation`, {
+      ...TRANSCRIPT,
+      approvalOpeners: 1,
+    });
     await action.click();
     if (await page.getByTestId("authority-single-run").count())
       throw new Error("Unavailable one-shot action still displayed");
@@ -573,13 +584,24 @@ export async function verifyChatActivation(page, stand, conversation, _locale) {
     messages = 0;
     opaque = false;
     await page.reload();
-    const singleRunEntry = page.getByTestId("chat-review-schedule");
+    // The card's review leads to everything the review can lead to.
+    const singleRunEntry = action;
+    await singleRunEntry.waitFor();
+    await singleRunEntry.click();
+    // "Nur in Betrieb nehmen" does only that: the version goes into service,
+    // and no single run is prepared — that is the other button's act.
+    await page.getByTestId("authority-activate-only").click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (activations !== 1 || messages !== 0 || grants !== 3)
+      throw new Error(
+        `Putting a version into service alone also sent ${messages} chat turn(s) or granted something`,
+      );
     await singleRunEntry.waitFor();
     await singleRunEntry.click();
     await page.getByTestId("authority-single-run").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     if (
-      activations !== 1 ||
+      activations !== 2 ||
       messages !== 1 ||
       grants !== 3 ||
       !page.url().includes(`/chat/${conversation.id}`)

@@ -63,9 +63,16 @@ function useAutomationWorkflow(workflowId: string) {
 export function AutomationToolCard({
   tool,
   onAdjust,
+  onPrepareSingleRun,
 }: {
   tool: ToolPart;
   onAdjust?: (workflowId: string) => void;
+  /**
+   * Hands a single run to the conversation, where the review cannot permit
+   * repeated ones. The card is the transcript's one way into the review, so
+   * whatever the review can lead to is reachable from it.
+   */
+  onPrepareSingleRun?: (workflowId: string) => void;
 }) {
   const { t } = useI18n();
   const automation = chatAutomationTool(tool);
@@ -82,6 +89,7 @@ export function AutomationToolCard({
           workflowId={workflowId}
           workflow={workflow.data.current}
           onAdjust={onAdjust ? () => onAdjust(workflowId) : undefined}
+          onPrepareSingleRun={onPrepareSingleRun ? () => onPrepareSingleRun(workflowId) : undefined}
         />
       ) : workflow.isPending ? (
         <p role="status">{t("chat.activation.loading")}</p>
@@ -114,10 +122,12 @@ function AutomationCardBody({
   workflowId,
   workflow,
   onAdjust,
+  onPrepareSingleRun,
 }: {
   workflowId: string;
   workflow: AutomationWorkflow;
   onAdjust?: () => void;
+  onPrepareSingleRun?: () => void;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -169,6 +179,7 @@ function AutomationCardBody({
           testId="chat-automation-tool-review"
           triggerLabel={t(card.actionKey)}
           onAdjust={onAdjust}
+          onPrepareSingleRun={onPrepareSingleRun}
         />
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -181,6 +192,7 @@ function AutomationCardBody({
                 testId="chat-automation-tool-review-prod"
                 triggerLabel={t("chat.automationCard.review.prod")}
                 onAdjust={onAdjust}
+                onPrepareSingleRun={onPrepareSingleRun}
               />
             ) : (
               <AutomationGrant
@@ -191,6 +203,7 @@ function AutomationCardBody({
                 triggerLabel={t("chat.automationCard.review.dev")}
                 triggerVariant="outline"
                 onAdjust={onAdjust}
+                onPrepareSingleRun={onPrepareSingleRun}
               />
             ),
           )}

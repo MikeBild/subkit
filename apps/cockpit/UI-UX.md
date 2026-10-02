@@ -651,6 +651,13 @@ decision opens the approval: an approved or on-request workflow gets no button, 
 page's own "Fortsetzen" (or the line about its switched-off webhook), and a state that could not
 be verified "Erneut prüfen".
 
+The card reads today's state, so only the newest review of a workflow is a live card in a
+transcript; an earlier one stays what it is in the record, a tool call that ran. Where the
+transcript shows that card, the "Automatische Läufe noch blockiert" hand-off below it is not
+rendered a second time — one way into the approval per view. In the context panel the sentence
+about the held schedule stands once: under "Nächste Aktion" where the stage already says it,
+otherwise in the hold block.
+
 A card for a call that runs a workflow says what the call was. A preparation with every write
 held is "Probelauf ohne Wirkung", a call the engine turned away is "Lauf abgelehnt" with the
 engine's reason in the reader's words, and only a run that dispatched its writes is "Workflow
@@ -658,7 +665,7 @@ ausgeführt". A person's or a permission's no stays "nicht ausgeführt".
 
 A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh the conversation and the Übersicht's attention list after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
 
-Editing a saved workflow invalidates its whole-workflow check and saved status. Do not label an edited version “saved” using evidence from its previous version. An interrupted preparation offers “Check change” through the normal chat turn; run authorization is the next task only after preparation is complete. Historical text remains historical; the header and action card reflect current server state.
+Editing a saved workflow invalidates its whole-workflow check and saved status. Do not label an edited version “saved” using evidence from its previous version. An interrupted preparation offers “Continue preparing” („Vorbereitung fortsetzen“) through the normal chat turn — not “Review change”, which is the review card’s button and opens the approval; run authorization is the next task only after preparation is complete. Historical text remains historical; the header and action card reflect current server state.
 
 Workflow preparation includes inspection, validation and the supported preview within the current request and permission mode. These are assistant tasks, not user choices. Explain the verified result, any untested effects, and the next action briefly in the user's language. Held publications and skipped dependent steps must not be presented as successfully tested or executed. Ask only for missing business input, access, an unresolved tradeoff or authority, and give an evidence-based recommendation. Human-facing labels must not expose internal tool names or bypass flags. Existing persisted technical questions may receive a narrowly matched presentation translation; request identity, option values, explicit submission and server authority remain unchanged.
 

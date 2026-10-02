@@ -284,6 +284,20 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
             conversation: { ...original.conversation, target_workflow_id: WORKFLOW },
             tool_calls: [],
             messages: [
+              // An earlier review of the same workflow. It is history: only the
+              // newest review is a live card, or the same button stands twice.
+              {
+                id: "earlier-request",
+                role: "user",
+                created_at: conversation.updated_at,
+                parts: [{ type: "text", text: "Darf der Ablauf automatisch laufen?" }],
+              },
+              {
+                id: "earlier-work",
+                role: "assistant",
+                created_at: conversation.updated_at,
+                parts: [reviewPart("earlier-review")],
+              },
               {
                 id: "request",
                 role: "user",
@@ -379,9 +393,13 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
       throw new Error(`${where}: the hint reads "${hint}"`);
     if (/\bunten\b|\bbelow\b/.test(hint))
       throw new Error(`${where}: the hint points below the card: "${hint}"`);
+    // Two reviews of this workflow stand in the transcript; one card.
+    if ((await card.count()) !== 1)
+      throw new Error(`${where}: ${await card.count()} live review cards for one workflow`);
+    await assertSingleTriggers(page, where, { ...TRANSCRIPT, approvalOpeners: 1 });
 
     // A workflow call says what it was — never "ran" over a trial or a refusal.
-    const toggles = page.locator('[data-testid^="chat-message-1-tool-"][data-testid$="-toggle"]');
+    const toggles = page.locator('[data-testid^="chat-message-3-tool-"][data-testid$="-toggle"]');
     const titles = await toggles.allInnerTexts();
     if (titles.length !== 2) throw new Error(`${where}: ${titles.length} tool cards, not two`);
     if (!titles[0].includes(words.trialTitle) || titles[0].includes(words.ran))
@@ -424,6 +442,8 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
     if (await only.count()) throw new Error(`${where}: an unnamed third button stands beside them`);
     if (!(await card.innerText()).includes(words.scheduled))
       throw new Error(`${where}: schedules are not called scheduled runs`);
+    // Two reviews, in two environments: each button opens its own.
+    await assertSingleTriggers(page, where, { ...TRANSCRIPT, approvalOpeners: 2 });
     await capture("two");
     await dev.click();
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
@@ -447,6 +467,7 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
       throw new Error(`${where}: the repair is not the dialog's filled action`);
     if ((await page.getByTestId("authority-adjust").getAttribute("data-variant")) !== "outline")
       throw new Error(`${where}: two filled actions stand in the dialog`);
+    await assertSingleTriggers(page, where, DIALOG);
     await capture("repair");
     await closeDialog(page);
     if (state.repairs.length || state.grants.length)
@@ -470,6 +491,7 @@ export async function verifyChatReviewCard(page, stand, conversation, localeName
       throw new Error(`${where}: a workflow nothing starts is offered a button`);
     if (!(await card.innerText()).includes(words.onRequest))
       throw new Error(`${where}: the card reads "${await card.innerText()}"`);
+    await assertSingleTriggers(page, where, { ...TRANSCRIPT, approvalOpeners: 0 });
     await capture("on-request");
 
     // ── Paused: resuming, the page's own act ─────────────────────────────────
