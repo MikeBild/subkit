@@ -1856,6 +1856,7 @@ Emit a ready-to-paste, authenticated snippet to run a saved workflow from your o
 
 - `<id>` (positional, required) — Workflow id
 - `--lang` (string, default: curl) — Snippet language: curl (default), node, or python
+- `--environment` (string, default: prod) — Where the call runs: prod (default) or dev. Printed as the x-subkit-environment header.
 - `--json` — JSON output
 
 #### `sk workflows list`

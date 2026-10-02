@@ -3558,6 +3558,15 @@ sk supports the authentication patterns enterprise systems actually use.
 token refresh, expiry detection, and rotation automatically. No workflow ever
 manages token lifecycle.
 
+There is one state the engine does not recover from by itself. A connector
+flagged `needs_reauth` is no longer refreshed: both the refresh before a
+request and the background keep-alive skip it, because its credential is
+believed dead and every further attempt would be a doomed call to the identity
+provider. While the access token is still valid, a successful probe, request
+step or `call_connector` clears the flag and refreshing resumes. Once the
+access token has expired, no call can succeed with it, so nothing clears the
+flag: such a connector comes back only by being authorised again.
+
 **Secrets live only in the Credential Vault** — encrypted at rest, never logged,
 never exposed outside the engine. Workflows and steps reference credentials by
 name, not by value. The full vault model and master-key rotation procedure are in
@@ -3655,6 +3664,33 @@ serving past the switch. A disabled connector is also skipped by the reauth
 scan — for MCP that scan is a full handshake, and probing a server an operator
 deliberately turned off would park it in backoff for no reason.
 
+A step that calls a disabled connector fails with `connector_disabled` and
+sends nothing. The error names the connector as it was resolved for the run's
+environment — a preview runs in `dev`, so a step that references the `prod`
+connector is refused for its same-slug `dev` twin when that twin is the one
+switched off — and the run reads `connector_unavailable`. Nothing falls back
+to the other environment's connector. The switch is asked before the circuit
+breaker, so a disabled connector is never reported as `circuit_open`. One
+refusal comes before it: a write whose connector exists only in the other
+environment fails with `connector_environment_mismatch`, whether that connector
+is enabled or not — switching it on would not let the write through.
+
+`call_connector` honours the switch too, in the chat tool and on
+`POST /v1/connectors/{id}/call`: a disabled connector answers
+`connector_disabled` with the connector and environment to enable, and nothing
+is sent.
+
+The circuit breaker itself counts only a remote that could not serve: a
+transport failure, a timeout, a `5xx` or a `429`. A `401`, a `404` or any
+other answered `4xx` is not counted and clears a partial count, because the
+remote did answer. A rejected credential shows up as `needs_reauth` instead,
+and the next successful call the stored credential authenticated clears it — a
+request step of any driver, a probe, or `call_connector`. A call proves
+nothing about the stored credential, and clears nothing, when it carried its
+own `Authorization` (or a header or query parameter under the credential's
+name), when it went to a full URL on another host, or when a GraphQL endpoint
+answered `200` with an `errors` array.
+
 Four fields are worth knowing when a remote misbehaves, and every one of them
 is written by the engine rather than copied from the upstream — a remote's own
 error body can echo the credential it just rejected, so it stays in the
@@ -3669,6 +3705,56 @@ on the single-connector GET. Repeated handshake failures count in the database
 and arm a backoff that survives an engine restart — so a server that has been
 refusing for an hour is not handed a full-rate retry just because the process
 bounced.
+
+The same two reads report the circuit breaker behind that verdict:
+`circuit_state` (`closed`, `open`, `half-open`), `circuit_opened_at` and
+`circuit_failure_count`. They are read-only and say why a call is being
+short-circuited right now, and how close a closed breaker is to opening.
+
+### Secrets in a connector representation
+
+A connector can carry secrets outside the credential vault: an OAuth client
+secret in `config.oauth.client_secret`, a header or query value in
+`config.static_headers` / `config.static_query`, the password inside a
+PostgreSQL `dsn`, a password or query credential inside `base_url`. No
+representation of a connector returns them. Every response that carries a
+connector — create, get, list, patch, enable, disable, the `get_connector`
+tool — shows the value as `***redacted***` and leaves the rest of the
+configuration readable: endpoints, scopes, header names, and the user, host and
+database of a `dsn`.
+
+Header and query values are masked by default, whatever the header is called:
+a vendor may name a credential `X-Session-Id` or `sig`, and no list of names
+would catch them all. Only values under names that plainly carry no credential
+stay readable — `Accept`, `Content-Type`, `User-Agent`, a locale, a format,
+an API version such as `Notion-Version`.
+
+A placeholder does not read around the mask. `${connector.<slug>.config.<path>}`
+resolves configuration — a region, an API version — and refuses a path that
+holds a masked value with `secret_withheld`; `get_connector` does not offer
+such a path. `${connector.<slug>.base_url}` is refused the same way when the
+URL itself carries a credential; a step on that connector names a path relative
+to it instead of a full URL. Reference a credential as `${cred.<slug>.<field>}`,
+or let the connector apply it.
+
+The mask is also a valid value to send back. A write that carries
+`***redacted***` where a secret is stored keeps the stored secret, so reading a
+connector, changing one field and patching the result — `sk connectors get`
+followed by `sk connectors patch --file` — does not disturb it, and probing a
+read definition (`POST /v1/connectors/probe`) sends the stored secret rather
+than the mask. Send the real value to rotate a secret.
+
+A kept secret stays with its destination. The mask is honoured only while the
+secret would still go where it was stored for: a `dsn` or `base_url` that is
+unchanged outside the masked part, an OAuth client secret whose
+`token_endpoint` and `issuer_url` are the stored ones, a header or query value
+whose `base_url` is the stored one. A write that keeps the mask and points the
+connector somewhere else is refused with `422` and says what moved — send the
+real value for the new destination. The same answer meets a mask with nothing
+stored behind it, such as a read definition posted as a new connector under a
+different slug, and a value that only contains the mask
+(`Bearer ***redacted***`). The engine never stores the mask and never sends it
+upstream.
 
 ## Health and validation
 
@@ -4568,7 +4654,7 @@ defaults and are operator-tunable.
 | Per-execution / per-step timeouts | Runaway workflows consuming resources indefinitely |
 | Per-tenant token budgets | Unbounded AI usage costs |
 | API rate limits | A single caller monopolizing capacity |
-| Connector circuit breakers | Cascading failure from a degraded external boundary — after N consecutive failures the circuit opens and requests fail fast until recovery |
+| Connector circuit breakers | Cascading failure from a degraded external boundary — after N consecutive availability failures (transport error, timeout, `5xx`, `429`) the circuit opens and requests fail fast until recovery; an answered `4xx` such as `401` or `404` is not counted |
 | Queue depth caps | Unbounded work accumulation |
 
 When a circuit breaker trips, the audit log records it and the event stream delivers a
@@ -4994,6 +5080,44 @@ headers cannot replace a pending execution. Completed or already-running
 executions are never re-enqueued by delivery replay. Historic replay receipts stay
 deduplicated and are not interpreted as new approvals.
 
+#### Suggested window and run limit
+
+The review suggests limits; a person confirms or changes them, and nothing is
+granted until they do.
+
+| What starts the workflow | Suggested window | Suggested run limit |
+|---|---|---|
+| Nothing (runs on request) | 24 hours | 1 |
+| A schedule | 30 days | the schedule's own starts in that window |
+| An inbound webhook (production review) | 30 days | the hook's recent call rate projected over the window and doubled, at least 100 |
+| A schedule and a webhook | 30 days | both added |
+
+The call rate counts the last 14 days: runs the hook started plus deliveries the
+authority gate refused — both are calls an approval has to cover, so a hook nobody
+has approved yet is still sized from its real traffic. The review says in one line
+where the numbers come from. The ceilings are unchanged: at most 10,000 runs and
+31 days. A development review never uses the hook's rate; webhook runs are
+production only.
+
+### What the attention list says before a run is refused
+
+A refused start records a hold, and a held workflow is listed as *stopped*. Two
+facts are listed earlier, derived on read from what is already stored — no hold is
+written for them:
+
+| Item | When | Class |
+|---|---|---|
+| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment | *decide*, due at the next scheduled start |
+| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left | *decide*, lower severity (`notice`) |
+
+Both lead to the workflow's page, where the automation panel offers the approval,
+the extension, or the repair that has to come first. One workflow is one item: the
+first refused start turns the same item into the held one, never a second. Saving
+a new active version appears within the list's ten-second cache; a saved draft is
+not listed — it starts nothing until a person applies it. The same items reach
+`GET /v1/attention`, the health digest and the MCP attention tool
+(`version_awaiting_approval`, `approval_expiring`).
+
 The driver is `handleInbound()` in `apps/engine/src/webhooks/inbound/service.ts`; the
 individual verifiers live under `apps/engine/src/webhooks/inbound/verifiers/`.
 
@@ -5411,6 +5535,7 @@ Ordered by the job in front of you, not by mechanism:
 | **Get connected** and open your first conversation (5 minutes) | [quickstart.md](quickstart.md) |
 | **See what's worth building** — real cases, each traceable to a shipped blueprint or a workflow we run ourselves | [Use cases](../use-cases.md) · [Catalog](../catalog.md) |
 | **Build a process** — the AI authoring loop, the approval gate, probe/preview | [authoring-workflows.md](authoring-workflows.md) |
+| **Use what you built** — call a workflow from your app, a webhook, an AI client, a schedule or a terminal | [calling-workflows.md](calling-workflows.md) |
 | **Pick the right door** for a change — editing a definition vs. running one, seven worked examples | [choosing-your-surface.md](choosing-your-surface.md) |
 | **Ask your company's knowledge** and trust the answer — sourced, quote-checked, honestly refused | [asking-your-knowledge.md](asking-your-knowledge.md) |
 | **Teach sk a whole field of work** — connector + skills + knowledge, worked end to end | [model-a-domain.md](model-a-domain.md) |
@@ -6011,6 +6136,160 @@ The conversational layer is aware of the stdlib and proposes `sk.*` forms by def
 </content>
 </invoke>
 
+<!-- Source: docs/authors/calling-workflows.md -->
+
+# Calling a Workflow
+
+A saved workflow is something other systems can start: your app, a service that sends
+webhooks, an AI client, a schedule, or a terminal. This page shows each way, what to send,
+and what comes back.
+
+> **Reading time:** ~6 min · **Audience:** anyone who built a workflow and now wants to use it
+
+The quickest route is the workflow's own page in the Cockpit. Its **Call** section shows
+the exact address, a ready-to-paste snippet, the webhook address and how it is signed, the
+tool name, the schedule and the command — for that workflow, with its real input. Everything
+below explains what you see there.
+
+The same facts are available to scripts in one read:
+
+```bash
+curl -sS "$SK_ENGINE_URL/v1/workflows/<workflow-id>/invocation" \
+  -H "authorization: Bearer $SK_API_KEY"
+```
+
+It never returns a key or a webhook signing secret — header names only.
+
+Two parts of that answer need reading with care:
+
+- `authority` says, per environment, whether an approval for the running version
+  **exists**. It is not a promise that the next call runs with effect: the run itself
+  also checks that the approval still covers what the workflow does today, and holds
+  or refuses the call if it does not. The run's answer is the one that counts.
+- `hooks` and `schedules` are listed only for a caller who may read them.
+  `visibility` says which; a list that is missing was withheld, not empty.
+
+## Before you call: is it approved?
+
+A workflow that writes to other systems runs with effect only inside an approval a person
+gave: which version, in which environment, until when, how many runs.
+
+| The workflow page says | What a call does |
+|---|---|
+| **Approved** | Runs with effect, and counts against the approved runs |
+| **Approval needed**, **Change waiting** or **Repair needed** | Runs as a **trial run**: reads happen, writes are held back |
+| **On request** (nothing starts it automatically, nothing approved) | Runs as a trial run until someone approves it |
+
+A trial run is safe to repeat. It is also why a call can "succeed" and nothing arrives: look
+at the state first. The response tells you which kind of run it was (`hold_writes`).
+
+## From your app (HTTP)
+
+One request starts a run:
+
+```bash
+curl -sS -X POST "$SK_ENGINE_URL/v1/executions" \
+  -H "authorization: Bearer $SK_API_KEY" \
+  -H "x-subkit-environment: prod" \
+  -H "content-type: application/json" \
+  -d '{"source":"saved","workflow_id":"<workflow-id>","input":{"recipient_email":"ops@example.org"}}'
+```
+
+Three things to get right:
+
+- **Input goes in the body, under `input`.** There are no query parameters. The workflow
+  page lists every field with its type, whether it is required, and an example.
+- **Say where it runs.** `x-subkit-environment` is `prod` or `dev`. Leave it out and the
+  call runs in development — against the development connectors, not the production ones.
+- **The key comes from your environment.** Create one on the Cockpit's credentials page,
+  under keys for scripts, and keep it out of source control.
+
+| Answer | Meaning |
+|---|---|
+| `200` | The run finished; the body carries the result |
+| `202` | The run was queued (`"async": true`); follow it with `GET /v1/executions/{id}` |
+| `409` | The run was refused before it started — the body says why, for example a connector that must be reconnected |
+
+To make a call safe to repeat, add `"idempotency_key"`: a second call with the same key
+returns the first run instead of starting another.
+
+`sk workflows invoke-snippet <workflow-id>` prints the same request the workflow page
+shows — the engine's own snippet, with the workflow's sample input and the engine's
+public address — for curl, Node or Python (`--lang`), for production or development
+(`--environment`). If the engine cannot be reached, does not know the workflow, or has
+no public address configured, the command prints a snippet with your profile's engine
+address and an empty input instead, and says so.
+
+## From another service (webhook)
+
+When a workflow has an inbound hook, the other service posts to:
+
+```
+POST <your engine address>/v1/hooks/<hook-name>
+```
+
+There is no API key on this address — the **signature is the authentication**. The workflow
+page names the scheme and the exact headers a delivery must carry, for example
+`webhook-id`, `webhook-timestamp` and `webhook-signature` for the standard scheme, or the
+sender's own header names for a custom HMAC scheme.
+
+The workflow does not receive the sender's body as its input directly. It receives an
+envelope, and the body is one field of it:
+
+```json
+{
+  "id": "msg_2YcX",
+  "type": "finding.created",
+  "timestamp": 1790000000,
+  "headers": { "content-type": "application/json" },
+  "body": { "finding": { "id": "F-17", "severity": "high" } }
+}
+```
+
+So a step reads the sender's data at `input.body`, not at `input`.
+
+Webhook deliveries always run in production, and they need an approval like any other
+automatic run. Until there is one, deliveries are refused and the workflow page shows the
+hook as waiting.
+
+## From an AI client (MCP)
+
+A saved workflow can appear in a client's tool list as `wf_<workflow-name>`, with the
+workflow's input as its arguments. Not every workflow appears for every client: the list
+depends on what the caller may do and holds a bounded number of workflow tools. The
+`run_workflow` tool runs any saved workflow the caller may run, listed or not:
+
+```json
+{ "workflow": "<workflow-name>", "input": { "recipient_email": "ops@example.org" } }
+```
+
+## On a schedule
+
+A schedule starts the workflow by itself, at the times and in the timezone it names, with a
+fixed input. The workflow page shows the schedule in words, the environment it runs in, its
+fixed input and the next run. A schedule needs an approval; without one it is held, and the
+page says so instead of running.
+
+## From a terminal
+
+```bash
+sk workflows run <workflow-name> --input '{"recipient_email":"ops@example.org"}'
+```
+
+`--input @./payload.json` reads the input from a file. This command sends no environment,
+so it runs in development.
+
+## Where to look when a call does nothing
+
+1. **The state on the workflow page.** No approval means a trial run.
+2. **The latest runs** on the same page: each run says how it ended and, if it stopped,
+   at which step and why.
+3. **The environment.** A call without `x-subkit-environment` ran in development.
+
+See also: [Scheduling and hooks](../operators/scheduling-and-hooks.md) for how schedules
+and hooks are bound and approved, and
+[Input surfaces](../developers/input-surfaces.md) for every way into the engine.
+
 <!-- Source: docs/authors/choosing-your-surface.md -->
 
 # Choosing your surface
@@ -6089,6 +6368,10 @@ sk workflows restore <id> <version>
 ```
 
 Never guess the version number. Restoring is not a repair: if you do not know which version was good, find out before you replace what is live.
+
+A version saved under an earlier definition format stays in the history, marked `legacy`. It can be read but not restored — the restore is refused with `version_not_restorable` and names the step that no longer validates. Pick a version that is not marked, or save the definition again in the current format.
+
+The version that is live can be `legacy` too. The workflow still shows — in the list, on its page, in "how to call this" — marked `legacy`, as it is stored. Running it is refused with `workflow_version_legacy`, which names the steps that no longer validate. Save the definition again in the current format and activate that version.
 
 ### 3. "Prove that two runs produce identical output."
 
@@ -9980,6 +10263,7 @@ Emit a ready-to-paste, authenticated snippet to run a saved workflow from your o
 
 - `<id>` (positional, required) — Workflow id
 - `--lang` (string, default: curl) — Snippet language: curl (default), node, or python
+- `--environment` (string, default: prod) — Where the call runs: prod (default) or dev. Printed as the x-subkit-environment header.
 - `--json` — JSON output
 
 #### `sk workflows list`
@@ -10501,6 +10785,29 @@ not supported by this contract.
 Inline previews require tenant-level `workflow:run`. A resource grant on one
 saved workflow does not authorize an arbitrary inline definition: adding a
 `workflow_id` to a draft or step request cannot borrow that grant.
+
+### How a saved workflow is called
+
+`GET /v1/workflows/{id}/invocation` requires resource-scoped `workflow:read` and
+answers, in one read, every way to start the workflow: the run request
+(`POST /v1/executions`) with its header names, an example body and ready-to-paste
+snippets per environment; the inbound hooks with their signing scheme and header
+names; the MCP tool name the workflow has when the catalog publishes it, with the
+`run_workflow` fallback that works either way; the schedules; the CLI command; the
+input and output schema with a sample input; and, per environment, whether an
+approval for the running version exists (`authority`). That last answer is advisory:
+it is read from the stored approvals alone, while admission also checks the approval
+against the workflow's current effects and decides the run.
+Addresses come from `server.public_base_url` only — `http.url`, `hooks[].url` and
+`http.snippets` are `null` until it is configured, never derived from the request.
+`hooks` and `schedules` are present only for callers holding `inbound_hook:read`
+and `schedule:read`; `visibility` says which, so a withheld list is not read as an
+empty one. `legacy` is true when the current version is stored in an earlier
+definition format: the answer is then read from the stored definition as written, and
+a run is refused with `workflow_version_legacy` until the workflow is saved again.
+The response carries no credential: no key, no token, no hook signing secret.
+`sk workflows invoke-snippet` prints these snippets. See
+[Calling a workflow](../authors/calling-workflows.md).
 
 ### Durable workflow draft API
 
