@@ -19,7 +19,8 @@
 //   list of recent runs; the title does not repeat it;
 // - a workflow with nothing wrong                       → "Im Chat ändern" is
 //   in the menu, a conversation that opens with a real intent, not a label;
-// - a connector whose sign-in expired                   → "Neu verbinden";
+// - a connector whose sign-in expired                   → "Neu anmelden" in
+//   its sign-in card, once; nothing beside the title jumps to it;
 // - a healthy connector                                 → "Verbindung testen";
 // - a skill, a knowledge source, a file                 → the record's own
 //   actions, each once.
@@ -337,15 +338,17 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     // ── A connector whose sign-in expired ─────────────────────────────────────
     where = `/connectors/<expired> (${localeName})`;
     await stand.visit(page, `connectors/${EXPIRED_CONNECTOR}`);
-    const reconnect = page.getByTestId("detail-action");
-    await reconnect.waitFor({ state: "visible", timeout: 10_000 });
+    const renew = page.getByTestId("connector-renew-signin");
+    await renew.waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
-    const reconnectLabel = (await reconnect.innerText()).trim();
-    if (reconnectLabel !== (de ? "Neu verbinden" : "Reconnect"))
-      throw new Error(`${where}: the action reads "${reconnectLabel}"`);
-    const reconnectHref = await reconnect.getAttribute("href");
-    if (reconnectHref !== `/cockpit/connectors/${EXPIRED_CONNECTOR}#connector-credentials`)
-      throw new Error(`${where}: the action leads to ${reconnectHref}`);
+    // Renewing lives where the sign-in state does: in the card. The title
+    // used to carry "Neu verbinden", a link that only scrolled to it.
+    if (await page.getByTestId("detail-action").count())
+      throw new Error(`${where}: a second trigger for the sign-in stands beside the title`);
+    const renewLabel = (await renew.innerText()).trim();
+    if (renewLabel !== (de ? "Neu anmelden" : "Sign in again"))
+      throw new Error(`${where}: the sign-in card's action reads "${renewLabel}"`);
+    // The run dialog's "Neu verbinden" still lands on the card.
     if (!(await page.locator("#connector-credentials").count()))
       throw new Error(`${where}: the sign-in card has no anchor to land on`);
     await assertSingleTriggers(page, where);

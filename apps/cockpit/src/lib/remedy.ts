@@ -1,10 +1,4 @@
-import {
-  attentionHref,
-  chatNewHref,
-  connectorHref,
-  runHref,
-  workflowAutomationHref,
-} from "@/app/links";
+import { attentionHref, chatNewHref, connectorHref, workflowAutomationHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 /**
@@ -14,7 +8,7 @@ import type { TranslationKey } from "@/lib/i18n";
  * that renders it decides whether it needs `absolute()`.
  */
 export interface Remedy {
-  kind: "review_repair" | "grant" | "reauth" | "check_auth" | "open_run" | "chat";
+  kind: "review_repair" | "grant" | "reauth" | "check_auth" | "chat";
   labelKey: TranslationKey;
   href: string;
 }
@@ -36,9 +30,8 @@ export interface RemedyInput {
     state: "expired" | "credentials_missing" | string;
     /**
      * Where the reader stands. A run page names the rejected sign-in ("Neu
-     * anmelden") and opens the connector; the run dialog and a record's own
-     * page name the connector that must be reconnected and land on its
-     * sign-in card.
+     * anmelden") and opens the connector; the run dialog names the connector
+     * that must be reconnected and lands on its sign-in card.
      */
     section?: "credentials";
   } | null;
@@ -48,8 +41,6 @@ export interface RemedyInput {
    * the state and offers the one act that changes it.
    */
   held?: boolean;
-  /** The workflow's newest run, when it failed — the evidence to read first. */
-  failedRunId?: string | null;
   /**
    * Whether the reader may start runs. Rerunning is its own action beside the
    * remedy, never the remedy: running the same broken thing again fixes
@@ -73,8 +64,7 @@ export interface RemedyInput {
  *    where the state is said and the approval is given or repaired.
  * 3. A connector's sign-in expired → sign in again. No workflow change fixes a
  *    credential.
- * 4. The newest run failed → investigate that run before changing anything.
- * 5. Otherwise → the chat, with the workflow and run attached.
+ * 4. Otherwise → the chat, with the workflow and run attached.
  *
  * `null` when the reader has no way to act: a dead link is worse than none.
  */
@@ -109,9 +99,6 @@ export function remedyFor(input: RemedyInput): Remedy | null {
       labelKey: expired ? (card ? "remedy.reconnect" : "remedy.reauth") : "remedy.checkAuth",
       href: `${connectorHref(input.authState.connectorId)}${card ? "#connector-credentials" : ""}`,
     };
-  }
-  if (input.failedRunId) {
-    return { kind: "open_run", labelKey: "remedy.openRun", href: runHref(input.failedRunId) };
   }
   if (input.canChat) {
     return {
