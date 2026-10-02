@@ -5,6 +5,30 @@ export type WorkflowInvocation = components["schemas"]["WorkflowInvocation"];
 export type InvocationHook = NonNullable<WorkflowInvocation["hooks"]>[number];
 export type InvocationSchedule = NonNullable<WorkflowInvocation["schedules"]>[number];
 
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Whether an answer is an invocation at all. A 200 that carries something
+ * else is a failed read, the same as a 500 — the page then says so instead of
+ * reading fields off an object that does not have them.
+ */
+export function isWorkflowInvocation(value: unknown): value is WorkflowInvocation {
+  return (
+    record(value) &&
+    record(value.http) &&
+    typeof value.http.path === "string" &&
+    record(value.http.body) &&
+    record(value.mcp) &&
+    record(value.cli) &&
+    record(value.input) &&
+    record(value.input.sample) &&
+    record(value.output) &&
+    record(value.authority) &&
+    record(value.webhook_input_shape)
+  );
+}
+
 /** A way to call a workflow, in the order the tabs stand. */
 export const INVOCATION_MODES = ["http", "webhook", "mcp", "schedule", "cli"] as const;
 export type InvocationMode = (typeof INVOCATION_MODES)[number];

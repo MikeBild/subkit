@@ -346,6 +346,12 @@ describe("automationState — without the verified status", () => {
     expect(state.environment).toBe("prod");
   });
 
+  test("when no read of the schedules answered, nothing is claimed", () => {
+    const state = automationState(inputs({ ...unverified, schedules: null }));
+    expect(state.state).toBe("unknown");
+    expect(state.primaryAction).toBeNull();
+  });
+
   test("a failed read of the schedules is not the calm manual state when hooks exist", () => {
     const state = automationState(
       inputs({
@@ -361,6 +367,30 @@ describe("automationState — without the verified status", () => {
       }),
     );
     expect(state.state).not.toBe("manual");
+  });
+});
+
+describe("triggers", () => {
+  test("a schedule only the list knows still counts", () => {
+    const state = automationState(
+      inputs({ status: status(), schedules: [schedule({ id: "late" })], authorities: [] }),
+    );
+    expect(state.triggers.map((trigger) => trigger.id)).toEqual(["late"]);
+    expect(state.state).toBe("grant");
+  });
+
+  test("a schedule both reads know is listed once, with the verified facts", () => {
+    const state = automationState(inputs({ schedules: [schedule({ cron: "stale" })] }));
+    expect(state.triggers).toHaveLength(1);
+    expect(state.triggers[0]?.cron).toBe("0 7 * * *");
+  });
+
+  test("a paused schedule in the list is paused, whatever the row says", () => {
+    const state = automationState(
+      inputs({ status: status(["approval_required"]), schedules: [schedule({ paused: true })] }),
+    );
+    expect(state.triggers[0]?.paused).toBe(true);
+    expect(state.state).toBe("paused");
   });
 });
 
