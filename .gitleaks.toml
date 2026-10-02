@@ -102,3 +102,21 @@ paths = [
 regexes = [
   '''wf_live_abcdef1234567890''',
 ]
+
+# Fixture ids in the cockpit's visual stands.
+#
+# The stand scripts under `scripts/lib/cockpit-*.mjs` name their fixture
+# resources with constants, and a constant such as `API_CONNECTOR` assigned
+# a UUID reads to the `generic-api-key` rule like a key. Scoped by path AND
+# to a finding that is exactly a UUID, so anything else in these scripts —
+# a real token of any other shape — is still caught.
+[[allowlists]]
+description = "fixture UUIDs in the cockpit visual stand scripts"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''scripts/lib/cockpit-[a-z-]+\.mjs''',
+]
+regexes = [
+  '''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''',
+]

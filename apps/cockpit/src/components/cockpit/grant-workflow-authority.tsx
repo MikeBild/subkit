@@ -1014,7 +1014,9 @@ export function GrantWorkflowAuthority({
             </Alert>
           )}
         </div>
-        <DialogFooter className="shrink-0">
+        {/* The row wraps: three long actions would otherwise push the first one
+            out of the dialog's box, where it cannot be pressed. */}
+        <DialogFooter className="shrink-0 sm:flex-wrap">
           <Button
             variant="outline"
             disabled={submitting}

@@ -27,7 +27,7 @@ const SCHEDULE = "9c1e3a5b-7d4f-4a26-8b13-6f8a0c2e4d74";
 const DEV_SCHEDULE = "2e4a6c8d-1f3b-4d57-9a02-7b9d1f3a5c16";
 const REPAIR_CANDIDATE = "a8c0e2f4-6b1d-4f39-8c5e-0d2f4a6c8e27";
 const HOOK = "5a7c9e1f-3b2d-4f48-a6c0-8e0a2c4e6b85";
-const API_CONNECTOR = "1f3b5d7c-9e4a-4c26-b813-2f4b6d8e0a96";
+const HTTP_CONNECTOR = "1f3b5d7c-9e4a-4c26-b813-2f4b6d8e0a96";
 const MAIL_CONNECTOR = "8d0f2b4c-6e1a-4d37-9a5c-3e5a7c9b1da7";
 const CALLED = "4c6e8a0b-2d1f-4b59-8e07-b1d3f5a7c9b8";
 const GRANT = "e1a3c5d7-9b2f-4d48-a6c0-7e9a1c3e5fc9";
@@ -81,7 +81,7 @@ function record(state) {
         kind: "request",
         method: "GET",
         path: "/users",
-        connector_id: API_CONNECTOR,
+        connector_id: HTTP_CONNECTOR,
         query: { limit: 10 },
         // Two credential-shaped headers. A literal secret pasted into the
         // definition is masked; a reference is configuration and shown as stored.
@@ -570,7 +570,7 @@ export function api(state) {
     if (path === "/v1/connectors")
       return json(route, {
         items: [
-          { id: API_CONNECTOR, display_name: "Example API Demo" },
+          { id: HTTP_CONNECTOR, display_name: "Example API Demo" },
           { id: MAIL_CONNECTOR, display_name: "Mail" },
         ],
         total: 2,
