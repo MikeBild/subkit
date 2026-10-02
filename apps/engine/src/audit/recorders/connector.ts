@@ -5,6 +5,7 @@
 //   - updateConnector / save_connector_draft re-issue → recordConnectorUpdated
 //   - deleteConnector → recordConnectorDeleted
 //   - call_connector / probe_connector → recordConnectorInvoked
+//   - a health probe of a saved connector, from any surface → recordConnectorProbed
 //   - save_connector_draft with force_save → recordConnectorSavedOverride
 //   - update_connector_draft credential rejection → recordConnectorDraftCredentialRejected
 //
@@ -191,6 +192,59 @@ export async function recordConnectorInvoked(
     },
     p.executor,
   );
+}
+
+export interface RecordConnectorProbedParams extends RecorderBase {
+  connector: {
+    id: string;
+    slug: string;
+    driver: string;
+    environment: string;
+    base_url: string | null;
+  };
+  result: { ok: boolean; status?: number; latency_ms: number; error_code?: string };
+  conversation_id?: string;
+}
+
+/**
+ * A health probe of a saved connector is a call like any other, and the
+ * newest one on record: "last successful call" on the connector's page must
+ * move when someone tests the connection. One recorder for every surface that
+ * probes — the REST route and the conversation tool — so the row has one
+ * shape and neither surface can forget it.
+ *
+ * A probe the engine refused before anything left it — a disabled connector —
+ * is not a call, and is not recorded as one.
+ */
+export async function recordConnectorProbed(
+  p: RecordConnectorProbedParams,
+): Promise<RecordedEntry | null> {
+  if (p.result.error_code === "connector_disabled") return null;
+  let url_host = "";
+  if (p.connector.base_url) {
+    try {
+      url_host = new URL(p.connector.base_url).host;
+    } catch {
+      url_host = p.connector.base_url;
+    }
+  }
+  return recordConnectorInvoked({
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    ...(p.actor_type ? { actor_type: p.actor_type } : {}),
+    ...(p.executor ? { executor: p.executor } : {}),
+    connector_id: p.connector.id,
+    connector_slug: p.connector.slug,
+    driver: p.connector.driver,
+    environment: p.connector.environment,
+    method: "PROBE",
+    path: "/",
+    url_host,
+    status_code: p.result.status ?? (p.result.ok ? 200 : 0),
+    latency_ms: p.result.latency_ms,
+    outcome: p.result.ok ? "success" : "error",
+    ...(p.conversation_id ? { conversation_id: p.conversation_id } : {}),
+  });
 }
 
 export interface RecordConnectorSavedOverrideParams extends RecorderBase {
