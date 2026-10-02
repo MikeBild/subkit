@@ -41,6 +41,7 @@
 - [Authors](authors/README.md): Get from one sentence to a process that runs every week without you.
 - [Ask your company's knowledge](authors/asking-your-knowledge.md): Ask a question where you already work, and the company answers from its own documents — naming what it read, or saying plainly that the answer isn't in there.
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
+- [Calling a Workflow](authors/calling-workflows.md): A saved workflow is something other systems can start: your app, a service that sends webhooks, an AI client, a schedule, or a terminal.
 - [Choosing your surface](authors/choosing-your-surface.md): Do the work where it actually goes faster.
 - [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Every new session starts already knowing your domain's rules, looks your runbooks up instead of inventing them, and remembers what you taught it last time — once you have reviewed and approved that lesson.
 - [Zugriff in deinem Namen und Freigaben](authors/connections.md): Beides findest du im Cockpit unter Installation: den Zugriff in deinem Namen im Bereich Zugriff in deinem Namen der Seite Zugangsdaten, die vorbereiteten Änderungen oben auf Einstellungen.
