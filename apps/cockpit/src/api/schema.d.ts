@@ -8401,6 +8401,13 @@ export interface paths {
                         "text/html": string;
                     };
                 };
+                /** @description Signed in — back to the connector's page in the Cockpit */
+                303: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Bad request (HTML) */
                 400: {
                     headers: {
@@ -8934,6 +8941,13 @@ export interface paths {
                     content: {
                         "text/html": string;
                     };
+                };
+                /** @description Authorized — back to the connector's page in the Cockpit */
+                303: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
                 /** @description Bad request (HTML) */
                 400: {
@@ -20544,6 +20558,7 @@ export interface components {
             environment: "dev" | "prod";
             connection: components["schemas"]["ConnectionSummary"];
             header_names: string[];
+            missing_scopes: string[];
             updated_at: string;
         } | null;
         ConnectorMcpInspectResponse: {

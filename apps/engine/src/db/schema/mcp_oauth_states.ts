@@ -74,6 +74,9 @@ export const mcpOauthStates = pgTable(
     // to the flow's originator instead of a blurred system actor. Nullable:
     // a flow without a resolvable originator stays a system-actor trail.
     started_by_actor_id: uuid("started_by_actor_id"),
+    // Where the person started this authorization — mirrors
+    // `connectorOauthStates.origin`. Null reads as cli.
+    origin: text("origin"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

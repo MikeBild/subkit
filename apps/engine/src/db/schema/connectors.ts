@@ -205,6 +205,12 @@ export const connectorOauthStates = pgTable(
     // against the bundle.scope (the granted set) and marks the
     // resulting credential `partial_grant` if non-empty.
     requested_scopes: text("requested_scopes"),
+    // Where the person started this sign-in (cli | cockpit | chat | portal —
+    // connectors/oauth-origin.ts), so the unauthenticated callback can send
+    // them back to it. Only the word: the return address is built from the
+    // connector id, never stored. Null on a row written before the column
+    // existed, which reads as cli.
+    origin: text("origin"),
   },
   (t) => [uniqueIndex("connector_oauth_states_state_key").on(t.state)],
 );

@@ -30,6 +30,8 @@ import { connectorOauthStates, connectors } from "../db/schema/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../http/errors.ts";
 import { logger } from "../logging/index.ts";
 import { now } from "../utils/clock.ts";
+import type { OAuthFlowOrigin } from "./oauth-origin.ts";
+import { completeConnectorReauthorization } from "./reauth.ts";
 import { getConnector } from "./service.ts";
 import {
   getConnectorTemplateSnapshot,
@@ -47,6 +49,8 @@ export interface BeginConnectorOAuthDanceOptions {
   /** null for the unauthenticated browser-grant path */
   actor_id: string | null;
   redirect_uri: string;
+  /** Where the person started the flow; the callback sends them back there. */
+  origin: OAuthFlowOrigin;
 }
 
 /**
@@ -65,7 +69,7 @@ export interface BeginConnectorOAuthDanceOptions {
 export async function beginConnectorOAuthDance(
   opts: BeginConnectorOAuthDanceOptions,
 ): Promise<OAuthDanceResult> {
-  const { db, tenant_id, connector_id, actor_id, redirect_uri } = opts;
+  const { db, tenant_id, connector_id, actor_id, redirect_uri, origin } = opts;
 
   let connector = await getConnector(tenant_id, connector_id, db);
   if (!connector) throw new NotFoundError("connector");
@@ -217,6 +221,7 @@ export async function beginConnectorOAuthDance(
       },
       db,
     );
+    await completeConnectorReauthorization(db, { tenant_id, connector_id, actor_id });
     await auditAwait(
       {
         tenant_id,
@@ -266,6 +271,7 @@ export async function beginConnectorOAuthDance(
     expires_at: new Date(now() + 10 * 60_000),
     // Carry requested_scopes so the callback can diff against granted.
     requested_scopes: cfg.scope ?? null,
+    origin,
   });
   logger.info({
     module: "oauth",

@@ -3,6 +3,7 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./categorize.ts";
+export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";
@@ -11,7 +12,7 @@ export * from "./drivers/index.ts";
 export * from "./health.ts";
 export * from "./health-state.ts";
 export * from "./mcp-tool-trust.ts";
-export * from "./oauth-html.ts";
+export * from "./oauth-origin.ts";
 export * from "./oauth-scope-diff.ts";
 export * from "./oauth-start.ts";
 export * from "./oauth-start-grant.ts";

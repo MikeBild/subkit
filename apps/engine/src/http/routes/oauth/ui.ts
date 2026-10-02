@@ -54,7 +54,23 @@ export function resolveAuthLocale(acceptLanguage: string | undefined): AuthLocal
   return "en";
 }
 
-function page(title: string, body: string, locale: AuthLocale = "en"): string {
+/** Product styles for pages that are not part of the family's sign-in
+ *  contract. They stand outside the `mcp-auth` sentinels on purpose: the
+ *  digest above describes the shared bytes only. */
+const PRODUCT_STYLES = `
+  input[type=text]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--input);border-radius:var(--radius-md);background:var(--card);color:var(--foreground);font:inherit}
+  .result p+p{margin-top:10px}.result .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;overflow-wrap:anywhere}
+`;
+
+/** What the footer says the page belongs to. */
+const DEFAULT_CONTEXT = "OAuth 2.1";
+
+function page(
+  title: string,
+  body: string,
+  locale: AuthLocale = "en",
+  context: string = DEFAULT_CONTEXT,
+): string {
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -64,10 +80,59 @@ function page(title: string, body: string, locale: AuthLocale = "en"): string {
   <meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">
   <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">
   <title>${escapeHtml(title)} — SubKit</title>
-  <style>${TOKENS}</style>
+  <style>${TOKENS}${PRODUCT_STYLES}</style>
 </head>
-<body><main class="card" data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"><img class="brand" src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon">${body}<div class="footer" data-family-slot="auth-meta">SubKit · OAuth 2.1</div></main></body>
+<body><main class="card" data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"><img class="brand" src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon">${body}<div class="footer" data-family-slot="auth-meta">SubKit · ${escapeHtml(context)}</div></main></body>
 </html>`;
+}
+
+/**
+ * A page in the family shell whose body the caller wrote. `body` is HTML and
+ * is NOT escaped here: every value a caller interpolates into it goes through
+ * `escapeHtml` first.
+ */
+export function renderShellPage(
+  title: string,
+  body: string,
+  locale: AuthLocale,
+  context: string,
+): string {
+  return page(title, body, locale, context);
+}
+
+/**
+ * How a browser flow that left the product ended — a sign-in at a provider, a
+ * credential entered on a one-time page. One statement, the qualifications
+ * that keep it truthful, and at most one way on.
+ */
+export interface ResultPage {
+  kind: "success" | "error";
+  title: string;
+  /** Short paragraphs: the statement first, then what qualifies it. */
+  lines: readonly string[];
+  /** A command worth typing, shown as one. */
+  command?: string | null;
+  /** The one link the page offers. Built by the server, never from a request. */
+  link?: { href: string; label: string } | null;
+  /** The product area, for the footer. */
+  context: string;
+}
+
+export function renderResultPage(result: ResultPage, locale: AuthLocale): string {
+  const [statement = "", ...rest] = result.lines;
+  const qualifiers = rest.map((line) => `<p class="muted">${escapeHtml(line)}</p>`).join("");
+  const command = result.command
+    ? `<p class="mono" data-testid="auth-result-command">${escapeHtml(result.command)}</p>`
+    : "";
+  const link = result.link
+    ? `<div class="actions"><a class="button approve" href="${escapeHtml(result.link.href)}" data-testid="auth-result-link">${escapeHtml(result.link.label)}</a></div>`
+    : "";
+  return page(
+    result.title,
+    `<div class="result" data-testid="auth-result" data-result-kind="${result.kind}"${result.kind === "error" ? ' role="alert"' : ""}><h1 data-family-slot="auth-heading">${escapeHtml(result.title)}</h1><p>${escapeHtml(statement)}</p>${qualifiers}${command}${link}</div>`,
+    locale,
+    result.context,
+  );
 }
 
 export function authHtmlResponse(html: string, status = 200): Response {

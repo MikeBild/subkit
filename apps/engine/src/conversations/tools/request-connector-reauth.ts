@@ -310,6 +310,7 @@ export const requestConnectorReauthTool: ConversationTool = {
           connector_id: connector.id,
           actor_id: ctx.actor_id,
           redirect_uri,
+          origin: "chat",
         });
         logger.info({
           module: "conversation_tool",

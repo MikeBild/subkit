@@ -13,6 +13,11 @@
 //                                             begins the OAuth dance and
 //                                             302-redirects to the provider.
 //
+//                                             Every flow records where it
+//                                             was started (cli | cockpit |
+//                                             chat), so the callback can
+//                                             send the person back there.
+//
 //   GET  /v1/oauth/callback                 — UNAUTHENTICATED. The OAuth
 //                                             provider redirects here with
 //                                             `?code=…&state=…` (success)
@@ -29,17 +34,24 @@
 // provider's allowlist (e.g. `https://subkit-api.example.com/v1/oauth/callback`)
 // and reuse it across every OAuth2 connector. The callback is
 // connector-agnostic and `state` decodes back to the connector id.
+//
+// A stored credential IS the re-authorization: the callback clears the
+// connector's sign-in flag and closes its circuit breaker
+// (`completeConnectorReauthorization`). It never switches a disabled connector
+// on — it says so instead. A flow started in the Cockpit is redirected back to
+// the connector's page; every other flow, and every failure, gets a result
+// page worded for where the person came from (./signin-result.ts).
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   beginConnectorOAuthDance,
-  buildCallbackPageHtml,
+  completeConnectorReauthorization,
   consumeStartGrant,
-  escapeHtml,
+  oauthFlowOrigin,
 } from "../../../connectors/index.ts";
 import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
@@ -57,6 +69,14 @@ import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OAuthCallbackQuery, OAuthStartResponse } from "./schemas.ts";
+import {
+  cockpitReturn,
+  connectorBacklink,
+  requestLocale,
+  resultResponse,
+  signedInPage,
+  signInFailedPage,
+} from "./signin-result.ts";
 
 const oauthStartRoute = createRoute({
   method: "post",
@@ -114,6 +134,7 @@ const oauthCallbackRoute = createRoute({
   request: { query: OAuthCallbackQuery },
   responses: {
     200: { description: "OK (HTML)", content: { "text/html": { schema: z.string() } } },
+    303: { description: "Signed in — back to the connector's page in the Cockpit" },
     400: { description: "Bad request (HTML)", content: { "text/html": { schema: z.string() } } },
   },
 });
@@ -139,6 +160,10 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       connector_id: id,
       actor_id: principal.id,
       redirect_uri,
+      // `ui` is set only for a request the Cockpit sent under a live browser
+      // session (middleware/auth.ts); every other caller of this route is a
+      // terminal or a script.
+      origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
     });
 
     if (result.kind === "done") {
@@ -167,12 +192,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "start grant not found, expired, or wrong connector — browser opened an invalid link",
         connector_id: id,
       });
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "Sign-in link expired",
-        message:
-          "This sign-in link was already used or has expired — ask the assistant for a fresh link.",
-      });
+      return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "link_expired"));
     }
 
     // Tenant is derived ONLY from the claimed row — never from the request.
@@ -198,12 +218,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "Engine misconfigured",
-        message:
-          "The engine has no resolvable public origin. Ask your administrator to set server.public_base_url.",
-      });
+      return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "no_public_address"));
     }
 
     try {
@@ -213,15 +228,27 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id,
         actor_id: null,
         redirect_uri,
+        // A grant link is handed out in a conversation.
+        origin: "chat",
       });
 
       if (result.kind === "done") {
-        return renderHtmlResponse(c, {
-          kind: "success",
-          title: "Authorized",
-          message:
-            "Connector credentials refreshed. You can close this tab and return to the assistant.",
-        });
+        // No browser step: the exchange already stored the credential.
+        const connector = await connectorSvc.getConnector(tenant_id, connector_id, db);
+        return resultResponse(
+          c,
+          signedInPage(
+            requestLocale(c),
+            "chat",
+            {
+              stored: "signed_in",
+              name: connector?.display_name ?? connector?.slug ?? "",
+              enabled: connector?.enabled ?? true,
+              missing_scopes: [],
+            },
+            null,
+          ),
+        );
       }
 
       // 302 to provider authorization URL.
@@ -236,12 +263,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id,
         error: message,
       });
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "Authorization failed",
-        message:
-          "Something went wrong starting the authorization. This link has been used up — ask the assistant for a fresh link.",
-      });
+      return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "not_startable"));
     }
   });
 
@@ -286,13 +308,23 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       // no tenant_id/connector_id to scope the event to. A waiter is
       // keyed to a real state token, so a bogus/expired callback simply
       // lets that waiter time out — which is the correct outcome.
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "OAuth state not found",
-        message:
-          "The authorization state has expired or was already redeemed. Close this tab and run authenticate_oauth again to start a fresh OAuth flow.",
-      });
+      // Nothing identifies the flow, so nothing identifies a connector: the
+      // page names no surface and offers no link.
+      return resultResponse(c, signInFailedPage(requestLocale(c), null, "link_expired"));
     }
+
+    const origin = oauthFlowOrigin(stateRow.origin);
+    const failed = async (
+      failure: Parameters<typeof signInFailedPage>[2],
+      provider_code?: string,
+    ): Promise<Response> =>
+      resultResponse(
+        c,
+        signInFailedPage(requestLocale(c), origin, failure, {
+          provider_code: provider_code ?? null,
+          backlink: await connectorBacklink(c, db, { ...stateRow, origin }),
+        }),
+      );
 
     // Provider error path — user denied access, scope rejected, etc.
     // The state row has been claimed (deleted) above; that's fine —
@@ -317,13 +349,9 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "provider_error",
       });
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "OAuth provider returned an error",
-        message:
-          q.error_description ??
-          `The OAuth provider rejected the authorization request: ${q.error}. Close this tab and try again.`,
-      });
+      // The provider's own description is free text from an unauthenticated
+      // query string; the page shows the error code and nothing else of it.
+      return failed("provider_declined", q.error);
     }
 
     if (!q.code) {
@@ -340,12 +368,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "missing_code",
       });
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "OAuth callback missing code",
-        message:
-          "The OAuth provider redirected back without an authorization code or error. Close this tab and run authenticate_oauth again.",
-      });
+      return failed("no_authorization");
     }
 
     try {
@@ -367,23 +390,15 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         code_verifier: stateRow.code_verifier,
         state: stateRow.state,
       });
-      // G6 (runtime-logs review plan): compute the requested-vs-granted
-      // scope diff so the credential row carries an authoritative
-      // record of what the IdP actually approved.
-      const requestedScopes = stateRow.requested_scopes
-        ? stateRow.requested_scopes
-            .split(/\s+/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0)
-        : [];
-      const grantedScopes = bundle.scope
-        ? bundle.scope
-            .split(/\s+/)
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0)
-        : [];
-      const missingScopes = requestedScopes.filter((s) => !grantedScopes.includes(s));
-      const isPartialGrant = requestedScopes.length > 0 && missingScopes.length > 0;
+      // The requested-vs-granted scope diff, by the one rule every surface
+      // uses (`diffOauthScopes`). A provider that leaves `scope` out of its
+      // token response granted what was asked (RFC 6749 §5.1), so that is not
+      // a partial grant — only a reported set that lacks a requested scope is.
+      const scopeDiff = connectorSvc.diffOauthScopes(stateRow.requested_scopes, bundle.scope);
+      const requestedScopes = scopeDiff?.expected ?? [];
+      const grantedScopes = scopeDiff?.granted ?? [];
+      const isPartialGrant = scopeDiff?.partial_grant === true;
+      const missingScopes = isPartialGrant ? (scopeDiff?.missing ?? []) : [];
       await credsvc.upsertCredential(
         {
           tenant_id: stateRow.tenant_id,
@@ -413,6 +428,29 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+      // The credential is stored: that is the re-authorization. Resolve what
+      // it exists to resolve — the sign-in flag and the breaker that counted
+      // the old credential's failures — before anything is reported as done.
+      // A partial grant still clears the flag: the sign-in succeeded, and the
+      // missing permissions are said by name on the page.
+      // Past this point the page must not say "nothing was stored": if the
+      // resolution itself fails, the flag clears on the next call the stored
+      // credential earns (clearReauthIfProved), and the log says why it waited.
+      try {
+        await completeConnectorReauthorization(db, {
+          tenant_id: stateRow.tenant_id,
+          connector_id: stateRow.connector_id,
+        });
+      } catch (resolveErr) {
+        logger.warn({
+          module: "oauth",
+          action: "oauth.callback.reauthorization_incomplete",
+          msg: "credential stored but the sign-in flag / breaker could not be reset",
+          tenant_id: stateRow.tenant_id,
+          connector_id: stateRow.connector_id,
+          error: resolveErr instanceof Error ? resolveErr.message : String(resolveErr),
+        });
+      }
       logger.info({
         module: "oauth",
         action: "oauth.callback.success",
@@ -484,11 +522,26 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           error: publishErr instanceof Error ? publishErr.message : String(publishErr),
         });
       }
-      return renderHtmlResponse(c, {
-        kind: "success",
-        title: "Authentication complete",
-        message: `Connector "${connector.display_name ?? connector.slug}" is now authorized. You can close this tab and return to the CLI.`,
-      });
+      // A Cockpit flow goes straight back to the connector's page, which
+      // reads the connector again and says what it finds.
+      if (origin === "cockpit") {
+        const back = cockpitReturn(stateRow);
+        if (back) return back;
+      }
+      return resultResponse(
+        c,
+        signedInPage(
+          requestLocale(c),
+          origin,
+          {
+            stored: "signed_in",
+            name: connector.display_name ?? connector.slug,
+            enabled: connector.enabled,
+            missing_scopes: missingScopes,
+          },
+          await connectorBacklink(c, db, { ...stateRow, origin }),
+        ),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn({
@@ -509,11 +562,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         reason: "token_exchange_failed",
       });
-      return renderHtmlResponse(c, {
-        kind: "error",
-        title: "Token exchange failed",
-        message: `${message}\n\nClose this tab and run authenticate_oauth again to retry.`,
-      });
+      return failed("exchange_failed");
     }
   });
 }
@@ -596,16 +645,3 @@ async function publishCallbackFailed(
     });
   }
 }
-
-// Render a browser-facing OAuth page using the shared html builder.
-function renderHtmlResponse(
-  c: Parameters<Parameters<OpenAPIHono<AppEnv>["openapi"]>[1]>[0],
-  page: { kind: "success" | "error"; title: string; message: string },
-): Response {
-  const { html, status } = buildCallbackPageHtml(page);
-  return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
-}
-
-// Re-exported so external tests can verify the escaping behaviour without
-// importing the full route module.
-export { escapeHtml };

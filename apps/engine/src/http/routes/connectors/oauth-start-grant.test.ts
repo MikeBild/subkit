@@ -182,7 +182,9 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
     const callbackRes = await fetch(callbackUrl);
     expect(callbackRes.status).toBe(200);
     const html = await callbackRes.text();
-    expect(html).toContain("Authentication complete");
+    expect(html).toContain("Signed in");
+    // A grant link is handed out in a conversation; that is where it sends back to.
+    expect(html).toContain("return to the conversation");
 
     // Credential row must be written.
     const cred = await getCredentialRow();

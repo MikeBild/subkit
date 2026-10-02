@@ -18,6 +18,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import type { OAuthFlowOrigin } from "../../connectors/oauth-origin.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
@@ -135,6 +136,7 @@ export async function handleAuthenticate(
       code_verifier: started.code_verifier,
       redirect_uri,
       expires_at: expires,
+      origin: "chat" satisfies OAuthFlowOrigin,
     });
     logger.info({
       module: "mcp",
