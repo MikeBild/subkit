@@ -11,7 +11,14 @@ import {
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
-import { absolute, attentionHref, auditHref, reviewFromUrl, routerPath } from "@/app/links";
+import {
+  absolute,
+  attentionHref,
+  auditHref,
+  reviewFromUrl,
+  routerPath,
+  routerTarget,
+} from "@/app/links";
 import { visibleNavigation } from "@/app/navigation";
 import { useSession } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
@@ -443,9 +450,10 @@ function ActionLink({
       </Button>
     );
   }
+  // An address may name a place ON a page — a workflow's automation panel.
   return (
     <Button size="sm" variant={variant === "primary" ? "default" : "link"} asChild>
-      <Link to={path} data-testid={testId} data-attention-verb={action.verb}>
+      <Link {...routerTarget(action.href)} data-testid={testId} data-attention-verb={action.verb}>
         {label}
       </Link>
     </Button>
@@ -614,7 +622,7 @@ function ReviewBody({
   const elsewhere =
     item && primary && primary.verb !== "review" ? (
       <Button asChild className="justify-self-start">
-        <Link to={routerPath(primary.href)} data-testid="attention-review-action">
+        <Link {...routerTarget(primary.href)} data-testid="attention-review-action">
           {t(actionLabelKey(primary, item))}
         </Link>
       </Button>
