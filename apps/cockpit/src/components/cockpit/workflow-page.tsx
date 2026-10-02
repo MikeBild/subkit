@@ -145,6 +145,9 @@ export function WorkflowPage({
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
   const versionId = text(record, "current_version_id");
+  // The running version is stored in an earlier format: the engine refuses to
+  // run it, so the page does not offer a run it would refuse.
+  const legacy = record.legacy === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
   const trigger =
     record.effective_trigger && typeof record.effective_trigger === "object"
@@ -161,6 +164,7 @@ export function WorkflowPage({
     draft_version_id: text(record, "draft_version_id"),
     current_version: version,
     webhooks_active: webhooksActive,
+    legacy,
   };
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
@@ -232,7 +236,7 @@ export function WorkflowPage({
           {purpose ? <p className="mt-1 text-sm text-muted-foreground">{purpose}</p> : null}
         </div>
         <div data-family-slot="detail-actions" className="flex flex-wrap items-center gap-2">
-          {canRun ? (
+          {canRun && !legacy ? (
             <RunWorkflowDialog
               workflowId={id}
               workflowName={title}
@@ -266,10 +270,8 @@ export function WorkflowPage({
         <WorkflowInvocation
           workflowId={id}
           effectiveTrigger={effectiveTrigger}
-          heldEnvironment={
-            automation.state && ["grant", "repair", "apply"].includes(automation.state.state)
-              ? automation.state.environment
-              : null
+          approvedEnvironment={
+            automation.state?.state === "approved" ? automation.state.environment : null
           }
         />
         <WorkflowInputOutput

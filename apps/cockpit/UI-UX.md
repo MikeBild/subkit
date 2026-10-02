@@ -333,8 +333,13 @@ what does it do → how has it been doing. Everything a reader does not decide b
 3. **Aufrufen** — tabs for the ways that exist: HTTP, Webhook, MCP, Zeitplan, CLI. A hook or a
    schedule is a tab only when one is bound; the tab a reader lands on is the workflow's effective
    trigger. HTTP shows the address, a ready-to-paste call (curl, Node, Python; production by
-   default, the environment always in the call), one line of answers (200 / 202 / 409) and, without
-   an approval, one line that the call is only a trial run, leading to the panel.
+   default, the environment always in the call), one line of answers (200 / 202 / 409) and one
+   line on what the call will be, taken from the panel's verdict: nothing where the panel shows
+   the environment as approved, "only a trial run" where no approval exists, "an approval is
+   stored but not confirmed here" where one exists and the panel does not say approved — the
+   engine's own field only says that an approval is stored — and "refused" for a version in an
+   earlier format. A list the reader may not see (webhooks, schedules) is not a missing tab passed
+   over in silence: one line under the tabs says it cannot be shown and that there may be some.
 4. **Eingabe | Ausgabe** — the schema as a table: field, type, required, example; allowed values
    and the description under the name; an object's own fields one level deep. One line says that
    input goes in the body under `input` and that there are no query parameters; for a hook-started
@@ -373,6 +378,7 @@ automation status, the approvals, the gate diagnosis). The first that applies wi
 
 | State | When | The one action |
 |---|---|---|
+| Altes Format | the running version is stored in an earlier definition format; the engine refuses to run, admit or approve it | Im Chat beheben |
 | Pausiert | every schedule and hook is stopped | Fortsetzen |
 | Übernahme nötig | a saved change differs from the running version | Änderung prüfen |
 | Reparatur nötig | the gate refuses a step — also while an approval exists | the diagnosis block's own act |
@@ -380,6 +386,12 @@ automation status, the approvals, the gate diagnosis). The first that applies wi
 | Freigabe nötig | something starts it and no approval covers it | Jetzt freigeben |
 | Freigegeben | a current approval covers the running version | Freigabe ansehen |
 | Auf Abruf | nothing starts it automatically, nothing approved | (calm; the approval is offered, nothing asks for it) |
+
+A version in an earlier format is said plainly and nothing the engine would refuse is offered:
+no "Ausführen", no approval. The way out — changing the workflow in the chat, which saves it
+again — is the page's one filled action; a saved change that already waits leads instead
+("Übernahme nötig"). The run dialog and a chat card say the same refusal by its reason, with the
+steps the engine names, never as a run that "could not be started".
 
 "Nicht geprüft" also stands when a read the verdict rests on did not answer — the diagnosis, the
 verified status — and when the reader may not see a webhook that the visible rows do not answer
@@ -417,6 +429,14 @@ before the press. Inside:
   diagnosis' own: repair automatically, review the repair, run the preparation again — as its
   filled action, with "Ursache im Chat prüfen" beside it. Where the dialog already offers its own
   repair for the same steps, that one stands alone.
+
+### A kept secret is not a value
+
+The engine hands out a connector with every credential in it masked by one fixed marker — in the
+address too, where a password or a key can sit. The marker is not shown as if it were the value:
+the connector page writes `•••` in its place, says once that it stands for a stored secret that
+is kept, and does not offer an address that carries one for copying. No cockpit form sends a
+connector's configuration back, so a masked value is never written over the stored one.
 
 ### Error, cause, fix
 

@@ -25,8 +25,56 @@ export function isWorkflowInvocation(value: unknown): value is WorkflowInvocatio
     record(value.input.sample) &&
     record(value.output) &&
     record(value.authority) &&
+    record(value.visibility) &&
     record(value.webhook_input_shape)
   );
+}
+
+/**
+ * The lists this reader may not see. An absent list is not an empty one: the
+ * workflow may well have hooks or schedules, so the block says that it cannot
+ * show them — never, by leaving the tab out, that there are none.
+ */
+export function hiddenInvocationLists(
+  invocation: Pick<WorkflowInvocation, "visibility">,
+): Array<"hooks" | "schedules"> {
+  return (["hooks", "schedules"] as const).filter((list) => !invocation.visibility[list]);
+}
+
+export function hiddenInvocationKey(
+  hidden: ReadonlyArray<"hooks" | "schedules">,
+): TranslationKey | null {
+  if (hidden.length === 2) return "invocation.hidden.both";
+  if (hidden[0] === "hooks") return "invocation.hidden.hooks";
+  if (hidden[0] === "schedules") return "invocation.hidden.schedules";
+  return null;
+}
+
+/**
+ * What a call in one environment will be, as far as the page may say it.
+ *
+ *   refused      the running version is stored in an earlier format: the
+ *                engine refuses the call.
+ *   live         the automation panel shows this environment as approved, and
+ *                the engine lists an approval for it.
+ *   preview      no approval exists: the call runs as a trial without effect.
+ *   unconfirmed  an approval exists, but the panel does not show this
+ *                environment as approved — the engine's `live_run_allowed`
+ *                only says that one is stored, not that the next run is
+ *                admitted. The line never promises a live run the panel does
+ *                not show.
+ */
+export type CallVerdict = "refused" | "live" | "preview" | "unconfirmed";
+
+export function callVerdict(
+  invocation: Pick<WorkflowInvocation, "authority" | "legacy">,
+  environment: "dev" | "prod",
+  /** The environment the automation panel shows as approved, or null. */
+  approvedEnvironment: "dev" | "prod" | null,
+): CallVerdict {
+  if (invocation.legacy) return "refused";
+  if (invocation.authority[environment] !== "live_run_allowed") return "preview";
+  return approvedEnvironment === environment ? "live" : "unconfirmed";
 }
 
 /** A way to call a workflow, in the order the tabs stand. */

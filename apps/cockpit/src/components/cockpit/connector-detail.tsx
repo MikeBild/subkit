@@ -31,6 +31,7 @@ import {
   environmentLabel,
   type McpInspect,
   mcpTransport,
+  presentAddress,
   toolsWithoutConfirmation,
   transportLabel,
 } from "@/pages/connector-detail-model";
@@ -85,7 +86,8 @@ export function ConnectorConnectionFacts({
 }) {
   const { t } = useI18n();
   const driver = text(record, "driver");
-  const address = text(record, "base_url");
+  const stored = text(record, "base_url");
+  const address = stored ? presentAddress(stored) : null;
   const environment = text(record, "environment");
   const template = text(record, "template_name");
   const docs = documentationLinks(record);
@@ -95,13 +97,28 @@ export function ConnectorConnectionFacts({
       <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
         <Fact label={t("connectorDetail.connection.address")} testId="connector-fact-address">
           {address ? (
-            <span className="flex min-w-0 items-start gap-1">
-              <span className="min-w-0 break-all font-mono text-xs leading-6">{address}</span>
-              <CopyButton
-                value={address}
-                label={t("connectorDetail.copyAddress")}
-                testId="connector-copy-address"
-              />
+            <span className="grid min-w-0 gap-1">
+              <span className="flex min-w-0 items-start gap-1">
+                <span className="min-w-0 break-all font-mono text-xs leading-6">
+                  {address.shown}
+                </span>
+                {/* An address with a kept secret in it cannot be handed out whole. */}
+                {address.keepsSecret ? null : (
+                  <CopyButton
+                    value={address.shown}
+                    label={t("connectorDetail.copyAddress")}
+                    testId="connector-copy-address"
+                  />
+                )}
+              </span>
+              {address.keepsSecret ? (
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid="connector-address-secret"
+                >
+                  {t("connectorDetail.connection.secretKept")}
+                </span>
+              ) : null}
             </span>
           ) : (
             MISSING

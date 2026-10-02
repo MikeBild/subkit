@@ -14,6 +14,9 @@
 //
 // Precedence — the first that applies wins:
 //
+//   0. legacy    the running version is stored in an earlier format: the
+//                engine refuses to run, admit or approve it. Only a saved
+//                change — the way out — is judged before it.
 //   1. paused    every schedule and hook is stopped; nothing else matters.
 //   2. apply     a saved change differs from the running version. Judging the
 //                running version would describe problems the change may
@@ -37,6 +40,7 @@ import { observedAuthorityState, type WorkflowAuthority } from "@/lib/workflow-a
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
 
 export type AutomationStateKind =
+  | "legacy"
   | "paused"
   | "apply"
   | "repair"
@@ -88,6 +92,8 @@ export interface AutomationWorkflow {
   current_version?: number | null;
   /** Active inbound hooks, from the record — readable without `inbound_hook:read`. */
   webhooks_active?: number | null;
+  /** The running version is stored in an earlier format and cannot run. */
+  legacy?: boolean | null;
 }
 
 export interface AutomationInputs {
@@ -420,6 +426,21 @@ export function automationState(input: AutomationInputs): AutomationState {
     inactive: false,
   } satisfies AutomationState["facts"];
 
+  // 0. The running version cannot run at all, whatever would start it and
+  //    whatever was approved: it has to be saved again, and that is an
+  //    author's act. A saved change that waits IS that act, and leads.
+  if (workflow.legacy === true && target?.kind !== "prepared") {
+    return {
+      ...base,
+      state: "legacy",
+      facts,
+      ...shown(null),
+      pendingEnvironments: [],
+      primaryAction: { kind: "repair", via: "chat", stepId: null },
+      secondaryAction: viewGrant,
+    };
+  }
+
   // 1. Everything that would start it is stopped.
   if (triggers.length > 0 && running.length === 0 && !hiddenHooks) {
     const scheduleIds = triggers.flatMap((trigger) =>
@@ -626,6 +647,7 @@ export function automationActionPermitted(
 
 /** The word for each state. */
 export const AUTOMATION_STATE_KEYS = {
+  legacy: "automation.state.legacy",
   paused: "automation.state.paused",
   apply: "automation.state.apply",
   repair: "automation.state.repair",
@@ -712,6 +734,13 @@ export function automationCard(
         ...calm,
         titleKey: "chat.automationCard.authorized.title",
         hintKey: "chat.automationCard.authorized.hint",
+      };
+    case "legacy":
+      // Changing the workflow happens in a conversation — this one.
+      return {
+        ...calm,
+        titleKey: AUTOMATION_STATE_KEYS.legacy,
+        hintKey: "automation.headline.legacy",
       };
     case "manual":
       return {
