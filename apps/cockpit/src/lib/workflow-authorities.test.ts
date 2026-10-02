@@ -54,6 +54,7 @@ const preview: WorkflowAuthorityPreview = {
     valid_until: authority.valid_until,
     max_runs: 1,
   },
+  suggested_bounds_basis: { kind: "manual" },
   execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
 };
 const expected = {

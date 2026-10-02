@@ -4,6 +4,14 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { BoundaryPanels } from "@/components/cockpit/grant-boundary-panels";
+import {
+  GrantRemedyAction,
+  GrantScopeWarnings,
+  GrantSuggestionNote,
+  useGrantContext,
+  useGrantRemedy,
+} from "@/components/cockpit/grant-notices";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +37,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
 import { authorityIssues } from "@/lib/authority-issues";
-import { presentRequestBoundary } from "@/lib/authority-request";
-import { presentStorageScope } from "@/lib/authority-storage";
+import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { environmentToCorrectTo } from "@/lib/resolved-environment";
 import {
@@ -313,13 +321,11 @@ export function GrantWorkflowAuthority({
       );
     },
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ["workflow-authorities", workflowId] });
-      await client.invalidateQueries({ queryKey: ["workflow-automation-status", workflowId] });
+      await invalidateWorkflowAutomation(client, workflowId);
       await client.invalidateQueries({ queryKey: ["decisions"] });
       await client.invalidateQueries({ queryKey: ["attention"] });
       await client.invalidateQueries({ queryKey: ["patch-candidate"] });
       await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
-      await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
       await client.invalidateQueries({ queryKey: ["conversation"] });
       await client.invalidateQueries({ queryKey: ["workflows"] });
       onCompleted?.();
@@ -341,11 +347,11 @@ export function GrantWorkflowAuthority({
       });
     },
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ["chat-automation-workflow", workflowId] });
-      await client.invalidateQueries({ queryKey: ["conversation"] });
       // The catalog page shows the same workflow, and a version that is now
       // running must stop being announced as one that is waiting.
-      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
+      await invalidateWorkflowAutomation(client, workflowId);
+      await client.invalidateQueries({ queryKey: ["conversation"] });
+      await client.invalidateQueries({ queryKey: ["attention"] });
       await client.invalidateQueries({ queryKey: ["workflows"] });
       await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
       setOpen(false);
@@ -443,6 +449,27 @@ export function GrantWorkflowAuthority({
   const invalidRuns = !Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000;
   const invalidHours = !Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744;
   const boundsVisible = review && !unsupported && !incomplete;
+  const context = useGrantContext(workflowId, open);
+  // An approval that already covers exactly this — the same version, the same
+  // environment. A further one is then an extension, and is offered as one.
+  const existing =
+    review && !unsupported && !activation
+      ? existingGrant(context.authorities, reviewVersionId, environment, Date.now())
+      : null;
+  const scopeWarnings = grantScopeWarnings({
+    environment,
+    startedIn: context.startedIn,
+    savedChange: Boolean(activation),
+    activeVersion: context.activeVersion,
+  });
+  // What removes the refusal, where the gate diagnosis names an act for it.
+  // The in-dialog repair above is the stronger offer for the same steps: with
+  // it on screen a second repair button would be the same decision twice.
+  const remedy = useGrantRemedy(
+    workflowId,
+    environment,
+    open && Boolean(unsupported) && (repairable.data?.proposals.length ?? 0) === 0,
+  );
   const adjustUrl = absolute(chatNewHref({ workflowId, prompt: t("authority.adjustPrompt") }));
   function openDialog(value: boolean) {
     if (submitting) return;
@@ -488,39 +515,52 @@ export function GrantWorkflowAuthority({
         className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-2xl"
       >
         <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
-          <DialogTitle>
-            {t(
-              recurringContent
-                ? "authority.content.title"
-                : recurringReport
-                  ? "authority.report.title"
-                  : unsupported
-                    ? "authority.adjustTitle"
-                    : activation
-                      ? "chat.activation.title"
-                      : onGrant
-                        ? "decisions.applyAndAuthorize"
-                        : "authority.grantOpen",
-            )}
+          <DialogTitle data-testid="authority-dialog-title">
+            {existing
+              ? t(
+                  existing.remaining_runs === 1
+                    ? "authority.existing.titleOne"
+                    : "authority.existing.title",
+                  {
+                    until: dateTime(existing.valid_until),
+                    runs: existing.remaining_runs,
+                  },
+                )
+              : t(
+                  recurringContent
+                    ? "authority.content.title"
+                    : recurringReport
+                      ? "authority.report.title"
+                      : unsupported
+                        ? "authority.adjustTitle"
+                        : activation
+                          ? "chat.activation.title"
+                          : onGrant
+                            ? "decisions.applyAndAuthorize"
+                            : "authority.grantOpen",
+                )}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              recurringContent
-                ? "authority.content.description"
-                : recurringReport
-                  ? "authority.report.description"
-                  : unsupported
-                    ? "authority.adjustDescription"
-                    : activation
-                      ? "chat.activation.description"
-                      : onGrant
-                        ? "decisions.applyAndAuthorizeDescription"
-                        : "authority.grantDescription",
-            )}
+            {existing
+              ? t("authority.existing.description")
+              : t(
+                  recurringContent
+                    ? "authority.content.description"
+                    : recurringReport
+                      ? "authority.report.description"
+                      : unsupported
+                        ? "authority.adjustDescription"
+                        : activation
+                          ? "chat.activation.description"
+                          : onGrant
+                            ? "decisions.applyAndAuthorizeDescription"
+                            : "authority.grantDescription",
+                )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           {reviewContent}
+          <GrantScopeWarnings warnings={scopeWarnings} />
           {recurringContent &&
             publications.map((publication, index) => (
               <Alert key={index} data-testid="authority-content-boundary" className="bg-accent/10">
@@ -785,6 +825,7 @@ export function GrantWorkflowAuthority({
                   />
                   {invalidHours && <FieldError>{t("authority.hoursError")}</FieldError>}
                 </Field>
+                {review && <GrantSuggestionNote review={review} />}
               </>
             )}
           </FieldGroup>
@@ -1040,7 +1081,7 @@ export function GrantWorkflowAuthority({
             <>
               {onAdjust ? (
                 <Button
-                  variant="default"
+                  variant={remedy ? "outline" : "default"}
                   onClick={() => {
                     setOpen(false);
                     onAdjust();
@@ -1050,11 +1091,19 @@ export function GrantWorkflowAuthority({
                   {t("authority.adjust")}
                 </Button>
               ) : (
-                <Button asChild>
+                <Button asChild variant={remedy ? "outline" : "default"}>
                   <a href={adjustUrl} data-testid="authority-adjust">
                     {t("authority.adjust")}
                   </a>
                 </Button>
+              )}
+              {remedy && (
+                <GrantRemedyAction
+                  remedy={remedy}
+                  environment={environment}
+                  busy={busy}
+                  onRecheck={() => startReview(environment)}
+                />
               )}
               {onSingleRun && !incomplete && (
                 <Button
@@ -1083,17 +1132,19 @@ export function GrantWorkflowAuthority({
               {t(
                 grant.isPending
                   ? "authority.granting"
-                  : recurringContent
-                    ? "authority.content.confirm"
-                    : recurringReport
-                      ? "authority.report.confirm"
-                      : activation
-                        ? "chat.activation.confirm"
-                        : onGrant
-                          ? "decisions.applyAndAuthorize"
-                          : Number(runs) === 1
-                            ? "authority.grantConfirmOne"
-                            : "authority.grantConfirm",
+                  : existing
+                    ? "authority.existing.confirm"
+                    : recurringContent
+                      ? "authority.content.confirm"
+                      : recurringReport
+                        ? "authority.report.confirm"
+                        : activation
+                          ? "chat.activation.confirm"
+                          : onGrant
+                            ? "decisions.applyAndAuthorize"
+                            : Number(runs) === 1
+                              ? "authority.grantConfirmOne"
+                              : "authority.grantConfirm",
                 { count: runs },
               )}
             </Button>
@@ -1101,80 +1152,5 @@ export function GrantWorkflowAuthority({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** The permission panels for one workflow's effects — this one's own, or one
- *  it starts. Keys are (call path, step id): a parent and a child may share a
- *  step id, and a shared key would drop one of the two from the list. */
-function BoundaryPanels({ effects }: { effects: WorkflowAuthorityPreview["manifest"]["effects"] }) {
-  const { t, locale } = useI18n();
-  return (
-    <>
-      {effects
-        .flatMap((effect) => (effect.storage ? [[effect, effect.storage] as const] : []))
-        .map(([effect, scope]) => {
-          const shown = presentStorageScope(scope, (value) =>
-            new Intl.NumberFormat(locale).format(value),
-          );
-          return (
-            <Alert
-              key={effectKey(effect.call_path, effect.step_id)}
-              data-testid={
-                shown.destructive
-                  ? "authority-storage-boundary-destructive"
-                  : "authority-storage-boundary"
-              }
-              variant={shown.destructive ? "destructive" : "default"}
-              className={shown.destructive ? undefined : "bg-accent/10"}
-            >
-              <AlertTitle>{t(shown.title)}</AlertTitle>
-              <AlertDescription>
-                <p>{t("authority.storage.folder", { folder: scope.key_prefix })}</p>
-                <p className="break-all">{scope.base_url}</p>
-                <p>{t(shown.detail, shown.values)}</p>
-              </AlertDescription>
-            </Alert>
-          );
-        })}
-      {effects
-        .flatMap((effect) => (effect.boundary ? [[effect, effect.boundary] as const] : []))
-        .map(([effect, boundary]) => {
-          const shown = presentRequestBoundary(boundary, (value) =>
-            new Intl.NumberFormat(locale).format(value),
-          );
-          return (
-            <Alert
-              key={effectKey(effect.call_path, effect.step_id)}
-              data-testid={
-                shown.destructive
-                  ? "authority-request-boundary-destructive"
-                  : "authority-request-boundary"
-              }
-              variant={shown.destructive ? "destructive" : "default"}
-              className={shown.destructive ? undefined : "bg-accent/10"}
-            >
-              <AlertTitle>{t(shown.title)}</AlertTitle>
-              <AlertDescription>
-                <p className="break-all">
-                  {t("authority.boundary.target", {
-                    method: boundary.method,
-                    target: shown.target,
-                  })}
-                </p>
-                {shown.variables.map((variable) => (
-                  <p key={variable.values.name}>{t(variable.key, variable.values)}</p>
-                ))}
-                {shown.classNotice && <p>{t("authority.boundary.classNotice")}</p>}
-                {shown.declaredDestructive && <p>{t("authority.boundary.declaredDestructive")}</p>}
-                <p>{t(shown.body.key, shown.body.values)}</p>
-                <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
-                {shown.paging && <p>{t(shown.paging.key, shown.paging.values)}</p>}
-                <p>{t("authority.boundary.contentNotice")}</p>
-              </AlertDescription>
-            </Alert>
-          );
-        })}
-    </>
   );
 }
