@@ -8,6 +8,7 @@ import {
   blockingConnector,
   connectorFix,
   defaultEnvironment,
+  legacyRefusal,
   refusedConnector,
   refusedSignIn,
 } from "@/lib/run-availability";
@@ -129,5 +130,53 @@ describe("the fix for a blocked connector", () => {
     for (const reason of ["needs_reauth", "disabled", "credential_unavailable", "missing"])
       expect(blockedSentenceKey(reason)).not.toBeNull();
     expect(blockedSentenceKey("too_many_references")).toBeNull();
+  });
+});
+
+describe("legacyRefusal", () => {
+  const refusal = (details: unknown) =>
+    new ApiError(
+      409,
+      {
+        code: "workflow_version_legacy",
+        message: "stored in an earlier definition format",
+        details,
+      },
+      null,
+    );
+
+  test("names the steps the engine names, each once", () => {
+    expect(
+      legacyRefusal(
+        refusal({
+          issues: [
+            { path: "steps.0.language", step_id: "old", message: "invalid" },
+            { path: "steps.0.expression", step_id: "old", message: "invalid" },
+            { path: "steps.2.kind", step_id: "shape", message: "invalid" },
+            { path: "name", step_id: null, message: "required" },
+          ],
+        }),
+      ),
+    ).toEqual({ steps: ["old", "shape"] });
+  });
+
+  test("is still the refusal when the engine names no step", () => {
+    expect(legacyRefusal(refusal(null))).toEqual({ steps: [] });
+    expect(legacyRefusal(refusal({ issues: "none" }))).toEqual({ steps: [] });
+  });
+
+  test("any other failure is not one", () => {
+    expect(legacyRefusal(new ApiError(409, { code: "connector_unavailable" }, null))).toBeNull();
+    expect(legacyRefusal(new Error("boom"))).toBeNull();
+  });
+
+  test("the sentence says why, and what to do, in both languages", () => {
+    for (const locale of ["de", "en"] as const) {
+      const sentence = translate(locale, "run.legacySteps", { steps: "old, shape" });
+      expect(sentence).toContain("old, shape");
+      expect(sentence).not.toContain("{");
+      expect(translate(locale, "run.legacy")).not.toBe(translate(locale, "run.failed"));
+    }
+    expect(translate("de", "run.legacy")).toContain("älteren Format");
   });
 });

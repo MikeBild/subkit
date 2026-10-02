@@ -1170,6 +1170,8 @@ function workflowInvocation(workflowId) {
       sample,
     },
     output: { schema: null },
+    legacy: false,
+    visibility: { hooks: true, schedules: true },
     webhook_input_shape: {
       id: "string",
       type: "string",

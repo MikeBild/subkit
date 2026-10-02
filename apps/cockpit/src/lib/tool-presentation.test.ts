@@ -279,6 +279,12 @@ describe("what a workflow call really was", () => {
     expect(workflowRefusalKey({ ok: false, data: { error_code: "permission_denied" } })).toBe(
       "tool.refusal.permission",
     );
+    // A version in an earlier format is refused by that name, not as a failed run.
+    const legacy = { ok: false, data: { error_code: "workflow_version_legacy", status: "failed" } };
+    expect(workflowRunKind(legacy)).toBe("refused");
+    expect(translate("de", workflowRefusalKey(legacy) ?? "tool.outcome.foundIssue")).toBe(
+      "Fassung in älterem Format gespeichert",
+    );
     // A reason this build has no word for falls back to the outcome word.
     expect(workflowRefusalKey({ ok: false, data: { error_code: "run_failed" } })).toBeNull();
     expect(workflowRefusalKey(undefined)).toBeNull();
@@ -287,6 +293,7 @@ describe("what a workflow call really was", () => {
   test("every reason word exists in both catalogs", () => {
     for (const code of [
       "workflow_activation_required",
+      "workflow_version_legacy",
       "workflow_not_persisted",
       "workflow_not_found",
       "permission_denied",

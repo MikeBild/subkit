@@ -1047,3 +1047,43 @@ describe("the extension thresholds are the engine's", () => {
     expect(EXTEND_BELOW_RUN_SHARE).toBe(constant("AUTHORITY_EXTEND_BELOW_RUN_SHARE"));
   });
 });
+
+describe("a version stored in an earlier format", () => {
+  const legacy = { ...hooked, legacy: true };
+
+  test("is its own state, whatever is approved or would start it", () => {
+    const state = automationState(
+      inputs({ workflow: legacy, status: status(["authorized"]), authorities: [authority()] }),
+    );
+    expect(state.state).toBe("legacy");
+    // Changing it is an author's act — in the chat, also beside the title.
+    expect(state.primaryAction).toEqual({ kind: "repair", via: "chat", stepId: null });
+    expect(automationTitleAction(state)).toEqual(state.primaryAction);
+    expect(state.pendingEnvironments).toEqual([]);
+    // No approval is offered for a version the engine would refuse to approve.
+    expect(automationState(inputs({ workflow: legacy })).state).toBe("legacy");
+    expect(
+      automationState(
+        inputs({
+          workflow: legacy,
+          schedules: [schedule({ paused: true })],
+          status: status(["paused"]),
+        }),
+      ).state,
+    ).toBe("legacy");
+  });
+
+  test("a saved change is the way out, and leads", () => {
+    const state = automationState(inputs({ workflow: { ...legacy, draft_version_id: DRAFT } }));
+    expect(state.state).toBe("apply");
+  });
+
+  test("the chat card says the state and offers no approval", () => {
+    const card = automationCard(automationState(inputs({ workflow: legacy })), 1);
+    expect(card).toMatchObject({ act: "none", environments: [] });
+    expect(card.titleKey).toBe(AUTOMATION_STATE_KEYS.legacy);
+    expect(CATALOGS.de[card.hintKey]).toContain("älteren Format");
+    expect(CATALOGS.en[card.hintKey]).toContain("earlier format");
+    expect(CATALOGS.de[AUTOMATION_STATE_KEYS.legacy]).toBe("Altes Format");
+  });
+});

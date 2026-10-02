@@ -529,6 +529,7 @@ const EN = {
   "connectorDetail.connection.template": "Template",
   "connectorDetail.connection.docs": "Documentation",
   "connectorDetail.copyAddress": "Copy address",
+  "connectorDetail.connection.secretKept": "••• is a stored secret. It is kept, not shown.",
   "connectorDetail.copied": "Copied",
   "connectorDetail.runtime.title": "Runtime · last 7 days",
   "connectorDetail.runtime.calls": "Calls",
@@ -1572,6 +1573,10 @@ const EN = {
   "run.running": "Running…",
   "run.started": "started",
   "run.failed": "The run could not be started.",
+  "run.legacy":
+    "Not started: this version is stored in an earlier format. Change the workflow in the chat to save it again.",
+  "run.legacySteps":
+    "Not started: this version is stored in an earlier format (steps: {steps}). Change the workflow in the chat to save it again.",
   "run.failedWithLink": "Open the run",
   "run.environment.blocked": "{environment}: {connector} must be reconnected",
   "run.environment.blockedDisabled": "{environment}: {connector} is switched off",
@@ -2298,6 +2303,7 @@ const EN = {
   "tool.name.runWorkflow.refused": "Run refused",
   "tool.name.runNamedWorkflow.refused": "Run of “{name}” refused",
   "tool.refusal.activationRequired": "Saved change not applied yet",
+  "tool.refusal.legacy": "Version stored in an earlier format",
   "tool.refusal.notSaved": "Workflow not saved yet",
   "tool.refusal.notFound": "Workflow not found",
   "tool.refusal.permission": "Not permitted",
@@ -3096,6 +3102,7 @@ const EN = {
   "automation.title": "Automatic operation",
   "automation.help.label": "About automatic operation",
   "automation.help": "Whether a schedule or webhook may start this workflow without you.",
+  "automation.state.legacy": "Outdated format",
   "automation.state.paused": "Paused",
   "automation.state.apply": "Change waiting",
   "automation.state.repair": "Repair needed",
@@ -3121,6 +3128,10 @@ const EN = {
   "automation.headline.applyUnnamed": "A saved change is waiting; {active} is running.",
   "automation.headline.paused": "Schedule and webhook are stopped.",
   "automation.headline.unknown": "Whether it may run could not be verified.",
+  "automation.headline.legacy":
+    "This version is stored in an earlier format and cannot run until it is saved again.",
+  "automation.legacyPrompt":
+    "The workflow “{name}” is stored in an earlier format and cannot run. Save it again in the current format: ",
   "automation.headline.inactive": "No active version.",
   "automation.headline.manual": "Runs only when called — no schedule, no webhook.",
   "automation.noRight": "You may view this, not change it.",
@@ -3152,6 +3163,15 @@ const EN = {
   "invocation.http.language": "Language",
   "invocation.http.responses": "Answers 200 with the result, 202 when queued, 409 when refused.",
   "invocation.http.previewOnly": "Without approval this is only a trial run without effect.",
+  "invocation.http.unconfirmed":
+    "An approval is stored but not confirmed here — the call may run as a trial without effect.",
+  "invocation.http.refused":
+    "The engine refuses this call: the version is stored in an earlier format.",
+  "invocation.http.toState": "To the state",
+  "invocation.hidden.hooks": "You may not see this workflow's webhooks; it may have some.",
+  "invocation.hidden.schedules": "You may not see this workflow's schedules; it may have some.",
+  "invocation.hidden.both":
+    "You may not see this workflow's webhooks and schedules; it may have some.",
   "invocation.http.toAutomation": "To the approval",
   "invocation.hook.signed": "Signed with {scheme}. Headers: {headers}.",
   "invocation.hook.signedUnnamed": "Signed with {scheme}.",
@@ -3798,6 +3818,8 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.connection.template": "Vorlage",
   "connectorDetail.connection.docs": "Dokumentation",
   "connectorDetail.copyAddress": "Adresse kopieren",
+  "connectorDetail.connection.secretKept":
+    "••• steht für ein gespeichertes Geheimnis. Es bleibt geheim und wird nicht angezeigt.",
   "connectorDetail.copied": "Kopiert",
   "connectorDetail.runtime.title": "Laufzeit · letzte 7 Tage",
   "connectorDetail.runtime.calls": "Aufrufe",
@@ -4852,6 +4874,10 @@ const DE: Record<TranslationKey, string> = {
   "run.running": "Läuft …",
   "run.started": "gestartet",
   "run.failed": "Der Lauf konnte nicht gestartet werden.",
+  "run.legacy":
+    "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert. Ändere den Workflow im Chat, um ihn neu zu speichern.",
+  "run.legacySteps":
+    "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert (Schritte: {steps}). Ändere den Workflow im Chat, um ihn neu zu speichern.",
   "run.failedWithLink": "Lauf ansehen",
   "run.environment.blocked": "{environment}: {connector} muss neu verbunden werden",
   "run.environment.blockedDisabled": "{environment}: {connector} ist ausgeschaltet",
@@ -5604,6 +5630,7 @@ const DE: Record<TranslationKey, string> = {
   "tool.name.runWorkflow.refused": "Lauf abgelehnt",
   "tool.name.runNamedWorkflow.refused": "Lauf von „{name}“ abgelehnt",
   "tool.refusal.activationRequired": "Gespeicherte Änderung noch nicht übernommen",
+  "tool.refusal.legacy": "Fassung in älterem Format gespeichert",
   "tool.refusal.notSaved": "Workflow noch nicht gespeichert",
   "tool.refusal.notFound": "Workflow nicht gefunden",
   "tool.refusal.permission": "Nicht erlaubt",
@@ -6424,6 +6451,7 @@ const DE: Record<TranslationKey, string> = {
   "automation.title": "Automatischer Betrieb",
   "automation.help.label": "Was heißt automatischer Betrieb?",
   "automation.help": "Ob Zeitplan oder Webhook diesen Workflow ohne dich starten dürfen.",
+  "automation.state.legacy": "Altes Format",
   "automation.state.paused": "Pausiert",
   "automation.state.apply": "Übernahme nötig",
   "automation.state.repair": "Reparatur nötig",
@@ -6449,6 +6477,10 @@ const DE: Record<TranslationKey, string> = {
   "automation.headline.applyUnnamed": "Eine gespeicherte Änderung wartet; es läuft {active}.",
   "automation.headline.paused": "Zeitplan und Webhook sind angehalten.",
   "automation.headline.unknown": "Ob er laufen darf, ließ sich nicht prüfen.",
+  "automation.headline.legacy":
+    "Diese Fassung ist in einem älteren Format gespeichert und kann nicht laufen, bis sie neu gespeichert ist.",
+  "automation.legacyPrompt":
+    "Der Workflow „{name}“ ist in einem älteren Format gespeichert und kann nicht laufen. Speichere ihn im aktuellen Format neu: ",
   "automation.headline.inactive": "Keine aktive Fassung.",
   "automation.headline.manual": "Läuft nur auf Abruf – kein Zeitplan, kein Webhook.",
   "automation.noRight": "Du darfst das ansehen, nicht ändern.",
@@ -6481,6 +6513,17 @@ const DE: Record<TranslationKey, string> = {
   "invocation.http.language": "Sprache",
   "invocation.http.responses": "Antwort: 200 mit Ergebnis, 202 eingereiht, 409 abgelehnt.",
   "invocation.http.previewOnly": "Ohne Freigabe läuft nur ein Probelauf ohne Wirkung.",
+  "invocation.http.unconfirmed":
+    "Eine Freigabe ist hinterlegt, hier aber nicht bestätigt – der Aufruf kann als Probelauf ohne Wirkung laufen.",
+  "invocation.http.refused":
+    "Die Engine lehnt diesen Aufruf ab: Die Fassung ist in einem älteren Format gespeichert.",
+  "invocation.http.toState": "Zum Zustand",
+  "invocation.hidden.hooks":
+    "Die Webhooks dieses Workflows darfst du nicht sehen; es kann welche geben.",
+  "invocation.hidden.schedules":
+    "Die Zeitpläne dieses Workflows darfst du nicht sehen; es kann welche geben.",
+  "invocation.hidden.both":
+    "Webhooks und Zeitpläne dieses Workflows darfst du nicht sehen; es kann welche geben.",
   "invocation.http.toAutomation": "Zur Freigabe",
   "invocation.hook.signed": "Signiert nach {scheme}. Header: {headers}.",
   "invocation.hook.signedUnnamed": "Signiert nach {scheme}.",

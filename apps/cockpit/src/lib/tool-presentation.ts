@@ -314,6 +314,7 @@ export function workflowRunKind(output: unknown): WorkflowRunKind | null {
 /** Why the engine turned a run away, where the cockpit has a word for it. */
 const REFUSAL_WORDS: Record<string, TranslationKey> = {
   workflow_activation_required: "tool.refusal.activationRequired",
+  workflow_version_legacy: "tool.refusal.legacy",
   workflow_not_persisted: "tool.refusal.notSaved",
   workflow_not_found: "tool.refusal.notFound",
   permission_denied: "tool.refusal.permission",
