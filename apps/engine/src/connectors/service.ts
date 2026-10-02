@@ -211,10 +211,15 @@ export async function createConnector(
     const existing = existingRows[0];
     // A definition read back from the API carries the mask where its secrets
     // were. On an upsert that means "keep the stored one"; on a fresh insert
-    // there is nothing to keep and the write is refused.
+    // there is nothing to keep and the write is refused. So is a kept secret
+    // on a definition that now points somewhere else.
     const secrets = restoreMaskedConnectorSecrets(
-      { config: effective.config, dsn: effective.dsn },
+      { base_url: effective.base_url, config: effective.config, dsn: effective.dsn },
       existing ?? null,
+      {
+        template_rebound:
+          resolved.binding != null && resolved.binding.template_slug !== existing?.template_slug,
+      },
     );
     // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
     // an upsert keeps the stored list, a fresh insert may not name one.
@@ -230,7 +235,7 @@ export async function createConnector(
           display_name: effective.name,
           driver: effective.driver,
           auth_type,
-          base_url: effective.base_url ?? existing.base_url,
+          base_url: secrets.base_url ?? existing.base_url,
           dsn: secrets.dsn ?? existing.dsn,
           config: config ?? existing.config,
           operator_quirks: effective.operator_quirks ?? existing.operator_quirks,
@@ -274,7 +279,7 @@ export async function createConnector(
         driver: effective.driver,
         environment,
         auth_type,
-        base_url: effective.base_url ?? null,
+        base_url: secrets.base_url ?? null,
         dsn: secrets.dsn ?? null,
         config: config ?? {},
         operator_quirks: effective.operator_quirks ?? {},
@@ -435,6 +440,33 @@ export async function getConnector(
   return row ? toView(row) : null;
 }
 
+/**
+ * The stored connector a definition would land on if it were saved: the row
+ * `createConnector` upserts on, by (tenant, environment, slug). Null when
+ * saving the definition would create a new connector.
+ */
+export async function getConnectorForDefinition(
+  tenant_id: string,
+  definition: Pick<CreateConnectorInput, "name" | "slug" | "environment">,
+  exec?: Executor,
+): Promise<ConnectorView | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        eq(connectors.slug, definition.slug ?? slugify(definition.name)),
+        eq(connectors.environment, definition.environment ?? "dev"),
+        isNull(connectors.deleted_at),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  return row ? toView(row) : null;
+}
+
 export interface CredentialSummary {
   id: string;
   mode: string;
@@ -566,8 +598,14 @@ export async function updateConnector(
     if (!prior) return null;
     // A client that reads a connector and writes it back returns the mask
     // where a secret was. Resolved here, before anything reads the patch, so
-    // enrichment, validation and the stored row all see the kept secret.
-    const patch = restoreMaskedConnectorSecrets(requested, prior);
+    // enrichment, validation and the stored row all see the kept secret. A
+    // patch that also moves the connector keeps none: the mask is honoured
+    // only where the secret still goes to the destination it was stored for.
+    const patch = restoreMaskedConnectorSecrets(requested, prior, {
+      template_rebound:
+        requested.clear_template_binding === true ||
+        (requested.template_slug != null && requested.template_slug !== prior.template_slug),
+    });
     if (patch.clear_template_binding && patch.template_slug) {
       throw Object.assign(
         new Error("clear_template_binding cannot be combined with template_slug"),
