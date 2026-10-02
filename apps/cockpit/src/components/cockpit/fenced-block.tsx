@@ -1,16 +1,11 @@
+import { Copy } from "lucide-react";
 import type { ReactNode } from "react";
-import type { BundledLanguage } from "shiki";
-import {
-  CodeBlock,
-  CodeBlockActions,
-  CodeBlockCopyButton,
-  CodeBlockHeader,
-  CodeBlockTitle,
-} from "@/components/ai-elements/code-block";
+import { toast } from "sonner";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 
-/** How a block is highlighted; `text` is shown without highlighting. */
+/** What the block holds; carried as `data-language`, never used to colour it. */
 export type FencedLanguage = "bash" | "javascript" | "python" | "json" | "sql" | "graphql" | "text";
 
 /**
@@ -19,6 +14,9 @@ export type FencedLanguage = "bash" | "javascript" | "python" | "json" | "sql" |
  * command — so an identifier inside it is shown whole. It is the one place on
  * a page where that is allowed, and the place a call or a configuration
  * belongs for exactly that reason.
+ *
+ * The block is deliberately plain text: a syntax highlighter would ship every
+ * grammar it knows into the bundle to colour a handful of short snippets.
  */
 export function FencedBlock({
   label,
@@ -39,20 +37,31 @@ export function FencedBlock({
 }) {
   const { t } = useI18n();
   return (
-    <CodeBlock
-      code={code}
-      // The highlighter treats an unknown grammar as plain text.
-      language={language as BundledLanguage}
-      className={cn("min-w-0 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:text-xs", className)}
+    <div
+      className={cn("min-w-0 overflow-hidden rounded-xl border bg-muted/40", className)}
       data-testid={testId}
+      data-language={language}
     >
-      <CodeBlockHeader>
-        <CodeBlockTitle className="min-w-0 truncate">{label}</CodeBlockTitle>
-        <CodeBlockActions>
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{label}</span>
+        <div className="flex shrink-0 items-center gap-1">
           {actions}
-          <CodeBlockCopyButton label={t("common.copy")} data-testid={`${testId}-copy`} />
-        </CodeBlockActions>
-      </CodeBlockHeader>
-    </CodeBlock>
+          <IconButton
+            label={t("common.copy")}
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(code)
+                .then(() => toast.success(t("connectorDetail.copied")))
+            }
+            data-testid={`${testId}-copy`}
+          >
+            <Copy />
+          </IconButton>
+        </div>
+      </div>
+      <pre className="max-h-80 overflow-auto p-3 text-xs">
+        <code className="font-mono">{code}</code>
+      </pre>
+    </div>
   );
 }
