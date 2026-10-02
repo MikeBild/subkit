@@ -583,7 +583,10 @@ long after the tool ran. It has one button, named for that step ("Jetzt freigebe
 prüfen"). Two only when starts in both environments wait at once: "Produktion prüfen", filled and
 first, and "Entwicklung prüfen". A webhook-started workflow only ever offers production. The hint
 says to open the review — its content is in the dialog, not "below" — and names what an approval
-allows: scheduled runs, incoming webhook calls, or automatic runs for both.
+allows: scheduled runs, incoming webhook calls, or automatic runs for both. Only a pending
+decision opens the approval: an approved or on-request workflow gets no button, a paused one the
+page's own "Fortsetzen" (or the line about its switched-off webhook), and a state that could not
+be verified "Erneut prüfen".
 
 A card for a call that runs a workflow says what the call was. A preparation with every write
 held is "Probelauf ohne Wirkung", a call the engine turned away is "Lauf abgelehnt" with the

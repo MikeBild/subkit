@@ -103,13 +103,10 @@ const EN = {
   "chat.automationCard.review.prod": "Review production",
   "chat.automationCard.review.dev": "Review development",
   "chat.automationCard.repair.action": "See the cause",
-  "chat.automationCard.unknown.action": "Check status",
   "chat.automationCard.apply.title": "Saved change waits to be applied",
   "chat.automationCard.apply.hint":
     "Open the review to see the saved change. Applying it makes it the version that runs, and you can allow a bounded number of runs. No run starts now.",
   "chat.automationCard.unknown.title": "Current status needs checking",
-  "chat.automationCard.unknown.hint":
-    "Open the check to read the current workflow status. This does not start a run.",
   "chat.schedule.completion":
     "The decision is resolved only when the schedule has valid permission.",
   "authority.sessionExpired": "Please sign in again",
@@ -3354,13 +3351,10 @@ const DE: Record<TranslationKey, string> = {
   "chat.automationCard.review.prod": "Produktion prüfen",
   "chat.automationCard.review.dev": "Entwicklung prüfen",
   "chat.automationCard.repair.action": "Ursache ansehen",
-  "chat.automationCard.unknown.action": "Stand prüfen",
   "chat.automationCard.apply.title": "Gespeicherte Änderung wartet auf Übernahme",
   "chat.automationCard.apply.hint":
     "Öffne die Prüfung, um die gespeicherte Änderung zu sehen. Übernimmst du sie, läuft künftig diese Fassung, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
   "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
-  "chat.automationCard.unknown.hint":
-    "Öffne die Prüfung, um den aktuellen Stand abzurufen. Dabei startet kein Lauf.",
   "chat.schedule.completion":
     "Die Entscheidung ist erst erledigt, wenn der Zeitplan eine gültige Freigabe hat.",
   "authority.sessionExpired": "Bitte erneut anmelden",
