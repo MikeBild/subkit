@@ -1965,8 +1965,14 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             // tolerated
           }
 
-          // The statement ran, so the database answered.
+          // The statement ran, so the database answered — with the
+          // connection the connector's own credential opened.
           await recordDriverOutcome(p.ctx.db, connector, "answered");
+          await clearReauthIfProved(p.ctx.db, connector, {
+            status: 200,
+            health: "ok",
+            stored_credential_used: true,
+          });
 
           return {
             status: "succeeded",
