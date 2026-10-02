@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
+import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { logger } from "../logging/logger.ts";
@@ -128,16 +129,120 @@ export async function clearConnectorReauth(
   );
 }
 
+// Header names that authenticate a request whatever the connector's own
+// scheme is. A caller's `Authorization` replaces the stored credential in
+// every driver; a cookie or a proxy credential rides beside it.
+const CALLER_AUTH_HEADERS: ReadonlySet<string> = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+]);
+
+function lowerNames(record: Record<string, unknown> | undefined): Set<string> {
+  return new Set(Object.keys(record ?? {}).map((name) => name.toLowerCase()));
+}
+
+function hostOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Best-effort re-auth clear after a successful authenticated call. The call's
- * own result must not depend on it, so the returned promise never rejects — a
- * caller may await it or let it run — but a failure is logged so a stuck
- * `needs_reauth` flag is observable rather than silently swallowed.
+ * Whether a request was authenticated by the STORED credential, with nothing
+ * the caller sent standing in for it and at the connector's own host.
+ *
+ * Asked by the driver that built the request, because only it knows what the
+ * credential set and what the caller did: a caller's `Authorization` wins over
+ * the stored one, a caller's header or query parameter under the credential's
+ * own name can replace or shadow it, and an absolute URL sends the request to
+ * a host the stored credential was never issued for. A success under any of
+ * those says nothing about the stored credential.
  */
-export function clearReauthOnSuccess(
+export function requestUsedStoredCredential(p: {
+  credential: DecryptedCredential | null;
+  /** Where the connector's requests go: its `base_url`, or its endpoint. */
+  home: string | null;
+  url: URL;
+  /** What the caller supplied on top of the connector's own. A query string
+   *  the caller wrote into its path counts as its query. */
+  caller_headers?: Record<string, unknown> | undefined;
+  caller_query?: Record<string, unknown> | undefined;
+}): boolean {
+  const credential = p.credential;
+  if (!credential || credential.mode === "none") return false;
+  if (hostOf(p.home) !== p.url.host.toLowerCase()) return false;
+  const headers = lowerNames(p.caller_headers);
+  for (const name of headers) if (CALLER_AUTH_HEADERS.has(name)) return false;
+  if (credential.mode === "header") {
+    for (const name of lowerNames(credential.headers)) if (headers.has(name)) return false;
+  }
+  if (credential.mode === "query") {
+    const query = lowerNames(p.caller_query);
+    for (const name of lowerNames(credential.query)) if (query.has(name)) return false;
+  }
+  return true;
+}
+
+/** What one call against a connector came back with. */
+export interface AuthenticatedCallOutcome {
+  status: number;
+  health: ConnectorHealth;
+  /** The driver's verdict from `requestUsedStoredCredential`. */
+  stored_credential_used: boolean;
+  /** The parsed response body, when the driver has one. */
+  body?: unknown;
+}
+
+/** A GraphQL endpoint answers 200 to a request it rejected and says so in a
+ *  top-level `errors` array — "unauthenticated" among them. */
+function reportsErrors(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return false;
+  const errors = (body as { errors?: unknown }).errors;
+  return Array.isArray(errors) && errors.length > 0;
+}
+
+/**
+ * Whether a call proved a flagged credential live: the connector
+ * authenticates, the request was signed by the stored credential, the remote
+ * answered 2xx, and the answer was not one that only looks like success. An
+ * anonymous 200 classifies as `auth_failed` and a GraphQL `errors` reply is a
+ * rejection in a 200; neither lifts the flag.
+ */
+export function callProvedCredentialLive(
+  connector: Pick<ConnectorView, "auth_type" | "needs_reauth">,
+  outcome: AuthenticatedCallOutcome,
+): boolean {
+  return (
+    connector.needs_reauth &&
+    connector.auth_type !== "none" &&
+    outcome.stored_credential_used &&
+    outcome.status >= 200 &&
+    outcome.status < 300 &&
+    (outcome.health === "ok" || outcome.health === "deprecated") &&
+    !reportsErrors(outcome.body)
+  );
+}
+
+/**
+ * The re-auth clearing edge, for every surface that reaches a remote: a
+ * request step of any driver and `call_connector`. Clears the flag when — and
+ * only when — the call proved the stored credential live.
+ *
+ * Best-effort: the call's own result must not depend on it, so the returned
+ * promise never rejects — a caller may await it or let it run — but a failure
+ * is logged so a stuck `needs_reauth` flag is observable rather than silently
+ * swallowed.
+ */
+export function clearReauthIfProved(
   db: Executor,
-  connector: { tenant_id: string; id: string },
+  connector: Pick<ConnectorView, "tenant_id" | "id" | "auth_type" | "needs_reauth">,
+  outcome: AuthenticatedCallOutcome,
 ): Promise<void> {
+  if (!callProvedCredentialLive(connector, outcome)) return Promise.resolve();
   return clearConnectorReauth(db, connector.tenant_id, connector.id).catch((err) => {
     logger.warn({
       module: "connectors",
@@ -148,26 +253,6 @@ export function clearReauthOnSuccess(
       error: err instanceof Error ? err.message : String(err),
     });
   });
-}
-
-/**
- * Whether a direct connector call (`call_connector`, on either surface) proved
- * a flagged credential live: the connector authenticates, the remote answered
- * 2xx, and the answer was not one that only looks like success. An anonymous
- * 200 classifies as `auth_failed` and must not lift the flag.
- */
-export function callProvedCredentialLive(
-  connector: Pick<ConnectorView, "auth_type" | "needs_reauth">,
-  status: number,
-  health: ConnectorHealth,
-): boolean {
-  return (
-    connector.needs_reauth &&
-    connector.auth_type !== "none" &&
-    status >= 200 &&
-    status < 300 &&
-    (health === "ok" || health === "deprecated")
-  );
 }
 
 /**

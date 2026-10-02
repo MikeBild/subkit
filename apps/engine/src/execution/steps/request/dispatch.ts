@@ -68,7 +68,7 @@ import {
   clearConnectorHealthOnSuccess,
   flagConnectorContractFailure,
 } from "../../../connectors/health-state.ts";
-import { clearReauthOnSuccess, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
+import { clearReauthIfProved, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
@@ -94,7 +94,7 @@ import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import { authorityConnectorDigest } from "../../../workflows/authority-configuration.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
-import { disabledConnectorRefusal } from "../../connector-availability.ts";
+import { connectorStepRefusal } from "../../connector-availability.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
 import { resolveScopeForJsonata } from "../../jsonata-bindings.ts";
 import {
@@ -1076,6 +1076,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // Credential row id from the resolved HTTP plan, threaded into the
   // egress audit so the trail names which secret was used.
   let activeCredentialId: string | null = null;
+  // Whether the persisted credential is what signs this step's request —
+  // only then can its success clear the connector's re-auth flag.
+  let storedCredentialUsed = false;
   let connectorResolution: ConnectorResolutionSummary | null = null;
   try {
     if (p.step.connector_id) {
@@ -1095,19 +1098,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             code: "connector_not_found",
             message: `connector ${p.step.connector_id} not found`,
           },
-        };
-      }
-      // A connector that is switched off is refused under its own name,
-      // before the environment gate and the breaker — neither of which is
-      // why this call cannot be made.
-      const refusal = disabledConnectorRefusal(connector, p.step.id);
-      if (refusal) {
-        clearTimeout(timer);
-        return {
-          status: "failed",
-          retry_count: 0,
-          duration_ms: Date.now() - start,
-          error: refusal,
         };
       }
       configurationDigest = authorityConnectorDigest(connector);
@@ -1152,28 +1142,24 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         } catch {
           /* metrics are best-effort */
         }
-        // HARD gate for writes (audit H2): the warn above proved insufficient
-        // — 769 silent dev→prod fallbacks shipped writes into the wrong
-        // environment before anyone grepped for it. A write-classified step
-        // (non-GET/HEAD/OPTIONS method, GraphQL mutation, non-SELECT SQL, S3
-        // put — the same `classifyRequestStepSideEffects` seam hold-writes
-        // uses) must NOT dispatch through a different-environment binding.
-        // Reads keep the warn-only fallback: it stays load-bearing for
-        // single-env tenants, and a cross-env read is recoverable.
-        if (classifyRequestStepSideEffects(p.step) === "write") {
-          clearTimeout(timer);
-          return {
-            status: "failed",
-            retry_count: 0,
-            duration_ms: Date.now() - start,
-            error: {
-              code: "connector_environment_mismatch",
-              message:
-                `write step requested environment "${p.ctx.execution_mode}" but connector "${connector.slug}" only resolves to "${connector.environment}" — ` +
-                `create a ${p.ctx.execution_mode} binding for this connector; an author label is not permission to send writes through an environment fallback`,
-            },
-          };
-        }
+      }
+      // What refuses this step on its connector, before the breaker — which
+      // is never why a switched-off or wrong-environment connector cannot be
+      // called. HARD gate for writes (audit H2): the warn above proved
+      // insufficient — 769 silent dev→prod fallbacks shipped writes into the
+      // wrong environment before anyone grepped for it — so a write-classified
+      // step (non-GET/HEAD/OPTIONS method, GraphQL mutation, non-SELECT SQL,
+      // S3 put) does not dispatch through a different-environment binding.
+      // That refusal comes first: see `connectorStepRefusal`.
+      const refusal = connectorStepRefusal(connector, p.step, p.ctx.execution_mode);
+      if (refusal) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: refusal,
+        };
       }
       // Circuit-breaker ENFORCEMENT, for every driver.
       //
@@ -1480,6 +1466,16 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           // (`mcp_unavailable` vs `mcp_remote_error` vs `mcp_cancelled`), so
           // the two cannot disagree about what counts as the remote's fault.
           await recordDriverOutcome(p.ctx.db, connector, mcpEvidence(result));
+          // The pool opens the session with the connector's own credential
+          // and a step has no way to supply another, so a completed call is
+          // an answer that credential earned.
+          if (result.status === "succeeded") {
+            await clearReauthIfProved(p.ctx.db, connector, {
+              status: 200,
+              health: "ok",
+              stored_credential_used: true,
+            });
+          }
           if (
             result.status === "succeeded" &&
             p.step.response_filters &&
@@ -1730,6 +1726,13 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           // unavailable store. A 5xx or a 429 IS, and used to be credited
           // here as reachability along with everything else.
           await recordDriverOutcome(p.ctx.db, connector, evidenceFromStatus(res.status));
+          // The store signs every request with the connector's credential;
+          // a step cannot supply its own.
+          await clearReauthIfProved(p.ctx.db, connector, {
+            status: res.status,
+            health: classifyConnectorHealth(res.status, res.headers),
+            stored_credential_used: true,
+          });
 
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
@@ -2027,6 +2030,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         query,
       });
       baseUrl = plan.url;
+      storedCredentialUsed = plan.stored_credential_used;
       activeCredentialId = plan.credential_id;
       credentialSnapshot = {
         credential_id: plan.credential_id,
@@ -2576,12 +2580,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           circuit_failure_count: 0,
         });
       }
-      // Re-auth clear: a successful authenticated response proves the
-      // credential is live. This is a SEPARATE concern from the circuit
-      // breaker — needs_reauth can be true while the circuit is closed, so
-      // clear unconditionally on success (outside the circuit-state guard).
+      // Re-auth clear: a successful response the stored credential earned
+      // proves it live. This is a SEPARATE concern from the circuit breaker —
+      // needs_reauth can be true while the circuit is closed, so it is asked
+      // on every success (outside the circuit-state guard).
       if (activeConnector) {
-        void clearReauthOnSuccess(p.ctx.db, activeConnector);
+        void clearReauthIfProved(p.ctx.db, activeConnector, {
+          status: res.status,
+          health: classifyConnectorHealth(res.status, res.headers),
+          stored_credential_used: storedCredentialUsed,
+          body,
+        });
       }
       // Deprecation early-warning: a SUCCESSFUL response that carries
       // Deprecation/Sunset headers means the vendor announced this
@@ -2933,7 +2942,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       });
     }
     if (activeConnector) {
-      void clearReauthOnSuccess(p.ctx.db, activeConnector);
+      void clearReauthIfProved(p.ctx.db, activeConnector, {
+        status: 200,
+        health: classifyConnectorHealth(200, lastPageHeaders),
+        stored_credential_used: storedCredentialUsed,
+      });
     }
     // Deprecation early-warning / health recovery on the paginated success
     // path — same contract as the single-page path above.
