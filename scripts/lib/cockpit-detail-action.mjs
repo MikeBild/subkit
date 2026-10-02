@@ -4,8 +4,10 @@
 //
 // Fixtures follow the engine's real schemas and each holds exactly one state:
 //
-// - a workflow whose webhook the authority gate holds  → "Freigabe prüfen",
-//   to the approval section of the same page;
+// - a workflow whose webhook the authority gate holds  → "Jetzt freigeben":
+//   the automation panel's own action, opening the approval where the reader
+//   stands. It used to be "Freigabe prüfen", a link that only scrolled to a
+//   section whose button had the same name — two signals and no act;
 // - a workflow whose development Gmail lost its sign-in → no authority review
 //   on page open (the run dialog asks that), so its state decides as usual;
 // - a workflow whose newest run failed                  → "Lauf untersuchen";
@@ -248,14 +250,28 @@ export async function verifyDetailAction(page, stand, localeName, capture) {
     // ── A workflow its webhook is held for ────────────────────────────────────
     let where = `/workflows/<held> (${localeName})`;
     await stand.visit(page, `workflows/${HELD}`);
-    expect(
-      where,
-      await actionOf(page, where),
-      de ? "Freigabe prüfen" : "Review approval",
-      `/cockpit/workflows/${HELD}#workflow-authorities`,
-    );
+    const held = await actionOf(page, where);
+    if (held.label !== (de ? "Jetzt freigeben" : "Approve now"))
+      throw new Error(`${where}: the action reads "${held.label}"`);
+    // An act, not an address: a link here could only scroll to the panel that
+    // already says the same thing below it.
+    if (held.href !== null)
+      throw new Error(`${where}: the action is a link to ${held.href}, not the approval itself`);
+    const panelAction = (await page.getByTestId("workflow-automation-action").innerText()).trim();
+    if (panelAction !== held.label)
+      throw new Error(`${where}: the title offers "${held.label}", the panel "${panelAction}"`);
+    if (await page.locator('a[href*="#workflow-authorities"]').count())
+      throw new Error(`${where}: something still links to the section that no longer exists`);
+    if (state.previews !== 0)
+      throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
     await assertNoVisibleUuids(page.locator("header").first(), where);
     await capture("detail-action-held");
+    // The press opens the approval dialog — the same one the panel opens.
+    await page.getByTestId("detail-action").click();
+    await page.getByTestId("authority-grant-cancel").waitFor({ state: "visible", timeout: 10_000 });
+    if (state.previews < 1) throw new Error(`${where}: the action opened no review`);
+    await page.getByTestId("authority-grant-cancel").click();
+    await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
 
     // ── A workflow whose development Gmail must be reconnected ───────────────
     // The page does not run the authority review to choose its action: that

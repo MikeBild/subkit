@@ -15,6 +15,10 @@
 //    409 `prepared_credential_unavailable`, the dialog says the same sentence
 //    from the refusal's `details` and links to that connector's sign-in.
 // 3. A 500 is "could not be started", never the engine's "internal error".
+// 4. Input fields are filled in by their type — a number field, a select of
+//    the allowed values, a JSON area for an object — and a value that does not
+//    fit its type is named and never sent as text under the right name. Every
+//    field used to be a text input.
 
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
@@ -81,8 +85,22 @@ function preview(environment, unavailable) {
   };
 }
 
+/** One field of every control the dialog knows, in the engine's schema shape. */
+const TYPED_SCHEMA = {
+  type: "object",
+  required: ["recipient_email", "limit"],
+  properties: {
+    recipient_email: { type: "string", format: "email", description: "Wer den Bericht bekommt" },
+    limit: { type: "integer", default: 5 },
+    mode: { type: "string", enum: ["draft", "live"] },
+    options: { type: "object", properties: { deep: { type: "boolean" } } },
+    dry: { type: "boolean" },
+  },
+};
+
 /** `variant`: "blocked" (the preview names Gmail), "refused" (it does not, the
- *  run is refused with 409), "crashed" (the run answers 500). */
+ *  run is refused with 409), "crashed" (the run answers 500), "typed" (the
+ *  workflow declares typed inputs; the run is refused as in "refused"). */
 function runDialogApi(state) {
   return async (route) => {
     const request = route.request();
@@ -90,7 +108,10 @@ function runDialogApi(state) {
     const path = url.pathname;
     if (path === `/v1/workflows/${WORKFLOW_ID}`) return json(route, RECORD);
     if (path === `/v1/workflows/${WORKFLOW_ID}/input-schema`)
-      return json(route, { source: "declared", schema: null });
+      return json(route, {
+        source: "declared",
+        schema: state.variant === "typed" ? TYPED_SCHEMA : null,
+      });
     if (path === `/v1/workflows/${WORKFLOW_ID}/draft`)
       return json(route, { version_id: DRAFT_VERSION_ID, version: 5 });
     if (path === `/v1/workflows/${WORKFLOW_ID}/execution-authorities`)
@@ -241,6 +262,53 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!crashed.includes(failed))
       throw new Error(`${where} · crashed: the dialog says "${crashed}"`);
     await assertNoEngineWords(page, `${where} · crashed`);
+
+    // ── Fields are filled in by their type ───────────────────────────────────
+    state.variant = "typed";
+    state.previewed = [];
+    await openDialog(page, stand);
+    await page.getByTestId("workflow-run-inputs").waitFor({ state: "visible", timeout: 10_000 });
+    for (let attempt = 0; attempt < 40 && state.previewed.length < 2; attempt += 1)
+      await page.waitForTimeout(50);
+    const typed = `${where} · typed`;
+    const limit = page.getByTestId("workflow-run-input-1");
+    if ((await limit.getAttribute("type")) !== "number")
+      throw new Error(`${typed}: a whole number is filled in through a text field`);
+    // The schema's default is what a run would use, so it is what stands there.
+    if ((await limit.inputValue()) !== "5")
+      throw new Error(`${typed}: the default is not shown: "${await limit.inputValue()}"`);
+    const options = page.getByTestId("workflow-run-input-3");
+    if ((await options.evaluate((node) => node.tagName)) !== "TEXTAREA")
+      throw new Error(`${typed}: an object is filled in through a one-line field`);
+    // Required and missing: named, and nothing runs.
+    if (!(await text(page, "workflow-run-missing"))?.includes("recipient_email"))
+      throw new Error(`${typed}: the missing required field is not named`);
+    await page.getByTestId("workflow-run-input-0").fill("ops@example.org");
+    // A value that does not fit its type: named, and nothing runs.
+    await options.fill("{broken");
+    if (!(await text(page, "workflow-run-invalid"))?.includes("options"))
+      throw new Error(`${typed}: a value that is not JSON is not named`);
+    if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
+      throw new Error(`${typed}: a run can start with an input of the wrong type`);
+    await capture("run-dialog-typed");
+    await options.fill('{"deep":true}');
+    await page.getByTestId("workflow-run-input-2").click();
+    await page.getByTestId("workflow-run-input-2-option-1").click();
+    await page.getByTestId("workflow-run-input-4").click();
+    await page.getByTestId("workflow-run-input-4-option-0").click();
+    const before = state.runs.length;
+    await page.getByTestId("workflow-run-submit").click();
+    await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
+    const sent = state.runs.at(-1)?.body?.input;
+    const wanted = {
+      recipient_email: "ops@example.org",
+      limit: 5,
+      mode: "live",
+      options: { deep: true },
+      dry: true,
+    };
+    if (state.runs.length !== before + 1 || JSON.stringify(sent) !== JSON.stringify(wanted))
+      throw new Error(`${typed}: the run was sent ${JSON.stringify(sent)}`);
   } finally {
     await page.unroute(isRunDialogApi, handler);
   }

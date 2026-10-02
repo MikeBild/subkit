@@ -14,6 +14,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // once is caught at the next document rather than never. The price is one
 // `page.evaluate` per navigation.
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
+import { textOutsidePayloads } from "./lib/cockpit-visible-uuids.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -726,6 +727,69 @@ function detailRecord(listPath) {
   return { ...catalogRows(listPath)[0], ...(DETAIL_EXTRAS[listPath] ?? {}) };
 }
 
+/** `GET /v1/workflows/{id}/invocation` for the fixture workflow, in the engine's shape. */
+const WORKFLOW_INVOCATION = (() => {
+  const address = "https://engine.example.test";
+  const sample = { month: "<month>" };
+  const body = { source: "saved", workflow_id: ID, input: sample };
+  const call = (environment, language) =>
+    `# ${language}\ncurl -sS -X POST '${address}/v1/executions' -H 'x-subkit-environment: ${environment}' -d '${JSON.stringify(body)}'`;
+  return {
+    workflow_id: ID,
+    slug: "reporting-monatsreport",
+    base_url: address,
+    http: {
+      method: "POST",
+      path: "/v1/executions",
+      url: `${address}/v1/executions`,
+      headers: ["authorization", "x-subkit-environment", "content-type"],
+      body,
+      snippets: Object.fromEntries(
+        ["dev", "prod"].map((environment) => [
+          environment,
+          Object.fromEntries(
+            ["curl", "node", "python"].map((language) => [language, call(environment, language)]),
+          ),
+        ]),
+      ),
+    },
+    hooks: [],
+    mcp: {
+      tool_name: "wf_reporting-monatsreport",
+      fallback: {
+        tool_name: "run_workflow",
+        arguments: { workflow: "reporting-monatsreport", input: sample },
+      },
+    },
+    schedules: [],
+    cli: {
+      command: `sk workflows run reporting-monatsreport --input '${JSON.stringify(sample)}'`,
+      environment: "dev",
+    },
+    input: {
+      source: "declared",
+      schema: {
+        type: "object",
+        required: ["month"],
+        properties: {
+          month: { type: "string", description: "Abrechnungsmonat", example: "2026-07" },
+          dry: { type: "boolean" },
+        },
+      },
+      sample,
+    },
+    output: { schema: { type: "object", properties: { rows: { type: "integer" } } } },
+    webhook_input_shape: {
+      id: "string",
+      type: "string",
+      timestamp: "number",
+      headers: "object",
+      body: "json",
+    },
+    authority: { dev: "held_preview_only", prod: "held_preview_only" },
+  };
+})();
+
 const KNOWLEDGE_CONTENT = {
   knowledge_source_id: ID,
   version: "3",
@@ -894,6 +958,23 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
     for (const listPath of DETAIL_LISTS) {
       if (path === `${listPath}/${ID}`) return json(route, detailRecord(listPath));
     }
+    // What the workflow's page reads besides its record. Answered as the
+    // engine answers them: left to the catch-all list below, the call block
+    // and the input table would be measured in their failed state, and the
+    // page's real content — the call, the tables — would never be measured.
+    if (path === `/v1/workflows/${ID}/invocation`) return json(route, WORKFLOW_INVOCATION);
+    if (path === `/v1/workflows/${ID}/automation-status`)
+      return json(route, { schedules: [], inbound_hooks: [] });
+    if (path === `/v1/workflows/${ID}/diagnosis`)
+      return json(route, {
+        workflow_id: ID,
+        workflow_version_id: null,
+        environment: url.searchParams.get("environment") ?? "prod",
+        is_current: true,
+        diagnoses: [],
+      });
+    if (path === `/v1/workflows/${ID}/execution-authorities`)
+      return json(route, { items: [], next_cursor: null });
     if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, KNOWLEDGE_CONTENT);
     if (path === `/v1/files/${ID}/content`)
       return route.fulfill({
@@ -2972,9 +3053,16 @@ async function checkActionLabels(page, where) {
   for (const label of generic) breach("§8.3", where, `Button beschriftet "${label}"`);
 }
 
-/** §5 — a title is a summary; an identifier on screen is never one. */
+/**
+ * §5 — a title is a summary; an identifier on screen is never one.
+ *
+ * Measured outside fenced blocks, by the same reading the visual sweep uses
+ * (`textOutsidePayloads`): a call or a request body in a `<pre>` is content the
+ * reader copies, not a title or a label, and masking an identifier there hands
+ * over a call that cannot work. Everywhere else an identifier stays a breach.
+ */
 async function checkNoIdentifiers(page, where) {
-  const text = await page.locator("body").innerText();
+  const text = await page.locator("body").evaluate(textOutsidePayloads);
   const match = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   if (match) {
     const at = text.indexOf(match[0]);
