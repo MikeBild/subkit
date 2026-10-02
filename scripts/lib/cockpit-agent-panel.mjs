@@ -39,7 +39,7 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
             inbound_hooks: [
               {
                 workflow_id: workflowId,
-                slug: "watchkit-findings",
+                slug: "findings-inbox",
                 environment: "prod",
                 state: "approval_required",
                 ready: false,
