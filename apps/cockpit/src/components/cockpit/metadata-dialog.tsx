@@ -27,9 +27,10 @@ const ENDPOINTS: Record<MetadataResource, string> = {
 
 /**
  * Renames a record. Structure is changed in the chat; this is the one direct
- * edit a record's page offers — so its button says "Umbenennen", not
- * "Metadaten bearbeiten", and the dialog it opens is headed by the record it
- * renames rather than by the button's own words a second time.
+ * edit a record's page offers — so the act is called "Umbenennen" wherever it
+ * is offered (this button, a page's menu), and the dialog it opens is headed
+ * by the record it renames rather than by the button's own words a second
+ * time.
  *
  * It renders its own button unless the caller holds the open state: a page
  * that opens it from a menu passes `open` and `onOpenChange` and gets the
@@ -81,7 +82,7 @@ export function MetadataDialog({
       {controlled === undefined ? (
         <Button variant="outline" onClick={() => setOpen(true)} data-testid="detail-edit-metadata">
           <Pencil data-icon="inline-start" />
-          {t("detail.rename")}
+          {t("detail.editMetadata")}
         </Button>
       ) : null}
       <DialogContent data-testid="detail-metadata-dialog">
