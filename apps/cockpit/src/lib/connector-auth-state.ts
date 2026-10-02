@@ -72,14 +72,6 @@ const LABELS: Record<ConnectorAuthState, TranslationKey> = {
   unproven: "connectors.auth.unproven",
 };
 
-const HINTS: Record<ConnectorAuthState, TranslationKey> = {
-  connected: "connectors.auth.connectedHint",
-  expired: "connectors.auth.expiredHint",
-  credentials_missing: "connectors.auth.credentialsMissingHint",
-  not_required: "connectors.auth.notRequiredHint",
-  unproven: "connectors.auth.unprovenHint",
-};
-
 export function connectorAuthState(
   connector: ConnectorAuthInput,
   probe?: ProbeOutcome | null,
@@ -105,10 +97,6 @@ export function connectorAuthState(
 
 export function authStateLabel(state: ConnectorAuthState): TranslationKey {
   return LABELS[state];
-}
-
-export function authStateHint(state: ConnectorAuthState): TranslationKey {
-  return HINTS[state];
 }
 
 /** Only an expired credential names a renewal path; the rest need no red. */

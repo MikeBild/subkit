@@ -217,8 +217,9 @@ function Tile({
  * "Laufzeit · letzte 7 Tage": calls, success rate, median response time and
  * the last success, read over ONE window fixed when the page opened; each
  * count leads to the audit log narrowed to the same connector and the same
- * window (§10.1), and a counted zero leads nowhere. The last failure is its
- * cause class in the cockpit's words — never the remote's text.
+ * window (§10.1). A week without a call, and figures the reader may not see,
+ * are one sentence instead of tiles. The last failure — shown only when there
+ * is one — is its cause class in the cockpit's words, never the remote's text.
  */
 export function ConnectorRuntimeSection({
   connectorId,
@@ -282,78 +283,83 @@ export function ConnectorRuntimeSection({
     : null;
   const tag = locale === "de" ? "de-DE" : "en-US";
   const number = (value: number) => new Intl.NumberFormat(tag).format(value);
-  const denied = t("connectorDetail.runtime.notPermitted");
   const failure = data.last_failure;
+  const lastSuccess = data.last_success_at
+    ? formatRelativeTime(locale, data.last_success_at)
+    : null;
   return (
     <section className="grid gap-2" data-testid="connector-runtime">
       {title}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile
-          label={t("connectorDetail.runtime.calls")}
-          testId="connector-figure-calls"
-          href={figures ? connectorCallsHref(connectorId, driver, figures, "all") : null}
-          {...(figures ? {} : { state: "not_permitted" })}
-        >
-          {figures ? number(figures.calls) : denied}
-        </Tile>
-        <Tile
-          label={t("connectorDetail.runtime.successRate")}
-          testId="connector-figure-success"
-          href={figures ? connectorCallsHref(connectorId, driver, figures, "failed") : null}
-          {...(!figures
-            ? { state: "not_permitted" }
-            : figures.successRate === null
-              ? { state: "none" }
-              : {})}
-        >
-          {!figures
-            ? denied
-            : figures.successRate === null
+      {/* Figures the reader may not see, or a week without a call, are one
+          sentence — not a row of tiles that each say the same nothing. */}
+      {!figures || figures.calls === 0 ? (
+        <>
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid={figures ? "connector-runtime-unused" : "connector-runtime-not-permitted"}
+          >
+            {t(
+              figures
+                ? "connectorDetail.runtime.unused"
+                : "connectorDetail.runtime.figuresNotPermitted",
+            )}
+          </p>
+          {lastSuccess ? (
+            <p className="text-sm" data-testid="connector-last-success">
+              <span className="text-muted-foreground">
+                {t("connectorDetail.runtime.lastSuccess")}:{" "}
+              </span>
+              {lastSuccess}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Tile
+            label={t("connectorDetail.runtime.calls")}
+            testId="connector-figure-calls"
+            href={connectorCallsHref(connectorId, driver, figures, "all")}
+          >
+            {number(figures.calls)}
+          </Tile>
+          <Tile
+            label={t("connectorDetail.runtime.successRate")}
+            testId="connector-figure-success"
+            href={connectorCallsHref(connectorId, driver, figures, "failed")}
+            {...(figures.successRate === null ? { state: "none" } : {})}
+          >
+            {figures.successRate === null
               ? t("connectorDetail.runtime.noRate")
               : `${new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }).format(figures.successRate)} %`}
-        </Tile>
-        <Tile
-          label={t("connectorDetail.runtime.median")}
-          testId="connector-figure-median"
-          {...(!figures
-            ? { state: "not_permitted" }
-            : figures.medianMs === null
-              ? { state: "none" }
-              : {})}
-        >
-          {!figures
-            ? denied
-            : figures.medianMs === null
+          </Tile>
+          <Tile
+            label={t("connectorDetail.runtime.median")}
+            testId="connector-figure-median"
+            {...(figures.medianMs === null ? { state: "none" } : {})}
+          >
+            {figures.medianMs === null
               ? t("connectorDetail.runtime.noLatency")
               : t("connectorDetail.runtime.ms", { ms: number(figures.medianMs) })}
-        </Tile>
-        <Tile
-          label={t("connectorDetail.runtime.lastSuccess")}
-          testId="connector-figure-last-success"
-          {...(data.last_success_at ? {} : { state: "none" })}
-        >
-          {data.last_success_at
-            ? formatRelativeTime(locale, data.last_success_at)
-            : t("connectorDetail.runtime.never")}
-        </Tile>
-      </div>
-      {figures && figures.calls === 0 ? (
-        // Said, not acted on here: "Verbindung testen" stands beside the title.
-        <p className="text-sm text-muted-foreground" data-testid="connector-runtime-unused">
-          {t("connectorDetail.runtime.unused")}
+          </Tile>
+          <Tile
+            label={t("connectorDetail.runtime.lastSuccess")}
+            testId="connector-figure-last-success"
+            {...(lastSuccess ? {} : { state: "none" })}
+          >
+            {lastSuccess ?? t("connectorDetail.runtime.never")}
+          </Tile>
+        </div>
+      )}
+      {/* Said when there is one. "No failure recorded" is not a fact to show. */}
+      {failure ? (
+        <p className="text-sm" data-testid="connector-last-failure">
+          <span className="text-muted-foreground">
+            {t("connectorDetail.runtime.lastFailure")}:{" "}
+          </span>
+          {formatRelativeTime(locale, failure.at)} ·{" "}
+          <LabelText label={causeClassLabel(failure.cause_class, t)} />
         </p>
       ) : null}
-      <p className="text-sm" data-testid="connector-last-failure">
-        <span className="text-muted-foreground">{t("connectorDetail.runtime.lastFailure")}: </span>
-        {failure ? (
-          <>
-            {formatRelativeTime(locale, failure.at)} ·{" "}
-            <LabelText label={causeClassLabel(failure.cause_class, t)} />
-          </>
-        ) : (
-          t("connectorDetail.runtime.noFailure")
-        )}
-      </p>
     </section>
   );
 }
@@ -429,36 +435,44 @@ export function ConnectorMcpTools({
   return (
     <section className="grid gap-3" data-testid="connector-mcp-tools">
       <h2 className="text-sm font-semibold">{t("connectorDetail.tools.title")}</h2>
-      <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3">
-        <Fact label={t("connectorDetail.tools.protocol")} testId="connector-mcp-protocol">
-          {session?.protocol_version ? (
-            <span className="font-mono text-xs">{session.protocol_version}</span>
-          ) : (
-            t("connectorDetail.tools.noSession")
-          )}
-        </Fact>
-        <Fact label={t("connectorDetail.tools.capabilities")} testId="connector-mcp-capabilities">
-          {session && session.capabilities.length > 0 ? (
-            <span className="flex flex-wrap gap-1">
-              {session.capabilities.map((key) => (
-                <Badge key={key} variant="outline">
-                  <LabelText label={catalogLabel(key, CAPABILITY_KEYS[key], t)} />
-                </Badge>
-              ))}
-            </span>
-          ) : (
-            MISSING
-          )}
-        </Fact>
-        <Fact label={t("connectorDetail.tools.lastContact")} testId="connector-mcp-last-contact">
-          {session?.last_handshake_at
-            ? formatRelativeTime(locale, session.last_handshake_at)
-            : t("connectorDetail.tools.noSession")}
-        </Fact>
-      </dl>
-      <p className="text-sm text-muted-foreground" data-testid="connector-mcp-note">
-        {t("connectorDetail.tools.note")}
-      </p>
+      {/* What the last session negotiated — each fact only when the session
+          has it. Without a session that is one sentence, not three cells
+          saying so. */}
+      {session ? (
+        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:auto-cols-fr sm:grid-flow-col">
+          {session.protocol_version ? (
+            <Fact label={t("connectorDetail.tools.protocol")} testId="connector-mcp-protocol">
+              <span className="font-mono text-xs">{session.protocol_version}</span>
+            </Fact>
+          ) : null}
+          {session.capabilities.length > 0 ? (
+            <Fact
+              label={t("connectorDetail.tools.capabilities")}
+              testId="connector-mcp-capabilities"
+            >
+              <span className="flex flex-wrap gap-1">
+                {session.capabilities.map((key) => (
+                  <Badge key={key} variant="outline">
+                    <LabelText label={catalogLabel(key, CAPABILITY_KEYS[key], t)} />
+                  </Badge>
+                ))}
+              </span>
+            </Fact>
+          ) : null}
+          {session.last_handshake_at ? (
+            <Fact
+              label={t("connectorDetail.tools.lastContact")}
+              testId="connector-mcp-last-contact"
+            >
+              {formatRelativeTime(locale, session.last_handshake_at)}
+            </Fact>
+          ) : null}
+        </dl>
+      ) : (
+        <p className="text-sm text-muted-foreground" data-testid="connector-mcp-no-session">
+          {t("connectorDetail.tools.noSession")}
+        </p>
+      )}
       {inspect.pending ? <Skeleton className="h-16 w-full" /> : null}
       {inspect.failed ? (
         <p className="text-sm text-destructive" data-testid="connector-mcp-inspect-failed">

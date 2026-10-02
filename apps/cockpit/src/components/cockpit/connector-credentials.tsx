@@ -20,7 +20,6 @@ import { authStateLabel, type ConnectorAuthState, needsRenewal } from "@/lib/con
 import { useI18n } from "@/lib/i18n-context";
 import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
 import {
-  authLabel,
   credentialBody,
   offersConnectionChoice,
   offersKeyReplacement,
@@ -55,7 +54,8 @@ export function useConnectorCredential(connectorId: string | null) {
  * "Anmeldung": where the sign-in stands — the one place the page says it —
  * one line for what is the case and what the action beside it does, when the
  * credential was last changed, and the one way to change it that fits its
- * kind of sign-in. "Verbindung wählen" is offered only where a connection can
+ * kind of sign-in. HOW the connector signs in is a fact of the connection and
+ * stands there ("Verbindung"), not a second time here. "Verbindung wählen" is offered only where a connection can
  * carry the sign-in (OAuth, or a connector already linked to one); "Schlüssel
  * ersetzen" posts the key in the mode the connector signs in with — a key sent
  * in `X-API-KEY` stays a header key instead of turning into a bearer token.
@@ -65,11 +65,14 @@ export function ConnectorCredentials({
   authType,
   state,
   canWrite,
+  providerUrl = null,
 }: {
   connectorId: string;
   authType: string | null;
   state: ConnectorAuthState;
   canWrite: boolean;
+  /** Where the provider renews access, when a failed test named such a page. */
+  providerUrl?: string | null;
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
@@ -121,6 +124,14 @@ export function ConnectorCredentials({
   const renewLabel = t(signInActionLabel(state));
   const missingScopes = current?.missing_scopes ?? [];
   const grantsHref = absolute(apiAccessHref("grants"));
+  // The account connections page is one address: it is linked once. The
+  // renewal leads there when the sign-in rides on a lost connection; otherwise
+  // the connection's own line does; otherwise the chooser's hint.
+  const grantsLink: "renew" | "connection" | "chooser" =
+    lost && way === "connection" ? "renew" : current?.connection ? "connection" : "chooser";
+  const about = current?.connection
+    ? t("connectorCredentials.viaConnection", { name: current.connection.name })
+    : null;
   // The header the key goes in, pre-filled with the one the engine reports.
   const header = headerName ?? current?.header_names?.[0] ?? "";
   const body = credentialBody(authType, token, header);
@@ -138,23 +149,17 @@ export function ConnectorCredentials({
             {t(authStateLabel(state))}
           </Badge>
         </CardTitle>
-        <CardDescription data-testid="connector-credential-sentence">
-          {/* A lost sign-in says what is the case and what the button does —
-              one line, not a sentence about the kind of sign-in beside one
-              that contradicts the button. */}
-          {lost && line
-            ? t(line, { name: current?.connection?.name ?? "" })
-            : [
-                current?.connection
-                  ? t("connectorCredentials.viaConnection", { name: current.connection.name })
-                  : current
-                    ? `${authLabel(authType, current.header_names ?? [], t)}.`
-                    : t("connectorCredentials.none"),
-                line ? t(line) : null,
-              ]
-                .filter(Boolean)
-                .join(" ")}
-        </CardDescription>
+        {/* A lost sign-in says what is the case and what the button does — one
+            line. A working one needs no sentence: the badge says it. */}
+        {lost && line ? (
+          <CardDescription data-testid="connector-credential-sentence">
+            {t(line, { name: current?.connection?.name ?? "" })}
+          </CardDescription>
+        ) : about || line ? (
+          <CardDescription data-testid="connector-credential-sentence">
+            {[about, line ? t(line) : null].filter(Boolean).join(" ")}
+          </CardDescription>
+        ) : null}
         {missingScopes.length > 0 ? (
           <p className="text-sm" data-testid="connector-missing-scopes">
             {t("connectorCredentials.partial", { scopes: missingScopes.join(", ") })}
@@ -171,18 +176,24 @@ export function ConnectorCredentials({
               {t("connectorCredentials.connectionState", {
                 state: t(connectionStateKey(current.connection.state)),
               })}
-            </span>{" "}
-            <a
-              href={grantsHref}
-              className="font-medium underline underline-offset-4"
-              data-testid="connector-connection-link"
-            >
-              {t("connectorCredentials.openConnection")}
-            </a>
+            </span>
+            {grantsLink === "connection" ? (
+              <>
+                {" "}
+                <a
+                  href={grantsHref}
+                  className="font-medium underline underline-offset-4"
+                  data-testid="connector-connection-link"
+                >
+                  {t("connectorCredentials.openConnection")}
+                </a>
+              </>
+            ) : null}
           </p>
         ) : null}
       </CardHeader>
-      {canWrite && ((lost && way) || missingScopes.length > 0 || choice || replaceable) ? (
+      {canWrite &&
+      ((lost && (way || providerUrl)) || missingScopes.length > 0 || choice || replaceable) ? (
         <CardContent className="grid gap-4">
           {/* The one way to renew a lost sign-in. What it does is said in the
               line under the title, so the button stands alone. */}
@@ -212,6 +223,19 @@ export function ConnectorCredentials({
             >
               {renewLabel}
             </Button>
+          ) : null}
+          {/* Where the provider itself renews access — its own page, a
+              different place than the sign-in, named as one. */}
+          {lost && providerUrl ? (
+            <a
+              href={providerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="w-fit text-sm underline underline-offset-4"
+              data-testid="connector-provider-page"
+            >
+              {t("connectorCredentials.openProvider")}
+            </a>
           ) : null}
           {choice ? (
             <Field>
@@ -254,10 +278,19 @@ export function ConnectorCredentials({
               <FieldDescription>
                 {items.length === 0
                   ? t("connectorCredentials.noConnections")
-                  : t("connectorCredentials.chooseHint")}{" "}
-                <a href={grantsHref} className="underline" data-testid="connector-connections-link">
-                  {t("connectorCredentials.openConnections")}
-                </a>
+                  : t("connectorCredentials.chooseHint")}
+                {grantsLink === "chooser" ? (
+                  <>
+                    {" "}
+                    <a
+                      href={grantsHref}
+                      className="underline"
+                      data-testid="connector-connections-link"
+                    >
+                      {t("connectorCredentials.openConnections")}
+                    </a>
+                  </>
+                ) : null}
               </FieldDescription>
             </Field>
           ) : null}
