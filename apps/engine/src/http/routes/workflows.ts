@@ -19,7 +19,7 @@ import {
   groupByCategory,
   listConnectorRefs,
   loadCategoryIndex,
-  synthesizeInputSchema,
+  resolveWorkflowInputSchema,
   TriggerSchema,
   UNCATEGORIZED,
   validateWorkflowDef,
@@ -31,6 +31,7 @@ import type { AppEnv } from "../openapi.ts";
 import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
 import { registerWorkflowDiagnosisRoutes } from "./workflow-diagnosis.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
+import { registerWorkflowInvocationRoutes } from "./workflow-invocation.ts";
 import {
   serializeOne,
   serializeWorkflow,
@@ -463,6 +464,7 @@ const inputSchemaRoute = createRoute({
 export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowAuthorityRoutes(app);
   registerWorkflowDiagnosisRoutes(app);
+  registerWorkflowInvocationRoutes(app);
   registerWorkflowDraftRoutes(app);
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin
@@ -789,14 +791,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     // Declared schema wins. When absent, synthesize from the steps —
     // same code path the MCP tool listing uses, so the two surfaces
     // stay in lockstep.
-    if (wf.definition.input_schema) {
-      return c.json({ source: "declared" as const, schema: wf.definition.input_schema }, 200);
-    }
-    const synthesized = synthesizeInputSchema(wf.definition);
-    if (synthesized) {
-      return c.json({ source: "synthesized" as const, schema: synthesized }, 200);
-    }
-    return c.json({ source: "none" as const, schema: null }, 200);
+    return c.json(resolveWorkflowInputSchema(wf.definition), 200);
   });
 
   app.openapi(updateRoute, async (c) => {

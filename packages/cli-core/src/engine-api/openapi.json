@@ -6046,6 +6046,410 @@
         ],
         "additionalProperties": false
       },
+      "WorkflowInvocation": {
+        "type": "object",
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "http": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "POST"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "body": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "saved"
+                    ]
+                  },
+                  "workflow_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "input": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "source",
+                  "workflow_id",
+                  "input"
+                ]
+              },
+              "snippets": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "dev": {
+                    "type": "object",
+                    "properties": {
+                      "curl": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string"
+                      },
+                      "python": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "curl",
+                      "node",
+                      "python"
+                    ]
+                  },
+                  "prod": {
+                    "type": "object",
+                    "properties": {
+                      "curl": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string"
+                      },
+                      "python": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "curl",
+                      "node",
+                      "python"
+                    ]
+                  }
+                },
+                "required": [
+                  "dev",
+                  "prod"
+                ]
+              }
+            },
+            "required": [
+              "method",
+              "path",
+              "url",
+              "headers",
+              "body",
+              "snippets"
+            ]
+          },
+          "hooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verifier": {
+                  "type": "string"
+                },
+                "signed": {
+                  "type": "boolean"
+                },
+                "signing_headers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "hmac": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "algorithm": {
+                      "type": "string",
+                      "enum": [
+                        "sha256"
+                      ]
+                    },
+                    "encoding": {
+                      "type": "string",
+                      "enum": [
+                        "hex",
+                        "base64"
+                      ]
+                    },
+                    "signed_payload": {
+                      "type": "string"
+                    },
+                    "signature_prefix": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "algorithm",
+                    "encoding",
+                    "signed_payload",
+                    "signature_prefix"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "inactive",
+                    "held"
+                  ]
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": [
+                    "prod"
+                  ]
+                }
+              },
+              "required": [
+                "slug",
+                "path",
+                "url",
+                "verifier",
+                "signed",
+                "signing_headers",
+                "hmac",
+                "state",
+                "environment"
+              ]
+            }
+          },
+          "mcp": {
+            "type": "object",
+            "properties": {
+              "tool_name": {
+                "type": "string"
+              },
+              "fallback": {
+                "type": "object",
+                "properties": {
+                  "tool_name": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "properties": {
+                      "workflow": {
+                        "type": "string"
+                      },
+                      "input": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      }
+                    },
+                    "required": [
+                      "workflow",
+                      "input"
+                    ]
+                  }
+                },
+                "required": [
+                  "tool_name",
+                  "arguments"
+                ]
+              }
+            },
+            "required": [
+              "tool_name",
+              "fallback"
+            ]
+          },
+          "schedules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cron": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": [
+                    "dev",
+                    "prod"
+                  ]
+                },
+                "input": {},
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "paused",
+                    "held",
+                    "activation_required"
+                  ]
+                },
+                "next_fire_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "cron",
+                "timezone",
+                "environment",
+                "state",
+                "next_fire_at"
+              ]
+            }
+          },
+          "cli": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              }
+            },
+            "required": [
+              "command",
+              "environment"
+            ]
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "declared",
+                  "synthesized",
+                  "none"
+                ]
+              },
+              "schema": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {}
+              },
+              "sample": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "source",
+              "schema",
+              "sample"
+            ]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "schema": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "schema"
+            ]
+          },
+          "webhook_input_shape": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "authority": {
+            "type": "object",
+            "properties": {
+              "dev": {
+                "type": "string",
+                "enum": [
+                  "live_run_allowed",
+                  "held_preview_only"
+                ]
+              },
+              "prod": {
+                "type": "string",
+                "enum": [
+                  "live_run_allowed",
+                  "held_preview_only"
+                ]
+              }
+            },
+            "required": [
+              "dev",
+              "prod"
+            ]
+          }
+        },
+        "required": [
+          "workflow_id",
+          "slug",
+          "base_url",
+          "http",
+          "mcp",
+          "cli",
+          "input",
+          "output",
+          "webhook_input_shape",
+          "authority"
+        ]
+      },
       "WorkflowDraft": {
         "type": "object",
         "properties": {
@@ -31202,6 +31606,53 @@
           },
           "409": {
             "description": "No such repair is available for the active version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/invocation": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "How to call this workflow: HTTP, inbound hooks, MCP, schedules and CLI",
+        "description": "Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; its MCP tool name; its schedules; the CLI command; the input and output schema with a sample input; and whether a run in each environment would have effects. `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`. Carries no credential: header names only, never a key or a signing secret.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvocation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
