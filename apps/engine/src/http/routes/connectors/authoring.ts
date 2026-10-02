@@ -248,7 +248,6 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
           principal,
           permission: "connector:test",
           resource: { type: "connector", id: saved.id },
-          quiet: true,
         })
       ).allow;
     const draft = draftConnectorView(body.connector);
