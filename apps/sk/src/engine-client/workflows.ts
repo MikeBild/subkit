@@ -23,12 +23,20 @@ export interface ScheduleUpsertResponse extends ScheduleEntry {
 
 export const workflowsMethods = {
   // --------------------------- Workflow versions ---------------------------
-  /** List committed versions of a workflow (newest first). */
+  /** List committed versions of a workflow (newest first). `legacy` marks a
+   *  version that can be read but no longer restored. */
   listWorkflowVersions(
     this: EngineClient,
     workflowId: string,
   ): Promise<{
-    items: Array<{ id: string; version: number; note: string | null; created_at: string }>;
+    items: Array<{
+      id: string;
+      version: number;
+      note: string | null;
+      created_at: string;
+      legacy: boolean;
+    }>;
+    total: number;
   }> {
     return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/history`);
   },
