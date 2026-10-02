@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Play, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
@@ -446,8 +446,16 @@ export function AutomationPanel({
 }) {
   const { t } = useI18n();
   const { state } = automation;
+  // A link that names this panel lands on it. The browser's own jump happens
+  // before the record has loaded and the panel exists, so it is made here.
+  const anchor = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (window.location.hash === `#${WORKFLOW_AUTOMATION_ANCHOR}`)
+      anchor.current?.scrollIntoView({ block: "start" });
+  }, []);
   return (
     <section
+      ref={anchor}
       id={WORKFLOW_AUTOMATION_ANCHOR}
       data-family-slot="workflow-automation"
       data-testid="workflow-automation"

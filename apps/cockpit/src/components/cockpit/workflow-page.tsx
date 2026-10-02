@@ -263,7 +263,15 @@ export function WorkflowPage({
           permissions={permissions}
         />
         <AutomationPanel automation={automation} workflow={workflow} workflowName={title} />
-        <WorkflowInvocation workflowId={id} effectiveTrigger={effectiveTrigger} />
+        <WorkflowInvocation
+          workflowId={id}
+          effectiveTrigger={effectiveTrigger}
+          heldEnvironment={
+            automation.state && ["grant", "repair", "apply"].includes(automation.state.state)
+              ? automation.state.environment
+              : null
+          }
+        />
         <WorkflowInputOutput
           workflowId={id}
           byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}

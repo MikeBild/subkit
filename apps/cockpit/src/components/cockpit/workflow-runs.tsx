@@ -119,28 +119,35 @@ export function WorkflowCause({
       : t("detail.cause.class", { cause: SLOT })
     : t("detail.cause.noRun", { state: statusLabel(t, healthState) });
   const [lead, tail = ""] = sentence.split(SLOT);
-  const remedy = remedyFor({
-    workflowId,
-    executionId: failedRun?.id ?? null,
-    patch: patch.data?.items?.[0] ?? null,
-    // A run refused for its connector ran no step; the list row carries the
-    // connector the refusal named.
-    authState: connectorId
-      ? {
-          connectorId,
-          state:
-            connector.data && typeof connector.data === "object"
-              ? connectorAuthState(connector.data)
-              : "unproven",
-        }
-      : cause === "connector_unavailable"
-        ? refusedSignIn(failure?.connector)
-        : null,
-    held: cause === "authority_mismatch",
-    canRun: permissions.includes("workflow:run"),
-    canChat: permissions.includes("conversation:write"),
-    prompt: t("remedy.chatPrompt"),
-  });
+  // "The approval no longer fits" is the automation panel's to resolve: it
+  // stands directly below, says the state and carries the one act. A remedy
+  // here could only be a link to the same page under another name. A repair
+  // that is already proposed is still offered — reviewing it is its own act.
+  const openRepair = patch.data?.items?.[0] ?? null;
+  const ownedByPanel = cause === "authority_mismatch" && !openRepair;
+  const remedy = ownedByPanel
+    ? null
+    : remedyFor({
+        workflowId,
+        executionId: failedRun?.id ?? null,
+        patch: openRepair,
+        // A run refused for its connector ran no step; the list row carries the
+        // connector the refusal named.
+        authState: connectorId
+          ? {
+              connectorId,
+              state:
+                connector.data && typeof connector.data === "object"
+                  ? connectorAuthState(connector.data)
+                  : "unproven",
+            }
+          : cause === "connector_unavailable"
+            ? refusedSignIn(failure?.connector)
+            : null,
+        canRun: permissions.includes("workflow:run"),
+        canChat: permissions.includes("conversation:write"),
+        prompt: t("remedy.chatPrompt"),
+      });
   const more = canReadRuns
     ? [
         {
@@ -171,6 +178,8 @@ export function WorkflowCause({
       }
       guidance={healthReason}
       remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
+      // The page's one filled action is "Ausführen".
+      remedyVariant="outline"
       more={more}
     />
   );

@@ -914,6 +914,16 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: an approved call is still called a trial run`);
     await capture("workflow-page-after-grant");
 
+    // A link from elsewhere that names the panel lands on it.
+    // From another page: a change of the hash alone is no navigation.
+    await stand.visit(page, "workflows");
+    await stand.visit(page, `workflows/${WORKFLOW}#workflow-automation`);
+    await page.getByTestId("workflow-automation-state").waitFor();
+    const landing = await page.getByTestId("workflow-automation").boundingBox();
+    const viewport = page.viewportSize();
+    if (!landing || !viewport || landing.y < 0 || landing.y > viewport.height / 2)
+      throw new Error(`${where}: a link to the panel lands at ${JSON.stringify(landing)}`);
+
     // ── Freigegeben, on a fresh page: the approval behind "Freigabe ansehen" ─
     where = at("approved");
     panel = await open(page, stand, state, "approved");
