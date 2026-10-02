@@ -9,6 +9,7 @@ import {
   invocationModes,
   isWorkflowInvocation,
   SCHEDULE_STATE_KEYS,
+  scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
 
@@ -126,5 +127,25 @@ describe("hasFixedInput", () => {
     expect(hasFixedInput([])).toBe(true);
     expect(hasFixedInput("text")).toBe(true);
     expect(hasFixedInput(0)).toBe(true);
+  });
+});
+
+describe("schedule rows", () => {
+  test("a development and a production schedule with the same cron keep apart", () => {
+    const rows = [
+      { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "dev" },
+      { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "prod" },
+      // Even two rows that agree on everything are two rows.
+      { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "prod" },
+    ];
+    const keys = rows.map(scheduleRowKey);
+    expect(new Set(keys).size).toBe(rows.length);
+  });
+
+  test("the command line says where it runs, and how to reach production", () => {
+    expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("Entwicklung");
+    expect(CATALOGS.de["invocation.cli.runsInDev"]).toContain("HTTP-Aufruf");
+    expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("development");
+    expect(CATALOGS.en["invocation.cli.runsInDev"]).toContain("HTTP call");
   });
 });

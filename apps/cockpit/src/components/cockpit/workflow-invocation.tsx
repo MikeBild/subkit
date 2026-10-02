@@ -34,6 +34,7 @@ import {
   SCHEDULE_STATE_KEYS,
   SNIPPET_LANGUAGES,
   type SnippetLanguage,
+  scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
 
@@ -447,7 +448,7 @@ export function WorkflowInvocation({
           <TabsContent value="schedule" className="grid gap-4 pt-2">
             {(invocation.schedules ?? []).map((schedule, index) => (
               <ScheduleRow
-                key={`${schedule.cron}:${schedule.timezone}`}
+                key={scheduleRowKey(schedule, index)}
                 schedule={schedule}
                 index={index}
               />
