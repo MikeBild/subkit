@@ -107,6 +107,8 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/executions/cancel.ts",
   "apps/engine/src/http/routes/workflows.ts",
   "apps/engine/src/http/routes/workflow-drafts.ts",
+  // How a saved workflow is called — named by input-surfaces.md.
+  "apps/engine/src/http/routes/workflow-invocation.ts",
   "apps/engine/src/http/routes/settings.ts",
   // MCP OAuth 2.1 boundary endpoints — raw Hono routes (not createRoute).
   "apps/engine/src/http/routes/oauth/dcr.ts",
