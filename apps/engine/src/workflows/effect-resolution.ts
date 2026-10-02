@@ -51,6 +51,7 @@ import {
   storageBaseUrl,
   storageTarget,
 } from "./storage-boundary.ts";
+import { executableDefinition } from "./stored-definition.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 const inputSchema = z
@@ -147,7 +148,7 @@ export async function resolveWorkflowEffectManifest(
     throw Object.assign(new Error("workflow version unavailable"), {
       code: "workflow_version_unavailable",
     });
-  const definition = WorkflowDefSchema.parse(version.dag);
+  const definition = executableDefinition(version.dag);
   const own = await resolveBindings(input, definition, db, options);
   const bindings = own.bindings;
   const unavailable_steps = own.unavailable_steps;

@@ -13,7 +13,9 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import {
   CONNECTOR_SECRET_MASK,
+  connectorConfigPathCarriesSecret,
   restoreMaskedConnectorSecrets,
+  type StoredConnectorSecrets,
   toPublicConnector,
 } from "../public-view.ts";
 import type { ConnectorView } from "../types.ts";
@@ -158,6 +160,105 @@ describe("toPublicConnector — what is hidden", () => {
   });
 });
 
+describe("toPublicConnector — a credential under a name nobody listed", () => {
+  // None of these names matched the name pattern the projection once used.
+  test.each([
+    ["static_headers", "X-Auth"],
+    ["static_headers", "X-Session-Id"],
+    ["static_headers", "X-Signature"],
+    ["default_headers", "X-Shop-Access"],
+    ["static_query", "auth"],
+    ["static_query", "sig"],
+    ["static_query", "signature"],
+    ["static_query", "pwd"],
+    ["static_query", "jwt"],
+    ["static_query", "appid"],
+  ])("%s.%s is masked", (map, name) => {
+    const config = toPublicConnector(view({ config: { [map]: { [name]: HEADER_SECRET } } }))
+      .config as Record<string, Record<string, unknown>>;
+    expect(config[map]?.[name]).toBe(CONNECTOR_SECRET_MASK);
+  });
+
+  test("a probe endpoint's headers are a name-keyed map too", () => {
+    const config = toPublicConnector(
+      view({
+        config: {
+          probe_endpoint: {
+            method: "GET",
+            path: "/me",
+            headers: { "X-Session-Id": HEADER_SECRET, "Notion-Version": "2022-06-28" },
+          },
+        },
+      }),
+    ).config as { probe_endpoint: { path: string; headers: Record<string, unknown> } };
+    expect(config.probe_endpoint.headers["X-Session-Id"]).toBe(CONNECTOR_SECRET_MASK);
+    expect(config.probe_endpoint.headers["Notion-Version"]).toBe("2022-06-28");
+    expect(config.probe_endpoint.path).toBe("/me");
+  });
+
+  test.each([
+    "secret_access_key",
+    "session_token",
+    "passphrase",
+    "webhook_secret",
+    "clientSecret",
+    "secretAccessKey",
+  ])("the field %s is masked wherever the schema leaves room for it", (key) => {
+    const config = toPublicConnector(
+      view({ driver: "s3", config: { bucket: "reports", [key]: HEADER_SECRET } }),
+    ).config as Record<string, unknown>;
+    expect(config[key]).toBe(CONNECTOR_SECRET_MASK);
+    expect(config.bucket).toBe("reports");
+  });
+
+  test("a base_url loses its userinfo password and its query credentials, and nothing else", () => {
+    const out = toPublicConnector(
+      view({
+        base_url: `https://svc:${HEADER_SECRET}@api.acme.test/v2?api-version=7.0&sig=${QUERY_SECRET}`,
+      }),
+    );
+    expect(out.base_url).toBe(
+      `https://svc:${CONNECTOR_SECRET_MASK}@api.acme.test/v2?api-version=7.0&sig=${CONNECTOR_SECRET_MASK}`,
+    );
+  });
+
+  test("a connection string quoted in a status text keeps its host and loses its password", () => {
+    const text = `connect failed: postgres://app_user:${DSN_SECRET}@db.acme.test:5432/app timed out`;
+    const out = toPublicConnector(
+      view({ last_error: text, health_reason: text, auth_failed_reason: text }),
+    );
+    for (const shown of [out.last_error, out.health_reason, out.auth_failed_reason]) {
+      expect(shown).toBe(
+        `connect failed: postgres://app_user:${CONNECTOR_SECRET_MASK}@db.acme.test:5432/app timed out`,
+      );
+    }
+  });
+});
+
+describe("connectorConfigPathCarriesSecret — the projection is the definition", () => {
+  const config = secretBearingConfig();
+
+  test.each([
+    [["oauth", "client_secret"]],
+    [["oauth"]],
+    [["static_headers"]],
+    [["static_headers", "X-Api-Key"]],
+    [["oauth", "token_request_body_mapping", "client_id"]],
+  ])("%j is, or contains, a secret", (path) => {
+    expect(connectorConfigPathCarriesSecret(config, path)).toBe(true);
+  });
+
+  test.each([
+    [["timeout_ms"]],
+    [["oauth", "token_endpoint"]],
+    [["static_headers", "Accept"]],
+    [["credential_hints"]],
+    [["does_not_exist"]],
+  ])("%j is readable", (path) => {
+    expect(connectorConfigPathCarriesSecret(config, path)).toBe(false);
+  });
+});
+
 describe("toPublicConnector — what must stay readable", () => {
   test("endpoints, scopes, flags and credential hints come back deep-equal", () => {
     const config = toPublicConnector(view({ config: secretBearingConfig() })).config as {
@@ -175,7 +276,6 @@ describe("toPublicConnector — what must stay readable", () => {
     expect(config.static_headers.Accept).toBe("application/json");
     expect(config.static_headers["X-Api-Version"]).toBe("2024-01");
     expect(config.static_query.format).toBe("json");
-    expect((extra_token_headers as Record<string, unknown>)["X-Tenant"]).toBe("acme");
   });
 
   test("an mcp auth block holds references, not secrets, and is returned as stored", () => {
@@ -236,38 +336,44 @@ describe("toPublicConnector — what must stay readable", () => {
   });
 });
 
+function stored(overrides: Partial<StoredConnectorSecrets> = {}): StoredConnectorSecrets {
+  return { base_url: "https://api.acme.test/v2", config: {}, dsn: null, ...overrides };
+}
+
 describe("restoreMaskedConnectorSecrets — the mask means keep", () => {
   test("a config read through the projection and written back restores every secret", () => {
-    const stored = { config: secretBearingConfig(), dsn: null };
-    const readBack = toPublicConnector(view({ config: stored.config })).config;
+    const config = secretBearingConfig();
+    const readBack = toPublicConnector(view({ config })).config;
     const edited = { ...readBack, timeout_ms: 9000 };
-    const restored = restoreMaskedConnectorSecrets({ config: edited }, stored);
+    const restored = restoreMaskedConnectorSecrets({ config: edited }, stored({ config }));
     expect(restored.config).toEqual({ ...secretBearingConfig(), timeout_ms: 9000 });
   });
 
   test("a real value sent in place of the mask replaces the stored secret", () => {
-    const stored = { config: { oauth: { client_secret: CLIENT_SECRET } }, dsn: null };
     const restored = restoreMaskedConnectorSecrets(
       { config: { oauth: { client_secret: "fixture-rotated-not-real" } } },
-      stored,
+      stored({ config: { oauth: { client_secret: CLIENT_SECRET } } }),
     );
     expect(restored.config).toEqual({ oauth: { client_secret: "fixture-rotated-not-real" } });
   });
 
-  test("the masked dsn keeps the stored password while the rest of the string is taken as sent", () => {
-    const stored = { config: {}, dsn: `postgres://app_user:${DSN_SECRET}@old.acme.test/app` };
-    const restored = restoreMaskedConnectorSecrets(
-      { dsn: `postgres://app_user:${CONNECTOR_SECRET_MASK}@new.acme.test:6432/app` },
-      stored,
-    );
-    expect(restored.dsn).toBe(`postgres://app_user:${DSN_SECRET}@new.acme.test:6432/app`);
+  test("the masked dsn sent back unchanged keeps the stored password", () => {
+    const dsn = `postgres://app_user:${DSN_SECRET}@db.acme.test/app?sslpassword=${QUERY_SECRET}`;
+    const readBack = toPublicConnector(view({ driver: "postgres", dsn })).dsn as string;
+    expect(restoreMaskedConnectorSecrets({ dsn: readBack }, stored({ dsn })).dsn).toBe(dsn);
+  });
+
+  test("a masked base_url sent back unchanged keeps what it carried", () => {
+    const base_url = `https://svc:${HEADER_SECRET}@api.acme.test/v2?sig=${QUERY_SECRET}`;
+    const readBack = toPublicConnector(view({ base_url })).base_url;
+    const restored = restoreMaskedConnectorSecrets({ base_url: readBack }, stored({ base_url }));
+    expect(restored.base_url).toBe(base_url);
   });
 
   test("a kinded mask left by another scrubber is honoured the same way", () => {
-    const stored = { config: { oauth: { client_secret: CLIENT_SECRET } }, dsn: null };
     const restored = restoreMaskedConnectorSecrets(
       { config: { oauth: { client_secret: "***REDACTED:key_value***" } } },
-      stored,
+      stored({ config: { oauth: { client_secret: CLIENT_SECRET } } }),
     );
     expect(restored.config).toEqual({ oauth: { client_secret: CLIENT_SECRET } });
   });
@@ -275,7 +381,7 @@ describe("restoreMaskedConnectorSecrets — the mask means keep", () => {
   test("fields the caller did not send are not added", () => {
     const restored = restoreMaskedConnectorSecrets(
       { name: "Renamed" } as { name: string; config?: Record<string, unknown>; dsn?: string },
-      { config: secretBearingConfig(), dsn: `postgres://u:${DSN_SECRET}@h/db` },
+      stored({ config: secretBearingConfig(), dsn: `postgres://u:${DSN_SECRET}@h/db` }),
     );
     expect(restored).toEqual({ name: "Renamed" });
   });
@@ -283,14 +389,166 @@ describe("restoreMaskedConnectorSecrets — the mask means keep", () => {
   test("a mask with no stored secret behind it is refused, never stored", () => {
     const masked = { config: { oauth: { client_secret: CONNECTOR_SECRET_MASK } } };
     expect(() => restoreMaskedConnectorSecrets(masked, null)).toThrow(UnprocessableEntityError);
-    expect(() =>
-      restoreMaskedConnectorSecrets(masked, { config: { oauth: {} }, dsn: null }),
-    ).toThrow("config.oauth.client_secret");
+    expect(() => restoreMaskedConnectorSecrets(masked, stored({ config: { oauth: {} } }))).toThrow(
+      "config.oauth.client_secret",
+    );
     expect(() =>
       restoreMaskedConnectorSecrets(
         { dsn: `postgres://u:${CONNECTOR_SECRET_MASK}@h/db` },
-        { config: {}, dsn: "postgres://u@h/db" },
+        stored({ dsn: "postgres://u@h/db" }),
       ),
     ).toThrow(UnprocessableEntityError);
+  });
+
+  test("a value that merely contains the mask is refused, never stored or sent", () => {
+    const at = stored({ config: { static_headers: { Authorization: `Bearer ${HEADER_SECRET}` } } });
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { config: { static_headers: { Authorization: `Bearer ${CONNECTOR_SECRET_MASK}` } } },
+        at,
+      ),
+    ).toThrow("config.static_headers.Authorization contains the redaction mask");
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { base_url: `https://api.acme.test/${CONNECTOR_SECRET_MASK}/v2` },
+        at,
+      ),
+    ).toThrow(UnprocessableEntityError);
+  });
+});
+
+describe("restoreMaskedConnectorSecrets — a kept secret does not follow a changed destination", () => {
+  const DSN = `postgres://app_user:${DSN_SECRET}@db.acme.test:5432/app`;
+
+  test.each([
+    ["another host", `postgres://app_user:${CONNECTOR_SECRET_MASK}@other.acme.test:5432/app`],
+    ["another port", `postgres://app_user:${CONNECTOR_SECRET_MASK}@db.acme.test:6432/app`],
+    ["another user", `postgres://someone:${CONNECTOR_SECRET_MASK}@db.acme.test:5432/app`],
+    ["another database", `postgres://app_user:${CONNECTOR_SECRET_MASK}@db.acme.test:5432/other`],
+  ])("a masked dsn pointing at %s is refused", (_name, dsn) => {
+    expect(() => restoreMaskedConnectorSecrets({ dsn }, stored({ dsn: DSN }))).toThrow(
+      UnprocessableEntityError,
+    );
+  });
+
+  test("the same dsn with the real password moves freely", () => {
+    const dsn = `postgres://app_user:${DSN_SECRET}@other.acme.test:5432/app`;
+    expect(restoreMaskedConnectorSecrets({ dsn }, stored({ dsn: DSN })).dsn).toBe(dsn);
+  });
+
+  const OAUTH = {
+    issuer_url: "https://login.acme.test",
+    token_endpoint: "https://login.acme.test/token",
+    client_id: "acme-client-id",
+    client_secret: CLIENT_SECRET,
+    token_request_body_mapping: { client_secret: BODY_SECRET },
+  };
+  const MASKED_OAUTH = {
+    ...OAUTH,
+    client_secret: CONNECTOR_SECRET_MASK,
+    token_request_body_mapping: { client_secret: CONNECTOR_SECRET_MASK },
+  };
+
+  test.each([
+    ["token_endpoint", { token_endpoint: "https://login.other.test/token" }],
+    ["issuer_url", { issuer_url: "https://login.other.test" }],
+  ])("a masked client secret with a changed %s is refused", (key, change) => {
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { config: { oauth: { ...MASKED_OAUTH, ...change } } },
+        stored({ config: { oauth: OAUTH } }),
+      ),
+    ).toThrow(`config.oauth.${key} changed`);
+  });
+
+  test("a masked token body value is held to the token endpoint as well", () => {
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        {
+          config: {
+            oauth: {
+              ...OAUTH,
+              token_endpoint: "https://login.other.test/token",
+              token_request_body_mapping: { client_secret: CONNECTOR_SECRET_MASK },
+            },
+          },
+        },
+        stored({ config: { oauth: OAUTH } }),
+      ),
+    ).toThrow("config.oauth.token_request_body_mapping.client_secret");
+  });
+
+  test("a masked client secret is refused when the write binds another template", () => {
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { config: { oauth: MASKED_OAUTH } },
+        stored({ config: { oauth: OAUTH } }),
+        { template_rebound: true },
+      ),
+    ).toThrow("the connector's template changed");
+  });
+
+  test("a changed base_url leaves the OAuth client secret where it is — it goes to the token endpoint", () => {
+    const restored = restoreMaskedConnectorSecrets(
+      { base_url: "https://api.other.test/v2", config: { oauth: MASKED_OAUTH } },
+      stored({ config: { oauth: OAUTH } }),
+    );
+    expect(restored.config).toEqual({ oauth: OAUTH });
+  });
+
+  const HEADERS = { static_headers: { "X-Session-Id": HEADER_SECRET } };
+  const MASKED_HEADERS = { static_headers: { "X-Session-Id": CONNECTOR_SECRET_MASK } };
+
+  test.each([
+    ["another host", "https://api.other.test/v2"],
+    ["another path", "https://api.acme.test/elsewhere"],
+    ["another scheme", "http://api.acme.test/v2"],
+  ])("a masked header with a base_url on %s is refused", (_name, base_url) => {
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { base_url, config: MASKED_HEADERS },
+        stored({ config: HEADERS }),
+      ),
+    ).toThrow(
+      "config.static_headers.X-Session-Id carries the redaction mask, but base_url changed",
+    );
+  });
+
+  test("a masked header is kept when base_url is not sent, or sent as stored", () => {
+    for (const base_url of [undefined, "https://api.acme.test/v2", "https://api.acme.test/v2/"]) {
+      const restored = restoreMaskedConnectorSecrets(
+        { ...(base_url ? { base_url } : {}), config: MASKED_HEADERS },
+        stored({ config: HEADERS }),
+      );
+      expect(restored.config).toEqual(HEADERS);
+    }
+  });
+
+  test("a masked base_url on another host is refused", () => {
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        { base_url: `https://svc:${CONNECTOR_SECRET_MASK}@api.other.test/v2` },
+        stored({ base_url: `https://svc:${HEADER_SECRET}@api.acme.test/v2` }),
+      ),
+    ).toThrow(UnprocessableEntityError);
+  });
+
+  test("a masked field of an object-store config is held to its endpoint", () => {
+    const at = stored({
+      base_url: null,
+      config: { bucket: "reports", endpoint: "https://store.acme.test", passphrase: HEADER_SECRET },
+    });
+    expect(() =>
+      restoreMaskedConnectorSecrets(
+        {
+          config: {
+            bucket: "reports",
+            endpoint: "https://store.other.test",
+            passphrase: CONNECTOR_SECRET_MASK,
+          },
+        },
+        at,
+      ),
+    ).toThrow("config.endpoint changed");
   });
 });

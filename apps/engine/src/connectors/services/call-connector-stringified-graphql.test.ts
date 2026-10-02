@@ -76,6 +76,7 @@ function mockGraphqlSuccess() {
     operation_name: "Q",
     credential_id: null,
     auth_method: "none" as const,
+    stored_credential_used: false,
   });
 }
 

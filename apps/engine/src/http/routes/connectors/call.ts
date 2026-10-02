@@ -39,7 +39,8 @@ const callRoute = createRoute({
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     422: {
-      description: "Unprocessable entity (driver mismatch, missing credential, …)",
+      description:
+        "Unprocessable entity — `details.error_code` says why: `connector_disabled` (the connector is switched off; nothing was sent), `credential_required`, `driver_not_supported_for_call_connector`, `invalid_input` or `call_failed`.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -92,13 +93,14 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
     switch (result.error_code) {
       case "connector_not_found":
         throw new NotFoundError("connector");
+      case "connector_disabled":
       case "credential_required":
       case "driver_not_supported_for_call_connector":
       case "invalid_input":
       case "call_failed": {
         // 422 is the right code for "the request was understood but
-        // the resource state (no credential / wrong driver / bad
-        // GraphQL body / upstream failure) makes it unprocessable".
+        // the resource state (switched off / no credential / wrong driver /
+        // bad GraphQL body / upstream failure) makes it unprocessable".
         // The structured `error_code` is in details so SDK callers can
         // disambiguate without parsing the message.
         const details: Record<string, unknown> = {
