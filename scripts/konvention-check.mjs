@@ -3424,8 +3424,8 @@ async function checkConnectionsRedirect(context) {
 
 /**
  * §11 — a connector whose Kontoverbindung expired says so on its own page and
- * offers the way back, though its record still reads healthy. The bar used to
- * say "Aktiv" for every connector.
+ * offers the way back, though its record still reads healthy. The page used to
+ * say "Aktiv" for every connector, in a bar of its own.
  */
 async function checkConnectorSignIn(page) {
   const where = `/connectors/${ID}`;
@@ -3441,8 +3441,10 @@ async function checkConnectorSignIn(page) {
       text: document.body.innerText,
     };
   });
-  if (!state.bar?.includes("Abgelaufen"))
-    breach("§11", where, `governance bar reads "${state.bar ?? "nothing"}" for an expired sign-in`);
+  // The sign-in state has one home, the card. A second copy in a bar above it
+  // is the same fact twice (§0.1).
+  if (state.bar !== null)
+    breach("§0.1", where, `the sign-in state also stands in a bar: "${state.bar}"`);
   if (!state.card?.includes("Abgelaufen"))
     breach("§11", where, `Anmeldung card reads "${state.card ?? "nothing"}"`);
   if (state.renew !== "Neu anmelden") breach("§1", where, 'no "Neu anmelden" for a lost sign-in');
