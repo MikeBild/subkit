@@ -5557,6 +5557,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/invocation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How to call this workflow: HTTP, inbound hooks, MCP, schedules and CLI
+         * @description Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; its MCP tool name; its schedules; the CLI command; the input and output schema with a sample input; and whether a run in each environment would have effects. `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`. Carries no credential: header names only, never a key or a signing secret.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowInvocation"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/drafts": {
         parameters: {
             query?: never;
@@ -18484,6 +18534,111 @@ export interface components {
              * @enum {string}
              */
             environment: "dev" | "prod";
+        };
+        WorkflowInvocation: {
+            /** Format: uuid */
+            workflow_id: string;
+            slug: string;
+            base_url: string | null;
+            http: {
+                /** @enum {string} */
+                method: "POST";
+                path: string;
+                url: string | null;
+                headers: string[];
+                body: {
+                    /** @enum {string} */
+                    source: "saved";
+                    /** Format: uuid */
+                    workflow_id: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+                snippets: {
+                    dev: {
+                        curl: string;
+                        node: string;
+                        python: string;
+                    };
+                    prod: {
+                        curl: string;
+                        node: string;
+                        python: string;
+                    };
+                } | null;
+            };
+            hooks?: {
+                slug: string;
+                path: string;
+                url: string | null;
+                verifier: string;
+                signed: boolean;
+                signing_headers: string[];
+                hmac: {
+                    /** @enum {string} */
+                    algorithm: "sha256";
+                    /** @enum {string} */
+                    encoding: "hex" | "base64";
+                    signed_payload: string;
+                    signature_prefix: string;
+                } | null;
+                /** @enum {string} */
+                state: "active" | "inactive" | "held";
+                /** @enum {string} */
+                environment: "prod";
+            }[];
+            mcp: {
+                tool_name: string;
+                fallback: {
+                    tool_name: string;
+                    arguments: {
+                        workflow: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            schedules?: {
+                cron: string;
+                timezone: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+                input?: unknown;
+                /** @enum {string} */
+                state: "active" | "paused" | "held" | "activation_required";
+                next_fire_at: string | null;
+            }[];
+            cli: {
+                command: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+            };
+            input: {
+                /** @enum {string} */
+                source: "declared" | "synthesized" | "none";
+                schema: {
+                    [key: string]: unknown;
+                } | null;
+                sample: {
+                    [key: string]: unknown;
+                };
+            };
+            output: {
+                schema: {
+                    [key: string]: unknown;
+                } | null;
+            };
+            webhook_input_shape: {
+                [key: string]: string;
+            };
+            authority: {
+                /** @enum {string} */
+                dev: "live_run_allowed" | "held_preview_only";
+                /** @enum {string} */
+                prod: "live_run_allowed" | "held_preview_only";
+            };
         };
         WorkflowDraft: {
             /** Format: uuid */

@@ -1,5 +1,4 @@
 import { useMutation } from "@tanstack/react-query";
-import { Bot } from "lucide-react";
 import { useState } from "react";
 import { ApiError, getConversation, sendConversationTurn } from "@/api/client";
 import { absolute, chatNewHref, conversationHref } from "@/app/links";
@@ -12,7 +11,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
@@ -62,16 +60,22 @@ function recordedAnswer(
  * A conversation bound to the object on screen, so a question about this
  * workflow is asked beside it. Anything beyond asking belongs in the full
  * chat, which the footer links to with the same binding.
+ *
+ * The page holds the open state: the panel is opened from the page's menu and
+ * renders no button of its own.
  */
 export function AgentPanel({
   workflowId,
   workflowName,
+  open,
+  onOpenChange,
 }: {
   workflowId: string;
   workflowName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<PanelTurn[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -115,13 +119,7 @@ export function AgentPanel({
   });
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button variant="outline" data-testid="agent-panel-open">
-          <Bot data-icon="inline-start" />
-          {t("agentPanel.open")}
-        </Button>
-      </SheetTrigger>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col sm:max-w-lg" data-testid="agent-panel">
         <SheetHeader>
           <SheetTitle>{t("agentPanel.title")}</SheetTitle>

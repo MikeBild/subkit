@@ -146,8 +146,27 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     await card.waitFor();
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
-    await page.getByTestId("authority-grant-open").waitFor();
-    await page.getByTestId("authority-schedule-held").waitFor();
+    // The held schedule is the page's one state — "approval needed" — with the
+    // one action that resolves it, in the panel and beside the title alike.
+    // No badge repeats it, and nothing only scrolls to it.
+    const automation = page.getByTestId("workflow-automation");
+    await page.getByTestId("workflow-automation-action").waitFor();
+    if ((await automation.getAttribute("data-state")) !== "grant")
+      throw new Error(
+        `A held schedule reads as "${await automation.getAttribute("data-state")}", not as approval needed`,
+      );
+    const approve = locale === "de" ? "Jetzt freigeben" : "Approve now";
+    for (const testId of ["workflow-automation-action", "detail-action"])
+      if ((await page.getByTestId(testId).innerText()).trim() !== approve)
+        throw new Error(`${testId} does not offer the approval the held schedule waits for`);
+    if (await page.getByTestId("authority-schedule-held").count())
+      throw new Error("The held schedule is announced a second time by a badge");
+    if (
+      !(await page.getByTestId("workflow-automation-triggers").innerText()).includes(
+        locale === "de" ? "täglich um 08:00" : "daily at 08:00",
+      )
+    )
+      throw new Error("The panel does not name the schedule it is about");
 
     const conversations = await page.evaluate(async () =>
       (await fetch("/v1/conversations")).json(),

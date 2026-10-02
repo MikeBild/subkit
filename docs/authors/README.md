@@ -32,6 +32,7 @@ Ordered by the job in front of you, not by mechanism:
 | **Get connected** and open your first conversation (5 minutes) | [quickstart.md](quickstart.md) |
 | **See what's worth building** — real cases, each traceable to a shipped blueprint or a workflow we run ourselves | [Use cases](../use-cases.md) · [Catalog](../catalog.md) |
 | **Build a process** — the AI authoring loop, the approval gate, probe/preview | [authoring-workflows.md](authoring-workflows.md) |
+| **Use what you built** — call a workflow from your app, a webhook, an AI client, a schedule or a terminal | [calling-workflows.md](calling-workflows.md) |
 | **Pick the right door** for a change — editing a definition vs. running one, seven worked examples | [choosing-your-surface.md](choosing-your-surface.md) |
 | **Ask your company's knowledge** and trust the answer — sourced, quote-checked, honestly refused | [asking-your-knowledge.md](asking-your-knowledge.md) |
 | **Teach sk a whole field of work** — connector + skills + knowledge, worked end to end | [model-a-domain.md](model-a-domain.md) |

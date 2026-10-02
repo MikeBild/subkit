@@ -133,11 +133,29 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
   };
   await page.route(pattern, handler);
   try {
+    // An approval that covers nothing that runs is history, and history is
+    // folded: it does not compete with the one state the panel says.
+    const openHistory = async () => {
+      const toggle = page.getByTestId("workflow-former-grants-toggle");
+      await toggle.waitFor();
+      if (await page.getByTestId("authority-history-0").count())
+        throw new Error("Earlier approvals stand open before anyone asked for them");
+      await toggle.click();
+      await page.getByTestId("authority-history-0").waitFor();
+    };
     await stand.visit(page, `workflows/${workflowId}`);
-    const card = page.getByTestId(`authority-${id}`);
-    await card.waitFor();
+    const panel = page.getByTestId("workflow-automation");
+    await panel.waitFor();
+    // Nothing starts this workflow and nothing current covers it: a calm
+    // state, with the approval one press away and no badge asking for it.
+    await page.getByTestId("workflow-automation-state").waitFor();
+    if ((await panel.getAttribute("data-state")) !== "manual")
+      throw new Error(
+        `A workflow nothing starts reads as ${await panel.getAttribute("data-state")}, not as on request`,
+      );
+    await openHistory();
+    const card = page.getByTestId("authority-history-0");
     await capture("history");
-    const text = await card.innerText();
     // The heading says what the reader decides by — where, until when, how
     // often — and the id lives on its title, for quoting, not on the page.
     const headline = card.getByTestId("authority-headline");
@@ -149,27 +167,40 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
       : ["Production", "valid until", "up to 3 runs"])
       if (!headlineText.includes(expected))
         throw new Error(`Authority headline ${JSON.stringify(headlineText)} lacks ${expected}`);
+    for (const expected of [
+      "https://reports.example.test/monthly",
+      "POST",
+      locale === "de"
+        ? "Gilt für eine Fassung, die nicht läuft."
+        : "For a version that is not running.",
+    ]) {
+      if (!(await card.innerText()).includes(expected))
+        throw new Error(`Authority boundary missing: ${expected}`);
+    }
+    // The exact boundary — version, window, checksum — is evidence, one
+    // disclosure deeper than what the reader decides by.
+    if (await card.getByTestId("authority-version").count())
+      throw new Error("An approval's technical details stand open before anyone asked");
+    await card.getByTestId("authority-history-0-details").click();
     // A version this page cannot number is shortened, whole on the title.
     const version = card.getByTestId("authority-version");
+    await version.waitFor();
     if ((await version.getAttribute("title")) !== versionId)
       throw new Error("Authority version does not keep the exact version on its title");
     for (const expected of [
       `${versionId.slice(0, 8)}…`,
-      "https://reports.example.test/monthly",
-      "POST",
       locale === "de" ? "Noch 2 von 3 Runs verfügbar" : "2 of 3 runs remaining",
-      locale === "de"
-        ? "Dies ist nicht die aktive Workflow-Version."
-        : "This is not the active workflow version.",
     ]) {
-      if (!text.includes(expected)) throw new Error(`Authority boundary missing: ${expected}`);
+      if (!(await card.innerText()).includes(expected))
+        throw new Error(`Authority detail missing: ${expected}`);
     }
+    await capture("history-details");
     await page.getByTestId("authority-more").click();
-    await page.getByTestId(`authority-${olderId}`).waitFor();
+    await page.getByTestId("authority-history-1").waitFor();
     await page.reload();
-    await card.waitFor();
+    await openHistory();
     if (writes !== 0) throw new Error("Reading or reloading authority history caused a mutation");
-    const trigger = page.getByTestId(`authority-revoke-${id}`);
+    const trigger = page.getByTestId("authority-history-0-revoke");
     await trigger.focus();
     await trigger.press("Enter");
     const dialog = page.getByRole("dialog");
@@ -188,20 +219,28 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await dialog.waitFor({ state: "hidden" });
     await card.getByText(locale === "de" ? "Widerrufen" : "Revoked", { exact: true }).waitFor();
     await page.reload();
+    await openHistory();
     await card.getByText(locale === "de" ? "Widerrufen" : "Revoked", { exact: true }).waitFor();
-    if (writes !== 1 || (await page.getByTestId(`authority-revoke-${id}`).count()))
+    if (writes !== 1 || (await page.getByTestId("authority-history-0-revoke").count()))
       throw new Error("Revoked authority did not persist after reload");
+    // A failed read is said as one — never as the calm state it would
+    // otherwise fall through to, and never over a stale approval.
     failRead = true;
     await page.reload();
-    await page.getByTestId("workflow-authorities").getByRole("alert").waitFor();
-    if (await card.count()) throw new Error("Failed refresh still advertises a stale authority");
+    await page.getByTestId("workflow-automation-failed").waitFor();
+    if ((await panel.getAttribute("data-state")) !== "failed")
+      throw new Error("A failed read of the approvals still names a state");
+    if (await page.getByTestId("workflow-former-grants-toggle").count())
+      throw new Error("Failed refresh still advertises a stale authority");
     failRead = false;
-    await page.getByTestId("authority-refresh").click();
-    await card.waitFor();
-    const overflow = await page
-      .getByTestId("workflow-authorities")
-      .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
-    if (overflow) throw new Error("Authority history overflows the viewport");
+    await page.getByTestId("workflow-automation-failed-retry").click();
+    await openHistory();
+    for (const testId of ["workflow-automation", "workflow-former-grants"]) {
+      const overflow = await page
+        .getByTestId(testId)
+        .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
+      if (overflow) throw new Error(`${testId} overflows the viewport`);
+    }
     await verifyGrant(page, stand, workflowId, locale, authority, capture);
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
     await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
@@ -327,8 +366,12 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
   await page.route(activatePattern, activate);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    const waiting = page.getByTestId("authority-prepared-version");
+    // A saved change outranks everything but a pause: the panel says so, with
+    // both numbers, and its one action opens the review of THAT version.
+    const waiting = page.getByTestId("workflow-automation-headline");
     await waiting.waitFor();
+    if ((await page.getByTestId("workflow-automation").getAttribute("data-state")) !== "apply")
+      throw new Error("A saved change waiting next to the running version is not the state");
     const text = await waiting.innerText();
     // Both numbers, because either one alone leaves the reader guessing which
     // version they are about to put into service.
@@ -336,7 +379,7 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
       if (!text.includes(expected))
         throw new Error(`Prepared-version notice omits ${expected}: ${text}`);
     await capture("prepared");
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     if (reviewedVersion !== draftVersionId)
       throw new Error(
@@ -356,7 +399,7 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
       throw new Error("Activation did not state which version it replaces");
     if (granted) throw new Error("Putting a version into service also granted permission to run");
 
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     const confirm = page.getByTestId("authority-grant-confirm");
     // Wait for the dialog to STOP working, not for a stopwatch. Ten seconds was
@@ -520,7 +563,7 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
   await page.route(proposalPattern, proposals);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     // The named reason, not the generic notice: this review carries an issue,
     // so the dialog lists it rather than saying "adjust the workflow".
     await page.getByTestId("authority-issues").waitFor();
@@ -668,7 +711,7 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
   await page.route(grantPattern, grant);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     const chosen = (await page.getByTestId("authority-environment").innerText()).trim();
     if (!/Produktion|Production/.test(chosen))
@@ -807,7 +850,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
   await page.route(grantPattern, grant);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     const dialog = page.getByRole("dialog");
     await dialog.waitFor();
     // Closing while the review is still loading: nothing has been submitted,
@@ -817,7 +860,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
       throw new Error("The dialog could not be closed while its review was still loading");
     });
     if (previews !== 1) throw new Error(`Expected one held review, saw ${previews}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     // Now let the stale answer arrive, and give the page a moment to act on it.
     await late;
@@ -917,7 +960,7 @@ async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, captur
   await page.route(preparePattern, prepare);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     const notice = page.getByTestId("authority-trial-elsewhere");
     await notice.waitFor({ timeout: 30_000 });
     await capture("trial-already-running");
@@ -1034,7 +1077,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
   await page.route(grantPattern, grant);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     if (
       (await page.getByTestId("authority-runs").inputValue()) !== "1" ||
@@ -1138,7 +1181,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     if (posts !== 2 || previews !== 2)
       throw new Error("Grant request counts do not match explicit review decisions");
     incomplete = true;
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
     if (!(await page.getByTestId("authority-grant-confirm").isDisabled()))
       throw new Error("Truncated review can be granted");
@@ -1146,7 +1189,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     if (posts !== 2) throw new Error("Incomplete or cancelled review caused a grant");
     incomplete = false;
     unsupported = true;
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-needs-adjustment").waitFor();
     if (
       (await page.getByTestId("authority-runs").count()) ||
@@ -1242,7 +1285,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     // A fresh page, because the dialog asked for proposals earlier in this
     // scenario — before these routes existed — and that answer is cached.
     await stand.visit(page, `workflows/${workflowId}`);
-    await page.getByTestId("authority-grant-open").click();
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-needs-adjustment").waitFor();
     const repair = page.getByTestId("authority-repair");
     await repair.waitFor();
