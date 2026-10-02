@@ -660,76 +660,112 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
 }
 
 /**
- * The same state in the vocabulary the chat's review card already uses
- * (`chatAutomationSummary`), so a card can be driven by this decision.
+ * What the chat's review card says and offers — the page's own next step.
+ *
+ *   review   open the approval dialog, once per pending environment
+ *   resume   resume the paused schedules — the panel's own act
+ *   recheck  read the state again: it could not be verified
+ *   none     nothing to press: approved, on request, or a stopped hook
  */
-export function automationSummary(
-  state: AutomationStateKind,
-): "authorized" | "repair" | "review" | "apply" | "unknown" {
-  if (state === "approved") return "authorized";
-  if (state === "repair") return "repair";
-  if (state === "grant") return "review";
-  if (state === "apply") return "apply";
-  return "unknown";
-}
-
-/** What the chat's review card says under its title, and what its button says. */
 export interface AutomationCard {
+  titleKey: TranslationKey;
   hintKey: TranslationKey;
+  act: "review" | "resume" | "recheck" | "none";
   /** The label of the one button, while a single environment is pending. */
   actionKey: TranslationKey;
-  /** The environments to decide in, production first. Empty: nothing to press. */
+  /** The environments to decide in, production first. Empty unless `review`. */
   environments: ReviewEnvironment[];
 }
 
 /**
- * The review card for a state — the page's own next step, in the chat. One
- * environment gives one button named for the step; an approved workflow gives
- * none. What an approval would allow is said for what really starts the
- * workflow: a schedule, a webhook, or both.
+ * The review card for a state. A pending decision gives one button named for
+ * the step (two only when both environments wait); every other state says
+ * what the page says and offers what the page offers — never the approval
+ * dialog for a workflow that is paused, on request or simply not verified.
+ * What an approval would allow is said for what really starts the workflow: a
+ * schedule, a webhook, or both.
  */
 export function automationCard(
   state: AutomationState,
   webhooksActive: number | null | undefined,
 ): AutomationCard {
-  const summary = automationSummary(state.state);
-  if (summary === "authorized")
-    return {
-      hintKey: "chat.automationCard.authorized.hint",
-      actionKey: "automation.action.view",
-      environments: [],
-    };
-  const environments =
-    state.pendingEnvironments.length > 0 ? state.pendingEnvironments : [state.environment];
-  if (summary === "apply")
-    return {
-      hintKey: "chat.automationCard.apply.hint",
-      actionKey: automationActionKey({ kind: "apply" }),
-      environments,
-    };
-  if (summary === "repair")
-    return {
-      hintKey: "chat.automationCard.repair.hint",
-      actionKey: "chat.automationCard.repair.action",
-      environments,
-    };
-  if (summary === "unknown")
-    return {
-      hintKey: "chat.automationCard.unknown.hint",
-      actionKey: "chat.automationCard.unknown.action",
-      environments,
-    };
-  const running = state.triggers.filter((trigger) => !trigger.paused);
-  const scheduled = running.some((trigger) => trigger.kind === "schedule");
-  const hooked = running.some((trigger) => trigger.kind === "hook") || (webhooksActive ?? 0) > 0;
-  return {
-    hintKey:
-      scheduled && !hooked
-        ? "chat.automationCard.review.hint.schedule"
-        : hooked && !scheduled
-          ? "chat.automationCard.review.hint.hook"
-          : "chat.automationCard.review.hint.any",
-    actionKey: automationActionKey({ kind: "grant" }),
-    environments,
+  const calm: Pick<AutomationCard, "act" | "actionKey" | "environments"> = {
+    act: "none",
+    actionKey: "automation.action.view",
+    environments: [],
   };
+  const review = (
+    summary: "repair" | "review" | "apply",
+    hintKey: TranslationKey,
+    actionKey: TranslationKey,
+  ): AutomationCard => ({
+    titleKey: `chat.automationCard.${summary}.title`,
+    hintKey,
+    act: "review",
+    actionKey,
+    environments:
+      state.pendingEnvironments.length > 0 ? state.pendingEnvironments : [state.environment],
+  });
+  switch (state.state) {
+    case "approved":
+      return {
+        ...calm,
+        titleKey: "chat.automationCard.authorized.title",
+        hintKey: "chat.automationCard.authorized.hint",
+      };
+    case "manual":
+      return {
+        ...calm,
+        titleKey: AUTOMATION_STATE_KEYS.manual,
+        hintKey: state.facts.inactive
+          ? "automation.headline.inactive"
+          : "automation.headline.manual",
+      };
+    case "paused": {
+      const resumable = state.primaryAction?.kind === "resume";
+      return {
+        ...calm,
+        titleKey: AUTOMATION_STATE_KEYS.paused,
+        // Only a hook is stopped: said, with nothing to press.
+        hintKey: resumable ? "automation.headline.paused" : "automation.hookOff",
+        act: resumable ? "resume" : "none",
+        actionKey: "automation.action.resume",
+      };
+    }
+    case "unknown":
+      return {
+        ...calm,
+        titleKey: "chat.automationCard.unknown.title",
+        hintKey: "automation.headline.unknown",
+        act: "recheck",
+        actionKey: "automation.action.recheck",
+      };
+    case "apply":
+      return review(
+        "apply",
+        "chat.automationCard.apply.hint",
+        automationActionKey({ kind: "apply" }),
+      );
+    case "repair":
+      return review(
+        "repair",
+        "chat.automationCard.repair.hint",
+        "chat.automationCard.repair.action",
+      );
+    case "grant": {
+      const running = state.triggers.filter((trigger) => !trigger.paused);
+      const scheduled = running.some((trigger) => trigger.kind === "schedule");
+      const hooked =
+        running.some((trigger) => trigger.kind === "hook") || (webhooksActive ?? 0) > 0;
+      return review(
+        "review",
+        scheduled && !hooked
+          ? "chat.automationCard.review.hint.schedule"
+          : hooked && !scheduled
+            ? "chat.automationCard.review.hint.hook"
+            : "chat.automationCard.review.hint.any",
+        automationActionKey({ kind: "grant" }),
+      );
+    }
+  }
 }

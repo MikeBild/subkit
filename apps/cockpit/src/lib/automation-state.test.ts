@@ -11,7 +11,6 @@ import {
   automationEnvironment,
   automationNeedsMoreApprovals,
   automationState,
-  automationSummary,
   automationTitleAction,
   EXTEND_BELOW_RUN_SHARE,
   EXTEND_WITHIN_DAYS,
@@ -615,13 +614,23 @@ describe("actions", () => {
     expect(CATALOGS.de[automationActionKey({ kind: "grant" })]).toBe("Jetzt freigeben");
   });
 
-  test("the chat card's vocabulary maps onto the same states", () => {
-    expect(automationSummary("approved")).toBe("authorized");
-    expect(automationSummary("repair")).toBe("repair");
-    expect(automationSummary("grant")).toBe("review");
-    expect(automationSummary("apply")).toBe("apply");
-    for (const state of ["paused", "manual", "unknown"] as const)
-      expect(automationSummary(state)).toBe("unknown");
+  test("the chat card has a title and a line for every state, in both languages", () => {
+    const states = [
+      inputs({ status: status(["authorized"]), authorities: [authority()] }),
+      inputs(),
+      inputs({ status: status(["repair_required"]), diagnosis: null }),
+      inputs({ workflow: { ...hooked, draft_version_id: DRAFT } }),
+      inputs({ schedules: [schedule({ paused: true })], status: status(["paused"]) }),
+      inputs({ schedules: [], status: status() }),
+      inputs({ authorities: null }),
+    ].map((input) => automationState(input));
+    expect(new Set(states.map((state) => state.state)).size).toBe(7);
+    for (const state of states) {
+      const card = automationCard(state, 0);
+      for (const catalog of Object.values(CATALOGS))
+        for (const key of [card.titleKey, card.hintKey, card.actionKey])
+          expect(catalog[key], `${state.state}: ${key}`).toBeTruthy();
+    }
   });
 });
 
@@ -924,20 +933,80 @@ describe("the chat's review card", () => {
       automationState(inputs({ status: status(["authorized"]), authorities: [authority()] })),
       0,
     );
-    expect(card.environments).toEqual([]);
+    expect(card).toMatchObject({ act: "none", environments: [] });
+    expect(card.titleKey).toBe("chat.automationCard.authorized.title");
     expect(card.hintKey).toBe("chat.automationCard.authorized.hint");
   });
 
-  test("repair and not-verified open the review under their own words", () => {
+  test("repair opens the review under its own words", () => {
     const repair = automationCard(
       automationState(inputs({ status: status(["repair_required"]), diagnosis: null })),
       0,
     );
+    expect(repair).toMatchObject({ act: "review", environments: ["prod"] });
     expect(repair.actionKey).toBe("chat.automationCard.repair.action");
-    expect(repair.environments).toEqual(["prod"]);
+  });
+
+  // The states the page offers no approval for: the card must not either. Each
+  // of these used to get a button that opened the approval dialog.
+  test("on request: the page's calm state, and nothing to press", () => {
+    const manual = automationCard(
+      automationState(inputs({ schedules: [], status: status(), authorities: [] })),
+      0,
+    );
+    expect(manual).toMatchObject({ act: "none", environments: [] });
+    expect(manual.titleKey).toBe(AUTOMATION_STATE_KEYS.manual);
+    expect(manual.hintKey).toBe("automation.headline.manual");
+    const inactive = automationCard(
+      automationState(
+        inputs({
+          workflow: {
+            lifecycle: "archived",
+            current_version_id: ACTIVE,
+            draft_version_id: ACTIVE,
+            current_version: 9,
+          },
+        }),
+      ),
+      0,
+    );
+    expect(inactive).toMatchObject({ act: "none", hintKey: "automation.headline.inactive" });
+  });
+
+  test("paused: resuming is the act, as on the page — or a line, for a stopped hook", () => {
+    const paused = automationCard(
+      automationState(
+        inputs({ schedules: [schedule({ paused: true })], status: status(["paused"]) }),
+      ),
+      0,
+    );
+    expect(paused).toMatchObject({ act: "resume", environments: [] });
+    expect(paused.titleKey).toBe(AUTOMATION_STATE_KEYS.paused);
+    expect(paused.actionKey).toBe(automationActionKey({ kind: "resume", scheduleIds: [] }));
+    const hookOff = automationCard(
+      automationState(inputs({ schedules: [], status: status([], ["paused"]), workflow: hooked })),
+      0,
+    );
+    expect(hookOff).toMatchObject({ act: "none", hintKey: "automation.hookOff" });
+  });
+
+  test("not verified: reading again is the act, never the approval dialog", () => {
     const unknown = automationCard(automationState(inputs({ authorities: null })), 0);
-    expect(unknown.actionKey).toBe("chat.automationCard.unknown.action");
-    expect(unknown.environments).toEqual(["prod"]);
+    expect(unknown).toMatchObject({ act: "recheck", environments: [] });
+    expect(unknown.actionKey).toBe("automation.action.recheck");
+    expect(unknown.hintKey).toBe("automation.headline.unknown");
+  });
+
+  test("only a pending decision opens the approval", () => {
+    const acts = (
+      [
+        [inputs(), "review"],
+        [inputs({ status: status(["authorized"]), authorities: [authority()] }), "none"],
+        [inputs({ schedules: [], status: status() }), "none"],
+        [inputs({ authorities: null }), "recheck"],
+      ] as const
+    ).map(([input, act]) => [automationCard(automationState(input), 0).act, act]);
+    for (const [actual, expected] of acts) expect(actual).toBe(expected);
   });
 
   test("every word of the card exists in both catalogs", () => {
@@ -948,7 +1017,6 @@ describe("the chat's review card", () => {
       "chat.automationCard.review.prod",
       "chat.automationCard.review.dev",
       "chat.automationCard.repair.action",
-      "chat.automationCard.unknown.action",
     ] as const;
     for (const catalog of Object.values(CATALOGS))
       for (const key of keys) expect(catalog[key], key).toBeTruthy();

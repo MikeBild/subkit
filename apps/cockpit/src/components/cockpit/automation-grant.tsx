@@ -3,11 +3,14 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import type { ToolPart } from "@/components/ai-elements/tool";
-import { useWorkflowAutomation } from "@/components/cockpit/automation-panel";
+import {
+  AutomationActionButton,
+  useWorkflowAutomation,
+} from "@/components/cockpit/automation-panel";
 import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Button } from "@/components/ui/button";
-import { type AutomationWorkflow, automationCard, automationSummary } from "@/lib/automation-state";
+import { type AutomationWorkflow, automationCard } from "@/lib/automation-state";
 import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { chatAutomationTool } from "@/pages/chat-automation-tool";
@@ -122,7 +125,6 @@ function AutomationCardBody({
   if (automation.failed) return <CardUnread onRetry={automation.retry} />;
   const { state } = automation;
   if (!state) return <p role="status">{t("chat.activation.loading")}</p>;
-  const summary = automationSummary(state.state);
   const card = automationCard(state, workflow.webhooks_active);
   const notice =
     card.environments.length > 0
@@ -134,8 +136,8 @@ function AutomationCardBody({
       : null;
   const [only, ...further] = card.environments;
   return (
-    <div data-summary={summary} data-testid="chat-automation-tool-body">
-      <p className="mb-2 font-medium">{t(`chat.automationCard.${summary}.title`)}</p>
+    <div data-state={state.state} data-testid="chat-automation-tool-body">
+      <p className="mb-2 font-medium">{t(card.titleKey)}</p>
       <p className="mb-3 text-sm text-muted-foreground">{t(card.hintKey)}</p>
       {notice ? (
         <div className="mb-3">
@@ -144,7 +146,24 @@ function AutomationCardBody({
       ) : null}
       {/* One decision, one button. Two only when starts in both halves of the
           installation wait at once — then each says which half it is. */}
-      {only && further.length === 0 ? (
+      {/* Not a decision: the page's own act for the state, or none at all. */}
+      {card.act === "resume" && state.primaryAction ? (
+        <AutomationActionButton
+          automation={automation}
+          action={state.primaryAction}
+          size="sm"
+          testId="chat-automation-tool-resume"
+        />
+      ) : card.act === "recheck" ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={automation.refresh}
+          data-testid="chat-automation-tool-recheck"
+        >
+          {t(card.actionKey)}
+        </Button>
+      ) : card.act !== "review" ? null : only && further.length === 0 ? (
         <AutomationGrant
           workflowId={workflowId}
           environment={only}
