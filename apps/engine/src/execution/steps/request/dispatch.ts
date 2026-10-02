@@ -68,7 +68,7 @@ import {
   clearConnectorHealthOnSuccess,
   flagConnectorContractFailure,
 } from "../../../connectors/health-state.ts";
-import { clearConnectorReauth, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
+import { clearReauthOnSuccess, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
@@ -94,6 +94,7 @@ import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import { authorityConnectorDigest } from "../../../workflows/authority-configuration.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
+import { disabledConnectorRefusal } from "../../connector-availability.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
 import { resolveScopeForJsonata } from "../../jsonata-bindings.ts";
 import {
@@ -127,6 +128,7 @@ import {
   evidenceFromThrow,
   graphqlEvidence,
   mcpEvidence,
+  requestFailureEvidence,
 } from "./circuit-evidence.ts";
 import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
@@ -150,24 +152,6 @@ import {
 } from "./side-effects.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000; // 1h
-
-/**
- * Best-effort re-auth clear on a successful authenticated request. Fire-and-
- * forget (the step result must not depend on it) but logs on failure so a
- * stuck `needs_reauth` flag is observable rather than silently swallowed.
- */
-function clearReauthOnSuccess(db: Db, connector: { tenant_id: string; id: string }): void {
-  void clearConnectorReauth(db, connector.tenant_id, connector.id).catch((err) => {
-    logger.warn({
-      module: "connectors",
-      action: "connector.reauth.clear_failed",
-      msg: "best-effort reauth clear on success failed",
-      tenant_id: connector.tenant_id,
-      connector_id: connector.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
-}
 
 /**
  * Persist a circuit-breaker state write. Drizzle builders are lazy — a bare
@@ -252,15 +236,12 @@ async function recordCircuitFailure(
 }
 
 /**
- * The ONE circuit-breaker recorder for the drivers that return their outcome
- * from inside their own branch (graphql / s3 / postgres / mcp).
+ * The ONE circuit-breaker recorder, for every driver.
  *
- * The HTTP path records failures from the outer handler, which is only
- * reached after its retry loop has already given up — so "we tried and the
- * remote could not serve us" is implied by getting there at all. These
- * branches have no such loop, so each must say what it observed; the
- * vocabulary and the classification live in `circuit-evidence.ts` so two
- * drivers cannot disagree about what "healthy" means.
+ * Each branch says what it observed about the remote; the vocabulary and the
+ * classification live in `circuit-evidence.ts` so two drivers cannot disagree
+ * about what "healthy" means. That includes the HTTP path: reaching its outer
+ * handler means the retry loop gave up, not that the remote could not serve.
  *
  * Counting a caller's own mistake would open the breaker on the author's typo
  * and take a working connector offline for the whole reset window; crediting
@@ -1114,6 +1095,19 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             code: "connector_not_found",
             message: `connector ${p.step.connector_id} not found`,
           },
+        };
+      }
+      // A connector that is switched off is refused under its own name,
+      // before the environment gate and the breaker — neither of which is
+      // why this call cannot be made.
+      const refusal = disabledConnectorRefusal(connector, p.step.id);
+      if (refusal) {
+        clearTimeout(timer);
+        return {
+          status: "failed",
+          retry_count: 0,
+          duration_ms: Date.now() - start,
+          error: refusal,
         };
       }
       configurationDigest = authorityConnectorDigest(connector);
@@ -2587,7 +2581,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       // breaker — needs_reauth can be true while the circuit is closed, so
       // clear unconditionally on success (outside the circuit-state guard).
       if (activeConnector) {
-        clearReauthOnSuccess(p.ctx.db, activeConnector);
+        void clearReauthOnSuccess(p.ctx.db, activeConnector);
       }
       // Deprecation early-warning: a SUCCESSFUL response that carries
       // Deprecation/Sunset headers means the vendor announced this
@@ -2939,7 +2933,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       });
     }
     if (activeConnector) {
-      clearReauthOnSuccess(p.ctx.db, activeConnector);
+      void clearReauthOnSuccess(p.ctx.db, activeConnector);
     }
     // Deprecation early-warning / health recovery on the paginated success
     // path — same contract as the single-page path above.
@@ -3013,11 +3007,15 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         // Already logged; swallow to keep the original error in flight.
       }
     }
-    // Circuit breaker: record failure and potentially open the circuit.
-    // Atomic increment-and-flip — never read-then-write (concurrent failures
-    // would lose updates and the threshold would be unreachable).
+    // Circuit breaker: count the failure only when it is evidence that the
+    // remote could not serve — a rejected credential or a wrong path is an
+    // answer, and the re-auth flag below reports the first of those.
     if (activeConnector) {
-      await recordCircuitFailure(p.ctx.db, activeConnector);
+      await recordDriverOutcome(
+        p.ctx.db,
+        activeConnector,
+        requestFailureEvidence(err, timeoutCtrl.signal.aborted && !p.ctx.signal.aborted),
+      );
     }
     // Re-auth flag: a 401 means the credential itself was rejected and is dead
     // until a human re-authenticates — a SEPARATE concern from the circuit

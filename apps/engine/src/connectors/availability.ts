@@ -9,9 +9,9 @@
 // author's mistake, and the author would see "circuit open" instead of
 // their syntax error.
 //
-// The HTTP path gets this right only incidentally: its failure recording
-// sits after a retry loop that already gave up. Every other driver returns
-// its failure directly, so the distinction has to be explicit.
+// No driver gets this right incidentally. A retry loop that gave up says the
+// request failed, not whose fault it was — it gives up at once on a rejected
+// credential — so every driver has to make the distinction explicitly.
 //
 // Keyed on transport-level and status-level evidence only. NEVER on
 // vendor keywords or provider names — the same reasoning as
