@@ -1617,8 +1617,7 @@ const EN = {
   "detail.technicalReference": "Technical reference",
   "detail.technicalReferenceHint":
     "Quote this line when you ask the operations team about this record.",
-  "detail.editMetadata": "Edit metadata",
-  "detail.rename": "Rename",
+  "detail.editMetadata": "Rename",
   "detail.editMetadataDescription":
     "Rename this workspace record without changing its governed structure.",
   "markdown.write": "Write",
@@ -4927,8 +4926,7 @@ const DE: Record<TranslationKey, string> = {
   "detail.technicalReference": "Technische Referenz",
   "detail.technicalReferenceHint":
     "Diese Zeile hilft dem Betrieb, wenn du zu diesem Eintrag nachfragst.",
-  "detail.editMetadata": "Metadaten bearbeiten",
-  "detail.rename": "Umbenennen",
+  "detail.editMetadata": "Umbenennen",
   "detail.editMetadataDescription":
     "Diesen Datensatz umbenennen, ohne seine gesteuerte Struktur zu ändern.",
   "markdown.write": "Schreiben",
