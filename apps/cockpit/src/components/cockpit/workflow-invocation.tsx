@@ -22,8 +22,11 @@ import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  callVerdict,
   HOOK_STATE_KEYS,
   hasFixedInput,
+  hiddenInvocationKey,
+  hiddenInvocationLists,
   type WorkflowInvocation as Invocation,
   type InvocationHook,
   type InvocationMode,
@@ -109,10 +112,10 @@ const line = "text-sm text-muted-foreground";
 
 function HttpMode({
   invocation,
-  heldEnvironment,
+  approvedEnvironment,
 }: {
   invocation: Invocation;
-  heldEnvironment: Environment | null;
+  approvedEnvironment: Environment | null;
 }) {
   const { t } = useI18n();
   // Production by default: it is where a call from an app belongs, and the
@@ -121,6 +124,9 @@ function HttpMode({
   const [language, setLanguage] = useState<SnippetLanguage>("curl");
   const { http } = invocation;
   const snippet = http.snippets?.[environment][language] ?? null;
+  // What the call will be — from the panel's verdict, never from the stored
+  // approval alone.
+  const verdict = callVerdict(invocation, environment, approvedEnvironment);
   return (
     <div className="grid gap-3">
       <AddressLine
@@ -202,19 +208,24 @@ function HttpMode({
       <p className={line} data-testid="workflow-invocation-responses">
         {t("invocation.http.responses")}
       </p>
-      {invocation.authority[environment] === "held_preview_only" ||
-      environment === heldEnvironment ? (
-        <p className={line} data-testid="workflow-invocation-preview-only">
-          {t("invocation.http.previewOnly")}{" "}
+      {verdict === "live" ? null : (
+        <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
+          {t(
+            verdict === "refused"
+              ? "invocation.http.refused"
+              : verdict === "preview"
+                ? "invocation.http.previewOnly"
+                : "invocation.http.unconfirmed",
+          )}{" "}
           <a
             href={`#${WORKFLOW_AUTOMATION_ANCHOR}`}
             className="text-foreground underline underline-offset-4"
             data-testid="workflow-invocation-to-automation"
           >
-            {t("invocation.http.toAutomation")}
+            {t(verdict === "refused" ? "invocation.http.toState" : "invocation.http.toAutomation")}
           </a>
         </p>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -388,18 +399,18 @@ function CliMode({ invocation }: { invocation: Invocation }) {
 export function WorkflowInvocation({
   workflowId,
   effectiveTrigger,
-  heldEnvironment,
+  approvedEnvironment,
 }: {
   workflowId: string;
   /** What really starts the workflow — decides the tab a reader lands on. */
   effectiveTrigger: string | null;
   /**
-   * The environment the automation panel says is NOT approved right now. The
-   * call's own answer rests on the stored approvals alone; where the panel
-   * knows better — an approval a later change no longer fits — the call is
-   * still said to be a trial run, so the two never contradict each other.
+   * The environment the automation panel shows as approved, or null. The
+   * engine's answer here only says that an approval is stored; the panel is
+   * where it is verified, so the call is said to run live only where the
+   * panel says "approved" — the two never contradict each other.
    */
-  heldEnvironment: Environment | null;
+  approvedEnvironment: Environment | null;
 }) {
   const { t } = useI18n();
   const query = useWorkflowInvocation(workflowId);
@@ -409,6 +420,7 @@ export function WorkflowInvocation({
   const modes = invocation ? invocationModes(invocation) : [];
   const mode =
     chosen && modes.includes(chosen) ? chosen : initialInvocationMode(modes, effectiveTrigger);
+  const hiddenKey = invocation ? hiddenInvocationKey(hiddenInvocationLists(invocation)) : null;
   return (
     <section
       className="flex min-w-0 flex-col gap-3 rounded-xl border p-4"
@@ -437,7 +449,7 @@ export function WorkflowInvocation({
             ))}
           </TabsList>
           <TabsContent value="http" className="pt-2">
-            <HttpMode invocation={invocation} heldEnvironment={heldEnvironment} />
+            <HttpMode invocation={invocation} approvedEnvironment={approvedEnvironment} />
           </TabsContent>
           <TabsContent value="webhook" className="pt-2">
             <WebhookMode invocation={invocation} />
@@ -457,6 +469,13 @@ export function WorkflowInvocation({
           <TabsContent value="cli" className="pt-2">
             <CliMode invocation={invocation} />
           </TabsContent>
+          {/* A list the reader may not see is not an empty one: without this
+              line a missing tab read as "this workflow has no webhook". */}
+          {hiddenKey ? (
+            <p className={`${line} pt-3`} data-testid="workflow-invocation-hidden">
+              {t(hiddenKey)}
+            </p>
+          ) : null}
         </Tabs>
       )}
     </section>
