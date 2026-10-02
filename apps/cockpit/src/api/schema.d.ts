@@ -6016,6 +6016,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List workflow versions, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkflowVersionListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/restore/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a previous workflow version */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Workflow"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The version no longer validates against the current workflow schema */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows": {
         parameters: {
             query?: never;
@@ -6563,92 +6661,6 @@ export interface paths {
                 };
             };
         };
-        trace?: never;
-    };
-    "/v1/workflows/{id}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List workflow versions */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["WorkflowVersionListResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/workflows/{id}/restore/{version}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Restore a previous workflow version */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    version: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Workflow"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/v1/executions": {
@@ -19148,42 +19160,18 @@ export interface components {
             expected_draft_version_id: string | null;
             step_ids?: string[];
         };
-        WorkflowListResponse: {
-            items: components["schemas"]["WorkflowListItem"][];
+        WorkflowVersionListResponse: {
+            items: components["schemas"]["WorkflowVersion"][];
             total: number;
-            categories: {
-                category: string;
-                count: number;
-            }[];
         };
-        WorkflowListItem: components["schemas"]["Workflow"] & {
-            category: string;
-            connectors: string[];
-        };
-        WorkflowScheduleBinding: {
+        WorkflowVersion: {
             id: string;
-            cron: string;
-            timezone: string;
-            paused: boolean;
-            /** @enum {string} */
-            execution_mode: "dev" | "prod";
-            admission_hold: {
-                /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable";
-                observed_at: string;
-            } | null;
-            /** @enum {string} */
-            state: "active" | "paused" | "held" | "activation_required";
-            next_fire_at: string | null;
-            last_enqueued_at: string | null;
-        } | null;
-        EffectiveTrigger: {
-            /** @enum {string} */
-            kind: "schedule" | "webhook" | "request";
-            /** @enum {string} */
-            source: "binding" | "definition" | "default";
-            /** @enum {string} */
-            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
+            workflow_id: string;
+            version: number;
+            note: string | null;
+            created_at: string;
+            dag?: unknown;
+            legacy: boolean;
         };
         Workflow: {
             id: string;
@@ -19219,6 +19207,43 @@ export interface components {
             schedule: components["schemas"]["WorkflowScheduleBinding"];
             webhooks_active: number;
             effective_trigger: components["schemas"]["EffectiveTrigger"];
+        };
+        WorkflowScheduleBinding: {
+            id: string;
+            cron: string;
+            timezone: string;
+            paused: boolean;
+            /** @enum {string} */
+            execution_mode: "dev" | "prod";
+            admission_hold: {
+                /** @enum {string} */
+                reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                observed_at: string;
+            } | null;
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required";
+            next_fire_at: string | null;
+            last_enqueued_at: string | null;
+        } | null;
+        EffectiveTrigger: {
+            /** @enum {string} */
+            kind: "schedule" | "webhook" | "request";
+            /** @enum {string} */
+            source: "binding" | "definition" | "default";
+            /** @enum {string} */
+            state: "active" | "paused" | "held" | "activation_required" | "declared_unbound";
+        };
+        WorkflowListResponse: {
+            items: components["schemas"]["WorkflowListItem"][];
+            total: number;
+            categories: {
+                category: string;
+                count: number;
+            }[];
+        };
+        WorkflowListItem: components["schemas"]["Workflow"] & {
+            category: string;
+            connectors: string[];
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];
@@ -19336,17 +19361,6 @@ export interface components {
             description?: string | null;
             /** @enum {string} */
             lifecycle?: "active" | "archived";
-        };
-        WorkflowVersionListResponse: {
-            items: components["schemas"]["WorkflowVersion"][];
-        };
-        WorkflowVersion: {
-            id: string;
-            workflow_id: string;
-            version: number;
-            note: string | null;
-            created_at: string;
-            dag?: unknown;
         };
         ExecutionRunResponse: {
             execution_id: string;
@@ -20358,6 +20372,11 @@ export interface components {
             health_state: components["schemas"]["ConnectorHealthState"];
             health_reason: string | null;
             health_error_code: string | null;
+            /** @enum {string} */
+            circuit_state: "closed" | "open" | "half-open";
+            /** Format: date-time */
+            circuit_opened_at: string | null;
+            circuit_failure_count: number;
             needs_reauth: boolean;
             /** Format: date-time */
             auth_failed_at: string | null;
