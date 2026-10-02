@@ -49,7 +49,7 @@ Approvals remain explicit and are resolved through the conversation's governed r
 
 ## Saved preparation and automatic operation
 
-A fresh saved-workflow checkpoint displays “Workflow saved” in the chat header and working context. It never means activation or execution authority. A held schedule remains an open operating decision after a chat answer or draft save. Show this distinction directly in the chat, including the remaining held-schedule count and a review link to the workflow’s execution-authority section. Pending questions take precedence; hide the operating handoff while a turn is running. Re-read the held schedules before claiming the block is resolved.
+A fresh saved-workflow checkpoint displays “Workflow saved” in the chat header and working context. It never means activation or execution authority. A held schedule remains an open operating decision after a chat answer or draft save. Show this distinction directly in the chat, including the remaining held-schedule count and a review link to the workflow’s automation panel. Pending questions take precedence; hide the operating handoff while a turn is running. Re-read the held schedules before claiming the block is resolved.
 
 ## Interaction and presentation rules
 
@@ -272,7 +272,8 @@ the old `/connections` address land on `grants`. A tab carries a count only when
 on another system read "N Rechte" with the raw values behind "Details anzeigen", and carry no risk
 word — the words "liest", "schreibt", "verwaltet" come from SubKit's own catalogue, which cannot judge
 a foreign scope. No command line stands on the page: how a script swaps a key for a short-lived token
-is one link to the developer guide. It carries no attention list of its own — that would be a second
+is one link to the developer guide. (The one deliberate exception in the Cockpit is the call block
+on a workflow's page — see "Workflow page" below: there the call IS the fact the reader came for.) It carries no attention list of its own — that would be a second
 task list. Keys and connections show their state as chips; renewing stays a row action.
 
 **Personen & Rechte** (`/people`) is the one page for people, roles, groups and grants, each section
@@ -311,6 +312,65 @@ asks first. Without `settings:write` the page says "Du darfst ansehen, nicht än
 is disabled. `?leaf=`, `?section=`, `?q=` and `?filter=changed` address a setting, a section, a search
 and the filter.
 
+### Workflow page
+
+A workflow's page (`src/components/cockpit/workflow-page.tsx`) answers, top to bottom, the questions
+a reader arrives with: may it run on its own → how is it called → what does it take and return →
+what does it do → how has it been doing. Everything a reader does not decide by is folded below.
+
+1. **Header.** The name, the health mark and the author's one-line purpose. Exactly one filled
+   action, "Ausführen"; beside it one outline action chosen by state (below); "Im Chat ändern",
+   "Zu diesem Workflow fragen" and "Metadaten bearbeiten" stand behind "⋯" — a single remaining one
+   is a named button. What may be edited where is a tooltip, not a row of its own.
+2. **Automatischer Betrieb** — one state, one action (below).
+3. **Aufrufen** — tabs for the ways that exist: HTTP, Webhook, MCP, Zeitplan, CLI. A hook or a
+   schedule is a tab only when one is bound; the tab a reader lands on is the workflow's effective
+   trigger. HTTP shows the address, a ready-to-paste call (curl, Node, Python; production by
+   default, the environment always in the call), one line of answers (200 / 202 / 409) and, without
+   an approval, one line that the call is only a trial run, leading to the panel.
+4. **Eingabe | Ausgabe** — the schema as a table: field, type, required, example; allowed values
+   and the description under the name; an object's own fields one level deep. One line says that
+   input goes in the body under `input` and that there are no query parameters; for a hook-started
+   workflow one more says that the caller's body arrives as `input.body`.
+5. **Schritte** — one compact row per step: number, id, kind, one line on what it does, how it last
+   ended. Opening a row shows the whole configuration, the last result and the step's own preview.
+6. **Letzte Läufe**, then folded: **Technische Angaben** (slug, version, lifecycle, created,
+   changed, last run), **Frühere Freigaben**, and **Unterhaltungen dazu**.
+
+There are no tabs and no "Steuerung" row on this page, and no fact stands twice: the version is in
+the panel and the technical facts, the schedule in the panel and the call block's own tab.
+
+**The call block is the one place a command line stands on a page.** The rule above ("no command
+line stands on the page") was written for a page about credentials, where a command is a detour.
+Here the call is what the reader came for, so it stands in a real fenced block with a copy button.
+The same holds for a step's configuration and a run's output: they are payload, shown byte for byte.
+An identifier is allowed inside such a block and nowhere else on the page — the workflow's own id
+appears only in the call it is used in.
+
+**One state, one action.** Whether a workflow may run on its own is decided once, in
+`src/lib/automation-state.ts`, from what the engine reports (the record, its schedules, the verified
+automation status, the approvals, the gate diagnosis). The first that applies wins:
+
+| State | When | The one action |
+|---|---|---|
+| Pausiert | every schedule and hook is stopped | Fortsetzen |
+| Übernahme nötig | a saved change differs from the running version | Änderung prüfen |
+| Reparatur nötig | the gate refuses a step — also while an approval exists | the diagnosis block's own act |
+| Nicht geprüft | readiness could not be verified | Erneut prüfen |
+| Freigabe nötig | something starts it and no approval covers it | Jetzt freigeben |
+| Freigegeben | a current approval covers the running version | Freigabe ansehen |
+| Auf Abruf | nothing starts it automatically, nothing approved | (calm; the approval is offered, nothing asks for it) |
+
+The panel says the state as one word and one line of facts (version, environment, valid until, runs
+left), names what starts the workflow, embeds the gate diagnosis and holds the current approval
+behind "Freigabe ansehen". **An approved workflow offers no approval button** — only "Freigabe
+ansehen", plus "Verlängern" within three days of its end or below a tenth of its runs. The action
+beside the title is the panel's own action while a step is pending, performing the same act; in a
+calm state the title keeps its ordinary action (investigate the newest failed run, else "Im Chat
+ändern"). It is never a link that only scrolls to a section, and no badge repeats the state. A run
+whose cause is "Freigabe passt nicht mehr" leads to this panel. An approval's exact window and
+checksum stand behind "Details"; approvals that no longer admit a run are history, folded.
+
 ### Error, cause, fix
 
 A failure never ends at a red word. Wherever the cockpit shows one — a run sheet, an unhealthy
@@ -333,7 +393,8 @@ The runs list carries the cause class of each failure in words (§3); a run that
 empty cause cell, not a dash that reads as "unknown". On the workflow list the health mark leads to
 that workflow's failed runs and the last-run time to its runs; the block column shows a name
 derived from the slug prefix, never the slug. A workflow page shows its health beside the title, the
-cause block when unhealthy, and its five latest runs with the way to all of them.
+cause block when unhealthy, and its five latest runs with the way to all of them (see "Workflow
+page" above for the rest of that page).
 
 Approval cards are headed by what a reader decides by — environment, validity end, run limit —
 with the state beside it. Versions read `v{n}` where the page knows the number; any other
