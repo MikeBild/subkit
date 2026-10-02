@@ -16,6 +16,7 @@ import {
   ConnectorTechnicalFacts,
   ConnectorWorkflows,
 } from "@/components/cockpit/connector-detail";
+import { ConnectorStateNotice } from "@/components/cockpit/connector-state";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { DetailAction } from "@/components/cockpit/detail-action";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
@@ -27,17 +28,18 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  authStateLabel,
-  type ConnectorAuthState,
-  connectorAuthState,
-  connectorHealthLabel,
-  needsRenewal,
-} from "@/lib/connector-auth-state";
+import { connectorAuthState, connectorHealthLabel, needsRenewal } from "@/lib/connector-auth-state";
 import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
-import { asInspect, type McpInspect } from "@/pages/connector-detail-model";
+import {
+  asInspect,
+  connectorNotice,
+  type McpInspect,
+  renewalWay,
+  returnedFromSignIn,
+  withoutSignInReturn,
+} from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type RecordValue = Record<string, unknown>;
@@ -118,56 +120,38 @@ function renderDetailValue(
 }
 
 /**
- * A connector's own state, in place of a lifecycle it does not have: whether
- * it signs in (§11), whether a person switched it off, and the engine's
- * health verdict when that is not ok. The bar used to fall back to "Aktiv"
- * here — a word about a lifecycle, said about a connector whose sign-in had
- * expired.
+ * What a connector's bar still says once its states have their own homes —
+ * the sign-in in the sign-in card, switched off in the state notice: the
+ * engine's health verdict when it is neither ok nor the sign-in again, and
+ * that the reader may only look. With neither, there is no bar.
  */
-function ConnectorStateBadges({
-  record,
-  authState,
-}: {
-  record: RecordValue;
-  authState: ConnectorAuthState;
-}) {
+function ConnectorBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
   const { t } = useI18n();
-  const lost = needsRenewal(authState);
   const health = typeof record.health_state === "string" ? record.health_state : null;
-  const healthKey = health && health !== "ok" ? connectorHealthLabel(health) : null;
+  const healthKey =
+    health && health !== "ok" && health !== "needs_reauth" ? connectorHealthLabel(health) : null;
+  if (!healthKey && canWrite) return null;
   return (
-    <>
-      <Badge variant={lost ? "destructive" : "outline"} data-testid="detail-connector-auth-state">
-        {t(authStateLabel(authState))}
-      </Badge>
-      {record.enabled === false ? (
-        <Badge variant="outline" data-testid="detail-connector-disabled">
-          {t("connectors.disabled")}
-        </Badge>
-      ) : null}
-      {healthKey && health !== "needs_reauth" ? (
+    <div
+      data-family-slot="detail-context"
+      className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
+    >
+      {healthKey ? (
         <Badge variant="outline" data-testid="detail-connector-health">
           {t(healthKey)}
         </Badge>
       ) : null}
-    </>
+      {canWrite ? null : <span className="text-muted-foreground">{t("detail.readOnly")}</span>}
+    </div>
   );
 }
 
 /**
  * The state row under a record's title. A workflow has none: its version and
- * whether it may run stand in its automation panel (`workflow-page.tsx`).
+ * whether it may run stand in its automation panel (`workflow-page.tsx`). A
+ * connector has its own (`ConnectorBar`): it has no lifecycle to name.
  */
-function GovernanceBar({
-  record,
-  canWrite,
-  connectorAuth = null,
-}: {
-  record: RecordValue;
-  canWrite: boolean;
-  /** Set for a connector: its sign-in state replaces the lifecycle word. */
-  connectorAuth?: ConnectorAuthState | null;
-}) {
+function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
   const { t } = useI18n();
   const status =
     typeof record.status === "string"
@@ -183,11 +167,7 @@ function GovernanceBar({
     >
       <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
       <span className="font-medium">{t("detail.governance")}</span>
-      {connectorAuth ? (
-        <ConnectorStateBadges record={record} authState={connectorAuth} />
-      ) : (
-        <Badge variant="outline">{statusLabel(t, status)}</Badge>
-      )}
+      <Badge variant="outline">{statusLabel(t, status)}</Badge>
       {version !== undefined && <Badge variant="secondary">v{String(version)}</Badge>}
       <span className="text-muted-foreground">
         {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
@@ -387,7 +367,23 @@ export function CatalogDetailPage({
   permissions: readonly string[];
 }) {
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const id = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).at(-1) ?? "");
+  // The engine's sign-in callback sends the browser back here with a flag.
+  // Read it once and drop it from the address, so a reload does not repeat
+  // the sentence. The return is a full page load: connector, credential and
+  // runtime are all read fresh, and what the page then says comes from them.
+  const [returned] = useState(
+    () => resource === "connectors" && returnedFromSignIn(window.location.search),
+  );
+  useEffect(() => {
+    if (!returned) return;
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${withoutSignInReturn(window.location.search)}${window.location.hash}`,
+    );
+  }, [returned]);
   const access = PERMISSIONS[resource];
   const canRead = permissions.includes(access.read);
   const canWrite = permissions.includes(access.write);
@@ -404,8 +400,17 @@ export function CatalogDetailPage({
   const probe = useMutation({
     mutationFn: () =>
       apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.ok) toast.success(t("detail.testPassed"));
+      // A test is a real call: a passed one clears a refused sign-in and
+      // closes the breaker, and either way it is the newest call on record.
+      // Read the connector again so the page says what the test changed.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] }),
+        queryClient.invalidateQueries({ queryKey: ["connector-credential", id] }),
+        queryClient.invalidateQueries({ queryKey: ["connector-runtime", id] }),
+        queryClient.invalidateQueries({ queryKey: ["connector-stats", id] }),
+      ]);
     },
   });
   // For an MCP server "Verbindung testen" also reads what the server serves:
@@ -450,6 +455,25 @@ export function CatalogDetailPage({
           credential.data,
         )
       : null;
+
+  const notice =
+    connectorAuth && record
+      ? connectorNotice({
+          enabled: record.enabled !== false,
+          authState: connectorAuth,
+          returned,
+        })
+      : null;
+  // One filled action per page: while the sign-in card offers a renewal, that
+  // is it, and "Einschalten" stands beside it as the second step.
+  const renewalOffered =
+    connectorAuth !== null &&
+    needsRenewal(connectorAuth) &&
+    renewalWay({
+      authType: typeof record?.auth_type === "string" ? record.auth_type : null,
+      usesConnection: Boolean(credential.data?.connection),
+      canWrite,
+    }) !== null;
 
   if (!canRead)
     return (
@@ -540,16 +564,22 @@ export function CatalogDetailPage({
               {t("detail.test")}
             </Button>
           )}
-          <DetailAction
-            resource={resource}
-            id={id}
-            name={recordTitle(record)}
-            connectorAuth={connectorAuth}
-            permissions={permissions}
-          />
+          <DetailAction resource={resource} name={recordTitle(record)} permissions={permissions} />
         </div>
       </header>
-      <GovernanceBar record={record} canWrite={canWrite} connectorAuth={connectorAuth} />
+      {resource === "connectors" ? (
+        <ConnectorBar record={record} canWrite={canWrite} />
+      ) : (
+        <GovernanceBar record={record} canWrite={canWrite} />
+      )}
+      {notice ? (
+        <ConnectorStateNotice
+          connectorId={id}
+          notice={notice}
+          canWrite={canWrite}
+          primary={!renewalOffered}
+        />
+      ) : null}
       {resource === "connectors" && probe.data && (
         <div className="border-b px-6 py-4" data-testid="connector-probe-result">
           <p

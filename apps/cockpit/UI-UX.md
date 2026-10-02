@@ -463,6 +463,44 @@ An approval names the connector it reaches by its name, on the workflow page as 
 never by a fragment of its identifier. Both read the same lookup; a connector the reader may not
 see is "Konfigurierter Konnektor".
 
+### Connector page
+
+A connector's page (`src/pages/catalog-detail.tsx` with
+`src/components/cockpit/connector-*.tsx`) says each state in one place and
+offers each act once.
+
+- **Header.** The name and the author's description; "Verbindung testen" is
+  the one test trigger on the page. No state action stands beside the title: a
+  connector's acts live where its state does.
+- **State notice** (`connector-state.tsx`), only when there is something to
+  say: "Abgeschaltet" with "Einschalten" for a connector that is switched off,
+  and — once, after the provider sent the browser back — "Angemeldet" or
+  "Angemeldet, aber abgeschaltet". Signing in never switches a connector on,
+  so the two are said together and "Einschalten" is the one act that changes
+  it. The new state shows at once, from the engine's answer. Without
+  `connector:write` the notice stands without the button.
+- **Verbindung**, **Laufzeit**, the server's tools for an MCP connector.
+- **Anmeldung** — the one home of the sign-in state: a badge, one line that
+  says what is the case and what the button beside it does, the permissions a
+  provider withheld by name, and the one way to renew that fits the kind of
+  sign-in ("Neu anmelden" at the provider, through the account connection, or
+  by entering a key).
+- **Workflows**, **Unterhaltungen dazu**, **Technische Angaben** (folded).
+
+There is no "Steuerung" row: a connector has no lifecycle and no steps. The
+engine's health verdict, when it is neither ok nor the sign-in again, and
+"read-only" for a reader without write permission are the only things a bar
+under the title still says; with neither there is no bar.
+
+The return from a sign-in is a flag in the address (`?signed_in=1`), set by
+the engine's callback on a redirect it builds itself. The flag states no
+fact: the page reads the connector again, confirms only what the connector
+bears out, and drops the flag from the address so a reload repeats nothing.
+
+At most one action on the page is filled. While the sign-in card offers a
+renewal, that is it and "Einschalten" stands beside it as an outline; with
+the sign-in in order, "Einschalten" is the filled one.
+
 ### A kept secret is not a value
 
 The engine hands out a connector with every credential in it masked by one fixed marker — in the

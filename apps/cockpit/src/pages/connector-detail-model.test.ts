@@ -1,11 +1,14 @@
 // The connector detail page's decisions: the words for the engine's machine
 // values (and the fallback for one this build has no word for), the runtime
 // figures and the audit links that count the same thing over the same window
-// (§10.1), and the credential body a replaced key is posted as.
+// (§10.1), the credential body a replaced key is posted as, what the page
+// says when a sign-in comes back, and the one line and one action the sign-in
+// card offers.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { absolute, connectorHref } from "@/app/links";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
 import {
@@ -14,6 +17,7 @@ import {
   authLabel,
   connectorCallsHref,
   connectorFigures,
+  connectorNotice,
   connectorStatsEndpoint,
   connectorStatsWindow,
   credentialBody,
@@ -22,9 +26,15 @@ import {
   offersConnectionChoice,
   offersKeyReplacement,
   presentAddress,
+  renewalWay,
+  returnedFromSignIn,
   SECRET_MASK,
+  SIGNED_IN_PARAM,
+  signInActionLabel,
+  signInLine,
   toolsWithoutConfirmation,
   transportLabel,
+  withoutSignInReturn,
 } from "./connector-detail-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
@@ -211,5 +221,132 @@ describe("a connector address with a kept secret", () => {
   test("the note says the secret is kept, in both languages", () => {
     expect(CATALOGS.de["connectorDetail.connection.secretKept"]).toContain("bleibt geheim");
     expect(CATALOGS.en["connectorDetail.connection.secretKept"]).toContain("kept");
+  });
+});
+
+describe("coming back from a sign-in", () => {
+  test("the flag is read off the address and dropped from it, alone", () => {
+    expect(returnedFromSignIn("?signed_in=1")).toBe(true);
+    expect(returnedFromSignIn("?tab=x&signed_in=1")).toBe(true);
+    expect(returnedFromSignIn("")).toBe(false);
+    expect(returnedFromSignIn("?signed=1")).toBe(false);
+    expect(withoutSignInReturn("?signed_in=1")).toBe("");
+    expect(withoutSignInReturn("?tab=x&signed_in=1&q=y")).toBe("?tab=x&q=y");
+    expect(withoutSignInReturn("?tab=x")).toBe("?tab=x");
+  });
+
+  test("the flag and the address are the ones the engine's callback sends", () => {
+    const engine = readFileSync(
+      resolve(import.meta.dir, "../../../engine/src/connectors/oauth-origin.ts"),
+      "utf8",
+    );
+    expect(engine).toContain(`export const SIGNED_IN_MARKER = "${SIGNED_IN_PARAM}";`);
+    // The page the engine redirects to is this page's own address.
+    const id = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
+    expect(absolute(connectorHref(id))).toBe(`/cockpit/connectors/${id}`);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(engine).toContain("/cockpit/connectors/${p.connector_id.toLowerCase()}");
+  });
+
+  test("a return the connector bears out is confirmed once", () => {
+    expect(connectorNotice({ enabled: true, authState: "connected", returned: true })).toBe(
+      "signed_in",
+    );
+    // Signed in is true as soon as the flag is clear, whatever else is unproven.
+    expect(connectorNotice({ enabled: true, authState: "unproven", returned: true })).toBe(
+      "signed_in",
+    );
+    expect(connectorNotice({ enabled: true, authState: "connected", returned: false })).toBeNull();
+  });
+
+  test("signed in and switched off are said together", () => {
+    expect(connectorNotice({ enabled: false, authState: "connected", returned: true })).toBe(
+      "signed_in_off",
+    );
+    expect(connectorNotice({ enabled: false, authState: "connected", returned: false })).toBe(
+      "off",
+    );
+    expect(connectorNotice({ enabled: false, authState: "expired", returned: false })).toBe("off");
+  });
+
+  test("a flag the connector does not bear out confirms nothing", () => {
+    // Anyone can type the flag into the address.
+    for (const authState of ["expired", "credentials_missing", "not_required"] as const) {
+      expect(connectorNotice({ enabled: true, authState, returned: true })).toBeNull();
+      expect(connectorNotice({ enabled: false, authState, returned: true })).toBe("off");
+    }
+  });
+});
+
+describe("the sign-in card's one line and one action", () => {
+  test("the way to renew follows how the connector signs in", () => {
+    const way = (authType: string | null, usesConnection = false, canWrite = true) =>
+      renewalWay({ authType, usesConnection, canWrite });
+    expect(way("oauth2")).toBe("provider");
+    expect(way("oauth2", true)).toBe("connection");
+    expect(way("bearer", true)).toBe("connection");
+    expect(way("header")).toBe("key");
+    expect(way("bearer")).toBe("key");
+    expect(way("basic")).toBeNull();
+    expect(way("oauth2", false, false)).toBeNull();
+    expect(way("oauth2", true, false)).toBeNull();
+  });
+
+  test("a refused sign-in says what is the case and what the button does", () => {
+    expect(de(signInLine("expired", "provider") as TranslationKey)).toBe(
+      "Der Anbieter lehnt die gespeicherte Anmeldung ab. „Neu anmelden“ führt zum Anbieter und wieder hierher.",
+    );
+    expect(de(signInLine("expired", "key") as TranslationKey)).toContain("„Neu anmelden“ öffnet");
+    expect(signInLine("expired", "connection")).toBe("connectorCredentials.renewViaConnection");
+    expect(signInLine("expired", null)).toBe("connectorCredentials.lostReadOnly");
+  });
+
+  test("no line sends the reader to a connection test for a way the button already is", () => {
+    for (const state of ["expired", "credentials_missing"] as const)
+      for (const way of ["provider", "key", "connection", null] as const) {
+        const key = signInLine(state, way);
+        expect(key).not.toBeNull();
+        for (const catalog of [CATALOGS.de, CATALOGS.en])
+          expect(catalog[key as TranslationKey]).not.toMatch(/Verbindungstest|Test the connection/);
+      }
+  });
+
+  test('a first sign-in is not called "again", in the line or on the button', () => {
+    expect(signInActionLabel("credentials_missing")).toBe("connectorCredentials.signIn");
+    expect(signInActionLabel("expired")).toBe("connectorCredentials.renew");
+    expect(de(signInLine("credentials_missing", "provider") as TranslationKey)).toContain(
+      "„Anmelden“ führt zum Anbieter",
+    );
+    expect(de(signInLine("credentials_missing", "key") as TranslationKey)).toContain("„Anmelden“");
+    expect(signInLine("credentials_missing", null)).toBe("connectors.auth.credentialsMissingHint");
+  });
+
+  test("a sign-in that works needs no sentence; an unproven one says how to find out", () => {
+    expect(signInLine("connected", "provider")).toBeNull();
+    expect(signInLine("not_required", null)).toBeNull();
+    expect(signInLine("unproven", "provider")).toBe("connectors.auth.unprovenHint");
+  });
+
+  test("every line and label exists in both languages", () => {
+    const keys: TranslationKey[] = [
+      "connectorCredentials.renewAtProvider",
+      "connectorCredentials.lostReadOnly",
+      "connectorCredentials.signIn",
+      "connectorCredentials.signInAtProvider",
+      "connectorCredentials.enterKey",
+      "connectorCredentials.partial",
+      "connectorState.off",
+      "connectorState.signedIn",
+      "connectorState.signedInOff",
+      "connectorState.offBody",
+      "connectorState.enable",
+      "connectorState.enabled",
+      "connectorState.enableFailed",
+    ];
+    for (const key of keys) {
+      expect(CATALOGS.de[key].length).toBeGreaterThan(0);
+      expect(CATALOGS.en[key].length).toBeGreaterThan(0);
+      expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
+    }
   });
 });

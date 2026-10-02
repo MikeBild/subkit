@@ -16,12 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  authStateHint,
-  authStateLabel,
-  type ConnectorAuthState,
-  needsRenewal,
-} from "@/lib/connector-auth-state";
+import { authStateLabel, type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
 import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
 import {
@@ -29,6 +24,9 @@ import {
   credentialBody,
   offersConnectionChoice,
   offersKeyReplacement,
+  renewalWay,
+  signInActionLabel,
+  signInLine,
 } from "@/pages/connector-detail-model";
 
 export type ConnectorCredentialSummary = NonNullable<
@@ -54,7 +52,8 @@ export function useConnectorCredential(connectorId: string | null) {
 }
 
 /**
- * "Anmeldung": one sentence for how the connector signs in now, when the
+ * "Anmeldung": where the sign-in stands — the one place the page says it —
+ * one line for what is the case and what the action beside it does, when the
  * credential was last changed, and the one way to change it that fits its
  * kind of sign-in. "Verbindung wählen" is offered only where a connection can
  * carry the sign-in (OAuth, or a connector already linked to one); "Schlüssel
@@ -117,13 +116,17 @@ export function ConnectorCredentials({
 
   const items = connections.data?.items ?? [];
   const lost = needsRenewal(state);
+  const way = renewalWay({ authType, usesConnection: Boolean(current?.connection), canWrite });
+  const line = signInLine(state, way);
+  const renewLabel = t(signInActionLabel(state));
+  const missingScopes = current?.missing_scopes ?? [];
   const grantsHref = absolute(apiAccessHref("grants"));
   // The header the key goes in, pre-filled with the one the engine reports.
   const header = headerName ?? current?.header_names?.[0] ?? "";
   const body = credentialBody(authType, token, header);
 
   return (
-    // The anchor "Neu verbinden" lands on, from the run dialog and the page's own action.
+    // The anchor "Neu verbinden" lands on, from the run dialog.
     <Card id="connector-credentials" className="scroll-mt-6" data-testid="connector-credentials">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
@@ -136,13 +139,27 @@ export function ConnectorCredentials({
           </Badge>
         </CardTitle>
         <CardDescription data-testid="connector-credential-sentence">
-          {current?.connection
-            ? t("connectorCredentials.viaConnection", { name: current.connection.name })
-            : current
-              ? `${authLabel(authType, current.header_names ?? [], t)}.`
-              : t("connectorCredentials.none")}{" "}
-          {t(authStateHint(state))}
+          {/* A lost sign-in says what is the case and what the button does —
+              one line, not a sentence about the kind of sign-in beside one
+              that contradicts the button. */}
+          {lost && line
+            ? t(line, { name: current?.connection?.name ?? "" })
+            : [
+                current?.connection
+                  ? t("connectorCredentials.viaConnection", { name: current.connection.name })
+                  : current
+                    ? `${authLabel(authType, current.header_names ?? [], t)}.`
+                    : t("connectorCredentials.none"),
+                line ? t(line) : null,
+              ]
+                .filter(Boolean)
+                .join(" ")}
         </CardDescription>
+        {missingScopes.length > 0 ? (
+          <p className="text-sm" data-testid="connector-missing-scopes">
+            {t("connectorCredentials.partial", { scopes: missingScopes.join(", ") })}
+          </p>
+        ) : null}
         {current && !current.connection ? (
           <p className="text-sm text-muted-foreground" data-testid="connector-credential-stored">
             {t("connectorCredentials.stored", { date: dateTime(current.updated_at) })}
@@ -165,48 +182,36 @@ export function ConnectorCredentials({
           </p>
         ) : null}
       </CardHeader>
-      {canWrite && (lost || choice || replaceable) ? (
+      {canWrite && ((lost && way) || missingScopes.length > 0 || choice || replaceable) ? (
         <CardContent className="grid gap-4">
-          {lost ? (
-            <div
-              className="flex flex-col gap-2 rounded-lg border border-destructive/40 p-3"
-              data-testid="connector-renew-panel"
+          {/* The one way to renew a lost sign-in. What it does is said in the
+              line under the title, so the button stands alone. */}
+          {lost && way === "connection" ? (
+            <Button asChild className="w-fit">
+              <a href={grantsHref} data-testid="connector-renew-signin">
+                {renewLabel}
+              </a>
+            </Button>
+          ) : way === "provider" && (lost || missingScopes.length > 0) ? (
+            // Withheld permissions are granted the same way: by signing in
+            // again. Not the page's filled action — the sign-in works.
+            <Button
+              variant={lost ? "default" : "outline"}
+              className="w-fit"
+              disabled={oauthStart.isPending}
+              onClick={() => oauthStart.mutate()}
+              data-testid="connector-renew-signin"
             >
-              {current?.connection ? (
-                <>
-                  <p className="text-sm">
-                    {t("connectorCredentials.renewViaConnection", {
-                      name: current.connection.name,
-                    })}
-                  </p>
-                  <Button asChild className="w-fit">
-                    <a href={grantsHref} data-testid="connector-renew-signin">
-                      {t("connectorCredentials.renew")}
-                    </a>
-                  </Button>
-                </>
-              ) : authType === "oauth2" ? (
-                <Button
-                  className="w-fit"
-                  disabled={oauthStart.isPending}
-                  onClick={() => oauthStart.mutate()}
-                  data-testid="connector-renew-signin"
-                >
-                  {t("connectorCredentials.renew")}
-                </Button>
-              ) : replaceable ? (
-                <>
-                  <p className="text-sm">{t("connectorCredentials.renewKey")}</p>
-                  <Button
-                    className="w-fit"
-                    onClick={() => setShowKey(true)}
-                    data-testid="connector-renew-signin"
-                  >
-                    {t("connectorCredentials.renew")}
-                  </Button>
-                </>
-              ) : null}
-            </div>
+              {renewLabel}
+            </Button>
+          ) : lost && way === "key" && !showKey ? (
+            <Button
+              className="w-fit"
+              onClick={() => setShowKey(true)}
+              data-testid="connector-renew-signin"
+            >
+              {renewLabel}
+            </Button>
           ) : null}
           {choice ? (
             <Field>
@@ -297,7 +302,7 @@ export function ConnectorCredentials({
                 <FieldDescription>{t("connectorCredentials.keyHint")}</FieldDescription>
               </Field>
             </div>
-          ) : replaceable ? (
+          ) : replaceable && !lost ? (
             <Button
               variant="outline"
               className="w-fit"
