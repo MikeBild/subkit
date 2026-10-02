@@ -70,6 +70,19 @@ export function legacyRefusal(error: unknown): { steps: string[] } | null {
   return { steps: [...new Set(steps)] };
 }
 
+/**
+ * A run the engine refused because no approval admits it — none exists, or
+ * the one that exists no longer fits or is used up. Until an approval is
+ * given, the same run is refused the same way.
+ */
+export function approvalRefusal(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    (error.code ?? "").startsWith("execution_authority_")
+  );
+}
+
 /** The first environment that can run; development when neither can. */
 export function defaultEnvironment(
   blocked: Record<RunEnvironment, UnavailableConnector | null>,

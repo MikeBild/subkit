@@ -402,6 +402,12 @@ header keeps only its menu. A saved change that already waits leads instead
 ("Übernahme nötig"). The run dialog and a chat card say the same refusal by its reason, with the
 steps the engine names, never as a run that "could not be started".
 
+A refusal that would simply repeat is not offered again. After the engine refused a run for a
+version in an earlier format, for a missing approval or for a connector that cannot serve it,
+"Ausführen" in the run dialog is switched off and one line says that another attempt would be
+refused the same way; choosing another environment offers it again, except for the format, which
+no environment changes. A fault — the run could not be started — leaves the button on.
+
 "Nicht geprüft" also stands when a read the verdict rests on did not answer — the diagnosis, the
 verified status — and when the reader may not see a webhook that the visible rows do not answer
 for. A failed read is never "nothing to report": the panel says it could not verify and offers

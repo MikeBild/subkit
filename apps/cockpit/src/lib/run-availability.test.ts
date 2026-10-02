@@ -4,6 +4,7 @@ import { connectorHref } from "@/app/links";
 import { translate } from "@/lib/i18n";
 import { remedyFor } from "@/lib/remedy";
 import {
+  approvalRefusal,
   blockedSentenceKey,
   blockingConnector,
   connectorFix,
@@ -53,6 +54,27 @@ describe("defaultEnvironment", () => {
   test("development when neither can", () => {
     const blocked = blockingConnector({ unavailable_connectors: [gmail] });
     expect(defaultEnvironment({ dev: blocked, prod: blocked })).toBe("dev");
+  });
+});
+
+describe("approvalRefusal", () => {
+  test("a run no approval admits is refused for that reason", () => {
+    for (const code of [
+      "execution_authority_required",
+      "execution_authority_unavailable",
+      "execution_authority_changed",
+    ])
+      expect(approvalRefusal(new ApiError(409, { code }, null))).toBe(true);
+  });
+
+  test("any other failure is not an approval refusal", () => {
+    expect(approvalRefusal(new ApiError(409, { code: "workflow_version_legacy" }, null))).toBe(
+      false,
+    );
+    expect(approvalRefusal(new ApiError(500, { code: "execution_authority_changed" }, null))).toBe(
+      false,
+    );
+    expect(approvalRefusal(new Error("execution_authority_required"))).toBe(false);
   });
 });
 

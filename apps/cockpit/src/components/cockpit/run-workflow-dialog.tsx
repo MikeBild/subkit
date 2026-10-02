@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  approvalRefusal,
   blockedSentenceKey,
   blockingConnector,
   connectorFix,
@@ -70,7 +71,19 @@ interface RunOutcome {
 type Failure =
   | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
   | { kind: "legacy"; steps: string[] }
+  | { kind: "approval"; environment: RunEnvironment }
   | { kind: "failed"; executionId: string | null };
+
+/**
+ * Whether the same press would be refused the same way: the cause is not in
+ * this dialog, so "Ausführen" is not offered again until it changed. A version
+ * in an earlier format is refused in every environment; a connector or a
+ * missing approval in the one that was tried.
+ */
+function refusedAgain(failure: Failure | null, environment: RunEnvironment | null): boolean {
+  if (!failure || failure.kind === "failed") return false;
+  return failure.kind === "legacy" || failure.environment === environment;
+}
 
 /**
  * Whether each environment can run the version POST /v1/executions runs, as
@@ -318,6 +331,10 @@ export function RunWorkflowDialog({
         setFailure({ kind: "legacy", steps: legacy.steps });
         return;
       }
+      if (approvalRefusal(error)) {
+        setFailure({ kind: "approval", environment: target });
+        return;
+      }
       const details = (error as { details?: Record<string, unknown> | null }).details;
       setFailure({
         kind: "failed",
@@ -327,6 +344,7 @@ export function RunWorkflowDialog({
   });
 
   const failureFix = failure?.kind === "connector" ? connectorFix(failure.connector) : null;
+  const repeats = refusedAgain(failure, environment);
 
   return (
     <Dialog
@@ -362,7 +380,8 @@ export function RunWorkflowDialog({
             onValueChange={(next) => {
               setChosen(next as RunEnvironment);
               setConfirming(false);
-              setFailure(null);
+              // A version in an earlier format is refused in every environment.
+              setFailure((current) => (current?.kind === "legacy" ? current : null));
             }}
           >
             <SelectTrigger id="workflow-run-environment" data-testid="workflow-run-environment">
@@ -464,7 +483,11 @@ export function RunWorkflowDialog({
                     ? failure.steps.length > 0
                       ? t("run.legacySteps", { steps: failure.steps.join(", ") })
                       : t("run.legacy")
-                    : t("run.failed")}
+                    : failure.kind === "approval"
+                      ? t("run.approvalMissing", {
+                          environment: environmentWord(failure.environment),
+                        })
+                      : t("run.failed")}
               </p>
               {failureFix && (
                 <a
@@ -498,7 +521,8 @@ export function RunWorkflowDialog({
               missing.length > 0 ||
               invalid.length > 0 ||
               environment === null ||
-              blockedHere !== null
+              blockedHere !== null ||
+              repeats
             }
             data-testid="workflow-run-submit"
             onClick={() => {
@@ -517,6 +541,12 @@ export function RunWorkflowDialog({
                 : t("run.action")}
           </Button>
         </DialogFooter>
+        {/* Why the button is off: the refusal above would simply repeat. */}
+        {repeats && (
+          <p className="text-xs text-muted-foreground" data-testid="workflow-run-repeats">
+            {t("run.refusedAgain")}
+          </p>
+        )}
         {missing.length > 0 && (
           <p className="text-xs text-muted-foreground" data-testid="workflow-run-missing">
             {t("run.missingInputs", { fields: missing.join(", ") })}
