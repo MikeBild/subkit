@@ -128,14 +128,24 @@ export function useWorkflowAutomation(
       ),
   });
 
-  const items = useMemo(
-    () => authorities.data?.pages.flatMap((page) => page.items) ?? null,
-    [authorities.data],
-  );
+  // An answer of another shape is a failed read, never an empty list: "no
+  // approvals" and "no schedules" are states the page acts on.
+  const items = useMemo(() => {
+    const pages = authorities.data?.pages;
+    if (!pages || pages.some((page) => !Array.isArray(page?.items))) return null;
+    return pages.flatMap((page) => page.items);
+  }, [authorities.data]);
   const ownSchedules = useMemo(
-    () => schedules.data?.schedules.filter((entry) => entry.workflow_id === workflowId) ?? null,
+    () =>
+      Array.isArray(schedules.data?.schedules)
+        ? schedules.data.schedules.filter((entry) => entry.workflow_id === workflowId)
+        : null,
     [schedules.data, workflowId],
   );
+  const verified =
+    Array.isArray(status.data?.schedules) && Array.isArray(status.data?.inbound_hooks)
+      ? status.data
+      : null;
   const settled =
     !authorities.isPending &&
     !schedules.isPending &&
@@ -145,16 +155,18 @@ export function useWorkflowAutomation(
     workflow,
     draft: draft.data ?? null,
     schedules: ownSchedules,
-    status: status.data ?? null,
+    status: verified,
     authorities: authorities.error ? null : items,
     now,
   };
   const environment = settled ? automationEnvironment(inputs) : null;
+  const mayDiagnose = permissions.includes("workflow:read");
   const diagnosis = useQuery({
     ...workflowDiagnosisQuery(workflowId, environment),
-    enabled: environment !== null && permissions.includes("workflow:read"),
+    enabled: environment !== null && mayDiagnose,
   });
-  const ready = settled && environment !== null && !diagnosis.isPending;
+  // A read that is never made is not one to wait for.
+  const ready = settled && environment !== null && (!mayDiagnose || !diagnosis.isPending);
 
   const versions = new Map<string, number>();
   if (workflow.current_version_id && typeof workflow.current_version === "number")
@@ -187,7 +199,7 @@ export function useWorkflowAutomation(
   return {
     workflowId,
     state: ready ? automationState({ ...inputs, diagnosis: diagnosis.data ?? null }) : null,
-    failed: Boolean(authorities.error),
+    failed: Boolean(authorities.error) || (settled && items === null),
     retry: () => void authorities.refetch(),
     diagnosis: diagnosis.data ?? null,
     versions,
@@ -439,7 +451,7 @@ export function AutomationPanel({
       id={WORKFLOW_AUTOMATION_ANCHOR}
       data-family-slot="workflow-automation"
       data-testid="workflow-automation"
-      data-state={state?.state ?? (automation.failed ? "failed" : "loading")}
+      data-state={automation.failed ? "failed" : (state?.state ?? "loading")}
       className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-xl border p-4"
     >
       <div className="flex items-center gap-1">
@@ -489,12 +501,16 @@ function PanelBody({
   // diagnosis does not name gets the way to an author.
   const unnamedRepair =
     state.primaryAction?.kind === "repair" && !automation.diagnosis?.diagnoses[0];
-  const actions = [state.primaryAction, state.secondaryAction].filter(
-    (action): action is AutomationAction => action !== null && action.kind !== "repair",
+  const actions = [
+    { action: state.primaryAction, testId: "workflow-automation-action" },
+    { action: state.secondaryAction, testId: "workflow-automation-secondary" },
+  ].filter(
+    (entry): entry is { action: AutomationAction; testId: string } =>
+      entry.action !== null && entry.action.kind !== "repair",
   );
   const needsRight =
     !automation.canWrite &&
-    actions.some((action) => action.kind !== "view") &&
+    actions.some(({ action }) => action.kind !== "view") &&
     state.state !== "manual";
   const current: WorkflowAuthority[] = state.grant
     ? [state.grant, ...state.alsoValid]
@@ -518,13 +534,13 @@ function PanelBody({
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {actions.map((action, index) => (
+          {actions.map(({ action, testId }) => (
             <AutomationActionButton
-              key={action.kind}
+              key={testId}
               automation={automation}
               action={action}
               size="sm"
-              testId={index === 0 ? "workflow-automation-action" : "workflow-automation-secondary"}
+              testId={testId}
             />
           ))}
           {unnamedRepair && automation.canChat ? (
