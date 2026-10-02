@@ -151,6 +151,44 @@ headers cannot replace a pending execution. Completed or already-running
 executions are never re-enqueued by delivery replay. Historic replay receipts stay
 deduplicated and are not interpreted as new approvals.
 
+#### Suggested window and run limit
+
+The review suggests limits; a person confirms or changes them, and nothing is
+granted until they do.
+
+| What starts the workflow | Suggested window | Suggested run limit |
+|---|---|---|
+| Nothing (runs on request) | 24 hours | 1 |
+| A schedule | 30 days | the schedule's own starts in that window |
+| An inbound webhook (production review) | 30 days | the hook's recent call rate projected over the window and doubled, at least 100 |
+| A schedule and a webhook | 30 days | both added |
+
+The call rate counts the last 14 days: runs the hook started plus deliveries the
+authority gate refused — both are calls an approval has to cover, so a hook nobody
+has approved yet is still sized from its real traffic. The review says in one line
+where the numbers come from. The ceilings are unchanged: at most 10,000 runs and
+31 days. A development review never uses the hook's rate; webhook runs are
+production only.
+
+### What the attention list says before a run is refused
+
+A refused start records a hold, and a held workflow is listed as *stopped*. Two
+facts are listed earlier, derived on read from what is already stored — no hold is
+written for them:
+
+| Item | When | Class |
+|---|---|---|
+| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment | *decide*, due at the next scheduled start |
+| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left | *decide*, lower severity (`notice`) |
+
+Both lead to the workflow's page, where the automation panel offers the approval,
+the extension, or the repair that has to come first. One workflow is one item: the
+first refused start turns the same item into the held one, never a second. Saving
+a new active version appears within the list's ten-second cache; a saved draft is
+not listed — it starts nothing until a person applies it. The same items reach
+`GET /v1/attention`, the health digest and the MCP attention tool
+(`version_awaiting_approval`, `approval_expiring`).
+
 The driver is `handleInbound()` in `apps/engine/src/webhooks/inbound/service.ts`; the
 individual verifiers live under `apps/engine/src/webhooks/inbound/verifiers/`.
 
