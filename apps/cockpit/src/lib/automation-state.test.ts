@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   AUTOMATION_STATE_KEYS,
   type AutomationInputs,
@@ -6,10 +7,14 @@ import {
   type AutomationStatusLike,
   automationActionKey,
   automationActionPermitted,
+  automationCard,
   automationEnvironment,
+  automationNeedsMoreApprovals,
   automationState,
   automationSummary,
   automationTitleAction,
+  EXTEND_BELOW_RUN_SHARE,
+  EXTEND_WITHIN_DAYS,
   grantNeedsExtension,
   type ScheduleLike,
 } from "@/lib/automation-state";
@@ -111,10 +116,36 @@ function inputs(overrides: Partial<AutomationInputs> = {}): AutomationInputs {
     status: status(["approval_required"]),
     authorities: [],
     diagnosis: { is_current: true, diagnoses: [] },
+    unanswered: { status: false, diagnosis: false },
     now: NOW,
     ...overrides,
   };
 }
+
+/** Verified schedule rows that each name their own environment. */
+function rows(
+  entries: ReadonlyArray<readonly [AutomationRowState, "dev" | "prod"]>,
+): AutomationStatusLike {
+  return {
+    schedules: entries.map(([state, environment], index) => ({
+      schedule_id: `schedule-${index + 1}`,
+      state,
+      cron: "0 7 * * *",
+      timezone: "Europe/Berlin",
+      environment,
+      next_run_at: null,
+    })),
+    inbound_hooks: [],
+  };
+}
+
+const hooked = {
+  lifecycle: "active",
+  current_version_id: ACTIVE,
+  draft_version_id: ACTIVE,
+  current_version: 9,
+  webhooks_active: 1,
+};
 
 describe("automationState — one state, by precedence", () => {
   test("approved: a current approval covers the running version", () => {
@@ -591,5 +622,360 @@ describe("actions", () => {
     expect(automationSummary("apply")).toBe("apply");
     for (const state of ["paused", "manual", "unknown"] as const)
       expect(automationSummary(state)).toBe("unknown");
+  });
+});
+
+describe("a read that did not answer is never read as approved", () => {
+  // Each of these used to say "approved": a failed read left `null` behind,
+  // and `null` meant "nothing to report".
+  const approved = { status: status(["authorized"]), authorities: [authority()] };
+
+  test("the diagnosis did not answer, and an approval exists", () => {
+    const state = automationState(
+      inputs({ ...approved, diagnosis: null, unanswered: { status: false, diagnosis: true } }),
+    );
+    expect(state.state).toBe("unknown");
+    expect(state.primaryAction).toBeNull();
+    // The approval that exists stays one press away.
+    expect(state.secondaryAction).toEqual({ kind: "view" });
+    expect(automationTitleAction(state)).toBeNull();
+  });
+
+  test("the verified status errored, and an approval exists", () => {
+    const state = automationState(
+      inputs({
+        authorities: [authority()],
+        status: null,
+        unanswered: { status: true, diagnosis: false },
+      }),
+    );
+    expect(state.state).toBe("unknown");
+    expect(state.grant).toBeNull();
+  });
+
+  test("a status the reader may not ask for is not a failed one", () => {
+    // Without `schedule:read` the state is decided from what remains.
+    const state = automationState(inputs({ authorities: [authority()], status: null }));
+    expect(state.state).toBe("approved");
+  });
+
+  test("what is known without the read still outranks it", () => {
+    // Paused and a waiting change are read from the record and the schedules.
+    const paused = automationState(
+      inputs({
+        schedules: [schedule({ paused: true })],
+        status: null,
+        unanswered: { status: true, diagnosis: true },
+      }),
+    );
+    expect(paused.state).toBe("paused");
+    // A refusal the status itself reports is a repair, whatever the diagnosis read did.
+    const refused = automationState(
+      inputs({
+        status: status(["repair_required"]),
+        diagnosis: null,
+        unanswered: { status: false, diagnosis: true },
+      }),
+    );
+    expect(refused.state).toBe("repair");
+  });
+});
+
+describe("schedules in both environments", () => {
+  test("the environment that still waits is named — not production by default", () => {
+    const input = inputs({
+      schedules: [
+        schedule({ id: "schedule-1", execution_mode: "prod" }),
+        schedule({ id: "schedule-2", execution_mode: "dev" }),
+      ],
+      status: rows([
+        ["authorized", "prod"],
+        ["approval_required", "dev"],
+      ]),
+      authorities: [authority()],
+    });
+    // The diagnosis and the approval dialog are asked for the half that waits.
+    expect(automationEnvironment(input)).toBe("dev");
+    const state = automationState(input);
+    expect(state.state).toBe("grant");
+    expect(state.environment).toBe("dev");
+    expect(state.pendingEnvironments).toEqual(["dev"]);
+    // Production's approval is not the one this state rests on, and stays reachable.
+    expect(state.grant).toBeNull();
+    expect(state.alsoValid.map((entry) => entry.execution_environment)).toEqual(["prod"]);
+    expect(state.secondaryAction).toEqual({ kind: "view" });
+  });
+
+  test("both waiting: both are pending, production first", () => {
+    const state = automationState(
+      inputs({
+        status: rows([
+          ["approval_required", "dev"],
+          ["approval_required", "prod"],
+        ]),
+      }),
+    );
+    expect(state.environment).toBe("prod");
+    expect(state.pendingEnvironments).toEqual(["prod", "dev"]);
+  });
+
+  test("without verified rows, every environment something starts it in needs an approval", () => {
+    const both = [
+      schedule({ id: "a", execution_mode: "prod" }),
+      schedule({ id: "b", execution_mode: "dev" }),
+    ];
+    const state = automationState(
+      inputs({ status: null, schedules: both, authorities: [authority()] }),
+    );
+    // Production is approved; development is not — that is not "approved".
+    expect(state.state).toBe("grant");
+    expect(state.environment).toBe("dev");
+    const dev = authority({
+      id: "00000000-0000-4000-8000-0000000000a2",
+      execution_environment: "dev",
+    });
+    expect(
+      automationState(inputs({ status: null, schedules: both, authorities: [authority(), dev] }))
+        .state,
+    ).toBe("approved");
+  });
+});
+
+describe("an approval that is still valid is never out of reach", () => {
+  const dev = authority({
+    id: "00000000-0000-4000-8000-0000000000a2",
+    execution_environment: "dev",
+  });
+
+  test("approval needed here, one valid elsewhere: it can be viewed and revoked", () => {
+    const state = automationState(
+      inputs({ status: status(["approval_required"]), authorities: [dev] }),
+    );
+    expect(state.state).toBe("grant");
+    expect(state.alsoValid).toEqual([dev]);
+    expect(state.primaryAction).toEqual({ kind: "grant" });
+    expect(state.secondaryAction).toEqual({ kind: "view" });
+  });
+
+  test("not verified: the valid approvals are still listed and viewable", () => {
+    const state = automationState(
+      inputs({ status: status(["verification_unavailable"]), authorities: [authority(), dev] }),
+    );
+    expect(state.state).toBe("unknown");
+    expect(state.alsoValid).toHaveLength(2);
+    expect(state.secondaryAction).toEqual({ kind: "view" });
+  });
+
+  test("on request, with an approval for another environment", () => {
+    const state = automationState(
+      inputs({ schedules: [], status: status(), authorities: [authority()], workflow: hooked }),
+    );
+    // The hook runs in production and production is approved.
+    expect(state.state).toBe("approved");
+    const manual = automationState(
+      inputs({
+        schedules: [],
+        status: status(),
+        // Lapsed approvals name production as where it belongs; the valid one is for development.
+        authorities: [authority({ state: "expired", ready_for_new_run: false }), dev],
+      }),
+    );
+    expect(manual.state).toBe("manual");
+    expect(manual.environment).toBe("prod");
+    expect(manual.alsoValid).toEqual([dev]);
+    expect(manual.secondaryAction).toEqual({ kind: "view" });
+  });
+
+  test("nothing valid: no view action is offered", () => {
+    expect(automationState(inputs()).secondaryAction).toBeNull();
+  });
+});
+
+describe("a hook the reader may not list", () => {
+  test("authorized development schedules do not answer for it", () => {
+    const input = inputs({
+      workflow: hooked,
+      schedules: [schedule({ execution_mode: "dev" })],
+      status: rows([["authorized", "dev"]]),
+    });
+    // No approval for production in the list: the hook has none.
+    const none = automationState(input);
+    expect(none.state).toBe("grant");
+    expect(none.environment).toBe("prod");
+    // One in the list that no row confirms: not verified, never "approved".
+    const listed = automationState({ ...input, authorities: [authority()] });
+    expect(listed.state).toBe("unknown");
+    expect(listed.secondaryAction).toEqual({ kind: "view" });
+  });
+
+  test("an authorized production schedule answers for it: same version, same approval", () => {
+    const state = automationState(
+      inputs({
+        workflow: hooked,
+        status: rows([["authorized", "prod"]]),
+        authorities: [authority()],
+      }),
+    );
+    expect(state.state).toBe("approved");
+  });
+});
+
+describe("the approval in force can lie behind the first page", () => {
+  test("approved without its approval in sight asks for more", () => {
+    const state = automationState(inputs({ status: status(["authorized"]), authorities: [] }));
+    expect(state.state).toBe("approved");
+    expect(state.grant).toBeNull();
+    expect(automationNeedsMoreApprovals(state, true)).toBe(true);
+    // Nothing further to read: the state stands as it is.
+    expect(automationNeedsMoreApprovals(state, false)).toBe(false);
+  });
+
+  test("an approval in sight, or any other state, asks for nothing", () => {
+    const approved = automationState(
+      inputs({ status: status(["authorized"]), authorities: [authority()] }),
+    );
+    expect(automationNeedsMoreApprovals(approved, true)).toBe(false);
+    expect(automationNeedsMoreApprovals(automationState(inputs()), true)).toBe(false);
+  });
+});
+
+describe("a stopped hook cannot be resumed from here", () => {
+  test("a hook-only workflow that is paused offers no action", () => {
+    const state = automationState(
+      inputs({ schedules: [], status: status([], ["paused"]), workflow: hooked }),
+    );
+    expect(state.state).toBe("paused");
+    // The panel says so in one line instead of a button that does nothing.
+    expect(state.primaryAction).toBeNull();
+    expect(state.pendingEnvironments).toEqual([]);
+  });
+});
+
+describe("the chat's review card", () => {
+  const hookOnly = { schedules: [], workflow: hooked };
+
+  test("one environment gives one button, named for the page's own step", () => {
+    const card = automationCard(automationState(inputs()), 0);
+    expect(card.environments).toEqual(["prod"]);
+    expect(card.actionKey).toBe(automationActionKey({ kind: "grant" }));
+    const apply = automationCard(
+      automationState(
+        inputs({
+          workflow: {
+            lifecycle: "active",
+            current_version_id: ACTIVE,
+            draft_version_id: DRAFT,
+            current_version: 9,
+          },
+        }),
+      ),
+      0,
+    );
+    expect(apply.environments).toEqual(["prod"]);
+    expect(apply.actionKey).toBe(automationActionKey({ kind: "apply" }));
+    expect(apply.hintKey).toBe("chat.automationCard.apply.hint");
+  });
+
+  test("two environments give two buttons, production first", () => {
+    const card = automationCard(
+      automationState(
+        inputs({
+          status: rows([
+            ["approval_required", "dev"],
+            ["approval_required", "prod"],
+          ]),
+        }),
+      ),
+      0,
+    );
+    expect(card.environments).toEqual(["prod", "dev"]);
+  });
+
+  test("a hook-started workflow only ever offers production", () => {
+    // Verified, unverified, and with a saved change: the hook runs in production.
+    const cards = [
+      inputs({ ...hookOnly, status: status([], ["approval_required"]) }),
+      inputs({ ...hookOnly, status: null }),
+      inputs({
+        ...hookOnly,
+        status: status([], ["approval_required"]),
+        workflow: { ...hooked, draft_version_id: DRAFT },
+      }),
+    ].map((input) => automationCard(automationState(input), 1));
+    for (const card of cards) expect(card.environments).toEqual(["prod"]);
+  });
+
+  test("the hint names what an approval allows: scheduled runs, webhook calls, or both", () => {
+    const hint = (input: Partial<AutomationInputs>, webhooks: number) =>
+      automationCard(automationState(inputs(input)), webhooks).hintKey;
+    expect(hint({}, 0)).toBe("chat.automationCard.review.hint.schedule");
+    expect(hint({ ...hookOnly, status: status([], ["approval_required"]) }, 1)).toBe(
+      "chat.automationCard.review.hint.hook",
+    );
+    expect(
+      hint({ workflow: hooked, status: status(["approval_required"], ["approval_required"]) }, 1),
+    ).toBe("chat.automationCard.review.hint.any");
+    // A hook the reader may not list still counts.
+    expect(hint({ ...hookOnly, status: null }, 1)).toBe("chat.automationCard.review.hint.hook");
+  });
+
+  test("an approved workflow offers no button", () => {
+    const card = automationCard(
+      automationState(inputs({ status: status(["authorized"]), authorities: [authority()] })),
+      0,
+    );
+    expect(card.environments).toEqual([]);
+    expect(card.hintKey).toBe("chat.automationCard.authorized.hint");
+  });
+
+  test("repair and not-verified open the review under their own words", () => {
+    const repair = automationCard(
+      automationState(inputs({ status: status(["repair_required"]), diagnosis: null })),
+      0,
+    );
+    expect(repair.actionKey).toBe("chat.automationCard.repair.action");
+    expect(repair.environments).toEqual(["prod"]);
+    const unknown = automationCard(automationState(inputs({ authorities: null })), 0);
+    expect(unknown.actionKey).toBe("chat.automationCard.unknown.action");
+    expect(unknown.environments).toEqual(["prod"]);
+  });
+
+  test("every word of the card exists in both catalogs", () => {
+    const keys = [
+      "chat.automationCard.review.hint.schedule",
+      "chat.automationCard.review.hint.hook",
+      "chat.automationCard.review.hint.any",
+      "chat.automationCard.review.prod",
+      "chat.automationCard.review.dev",
+      "chat.automationCard.repair.action",
+      "chat.automationCard.unknown.action",
+    ] as const;
+    for (const catalog of Object.values(CATALOGS))
+      for (const key of keys) expect(catalog[key], key).toBeTruthy();
+    // The card says to OPEN the review; its content is not "below".
+    for (const key of keys.slice(0, 3)) {
+      expect(CATALOGS.de[key]).toStartWith("Öffne die Prüfung");
+      expect(CATALOGS.de[key]).not.toContain("unten");
+    }
+    expect(CATALOGS.de["chat.automationCard.review.hint.schedule"]).toContain("geplante Läufe");
+    expect(CATALOGS.de["chat.automationCard.review.hint.hook"]).toContain(
+      "eingehende Webhook-Aufrufe",
+    );
+  });
+});
+
+describe("the extension thresholds are the engine's", () => {
+  test("the attention list and the panel warn on the same numbers", () => {
+    const engine = readFileSync(
+      new URL("../../../engine/src/workflows/authority-extension.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    const constant = (name: string) => {
+      const match = new RegExp(`export const ${name} = ([0-9.]+);`).exec(engine);
+      if (!match?.[1]) throw new Error(`${name} not found in the engine`);
+      return Number(match[1]);
+    };
+    expect(EXTEND_WITHIN_DAYS).toBe(constant("AUTHORITY_EXTEND_WITHIN_DAYS"));
+    expect(EXTEND_BELOW_RUN_SHARE).toBe(constant("AUTHORITY_EXTEND_BELOW_RUN_SHARE"));
   });
 });
