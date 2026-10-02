@@ -337,6 +337,11 @@ what does it do → how has it been doing. Everything a reader does not decide b
 6. **Letzte Läufe**, then folded: **Technische Angaben** (slug, version, lifecycle, created,
    changed, last run), **Frühere Freigaben**, and **Unterhaltungen dazu**.
 
+An unhealthy workflow keeps its cause block between the header and the panel. Its next step is an
+outline action there — the page's one filled action stays "Ausführen" — and where the cause is an
+approval that no longer fits, the block offers none: the panel directly below says the state and
+carries the act.
+
 There are no tabs and no "Steuerung" row on this page, and no fact stands twice: the version is in
 the panel and the technical facts, the schedule in the panel and the call block's own tab.
 
