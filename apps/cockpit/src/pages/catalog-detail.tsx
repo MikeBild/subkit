@@ -400,8 +400,8 @@ export function CatalogDetailPage({
   const probe = useMutation({
     mutationFn: () =>
       apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
-    onSuccess: async (result) => {
-      if (result.ok) toast.success(t("detail.testPassed"));
+    onSuccess: async () => {
+      // The result stands on the page; a toast would say it a second time.
       // A test is a real call: a passed one clears a refused sign-in and
       // closes the breaker, and either way it is the newest call on record.
       // Read the connector again so the page says what the test changed.
@@ -591,23 +591,6 @@ export function CatalogDetailPage({
               ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
               : (probe.data.detail ?? t("connectors.probeFailed"))}
           </p>
-          {probe.data.missing_scopes && probe.data.missing_scopes.length > 0 && (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("connectors.missingScopes", { scopes: probe.data.missing_scopes.join(", ") })}
-            </p>
-          )}
-          {!probe.data.ok && probe.data.provider_action_url && (
-            <Button variant="outline" size="sm" className="mt-3" asChild>
-              <a
-                href={probe.data.provider_action_url}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="connector-renew"
-              >
-                {t("connectors.renew")}
-              </a>
-            </Button>
-          )}
         </div>
       )}
       {/* A connector's page is a stack of sections taller than the screen: each
@@ -645,12 +628,17 @@ export function CatalogDetailPage({
             }}
           />
         ) : null}
-        {resource === "connectors" && connectorAuth ? (
+        {/* A connector that signs in with nothing has no sign-in to show: the
+            connection's own "Anmeldung" fact already says so. */}
+        {resource === "connectors" && connectorAuth && connectorAuth !== "not_required" ? (
           <ConnectorCredentials
             connectorId={id}
             authType={typeof record.auth_type === "string" ? record.auth_type : null}
             state={connectorAuth}
             canWrite={canWrite}
+            providerUrl={
+              probe.data && !probe.data.ok ? (probe.data.provider_action_url ?? null) : null
+            }
           />
         ) : null}
         {resource === "connectors" &&

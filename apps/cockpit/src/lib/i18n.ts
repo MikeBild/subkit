@@ -469,7 +469,6 @@ const EN = {
     "Type a value here only for an external provider such as a model key. A system that can grant access itself is connected under Credentials → Access on your behalf.",
   "connectorCredentials.title": "Sign-in",
   "connectorCredentials.viaConnection": "Uses the account connection {name}.",
-  "connectorCredentials.none": "No credentials stored yet.",
   "connectorCredentials.choose": "Choose a connection",
   "connectorCredentials.choosePlaceholder": "Choose…",
   "connectorCredentials.chooseHint":
@@ -489,6 +488,7 @@ const EN = {
   "connectorCredentials.lostReadOnly":
     "The stored sign-in is refused. Renewing it takes permission to change this connector.",
   "connectorCredentials.signIn": "Sign in",
+  "connectorCredentials.openProvider": "Open the provider's page",
   "connectorCredentials.signInAtProvider":
     "Not signed in yet. “Sign in” takes you to the provider and back here.",
   "connectorCredentials.enterKey": "No key stored yet. “Sign in” opens the field for it.",
@@ -558,18 +558,16 @@ const EN = {
   "connectorDetail.runtime.noLatency": "Not measured",
   "connectorDetail.runtime.ms": "{ms} ms",
   "connectorDetail.runtime.lastFailure": "Last failure",
-  "connectorDetail.runtime.noFailure": "No failure recorded.",
-  "connectorDetail.runtime.unused": "Not used yet",
+  "connectorDetail.runtime.unused": "Not used in the last 7 days.",
+  "connectorDetail.runtime.figuresNotPermitted":
+    "You may not see calls, success rate and response time.",
   "connectorDetail.runtime.notRecorded": "Not recorded for this kind of connection",
-  "connectorDetail.runtime.notPermitted": "No permission",
   "connectorDetail.runtime.loadFailed": "The runtime could not be loaded",
   "connectorDetail.tools.title": "Server tools",
   "connectorDetail.tools.protocol": "Protocol version",
   "connectorDetail.tools.capabilities": "Capabilities",
   "connectorDetail.tools.lastContact": "Last contact",
-  "connectorDetail.tools.noSession": "No session yet",
-  "connectorDetail.tools.note":
-    "SubKit asks before every call, except for tools marked “Run without asking”.",
+  "connectorDetail.tools.noSession": "No session with this server yet.",
   "connectorDetail.tools.withoutAsking": "Run without asking",
   "connectorDetail.tools.more": "More",
   "connectorDetail.tools.less": "Less",
@@ -1551,15 +1549,10 @@ const EN = {
   "catalog.slugTaken": "Another workflow is already called {slug}.",
   "catalog.recategorizeFailed": "The workflow could not be moved.",
   "connectors.auth.connected": "Connected",
-  "connectors.auth.connectedHint":
-    "The stored credentials were accepted and have not been rejected since.",
   "connectors.auth.expired": "Expired",
-  "connectors.auth.expiredHint":
-    "The credentials were rejected. Test the connection to get the renewal link.",
   "connectors.auth.credentialsMissing": "Credentials missing",
   "connectors.auth.credentialsMissingHint": "No credentials are stored for this connection yet.",
   "connectors.auth.notRequired": "No credentials needed",
-  "connectors.auth.notRequiredHint": "This connection is used without credentials.",
   "connectors.auth.unproven": "Not proven yet",
   "connectors.auth.unprovenHint": "Test the connection to establish where it stands.",
   "connectors.disabled": "Switched off",
@@ -1573,8 +1566,6 @@ const EN = {
   "connectors.testing": "Testing…",
   "connectors.probeOk": "Reached in {ms} ms.",
   "connectors.probeFailed": "The connection could not be reached.",
-  "connectors.missingScopes": "Missing permissions: {scopes}",
-  "connectors.renew": "Renew access",
   "run.action": "Run",
   "run.title": "Run {name}",
   "run.savedVersion": "Runs the saved version v{version}.",
@@ -1624,7 +1615,6 @@ const EN = {
   "detail.changeInChat": "Change in chat",
   "detail.changePrompt": "Change the workflow “{name}”: ",
   "detail.changeRecordPrompt": "Change “{name}”: ",
-  "detail.testPassed": "Connector probe completed",
   "detail.test": "Test connection",
   "detail.technicalReference": "Technical reference",
   "detail.technicalReferenceHint":
@@ -3777,7 +3767,6 @@ const DE: Record<TranslationKey, string> = {
     "Trage hier nur einen Wert für einen externen Anbieter ein, etwa einen Modell-Schlüssel. Ein System, das den Zugriff selbst freigeben kann, verbindest du unter Zugangsdaten → Zugriff in deinem Namen.",
   "connectorCredentials.title": "Anmeldung",
   "connectorCredentials.viaConnection": "Nutzt die Verbindung {name}.",
-  "connectorCredentials.none": "Noch keine Zugangsdaten hinterlegt.",
   "connectorCredentials.choose": "Verbindung wählen",
   "connectorCredentials.choosePlaceholder": "Wählen…",
   "connectorCredentials.chooseHint":
@@ -3797,6 +3786,7 @@ const DE: Record<TranslationKey, string> = {
   "connectorCredentials.lostReadOnly":
     "Die gespeicherte Anmeldung wird abgelehnt. Erneuern darf, wer diesen Konnektor ändern darf.",
   "connectorCredentials.signIn": "Anmelden",
+  "connectorCredentials.openProvider": "Seite des Anbieters öffnen",
   "connectorCredentials.signInAtProvider":
     "Noch nicht angemeldet. „Anmelden“ führt zum Anbieter und wieder hierher.",
   "connectorCredentials.enterKey":
@@ -3868,18 +3858,16 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.runtime.noLatency": "Nicht gemessen",
   "connectorDetail.runtime.ms": "{ms} ms",
   "connectorDetail.runtime.lastFailure": "Letzter Fehler",
-  "connectorDetail.runtime.noFailure": "Kein Fehler erfasst.",
-  "connectorDetail.runtime.unused": "Noch nicht verwendet",
+  "connectorDetail.runtime.unused": "In den letzten 7 Tagen nicht verwendet.",
+  "connectorDetail.runtime.figuresNotPermitted":
+    "Aufrufe, Erfolgsquote und Antwortzeit darfst du nicht sehen.",
   "connectorDetail.runtime.notRecorded": "Wird für diese Art nicht erfasst",
-  "connectorDetail.runtime.notPermitted": "Keine Berechtigung",
   "connectorDetail.runtime.loadFailed": "Die Laufzeit konnte nicht geladen werden",
   "connectorDetail.tools.title": "Werkzeuge des Servers",
   "connectorDetail.tools.protocol": "Protokollversion",
   "connectorDetail.tools.capabilities": "Fähigkeiten",
   "connectorDetail.tools.lastContact": "Letzter Kontakt",
-  "connectorDetail.tools.noSession": "Noch keine Sitzung",
-  "connectorDetail.tools.note":
-    "SubKit fragt vor jedem Aufruf nach, außer bei Werkzeugen mit „Ohne Rückfrage“.",
+  "connectorDetail.tools.noSession": "Mit diesem Server gab es noch keine Sitzung.",
   "connectorDetail.tools.withoutAsking": "Ohne Rückfrage",
   "connectorDetail.tools.more": "Mehr",
   "connectorDetail.tools.less": "Weniger",
@@ -4871,16 +4859,11 @@ const DE: Record<TranslationKey, string> = {
   "catalog.slugTaken": "Ein anderer Workflow heißt bereits {slug}.",
   "catalog.recategorizeFailed": "Der Workflow konnte nicht verschoben werden.",
   "connectors.auth.connected": "Verbunden",
-  "connectors.auth.connectedHint":
-    "Die hinterlegten Zugangsdaten wurden angenommen und seither nicht abgelehnt.",
   "connectors.auth.expired": "Abgelaufen",
-  "connectors.auth.expiredHint":
-    "Die Zugangsdaten wurden abgelehnt. Ein Verbindungstest liefert den Weg zur Erneuerung.",
   "connectors.auth.credentialsMissing": "Zugangsdaten fehlen",
   "connectors.auth.credentialsMissingHint":
     "Für diese Verbindung sind noch keine Zugangsdaten hinterlegt.",
   "connectors.auth.notRequired": "Ohne Zugangsdaten",
-  "connectors.auth.notRequiredHint": "Diese Verbindung wird ohne Zugangsdaten genutzt.",
   "connectors.auth.unproven": "Noch nicht belegt",
   "connectors.auth.unprovenHint": "Ein Verbindungstest klärt, wie es um die Verbindung steht.",
   "connectors.disabled": "Abgeschaltet",
@@ -4894,8 +4877,6 @@ const DE: Record<TranslationKey, string> = {
   "connectors.testing": "Wird getestet …",
   "connectors.probeOk": "In {ms} ms erreicht.",
   "connectors.probeFailed": "Die Verbindung war nicht erreichbar.",
-  "connectors.missingScopes": "Fehlende Berechtigungen: {scopes}",
-  "connectors.renew": "Zugang erneuern",
   "run.action": "Ausführen",
   "run.title": "{name} ausführen",
   "run.savedVersion": "Führt die gespeicherte Version v{version} aus.",
@@ -4945,7 +4926,6 @@ const DE: Record<TranslationKey, string> = {
   "detail.changeInChat": "Im Chat ändern",
   "detail.changePrompt": "Ändere den Workflow „{name}“: ",
   "detail.changeRecordPrompt": "Ändere „{name}“: ",
-  "detail.testPassed": "Konnektorprüfung abgeschlossen",
   "detail.test": "Verbindung testen",
   "detail.technicalReference": "Technische Referenz",
   "detail.technicalReferenceHint":

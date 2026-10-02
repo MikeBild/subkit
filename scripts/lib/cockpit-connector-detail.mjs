@@ -10,10 +10,11 @@
 //
 // Then the hostile variants a sweep of happy fixtures never sees: a connector
 // that was never called (a counted zero opens nothing, and the empty state
-// says so without repeating "Verbindung testen"), a runtime read that fails (a failure with a
-// retry, not an empty page), a reader without `stats:read` ("Keine
-// Berechtigung", not a zero), and a postgres connector (no server tools, no
-// MCP words).
+// says so without repeating "Verbindung testen"), a runtime read that fails (a
+// failure with a retry, not an empty page), a reader without `stats:read` (one
+// sentence, not a zero and not three tiles saying "no permission"), and a
+// postgres connector (no server tools, no MCP words, and — signing in with
+// nothing — no sign-in card to say so a second time).
 //
 // And the sign-in, on a connector that signs in at a provider: signed in,
 // needing a sign-in, switched off, both at once — the state the page has to
@@ -399,6 +400,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         misleading: "Verbindungstest liefert",
         missing: "Es fehlen: mail.send.",
         steps: "Schritte im Chat",
+        kind: "Anmeldung beim Anbieter (OAuth)",
         readOnly: "Erneuern darf, wer diesen Konnektor ändern darf",
       }
     : {
@@ -413,6 +415,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         misleading: "to get the renewal link",
         missing: "Missing: mail.send.",
         steps: "steps in the chat",
+        kind: "Sign-in with the provider (OAuth)",
         readOnly: "takes permission to change this connector",
       };
   const notice = page.getByTestId("connector-state-notice");
@@ -436,6 +439,10 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     throw new Error(`${where}: a state row with nothing in it`);
   if ((await page.getByTestId("detail-connectors").innerText()).includes(words.steps))
     throw new Error(`${where}: the page talks about a connector's steps`);
+  // How it signs in is a fact of the connection, said there and not again in
+  // the sign-in card.
+  if ((await occurrences(page, words.kind)) !== 1)
+    throw new Error(`${where}: the kind of sign-in does not stand exactly once`);
   await assertOneTriggerPerEffect(page, where);
   await assertNoVisibleUuids(page.locator("main").first(), where);
   await assertNoSidewaysScroll(page, where);
@@ -651,6 +658,14 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     if (!failure?.includes(cause))
       throw new Error(`${where}: the last failure is not worded as its cause — "${failure}"`);
 
+    // The session's facts stand because there is a session; no permanent
+    // sentence repeats what the switch beside each tool already says.
+    for (const id of ["connector-mcp-protocol", "connector-mcp-capabilities"])
+      if (!(await page.getByTestId(id).isVisible()))
+        throw new Error(`${where}: "${id}" is missing for a negotiated session`);
+    if (await page.getByTestId("connector-mcp-note").count())
+      throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" switch`);
+
     // Before "Verbindung testen": the stored trust shows, the list does not.
     if (!(await page.getByTestId("connector-mcp-load-hint").isVisible()))
       throw new Error(`${where}: nothing says the tool list comes from "Verbindung testen"`);
@@ -716,6 +731,9 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where} · zero: the empty state repeats "Verbindung testen"`);
     if (!(await page.getByTestId("connector-test").isVisible()))
       throw new Error(`${where} · zero: the connection cannot be tested from the page`);
+    // A week without a call is one sentence, not four tiles of placeholders.
+    if (await page.getByTestId("connector-figure-calls").count())
+      throw new Error(`${where} · zero: placeholder tiles stand beside the sentence`);
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, `${where} · zero`);
     await capture("connector-zero");
@@ -734,12 +752,20 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     variant = null;
     await withBootstrap(page, "stats:read", async () => {
       await stand.visit(page, `connectors/${MCP_ID}`);
-      await page.getByTestId("connector-figure-calls").waitFor({ timeout: 10_000 });
-      const shown = await text(page, "connector-figure-calls");
-      if (!shown?.includes(de ? "Keine Berechtigung" : "No permission"))
-        throw new Error(`${where} · no permission: the call figure reads "${shown}"`);
-      if (await page.getByTestId("connector-figure-calls-link").count())
-        throw new Error(`${where} · no permission: a figure it may not read is a link`);
+      await page.getByTestId("connector-runtime-not-permitted").waitFor({ timeout: 10_000 });
+      // One sentence for what the reader may not see — no tile per figure, no
+      // zero, no link.
+      for (const id of [
+        "connector-figure-calls",
+        "connector-figure-success",
+        "connector-figure-median",
+        "connector-figure-calls-link",
+      ])
+        if (await page.getByTestId(id).count())
+          throw new Error(`${where} · no permission: "${id}" stands for a figure it may not read`);
+      // What it may read is still said: the newest successful call.
+      if (!(await page.getByTestId("connector-last-success").isVisible()))
+        throw new Error(`${where} · no permission: the last successful call is gone too`);
       await capture("connector-no-permission");
     });
 
@@ -760,6 +786,21 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(
         "/connectors/<postgres>: an address with a kept secret is offered for copying",
       );
+    // It signs in with nothing: the connection says so, once. No sign-in card,
+    // no second and third wording of the same absence.
+    if (await page.getByTestId("connector-credentials").count())
+      throw new Error("/connectors/<postgres>: a sign-in card for a connector that needs none");
+    const pgBody = await page.getByTestId("detail-connectors").innerText();
+    for (const repeat of de
+      ? ["Ohne Zugangsdaten", "Noch keine Zugangsdaten"]
+      : ["No credentials needed", "No credentials stored"])
+      if (pgBody.includes(repeat))
+        throw new Error(`/connectors/<postgres>: "${repeat}" repeats that it needs no sign-in`);
+    if (pgBody.split(de ? "Ohne Anmeldung" : "No sign-in").length - 1 !== 1)
+      throw new Error("/connectors/<postgres>: that it needs no sign-in does not stand once");
+    // Nothing failed and nothing negotiated: neither is said as a placeholder.
+    if (await page.getByTestId("connector-last-failure").count())
+      throw new Error('/connectors/<postgres>: "last failure" with no failure');
     await assertNoSidewaysScroll(page, "/connectors/<postgres>");
     await assertSingleTriggers(page, `${where} · postgres`);
     await capture("connector-postgres");
