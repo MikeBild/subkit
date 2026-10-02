@@ -37,7 +37,7 @@
 //
 // A stored credential IS the re-authorization: the callback clears the
 // connector's sign-in flag and closes its circuit breaker
-// (`completeConnectorReauthorization`). It never switches a disabled connector
+// (`settleConnectorReauthorization`). It never switches a disabled connector
 // on — it says so instead. A flow started in the Cockpit is redirected back to
 // the connector's page; every other flow, and every failure, gets a result
 // page worded for where the person came from (./signin-result.ts).
@@ -49,9 +49,9 @@ import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   beginConnectorOAuthDance,
-  completeConnectorReauthorization,
   consumeStartGrant,
   oauthFlowOrigin,
+  settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
 import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
@@ -433,24 +433,12 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       // the old credential's failures — before anything is reported as done.
       // A partial grant still clears the flag: the sign-in succeeded, and the
       // missing permissions are said by name on the page.
-      // Past this point the page must not say "nothing was stored": if the
-      // resolution itself fails, the flag clears on the next call the stored
-      // credential earns (clearReauthIfProved), and the log says why it waited.
-      try {
-        await completeConnectorReauthorization(db, {
-          tenant_id: stateRow.tenant_id,
-          connector_id: stateRow.connector_id,
-        });
-      } catch (resolveErr) {
-        logger.warn({
-          module: "oauth",
-          action: "oauth.callback.reauthorization_incomplete",
-          msg: "credential stored but the sign-in flag / breaker could not be reset",
-          tenant_id: stateRow.tenant_id,
-          connector_id: stateRow.connector_id,
-          error: resolveErr instanceof Error ? resolveErr.message : String(resolveErr),
-        });
-      }
+      // Past this point the page must not say "nothing was stored", so the
+      // resolution is settled, not awaited for its failure.
+      await settleConnectorReauthorization(db, {
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+      });
       logger.info({
         module: "oauth",
         action: "oauth.callback.success",
