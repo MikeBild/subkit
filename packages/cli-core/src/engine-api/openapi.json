@@ -8212,185 +8212,58 @@
           "expected_draft_version_id"
         ]
       },
-      "WorkflowListResponse": {
+      "WorkflowVersionListResponse": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WorkflowListItem"
+              "$ref": "#/components/schemas/WorkflowVersion"
             }
           },
           "total": {
             "type": "integer",
             "minimum": 0
-          },
-          "categories": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "category": {
-                  "type": "string"
-                },
-                "count": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              },
-              "required": [
-                "category",
-                "count"
-              ]
-            }
           }
         },
         "required": [
           "items",
-          "total",
-          "categories"
+          "total"
         ]
       },
-      "WorkflowListItem": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Workflow"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "type": "string"
-              },
-              "connectors": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": [
-              "category",
-              "connectors"
-            ]
-          }
-        ]
-      },
-      "WorkflowScheduleBinding": {
-        "type": [
-          "object",
-          "null"
-        ],
+      "WorkflowVersion": {
+        "type": "object",
         "properties": {
           "id": {
             "type": "string"
           },
-          "cron": {
+          "workflow_id": {
             "type": "string"
           },
-          "timezone": {
+          "version": {
+            "type": "number"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
             "type": "string"
           },
-          "paused": {
+          "dag": {},
+          "legacy": {
             "type": "boolean"
-          },
-          "execution_mode": {
-            "type": "string",
-            "enum": [
-              "dev",
-              "prod"
-            ]
-          },
-          "admission_hold": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "properties": {
-              "reason_code": {
-                "type": "string",
-                "enum": [
-                  "execution_authority_required",
-                  "execution_authority_unavailable"
-                ]
-              },
-              "observed_at": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "reason_code",
-              "observed_at"
-            ]
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "held",
-              "activation_required"
-            ]
-          },
-          "next_fire_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_enqueued_at": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         },
         "required": [
           "id",
-          "cron",
-          "timezone",
-          "paused",
-          "execution_mode",
-          "admission_hold",
-          "state",
-          "next_fire_at",
-          "last_enqueued_at"
-        ]
-      },
-      "EffectiveTrigger": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "schedule",
-              "webhook",
-              "request"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "binding",
-              "definition",
-              "default"
-            ]
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "active",
-              "paused",
-              "held",
-              "activation_required",
-              "declared_unbound"
-            ]
-          }
-        },
-        "required": [
-          "kind",
-          "source",
-          "state"
+          "workflow_id",
+          "version",
+          "note",
+          "created_at",
+          "legacy"
         ]
       },
       "Workflow": {
@@ -8567,6 +8440,187 @@
           "schedule",
           "webhooks_active",
           "effective_trigger"
+        ]
+      },
+      "WorkflowScheduleBinding": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "admission_hold": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason_code": {
+                "type": "string",
+                "enum": [
+                  "execution_authority_required",
+                  "execution_authority_unavailable"
+                ]
+              },
+              "observed_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason_code",
+              "observed_at"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required"
+            ]
+          },
+          "next_fire_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_enqueued_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "cron",
+          "timezone",
+          "paused",
+          "execution_mode",
+          "admission_hold",
+          "state",
+          "next_fire_at",
+          "last_enqueued_at"
+        ]
+      },
+      "EffectiveTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "webhook",
+              "request"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "binding",
+              "definition",
+              "default"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "held",
+              "activation_required",
+              "declared_unbound"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "state"
+        ]
+      },
+      "WorkflowListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowListItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "category",
+                "count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "categories"
+        ]
+      },
+      "WorkflowListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Workflow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "connectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "category",
+              "connectors"
+            ]
+          }
         ]
       },
       "ScheduleListResponse": {
@@ -8990,51 +9044,6 @@
             ]
           }
         }
-      },
-      "WorkflowVersionListResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkflowVersion"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "WorkflowVersion": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "workflow_id": {
-            "type": "string"
-          },
-          "version": {
-            "type": "number"
-          },
-          "note": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "dag": {}
-        },
-        "required": [
-          "id",
-          "workflow_id",
-          "version",
-          "note",
-          "created_at"
-        ]
       },
       "ExecutionRunResponse": {
         "type": "object",
@@ -12866,6 +12875,25 @@
               "null"
             ]
           },
+          "circuit_state": {
+            "type": "string",
+            "enum": [
+              "closed",
+              "open",
+              "half-open"
+            ]
+          },
+          "circuit_opened_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "circuit_failure_count": {
+            "type": "integer",
+            "minimum": 0
+          },
           "needs_reauth": {
             "type": "boolean"
           },
@@ -12917,6 +12945,9 @@
           "health_state",
           "health_reason",
           "health_error_code",
+          "circuit_state",
+          "circuit_opened_at",
+          "circuit_failure_count",
           "needs_reauth",
           "auth_failed_at",
           "auth_failed_reason",
@@ -32108,6 +32139,128 @@
         }
       }
     },
+    "/v1/workflows/{id}/history": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "List workflow versions, newest first",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowVersionListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/restore/{version}": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Restore a previous workflow version",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The version no longer validates against the current workflow schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workflows": {
       "get": {
         "tags": [
@@ -32784,96 +32937,6 @@
           },
           "409": {
             "description": "Slug conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/workflows/{id}/history": {
-      "get": {
-        "tags": [
-          "workflows"
-        ],
-        "summary": "List workflow versions",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowVersionListResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/workflows/{id}/restore/{version}": {
-      "post": {
-        "tags": [
-          "workflows"
-        ],
-        "summary": "Restore a previous workflow version",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": true,
-            "name": "version",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workflow"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
