@@ -23,7 +23,9 @@
 //   its sign-in card, once; nothing beside the title jumps to it;
 // - a healthy connector                                 → "Verbindung testen";
 // - a skill, a knowledge source, a file                 → the record's own
-//   actions, each once.
+//   actions, each once; the row under the title says only what is a state of
+//   the record — no "Steuerung" label, no sentence about steps, no "v" in
+//   front of a version that is not a number; renaming is called "Umbenennen".
 
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
@@ -255,6 +257,41 @@ async function expectWorkflowTitle(page, where) {
     if (body.includes(stale)) throw new Error(`${where}: the page still offers "${stale}"`);
 }
 
+/**
+ * The row under a record's title says what is a state of the record, and
+ * nothing else. It used to be headed "Steuerung" with a shield, told every
+ * reader "Den Namen änderst du hier, die Schritte im Chat." — on a file, which
+ * has neither — and put a "v" in front of a knowledge source's content marker.
+ */
+async function assertRecordBar(page, where, de, renamable) {
+  const found = await page.evaluate(() => {
+    const read = (selector) => {
+      const element = document.querySelector(selector);
+      return element instanceof HTMLElement ? element.innerText.trim() : null;
+    };
+    return {
+      bar: read('[data-family-slot="detail-context"]'),
+      version: read('[data-testid="detail-record-version"]'),
+      readOnly: read('[data-testid="detail-read-only"]'),
+      rename: read('[data-testid="detail-edit-metadata"]'),
+      body: document.body.innerText,
+    };
+  });
+  for (const gone of de
+    ? ["Steuerung", "Schritte im Chat", "Metadaten bearbeiten"]
+    : ["Governance", "steps in the chat", "Edit metadata"])
+    if (found.body.includes(gone)) throw new Error(`${where}: the page still says "${gone}"`);
+  if (found.version !== null && !/^v\d+$/.test(found.version))
+    throw new Error(`${where}: "${found.version}" is shown as a version`);
+  // The sweep's reader may change every record: nothing says "read-only".
+  if (found.readOnly !== null)
+    throw new Error(`${where}: "${found.readOnly}" for a reader who may change the record`);
+  // A row with nothing in it is not rendered.
+  if (found.bar !== null && found.bar === "") throw new Error(`${where}: an empty state row`);
+  if (renamable && found.rename !== (de ? "Umbenennen" : "Rename"))
+    throw new Error(`${where}: renaming is called "${found.rename}"`);
+}
+
 export async function verifyDetailAction(page, stand, uuid, localeName, capture) {
   const de = localeName === "de";
   const state = { previews: 0 };
@@ -377,5 +414,6 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await page.getByTestId(`detail-${resource}`).waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, where);
+    await assertRecordBar(page, where, de, resource !== "files");
   }
 }
