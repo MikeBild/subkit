@@ -9,6 +9,7 @@
 // remove the reason for it.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { workflowVersions } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createWorkflow, getWorkflow, updateWorkflow } from "../../workflows/service.ts";
@@ -106,6 +107,46 @@ describe("restore_workflow_version", () => {
     });
     expect(result.ok).toBe(false);
     expect((result.data as { error_code?: string }).error_code).toBe("workflow_version_not_found");
+  });
+
+  test("a version that no longer validates is a typed refusal naming the step", async () => {
+    const created = await createWorkflow(
+      {
+        tenant_id: ctx.tenant_id,
+        def: { name: "stored-earlier", slug: "stored-earlier", steps: STEP_V1 },
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    );
+    if (!created.workflow) throw new Error(`seed failed: ${created.errors?.join(", ")}`);
+    // A version as an earlier engine stored it: `jsonata` is no longer a
+    // transform language. Inserted directly, because today's write path would
+    // refuse the definition.
+    await ctx.testDb.db.insert(workflowVersions).values({
+      tenant_id: ctx.tenant_id,
+      workflow_id: created.workflow.id,
+      version: 2,
+      dag: {
+        name: "stored-earlier",
+        slug: "stored-earlier",
+        steps: [{ id: "shape", kind: "transform", language: "jsonata", expression: "$.items" }],
+      },
+    });
+
+    const result = await restoreWorkflowVersionTool.execute(makeCtx(), {
+      workflow_id: created.workflow.id,
+      version: 2,
+    });
+    expect(result.ok).toBe(false);
+    const data = result.data as { error_code?: string; message?: string };
+    expect(data.error_code).toBe("version_not_restorable");
+    expect(data.message).toContain('step "shape"');
+
+    // Refused before any write: the live definition is still version 1.
+    const live = await getWorkflow(ctx.tenant_id, created.workflow.id, ctx.testDb.db);
+    if (!live) throw new Error("workflow vanished after refused restore");
+    expect(live.current_version).toBe(1);
+    expect((live.steps as Array<{ id: string }>)[0]?.id).toBe("a");
   });
 
   test("an unknown slug is a typed refusal", async () => {

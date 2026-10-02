@@ -5,10 +5,11 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { approvePatchCandidate } from "../../self-healing/candidate-decision.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { saveWorkflowDraft } from "../drafts.ts";
-import { createWorkflow, restoreWorkflowVersion, updateWorkflow } from "../service.ts";
+import { createWorkflow, updateWorkflow } from "../service.ts";
 import { WorkflowDefSchema } from "../types.ts";
 import { rotateWorkflowVersionInternal } from "../version-rotate.ts";
 import { lockWorkflowForVersionWrite } from "../version-write-lock.ts";
+import { restoreWorkflowVersion } from "../versions.ts";
 
 let ctx: TestDb;
 let tenant_id: string;
