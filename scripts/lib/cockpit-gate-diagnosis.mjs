@@ -255,12 +255,31 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     const titled = (await page.getByTestId("detail-action").innerText()).trim();
     if (titled !== (de ? "Automatisch reparieren" : "Repair automatically"))
       throw new Error(`The action beside the title reads "${titled}", not the first block's act`);
-    // The page's filled action is "Ausführen"; no act inside the panel
-    // competes with it.
-    const filled = await automation
+    // The page's one filled action is "Ausführen" — also on an unhealthy
+    // workflow, whose cause block stands above the panel.
+    const filled = await page
+      .getByTestId("detail-workflows")
       .locator('button[data-variant="default"], a[data-variant="default"]')
+      .allInnerTexts();
+    if (filled.length !== 1 || filled[0].trim() !== (de ? "Ausführen" : "Run"))
+      throw new Error(`The page's filled actions are ${JSON.stringify(filled)}`);
+    // "The approval no longer fits" is resolved in the panel. Nothing on the
+    // page names it a second time, and nothing only links to the panel.
+    const pageText = await page.getByTestId("detail-workflows").innerText();
+    for (const stale of ["Freigabe prüfen", "Review approval"])
+      if (pageText.includes(stale)) throw new Error(`The page still offers "${stale}"`);
+    // Neither the title nor the cause block leads to the panel under another
+    // name. (The call block's trial-run line does: it explains a different
+    // fact and names where that fact is decided.)
+    const jumps = await page
+      .getByTestId("detail-workflows")
+      .locator(
+        'header a[href*="#workflow-automation"], [data-testid="workflow-cause"] a[href*="#workflow-automation"]',
+      )
       .count();
-    if (filled !== 0) throw new Error(`The panel carries ${filled} filled actions`);
+    if (jumps) throw new Error("The title or the cause block links to the automation panel");
+    if (await page.getByTestId("workflow-cause-remedy").count())
+      throw new Error("The cause block offers a remedy the panel below it owns");
 
     // The cause, in the reader's words — the precise rule, not the code.
     const encoder = await item(0).getByTestId("workflow-diagnosis-0-cause").innerText();

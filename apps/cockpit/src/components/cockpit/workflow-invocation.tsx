@@ -106,7 +106,13 @@ function AddressLine({
 
 const line = "text-sm text-muted-foreground";
 
-function HttpMode({ invocation }: { invocation: Invocation }) {
+function HttpMode({
+  invocation,
+  heldEnvironment,
+}: {
+  invocation: Invocation;
+  heldEnvironment: Environment | null;
+}) {
   const { t } = useI18n();
   // Production by default: it is where a call from an app belongs, and the
   // header in the snippet says so either way.
@@ -195,7 +201,8 @@ function HttpMode({ invocation }: { invocation: Invocation }) {
       <p className={line} data-testid="workflow-invocation-responses">
         {t("invocation.http.responses")}
       </p>
-      {invocation.authority[environment] === "held_preview_only" ? (
+      {invocation.authority[environment] === "held_preview_only" ||
+      environment === heldEnvironment ? (
         <p className={line} data-testid="workflow-invocation-preview-only">
           {t("invocation.http.previewOnly")}{" "}
           <a
@@ -380,10 +387,18 @@ function CliMode({ invocation }: { invocation: Invocation }) {
 export function WorkflowInvocation({
   workflowId,
   effectiveTrigger,
+  heldEnvironment,
 }: {
   workflowId: string;
   /** What really starts the workflow — decides the tab a reader lands on. */
   effectiveTrigger: string | null;
+  /**
+   * The environment the automation panel says is NOT approved right now. The
+   * call's own answer rests on the stored approvals alone; where the panel
+   * knows better — an approval a later change no longer fits — the call is
+   * still said to be a trial run, so the two never contradict each other.
+   */
+  heldEnvironment: Environment | null;
 }) {
   const { t } = useI18n();
   const query = useWorkflowInvocation(workflowId);
@@ -421,7 +436,7 @@ export function WorkflowInvocation({
             ))}
           </TabsList>
           <TabsContent value="http" className="pt-2">
-            <HttpMode invocation={invocation} />
+            <HttpMode invocation={invocation} heldEnvironment={heldEnvironment} />
           </TabsContent>
           <TabsContent value="webhook" className="pt-2">
             <WebhookMode invocation={invocation} />
