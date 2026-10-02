@@ -128,7 +128,7 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
-import { chatAutomationTool } from "./chat-automation-tool";
+import { liveAutomationReviews } from "./chat-automation-tool";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
 import { ConversationList } from "./chat-conversation-list";
@@ -242,6 +242,7 @@ export function originLine(
  * because a transcript carries tool cards, diffs and payloads, not prose alone.
  */
 const COLUMN = CHAT_COLUMN;
+const NO_LIVE_REVIEWS: ReadonlySet<string> = new Set();
 
 /** Where a catalogue object lives in the Cockpit. */
 function catalogHref(kind: string, id: string): string {
@@ -772,6 +773,8 @@ function ChatMessage({
   onDecision,
   onReauth,
   onAutomationAdjust,
+  onAutomationSingleRun,
+  liveReviews,
   nameFor,
   workflowNameFor,
 }: {
@@ -794,6 +797,9 @@ function ChatMessage({
   onDecision: (toolCallId: string, approved: boolean) => void;
   onReauth: (action: ChatReauth) => void;
   onAutomationAdjust: (workflowId: string) => void;
+  onAutomationSingleRun: (workflowId: string) => void;
+  /** The review calls that render as a live card (`liveAutomationReviews`). */
+  liveReviews: ReadonlySet<string>;
   /** What this conversation knows about the identifiers it mentions. */
   nameFor: (id: string) => ResolvedIdentifier | null;
   /** The workflow's own name for a `wf_<slug>` action, or null to keep the
@@ -812,6 +818,8 @@ function ChatMessage({
     <Message
       align="start"
       data-cockpit-ui="chat-message"
+      // A message is an item of the transcript: its own controls act on it.
+      data-action-scope="message"
       data-testid={`chat-message-${messageIndex}`}
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
@@ -916,13 +924,16 @@ function ChatMessage({
               />
             );
           }
-          const automation = chatAutomationTool(tool);
-          if (automation && automation.environments.length > 0)
+          // An earlier review of the same workflow stays a recorded call: its
+          // card would read today's state and offer the newest card's button
+          // a second time.
+          if (liveReviews.has(tool.toolCallId))
             return (
               <AutomationToolCard
                 key={`${message.id}-automation-${partIndex}`}
                 tool={tool}
                 onAdjust={onAutomationAdjust}
+                onPrepareSingleRun={onAutomationSingleRun}
               />
             );
           const reauth = chatReauth(tool, window.location.origin);
@@ -1576,6 +1587,25 @@ export function ChatPage() {
   const targetWorkflowId =
     resume?.active_target.kind === "workflow" ? resume.active_target.id : null;
   const heldTarget = heldSchedules.find((schedule) => schedule.workflow_id === targetWorkflowId);
+  // The newest review of each workflow is its one live card in the transcript.
+  const reviewCards = useMemo(
+    () =>
+      liveAutomationReviews(
+        messages.flatMap((message) =>
+          groupMessageParts(message.parts).flatMap((group) =>
+            group.kind === "tool" ? [group.tool] : group.kind === "background" ? group.tools : [],
+          ),
+        ),
+      ),
+    [messages],
+  );
+  const liveReviewCalls = useMemo(() => new Set(reviewCards.values()), [reviewCards]);
+  // What the context panel says under "Nächste Aktion"; null while a question
+  // waits — answering it is the next action, and its card says so.
+  const nextActionSaid =
+    pendingDecision || pendingChoice || pendingForm || pendingText
+      ? null
+      : resumeNextAction(resume?.stage, t);
   const automationStatus = useQuery({
     queryKey: ["workflow-automation-status", targetWorkflowId],
     enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),
@@ -1983,8 +2013,18 @@ export function ChatPage() {
                         onApproval={submitApproval}
                         nameFor={nameFor}
                         workflowNameFor={workflowNameFor}
+                        liveReviews={liveReviewCalls}
                         onAutomationAdjust={(workflowId) =>
                           void submitTurn(t("authority.adjustPrompt"), [
+                            {
+                              type: "workflow",
+                              id: workflowId,
+                              label: t("chat.singleRun.thisWorkflow"),
+                            },
+                          ])
+                        }
+                        onAutomationSingleRun={(workflowId) =>
+                          void submitTurn(t("chat.activation.singlePrompt"), [
                             {
                               type: "workflow",
                               id: workflowId,
@@ -2034,6 +2074,8 @@ export function ChatPage() {
                       onDecision={() => {}}
                       onReauth={() => {}}
                       onAutomationAdjust={() => {}}
+                      onAutomationSingleRun={() => {}}
+                      liveReviews={NO_LIVE_REVIEWS}
                       nameFor={nameFor}
                       workflowNameFor={workflowNameFor}
                     />
@@ -2138,9 +2180,12 @@ export function ChatPage() {
                       </Alert>
                     )}
 
+                  {/* The way into the approval, once: where the transcript
+                      already shows this workflow's review card, that card is it. */}
                   {heldTarget &&
                     !resume?.unsaved &&
                     targetWorkflowId &&
+                    !reviewCards.has(targetWorkflowId) &&
                     !pendingDecision &&
                     !pendingChoice &&
                     !pendingForm &&
@@ -2354,17 +2399,21 @@ export function ChatPage() {
                   {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
-              {!pendingDecision && !pendingChoice && !pendingForm && !pendingText && (
+              {nextActionSaid !== null && (
                 <div data-testid="chat-context-next-action">
                   <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
-                  <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
+                  <dd className="mt-1">{nextActionSaid}</dd>
                 </div>
               )}
               {heldTarget && targetWorkflowId && (
                 <div data-testid="chat-context-held-schedule">
                   <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
                   <dd className="mt-1 flex flex-col gap-2">
-                    <p>{t("chat.schedule.effect")}</p>
+                    {/* Said once in this panel: "Nächste Aktion" above says the
+                        same sentence for a workflow that was just saved. */}
+                    {nextActionSaid === t("chat.schedule.effect") ? null : (
+                      <p>{t("chat.schedule.effect")}</p>
+                    )}
                     <AutomationGrant
                       workflowId={targetWorkflowId}
                       environment={heldTarget.execution_mode}

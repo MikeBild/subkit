@@ -228,8 +228,29 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
         (locale === "de" ? "Workflow gespeichert" : "Workflow saved")
       )
         throw new Error("Saved workflow still presented as running");
+      // No review card in this transcript: the hand-off is the one way in.
+      await page.waitForLoadState("networkidle");
+      await assertSingleTriggers(page, `${locale}/chat hand-off`, {
+        ...TRANSCRIPT,
+        approvalOpeners: 1,
+      });
       await capture("chat-saved-handoff");
       await page.getByTestId("chat-context-toggle").click();
+      // The context panel is a view of its own. It says the held schedule's
+      // sentence once — under the next action — and offers the review once.
+      const panel = page.getByRole("dialog");
+      await panel.getByTestId("chat-context-review-schedule").waitFor();
+      const sentence =
+        locale === "de"
+          ? "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben"
+          : "Automatic runs for this workflow are not approved yet";
+      const said = (await panel.innerText()).split(sentence).length - 1;
+      if (said !== 1)
+        throw new Error(`The context panel says the held schedule's sentence ${said} times`);
+      await assertSingleTriggers(page, `${locale}/chat context panel`, {
+        root: '[role="dialog"]',
+        approvalOpeners: 1,
+      });
       if (
         !(await page.getByTestId("chat-context-checkpoint").innerText()).includes(
           locale === "de" ? "Keine ungespeicherten Änderungen" : "No unsaved changes",

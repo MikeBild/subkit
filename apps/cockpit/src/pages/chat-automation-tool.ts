@@ -80,3 +80,21 @@ export function chatAutomationTool(tool: ToolPart) {
   ];
   return { workflowId: data.workflow_id, environments };
 }
+
+/**
+ * The review cards a transcript shows live: for each workflow, its newest
+ * review — workflow id → tool call id.
+ *
+ * A card does not render the tool's snapshot; it reads the workflow's current
+ * state. Every earlier review of the same workflow would therefore say the
+ * same thing and offer the same button a second time. Those stay what they
+ * are in the record: a tool call that ran.
+ */
+export function liveAutomationReviews(tools: Iterable<ToolPart>): Map<string, string> {
+  const live = new Map<string, string>();
+  for (const tool of tools) {
+    const review = chatAutomationTool(tool);
+    if (review && review.environments.length > 0) live.set(review.workflowId, tool.toolCallId);
+  }
+  return live;
+}
