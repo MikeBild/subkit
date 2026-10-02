@@ -113,6 +113,11 @@ export const AuditAction = {
   // change is always audited, regardless of caller — symmetric with the
   // false→true notification on `markConnectorNeedsReauth`.
   CONNECTOR_REAUTH_CLEARED: "connector.reauth_cleared",
+  // A person re-authorised a connector whose circuit breaker was open or
+  // carried failures: the breaker closes and its count is forgotten. Written
+  // by `completeConnectorReauthorization` on that edge only. The request
+  // path's own breaker transitions are runtime bookkeeping and stay in the log.
+  CONNECTOR_CIRCUIT_RESET: "connector.circuit_reset",
   // Any edge of `connectors.health_state` (ok | degraded | needs_update |
   // needs_reauth) — written by connectors/health-state.ts on the transition
   // edge only, so one removed/deprecated endpoint hammered N times audits

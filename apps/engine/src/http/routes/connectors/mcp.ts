@@ -61,6 +61,11 @@ import {
   recordConnectorMcpAuthorizationStarted,
   recordConnectorMcpAuthorized,
 } from "../../../audit/index.ts";
+import {
+  completeConnectorReauthorization,
+  type OAuthFlowOrigin,
+  oauthFlowOrigin,
+} from "../../../connectors/index.ts";
 import { mcpOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import {
@@ -85,6 +90,14 @@ import {
 } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import {
+  cockpitReturn,
+  connectorBacklink,
+  requestLocale,
+  resultResponse,
+  signedInPage,
+  signInFailedPage,
+} from "./signin-result.ts";
 
 const LOG_MODULE = "mcp_oauth";
 
@@ -197,6 +210,7 @@ const callbackRoute = createRoute({
   request: { query: McpOAuthCallbackQuery },
   responses: {
     200: { description: "OK (HTML)", content: { "text/html": { schema: z.string() } } },
+    303: { description: "Authorized — back to the connector's page in the Cockpit" },
     400: { description: "Bad request (HTML)", content: { "text/html": { schema: z.string() } } },
   },
 });
@@ -294,6 +308,9 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       // flow's originator rides the state row and is threaded back into
       // the authorized / failed audit rows at callback time.
       started_by_actor_id: principal.id,
+      // Same rule as the connector OAuth start: `ui` is a Cockpit request
+      // under a live browser session, anything else a terminal or a script.
+      origin: (requestSource === "ui" ? "cockpit" : "cli") satisfies OAuthFlowOrigin,
       expires_at: new Date(now() + STATE_TTL_MS),
     });
 
@@ -430,12 +447,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         had_code: Boolean(q.code),
         had_error: Boolean(q.error),
       });
-      return renderCallbackPage(c, {
-        kind: "error",
-        title: "Authorization link expired",
-        message:
-          "This authorization link has expired or was already used. Close this tab and start the authorization again.",
-      });
+      return resultResponse(c, signInFailedPage(requestLocale(c), null, "link_expired"));
     }
 
     const tenant_id = stateRow.tenant_id;
@@ -454,6 +466,19 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
     const auth = server?.auth ?? { kind: "none" as const };
     const issuerForAudit =
       ("issuer" in auth && auth.issuer ? auth.issuer : server?.url) ?? q.iss ?? "";
+
+    const origin = oauthFlowOrigin(stateRow.origin);
+    const failed = async (
+      failure: Parameters<typeof signInFailedPage>[2],
+      provider_code?: string,
+    ): Promise<Response> =>
+      resultResponse(
+        c,
+        signInFailedPage(requestLocale(c), origin, failure, {
+          provider_code: provider_code ?? null,
+          backlink: await connectorBacklink(c, db, { ...stateRow, origin }),
+        }),
+      );
 
     const failAudit = (reason: string): Promise<unknown> =>
       recordConnectorMcpAuthorizationFailed({
@@ -479,13 +504,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         provider_error: q.error,
       });
       await failAudit("provider_error");
-      return renderCallbackPage(c, {
-        kind: "error",
-        title: "Authorization was declined",
-        message:
-          q.error_description ??
-          "The external authorization server declined the request. Close this tab and try again.",
-      });
+      return failed("provider_declined", q.error);
     }
 
     if (!server) {
@@ -498,12 +517,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
       });
       await failAudit("server_not_found");
-      return renderCallbackPage(c, {
-        kind: "error",
-        title: "Connector no longer registered",
-        message:
-          "The MCP connector this authorization belonged to is no longer registered. Close this tab.",
-      });
+      return resultResponse(c, signInFailedPage(requestLocale(c), origin, "connector_gone"));
     }
 
     if (!q.code) {
@@ -516,12 +530,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
       });
       await failAudit("missing_code");
-      return renderCallbackPage(c, {
-        kind: "error",
-        title: "Authorization incomplete",
-        message:
-          "The authorization server redirected back without an authorization code. Close this tab and start the authorization again.",
-      });
+      return failed("no_authorization");
     }
 
     // RFC 9207 issuer validation: when the AS echoes `iss`, its origin must
@@ -542,12 +551,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
           state_prefix: stateRow.state.slice(0, 8),
         });
         await failAudit("issuer_mismatch");
-        return renderCallbackPage(c, {
-          kind: "error",
-          title: "Authorization rejected",
-          message:
-            "The authorization response came from an unexpected authorization server and was rejected. Close this tab and start the authorization again.",
-        });
+        return failed("issuer_mismatch");
       }
     }
 
@@ -577,6 +581,13 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       // Recover the connector out of the degraded state its unauthorized
       // handshakes put it in, now that a live token exists.
       await clearMcpConnectorFailure(db, server);
+      // And resolve what a fresh authorization resolves for any connector:
+      // the sign-in flag and the circuit breaker. Not the on/off switch.
+      await completeConnectorReauthorization(db, {
+        tenant_id,
+        connector_id,
+        actor_id: started_by_actor_id,
+      });
 
       await recordConnectorMcpAuthorized({
         tenant_id,
@@ -607,11 +618,24 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
       });
 
-      return renderCallbackPage(c, {
-        kind: "success",
-        title: "Authorization complete",
-        message: `The MCP connector "${server.display_name}" is now authorized. You can close this window and return to your session.`,
-      });
+      if (origin === "cockpit") {
+        const back = cockpitReturn(stateRow);
+        if (back) return back;
+      }
+      return resultResponse(
+        c,
+        signedInPage(
+          requestLocale(c),
+          origin,
+          {
+            stored: "signed_in",
+            name: server.display_name,
+            enabled: server.enabled,
+            missing_scopes: [],
+          },
+          await connectorBacklink(c, db, { ...stateRow, origin }),
+        ),
+      );
     } catch (err) {
       logger.warn({
         module: LOG_MODULE,
@@ -626,12 +650,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
       });
       await failAudit("token_exchange_failed");
-      return renderCallbackPage(c, {
-        kind: "error",
-        title: "Authorization failed",
-        message:
-          "The authorization code could not be exchanged for an access token. Close this tab and start the authorization again.",
-      });
+      return failed("exchange_failed");
     }
   });
 }
@@ -646,53 +665,4 @@ function sameOrigin(a: string, b: string): boolean {
   } catch {
     return false;
   }
-}
-
-interface CallbackPage {
-  kind: "success" | "error";
-  title: string;
-  message: string;
-}
-
-/** Minimal, JS-free HTML page rendered to the operator's browser tab at the
- *  end of the OAuth dance. Mirrors the connector callback page. Never
- *  carries a token, URL with a query string, or any secret. */
-function renderCallbackPage(
-  c: Parameters<Parameters<OpenAPIHono<AppEnv>["openapi"]>[1]>[0],
-  page: CallbackPage,
-): Response {
-  const status = page.kind === "success" ? 200 : 400;
-  const colour = page.kind === "success" ? "#16a34a" : "#dc2626";
-  const safeTitle = escapeHtml(page.title);
-  const safeMessage = escapeHtml(page.message);
-  const body = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${safeTitle}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #fafafa; color: #111; }
-    main { max-width: 560px; margin: 96px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    h1 { color: ${colour}; margin: 0 0 16px; font-size: 22px; }
-    p { white-space: pre-wrap; line-height: 1.5; margin: 0; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
-  </main>
-</body>
-</html>`;
-  return c.body(body, status, { "content-type": "text/html; charset=utf-8" });
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

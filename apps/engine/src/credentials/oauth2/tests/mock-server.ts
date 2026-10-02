@@ -19,6 +19,9 @@ export interface MockOAuthServer {
   close: () => Promise<void>;
   /** seconds until expiry on issued access tokens */
   setExpiresIn: (seconds: number) => void;
+  /** The `scope` the token endpoint reports as granted; null (the default)
+   *  echoes the request's own scope, as a provider that grants all does. */
+  setGrantedScope: (scope: string | null) => void;
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -44,6 +47,7 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
   let issued = 0;
   let lastGrant: string | null = null;
   let expiresIn = 3600;
+  let grantedScope: string | null = null;
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -82,7 +86,7 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
             token_type: "Bearer",
             expires_in: expiresIn,
             refresh_token: refresh,
-            scope: form.scope ?? "",
+            scope: grantedScope ?? form.scope ?? "",
           }),
         );
         return;
@@ -114,6 +118,9 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
     lastGrantType: () => lastGrant,
     setExpiresIn: (n: number) => {
       expiresIn = n;
+    },
+    setGrantedScope: (scope: string | null) => {
+      grantedScope = scope;
     },
     close: () =>
       new Promise<void>((resolve) => {

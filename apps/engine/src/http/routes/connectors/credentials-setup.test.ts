@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { browserSessionCookie, signBrowserSession } from "../../../auth/browser-session.ts";
-import { setConfigKey } from "../../../config/loader.ts";
+import { getConfig, setConfigKey } from "../../../config/loader.ts";
 import { generateCredentialSetupGrant } from "../../../connectors/credential-setup-grant.ts";
 import { sha256Hex } from "../../../connectors/oauth-start-grant.ts";
 import {
@@ -56,9 +56,12 @@ import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts"
 
 let server: HttpTestServer;
 let connectorId: string;
+// The configured address is process-wide; hand it back as it was found.
+let publicBaseUrlBefore = "";
 
 beforeAll(async () => {
   server = await createHttpTestServer("credentials-setup-grant");
+  publicBaseUrlBefore = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
 
   const [row] = await server.db
@@ -82,6 +85,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await setConfigKey("server.public_base_url", publicBaseUrlBefore, { force: true });
   _resetDraftCredentialCacheForTests();
   await server.cleanup();
 });
@@ -140,6 +144,17 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     expect(html).toContain("Reconnect Mock Setup Bearer");
     expect(html).toContain("API token / bearer token issued by Mock Setup Bearer");
     expect(html).toContain("not a sign-in for this page");
+    // The product's page shell, not a one-off card.
+    expect(html).toContain('data-auth-contract="mcp-auth"');
+
+    const german = await fetch(
+      `${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup?grant=${encodeURIComponent(token)}`,
+      { headers: { "accept-language": "de" } },
+    );
+    const germanHtml = await german.text();
+    expect(germanHtml).toContain('<html lang="de">');
+    expect(germanHtml).toContain("Mock Setup Bearer neu verbinden");
+    expect(germanHtml).toContain("API-Token / Bearer-Token von Mock Setup Bearer");
     // The plaintext grant appears EXACTLY once: the hidden form field.
     expect(html.split(token).length - 1).toBe(1);
 
@@ -168,8 +183,11 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.text();
-    // "Setup link", not "Sign-in link" — this page never was a sign-in.
-    expect(body).toContain("Setup link expired");
+    // "Link", not "Sign-in link" — this page never was a sign-in.
+    expect(body).toContain("Link expired");
+    expect(body).not.toContain("Sign-in link");
+    // A one-time page names no terminal and no conversation.
+    expect(body).toContain("Ask for a fresh link where you got this one.");
   });
 });
 
@@ -201,6 +219,16 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       })
       .returning();
     if (!elicitation) throw new Error("seed elicitation failed");
+    // Switched off by an operator, breaker open on the old credential.
+    await server.db
+      .update(connectors)
+      .set({
+        enabled: false,
+        circuit_state: "open",
+        circuit_failure_count: 7,
+        circuit_opened_at: new Date(now() - 60_000),
+      })
+      .where(eq(connectors.id, connectorId));
 
     const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
       method: "POST",
@@ -210,6 +238,9 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Credential saved");
+    // Storing a credential does not switch the connector on; the page says so.
+    expect(html).toContain("switched off and stays off until someone switches it on");
+    expect(html).toContain("You can close this page.");
 
     // Grant burned.
     expect(await getGrantRow(token)).toBeNull();
@@ -228,6 +259,24 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       .where(eq(connectors.id, connectorId))
       .limit(1);
     expect(connectorRow?.needs_reauth).toBe(false);
+    // The breaker counted the replaced credential's failures: closed, clean.
+    expect(connectorRow?.circuit_state).toBe("closed");
+    expect(connectorRow?.circuit_failure_count).toBe(0);
+    expect(connectorRow?.circuit_opened_at).toBeNull();
+    expect(connectorRow?.enabled).toBe(false);
+    await server.db.update(connectors).set({ enabled: true }).where(eq(connectors.id, connectorId));
+    const resetAudit = await server.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          eq(auditLog.action, "connector.circuit_reset"),
+        ),
+      );
+    expect(resetAudit.length).toBe(1);
+    // Attributed to the operator who asked for the link, like the flag's row.
+    expect(resetAudit[0]?.actor_id).toBe(server.userId);
 
     const [completedElicitation] = await server.db
       .select()
