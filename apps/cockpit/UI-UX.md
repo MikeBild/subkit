@@ -327,7 +327,7 @@ what does it do → how has it been doing. Everything a reader does not decide b
 
 1. **Header.** The name, the health mark and the author's one-line purpose. It carries the page's
    own actions and nothing else: "Ausführen", the one filled action, where the workflow can be
-   run; "Im Chat ändern", "Zu diesem Workflow fragen" and "Metadaten bearbeiten" behind "⋯" — a
+   run; "Im Chat ändern", "Zu diesem Workflow fragen" and "Umbenennen" behind "⋯" — a
    single remaining one is a named button. What may be edited where is a tooltip, not a row of
    its own. No state puts a further action here: approving, applying, repairing and resuming are
    the panel's, the remedy for a failure is the cause block's.
