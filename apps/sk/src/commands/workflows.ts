@@ -688,7 +688,7 @@ const historyCommand = defineCommand({
       const { items } = await client.listWorkflowVersions(args.id);
       emitList(
         !!args.json,
-        ["version", "committed_at", "committed_by"],
+        ["version", "created_at", "note", "legacy"],
         items as Record<string, unknown>[],
       );
     } catch (err) {

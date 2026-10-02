@@ -75,6 +75,8 @@ sk workflows restore <id> <version>
 
 Never guess the version number. Restoring is not a repair: if you do not know which version was good, find out before you replace what is live.
 
+A version saved under an earlier definition format stays in the history, marked `legacy`. It can be read but not restored — the restore is refused with `version_not_restorable` and names the step that no longer validates. Pick a version that is not marked, or save the definition again in the current format.
+
 ### 3. "Prove that two runs produce identical output."
 
 **Wrong door — browser chat.** The client sees only what a tool hands back. It cannot compare two artefacts byte for byte, so it will answer the question by reasoning about it — which sounds like a proof and is not one.

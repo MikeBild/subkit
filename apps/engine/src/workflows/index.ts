@@ -37,3 +37,4 @@ export { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 export * from "./service.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
+export * from "./versions.ts";
