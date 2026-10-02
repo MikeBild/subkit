@@ -92,6 +92,12 @@ describe("requestFailureEvidence", () => {
     expect(requestFailureEvidence(new RequestError("Unable to connect", "connection"), false)).toBe(
       "unavailable",
     );
+    // The dispatcher's own fallback text. Read by its message alone it
+    // observes nothing — which is why this is not left to `evidenceFromThrow`:
+    // a real outage would never open the breaker.
+    const fallback = new RequestError("connection error", "connection");
+    expect(evidenceFromThrow(fallback)).toBe("none");
+    expect(requestFailureEvidence(fallback, false)).toBe("unavailable");
     expect(requestFailureEvidence(new RequestError("gave up waiting", "timeout"), false)).toBe(
       "unavailable",
     );
