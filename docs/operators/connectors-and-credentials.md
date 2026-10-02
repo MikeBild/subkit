@@ -180,6 +180,30 @@ and arm a backoff that survives an engine restart — so a server that has been
 refusing for an hour is not handed a full-rate retry just because the process
 bounced.
 
+The same two reads report the circuit breaker behind that verdict:
+`circuit_state` (`closed`, `open`, `half-open`), `circuit_opened_at` and
+`circuit_failure_count`. They are read-only and say why a call is being
+short-circuited right now, and how close a closed breaker is to opening.
+
+### Secrets in a connector representation
+
+A connector can carry secrets outside the credential vault: an OAuth client
+secret in `config.oauth.client_secret`, a header or query value in
+`config.static_headers` / `config.static_query`, the password inside a
+PostgreSQL `dsn`. No representation of a connector returns them. Every
+response that carries a connector — create, get, list, patch, enable, disable,
+the `get_connector` tool — shows the value as `***redacted***` and leaves the
+rest of the configuration readable: endpoints, scopes, header names, and the
+user, host and database of a `dsn`.
+
+The mask is also a valid value to send back. A write that carries
+`***redacted***` where a secret is stored keeps the stored secret, so reading a
+connector, changing one field and patching the result — `sk connectors get`
+followed by `sk connectors patch --file` — does not disturb it. Send the real
+value to rotate a secret. A mask with nothing stored behind it, such as a read
+definition posted as a new connector under a different slug, is refused with
+`422` and names the field; the engine never stores the mask.
+
 ## Health and validation
 
 Every connector can be tested independently of any workflow. The engine validates

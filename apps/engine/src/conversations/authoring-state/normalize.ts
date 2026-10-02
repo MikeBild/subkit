@@ -4,6 +4,7 @@
 // no checkpoint logic — that lives in `summary.ts` and the parent
 // `authoring-state.ts` barrel.
 
+import { toPublicConnector } from "../../connectors/public-view.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowTrigger } from "../../workflows/types.ts";
@@ -87,7 +88,15 @@ export function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfac
  * no such field anyway): the re-issue persists to the SAME saved row, which
  * already holds its quirks, so nothing is lost.
  */
-export function hydrateDraftFromSavedConnector(saved: ConnectorView): ConnectorDraftDocument {
+/**
+ * A draft is conversation state: tools echo it to the model and the
+ * conversation route returns it. It is therefore hydrated from the PUBLIC
+ * projection of the saved connector, never from the view — the stored OAuth
+ * client secret and connection-string password have no place in a
+ * transcript. The save path reads the mask as "keep what is stored".
+ */
+export function hydrateDraftFromSavedConnector(view: ConnectorView): ConnectorDraftDocument {
+  const saved = toPublicConnector(view);
   const next: ConnectorDraftDocument = {
     name: saved.display_name,
     slug: saved.slug,

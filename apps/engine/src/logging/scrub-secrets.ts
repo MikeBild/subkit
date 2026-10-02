@@ -1,6 +1,9 @@
 export type { ScrubOptions, SecretKind, SecretPattern, SecretSpan } from "@shared/redaction.ts";
 export {
+  DEFAULT_REDACTED,
   findSecretSpans,
+  isAlreadyRedacted,
+  isLogSensitiveKey,
   SECRET_PATTERNS,
   SENSITIVE_KEY_PATTERN,
   scrubSecrets,
