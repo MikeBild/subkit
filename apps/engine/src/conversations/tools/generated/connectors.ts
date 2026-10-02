@@ -2,6 +2,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { categoryOfConnector } from "../../../connectors/categorize.ts";
+import { toPublicConnector } from "../../../connectors/public-view.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -75,6 +76,7 @@ export const getConnectorTool: ConversationTool = {
     "`placeholders.credentials` is empty when no credential is configured; create one before writing a step that expects it.",
     "`placeholders` reflects the connector's active environment only — a dev connector does not expose prod tokens.",
     "Issues a `connector:read` RBAC check; low-privilege principals get `permission_denied` instead of the config.",
+    "Secrets in `config` and the password inside `dsn` read as `***redacted***`. Send that value back unchanged in update_connector to keep the stored secret.",
   ],
   example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
@@ -95,7 +97,10 @@ export const getConnectorTool: ConversationTool = {
       ok: true,
       data: {
         connector: {
-          ...c,
+          // The public projection, never the view: the view carries the OAuth
+          // client secret and the connection-string password for the server's
+          // own use, and a tool result is read by the model and its client.
+          ...toPublicConnector(c),
           // Re-auth health surfaced explicitly with an ISO timestamp so the
           // LLM can flag a dead credential and reach for
           // request_connector_reauth instead of reporting empty results.

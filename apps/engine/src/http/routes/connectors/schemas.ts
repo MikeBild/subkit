@@ -9,6 +9,7 @@ import {
   effectiveConnectorHealth,
   OperatorQuirksSchema,
   resolveConnectorOAuthConfig,
+  toPublicConnector,
 } from "../../../connectors/index.ts";
 import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
@@ -45,6 +46,10 @@ export const ConnectorSchema = z
     environment: z.string(),
     auth_type: z.string(),
     base_url: z.string().nullable(),
+    // `dsn` and `config` are the PUBLIC projection (`toPublicConnector`): the
+    // password inside the connection string and every secret-bearing config
+    // value read as the mask `***redacted***`, everything else as stored.
+    // Sending the mask back on a write keeps the stored secret.
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),
     operator_quirks: OperatorQuirksSchema,
@@ -104,6 +109,12 @@ export const ConnectorSchema = z
     health_state: ConnectorHealthStateEnum,
     health_reason: z.string().nullable(),
     health_error_code: z.string().nullable(),
+    // The breaker behind that verdict, read-only. `health_state` says whether
+    // the connector is usable; these say why a call is being short-circuited
+    // right now and how close a closed breaker is to opening.
+    circuit_state: z.enum(["closed", "open", "half-open"]),
+    circuit_opened_at: z.string().datetime().nullable(),
+    circuit_failure_count: z.number().int().nonnegative(),
     // Re-auth health. `needs_reauth` flips true when the connector's
     // credential goes stale (OAuth refresh revoked, API key rotated, login
     // lapsed) and stays unusable until a human reconnects it. The
@@ -221,7 +232,8 @@ export const OAuthCallbackQuery = z
   })
   .openapi("OAuthCallbackQuery");
 
-export function serialize(c: ConnectorView) {
+export function serialize(view: ConnectorView) {
+  const c = toPublicConnector(view);
   return {
     id: c.id,
     tenant_id: c.tenant_id,
@@ -245,6 +257,9 @@ export function serialize(c: ConnectorView) {
     health_state: effectiveConnectorHealth(c),
     health_reason: c.health_reason,
     health_error_code: c.health_error_code,
+    circuit_state: c.circuit_state,
+    circuit_opened_at: c.circuit_opened_at?.toISOString() ?? null,
+    circuit_failure_count: c.circuit_failure_count,
     needs_reauth: c.needs_reauth,
     auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
     auth_failed_reason: c.auth_failed_reason,
