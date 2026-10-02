@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildFormInput,
   buildInput,
   flattenInputFields,
+  formFields,
   initialInputValues,
   inputControl,
   inputFields,
+  inputForm,
   inputItemTypeKey,
   inputSampleText,
   inputTypeKey,
@@ -57,6 +60,7 @@ describe("input fields", () => {
       name: "run_id",
       path: "run_id",
       type: "string",
+      union: null,
       format: null,
       itemType: null,
       required: true,
@@ -217,5 +221,104 @@ describe("required fields", () => {
     expect(missingRequired(fields, {})).toEqual(["run_id", "mode"]);
     expect(missingRequired(fields, { run_id: "  ", mode: "live" })).toEqual(["run_id"]);
     expect(missingRequired(fields, { run_id: "r", mode: "live" })).toEqual([]);
+  });
+});
+
+describe("a field that allows several types", () => {
+  // Typed through `anyOf`, `oneOf` or a list — none of which is "text".
+  const fields = inputFields({
+    type: "object",
+    properties: {
+      amount: { anyOf: [{ type: "number" }, { type: "null" }] },
+      target: { oneOf: [{ type: "string" }, { type: "integer" }] },
+      filter: { type: ["object", "array"] },
+      payload: {
+        anyOf: [{ type: "object", properties: { id: { type: "string" } } }, { items: {} }],
+      },
+      note: { type: ["string", "null"] },
+    },
+  });
+  const field = (name: string) => {
+    const found = fields.find((entry) => entry.name === name);
+    if (!found) throw new Error(`no field ${name}`);
+    return found;
+  };
+
+  test("one real type beside null is that type, with its own control", () => {
+    expect(field("amount").type).toBe("number");
+    expect(inputControl(field("amount"))).toBe("number");
+    expect(field("note").type).toBe("string");
+    expect(buildInput(fields, { amount: "12.5" })).toEqual({ amount: 12.5 });
+  });
+
+  test("several types are one JSON value, named as such", () => {
+    expect(field("target")).toMatchObject({ type: "any", union: ["string", "integer"] });
+    expect(field("filter")).toMatchObject({ type: "any", union: ["object", "array"] });
+    expect(field("payload")).toMatchObject({ type: "any", union: ["object", "array"] });
+    expect(inputControl(field("target"))).toBe("json");
+    expect(inputTypeKey(field("target"))).toBe("input.type.any");
+  });
+
+  test("a value is sent with its JSON type, never as text by default", () => {
+    expect(buildInput(fields, { target: "42" })).toEqual({ target: 42 });
+    expect(buildInput(fields, { filter: '{"a":1}' })).toEqual({ filter: { a: 1 } });
+    expect(buildInput(fields, { filter: "[1,2]" })).toEqual({ filter: [1, 2] });
+    // Plain text is text only where the field allows text.
+    expect(buildInput(fields, { target: "north" })).toEqual({ target: "north" });
+    expect(buildInput(fields, { target: '"42"' })).toEqual({ target: "42" });
+  });
+
+  test("a value of a type the field does not allow is named, not sent", () => {
+    const values = { target: "1.5", filter: "north", payload: "7" };
+    expect(buildInput(fields, values)).toEqual({});
+    expect(invalidInputs(fields, values)).toEqual(["target", "filter", "payload"]);
+  });
+});
+
+describe("an input schema that names no fields", () => {
+  test("still takes input: the whole value is one JSON field", () => {
+    for (const schema of [
+      { type: "object" },
+      { type: "object", additionalProperties: true },
+      { type: "object", properties: {}, additionalProperties: true },
+      { type: "array", items: { type: "string" } },
+      { anyOf: [{ type: "object" }, { type: "array" }] },
+    ]) {
+      const form = inputForm(schema);
+      expect(form.kind, JSON.stringify(schema)).toBe("whole");
+      expect(formFields(form)).toHaveLength(1);
+      expect(inputControl(formFields(form)[0] ?? { type: "string", options: null })).toBe("json");
+    }
+  });
+
+  test("the whole value is the run's input, not a field inside it", () => {
+    const object = inputForm({ type: "object" });
+    expect(buildFormInput(object, { input: '{"id":"a"}' })).toEqual({ id: "a" });
+    const list = inputForm({ type: "array", items: { type: "string" } });
+    expect(buildFormInput(list, { input: '["a","b"]' })).toEqual(["a", "b"]);
+    // Left empty: no input is sent, rather than an empty one.
+    expect(buildFormInput(object, {})).toBeUndefined();
+    // A list where an object belongs is refused, as for any field.
+    expect(buildFormInput(object, { input: "[1]" })).toBeUndefined();
+    expect(invalidInputs(formFields(object), { input: "[1]" })).toEqual(["input"]);
+  });
+
+  test("no schema, an empty one, or an object closed to any field takes nothing", () => {
+    for (const schema of [
+      null,
+      {},
+      { type: "object", properties: {} },
+      { type: "object", additionalProperties: false },
+    ]) {
+      const form = inputForm(schema);
+      expect(form.kind, JSON.stringify(schema)).toBe("none");
+      expect(buildFormInput(form, { input: "{}" })).toBeUndefined();
+    }
+  });
+
+  test("named fields stay named fields", () => {
+    const form = inputForm(SCHEMA);
+    expect(form.kind).toBe("fields");
+    expect(buildFormInput(form, { run_id: "r" })).toEqual({ run_id: "r" });
   });
 });

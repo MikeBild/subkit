@@ -96,6 +96,13 @@ export function MetadataDialog({
             data-testid="detail-metadata-name"
           />
         </Field>
+        {/* A refused change says so. Without this the dialog stayed open and
+            silent, and the reader could not tell a slow save from a failed one. */}
+        {mutation.isError ? (
+          <p className="text-sm text-destructive" role="alert" data-testid="detail-metadata-error">
+            {t("detail.saveFailed")}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button
             variant="outline"

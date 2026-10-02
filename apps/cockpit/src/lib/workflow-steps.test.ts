@@ -17,6 +17,7 @@ import {
 const UUID = "457df8bc-2fe7-4a44-8dba-0acfa31821c5";
 /** A workflow placeholder as an author writes it — text, not a template. */
 const PLACEHOLDER = ["$", "{input.name}"].join("");
+const reference = (path: string) => ["$", `{${path}}`].join("");
 const de: Parameters<typeof stepEssenceText>[1] = (key, values) => translate("de", key, values);
 const en: Parameters<typeof stepEssenceText>[1] = (key, values) => translate("en", key, values);
 
@@ -92,11 +93,38 @@ describe("request steps", () => {
     );
   });
 
-  test("a credential-shaped header shows that it is sent, not what", () => {
+  test("a literal secret under a credential-shaped header is masked", () => {
     const headers = block(read(step).blocks, "workflow.block.headers")?.code ?? "";
     expect(headers).toContain("Accept: application/json");
     expect(headers).toContain("Authorization: •••");
     expect(headers).not.toContain("plain-token");
+  });
+
+  test("a reference is configuration, not a secret: it is shown byte for byte", () => {
+    const headers =
+      block(
+        read({
+          id: "a",
+          kind: "request",
+          path: "/x",
+          headers: {
+            Authorization: "Bearer {{credentials.token}}",
+            "X-Api-Key": reference("input.key"),
+            "X-Signature": `sha256=${reference("steps.sign.data.digest")}`,
+            "X-Request-Token": "{{input.id}}",
+            Cookie: "session=abc123",
+          },
+        }).blocks,
+        "workflow.block.headers",
+      )?.code ?? "";
+    expect(headers.split("\n")).toEqual([
+      "Authorization: Bearer {{credentials.token}}",
+      `X-Api-Key: ${reference("input.key")}`,
+      `X-Signature: sha256=${reference("steps.sign.data.digest")}`,
+      "X-Request-Token: {{input.id}}",
+      // No reference in it: a literal credential stays masked.
+      "Cookie: •••",
+    ]);
   });
 
   test("retries, effect, time limit and error handling are facts", () => {
@@ -420,5 +448,61 @@ describe("step kinds", () => {
       expect(workflowStepKindKey(kind), kind).not.toBe("workflow.stepType");
       expect<string>(read({ id: "x", kind }).essence.kind, kind).toBe(kind);
     }
+  });
+});
+
+describe("extractor transforms", () => {
+  // The names of the extractors' config blocks, read from the engine's schema:
+  // a renamed or misspelled one here shows nothing, silently.
+  const source = readFileSync(
+    new URL("../../../engine/src/workflows/types.ts", import.meta.url).pathname,
+    "utf8",
+  );
+  const transform = source.slice(
+    source.indexOf('kind: z.literal("transform")'),
+    source.indexOf("silence_warnings"),
+  );
+  const configs = [
+    ...transform.matchAll(/^ {4}([a-z_]+): [A-Za-z]+ConfigSchema\.optional\(\)/gm),
+  ].map((match) => match[1] ?? "");
+
+  test("the engine's extractor config blocks are read", () => {
+    expect(configs).toEqual(["readability", "markdown", "structured_data"]);
+  });
+
+  test("every extractor's configuration is shown", () => {
+    for (const name of configs) {
+      const { blocks } = readStepDefinition(
+        {
+          id: "extract",
+          kind: "transform",
+          language: "html-to-markdown",
+          [name]: { marker: name },
+        },
+        0,
+      );
+      expect(blocks.map((entry) => entry.code).join("\n"), name).toContain(
+        JSON.stringify({ marker: name }, null, 2),
+      );
+    }
+  });
+
+  test("an html-to-markdown transform shows its markdown settings", () => {
+    const { blocks } = readStepDefinition(
+      {
+        id: "to_md",
+        kind: "transform",
+        language: "html-to-markdown",
+        markdown: { heading_style: "atx", strip_images: true },
+      },
+      0,
+    );
+    expect(blocks).toEqual([
+      {
+        labelKey: "workflow.block.settings",
+        language: "json",
+        code: JSON.stringify({ heading_style: "atx", strip_images: true }, null, 2),
+      },
+    ]);
   });
 });
