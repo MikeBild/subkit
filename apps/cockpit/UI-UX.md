@@ -479,18 +479,30 @@ offers each act once.
   so the two are said together and "Einschalten" is the one act that changes
   it. The new state shows at once, from the engine's answer. Without
   `connector:write` the notice stands without the button.
-- **Verbindung**, **Laufzeit**, the server's tools for an MCP connector.
+- **Verbindung** — where it points and how it talks. HOW it signs in is a fact
+  of the connection and stands here only.
+- **Laufzeit** — the week's figures as tiles. A week without a call, and
+  figures the reader may not see, are one sentence instead of tiles; the last
+  failure is shown only when there is one.
+- The server's tools, for an MCP connector. What the last session negotiated
+  stands only when there was one; without, one sentence says so.
 - **Anmeldung** — the one home of the sign-in state: a badge, one line that
   says what is the case and what the button beside it does, the permissions a
   provider withheld by name, and the one way to renew that fits the kind of
   sign-in ("Neu anmelden" at the provider, through the account connection, or
-  by entering a key).
-- **Workflows**, **Unterhaltungen dazu**, **Technische Angaben** (folded).
+  by entering a key). The account connections page is linked once from the
+  card. A connector that signs in with nothing has no card: "Ohne Anmeldung"
+  under "Verbindung" already says it.
+- **Verwendung**, **Unterhaltungen dazu**, **Technische Angaben** (folded).
 
 There is no "Steuerung" row: a connector has no lifecycle and no steps. The
 engine's health verdict, when it is neither ok nor the sign-in again, and
-"read-only" for a reader without write permission are the only things a bar
-under the title still says; with neither there is no bar.
+"read-only" for a reader without write permission are the only things the row
+under the title still says; with neither there is no row (see "The row under a
+record's title").
+
+A test's result stands on the page, as one paragraph — not also as a toast,
+and without repeating what the sign-in card already says.
 
 The return from a sign-in is a flag in the address (`?signed_in=1`), set by
 the engine's callback on a redirect it builds itself. The flag states no
@@ -500,6 +512,25 @@ bears out, and drops the flag from the address so a reload repeats nothing.
 At most one action on the page is filled. While the sign-in card offers a
 renewal, that is it and "Einschalten" stands beside it as an outline; with
 the sign-in in order, "Einschalten" is the filled one.
+
+### The row under a record's title
+
+A skill, a knowledge source, a file and a connector share one row under the
+title (`RecordBar` in `src/pages/catalog-detail.tsx`). It says what is a state
+of the record and nothing else: its lifecycle word when the record carries
+one, its version when that is a number, and "Mit deinen Rechten nur lesbar."
+only for a reader who may not change it. It has no label and no icon, and with
+nothing to say it is not rendered. A knowledge source's version is a content
+marker, not a count, and gets no "v" in front of it.
+
+The one direct edit a record's page offers is its name, so the button says
+"Umbenennen"; the dialog it opens is headed by the record it renames.
+
+"Unterhaltungen dazu" (`conversations-about.tsx`) tells its four states apart:
+a skeleton while it loads, a failure with a retry, the list — and no section
+at all for a record nobody talked about.
+
+The connectors list shows where a connector stands in one column, "Zustand".
 
 ### A kept secret is not a value
 
