@@ -36,6 +36,13 @@ const LOG_SENSITIVE_KEYS = new Set<string>([
   "refresh_token",
   "access_token",
   "id_token",
+  "session_token",
+  "secret_key",
+  "secret_access_key",
+  "aws_secret_access_key",
+  "passphrase",
+  "webhook_secret",
+  "client_assertion",
   "database_url",
   "connection_string",
   "connectionstring",
@@ -49,7 +56,8 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
 ];
 
 /**
- * Exact-name membership in the log net (case-insensitive).
+ * Exact-name membership in the log net. Case-insensitive, and a camelCase
+ * spelling is the name it spells: `clientSecret` is `client_secret`.
  *
  * The counterpart to `SENSITIVE_KEY_PATTERN` for payloads whose keys are
  * STRUCTURE: the pattern is a substring match, so it also fires on
@@ -58,7 +66,10 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
  * asks this instead.
  */
 export function isLogSensitiveKey(key: string): boolean {
-  return LOG_SENSITIVE_KEYS.has(key.toLowerCase());
+  return (
+    LOG_SENSITIVE_KEYS.has(key.toLowerCase()) ||
+    LOG_SENSITIVE_KEYS.has(key.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase())
+  );
 }
 
 export const SENSITIVE_KEY_PATTERN: RegExp =
@@ -738,7 +749,7 @@ function redactInner(input: unknown, depth: number, maxDepth: number): unknown {
 
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (LOG_SENSITIVE_KEYS.has(key.toLowerCase())) {
+    if (isLogSensitiveKey(key)) {
       out[key] = DEFAULT_REDACTED;
     } else {
       out[key] = redactInner(value, depth + 1, maxDepth);
