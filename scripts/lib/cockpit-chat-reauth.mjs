@@ -39,7 +39,7 @@ export async function verifyChatReauth(page, stand, conversation) {
                 output: {
                   ok: true,
                   data: {
-                    connector: "gmail",
+                    connector: "mail",
                     reauth_url: href,
                     expires_at: expired ? "2000-01-01T00:00:00Z" : "2099-01-01T00:00:00Z",
                   },
