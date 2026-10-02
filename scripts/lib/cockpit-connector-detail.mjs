@@ -348,10 +348,31 @@ async function occurrences(page, word) {
   return body.split(word).length - 1;
 }
 
+/**
+ * Press "Neu anmelden" and come back as the provider round-trip does: a full
+ * page load of the connector's page with the flag, which the page then drops.
+ *
+ * The address before and after is the same, so waiting for the address proves
+ * nothing — the page that was there already has it. What proves the return is
+ * the load itself, then the flag being gone.
+ */
+async function signInAtProvider(page) {
+  const loaded = page.waitForEvent("load", { timeout: 15_000 });
+  await page.getByTestId("connector-renew-signin").click();
+  await loaded;
+  await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
+    timeout: 15_000,
+  });
+  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.waitForLoadState("networkidle");
+}
+
 async function openOauth(page, stand) {
   await stand.visit(page, `connectors/${OAUTH_ID}`);
   await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
   await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
+  // The sign-in state settles with the credential read; read it after that.
+  await page.waitForLoadState("networkidle");
 }
 
 /**
@@ -476,11 +497,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   // ── …and back from the provider: signed in, still switched off ───────────
   where = "/connectors/<oauth> · signed in, switched off";
   const startedBefore = oauth.started;
-  await page.getByTestId("connector-renew-signin").click();
-  await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
-    timeout: 15_000,
-  });
-  await notice.waitFor({ state: "visible", timeout: 10_000 });
+  await signInAtProvider(page);
   if (oauth.started !== startedBefore + 1)
     throw new Error(`${where}: "${words.renew}" started ${oauth.started - startedBefore} sign-ins`);
   if ((await noticeKind()) !== "signed_in_off")
@@ -542,11 +559,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   where = "/connectors/<oauth> · partial grant";
   set({ enabled: true, needsReauth: true, grants: ["mail.send"] });
   await openOauth(page, stand);
-  await page.getByTestId("connector-renew-signin").click();
-  await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
-    timeout: 15_000,
-  });
-  await notice.waitFor({ state: "visible", timeout: 10_000 });
+  await signInAtProvider(page);
   if ((await noticeKind()) !== "signed_in")
     throw new Error(`${where}: the page says "${await noticeKind()}" after the sign-in`);
   const withheld = (await text(page, "connector-missing-scopes")) ?? "";
