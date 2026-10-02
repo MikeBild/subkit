@@ -18,7 +18,7 @@ import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
-import { TOOL_PREFIX } from "./catalog-budget.ts";
+import { workflowToolName } from "./catalog-budget.ts";
 import { resolveConversationBoundWorkflowId } from "./run-workflow-async-ack.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
@@ -41,7 +41,7 @@ export async function listWorkflowTools({
     ...(limit !== undefined ? { limit } : {}),
   });
   return catalog.map((entry) => ({
-    name: `${TOOL_PREFIX}${entry.slug}`,
+    name: workflowToolName(entry.slug),
     title: entry.name,
     // Frame the tool as an executable action, not a passive description.
     // Without this, a workflow description like "Lists all Test Plan issues…"
