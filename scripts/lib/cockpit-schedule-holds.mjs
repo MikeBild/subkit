@@ -295,6 +295,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
             valid_until: new Date(Date.parse(from) + 86400000).toISOString(),
             max_runs: 1,
           },
+          suggested_bounds_basis: { kind: "manual" },
           execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
         };
         await route.fulfill({ json: review });

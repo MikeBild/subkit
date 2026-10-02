@@ -1435,9 +1435,9 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
               { protocol: "api_key", id: "api-key", label: "Local API key" },
               {
                 protocol: "oidc",
-                id: "upraft",
-                label: "Upraft Auth",
-                issuer_url: "https://auth.mikebild.info",
+                id: "example-sso",
+                label: "Example SSO",
+                issuer_url: "https://auth.example.com",
                 client_id: "oidc_subkit_public_client",
                 scopes: "openid profile email",
                 tenant_slug: "default",
@@ -1453,7 +1453,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
           },
           {
             path: "server.public_base_url",
-            value: "https://subkit.mikebild.info",
+            value: "https://subkit.example.com",
             meta: {
               source: "global",
               scope: "global",
