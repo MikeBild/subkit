@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
+import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,20 +27,11 @@ import {
   observedAuthorityState,
   type WorkflowAuthority,
 } from "@/lib/workflow-authorities";
-import { shortIdentifier } from "@/pages/audit-model";
-
-/**
- * An identifier where a reader looks: shortened, whole in the `title`. Never
- * the raw 36 characters.
- */
-function ShortId({ value }: { value: string }) {
-  const shown = shortIdentifier(value);
-  return <span title={shown === value ? undefined : value}>{shown}</span>;
-}
 
 /** What an approval permits — the part a reader decides by. */
 function GrantEffects({ authority }: { authority: WorkflowAuthority }) {
   const { t } = useI18n();
+  const connectorNames = useConnectorNames();
   if (authority.effect_manifest.effects.length === 0)
     return <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>;
   return (
@@ -56,8 +48,13 @@ function GrantEffects({ authority }: { authority: WorkflowAuthority }) {
           <div className="break-all text-muted-foreground">
             {t("authority.connector")}
             {": "}
+            {/* The connector by its name, as the approval dialog names it —
+                never a fragment of its id. The id stays on the title, for
+                anyone who has to quote it. */}
             {effect.connector_id ? (
-              <ShortId value={effect.connector_id} />
+              <span title={effect.connector_id}>
+                {connectorNames.get(effect.connector_id) ?? t("authority.configuredConnector")}
+              </span>
             ) : (
               t("authority.directRequest")
             )}

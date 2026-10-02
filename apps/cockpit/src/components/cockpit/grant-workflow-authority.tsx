@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { BoundaryPanels } from "@/components/cockpit/grant-boundary-panels";
 import {
   GrantRemedyAction,
@@ -94,13 +95,7 @@ export function GrantWorkflowAuthority({
   const [open, setOpen] = useState(false);
   const client = useQueryClient();
   const session = useSession();
-  const connectors = useQuery({
-    queryKey: ["authority-connector-names"],
-    enabled: open && session.permissions.includes("connector:read"),
-    staleTime: 300_000,
-    queryFn: () =>
-      apiRequest<{ items: { id: string; name: string }[] }>("/v1/connectors?limit=200"),
-  });
+  const connectorNames = useConnectorNames(open);
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
@@ -334,8 +329,10 @@ export function GrantWorkflowAuthority({
       toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
     },
   });
+  // Putting the saved change into service. `then` says what follows: nothing
+  // ("Nur in Betrieb nehmen"), or the single run the caller prepares next.
   const activateOnly = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (_then: "nothing" | "single_run") => {
       if (!review || !activation) throw new Error("activation_review_missing");
       return apiRequest(`/v1/workflows/${encodeURIComponent(workflowId)}/activate-draft`, {
         method: "POST",
@@ -347,7 +344,7 @@ export function GrantWorkflowAuthority({
         }),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, then) => {
       // The catalog page shows the same workflow, and a version that is now
       // running must stop being announced as one that is waiting.
       await invalidateWorkflowAutomation(client, workflowId);
@@ -356,7 +353,11 @@ export function GrantWorkflowAuthority({
       await client.invalidateQueries({ queryKey: ["workflows"] });
       await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
       setOpen(false);
-      onSingleRun?.();
+      if (then === "single_run") onSingleRun?.();
+      else {
+        onCompleted?.();
+        toast.success(t("authority.activatedOnly"));
+      }
     },
   });
   // What SubKit can work out for itself about the steps that block this
@@ -457,12 +458,21 @@ export function GrantWorkflowAuthority({
     review && !unsupported && !activation
       ? existingGrant(context.authorities, reviewVersionId, environment, Date.now())
       : null;
+  // "You are approving a saved change" only where something can be approved.
   const scopeWarnings = grantScopeWarnings({
     environment,
     startedIn: context.startedIn,
-    savedChange: Boolean(activation),
+    savedChange: Boolean(activation) && Boolean(review) && !unsupported,
     activeVersion: context.activeVersion,
   });
+  // The operations a run performs. Without any, the disclosure would open
+  // onto two sentences about nothing.
+  const hasEffectDetails =
+    review !== null &&
+    review.manifest.effects.length +
+      review.execution_shape.requests.length +
+      review.execution_shape.iterations.length >
+      0;
   // What removes the refusal, where the gate diagnosis names an act for it.
   // The in-dialog repair above is the stronger offer for the same steps: with
   // it on screen a second repair button would be the same decision twice.
@@ -909,12 +919,15 @@ export function GrantWorkflowAuthority({
           )}
           {review && (
             <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{versionLabel ?? t("authority.reviewedVersion")}</Badge>
-                <Badge variant="secondary">
-                  {t(environment === "prod" ? "authority.production" : "authority.development")}
-                </Badge>
-              </div>
+              {/* The version, where the caller can name it. The environment
+                  stands in the select above, and nowhere a second time. */}
+              {versionLabel ? (
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" data-testid="authority-version-label">
+                    {versionLabel}
+                  </Badge>
+                </div>
+              ) : null}
               {input && (
                 <p className="text-sm">
                   {t("authority.window")}
@@ -924,75 +937,76 @@ export function GrantWorkflowAuthority({
                   {dateTime(input.valid_until)}
                 </p>
               )}
-              <details
-                open={!unsupported && !recurringReport && !recurringContent}
-                data-testid="authority-effect-details"
-              >
-                <summary className="cursor-pointer text-sm font-medium">
-                  {t("authority.effects")}
-                </summary>
-                <div className="mt-3 flex flex-col gap-3">
-                  <p className="text-sm text-muted-foreground">
-                    {t("authority.runNotRequestDescription")}
-                  </p>
-                  {review.manifest.effects.map((effect) => (
-                    <div key={effect.step_id} className="min-w-0 text-sm">
-                      {/* What happens and where it happens lead; the authored
-                          step id follows as provenance. It used to lead, and a
-                          reader deciding whether to approve was met with
-                          `fetch_route` — an identifier that answers a different
-                          question than the one they are being asked. Nothing is
-                          hidden and nothing is invented: every part of this was
-                          already on screen, in the wrong order. */}
-                      <p className="font-medium">
-                        {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-                        {" · "}
-                        {effect.connector_id
-                          ? (connectors.data?.items.find(
-                              (connector) => connector.id === effect.connector_id,
-                            )?.name ?? t("authority.configuredConnector"))
-                          : t("authority.directRequest")}
-                      </p>
-                      <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
-                      {effect.read_path && <p>{t("authority.readPath")}</p>}
-                      <p className="text-muted-foreground text-xs">
-                        {t("authority.issueStep", { step: effect.step_id })}
-                        {" · "}
-                        {effect.operation}
-                      </p>
-                    </div>
-                  ))}
-                  {review.execution_shape.requests.map((request) => (
-                    <details key={request.step_id}>
-                      <summary className="cursor-pointer text-sm font-medium">
-                        {t("authority.requestReview", { step: request.step_id })}
-                      </summary>
-                      <p className="my-2 text-sm">
-                        {t("authority.attempts", {
-                          count: request.retry_policy_max_attempts ?? t("common.unknown"),
+              {hasEffectDetails ? (
+                <details
+                  open={!unsupported && !recurringReport && !recurringContent}
+                  data-testid="authority-effect-details"
+                >
+                  <summary className="cursor-pointer text-sm font-medium">
+                    {t("authority.effects")}
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <p className="text-sm text-muted-foreground">
+                      {t("authority.runNotRequestDescription")}
+                    </p>
+                    {review.manifest.effects.map((effect) => (
+                      <div key={effect.step_id} className="min-w-0 text-sm">
+                        {/* What happens and where it happens lead; the authored
+                            step id follows as provenance. It used to lead, and a
+                            reader deciding whether to approve was met with
+                            `fetch_route` — an identifier that answers a different
+                            question than the one they are being asked. Nothing is
+                            hidden and nothing is invented: every part of this was
+                            already on screen, in the wrong order. */}
+                        <p className="font-medium">
+                          {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
+                          {" · "}
+                          {effect.connector_id
+                            ? (connectorNames.get(effect.connector_id) ??
+                              t("authority.configuredConnector"))
+                            : t("authority.directRequest")}
+                        </p>
+                        <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                        {effect.read_path && <p>{t("authority.readPath")}</p>}
+                        <p className="text-muted-foreground text-xs">
+                          {t("authority.issueStep", { step: effect.step_id })}
+                          {" · "}
+                          {effect.operation}
+                        </p>
+                      </div>
+                    ))}
+                    {review.execution_shape.requests.map((request) => (
+                      <details key={request.step_id}>
+                        <summary className="cursor-pointer text-sm font-medium">
+                          {t("authority.requestReview", { step: request.step_id })}
+                        </summary>
+                        <p className="my-2 text-sm">
+                          {t("authority.attempts", {
+                            count: request.retry_policy_max_attempts ?? t("common.unknown"),
+                          })}
+                        </p>
+                        <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+                          {request.redacted_request_json}
+                        </pre>
+                      </details>
+                    ))}
+                    {review.execution_shape.iterations.map((iteration) => (
+                      <p
+                        key={`${iteration.step_id}:${iteration.kind}`}
+                        className="break-words text-sm"
+                      >
+                        {t("authority.iteration", {
+                          step: iteration.step_id,
+                          children: iteration.body_step_ids.join(", "),
                         })}
                       </p>
-                      <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap break-all">
-                        {request.redacted_request_json}
-                      </pre>
-                    </details>
-                  ))}
-                  {review.execution_shape.iterations.map((iteration) => (
-                    <p
-                      key={`${iteration.step_id}:${iteration.kind}`}
-                      className="break-words text-sm"
-                    >
-                      {t("authority.iteration", {
-                        step: iteration.step_id,
-                        children: iteration.body_step_ids.join(", "),
-                      })}
+                    ))}
+                    <p className="text-sm text-muted-foreground">
+                      {t("authority.maskedDescription")}
                     </p>
-                  ))}
-                  <p className="text-sm text-muted-foreground">
-                    {t("authority.maskedDescription")}
-                  </p>
-                </div>
-              </details>
+                  </div>
+                </details>
+              ) : null}
               {!input && boundsVisible && !invalidRuns && !invalidHours && (
                 <Alert>
                   <AlertTitle>{t("authority.reviewExpired")}</AlertTitle>
@@ -1075,7 +1089,7 @@ export function GrantWorkflowAuthority({
             <Button
               variant="outline"
               disabled={busy}
-              onClick={() => activateOnly.mutate()}
+              onClick={() => activateOnly.mutate("nothing")}
               data-testid="authority-activate-only"
             >
               {t("authority.activateOnly")}
@@ -1114,7 +1128,7 @@ export function GrantWorkflowAuthority({
                   disabled={busy || Boolean(activateOnly.error) || Boolean(incomplete)}
                   data-testid="authority-single-run"
                   onClick={() => {
-                    if (activation) activateOnly.mutate();
+                    if (activation) activateOnly.mutate("single_run");
                     else {
                       setOpen(false);
                       onSingleRun();

@@ -446,6 +446,16 @@ before the press. Inside:
   diagnosis' own: repair automatically, review the repair, run the preparation again — as its
   filled action, with "Ursache im Chat prüfen" beside it. Where the dialog already offers its own
   repair for the same steps, that one stands alone.
+- Every fact once. The environment stands in its select and is not repeated as a badge; the
+  reviewed version is named where the caller knows it and never by a placeholder; "Operationen
+  und externe Ziele" is offered only when there is something behind it; and "Du gibst eine
+  gespeicherte Änderung frei" stands only where the change can be approved.
+- "Nur in Betrieb nehmen" does only that: the saved change goes into service, nothing is
+  approved and no run is prepared. Preparing the single run is the other button's act.
+
+An approval names the connector it reaches by its name, on the workflow page as in the dialog —
+never by a fragment of its identifier. Both read the same lookup; a connector the reader may not
+see is "Konfigurierter Konnektor".
 
 ### A kept secret is not a value
 
