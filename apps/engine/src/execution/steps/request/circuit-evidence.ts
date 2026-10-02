@@ -22,9 +22,9 @@
 // closed on purpose — refusing every request is a working service, and
 // tripping on it would take the author's own bug out on the connector.
 //
-// This module exists because the four drivers that return their outcome
-// (instead of throwing past a retry loop the way the HTTP path does) each
-// disagreed about the second and third answers: the s3 branch credited
+// This module exists because the drivers each disagreed about the second and
+// third answers: the HTTP path counted every failure that got past its retry
+// loop, a rejected credential included, the s3 branch credited
 // reachability for any response INCLUDING a 5xx, while the graphql branch
 // credited it for none at all and never handed the endpoint's status to the
 // availability predicate — so a GraphQL 502 read as "not the remote's fault"
@@ -35,6 +35,7 @@ import {
   isAvailabilityFailureFromError,
 } from "../../../connectors/availability.ts";
 import type { StepResult } from "../../types.ts";
+import { RequestError } from "./errors.ts";
 
 export type ConnectorEvidence = "answered" | "unavailable" | "none";
 
@@ -60,6 +61,46 @@ export function evidenceFromStatus(status: number): ConnectorEvidence {
  */
 export function evidenceFromThrow(err: unknown): ConnectorEvidence {
   return isAvailabilityFailureFromError(err) ? "unavailable" : "none";
+}
+
+/**
+ * Evidence from a failed HTTP request step, read off what the retry loop gave
+ * up with.
+ *
+ * The HTTP path used to count every failure that reached its outer handler,
+ * on the reasoning that the retry loop had already tried. But the loop gives
+ * up at once on a 401, a 404 or a request that never left, and none of those
+ * is the remote failing to serve: a rejected credential opened the breaker,
+ * and the reader was told the connector was unreachable when it had answered
+ * every call. A rejected credential is the re-auth flag's to report.
+ *
+ * `step_timed_out` is the caller's knowledge that the abort came from the
+ * step's own timer rather than from a cancelled run — the first is a remote
+ * that did not answer in time, the second is nothing about the remote at all.
+ */
+export function requestFailureEvidence(err: unknown, step_timed_out: boolean): ConnectorEvidence {
+  if (!(err instanceof RequestError)) return evidenceFromThrow(err);
+  if (typeof err.status === "number") return evidenceFromStatus(err.status);
+  // No status: the retry loop already named what it gave up on, which says
+  // more than the error text — a transport failure is rethrown under whatever
+  // message the runtime chose for it.
+  switch (err.cause_kind) {
+    case "http_5xx":
+    case "http_429":
+    case "connection":
+    case "timeout":
+      return "unavailable";
+    case "http_4xx":
+    // The response arrived and one of the author's filters rejected it.
+    case "filter_fail":
+      return "answered";
+    case "abort":
+      return step_timed_out ? "unavailable" : "none";
+    // Refused before it left: governance, or a request that was malformed.
+    case "authority_invalid":
+    case "request_invalid":
+      return "none";
+  }
 }
 
 /**

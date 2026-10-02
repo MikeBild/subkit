@@ -8,6 +8,7 @@
 // back a PreviewStepSummary-shaped envelope.
 
 import type { StepDef } from "../workflows/types.ts";
+import { CONNECTOR_DISABLED_CODE } from "./connector-availability.ts";
 import type { RunResult, StepResult } from "./types.ts";
 
 /** Every class, as a list — so a public schema can declare the enum without a second copy. */
@@ -25,9 +26,9 @@ export const PREVIEW_CLASSIFICATIONS = [
   // allowance searches for something that is not there.
   "budget_exhausted",
   // A connector the run needs cannot serve it in the run's environment (lost
-  // sign-in, no credential, switched off, absent): the engine refused before
-  // the first step. The remedy is on the connector, never in the workflow or
-  // the external system.
+  // sign-in, no credential, switched off, absent): the engine refused the
+  // run before its first step, or the step that would have called it. The
+  // remedy is on the connector, never in the workflow or the external system.
   "connector_unavailable",
   // Closed before it ever ran — a preparation refused and stranded, later
   // failed by the engine. Nothing reached a step, so nothing failed in one.
@@ -160,7 +161,9 @@ export function classifyFailure(result: StepResult): PreviewClassification {
   // Exact codes before the message matchers: a refusal names its connector,
   // and a slug such as "auth0" or "oauth-crm" would otherwise read as a
   // rejected sign-in.
-  if (code === "prepared_credential_unavailable") return "connector_unavailable";
+  if (code === "prepared_credential_unavailable" || code === CONNECTOR_DISABLED_CODE) {
+    return "connector_unavailable";
+  }
   if (code === "orphaned_preparation") return "refused_before_start";
   // "Execution authority could not be verified" contains "auth"; the message
   // matcher below would read it as a rejected sign-in.
@@ -242,7 +245,7 @@ export function humanizeClassification(
     case "connector_missing":
       return `The connector referenced by this step is not available.`;
     case "connector_unavailable":
-      return `The run was refused before it started: ${message}`;
+      return `A connector this run needs cannot serve it: ${message}`;
     case "refused_before_start":
       return `The run was refused before it started and never ran.`;
     case "authority_mismatch":

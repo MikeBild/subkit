@@ -7,7 +7,13 @@
 // opened, never reset. Production logs confirmed zero circuit transitions in
 // the entire journal while one workflow failed identically 10× in 4 hours —
 // exactly the repeated-failure load the breaker exists to stop. No test sent
-// a plain 4xx through dispatch and asserted connector circuit columns.
+// a failing request through dispatch and asserted connector circuit columns.
+//
+// The failures that drive it are 503s: the breaker counts a remote that could
+// not serve, not a request the remote answered. The second block pins the
+// other half — a 401 or a 404 used to count like any failure, so a rejected
+// credential opened the breaker and the reader was told `circuit_open` about
+// a remote that had answered every call.
 //
 // Coverage:
 //   1. Failures increment circuit_failure_count (persisted, not snapshot math).
@@ -16,6 +22,8 @@
 //   3. An open circuit short-circuits the next request (error code
 //      circuit_open) without hitting the upstream.
 //   4. A success after recovery resets the circuit (closed / count 0).
+//   5. Repeated 401s and 404s leave the breaker closed, and an answer of
+//      either kind clears a partial failure count.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -41,6 +49,14 @@ beforeAll(async () => {
   mock = await createMockServer((req, res) => {
     upstreamHits += 1;
     if (req.url?.startsWith("/fail")) {
+      jsonResponse(res, 503, { error: "unavailable" });
+      return;
+    }
+    if (req.url?.startsWith("/unauth")) {
+      jsonResponse(res, 401, { error: "unauthorized" });
+      return;
+    }
+    if (req.url?.startsWith("/missing")) {
       jsonResponse(res, 404, { error: "not found" });
       return;
     }
@@ -75,7 +91,7 @@ async function queryConnectorRow() {
   return rows[0]!;
 }
 
-async function runFailingWorkflow(name: string) {
+async function runFailingWorkflow(name: string, path = "/fail") {
   const { workflow_id } = await createWorkflowRow(ctx, {
     name,
     steps: [
@@ -84,7 +100,7 @@ async function runFailingWorkflow(name: string) {
         id: "call",
         method: "GET",
         connector_id: connectorId,
-        path: "/fail",
+        path,
         max_retries: 0,
       },
     ],
@@ -156,6 +172,59 @@ describe("connector circuit breaker — persisted state", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
+
+    const row = await queryConnectorRow();
+    expect(row.circuit_state).toBe("closed");
+    expect(row.circuit_failure_count).toBe(0);
+  });
+});
+
+describe("connector circuit breaker — only unreachability counts", () => {
+  async function resetCircuit(failures = 0) {
+    await ctx.testDb.db
+      .update(connectors)
+      .set({
+        circuit_state: "closed",
+        circuit_failure_count: failures,
+        circuit_opened_at: null,
+        needs_reauth: false,
+        auth_failed_at: null,
+        auth_failed_reason: null,
+      })
+      .where(eq(connectors.id, connectorId));
+  }
+
+  test("repeated 401s leave the breaker closed — a rejected credential is the re-auth flag's to report", async () => {
+    await resetCircuit();
+    // Three failures against a threshold of two.
+    for (const name of ["circuit-401-a", "circuit-401-b", "circuit-401-c"]) {
+      const result = await runFailingWorkflow(name, "/unauth");
+      expect(result.status).toBe("failed");
+      expect((result.steps[0]?.error as { code?: string } | undefined)?.code).toBe("http_4xx");
+    }
+
+    const row = await queryConnectorRow();
+    expect(row.circuit_state).toBe("closed");
+    expect(row.circuit_failure_count).toBe(0);
+    expect(row.circuit_opened_at).toBeNull();
+    expect(row.needs_reauth).toBe(true);
+  });
+
+  test("repeated 404s leave the breaker closed — a wrong path is the request's fault", async () => {
+    await resetCircuit();
+    for (const name of ["circuit-404-a", "circuit-404-b", "circuit-404-c"]) {
+      const result = await runFailingWorkflow(name, "/missing");
+      expect(result.status).toBe("failed");
+    }
+
+    const row = await queryConnectorRow();
+    expect(row.circuit_state).toBe("closed");
+    expect(row.circuit_failure_count).toBe(0);
+  });
+
+  test("an answered 4xx clears a partial failure count — the remote is serving", async () => {
+    await resetCircuit(1);
+    await runFailingWorkflow("circuit-404-after-503", "/missing");
 
     const row = await queryConnectorRow();
     expect(row.circuit_state).toBe("closed");

@@ -55,6 +55,7 @@ import {
   connectorHealthHint,
   parseDeprecation,
 } from "../../connectors/health.ts";
+import { callProvedCredentialLive, clearReauthOnSuccess } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { callConnectorDriverRefusal } from "../../connectors/services/call-connector.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
@@ -536,6 +537,12 @@ export const callConnectorTool: ConversationTool = {
     // upstream statuses + headers; postgres/s3 synthesize status 200
     // and classify as "ok".
     const health = errorDetail ? "ok" : classifyConnectorHealth(status, responseHeaders);
+
+    // The re-auth clearing edge is "a successful authenticated call proves the
+    // credential is live" (see connectors/reauth.ts); this call is one.
+    if (!errorDetail && callProvedCredentialLive(connector, status, health)) {
+      await clearReauthOnSuccess(ctx.db, connector);
+    }
 
     // Audit ALWAYS — including when the upstream failed. The audit row
     // never carries the body, headers, or full SQL (PII risk + cardinality).

@@ -29,6 +29,7 @@ import {
   type ConnectorAuthFailedPayload,
   ConnectorAuthFailedPayloadSchema,
 } from "../pubsub/types.ts";
+import type { ConnectorHealth } from "./health.ts";
 import type { ConnectorView } from "./types.ts";
 
 /**
@@ -124,6 +125,48 @@ export async function clearConnectorReauth(
       metadata: {},
     },
     db,
+  );
+}
+
+/**
+ * Best-effort re-auth clear after a successful authenticated call. The call's
+ * own result must not depend on it, so the returned promise never rejects — a
+ * caller may await it or let it run — but a failure is logged so a stuck
+ * `needs_reauth` flag is observable rather than silently swallowed.
+ */
+export function clearReauthOnSuccess(
+  db: Executor,
+  connector: { tenant_id: string; id: string },
+): Promise<void> {
+  return clearConnectorReauth(db, connector.tenant_id, connector.id).catch((err) => {
+    logger.warn({
+      module: "connectors",
+      action: "connector.reauth.clear_failed",
+      msg: "best-effort reauth clear on success failed",
+      tenant_id: connector.tenant_id,
+      connector_id: connector.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
+
+/**
+ * Whether a direct connector call (`call_connector`, on either surface) proved
+ * a flagged credential live: the connector authenticates, the remote answered
+ * 2xx, and the answer was not one that only looks like success. An anonymous
+ * 200 classifies as `auth_failed` and must not lift the flag.
+ */
+export function callProvedCredentialLive(
+  connector: Pick<ConnectorView, "auth_type" | "needs_reauth">,
+  status: number,
+  health: ConnectorHealth,
+): boolean {
+  return (
+    connector.needs_reauth &&
+    connector.auth_type !== "none" &&
+    status >= 200 &&
+    status < 300 &&
+    (health === "ok" || health === "deprecated")
   );
 }
 

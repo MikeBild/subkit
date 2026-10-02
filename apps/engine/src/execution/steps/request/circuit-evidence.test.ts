@@ -17,7 +17,9 @@ import {
   evidenceFromThrow,
   graphqlEvidence,
   mcpEvidence,
+  requestFailureEvidence,
 } from "./circuit-evidence.ts";
+import { RequestError } from "./errors.ts";
 
 describe("evidenceFromStatus", () => {
   test("a 5xx or a 429 is the remote saying it could not serve", () => {
@@ -56,6 +58,63 @@ describe("evidenceFromThrow", () => {
     expect(evidenceFromThrow(Object.assign(new Error("syntax error"), { code: "42601" }))).toBe(
       "none",
     );
+  });
+});
+
+describe("requestFailureEvidence", () => {
+  test("a 5xx or a 429 the retry loop gave up on counts", () => {
+    expect(requestFailureEvidence(new RequestError("http 503", "http_5xx", 503), false)).toBe(
+      "unavailable",
+    );
+    expect(requestFailureEvidence(new RequestError("http 429", "http_429", 429), false)).toBe(
+      "unavailable",
+    );
+  });
+
+  test("a rejected credential or a wrong path is an answer, not an outage", () => {
+    // The regression this pins: every failure that reached the HTTP path's
+    // outer handler was counted, so repeated 401s opened the breaker and the
+    // reader was told `circuit_open` about a remote that answered every call.
+    expect(requestFailureEvidence(new RequestError("http 401", "http_4xx", 401), false)).toBe(
+      "answered",
+    );
+    expect(requestFailureEvidence(new RequestError("http 404", "http_4xx", 404), false)).toBe(
+      "answered",
+    );
+    expect(requestFailureEvidence(new RequestError("filter rejected", "filter_fail"), false)).toBe(
+      "answered",
+    );
+  });
+
+  test("a transport failure counts whatever the runtime called it", () => {
+    // No status and a message no transport pattern recognises: the kind the
+    // retry loop assigned is the evidence.
+    expect(requestFailureEvidence(new RequestError("Unable to connect", "connection"), false)).toBe(
+      "unavailable",
+    );
+    expect(requestFailureEvidence(new RequestError("gave up waiting", "timeout"), false)).toBe(
+      "unavailable",
+    );
+  });
+
+  test("an abort counts only when the step's own timer fired", () => {
+    expect(requestFailureEvidence(new RequestError("aborted", "abort"), true)).toBe("unavailable");
+    // A cancelled run says nothing about the remote.
+    expect(requestFailureEvidence(new RequestError("aborted", "abort"), false)).toBe("none");
+  });
+
+  test("a request refused before it left observes nothing", () => {
+    expect(
+      requestFailureEvidence(new RequestError("invalid header name", "request_invalid"), false),
+    ).toBe("none");
+    expect(
+      requestFailureEvidence(new RequestError("authority changed", "authority_invalid"), false),
+    ).toBe("none");
+  });
+
+  test("anything else thrown is read like any driver error", () => {
+    expect(requestFailureEvidence(new Error("fetch failed"), false)).toBe("unavailable");
+    expect(requestFailureEvidence(new Error("no credential for connector"), false)).toBe("none");
   });
 });
 
