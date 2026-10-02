@@ -15,4 +15,8 @@ export {
   type WorkflowTriggerView,
   workflowTriggerView,
 } from "./trigger-bindings.ts";
-export { inboundHookAutomationView, workflowAutomationView } from "./workflow-automation-view.ts";
+export {
+  inboundHookAutomationView,
+  inboundHookDeliveryRate,
+  workflowAutomationView,
+} from "./workflow-automation-view.ts";
