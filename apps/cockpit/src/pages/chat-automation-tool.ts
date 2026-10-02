@@ -47,29 +47,14 @@ function reviewData(tool: ToolPart): Record<string, unknown> | null {
   return null;
 }
 
-export function chatAutomationSummary(
-  tool: ToolPart,
-): "authorized" | "repair" | "review" | "apply" | "unknown" {
-  if (!chatAutomationTool(tool)) return "unknown";
-  const data = reviewData(tool);
-  if (!data) return "unknown";
-  const rows = automationRows(data)
-    .filter(record)
-    .filter((row) => row.workflow_id === data.workflow_id);
-  // Nothing starts it automatically: the saved change is the whole decision.
-  if (rows.length === 0) return savedChange(data) ? "apply" : "unknown";
-  if (rows.every((row) => row.state === "authorized" && row.ready === true)) return "authorized";
-  const blocked = rows.filter(
-    (row) => record(row.review) && row.review.eligible_for_repeated_runs === false,
-  );
-  // A held step can be an intentional publication hold. It does not prove
-  // that prerequisite reads failed or that this workflow sends a report.
-  if (blocked.length > 0) return "repair";
-  if (rows.every((row) => record(row.review) && row.review.eligible_for_repeated_runs === true))
-    return "review";
-  return "unknown";
-}
-
+/**
+ * Whether a tool part is a review card, and for which workflow.
+ *
+ * It answers only THAT: `environments` is non-empty when the result held
+ * something to review. What the card then says and which buttons it offers is
+ * not read from this snapshot — the card reads the workflow's current state
+ * (`lib/automation-state.ts`), the same decision its page makes.
+ */
 export function chatAutomationTool(tool: ToolPart) {
   const data = reviewData(tool);
   if (
