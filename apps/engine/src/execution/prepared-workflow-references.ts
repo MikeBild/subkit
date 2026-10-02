@@ -8,19 +8,12 @@ import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
-import { type ConnectorUnavailability, connectorUnavailability } from "./connector-availability.ts";
-
-/** What a refusal names: the step that needs the connector, the connector as
- * resolved in the run's environment, and why it cannot serve. Never a
- * credential field. */
-export interface PreparedReferenceRefusal {
-  step_id: string | null;
-  connector_id: string | null;
-  connector_slug: string | null;
-  connector_name: string | null;
-  environment: "dev" | "prod";
-  reason: ConnectorUnavailability;
-}
+import {
+  type ConnectorUnavailability,
+  connectorUnavailability,
+  type PreparedReferenceRefusal,
+  preparedReferenceRefusalMessage,
+} from "./connector-availability.ts";
 
 /** Metadata-only, execution-wide baseline for a prepared single-run decision.
  * Include references in transforms and earlier reads, not just the eventual
@@ -128,23 +121,6 @@ export async function capturePreparedWorkflowReferences(
     });
   }
   return result;
-}
-
-/** One sentence per reason, naming the connector and the environment. */
-export function preparedReferenceRefusalMessage(refusal: PreparedReferenceRefusal): string {
-  const name = `Connector "${refusal.connector_slug ?? refusal.connector_id ?? "unknown"}" in ${refusal.environment}`;
-  switch (refusal.reason) {
-    case "missing":
-      return `${name} does not exist; add it before this workflow can run.`;
-    case "disabled":
-      return `${name} is disabled; enable it before this workflow can run.`;
-    case "needs_reauth":
-      return `${name} must be reconnected before this workflow can run.`;
-    case "credential_unavailable":
-      return `${name} has no usable credential; connect it before this workflow can run.`;
-    case "too_many_references":
-      return "This workflow references more connectors than one run can prepare.";
-  }
 }
 
 function unavailable(details: PreparedReferenceRefusal): never {
