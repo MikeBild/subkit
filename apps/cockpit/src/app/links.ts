@@ -80,6 +80,17 @@ export function workflowHref(id: string): string {
   return record("workflows", id);
 }
 
+/** The element id of the "Automatischer Betrieb" panel on a workflow's page. */
+export const WORKFLOW_AUTOMATION_ANCHOR = "workflow-automation";
+
+/**
+ * A workflow's page at its automation panel — where its approval state is
+ * said and acted on. The address every "the approval no longer fits" leads to.
+ */
+export function workflowAutomationHref(id: string): string {
+  return `${workflowHref(id)}#${WORKFLOW_AUTOMATION_ANCHOR}`;
+}
+
 export function connectorHref(id: string): string {
   return record("connectors", id);
 }

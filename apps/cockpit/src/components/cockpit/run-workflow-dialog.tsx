@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
 import {
   blockedSentenceKey,
@@ -41,8 +42,15 @@ import {
 import { statusLabel } from "@/lib/status-label";
 import {
   buildInput,
+  type InputField,
   type InputSchemaSource,
+  initialInputValues,
+  inputControl,
   inputFields,
+  inputItemTypeKey,
+  inputSampleText,
+  inputTypeKey,
+  invalidInputs,
   missingRequired,
 } from "@/lib/workflow-inputs";
 
@@ -92,6 +100,107 @@ function useRunAvailability(
   };
 }
 
+/** The value that means "not given" in a select — a select has no empty item. */
+const UNSET = "__unset";
+
+/**
+ * One input field, as the control its type calls for: a number field, a
+ * yes/no choice, a select of the allowed values, a JSON area for an object or
+ * a list — never a text field for everything.
+ */
+function InputFieldControl({
+  field,
+  index,
+  value,
+  invalid,
+  onChange,
+}: {
+  field: InputField;
+  index: number;
+  value: string;
+  invalid: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const id = `workflow-run-input-${index}`;
+  const control = inputControl(field);
+  const sample = inputSampleText(field);
+  const item = inputItemTypeKey(field);
+  const typeWord = item
+    ? t("input.type.arrayOf", { type: t(inputTypeKey(field)), item: t(item) })
+    : t(inputTypeKey(field));
+  const options =
+    control === "boolean"
+      ? [
+          { value: "true", label: t("common.yes") },
+          { value: "false", label: t("common.no") },
+        ]
+      : (field.options ?? []).map((option) => ({ value: String(option), label: String(option) }));
+  return (
+    <Field data-invalid={invalid || undefined}>
+      <FieldLabel htmlFor={id}>
+        {field.name}
+        {field.required && <span aria-hidden="true"> *</span>}
+        <Badge variant="outline" className="ml-2 font-normal">
+          {typeWord}
+        </Badge>
+      </FieldLabel>
+      {control === "select" || control === "boolean" ? (
+        <Select
+          value={value === "" ? (field.required ? "" : UNSET) : value}
+          onValueChange={(next) => onChange(next === UNSET ? "" : next)}
+        >
+          <SelectTrigger id={id} aria-invalid={invalid} data-testid={id}>
+            <SelectValue placeholder={sample ?? ""} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {field.required ? null : (
+                <SelectItem value={UNSET} data-testid={`${id}-unset`}>
+                  {t("input.unset")}
+                </SelectItem>
+              )}
+              {options.map((option, optionIndex) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  data-testid={`${id}-option-${optionIndex}`}
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      ) : control === "json" ? (
+        <Textarea
+          id={id}
+          rows={3}
+          className="font-mono text-xs"
+          value={value}
+          aria-invalid={invalid}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={sample ?? (field.type === "array" ? "[]" : "{}")}
+          data-testid={id}
+        />
+      ) : (
+        <Input
+          id={id}
+          type={control === "number" ? "number" : "text"}
+          inputMode={control === "number" ? "decimal" : undefined}
+          step={field.type === "integer" ? 1 : control === "number" ? "any" : undefined}
+          value={value}
+          aria-invalid={invalid}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={sample ?? ""}
+          data-testid={id}
+        />
+      )}
+      {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
+    </Field>
+  );
+}
+
 /**
  * Runs the workflow that is actually stored, in a chosen environment — as
  * opposed to the test run, which executes a temporary copy. Production is
@@ -133,7 +242,10 @@ export function RunWorkflowDialog({
       ),
   });
   const fields = inputFields(schema.data?.schema ?? null);
-  const missing = missingRequired(fields, values);
+  // What the form holds: the schema's own defaults under whatever was typed.
+  const filled = { ...initialInputValues(fields), ...values };
+  const missing = missingRequired(fields, filled);
+  const invalid = invalidInputs(fields, filled);
   const availability = useRunAvailability(workflowId, versionId, open);
   // The reader's choice stands; until there is one, the first environment that
   // can run — decided once both answers are in, never guessed before.
@@ -158,7 +270,7 @@ export function RunWorkflowDialog({
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
-          ...(fields.length > 0 ? { input: buildInput(fields, values) } : {}),
+          ...(fields.length > 0 ? { input: buildInput(fields, filled) } : {}),
         }),
       }),
     onSuccess: (result) => {
@@ -284,24 +396,14 @@ export function RunWorkflowDialog({
               <p className="text-xs text-muted-foreground">{t("run.schemaSynthesized")}</p>
             )}
             {fields.map((field, index) => (
-              <Field key={field.name}>
-                <FieldLabel htmlFor={`workflow-run-input-${index}`}>
-                  {field.name}
-                  {field.required && <span aria-hidden="true"> *</span>}
-                  <Badge variant="outline" className="ml-2 font-normal">
-                    {field.type}
-                  </Badge>
-                </FieldLabel>
-                <Input
-                  id={`workflow-run-input-${index}`}
-                  value={values[field.name] ?? ""}
-                  onChange={(event) =>
-                    setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                  }
-                  placeholder={field.description ?? ""}
-                  data-testid={`workflow-run-input-${index}`}
-                />
-              </Field>
+              <InputFieldControl
+                key={field.name}
+                field={field}
+                index={index}
+                value={filled[field.name] ?? ""}
+                invalid={invalid.includes(field.name)}
+                onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+              />
             ))}
           </div>
         )}
@@ -366,7 +468,11 @@ export function RunWorkflowDialog({
           </Button>
           <Button
             disabled={
-              run.isPending || missing.length > 0 || environment === null || blockedHere !== null
+              run.isPending ||
+              missing.length > 0 ||
+              invalid.length > 0 ||
+              environment === null ||
+              blockedHere !== null
             }
             data-testid="workflow-run-submit"
             onClick={() => {
@@ -388,6 +494,11 @@ export function RunWorkflowDialog({
         {missing.length > 0 && (
           <p className="text-xs text-muted-foreground" data-testid="workflow-run-missing">
             {t("run.missingInputs", { fields: missing.join(", ") })}
+          </p>
+        )}
+        {invalid.length > 0 && (
+          <p className="text-xs text-destructive" data-testid="workflow-run-invalid">
+            {t("input.invalid", { fields: invalid.join(", ") })}
           </p>
         )}
       </DialogContent>
