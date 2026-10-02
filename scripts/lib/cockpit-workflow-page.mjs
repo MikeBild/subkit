@@ -52,6 +52,8 @@ function record(state) {
     slug: SLUG,
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
     lifecycle: "active",
+    // Stored in an earlier definition format: shown as stored, refused to run.
+    legacy: Boolean(state.legacy),
     current_version: 9,
     current_version_id: VERSION,
     draft_version_id: state.scenario === "apply" ? DRAFT : VERSION,
@@ -165,12 +167,21 @@ function snippet(environment, language) {
 }
 
 function invocation(state) {
+  const { hooks, schedules, ...rest } = fullInvocation(state);
+  // A reader without the right to a list gets it ABSENT, and is told so.
+  return state.hiddenLists
+    ? { ...rest, visibility: { hooks: false, schedules: false } }
+    : { ...rest, hooks, schedules, visibility: { hooks: true, schedules: true } };
+}
+
+function fullInvocation(state) {
   const approved = state.scenario === "approved";
   const address = state.address ? PUBLIC : null;
   const bound = state.scenario !== "manual";
   return {
     workflow_id: WORKFLOW,
     slug: SLUG,
+    legacy: Boolean(state.legacy),
     base_url: address,
     http: {
       method: "POST",
@@ -242,9 +253,11 @@ function invocation(state) {
       headers: "object",
       body: "json",
     },
+    // "An approval is stored" — also while it no longer fits (repair). Whether
+    // a run is admitted is the panel's verdict, not this field's.
     authority: {
       dev: "held_preview_only",
-      prod: approved ? "live_run_allowed" : "held_preview_only",
+      prod: approved || state.scenario === "repair" ? "live_run_allowed" : "held_preview_only",
     },
   };
 }
@@ -587,7 +600,11 @@ const WORDS = {
       apply: "Übernahme nötig",
       paused: "Pausiert",
       manual: "Auf Abruf",
+      legacy: "Altes Format",
     },
+    fixInChat: "Im Chat beheben",
+    unconfirmed: "nicht bestätigt",
+    hidden: "darfst du nicht sehen",
     approve: "Jetzt freigeben",
     view: "Freigabe ansehen",
     extend: "Verlängern",
@@ -614,7 +631,11 @@ const WORDS = {
       apply: "Change waiting",
       paused: "Paused",
       manual: "On request",
+      legacy: "Outdated format",
     },
+    fixInChat: "Fix it in the chat",
+    unconfirmed: "not confirmed",
+    hidden: "may not see",
     approve: "Approve now",
     view: "View approval",
     extend: "Extend",
@@ -1073,6 +1094,73 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if ((await text(page, "workflow-automation-secondary")) !== words.view)
       throw new Error(`${where}: the existing approval cannot be looked at`);
     await capture("workflow-page-repair");
+    // The engine lists a stored approval; the panel does not show "approved".
+    // The call block follows the panel and promises no live run.
+    await page.getByTestId("workflow-invocation-tab-http").click();
+    const unconfirmed = page.getByTestId("workflow-invocation-preview-only");
+    if ((await unconfirmed.getAttribute("data-verdict")) !== "unconfirmed")
+      throw new Error(
+        `${where}: a call under an approval that no longer fits reads as "${await unconfirmed.getAttribute("data-verdict")}"`,
+      );
+    if (!(await unconfirmed.innerText()).includes(words.unconfirmed))
+      throw new Error(`${where}: the call line reads "${await unconfirmed.innerText()}"`);
+    await page.getByTestId("workflow-invocation").scrollIntoViewIfNeeded();
+    await capture("workflow-call-unconfirmed");
+
+    // ── Altes Format: said plainly, no run offered, the one way out ─────────
+    where = at("legacy");
+    state.legacy = true;
+    panel = await open(page, stand, state, "approved");
+    if ((await panel.getAttribute("data-state")) !== "legacy")
+      throw new Error(`${where}: the panel is in "${await panel.getAttribute("data-state")}"`);
+    if ((await text(page, "workflow-automation-state")) !== words.states.legacy)
+      throw new Error(
+        `${where}: the state reads "${await text(page, "workflow-automation-state")}"`,
+      );
+    if (await page.getByTestId("workflow-run-open").count())
+      throw new Error(`${where}: a run the engine refuses is still offered`);
+    const legacyFilled = await page
+      .getByTestId("detail-workflows")
+      .locator('button[data-variant="default"], a[data-variant="default"]')
+      .allInnerTexts();
+    if (legacyFilled.length !== 1 || legacyFilled[0].trim() !== words.fixInChat)
+      throw new Error(`${where}: the filled actions are ${JSON.stringify(legacyFilled)}`);
+    const fix = await page.getByTestId("detail-action").getAttribute("href");
+    if (!fix?.includes(`workflow_id=${WORKFLOW}`) || !fix.includes("prompt="))
+      throw new Error(`${where}: the way out loses the workflow or the task: ${fix}`);
+    // No approval is offered for a version the engine would refuse to approve.
+    if (await panel.locator("button", { hasText: words.approve }).count())
+      throw new Error(`${where}: an approval is offered for a version that cannot run`);
+    if (await page.getByTestId("workflow-diagnosis").count())
+      throw new Error(`${where}: the gate is asked about a version it never judges`);
+    await page.getByTestId("workflow-invocation-tab-http").click();
+    if (
+      (await page.getByTestId("workflow-invocation-preview-only").getAttribute("data-verdict")) !==
+      "refused"
+    )
+      throw new Error(`${where}: the call block does not say the call is refused`);
+    await assertNoVisibleUuids(page.getByTestId("detail-workflows"), where);
+    await capture("workflow-page-legacy");
+    state.legacy = false;
+
+    // ── Lists the reader may not see: said, never shown as "none" ────────────
+    where = at("hidden lists");
+    state.hiddenLists = true;
+    panel = await open(page, stand, state, "grant");
+    const visibleTabs = await page
+      .locator('[data-testid^="workflow-invocation-tab-"]')
+      .allInnerTexts();
+    if (visibleTabs.join("|") !== [words.tabs.http, words.tabs.mcp, words.tabs.cli].join("|"))
+      throw new Error(`${where}: the call tabs are ${JSON.stringify(visibleTabs)}`);
+    const hiddenLine = (await text(page, "workflow-invocation-hidden")) ?? "";
+    if (!hiddenLine.includes(words.hidden))
+      throw new Error(`${where}: hidden lists are passed over in silence: "${hiddenLine}"`);
+    // The panel still says what it knows: the hook and the schedule wait.
+    if ((await panel.getAttribute("data-state")) !== "grant")
+      throw new Error(`${where}: the panel is in "${await panel.getAttribute("data-state")}"`);
+    await page.getByTestId("workflow-invocation").scrollIntoViewIfNeeded();
+    await capture("workflow-call-hidden");
+    state.hiddenLists = false;
 
     // ── Übernahme nötig: the saved change is what is reviewed ───────────────
     where = at("apply");

@@ -80,7 +80,9 @@ const PG_RECORD = {
   description: null,
   driver: "postgres",
   auth_type: "none",
-  base_url: null,
+  // The address as the engine hands it out: the password kept, the marker in
+  // its place. The page must not show the marker as if it were the value.
+  base_url: "postgres://reader:***redacted***@db.example.org:5432/lager",
   config: {},
   self_description: undefined,
 };
@@ -267,6 +269,9 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
 
     const address = await text(page, "connector-fact-address");
     if (!address?.includes(ADDRESS)) throw new Error(`${where}: the address is not shown whole`);
+    // An address without a secret is copied as it stands.
+    if (!(await page.getByTestId("connector-copy-address").count()))
+      throw new Error(`${where}: a plain address cannot be copied`);
     const facts = {
       kind: de ? "MCP-Server" : "MCP server",
       transport: "Streamable HTTP",
@@ -396,6 +401,15 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     const kind = await text(page, "connector-fact-kind");
     if (!kind?.includes(de ? "PostgreSQL-Datenbank" : "PostgreSQL database"))
       throw new Error(`/connectors/<postgres>: the kind reads "${kind}"`);
+    const dsn = (await text(page, "connector-fact-address")) ?? "";
+    if (!dsn.includes("reader:•••@db.example.org:5432/lager") || dsn.includes("redacted"))
+      throw new Error(`/connectors/<postgres>: a kept secret reads as a literal: "${dsn}"`);
+    if (!(await text(page, "connector-address-secret")))
+      throw new Error("/connectors/<postgres>: nothing says the secret is kept");
+    if (await page.getByTestId("connector-copy-address").count())
+      throw new Error(
+        "/connectors/<postgres>: an address with a kept secret is offered for copying",
+      );
     await assertNoSidewaysScroll(page, "/connectors/<postgres>");
     await capture("connector-postgres");
   } finally {

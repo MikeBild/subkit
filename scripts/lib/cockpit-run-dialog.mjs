@@ -135,6 +135,21 @@ function runDialogApi(state) {
       });
       if (state.variant === "crashed")
         return json(route, { code: "internal_error", message: "internal error" }, 500);
+      // The version was stored in an earlier format: refused by name, with the
+      // steps that no longer validate.
+      if (state.variant === "legacy")
+        return json(
+          route,
+          {
+            code: "workflow_version_legacy",
+            message:
+              'this workflow version is stored in an earlier definition format and cannot run — step "send", steps.0.language: invalid. Save the workflow again in the current format.',
+            details: {
+              issues: [{ path: "steps.0.language", step_id: "send", message: "invalid" }],
+            },
+          },
+          409,
+        );
       return json(
         route,
         {
@@ -263,6 +278,25 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!crashed.includes(failed))
       throw new Error(`${where} · crashed: the dialog says "${crashed}"`);
     await assertNoEngineWords(page, `${where} · crashed`);
+
+    // ── A version in an earlier format: refused by its reason ────────────────
+    state.variant = "legacy";
+    await openDialog(page, stand);
+    await page.getByTestId("workflow-run-submit").waitFor({ state: "visible" });
+    await page.getByTestId("workflow-run-submit").click();
+    await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
+    const legacySaid = (await text(page, "workflow-run-error")) ?? "";
+    if (
+      !legacySaid.includes(de ? "älteren Format" : "earlier format") ||
+      !legacySaid.includes("send")
+    )
+      throw new Error(`${where} · legacy: the dialog says "${legacySaid}"`);
+    if (legacySaid.includes(failed))
+      throw new Error(`${where} · legacy: a refusal with a reason reads as a fault`);
+    for (const raw of ["definition format", "steps.0.language"])
+      if (legacySaid.includes(raw))
+        throw new Error(`${where} · legacy: the dialog prints the engine's "${raw}"`);
+    await capture("run-dialog-legacy");
 
     // ── Fields are filled in by their type ───────────────────────────────────
     state.variant = "typed";
