@@ -46,11 +46,21 @@ const historyRoute = createRoute({
   path: "/v1/workflows/{id}/history",
   tags: ["workflows"],
   summary: "List workflow versions, newest first",
+  description:
+    "One page of the workflow's versions, newest first, each with its stored definition. `total` is the size of the whole history: page with `limit` and `offset` until you have that many.",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
     query: z.object({
-      limit: z.coerce.number().int().positive().max(200).optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .positive()
+        .max(svc.WORKFLOW_VERSION_LIST_MAX_LIMIT)
+        .optional()
+        .describe(
+          `Page size. Defaults to ${svc.WORKFLOW_VERSION_LIST_DEFAULT_LIMIT}, at most ${svc.WORKFLOW_VERSION_LIST_MAX_LIMIT}.`,
+        ),
       offset: z.coerce.number().int().min(0).optional(),
     }),
   },

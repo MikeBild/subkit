@@ -5566,7 +5566,7 @@ export interface paths {
         };
         /**
          * How to call this workflow: HTTP, inbound hooks, MCP, schedules and CLI
-         * @description Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; its MCP tool name; its schedules; the CLI command; the input and output schema with a sample input; and whether a run in each environment would have effects. `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`. Carries no credential: header names only, never a key or a signing secret.
+         * @description Everything a caller needs to run the saved workflow, in one read: the run request (`POST /v1/executions`) with header names, an example body and ready-to-paste snippets; its inbound hooks with their signing scheme; the MCP tool name it has when the catalog publishes it, and the `run_workflow` call that works regardless; its schedules; the CLI command; the input and output schema with a sample input; and, per environment, whether an approval for the running version exists (`authority` — advisory; admission decides). `http.url`, `hooks[].url` and `http.snippets` are null until `server.public_base_url` is configured. `hooks` and `schedules` are present only when the caller holds `inbound_hook:read` and `schedule:read`; `visibility` says which, so an absent list is never mistaken for an empty one. Carries no credential: header names only, never a key or a signing secret.
          */
         get: {
             parameters: {
@@ -6023,10 +6023,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List workflow versions, newest first */
+        /**
+         * List workflow versions, newest first
+         * @description One page of the workflow's versions, newest first, each with its stored definition. `total` is the size of the whole history: page with `limit` and `offset` until you have that many.
+         */
         get: {
             parameters: {
                 query?: {
+                    /** @description Page size. Defaults to 50, at most 200. */
                     limit?: number;
                     offset?: number | null;
                 };
@@ -7691,7 +7695,7 @@ export interface paths {
         put?: never;
         /**
          * Probe a connector definition without saving it
-         * @description Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.
+         * @description Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.
          */
         post: {
             parameters: {
@@ -7717,6 +7721,15 @@ export interface paths {
                 };
                 /** @description The request cannot be served because the credential or connector definition is malformed. Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly. */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The definition carries the redaction mask `***redacted***` where no stored secret can stand for it: no connector with this slug and environment exists, or the definition points somewhere other than the stored connector does. Send the real value. */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -8253,7 +8266,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Unprocessable entity (driver mismatch, missing credential, …) */
+                /** @description Unprocessable entity — `details.error_code` says why: `connector_disabled` (the connector is switched off; nothing was sent), `credential_required`, `driver_not_supported_for_call_connector`, `invalid_input` or `call_failed`. */
                 422: {
                     headers: {
                         [name: string]: unknown;
@@ -18566,6 +18579,8 @@ export interface components {
             /** Format: uuid */
             workflow_id: string;
             slug: string;
+            /** @description True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_legacy` until the workflow is saved again. */
+            legacy: boolean;
             base_url: string | null;
             http: {
                 /** @enum {string} */
@@ -18595,6 +18610,12 @@ export interface components {
                     };
                 } | null;
             };
+            /** @description Whether this caller may read the workflow's inbound hooks (`inbound_hook:read`) and schedules (`schedule:read`). When false the list is ABSENT, which is not the same as empty: the workflow may well have hooks or schedules this caller cannot see, so nothing about them — that there are none, or that all are approved — can be concluded. */
+            visibility: {
+                hooks: boolean;
+                schedules: boolean;
+            };
+            /** @description The workflow's inbound hooks. Present — possibly empty — only when `visibility.hooks` is true. */
             hooks?: {
                 slug: string;
                 path: string;
@@ -18616,6 +18637,7 @@ export interface components {
                 environment: "prod";
             }[];
             mcp: {
+                /** @description The name this workflow's own tool has WHEN the MCP catalog publishes it. Not every saved workflow is published to every client: the catalog depends on the caller's permissions and mode and lists a bounded number of workflow tools. `fallback` works either way. */
                 tool_name: string;
                 fallback: {
                     tool_name: string;
@@ -18627,6 +18649,7 @@ export interface components {
                     };
                 };
             };
+            /** @description The workflow's schedules. Present — possibly empty — only when `visibility.schedules` is true. */
             schedules?: {
                 cron: string;
                 timezone: string;
@@ -18661,9 +18684,15 @@ export interface components {
                 [key: string]: string;
             };
             authority: {
-                /** @enum {string} */
+                /**
+                 * @description `live_run_allowed`: an approval for the running version exists in this environment — unrevoked, inside its window, with runs left. It does NOT say the next run is admitted: admission also requires that the approval still matches the workflow's current effects and that those effects may run repeatedly, and holds or refuses the run otherwise. `held_preview_only`: no such approval; a call runs as a held preview that withholds writes.
+                 * @enum {string}
+                 */
                 dev: "live_run_allowed" | "held_preview_only";
-                /** @enum {string} */
+                /**
+                 * @description `live_run_allowed`: an approval for the running version exists in this environment — unrevoked, inside its window, with runs left. It does NOT say the next run is admitted: admission also requires that the approval still matches the workflow's current effects and that those effects may run repeatedly, and holds or refuses the run otherwise. `held_preview_only`: no such approval; a call runs as a held preview that withholds writes.
+                 * @enum {string}
+                 */
                 prod: "live_run_allowed" | "held_preview_only";
             };
         };
@@ -19204,6 +19233,8 @@ export interface components {
             health_state: string;
             health_reason: string | null;
             health_changed_at: string | null;
+            /** @description True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_legacy` until it is saved again in the current format. */
+            legacy: boolean;
             steps: unknown[];
             input_schema: {
                 [key: string]: unknown;

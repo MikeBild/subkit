@@ -8,6 +8,7 @@ import {
   isInvokeEnvironment,
   isInvokeSnippetLanguage,
   renderInvokeSnippet,
+  shellQuote,
 } from "../invoke-snippet.ts";
 
 const WORKFLOW = "3fb5fc90-1c2d-4e5f-8a6b-7c8d9e0f1a2b";
@@ -96,12 +97,175 @@ describe("renderInvokeSnippet", () => {
     expect(node).toContain("authorization: `Bearer ${process.env.SK_API_KEY}`,");
     expect(node).toContain('    "source": "saved",');
   });
+});
 
-  test("the same inputs render the same bytes", () => {
-    for (const lang of INVOKE_SNIPPET_LANGUAGES) {
-      const options = { ...BASE, lang, environment: "prod" as const, input: { a: 1 } };
-      expect(renderInvokeSnippet(options)).toBe(renderInvokeSnippet({ ...options }));
+// What a snippet is for is being pasted. These read each one the way its
+// interpreter does and compare what would be SENT with what was meant —
+// for an input made of the characters each language treats specially.
+// (`tests/contract/invoke-snippet-interpreters.test.ts` runs the same input
+// through a real shell and a real Python.)
+const HOSTILE_TEXT = 'it\'s $HOME `id` $(id) \\ back\\slash "quoted" \n tab\t ünï ✓ 😀';
+// Parsed, not written as a literal, so `__proto__` is a key of its own here too.
+const HOSTILE_INPUT = JSON.parse(
+  JSON.stringify({ note: HOSTILE_TEXT, "we'ird $key": [true, false, null, 1.5, "'"] }).replace(
+    /}$/,
+    ',"__proto__":{"nested":"kept"}}',
+  ),
+) as Record<string, unknown>;
+
+/** A command line split into words by the POSIX quoting rules: single quotes
+ *  are literal, double quotes group, a backslash escapes the next character,
+ *  and a backslash before a newline continues the line. Nothing is expanded. */
+function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let word: string | null = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i] as string;
+    if (char === "'") {
+      const end = command.indexOf("'", i + 1);
+      if (end === -1) throw new Error("unterminated single quote");
+      word = (word ?? "") + command.slice(i + 1, end);
+      i = end;
+    } else if (char === '"') {
+      const end = command.indexOf('"', i + 1);
+      if (end === -1) throw new Error("unterminated double quote");
+      word = (word ?? "") + command.slice(i + 1, end);
+      i = end;
+    } else if (char === "\\") {
+      i += 1;
+      if (command[i] !== "\n") word = (word ?? "") + (command[i] ?? "");
+    } else if (/\s/.test(char)) {
+      if (word !== null) words.push(word);
+      word = null;
+    } else {
+      word = (word ?? "") + char;
     }
+  }
+  if (word !== null) words.push(word);
+  return words;
+}
+
+/** The Python expression after `json=`, read back as the value it denotes. */
+function pythonValue(snippet: string): unknown {
+  const start = snippet.indexOf("    json=") + "    json=".length;
+  const literal = snippet.slice(start, snippet.lastIndexOf(",\n)"));
+  // Outside string literals the only non-JSON tokens are the three constants.
+  const json = literal.replace(
+    /"(?:[^"\\]|\\.)*"|\b(True|False|None)\b/g,
+    (token, constant: string | undefined) =>
+      constant === undefined
+        ? token
+        : ({ True: "true", False: "false", None: "null" }[constant] ?? token),
+  );
+  return JSON.parse(json);
+}
+
+interface SentRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+/** Run the Node snippet as JavaScript and capture the request it makes. */
+async function runNodeSnippet(snippet: string): Promise<SentRequest> {
+  const sent: SentRequest[] = [];
+  const fetchStub = async (
+    url: string,
+    init: { headers: Record<string, string>; body: string },
+  ) => {
+    sent.push({ url, headers: init.headers, body: JSON.parse(init.body) });
+    return { json: async () => ({}) };
+  };
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
+    ...args: string[]
+  ) => (...values: unknown[]) => Promise<void>;
+  await new AsyncFunction("fetch", "process", "console", snippet)(
+    fetchStub,
+    { env: { SK_API_KEY: "placeholder-key" } },
+    { log: () => {} },
+  );
+  if (sent.length !== 1 || !sent[0])
+    throw new Error("the snippet did not make exactly one request");
+  return sent[0];
+}
+
+describe("what a pasted snippet sends", () => {
+  const options = { ...BASE, environment: "prod" as const, input: HOSTILE_INPUT };
+  const expected = invokeRunBody(WORKFLOW, HOSTILE_INPUT);
+
+  test("the fixture carries __proto__ as a key, not as a prototype", () => {
+    expect(Object.keys(HOSTILE_INPUT)).toContain("__proto__");
+    expect(Object.getOwnPropertyDescriptor(HOSTILE_INPUT, "__proto__")?.value).toEqual({
+      nested: "kept",
+    });
+  });
+
+  test("curl: the shell hands curl the URL and one -d word that is the body", () => {
+    const words = shellWords(renderInvokeSnippet({ ...options, lang: "curl" }));
+    expect(words.slice(0, 5)).toEqual([
+      "curl",
+      "-sS",
+      "-X",
+      "POST",
+      "https://engine.example.com/v1/executions",
+    ]);
+    const data = words[words.indexOf("-d") + 1];
+    expect(words.indexOf("-d")).toBe(words.length - 2);
+    expect(JSON.stringify(JSON.parse(data ?? ""))).toBe(JSON.stringify(expected));
+    // Nothing inside the body is left for the shell to expand.
+    expect(data).toContain("$HOME `id` $(id)");
+  });
+
+  test("node: the request's body is the input, key for key", async () => {
+    const sent = await runNodeSnippet(renderInvokeSnippet({ ...options, lang: "node" }));
+    expect(sent.url).toBe("https://engine.example.com/v1/executions");
+    expect(sent.headers).toEqual({
+      authorization: "Bearer placeholder-key",
+      "x-subkit-environment": "prod",
+      "content-type": "application/json",
+    });
+    expect(JSON.stringify(sent.body)).toBe(JSON.stringify(expected));
+    expect((sent.body as { input: Record<string, unknown> }).input.note).toBe(HOSTILE_TEXT);
+  });
+
+  test("node: a key named __proto__ is sent, not swallowed by the object literal", async () => {
+    const sent = await runNodeSnippet(renderInvokeSnippet({ ...options, lang: "node" }));
+    const input = (sent.body as { input: object }).input;
+    expect(Object.keys(input)).toContain("__proto__");
+    expect(Object.getOwnPropertyDescriptor(input, "__proto__")?.value).toEqual({ nested: "kept" });
+  });
+
+  test("python: the json argument denotes the input, with Python's constants", () => {
+    const python = renderInvokeSnippet({ ...options, lang: "python" });
+    expect(JSON.stringify(pythonValue(python))).toBe(JSON.stringify(expected));
+    expect(python).toContain("[True, False, None, 1.5, ");
+  });
+
+  test.each([...INVOKE_SNIPPET_LANGUAGES])(
+    "%s: an engine URL with a quote stays inside its string",
+    async (lang) => {
+      const engineUrl = `https://engine.example.com/a'b"c`;
+      const snippet = renderInvokeSnippet({ ...BASE, engineUrl, lang, environment: "dev" });
+      const url = `${engineUrl}/v1/executions`;
+      if (lang === "curl") expect(shellWords(snippet)[4]).toBe(url);
+      else if (lang === "node") expect((await runNodeSnippet(snippet)).url).toBe(url);
+      else expect(snippet).toContain(`    ${JSON.stringify(url)},`);
+    },
+  );
+});
+
+describe("shellQuote", () => {
+  test.each([
+    "plain",
+    "",
+    "it's",
+    "''",
+    "$HOME `id` $(id)",
+    'back\\slash \\\' and "double"',
+    "two\nlines",
+    "ünï ✓ 😀",
+  ])("is read back as the one word it was given: %j", (value) => {
+    expect(shellWords(`printf %s ${shellQuote(value)}`)).toEqual(["printf", "%s", value]);
   });
 });
 

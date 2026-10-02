@@ -155,15 +155,22 @@ saved workflow does not authorize an arbitrary inline definition: adding a
 answers, in one read, every way to start the workflow: the run request
 (`POST /v1/executions`) with its header names, an example body and ready-to-paste
 snippets per environment; the inbound hooks with their signing scheme and header
-names; the MCP tool name with the `run_workflow` fallback; the schedules; the CLI
-command; the input and output schema with a sample input; and, per environment,
-whether a run without an explicit approval would be live or a held preview.
+names; the MCP tool name the workflow has when the catalog publishes it, with the
+`run_workflow` fallback that works either way; the schedules; the CLI command; the
+input and output schema with a sample input; and, per environment, whether an
+approval for the running version exists (`authority`). That last answer is advisory:
+it is read from the stored approvals alone, while admission also checks the approval
+against the workflow's current effects and decides the run.
 Addresses come from `server.public_base_url` only — `http.url`, `hooks[].url` and
 `http.snippets` are `null` until it is configured, never derived from the request.
 `hooks` and `schedules` are present only for callers holding `inbound_hook:read`
-and `schedule:read`. The response carries no credential: no key, no token, no hook
-signing secret. The snippets are rendered by the same function as
-`sk workflows invoke-snippet`. See [Calling a workflow](../authors/calling-workflows.md).
+and `schedule:read`; `visibility` says which, so a withheld list is not read as an
+empty one. `legacy` is true when the current version is stored in an earlier
+definition format: the answer is then read from the stored definition as written, and
+a run is refused with `workflow_version_legacy` until the workflow is saved again.
+The response carries no credential: no key, no token, no hook signing secret.
+`sk workflows invoke-snippet` prints these snippets. See
+[Calling a workflow](../authors/calling-workflows.md).
 
 ### Durable workflow draft API
 

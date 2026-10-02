@@ -1,6 +1,8 @@
 import type { ConnectorView } from "../connectors/types.ts";
 import type { CredentialAuthorityMetadata } from "../credentials/authority-metadata.ts";
+import type { RequestStep } from "../workflows/types.ts";
 import type { RefusedConnector } from "./state.ts";
+import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import type { StepErrorDetail } from "./types.ts";
 
 /** Why a connector cannot serve a run in its environment. `missing` and
@@ -70,10 +72,10 @@ export const CONNECTOR_DISABLED_CODE = "connector_disabled";
 
 /**
  * The step error for a resolved connector that is switched off, or `null`
- * when it is not. The request dispatcher and the `for_each` preflight both
- * ask this before they look at the circuit breaker: a disabled connector used
- * to fail its calls until the breaker opened, and the reader was told
- * `circuit_open` about a remote that was never the problem.
+ * when it is not. Asked through `connectorStepRefusal`, before the circuit
+ * breaker is looked at: a disabled connector used to fail its calls until the
+ * breaker opened, and the reader was told `circuit_open` about a remote that
+ * was never the problem.
  *
  * Only `disabled` refuses here. A connector waiting for a new sign-in still
  * dispatches, because a call that succeeds is what clears that flag again —
@@ -101,6 +103,54 @@ export function disabledConnectorRefusal(
     message: preparedReferenceRefusalMessage(details),
     details,
   };
+}
+
+/** The step error code for a write that resolved to another environment's
+ *  connector. */
+export const CONNECTOR_ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
+
+/**
+ * The step error for a write whose connector resolved to a different
+ * environment than the run's, or `null`. A read keeps the fallback — it stays
+ * load-bearing for single-environment tenants and a cross-environment read is
+ * recoverable — but a write must not be sent through it: an author's label is
+ * not permission to write into the other environment.
+ */
+export function environmentMismatchRefusal(
+  connector: Pick<ConnectorView, "slug" | "environment">,
+  step: RequestStep,
+  execution_mode: "dev" | "prod",
+): StepErrorDetail | null {
+  if (connector.environment === execution_mode) return null;
+  if (classifyRequestStepSideEffects(step) !== "write") return null;
+  return {
+    code: CONNECTOR_ENVIRONMENT_MISMATCH_CODE,
+    message:
+      `write step requested environment "${execution_mode}" but connector "${connector.slug}" only resolves to "${connector.environment}" — ` +
+      `create a ${execution_mode} binding for this connector; an author label is not permission to send writes through an environment fallback`,
+  };
+}
+
+/**
+ * The refusal that actually blocks a request step on its resolved connector,
+ * or `null`. Asked by the request dispatcher and by the `for_each` preflight,
+ * so a fan-out fails once with the reason each iteration would have failed.
+ *
+ * The order is the order in which acting on the answer helps. A write that
+ * resolved to the other environment's connector is refused for that first:
+ * told to enable that connector, the operator would switch it on and then be
+ * refused for the environment anyway. Only a connector that would otherwise
+ * take the step is reported as switched off.
+ */
+export function connectorStepRefusal(
+  connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment" | "enabled">,
+  step: RequestStep,
+  execution_mode: "dev" | "prod",
+): StepErrorDetail | null {
+  return (
+    environmentMismatchRefusal(connector, step, execution_mode) ??
+    disabledConnectorRefusal(connector, step.id)
+  );
 }
 
 /** The connector a step refusal named, for the run's own failure record — so

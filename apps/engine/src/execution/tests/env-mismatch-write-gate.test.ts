@@ -17,6 +17,7 @@
 //      (semantic search etc.) back onto the warn-only path.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -180,5 +181,125 @@ describe("connector environment mismatch — write gate", () => {
     });
     expect(result.status).toBe("succeeded");
     expect(upstreamHits).toBe(1);
+  });
+});
+
+// The refusal a reader acts on must be the one that blocks. A prod write whose
+// connector exists only as a DISABLED dev row used to be told to enable that
+// row — and, having done so, would have been refused for the environment.
+describe("connector environment mismatch — asked before the switch", () => {
+  async function withDisabledDevRow(run: () => Promise<void>): Promise<void> {
+    await ctx.testDb.db
+      .update(connectors)
+      .set({ enabled: false })
+      .where(eq(connectors.id, connectorId));
+    try {
+      await run();
+    } finally {
+      await ctx.testDb.db
+        .update(connectors)
+        .set({ enabled: true })
+        .where(eq(connectors.id, connectorId));
+    }
+  }
+
+  test("a prod write on a disabled dev-only connector is refused for the environment", async () => {
+    upstreamHits = 0;
+    await withDisabledDevRow(async () => {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "env-gate-disabled-write",
+        steps: [
+          {
+            kind: "request",
+            id: "post_thing",
+            method: "POST",
+            connector_id: connectorId,
+            path: "/things",
+            body: { name: "x" },
+            max_retries: 0,
+          },
+        ],
+      });
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: { execution_mode: "prod" },
+      });
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("connector_environment_mismatch");
+      expect(upstreamHits).toBe(0);
+    });
+  });
+
+  test("a fan-out of such writes fails the container once, for the same reason", async () => {
+    upstreamHits = 0;
+    await withDisabledDevRow(async () => {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "env-gate-disabled-fan-out",
+        steps: [
+          {
+            id: "items",
+            kind: "transform",
+            language: "javascript",
+            expression: "return [1, 2, 3];",
+          },
+          {
+            kind: "request",
+            id: "post_each",
+            method: "POST",
+            connector_id: connectorId,
+            path: "/things",
+            body: { name: "x" },
+            max_retries: 0,
+            for_each: "(sourceData) => sourceData.items.data",
+          },
+        ],
+      });
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: { execution_mode: "prod" },
+      });
+      expect(result.status).toBe("failed");
+      const failed = result.steps.filter((step) => step.status === "failed");
+      expect(failed.map((step) => step.step_key)).toEqual(["post_each"]);
+      expect((failed[0]?.error as { code?: string } | null)?.code).toBe(
+        "connector_environment_mismatch",
+      );
+      expect(upstreamHits).toBe(0);
+    });
+  });
+
+  test("a prod read on the same disabled row is told to enable it — that is what blocks it", async () => {
+    upstreamHits = 0;
+    await withDisabledDevRow(async () => {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "env-gate-disabled-read",
+        steps: [
+          {
+            kind: "request",
+            id: "get_thing",
+            method: "GET",
+            connector_id: connectorId,
+            path: "/things",
+            max_retries: 0,
+          },
+        ],
+      });
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: { execution_mode: "prod" },
+      });
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("connector_disabled");
+      expect(upstreamHits).toBe(0);
+    });
   });
 });

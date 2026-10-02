@@ -25,6 +25,10 @@
 
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import {
+  baseUrlCarriesSecret,
+  connectorConfigPathCarriesSecret,
+} from "../../connectors/public-view.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
 import type { Db } from "../../db/client.ts";
@@ -67,6 +71,7 @@ export type UnresolvedCode =
   | "key_not_found"
   | "env_mismatch"
   | "rbac_denied"
+  | "secret_withheld"
   | "path_empty"
   | "decrypt_failed"
   | "parse_error";
@@ -258,11 +263,15 @@ export async function describeConnectorPlaceholders(
   const row = await fetchConnector(ctx, slug);
   if (!row) return { url: null, credentials: [], config: [] };
   const creds = await fetchCredentialFields(ctx, row.id);
-  const cfg = listConfigPaths(row.config ?? {});
+  // Only what a token may resolve: a path the resolver withholds is not offered.
+  const cfg = listConfigPaths(row.config ?? {}).filter(
+    (path) => !connectorConfigPathCarriesSecret(row.config, path),
+  );
   return {
-    url: row.base_url ? `\${connector.${slug}.base_url}` : null,
+    url:
+      row.base_url && !baseUrlCarriesSecret(row.base_url) ? `\${connector.${slug}.base_url}` : null,
     credentials: creds.map((f) => `\${cred.${slug}.${f}}`),
-    config: cfg.map((p) => `\${connector.${slug}.config.${p}}`),
+    config: cfg.map((path) => `\${connector.${slug}.config.${path.join(".")}}`),
   };
 }
 
@@ -287,21 +296,9 @@ async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<On
     case "connector_url":
       return resolveConnectorUrl(tok, ctx);
     case "connector_config": {
-      if (!tok.slug || tok.path.length === 0) {
-        return { ok: false, code: "path_empty", message: "connector config token incomplete" };
-      }
-      const row = await fetchConnector(ctx, tok.slug);
-      if (!row) {
-        return {
-          ok: false,
-          code: "slug_not_found",
-          message: `no connector with slug '${tok.slug}' in ${ctx.environment}`,
-        };
-      }
-      if (!(await checkRbac(ctx, row.id, tok))) {
-        return { ok: false, code: "rbac_denied", message: "connector:read denied" };
-      }
-      return resolveJsonPathRaw(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
+      const read = await readConnectorConfig(tok, ctx);
+      if (!read.ok) return read;
+      return resolveJsonPathRaw(read.row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
     }
     case "input":
       return resolveJsonPathRaw(ctx.input, tok.path, "input");
@@ -500,6 +497,17 @@ async function resolveConnectorUrl(tok: Placeholder, ctx: ResolverContext): Prom
   if (!row.base_url) {
     return { ok: false, code: "key_not_found", message: "connector has no base_url" };
   }
+  // The same rule as a config path: a base_url that carries a credential — a
+  // userinfo password, a query key — is masked in every representation, and a
+  // token must not be the way around the mask. The driver reads the stored
+  // URL itself when a step names a path relative to the connector.
+  if (baseUrlCarriesSecret(row.base_url)) {
+    return {
+      ok: false,
+      code: "secret_withheld",
+      message: `connector.${tok.slug}.base_url carries a credential and is not readable through a token — use a path relative to the connector instead of a full URL`,
+    };
+  }
   ctx.onAuthorityReference?.({
     connector_id: row.id,
     configuration_digest: authorityConnectorDigest(row),
@@ -509,7 +517,22 @@ async function resolveConnectorUrl(tok: Placeholder, ctx: ResolverContext): Prom
   return { ok: true, value: row.base_url };
 }
 
-async function resolveConnectorConfig(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
+/**
+ * The connector row a `${connector.<slug>.config.<path>}` token may read from.
+ *
+ * `connector:read` shows a connector's public projection, and a token is one
+ * more way to read: what it resolves to travels into a request and comes back
+ * in whatever the upstream echoes. So a path the projection masks — or one
+ * that contains such a path — does not resolve. The stored secret stays with
+ * the code that uses it (the OAuth client, the driver), which reads the view.
+ */
+async function readConnectorConfig(
+  tok: Placeholder,
+  ctx: ResolverContext,
+): Promise<
+  | { ok: true; row: NonNullable<Awaited<ReturnType<typeof fetchConnector>>> }
+  | { ok: false; code: UnresolvedCode; message: string }
+> {
   if (!tok.slug || tok.path.length === 0) {
     return { ok: false, code: "path_empty", message: "connector config token incomplete" };
   }
@@ -524,6 +547,20 @@ async function resolveConnectorConfig(tok: Placeholder, ctx: ResolverContext): P
   if (!(await checkRbac(ctx, row.id, tok))) {
     return { ok: false, code: "rbac_denied", message: "connector:read denied" };
   }
+  if (connectorConfigPathCarriesSecret(row.config, tok.path)) {
+    return {
+      ok: false,
+      code: "secret_withheld",
+      message: `connector.${tok.slug}.config.${tok.path.join(".")} holds a secret and is not readable through a token — reference the credential as \${cred.${tok.slug}.<field>}, or let the connector apply it`,
+    };
+  }
+  return { ok: true, row };
+}
+
+async function resolveConnectorConfig(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
+  const read = await readConnectorConfig(tok, ctx);
+  if (!read.ok) return read;
+  const row = read.row;
   const result = resolveJsonPath(row.config ?? {}, tok.path, `connector.${tok.slug}.config`);
   if (result.ok)
     ctx.onAuthorityReference?.({
@@ -729,14 +766,14 @@ export function flattenCredential(
 function listConfigPaths(
   obj: Record<string, unknown>,
   prefix: string[] = [],
-  acc: string[] = [],
-): string[] {
+  acc: string[][] = [],
+): string[][] {
   for (const [k, v] of Object.entries(obj)) {
     const path = [...prefix, k];
     if (v && typeof v === "object" && !Array.isArray(v)) {
       listConfigPaths(v as Record<string, unknown>, path, acc);
     } else {
-      acc.push(path.join("."));
+      acc.push(path);
     }
   }
   return acc;

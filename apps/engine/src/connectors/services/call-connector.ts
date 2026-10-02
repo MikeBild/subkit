@@ -42,7 +42,7 @@ import {
   connectorHealthHint,
   parseDeprecation,
 } from "../health.ts";
-import { callProvedCredentialLive, clearReauthOnSuccess } from "../reauth.ts";
+import { clearReauthIfProved } from "../reauth.ts";
 import { getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
@@ -100,6 +100,7 @@ export interface CallConnectorOk {
 
 export type CallConnectorErrorCode =
   | "connector_not_found"
+  | "connector_disabled"
   | "credential_required"
   | "driver_not_supported_for_call_connector"
   | "invalid_input"
@@ -152,6 +153,40 @@ export function callConnectorDriverRefusal(driver: string): {
   };
 }
 
+/**
+ * What to tell a caller whose connector is switched off. `call_connector`
+ * refuses it on both surfaces exactly as a workflow step is refused: the code
+ * `connector_disabled`, and details that name the connector and its
+ * environment so the caller knows which one to enable. Nothing is sent.
+ */
+export function callConnectorDisabledRefusal(
+  connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment">,
+): {
+  message: string;
+  details: {
+    step_id: null;
+    connector_id: string;
+    connector_slug: string;
+    connector_name: string;
+    environment: "dev" | "prod";
+    reason: "disabled";
+  };
+  next_best_actions: string[];
+} {
+  return {
+    message: `Connector "${connector.slug}" in ${connector.environment} is disabled; enable it before calling it. Nothing was sent.`,
+    details: {
+      step_id: null,
+      connector_id: connector.id,
+      connector_slug: connector.slug,
+      connector_name: connector.display_name,
+      environment: connector.environment,
+      reason: "disabled",
+    },
+    next_best_actions: ["get_connector"],
+  };
+}
+
 function approximateByteLength(value: unknown): number {
   if (value === undefined || value === null) return 0;
   if (typeof value === "string") return Buffer.byteLength(value, "utf8");
@@ -175,6 +210,8 @@ interface DispatchSuccess {
   headers: Record<string, string>;
   body: unknown;
   url_host: string;
+  /** The driver's verdict: the persisted credential authenticated the call. */
+  stored_credential_used: boolean;
 }
 
 async function dispatchHttp(
@@ -199,6 +236,7 @@ async function dispatchHttp(
     headers: res.headers,
     body: res.body,
     url_host: hostOf(res.url),
+    stored_credential_used: res.stored_credential_used,
   };
 }
 
@@ -251,6 +289,7 @@ async function dispatchGraphql(
     headers: res.headers,
     body: res.body,
     url_host: hostOf(connector.base_url ?? ""),
+    stored_credential_used: res.stored_credential_used,
   };
 }
 
@@ -292,6 +331,29 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
       message: `no connector with id '${req.connector_id}'`,
       driver: null,
       latency_ms: 0,
+    };
+  }
+
+  // A switch that still sends the request switches nothing off — the same
+  // refusal a workflow step and a probe of this connector get.
+  if (!connector.enabled) {
+    logger.warn({
+      module: "connector_service",
+      action: "call_connector.failed",
+      tenant_id: req.tenant_id,
+      conversation_id: req.conversation_id,
+      connector_id: req.connector_id,
+      error_code: "connector_disabled",
+    });
+    const refusal = callConnectorDisabledRefusal(connector);
+    return {
+      kind: "error",
+      error_code: "connector_disabled",
+      message: refusal.message,
+      driver: connector.driver,
+      latency_ms: 0,
+      next_best_actions: refusal.next_best_actions,
+      metadata: refusal.details,
     };
   }
 
@@ -390,9 +452,16 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
 
   // The re-auth clearing edge is "a successful authenticated call proves the
   // credential is live" (see connectors/reauth.ts). A request step and a probe
-  // each close it; this call reaches the remote through neither.
-  if (dispatch && callProvedCredentialLive(connector, status, health)) {
-    await clearReauthOnSuccess(req.db, connector);
+  // each close it; this call reaches the remote through neither. It proves
+  // the STORED credential only: a call that carried its own, or went to
+  // another host, lifts nothing.
+  if (dispatch) {
+    await clearReauthIfProved(req.db, connector, {
+      status,
+      health,
+      stored_credential_used: dispatch.stored_credential_used,
+      body: dispatch.body,
+    });
   }
 
   // Phase 2: per-call health counter — a climbing non-ok share for a slug is
