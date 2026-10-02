@@ -77,7 +77,7 @@ const EN = {
   "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
   "chat.preparation.title": "Preparation not yet complete",
   "chat.preparation.effect": "SubKit can finish checking your change and prepare it for use.",
-  "chat.preparation.continue": "Check change",
+  "chat.preparation.continue": "Continue preparing",
   "chat.preparation.prompt":
     "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
@@ -3347,7 +3347,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.preparation.title": "Vorbereitung noch nicht abgeschlossen",
   "chat.preparation.effect":
     "SubKit kann deine Änderung fertig prüfen und für die Nutzung vorbereiten.",
-  "chat.preparation.continue": "Änderung prüfen",
+  "chat.preparation.continue": "Vorbereitung fortsetzen",
   "chat.preparation.prompt":
     "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ToolPart } from "@/components/ai-elements/tool";
-import { chatAutomationTool } from "./chat-automation-tool";
+import { chatAutomationTool, liveAutomationReviews } from "./chat-automation-tool";
 import { groupMessageParts } from "./chat-transcript";
 
 const id = "00000000-0000-4000-8000-000000000001";
@@ -92,4 +92,27 @@ test("the run refusal that promises the review dialog carries it", () => {
     ),
   ).toBeNull();
   expect(chatAutomationTool(refusal({ ok: true, data: { automation_review } }))).toBeNull();
+});
+
+test("only the newest review of a workflow is a live card", () => {
+  const other = "00000000-0000-4000-8000-000000000002";
+  const call = (toolCallId: string, workflowId: string) => ({
+    ...part({
+      ...data,
+      workflow_id: workflowId,
+      schedules: [{ workflow_id: workflowId, environment: "prod" }],
+    }),
+    toolCallId,
+  });
+  const live = liveAutomationReviews([
+    call("first", id),
+    call("other", other),
+    // Not a card at all: it does not displace the review before it.
+    part({ ok: false, error: { code: "not_found" } }),
+    call("second", id),
+  ]);
+  expect([...live]).toEqual([
+    [id, "second"],
+    [other, "other"],
+  ]);
 });
