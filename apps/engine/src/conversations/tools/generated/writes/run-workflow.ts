@@ -971,13 +971,16 @@ export const runWorkflowTool: ConversationTool = {
         reason: msg,
         metadata: { conversation_id: ctx.conversation_id },
       });
+      // A version stored in an earlier format is refused by name, as on the
+      // HTTP run: the reader then sees why, not a run that "failed".
+      const legacy = (err as { code?: unknown }).code === "workflow_version_legacy";
       return {
         ok: false,
         data: withStatus(
           buildGateError(currentDraft, {
-            error_code: "run_failed",
+            error_code: legacy ? "workflow_version_legacy" : "run_failed",
             message: msg,
-            recommended_mode: "execution",
+            recommended_mode: legacy ? "workflow" : "execution",
           }),
           "failed",
         ),
