@@ -1,5 +1,6 @@
 import type { components } from "@/api/schema";
 import { auditHref } from "@/app/links";
+import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { type WindowBounds, windowBounds } from "./operations-figures";
@@ -7,7 +8,9 @@ import { type WindowBounds, windowBounds } from "./operations-figures";
 // What the connector detail page says about a connector, decided here and not
 // in the component: the words for the engine's machine values, the runtime
 // figures over one fixed window, the audit links that count the same thing,
-// and the credential body a replaced key is posted as.
+// the credential body a replaced key is posted as, what the page says when a
+// sign-in comes back from the provider, and which one action the sign-in card
+// offers.
 
 export type ConnectorRuntime = components["schemas"]["ConnectorRuntime"];
 export type McpInspect = components["schemas"]["ConnectorMcpInspectResponse"];
@@ -267,4 +270,113 @@ export const SECRET_MASK = "***redacted***";
 export function presentAddress(address: string): { shown: string; keepsSecret: boolean } {
   const keepsSecret = address.includes(SECRET_MASK);
   return { shown: keepsSecret ? address.split(SECRET_MASK).join("•••") : address, keepsSecret };
+}
+
+// ── Coming back from a sign-in ────────────────────────────────────────────────
+
+/**
+ * The flag the engine's sign-in callback returns to this page with. It states
+ * no fact — anyone can type it into an address. The page reads the connector
+ * again and says what it finds; the flag only says "say it once".
+ */
+export const SIGNED_IN_PARAM = "signed_in";
+
+export function returnedFromSignIn(search: string): boolean {
+  return new URLSearchParams(search).has(SIGNED_IN_PARAM);
+}
+
+/** The address without the flag, so a reload does not repeat the sentence. */
+export function withoutSignInReturn(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete(SIGNED_IN_PARAM);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
+ * The one statement above the page's sections, and whether it carries the
+ * page's act for a switched-off connector.
+ *
+ * Switched off is not the same as needing a sign-in: signing in never switches
+ * a connector on, so a connector can be signed in and off at once — and the
+ * page has to say both, with the one act that changes it.
+ *
+ *   signed_in      came back from the provider, and the connector agrees
+ *   signed_in_off  the same, and it is still switched off
+ *   off            switched off, nothing to confirm
+ *
+ * A return flag the connector does not bear out — its sign-in still reads as
+ * lost — confirms nothing.
+ */
+export type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;
+
+export function connectorNotice(p: {
+  enabled: boolean;
+  authState: ConnectorAuthState;
+  /** The page was opened by the sign-in callback's redirect. */
+  returned: boolean;
+}): ConnectorNotice {
+  const confirmed = p.returned && !needsRenewal(p.authState) && p.authState !== "not_required";
+  if (!p.enabled) return confirmed ? "signed_in_off" : "off";
+  return confirmed ? "signed_in" : null;
+}
+
+/**
+ * The way a lost sign-in is renewed — the one act the sign-in card offers for
+ * it, chosen by how the connector signs in. Null when the reader has none:
+ * no write permission, or a kind of sign-in this page cannot renew.
+ *
+ *   connection  the sign-in rides on an account connection; renewed there
+ *   provider    the connector's own sign-in at the provider (leaves the page
+ *               and comes back)
+ *   key         a stored key, replaced in the card
+ */
+export type RenewalWay = "connection" | "provider" | "key" | null;
+
+export function renewalWay(p: {
+  authType: string | null;
+  usesConnection: boolean;
+  canWrite: boolean;
+}): RenewalWay {
+  if (!p.canWrite) return null;
+  if (p.usesConnection) return "connection";
+  if (p.authType === "oauth2") return "provider";
+  return offersKeyReplacement(p.authType) ? "key" : null;
+}
+
+type Renewable = Exclude<RenewalWay, null>;
+
+// What the button beside the line does, per state: a refused sign-in is
+// renewed, a missing one is made for the first time.
+const RENEWAL_HINTS: Record<Renewable, TranslationKey> = {
+  connection: "connectorCredentials.renewViaConnection",
+  provider: "connectorCredentials.renewAtProvider",
+  key: "connectorCredentials.renewKey",
+};
+
+const FIRST_SIGN_IN_HINTS: Record<Renewable, TranslationKey> = {
+  connection: "connectorCredentials.renewViaConnection",
+  provider: "connectorCredentials.signInAtProvider",
+  key: "connectorCredentials.enterKey",
+};
+
+/**
+ * The card's one line under its title. A lost sign-in with a way to renew it
+ * says what is the case and what the button beside it does; the state's own
+ * sentence stands only where there is no such button to explain. A sign-in
+ * that works needs no sentence: the badge says it.
+ */
+export function signInLine(state: ConnectorAuthState, way: RenewalWay): TranslationKey | null {
+  if (state === "expired") return way ? RENEWAL_HINTS[way] : "connectorCredentials.lostReadOnly";
+  if (state === "credentials_missing")
+    return way ? FIRST_SIGN_IN_HINTS[way] : "connectors.auth.credentialsMissingHint";
+  if (state === "unproven") return "connectors.auth.unprovenHint";
+  return null;
+}
+
+/** The button's word: a first sign-in is not "again". */
+export function signInActionLabel(state: ConnectorAuthState): TranslationKey {
+  return state === "credentials_missing"
+    ? "connectorCredentials.signIn"
+    : "connectorCredentials.renew";
 }

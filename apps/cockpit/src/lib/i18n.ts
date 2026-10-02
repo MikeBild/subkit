@@ -482,8 +482,25 @@ const EN = {
   "connectorCredentials.renewViaConnection":
     "The sign-in runs through the account connection {name}. Renewing it there signs in every connector that uses it.",
   "connectorCredentials.renewKey":
-    "This connector signs in with a stored key. Enter the new key below.",
+    "The stored key is refused. “Sign in again” opens the field for the new key.",
   "connectorCredentials.renewFailed": "The sign-in could not be started.",
+  "connectorCredentials.renewAtProvider":
+    "The provider refuses the stored sign-in. “Sign in again” takes you to the provider and back here.",
+  "connectorCredentials.lostReadOnly":
+    "The stored sign-in is refused. Renewing it takes permission to change this connector.",
+  "connectorCredentials.signIn": "Sign in",
+  "connectorCredentials.signInAtProvider":
+    "Not signed in yet. “Sign in” takes you to the provider and back here.",
+  "connectorCredentials.enterKey": "No key stored yet. “Sign in” opens the field for it.",
+  "connectorCredentials.partial":
+    "The provider did not grant every permission that was asked for. Missing: {scopes}.",
+  "connectorState.off": "Switched off",
+  "connectorState.signedIn": "Signed in",
+  "connectorState.signedInOff": "Signed in, but switched off",
+  "connectorState.offBody": "SubKit sends nothing through this connector until it is switched on.",
+  "connectorState.enable": "Switch on",
+  "connectorState.enabled": "Connector switched on",
+  "connectorState.enableFailed": "The connector could not be switched on.",
   "connectorCredentials.use": "Use",
   "connectorCredentials.key": "Key",
   "connectorCredentials.keyHint":
@@ -3773,8 +3790,26 @@ const DE: Record<TranslationKey, string> = {
   "connectorCredentials.renewViaConnection":
     "Die Anmeldung läuft über die Verbindung {name}. Dort erneuert, gilt sie für jeden Konnektor, der sie nutzt.",
   "connectorCredentials.renewKey":
-    "Dieser Konnektor meldet sich mit einem gespeicherten Schlüssel an. Trag den neuen Schlüssel unten ein.",
+    "Der gespeicherte Schlüssel wird abgelehnt. „Neu anmelden“ öffnet das Feld für den neuen Schlüssel.",
   "connectorCredentials.renewFailed": "Die Anmeldung konnte nicht gestartet werden.",
+  "connectorCredentials.renewAtProvider":
+    "Der Anbieter lehnt die gespeicherte Anmeldung ab. „Neu anmelden“ führt zum Anbieter und wieder hierher.",
+  "connectorCredentials.lostReadOnly":
+    "Die gespeicherte Anmeldung wird abgelehnt. Erneuern darf, wer diesen Konnektor ändern darf.",
+  "connectorCredentials.signIn": "Anmelden",
+  "connectorCredentials.signInAtProvider":
+    "Noch nicht angemeldet. „Anmelden“ führt zum Anbieter und wieder hierher.",
+  "connectorCredentials.enterKey":
+    "Noch kein Schlüssel hinterlegt. „Anmelden“ öffnet das Feld dafür.",
+  "connectorCredentials.partial":
+    "Der Anbieter hat nicht alle angefragten Berechtigungen erteilt. Es fehlen: {scopes}.",
+  "connectorState.off": "Abgeschaltet",
+  "connectorState.signedIn": "Angemeldet",
+  "connectorState.signedInOff": "Angemeldet, aber abgeschaltet",
+  "connectorState.offBody": "SubKit sendet nichts über diesen Konnektor, bis er eingeschaltet ist.",
+  "connectorState.enable": "Einschalten",
+  "connectorState.enabled": "Konnektor eingeschaltet",
+  "connectorState.enableFailed": "Der Konnektor ließ sich nicht einschalten.",
   "connectorCredentials.use": "Übernehmen",
   "connectorCredentials.key": "Schlüssel",
   "connectorCredentials.keyHint":

@@ -14,12 +14,19 @@
 // retry, not an empty page), a reader without `stats:read` ("Keine
 // Berechtigung", not a zero), and a postgres connector (no server tools, no
 // MCP words).
+//
+// And the sign-in, on a connector that signs in at a provider: signed in,
+// needing a sign-in, switched off, both at once — the state the page has to
+// say truthfully after the provider sends the browser back — and a sign-in
+// that was granted fewer permissions than it asked for. In every one of them
+// an effect has exactly one trigger and the page has at most one filled action.
 
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 const MCP_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
 const PG_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c2";
+const OAUTH_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c4";
 const ADDRESS = "https://mcp.tickets.example.org/v1/mcp";
 
 const days = (count) => new Date(Date.parse("2026-08-10T09:00:00.000Z") - count * 86_400_000);
@@ -88,6 +95,30 @@ const PG_RECORD = {
   self_description: undefined,
 };
 
+/** A connector that signs in at its provider, in the state the check sets. */
+function oauthRecord(state) {
+  return {
+    ...mcpRecord([]),
+    id: OAUTH_ID,
+    slug: "example-mail",
+    display_name: "Example Mail",
+    description: null,
+    driver: "http",
+    auth_type: "oauth2",
+    base_url: "https://mail.example.org/v1",
+    config: { oauth: { scope: "mail.read mail.send" } },
+    self_description: undefined,
+    enabled: state.enabled,
+    needs_reauth: state.needsReauth,
+    auth_failed_at: state.needsReauth ? iso(60) : null,
+    auth_failed_reason: state.needsReauth ? "credential rejected" : null,
+    health_state: state.needsReauth ? "needs_reauth" : "ok",
+    circuit_state: state.needsReauth ? "open" : "closed",
+    circuit_failure_count: state.needsReauth ? 44 : 0,
+    circuit_opened_at: state.needsReauth ? iso(60) : null,
+  };
+}
+
 const RUNTIME = {
   last_success_at: iso(0.1),
   last_failure: { at: iso(1), code: "remote_error", cause_class: "driver_error" },
@@ -150,6 +181,37 @@ function connectorApi(state, variant) {
     const path = url.pathname;
     if (path === `/v1/connectors/${MCP_ID}`) return json(route, mcpRecord(state.trusted));
     if (path === `/v1/connectors/${PG_ID}`) return json(route, PG_RECORD);
+    if (path === `/v1/connectors/${OAUTH_ID}`) {
+      state.oauth.reads += 1;
+      return json(route, oauthRecord(state.oauth));
+    }
+    if (path === `/v1/connectors/${OAUTH_ID}/credential`)
+      return json(route, {
+        mode: "oauth2",
+        environment: "prod",
+        connection: null,
+        header_names: [],
+        missing_scopes: state.oauth.missing,
+        updated_at: iso(state.oauth.needsReauth ? 90 : 0),
+      });
+    if (path === `/v1/connectors/${OAUTH_ID}/enable`) {
+      // What the engine does: switch it on, answer with the connector as it
+      // now stands. Nothing else about it changes.
+      state.oauth.enabled = true;
+      return json(route, oauthRecord(state.oauth));
+    }
+    if (path === `/v1/connectors/${OAUTH_ID}/oauth/start`) {
+      // The provider round-trip, collapsed: the engine's callback stores the
+      // credential, clears the sign-in flag and the breaker — NOT the switch —
+      // and redirects the browser to this page with the flag.
+      state.oauth.started += 1;
+      state.oauth.needsReauth = false;
+      state.oauth.missing = state.oauth.grants;
+      return json(route, {
+        authorization_url: `${url.origin}/cockpit/connectors/${OAUTH_ID}?signed_in=1`,
+        state: "stand",
+      });
+    }
     if (path === `/v1/connectors/${MCP_ID}/credential`)
       return json(route, {
         mode: "header",
@@ -159,6 +221,14 @@ function connectorApi(state, variant) {
         updated_at: iso(4),
       });
     if (path === `/v1/connectors/${PG_ID}/credential`) return json(route, null);
+    if (path === `/v1/connectors/${OAUTH_ID}/runtime`)
+      return json(route, {
+        // A sign-in is not a call: it moves neither of these.
+        last_success_at: iso(75),
+        last_failure: { at: iso(60), code: "4xx_auth", cause_class: "auth_failed" },
+        recorded: true,
+        mcp_session: null,
+      });
     if (path.endsWith("/runtime")) {
       if (variant === "failed")
         return json(route, { error: { code: "internal", message: "fixture refuses" } }, 500);
@@ -202,6 +272,7 @@ const isConnectorApi = (url) => {
   return (
     path.startsWith(`/v1/connectors/${MCP_ID}`) ||
     path.startsWith(`/v1/connectors/${PG_ID}`) ||
+    path.startsWith(`/v1/connectors/${OAUTH_ID}`) ||
     path === "/v1/stats/connectors" ||
     path === "/v1/workflows"
   );
@@ -236,9 +307,266 @@ async function withBootstrap(page, drop, body) {
   }
 }
 
+/** Every effect the page can trigger, and every element that triggers it. */
+const EFFECTS = {
+  "test the connection": ["connector-test", "connector-runtime-test"],
+  "renew the sign-in": ["connector-renew-signin", "connector-renew", "detail-action"],
+  "switch the connector on": ["connector-enable"],
+};
+
+/**
+ * One action once per view: an effect has at most one trigger, no two actions
+ * on the page share a label, and at most one action is filled.
+ */
+async function assertOneTriggerPerEffect(page, where) {
+  for (const [effect, ids] of Object.entries(EFFECTS)) {
+    let triggers = 0;
+    for (const id of ids) triggers += await page.getByTestId(id).count();
+    if (triggers > 1) throw new Error(`${where}: ${triggers} triggers ${effect}`);
+  }
+  const found = await page.evaluate(() => {
+    const main = document.querySelector('[data-testid="detail-connectors"]');
+    // Actions, not rows: a list's entries are links that may share a name.
+    const controls = [...(main?.querySelectorAll('[data-slot="button"]') ?? [])].filter(
+      (element) => element instanceof HTMLElement && element.offsetParent !== null,
+    );
+    const labels = controls.map((element) => element.innerText.trim()).filter(Boolean);
+    return {
+      repeated: labels.filter((label, index) => labels.indexOf(label) !== index),
+      filled: controls.filter((element) => element.getAttribute("data-variant") === "default")
+        .length,
+    };
+  });
+  if (found.repeated.length > 0)
+    throw new Error(`${where}: a label stands twice — ${found.repeated.join(", ")}`);
+  if (found.filled > 1) throw new Error(`${where}: ${found.filled} filled actions on one page`);
+}
+
+/** How often a word stands in the page's main area. */
+async function occurrences(page, word) {
+  const body = await page.getByTestId("detail-connectors").innerText();
+  return body.split(word).length - 1;
+}
+
+async function openOauth(page, stand) {
+  await stand.visit(page, `connectors/${OAUTH_ID}`);
+  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
+}
+
+/**
+ * The sign-in of a connector that signs in at a provider, state by state.
+ *
+ * The state that matters most is the one a person lands in after the provider:
+ * the engine has stored the credential, cleared the sign-in flag and closed the
+ * breaker — and left the connector switched off, because switching it on is a
+ * separate decision. The page must say exactly that, once, with the one act
+ * that changes it.
+ */
+async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
+  const set = (next) => Object.assign(oauth, { missing: [], grants: [], ...next });
+  const words = de
+    ? {
+        connected: "Verbunden",
+        expired: "Abgelaufen",
+        off: "Abgeschaltet",
+        signedIn: "Angemeldet",
+        signedInOff: "Angemeldet, aber abgeschaltet",
+        renew: "Neu anmelden",
+        enable: "Einschalten",
+        whatRenewDoes: "führt zum Anbieter und wieder hierher",
+        misleading: "Verbindungstest liefert",
+        missing: "Es fehlen: mail.send.",
+        steps: "Schritte im Chat",
+        readOnly: "Erneuern darf, wer diesen Konnektor ändern darf",
+      }
+    : {
+        connected: "Connected",
+        expired: "Expired",
+        off: "Switched off",
+        signedIn: "Signed in",
+        signedInOff: "Signed in, but switched off",
+        renew: "Sign in again",
+        enable: "Switch on",
+        whatRenewDoes: "takes you to the provider and back here",
+        misleading: "to get the renewal link",
+        missing: "Missing: mail.send.",
+        steps: "steps in the chat",
+        readOnly: "takes permission to change this connector",
+      };
+  const notice = page.getByTestId("connector-state-notice");
+  const noticeKind = async () =>
+    (await notice.count()) ? await notice.getAttribute("data-notice") : null;
+  let where = "/connectors/<oauth> · signed in";
+
+  // ── Signed in ────────────────────────────────────────────────────────────
+  set({ enabled: true, needsReauth: false });
+  await openOauth(page, stand);
+  if ((await text(page, "connector-auth-state")) !== words.connected)
+    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await occurrences(page, words.connected)) !== 1)
+    throw new Error(`${where}: the sign-in state does not stand exactly once`);
+  if (await notice.count()) throw new Error(`${where}: a notice with nothing to say`);
+  for (const id of ["connector-renew-signin", "connector-enable", "detail-action"])
+    if (await page.getByTestId(id).count())
+      throw new Error(`${where}: "${id}" is offered with nothing to fix`);
+  // A connector has no steps and no lifecycle: no "Steuerung" row, no sentence about them.
+  if (await page.locator('[data-family-slot="detail-context"]').count())
+    throw new Error(`${where}: a state row with nothing in it`);
+  if ((await page.getByTestId("detail-connectors").innerText()).includes(words.steps))
+    throw new Error(`${where}: the page talks about a connector's steps`);
+  await assertOneTriggerPerEffect(page, where);
+  await assertNoVisibleUuids(page.locator("main").first(), where);
+  await assertNoSidewaysScroll(page, where);
+  await capture("connector-signin-connected");
+
+  // ── Needs a sign-in ──────────────────────────────────────────────────────
+  where = "/connectors/<oauth> · needs sign-in";
+  set({ enabled: true, needsReauth: true });
+  await openOauth(page, stand);
+  if ((await text(page, "connector-auth-state")) !== words.expired)
+    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await occurrences(page, words.expired)) !== 1)
+    throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
+  const sentence = (await text(page, "connector-credential-sentence")) ?? "";
+  if (!sentence.includes(words.whatRenewDoes) || sentence.includes(words.misleading))
+    throw new Error(`${where}: the line does not say what the button does — "${sentence}"`);
+  if ((await text(page, "connector-renew-signin")) !== words.renew)
+    throw new Error(`${where}: no "${words.renew}" in the sign-in card`);
+  if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "default")
+    throw new Error(`${where}: renewing the sign-in is not the page's filled action`);
+  await assertOneTriggerPerEffect(page, where);
+  await capture("connector-signin-expired");
+
+  // A flag typed into the address confirms nothing the connector does not bear out.
+  await stand.visit(page, `connectors/${OAUTH_ID}?signed_in=1`);
+  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  if (await notice.count())
+    throw new Error(`${where}: a typed flag made the page confirm a sign-in`);
+  if (new URL(page.url()).searchParams.has("signed_in"))
+    throw new Error(`${where}: the flag stays in the address`);
+
+  // A reader who may not change the connector is told so, and offered nothing.
+  await withBootstrap(page, "connector:write", async () => {
+    await openOauth(page, stand);
+    if (await page.getByTestId("connector-renew-signin").count())
+      throw new Error(`${where} · read-only: a renewal the reader may not start`);
+    const line = (await text(page, "connector-credential-sentence")) ?? "";
+    if (!line.includes(words.readOnly))
+      throw new Error(`${where} · read-only: the line reads "${line}"`);
+  });
+
+  // ── Switched off AND needing a sign-in ───────────────────────────────────
+  where = "/connectors/<oauth> · switched off, needs sign-in";
+  set({ enabled: false, needsReauth: true });
+  await openOauth(page, stand);
+  if ((await noticeKind()) !== "off") throw new Error(`${where}: nothing says it is switched off`);
+  if ((await occurrences(page, words.off)) !== 1)
+    throw new Error(`${where}: "${words.off}" does not stand exactly once`);
+  if ((await occurrences(page, words.expired)) !== 1)
+    throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
+  if ((await text(page, "connector-enable")) !== words.enable)
+    throw new Error(`${where}: no "${words.enable}"`);
+  // Signing in is the first step; switching on stands beside it, unfilled.
+  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "outline")
+    throw new Error(`${where}: two filled actions compete`);
+  await assertOneTriggerPerEffect(page, where);
+  await capture("connector-signin-off-expired");
+
+  // ── …and back from the provider: signed in, still switched off ───────────
+  where = "/connectors/<oauth> · signed in, switched off";
+  const startedBefore = oauth.started;
+  await page.getByTestId("connector-renew-signin").click();
+  await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
+    timeout: 15_000,
+  });
+  await notice.waitFor({ state: "visible", timeout: 10_000 });
+  if (oauth.started !== startedBefore + 1)
+    throw new Error(`${where}: "${words.renew}" started ${oauth.started - startedBefore} sign-ins`);
+  if ((await noticeKind()) !== "signed_in_off")
+    throw new Error(`${where}: the page says "${await noticeKind()}" after the sign-in`);
+  if (!(await notice.innerText()).includes(words.signedInOff))
+    throw new Error(`${where}: the notice reads "${await notice.innerText()}"`);
+  // The sign-in is fresh, not the one the page showed before it left.
+  if ((await text(page, "connector-auth-state")) !== words.connected)
+    throw new Error(`${where}: still reads "${await text(page, "connector-auth-state")}"`);
+  if (await occurrences(page, words.expired))
+    throw new Error(`${where}: "${words.expired}" for a connector that was just signed in`);
+  if (await page.getByTestId("connector-renew-signin").count())
+    throw new Error(`${where}: a renewal is offered for a sign-in that works`);
+  if ((await page.getByTestId("connector-enable").count()) !== 1)
+    throw new Error(`${where}: not exactly one "${words.enable}"`);
+  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "default")
+    throw new Error(`${where}: switching on is not the page's filled action`);
+  // The switch is the person's: the sign-in did not flip it.
+  if (oauth.enabled) throw new Error(`${where}: signing in switched the connector on`);
+  await assertOneTriggerPerEffect(page, where);
+  await assertNoVisibleUuids(page.locator("main").first(), where);
+  await assertNoSidewaysScroll(page, where);
+  await capture("connector-signin-off-signed-in");
+
+  // Switching on shows at once — from the engine's answer, without another read.
+  const readsBefore = oauth.reads;
+  await page.getByTestId("connector-enable").click();
+  await page.getByTestId("connector-enable").waitFor({ state: "detached", timeout: 10_000 });
+  if ((await noticeKind()) !== "signed_in")
+    throw new Error(`${where}: after switching on the page says "${await noticeKind()}"`);
+  if (await occurrences(page, words.off))
+    throw new Error(`${where}: "${words.off}" for a connector that was just switched on`);
+  if (oauth.reads !== readsBefore)
+    throw new Error(`${where}: the new state waited for another read of the connector`);
+  await capture("connector-signin-switched-on");
+
+  // The sentence is said once: a reload has nothing to repeat.
+  await openOauth(page, stand);
+  if (await notice.count()) throw new Error(`${where}: the confirmation repeats on reload`);
+
+  // ── Switched off, nothing else ───────────────────────────────────────────
+  where = "/connectors/<oauth> · switched off";
+  set({ enabled: false, needsReauth: false });
+  await openOauth(page, stand);
+  if ((await noticeKind()) !== "off") throw new Error(`${where}: nothing says it is switched off`);
+  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "default")
+    throw new Error(`${where}: switching on is not the page's filled action`);
+  await assertOneTriggerPerEffect(page, where);
+  await capture("connector-signin-off");
+  await withBootstrap(page, "connector:write", async () => {
+    await openOauth(page, stand);
+    if ((await noticeKind()) !== "off")
+      throw new Error(`${where} · read-only: nothing says it is switched off`);
+    if (await page.getByTestId("connector-enable").count())
+      throw new Error(`${where} · read-only: a switch the reader may not flip`);
+  });
+
+  // ── Signed in with fewer permissions than asked for ──────────────────────
+  where = "/connectors/<oauth> · partial grant";
+  set({ enabled: true, needsReauth: true, grants: ["mail.send"] });
+  await openOauth(page, stand);
+  await page.getByTestId("connector-renew-signin").click();
+  await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
+    timeout: 15_000,
+  });
+  await notice.waitFor({ state: "visible", timeout: 10_000 });
+  if ((await noticeKind()) !== "signed_in")
+    throw new Error(`${where}: the page says "${await noticeKind()}" after the sign-in`);
+  const withheld = (await text(page, "connector-missing-scopes")) ?? "";
+  if (!withheld.includes(words.missing))
+    throw new Error(`${where}: the withheld permissions are not named — "${withheld}"`);
+  // The way to get them is to sign in again — offered, but not as the page's
+  // filled action: the sign-in works.
+  if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "outline")
+    throw new Error(`${where}: no unfilled "${words.renew}" for the withheld permissions`);
+  await assertOneTriggerPerEffect(page, where);
+  await capture("connector-signin-partial");
+}
+
 export async function verifyConnectorDetail(page, stand, localeName, capture) {
   const de = localeName === "de";
-  const state = { trusted: ["search_items"], sent: [] };
+  const state = {
+    trusted: ["search_items"],
+    sent: [],
+    oauth: { enabled: true, needsReauth: false, missing: [], grants: [], started: 0, reads: 0 },
+  };
   let variant = null;
   const handler = (route) => connectorApi(state, variant)(route);
   await page.route(isConnectorApi, handler);
@@ -422,6 +750,8 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await assertNoSidewaysScroll(page, "/connectors/<postgres>");
     await assertSingleTriggers(page, `${where} · postgres`);
     await capture("connector-postgres");
+
+    await verifyConnectorSignIn(page, stand, state.oauth, de, capture);
   } finally {
     await page.unroute(isConnectorApi, handler);
   }

@@ -1,7 +1,6 @@
 import { Bot, KeyRound, SearchCheck, ShieldCheck } from "lucide-react";
 import { absolute } from "@/app/links";
 import { Button } from "@/components/ui/button";
-import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { type Remedy, remedyFor } from "@/lib/remedy";
@@ -42,29 +41,17 @@ export function RemedyLink({ remedy }: { remedy: Remedy }) {
  */
 export function DetailAction({
   resource,
-  id,
   name,
-  connectorAuth,
   permissions,
 }: {
   resource: DetailResource;
-  id: string;
   name: string;
-  connectorAuth: ConnectorAuthState | null;
   permissions: readonly string[];
 }) {
-  if (resource === "connectors") {
-    // A lost sign-in is the one thing only a person can fix here; otherwise
-    // "Verbindung testen" already stands beside the title.
-    if (!connectorAuth || !needsRenewal(connectorAuth)) return null;
-    const remedy = remedyFor({
-      authState: { connectorId: id, state: connectorAuth, section: "credentials" },
-      canRun: false,
-      canChat: false,
-    });
-    return remedy ? <RemedyLink remedy={remedy} /> : null;
-  }
-  if (resource === "files") return null;
+  // A connector's acts live where its state does: renewing a sign-in in the
+  // sign-in card, switching it on in its state notice. A second trigger
+  // beside the title would only scroll to the first.
+  if (resource === "connectors" || resource === "files") return null;
   return <RecordChatAction name={name} permissions={permissions} />;
 }
 
