@@ -236,7 +236,12 @@ export function GrantCard({
   const { t, locale } = useI18n();
   const state = observedAuthorityState(authority, now);
   return (
-    <div className="grid min-w-0 gap-3 rounded-lg border p-3" data-testid={testId}>
+    <div
+      className="grid min-w-0 gap-3 rounded-lg border p-3"
+      data-testid={testId}
+      // "Details" and "Widerrufen" act on this approval; the next card's on its own.
+      data-action-scope="approval"
+    >
       <div className="flex flex-wrap items-center gap-2">
         {/* The id is on the title, for quoting, and nowhere on the page. */}
         <h3 className="text-sm font-semibold" title={authority.id} data-testid="authority-headline">

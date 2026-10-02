@@ -9,8 +9,8 @@
 // already reports — the workflow record, its schedules, the verified
 // automation status, the approvals and the gate diagnosis — and returns the
 // state, the facts that head it and the one action that moves it forward. The
-// page's panel, the action beside the title and the chat's review card all
-// read it, so they cannot disagree.
+// page's panel and the chat's review card both read it, so they cannot
+// disagree. The action is offered where the state is shown — once per view.
 //
 // Precedence — the first that applies wins:
 //
@@ -599,17 +599,6 @@ export function automationNeedsMoreApprovals(
   hasMore: boolean,
 ): boolean {
   return hasMore && state.state === "approved" && state.grant === null;
-}
-
-/**
- * The action that belongs beside the page title: the state's own next step
- * while one is pending. A calm state — approved, manual, unknown — offers none
- * there, and the title keeps its ordinary action.
- */
-export function automationTitleAction(state: AutomationState): AutomationAction | null {
-  if (state.state === "approved" || state.state === "manual" || state.state === "unknown")
-    return null;
-  return state.primaryAction;
 }
 
 /** What the reader may do — the rights the actions are gated by. */

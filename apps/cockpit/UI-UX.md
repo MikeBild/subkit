@@ -325,21 +325,26 @@ A workflow's page (`src/components/cockpit/workflow-page.tsx`) answers, top to b
 a reader arrives with: may it run on its own → how is it called → what does it take and return →
 what does it do → how has it been doing. Everything a reader does not decide by is folded below.
 
-1. **Header.** The name, the health mark and the author's one-line purpose. Exactly one filled
-   action, "Ausführen"; beside it one outline action chosen by state (below); "Im Chat ändern",
-   "Zu diesem Workflow fragen" and "Metadaten bearbeiten" stand behind "⋯" — a single remaining one
-   is a named button. What may be edited where is a tooltip, not a row of its own.
-2. **Automatischer Betrieb** — one state, one action (below).
+1. **Header.** The name, the health mark and the author's one-line purpose. It carries the page's
+   own actions and nothing else: "Ausführen", the one filled action, where the workflow can be
+   run; "Im Chat ändern", "Zu diesem Workflow fragen" and "Metadaten bearbeiten" behind "⋯" — a
+   single remaining one is a named button. What may be edited where is a tooltip, not a row of
+   its own. No state puts a further action here: approving, applying, repairing and resuming are
+   the panel's, the remedy for a failure is the cause block's.
+2. **Automatischer Betrieb** — one state, one action (below), offered here and nowhere else on
+   the page.
 3. **Aufrufen** — tabs for the ways that exist: HTTP, Webhook, MCP, Zeitplan, CLI. A hook or a
    schedule is a tab only when one is bound; the tab a reader lands on is the workflow's effective
    trigger. HTTP shows the address, a ready-to-paste call (curl, Node, Python; production by
    default, the environment always in the call), one line of answers (200 / 202 / 409) and one
-   line on what the call will be, taken from the panel's verdict: nothing where the panel shows
+   line of plain text on what the call will be, taken from the panel's verdict: nothing where the panel shows
    the environment as approved, "only a trial run" where no approval exists, "an approval is
    stored but not confirmed here" where one exists and the panel does not say approved — the
    engine's own field only says that an approval is stored — and "refused" for a version in an
-   earlier format. A list the reader may not see (webhooks, schedules) is not a missing tab passed
-   over in silence: one line under the tabs says it cannot be shown and that there may be some.
+   earlier format. A held hook or schedule says so with a badge. Neither the line nor the badge
+   links to the approval: the block shows the status, the panel carries the trigger. A list the
+   reader may not see (webhooks, schedules) is not a missing tab passed over in silence: one line
+   under the tabs says it cannot be shown and that there may be some.
 4. **Eingabe | Ausgabe** — the schema as a table: field, type, required, example; allowed values
    and the description under the name; an object's own fields one level deep. One line says that
    input goes in the body under `input` and that there are no query parameters; for a hook-started
@@ -350,9 +355,12 @@ what does it do → how has it been doing. Everything a reader does not decide b
    changed, last run), **Frühere Freigaben**, and **Unterhaltungen dazu**.
 
 An unhealthy workflow keeps its cause block between the header and the panel. Its next step is an
-outline action there — the page's one filled action stays "Ausführen" — and where the cause is an
-approval that no longer fits, the block offers none: the panel directly below says the state and
-carries the act.
+outline action there and only there — the page's one filled action stays "Ausführen". Where the
+cause is an approval that no longer fits, the block says the cause and offers nothing: the panel
+directly below says the state and carries the act. The same holds where the panel already offers
+the block's remedy for a reason of its own — reviewing a filed repair, or the conversation with
+an author: it stands once, in the panel. A failed run in "Letzte Läufe" names its cause as text;
+its row leads to the run and nowhere else.
 
 There are no tabs and no "Steuerung" row on this page, and no fact stands twice: the version is in
 the panel and the technical facts, the schedule in the panel and the call block's own tab.
@@ -389,7 +397,8 @@ automation status, the approvals, the gate diagnosis). The first that applies wi
 
 A version in an earlier format is said plainly and nothing the engine would refuse is offered:
 no "Ausführen", no approval. The way out — changing the workflow in the chat, which saves it
-again — is the page's one filled action; a saved change that already waits leads instead
+again — is the panel's action and, with "Ausführen" gone, the page's one filled action; the
+header keeps only its menu. A saved change that already waits leads instead
 ("Übernahme nötig"). The run dialog and a chat card say the same refusal by its reason, with the
 steps the engine names, never as a run that "could not be started".
 
@@ -403,14 +412,22 @@ one line saying so and no button: the engine has no act that switches a hook bac
 The panel says the state as one word and one line of facts (version, environment, valid until, runs
 left), names what starts the workflow, embeds the gate diagnosis and holds the current approval
 behind "Freigabe ansehen". **An approved workflow offers no approval button** — only "Freigabe
-ansehen", plus "Verlängern" within three days of its end or below a tenth of its runs. The action
-beside the title is the panel's own action while a step is pending, performing the same act; in a
-calm state the title keeps its ordinary action (investigate the newest failed run, else "Im Chat
-ändern"). It is never a link that only scrolls to a section, and no badge repeats the state. A run
-whose cause is "Freigabe passt nicht mehr" leads to this panel. An approval's exact window and
+ansehen", plus "Verlängern" within three days of its end or below a tenth of its runs. The
+panel's action stands in the panel only: the title does not repeat it in any state, nothing on
+the page is a link that only scrolls to the panel, and no badge repeats the state. Exactly one
+element of the page opens the approval dialog. On another page — the run sheet, the Übersicht —
+a run whose cause is "Freigabe passt nicht mehr" leads to this panel. An approval's exact window and
 checksum stand behind "Details"; approvals that no longer admit a run are history, folded. An
 approval that is still valid is never out of reach: while another step is pending — for this
 environment or another — "Freigabe ansehen" stays beside it, and that is where it is revoked.
+
+The embedded diagnosis lists the refused steps and offers each act once. A repair the engine can
+compute is its step's own button — it files a different repair for each step. What does the same
+whichever step asks for it stands once under the list: "Reparatur prüfen" (the filed repairs wait
+in one review sheet), the trial run (one run for the version) and "Im Chat beheben" (one
+conversation that names every step an author has to change). A run that refused several steps is
+linked at the first. Where the trial run needs a sample call, "Freigabe öffnen" appears only if
+the panel's own action is not already the way into the approval.
 
 **The approval dialog says what it is about to do.** Where opening it starts a trial run, or needs
 a sample call because only a webhook starts the workflow, one line beside the opener says so
@@ -556,6 +573,16 @@ The shared contract is copied into each repository; no Cockpit imports another p
 
 ### Action hierarchy
 
+- **An action exists once per view.** Never the same action — the same label or the same
+  effect — beside the title and again in a section, or as a button and again as a "Zur …" link.
+  The header carries the page's own action; a section's action lives in that section; every
+  other place that speaks about the same thing shows its status — a sentence, a badge — and no
+  trigger. A link that only scrolls to the section holding the action is a second trigger.
+  A row's own action in a list of rows (copy this block, revoke this approval, repair this step)
+  is one action per row; the markup marks such a row with `data-action-scope`. A menu, a dialog
+  and a sheet are views of their own. The visual stands enforce the rule on the rendered page
+  (`scripts/lib/cockpit-single-trigger.mjs`): no two visible triggers share an accessible name
+  or an address, and the approval dialog has one opener.
 - A page has at most one filled primary action. Secondary actions use `outline`; low-emphasis and
   compact actions use `ghost`. Destructive styling is reserved for irreversible actions.
 - Selection uses neutral `muted` surfaces. Blue is reserved for focus, links and charts.

@@ -7,8 +7,8 @@ import { absolute, chatNewHref, WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
+import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import {
-  DiagnosisTitleAction,
   type WorkflowDiagnosis,
   WorkflowGateDiagnosis,
   workflowDiagnosisQuery,
@@ -32,6 +32,7 @@ import {
   automationState,
 } from "@/lib/automation-state";
 import { cronWords } from "@/lib/cron-words";
+import { diagnosisActs } from "@/lib/gate-diagnosis";
 import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -65,15 +66,18 @@ export interface WorkflowAutomation {
   grantShown: boolean;
   setGrantShown: (shown: boolean) => void;
   resume: { pending: boolean; failed: boolean; run: (scheduleIds: readonly string[]) => void };
+  /** The steps whose computed repair was refused: only an author can change them now. */
+  rejectedRepairs: readonly string[];
+  noteRejectedRepair: (stepId: string) => void;
   /** Re-reads everything the state rests on, after it was changed. */
   refresh: () => void;
 }
 
 /**
  * The reads behind a workflow's automation state, and the one decision made
- * from them (`lib/automation-state.ts`). Called once per page: the panel and
- * the action beside the title receive the same object, so they show the same
- * state and open the same dialog.
+ * from them (`lib/automation-state.ts`). Called once per page: the panel
+ * shows the state and carries its action, and whatever else on the page speaks
+ * about the state reads this object instead of deciding again.
  */
 export function useWorkflowAutomation(
   workflowId: string,
@@ -88,6 +92,7 @@ export function useWorkflowAutomation(
   }, []);
   const [grantRequest, setGrantRequest] = useState(0);
   const [grantShown, setGrantShown] = useState(false);
+  const [rejectedRepairs, setRejectedRepairs] = useState<readonly string[]>([]);
 
   const authorities = useInfiniteQuery({
     queryKey: ["workflow-authorities", workflowId],
@@ -245,14 +250,17 @@ export function useWorkflowAutomation(
       failed: resume.isError,
       run: (scheduleIds) => resume.mutate(scheduleIds),
     },
+    rejectedRepairs,
+    noteRejectedRepair: (stepId) =>
+      setRejectedRepairs((steps) => (steps.includes(stepId) ? steps : [...steps, stepId])),
     refresh,
   };
 }
 
 /**
- * One action of the automation state, as a button — the same component in the
- * panel and beside the title, so the label, the permission and what the press
- * does cannot differ between the two.
+ * One action of the automation state, as a button. It stands where the state
+ * is shown — the panel, or the chat's review card — and nowhere else in the
+ * same view: a second trigger for the same act is a defect, not a shortcut.
  *
  * `outline`, never filled: the page's one filled action is "Ausführen".
  */
@@ -260,12 +268,10 @@ export function AutomationActionButton({
   automation,
   action,
   testId,
-  size = "default",
 }: {
   automation: WorkflowAutomation;
   action: AutomationAction;
   testId: string;
-  size?: "default" | "sm";
 }) {
   const { t } = useI18n();
   const label = t(automationActionKey(action));
@@ -274,7 +280,7 @@ export function AutomationActionButton({
       return automation.canWrite ? (
         <Button
           variant="outline"
-          size={size}
+          size="sm"
           disabled={automation.resume.pending}
           onClick={() => automation.resume.run(action.scheduleIds)}
           data-testid={testId}
@@ -287,14 +293,20 @@ export function AutomationActionButton({
     case "grant":
     case "extend":
       return automation.canWrite && automation.state?.target ? (
-        <Button variant="outline" size={size} onClick={automation.openGrant} data-testid={testId}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={automation.openGrant}
+          data-testid={testId}
+          {...OPENS_APPROVAL}
+        >
           <ShieldCheck data-icon="inline-start" />
           {label}
         </Button>
       ) : null;
     case "view":
       return (
-        <Button variant="outline" size={size} onClick={automation.showGrant} data-testid={testId}>
+        <Button variant="outline" size="sm" onClick={automation.showGrant} data-testid={testId}>
           {label}
         </Button>
       );
@@ -304,55 +316,41 @@ export function AutomationActionButton({
 }
 
 /**
- * The action beside the page title while the automation state has a pending
- * step: the panel's own primary action, performing the same act. Null in a
- * calm state — the caller then shows the page's ordinary action.
+ * Whether the panel shows the way to an author instead of an act of its own:
+ * a version in an earlier format, or a refusal the diagnosis does not name.
  */
-export function AutomationTitleAction({
-  automation,
-  action,
-  workflowName,
-}: {
-  automation: WorkflowAutomation;
-  action: AutomationAction;
-  workflowName: string;
-}) {
-  const { t } = useI18n();
-  if (action.kind !== "repair")
-    return (
-      <AutomationActionButton automation={automation} action={action} testId="detail-action" />
-    );
-  // A block the diagnosis names: its own act. One it does not name — the
-  // engine reported a refusal the diagnosis could not explain, or the version
-  // is stored in an earlier format — goes to an author.
-  const legacy = automation.state?.state === "legacy";
-  if (automation.diagnosis?.diagnoses[0] && automation.state && !legacy)
-    return (
-      <DiagnosisTitleAction
-        diagnosis={automation.diagnosis}
-        environment={automation.state.environment}
-        via={action.via}
-      />
-    );
-  return automation.canChat ? (
-    // The page's one filled action where "Ausführen" cannot be offered.
-    <Button asChild variant={legacy ? "default" : "outline"}>
-      <a
-        href={absolute(
-          chatNewHref({
-            workflowId: automation.workflowId,
-            prompt: t(legacy ? "automation.legacyPrompt" : "automation.repairPrompt", {
-              name: workflowName,
-            }),
-          }),
-        )}
-        data-testid="detail-action"
-      >
-        <Bot data-icon="inline-start" />
-        {t("remedy.chat")}
-      </a>
-    </Button>
-  ) : null;
+function panelLeadsToAuthor(automation: WorkflowAutomation): boolean {
+  const { state } = automation;
+  return (
+    state?.primaryAction?.kind === "repair" &&
+    (state.state === "legacy" || !automation.diagnosis?.diagnoses[0])
+  );
+}
+
+/**
+ * The remedies the panel itself carries. A cause block on the same page
+ * leaves these to it: the same remedy offered twice is two triggers for one
+ * act.
+ */
+export function automationPanelOffers(automation: WorkflowAutomation): {
+  reviewRepair: boolean;
+  chat: boolean;
+} {
+  const { state, diagnosis } = automation;
+  if (!state) return { reviewRepair: false, chat: false };
+  // A version in an earlier format is not judged by the gate: no diagnosis.
+  const acts =
+    diagnosis && state.state !== "legacy"
+      ? diagnosisActs(
+          diagnosis,
+          { write: automation.canWrite, run: automation.canRun, chat: automation.canChat },
+          automation.rejectedRepairs,
+        )
+      : null;
+  return {
+    reviewRepair: acts?.review ?? false,
+    chat: automation.canChat && (panelLeadsToAuthor(automation) || (acts?.author.length ?? 0) > 0),
+  };
 }
 
 const STATE_TONE: Record<AutomationStateKind, string> = {
@@ -455,10 +453,10 @@ function TriggerLine({
 
 /**
  * "Automatischer Betrieb": whether this workflow may run on its own — one
- * state, the facts that head it, and one action. It replaces the jump link
- * beside the title, the section button that stayed after an approval and the
- * "review needed" badges; the gate's diagnosis and the current approval are
- * embedded here, so nothing about the approval is said in a second place.
+ * state, the facts that head it, and one action. The action stands here and
+ * nowhere else on the page: not beside the title, not as a link in another
+ * section. The gate's diagnosis and the current approval are embedded here,
+ * so nothing about the approval is said or offered in a second place.
  */
 export function AutomationPanel({
   automation,
@@ -533,8 +531,7 @@ function PanelBody({
   // second one here would be the same press twice. Only a refusal the
   // diagnosis does not name gets the way to an author.
   const legacy = state.state === "legacy";
-  const unnamedRepair =
-    state.primaryAction?.kind === "repair" && (legacy || !automation.diagnosis?.diagnoses[0]);
+  const toAuthor = panelLeadsToAuthor(automation);
   const actions = [
     { action: state.primaryAction, testId: "workflow-automation-action" },
     { action: state.secondaryAction, testId: "workflow-automation-secondary" },
@@ -585,12 +582,13 @@ function PanelBody({
               key={testId}
               automation={automation}
               action={action}
-              size="sm"
               testId={testId}
             />
           ))}
-          {unnamedRepair && automation.canChat ? (
-            <Button asChild variant="outline" size="sm">
+          {toAuthor && automation.canChat ? (
+            // Filled only where "Ausführen" cannot be offered: the way out of
+            // an earlier format is then the page's one filled action.
+            <Button asChild variant={legacy ? "default" : "outline"} size="sm">
               <a
                 href={absolute(
                   chatNewHref({
@@ -646,7 +644,15 @@ function PanelBody({
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}
           environment={state.environment}
-          onOpenApproval={automation.canWrite && target ? automation.openGrant : undefined}
+          // The approval has one opener in the panel. Where the state's own
+          // action is that opener, the diagnosis names it and adds none.
+          onOpenApproval={
+            automation.canWrite && target && !opensApproval ? automation.openGrant : undefined
+          }
+          // "Erneut prüfen" above re-reads the diagnosis with everything else.
+          ownRetry={state.state !== "unknown"}
+          rejectedRepairs={automation.rejectedRepairs}
+          onRepairRejected={automation.noteRejectedRepair}
         />
       )}
       {automation.grantShown && current.length > 0 ? (

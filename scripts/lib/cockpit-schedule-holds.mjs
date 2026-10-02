@@ -1,3 +1,5 @@
+import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
+
 /** Database enforcement is covered by the scheduler and HTTP integration suites. */
 export async function verifyScheduleHolds(page, stand, workflowId, locale, capture) {
   const schedulePattern = "**/v1/schedules*";
@@ -147,7 +149,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
     // The held schedule is the page's one state — "approval needed" — with the
-    // one action that resolves it, in the panel and beside the title alike.
+    // one action that resolves it, in the panel and nowhere else on the page.
     // No badge repeats it, and nothing only scrolls to it.
     const automation = page.getByTestId("workflow-automation");
     await page.getByTestId("workflow-automation-action").waitFor();
@@ -156,9 +158,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
         `A held schedule reads as "${await automation.getAttribute("data-state")}", not as approval needed`,
       );
     const approve = locale === "de" ? "Jetzt freigeben" : "Approve now";
-    for (const testId of ["workflow-automation-action", "detail-action"])
-      if ((await page.getByTestId(testId).innerText()).trim() !== approve)
-        throw new Error(`${testId} does not offer the approval the held schedule waits for`);
+    if ((await page.getByTestId("workflow-automation-action").innerText()).trim() !== approve)
+      throw new Error("The panel does not offer the approval the held schedule waits for");
+    await page.waitForLoadState("networkidle");
+    await assertSingleTriggers(page, `${locale}/schedule-held workflow page`, {
+      approvalOpeners: 1,
+    });
     if (await page.getByTestId("authority-schedule-held").count())
       throw new Error("The held schedule is announced a second time by a badge");
     if (

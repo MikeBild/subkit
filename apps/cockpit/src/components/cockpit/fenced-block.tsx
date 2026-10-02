@@ -41,6 +41,8 @@ export function FencedBlock({
       className={cn("min-w-0 overflow-hidden rounded-xl border bg-muted/40", className)}
       data-testid={testId}
       data-language={language}
+      // Each block's copy button copies that block.
+      data-action-scope="fenced-block"
     >
       <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
         <span className="min-w-0 truncate text-xs text-muted-foreground">{label}</span>
