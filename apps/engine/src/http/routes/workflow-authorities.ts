@@ -10,6 +10,7 @@ import {
 import { can } from "../../rbac/index.ts";
 import {
   inboundHookAutomationView,
+  inboundHookDeliveryRate,
   nextScheduleFire,
   workflowAutomationView,
 } from "../../scheduler/index.ts";
@@ -141,6 +142,20 @@ const previewSchema = z
       valid_until: z.string().datetime(),
       max_runs: z.number().int(),
     }),
+    // Where the suggestion comes from, so the review can say it in one line.
+    // Beside the bounds, not inside them: the bounds are exactly what a grant
+    // accepts, and a client may send them back as they are.
+    suggested_bounds_basis: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("manual") }),
+      z.object({ kind: z.literal("schedule"), scheduled_runs: z.number().int() }),
+      z.object({
+        kind: z.literal("hook"),
+        scheduled_runs: z.number().int(),
+        observed_deliveries: z.number().int(),
+        observed_days: z.number().int(),
+        minimum_applied: z.boolean(),
+      }),
+    ]),
   })
   .openapi("WorkflowAuthorityPreview");
 const failures = Object.fromEntries(
@@ -711,6 +726,14 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
             eq(workflowsSchedules.execution_mode, c.req.valid("query").environment),
           ),
         );
+      const { basis, ...suggested_bounds } = suggestAuthorityBounds(
+        new Date(now),
+        schedules,
+        // Hooks deliver to production only; a development review has none.
+        c.req.valid("query").environment === "prod"
+          ? await inboundHookDeliveryRate(principal.tenant_id, id, c.get("db"), new Date(now))
+          : null,
+      );
       return c.json(
         {
           ...result,
@@ -724,7 +747,8 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
             timezone: schedule.timezone,
             next_run_at: nextScheduleFire(schedule, new Date(now)),
           })),
-          suggested_bounds: suggestAuthorityBounds(new Date(now), schedules),
+          suggested_bounds,
+          suggested_bounds_basis: basis,
         },
         200,
       );

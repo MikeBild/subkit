@@ -25,6 +25,7 @@ import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts"
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import { scheduleBindingState } from "../scheduler/trigger-bindings.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
+import { type ApprovalFact, readApprovalFacts } from "./approval-readers.ts";
 import type {
   AttentionAction,
   AttentionClass,
@@ -49,6 +50,11 @@ export const attentionHref = {
   // Item ids are `<kind>:<uuid>` or a bare word — query-safe as they stand, and
   // left readable (`?review=workflow:<id>`) rather than percent-encoded.
   review: (id: string) => `/cockpit?review=${id}`,
+  // The workflow page at its "automatic operation" panel — where an approval is
+  // given or extended. The fragment is the panel's element id in the cockpit
+  // (`WORKFLOW_AUTOMATION_ANCHOR`); its link test pins the two together.
+  automation: (workflowId: string) =>
+    `/cockpit/workflows/${encodeURIComponent(workflowId)}#workflow-automation`,
   conversation: (id: string) => `/cockpit/chat/${encodeURIComponent(id)}`,
   newChat: (workflowId: string, executionId: string) =>
     `/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}&execution_id=${encodeURIComponent(executionId)}`,
@@ -95,12 +101,15 @@ interface WorkflowFacts {
   trigger: AttentionItem["trigger"];
   groups: DigestFailureGroup[];
   patches: { count: number; oldest: Date } | null;
+  /** Nothing refused yet: the running version is unapproved, or its approval is ending. */
+  approval: ApprovalFact | null;
 }
 
 /**
- * Held schedules, failing scheduled workflows and open patch decisions, merged
- * into one item per workflow. They are three facts about one subject; three
- * items would give one workflow three ids and three places to act on it.
+ * Held schedules, failing scheduled workflows, open patch decisions and the
+ * approval that is missing or ending, merged into one item per workflow. They
+ * are facts about one subject; an item each would give one workflow several
+ * ids and several places to act on it.
  */
 async function readWorkflowFacts(
   db: Db,
@@ -125,12 +134,13 @@ async function readWorkflowFacts(
       trigger: null,
       groups: [],
       patches: null,
+      approval: null,
     };
     facts.set(id, created);
     return created;
   };
 
-  const [held, heldHooks, groups, patches] = await Promise.allSettled([
+  const [held, heldHooks, groups, patches, approvals] = await Promise.allSettled([
     // The overview's `blocked` predicate, row for row: held schedules, then
     // hooks whose deliveries the authority gate refuses.
     db
@@ -184,10 +194,19 @@ async function readWorkflowFacts(
       failingScheduledGroups,
     ),
     readOpenPatchDecisions(db, tenantId),
+    readApprovalFacts(db, tenantId, now),
   ]);
 
-  if (held.status === "fulfilled" && heldHooks.status === "fulfilled") {
+  // The same source as the holds: both say whether automatic starts are
+  // admitted, and a list missing either half must not read as complete.
+  if (
+    held.status === "fulfilled" &&
+    heldHooks.status === "fulfilled" &&
+    approvals.status === "fulfilled"
+  ) {
     sources.schedules = "answered";
+    for (const fact of approvals.value.values())
+      factFor(fact.workflow_id, fact.name).approval = fact;
     const holds = [
       ...held.value.map((row) => ({ ...row, trigger: { kind: "schedule" as const, name: null } })),
       ...heldHooks.value.map((row) => ({
@@ -254,13 +273,21 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   // Groups arrive most frequent first; the dominant cause speaks for the item.
   const lead = fact.groups[0] ?? null;
   const klass: AttentionClass = fact.held ? "stopped" : failures > 0 ? "failing" : "decide";
+  // The approval fact speaks only when nothing stronger does: a hold is the
+  // same thing already refused, a failure or an open fix is acted on first —
+  // and applying a fix makes a new version, which then waits here itself.
+  const approval = !fact.held && failures === 0 && patches === 0 ? fact.approval : null;
   const reason: AttentionReason = fact.held
     ? fact.held.reason_code === "execution_authority_unavailable"
       ? "execution_authority_unavailable"
       : "execution_authority_required"
     : failures > 0
       ? "failing"
-      : "patch_proposed";
+      : approval
+        ? approval.kind === "awaiting"
+          ? "version_awaiting_approval"
+          : "approval_expiring"
+        : "patch_proposed";
   const id = `workflow:${fact.id}`;
 
   // Remedy order: a held schedule and a proposed fix are decided in the review
@@ -288,6 +315,15 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       primary: true,
       permission: "conversation:write",
     });
+  } else if (approval) {
+    // Approving happens on the workflow's page, in its automation panel: the
+    // panel says whether the next step is the approval itself or a repair.
+    actions.push({
+      verb: "open",
+      href: attentionHref.automation(fact.id),
+      primary: true,
+      permission: "workflow:write",
+    });
   }
   if (failures > 0) {
     actions.push({
@@ -307,19 +343,27 @@ function workflowItem(fact: WorkflowFacts): Candidate {
     item: {
       id,
       class: klass,
-      severity: klass === "stopped" ? "critical" : "urgent",
+      // An approval that is ending is the one thing here nothing waits on yet.
+      severity:
+        klass === "stopped" ? "critical" : approval?.kind === "expiring" ? "notice" : "urgent",
       kind: "workflow",
       subject: { kind: "workflow", id: fact.id, name: fact.name },
       reason,
-      trigger: fact.held ? fact.trigger : null,
+      trigger: fact.held ? fact.trigger : (approval?.trigger ?? null),
+      ...(approval
+        ? { approval: { version: approval.version, environment: approval.environment } }
+        : {}),
       cause_class: lead?.cause_class ?? null,
       counts,
-      since: minIso([
-        fact.held?.observed_at,
-        ...fact.groups.map((group) => group.first_seen),
-        fact.patches?.oldest.toISOString(),
-      ]),
-      deadline: null,
+      since: approval
+        ? approval.since
+        : minIso([
+            fact.held?.observed_at,
+            ...fact.groups.map((group) => group.first_seen),
+            fact.patches?.oldest.toISOString(),
+          ]),
+      // The next automatic start, or the end of the last approval.
+      deadline: approval?.deadline ?? null,
       detail: lead?.cause ?? null,
       actions,
     },

@@ -21,7 +21,8 @@
 //   3. repair    the gate refuses a step. This holds even while an approval
 //                exists: the diagnosis includes the refused step of the newest
 //                approved run ("the approval no longer fits").
-//   4. unknown   the engine could not verify readiness. Never read as approved.
+//   4. unknown   the engine could not verify readiness, or a read the verdict
+//                rests on did not answer. Never read as approved.
 //   5. grant     something starts it automatically and no approval covers it.
 //   6. approved  a current approval covers the running version.
 //   7. manual    nothing starts it automatically and nothing is approved — a
@@ -101,6 +102,13 @@ export interface AutomationInputs {
   authorities: readonly WorkflowAuthority[] | null;
   /** `GET …/diagnosis` for `automationEnvironment(...)` — null until it answered. */
   diagnosis: { is_current: boolean; diagnoses: readonly GateDiagnosis[] } | null;
+  /**
+   * Reads that were made and did not answer. A failed read and a read the
+   * reader may not make both leave `null` behind, and they are not the same:
+   * without permission the state is decided from what remains; after a failure
+   * "no block" and "no refusal" are guesses, and the state is `unknown`.
+   */
+  unanswered: { status: boolean; diagnosis: boolean };
   now: number;
 }
 
@@ -165,20 +173,42 @@ export interface AutomationState {
   /** Every other approval — expired, revoked, used up, or for another version. */
   history: WorkflowAuthority[];
   triggers: AutomationTrigger[];
+  /**
+   * The environments a decision is pending in, production first. One entry is
+   * the ordinary case; two means starts in both halves of the installation
+   * wait at once. Empty while nothing is pending.
+   */
+  pendingEnvironments: ReviewEnvironment[];
   /** The one action that moves the state forward. Null when there is none. */
   primaryAction: AutomationAction | null;
   /**
    * At most one further action: extending an approval that is running out, or
-   * looking at the existing approval while another step is pending.
+   * looking at an approval that is still valid while another step is pending.
    */
   secondaryAction: AutomationAction | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** An approval is offered for extension this long before it ends … */
-export const EXTEND_WITHIN_MS = 3 * DAY_MS;
+// The same thresholds the engine raises its attention item on
+// (`apps/engine/src/workflows/authority-extension.ts`); the test pins them.
+/** An approval is offered for extension this many days before it ends … */
+export const EXTEND_WITHIN_DAYS = 3;
+export const EXTEND_WITHIN_MS = EXTEND_WITHIN_DAYS * DAY_MS;
 /** … or once fewer than this share of its runs is left. */
 export const EXTEND_BELOW_RUN_SHARE = 0.1;
+
+/**
+ * Whether an approval admits a run of the running version right now. The
+ * server's state already folds in a changed effect manifest; the local clock
+ * may only narrow it.
+ */
+export function authorityIsLive(authority: WorkflowAuthority, now: number): boolean {
+  return (
+    authority.active_version &&
+    authority.ready_for_new_run &&
+    observedAuthorityState(authority, now) === "approved"
+  );
+}
 
 /** Whether a current approval is close enough to its end to offer extending it. */
 export function grantNeedsExtension(
@@ -241,11 +271,53 @@ export function automationTriggers(
   ];
 }
 
+/** Production first: it is where an unattended run has real effects. */
+function productionFirst(environments: Iterable<ReviewEnvironment>): ReviewEnvironment[] {
+  const set = new Set(environments);
+  return (["prod", "dev"] as const).filter((environment) => set.has(environment));
+}
+
+/** The environments of the verified rows that still wait for a decision. */
+function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvironment[] {
+  if (!status) return [];
+  return productionFirst(
+    [...status.schedules, ...status.inbound_hooks]
+      .filter((row) => row.state !== "paused" && row.state !== "authorized")
+      .map((row) => row.environment),
+  );
+}
+
+/**
+ * Without verified rows: the environments something starts the workflow in
+ * that no current approval covers. The approvals list is then the only
+ * evidence, and it has to cover every environment — an approval for
+ * production says nothing about a schedule in development.
+ */
+function uncoveredEnvironments(
+  input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
+): ReviewEnvironment[] {
+  if (input.status) return [];
+  const started = productionFirst([
+    ...automationTriggers(null, input.schedules)
+      .filter((trigger) => !trigger.paused)
+      .map((trigger) => trigger.environment),
+    ...((input.workflow.webhooks_active ?? 0) > 0 ? (["prod"] as const) : []),
+  ]);
+  return started.filter(
+    (environment) =>
+      !(input.authorities ?? []).some(
+        (authority) =>
+          authority.execution_environment === environment && authorityIsLive(authority, input.now),
+      ),
+  );
+}
+
 /**
  * The environment automatic runs use, and so the one the approval and the
  * diagnosis are judged in: a hook's deliveries always run in production; a
  * schedule names its own; without either, the workflow's approvals say where
- * it belongs (`reviewEnvironment`).
+ * it belongs (`reviewEnvironment`). While a verified row still waits for a
+ * decision, that row's environment leads.
  *
  * Needs only what the page reads before the diagnosis, so the diagnosis can be
  * asked for the right half of the installation.
@@ -253,6 +325,11 @@ export function automationTriggers(
 export function automationEnvironment(
   input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
 ): ReviewEnvironment {
+  // Where something is still pending decides. With a schedule approved in
+  // production and one waiting in development, naming production would say
+  // "production is not approved" and open an approval that changes nothing.
+  const [pending] = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
+  if (pending) return pending;
   const triggers = automationTriggers(input.status, input.schedules);
   const running = triggers.filter((trigger) => !trigger.paused);
   const pool = running.length > 0 ? running : triggers;
@@ -262,7 +339,12 @@ export function automationEnvironment(
   return reviewEnvironment(input.authorities ?? [], undefined, new Date(input.now));
 }
 
-function repairAction(
+/**
+ * The act that removes one block of the gate diagnosis. A repair the engine
+ * can compute is offered only for the running version: a saved change gets its
+ * fix described, never proposed.
+ */
+export function automationRepairAction(
   entry: GateDiagnosis | undefined,
   isCurrent: boolean,
 ): Extract<AutomationAction, { kind: "repair" }> {
@@ -280,13 +362,8 @@ export function automationState(input: AutomationInputs): AutomationState {
   const target = reviewTarget(workflow, input.draft);
   const triggers = automationTriggers(input.status, input.schedules);
   const authorities = input.authorities ?? [];
-  // The approval that covers the running version here and now. The server's
-  // state already folds in a changed effect manifest; the local clock may only
-  // narrow it.
-  const live = (authority: WorkflowAuthority) =>
-    authority.active_version &&
-    authority.ready_for_new_run &&
-    observedAuthorityState(authority, now) === "approved";
+  // The approval that covers the running version here and now.
+  const live = (authority: WorkflowAuthority) => authorityIsLive(authority, now);
   const grant =
     authorities.find(
       (authority) => authority.execution_environment === environment && live(authority),
@@ -315,15 +392,24 @@ export function automationState(input: AutomationInputs): AutomationState {
     : [];
   const blocks = input.diagnosis?.diagnoses ?? [];
 
+  // Where the pending step is decided: the verified rows that still wait, else
+  // every environment something starts it in, else the one the state names.
+  const pendingRows = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
+  const startedIn = productionFirst([
+    ...running.map((trigger) => trigger.environment),
+    ...(hiddenHooks ? (["prod"] as const) : []),
+  ]);
   const base = {
     environment,
     target,
     triggers,
     secondaryAction: null,
+    pendingEnvironments: pendingRows.length > 0 ? pendingRows : [environment],
   } satisfies Partial<AutomationState>;
-  // While something else is pending, an approval that exists stays one press
-  // away: it is the evidence a reader checks the pending step against.
-  const viewGrant: AutomationAction | null = grant ? { kind: "view" } : null;
+  // While something else is pending, an approval that is still valid stays one
+  // press away — for this environment or another: it is the evidence a reader
+  // checks the pending step against, and the only place it can be revoked.
+  const viewGrant: AutomationAction | null = authorities.some(live) ? { kind: "view" } : null;
   const facts = {
     version: workflow.current_version ?? null,
     preparedVersion: null,
@@ -344,6 +430,9 @@ export function automationState(input: AutomationInputs): AutomationState {
       state: "paused",
       facts,
       ...shown(grant),
+      pendingEnvironments: [],
+      // A stopped hook cannot be switched back on from here — the engine has
+      // no such act — so a hook-only workflow gets a hint and no button.
       primaryAction: scheduleIds.length > 0 ? { kind: "resume", scheduleIds } : null,
       secondaryAction: viewGrant,
     };
@@ -357,6 +446,8 @@ export function automationState(input: AutomationInputs): AutomationState {
       state: "apply",
       facts: { ...facts, preparedVersion: target.version },
       ...shown(grant),
+      // The change is new everywhere it will run.
+      pendingEnvironments: startedIn.length > 0 ? startedIn : [environment],
       primaryAction: { kind: "apply" },
       secondaryAction: viewGrant,
     };
@@ -366,7 +457,7 @@ export function automationState(input: AutomationInputs): AutomationState {
   const needsRepair =
     blocks.length > 0 || rows.some((row) => row === "repair_required" || row === "input_required");
   if (needsRepair) {
-    const action = repairAction(blocks[0], input.diagnosis?.is_current ?? false);
+    const action = automationRepairAction(blocks[0], input.diagnosis?.is_current ?? false);
     return {
       ...base,
       state: "repair",
@@ -378,11 +469,27 @@ export function automationState(input: AutomationInputs): AutomationState {
   }
 
   // 4. Not verifiable is not approved — and not calm either: when neither
-  //    read of the schedules answered, "nothing starts it" is a guess.
+  //    read of the schedules answered, "nothing starts it" is a guess. The
+  //    same holds for a read that failed: an unread diagnosis is not "no
+  //    block", and an unread status is not "nothing refused".
+  const unknown = (): AutomationState => ({
+    ...base,
+    state: "unknown",
+    facts,
+    ...shown(null),
+    pendingEnvironments: [],
+    primaryAction: null,
+    secondaryAction: viewGrant,
+  });
   const triggersUnread = input.schedules === null && input.status === null;
-  if (input.authorities === null || triggersUnread || rows.includes("verification_unavailable")) {
-    return { ...base, state: "unknown", facts, ...shown(null), primaryAction: null };
-  }
+  if (
+    input.authorities === null ||
+    triggersUnread ||
+    input.unanswered.status ||
+    input.unanswered.diagnosis ||
+    rows.includes("verification_unavailable")
+  )
+    return unknown();
 
   const inactive = workflow.lifecycle !== "active" || !workflow.current_version_id;
   const approvedFacts = grant
@@ -398,6 +505,7 @@ export function automationState(input: AutomationInputs): AutomationState {
     state: "approved",
     facts: approvedFacts,
     ...shown(grant),
+    pendingEnvironments: [],
     primaryAction: grant ? { kind: "view" } : null,
     secondaryAction: grant && grantNeedsExtension(grant, now) ? { kind: "extend" } : null,
   });
@@ -410,22 +518,66 @@ export function automationState(input: AutomationInputs): AutomationState {
       state: "manual",
       facts: { ...facts, inactive: true },
       ...shown(null),
+      pendingEnvironments: [],
       primaryAction: null,
+      secondaryAction: viewGrant,
     };
   }
+
+  const needsGrant = (): AutomationState => ({
+    ...base,
+    state: "grant",
+    facts,
+    ...shown(null),
+    primaryAction: { kind: "grant" },
+    secondaryAction: viewGrant,
+  });
 
   if (hasAutomation) {
     // The engine's verified answer decides where it is available: an approval
     // in the list that the status does not confirm is not one a run would use.
     const verified = rows.length > 0;
     const allAuthorized = verified && rows.every((row) => row === "authorized");
+    // A hook the reader may not list is judged by no row. Its deliveries run
+    // in production: an authorized production row answers for it (the same
+    // version, the same approval); authorized development rows do not.
+    const hookUnverified =
+      hiddenHooks &&
+      allAuthorized &&
+      !(input.status?.schedules ?? []).some(
+        (row) => row.environment === "prod" && row.state === "authorized",
+      );
+    // No approval for production in the list: the hook has none. One in the
+    // list that no row confirms is neither — say so rather than guess.
+    if (hookUnverified) return grant ? unknown() : needsGrant();
     if (verified ? allAuthorized : grant !== null) return approved();
-    return { ...base, state: "grant", facts, ...shown(null), primaryAction: { kind: "grant" } };
+    return needsGrant();
   }
 
   // 6./7. Nothing starts it automatically.
   if (grant) return approved();
-  return { ...base, state: "manual", facts, ...shown(null), primaryAction: { kind: "grant" } };
+  return {
+    ...base,
+    state: "manual",
+    facts,
+    ...shown(null),
+    primaryAction: { kind: "grant" },
+    secondaryAction: viewGrant,
+  };
+}
+
+/**
+ * Whether the approval the state rests on is still out of sight: the engine
+ * confirms every start is approved, but the approval is not among the ones
+ * read so far. The list arrives newest first, a page at a time — an approval
+ * older than a page of later ones is still the one in force, and "approved"
+ * without its end and its runs would be a claim with nothing behind it.
+ */
+export function automationNeedsMoreApprovals(
+  state: Pick<AutomationState, "state" | "grant">,
+  hasMore: boolean,
+): boolean {
+  return hasMore && state.state === "approved" && state.grant === null;
 }
 
 /**
@@ -508,15 +660,112 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
 }
 
 /**
- * The same state in the vocabulary the chat's review card already uses
- * (`chatAutomationSummary`), so a card can be driven by this decision.
+ * What the chat's review card says and offers — the page's own next step.
+ *
+ *   review   open the approval dialog, once per pending environment
+ *   resume   resume the paused schedules — the panel's own act
+ *   recheck  read the state again: it could not be verified
+ *   none     nothing to press: approved, on request, or a stopped hook
  */
-export function automationSummary(
-  state: AutomationStateKind,
-): "authorized" | "repair" | "review" | "apply" | "unknown" {
-  if (state === "approved") return "authorized";
-  if (state === "repair") return "repair";
-  if (state === "grant") return "review";
-  if (state === "apply") return "apply";
-  return "unknown";
+export interface AutomationCard {
+  titleKey: TranslationKey;
+  hintKey: TranslationKey;
+  act: "review" | "resume" | "recheck" | "none";
+  /** The label of the one button, while a single environment is pending. */
+  actionKey: TranslationKey;
+  /** The environments to decide in, production first. Empty unless `review`. */
+  environments: ReviewEnvironment[];
+}
+
+/**
+ * The review card for a state. A pending decision gives one button named for
+ * the step (two only when both environments wait); every other state says
+ * what the page says and offers what the page offers — never the approval
+ * dialog for a workflow that is paused, on request or simply not verified.
+ * What an approval would allow is said for what really starts the workflow: a
+ * schedule, a webhook, or both.
+ */
+export function automationCard(
+  state: AutomationState,
+  webhooksActive: number | null | undefined,
+): AutomationCard {
+  const calm: Pick<AutomationCard, "act" | "actionKey" | "environments"> = {
+    act: "none",
+    actionKey: "automation.action.view",
+    environments: [],
+  };
+  const review = (
+    summary: "repair" | "review" | "apply",
+    hintKey: TranslationKey,
+    actionKey: TranslationKey,
+  ): AutomationCard => ({
+    titleKey: `chat.automationCard.${summary}.title`,
+    hintKey,
+    act: "review",
+    actionKey,
+    environments:
+      state.pendingEnvironments.length > 0 ? state.pendingEnvironments : [state.environment],
+  });
+  switch (state.state) {
+    case "approved":
+      return {
+        ...calm,
+        titleKey: "chat.automationCard.authorized.title",
+        hintKey: "chat.automationCard.authorized.hint",
+      };
+    case "manual":
+      return {
+        ...calm,
+        titleKey: AUTOMATION_STATE_KEYS.manual,
+        hintKey: state.facts.inactive
+          ? "automation.headline.inactive"
+          : "automation.headline.manual",
+      };
+    case "paused": {
+      const resumable = state.primaryAction?.kind === "resume";
+      return {
+        ...calm,
+        titleKey: AUTOMATION_STATE_KEYS.paused,
+        // Only a hook is stopped: said, with nothing to press.
+        hintKey: resumable ? "automation.headline.paused" : "automation.hookOff",
+        act: resumable ? "resume" : "none",
+        actionKey: "automation.action.resume",
+      };
+    }
+    case "unknown":
+      return {
+        ...calm,
+        titleKey: "chat.automationCard.unknown.title",
+        hintKey: "automation.headline.unknown",
+        act: "recheck",
+        actionKey: "automation.action.recheck",
+      };
+    case "apply":
+      return review(
+        "apply",
+        "chat.automationCard.apply.hint",
+        automationActionKey({ kind: "apply" }),
+      );
+    case "repair":
+      return review(
+        "repair",
+        "chat.automationCard.repair.hint",
+        "chat.automationCard.repair.action",
+      );
+    case "grant": {
+      const running = state.triggers.filter((trigger) => !trigger.paused);
+      const scheduled = running.some((trigger) => trigger.kind === "schedule");
+      const hooked =
+        running.some((trigger) => trigger.kind === "hook") || (webhooksActive ?? 0) > 0;
+      return review(
+        "review",
+        scheduled && !hooked
+          ? "chat.automationCard.review.hint.schedule"
+          : hooked && !scheduled
+            ? "chat.automationCard.review.hint.hook"
+            : "chat.automationCard.review.hint.any",
+        automationActionKey({ kind: "grant" }),
+      );
+    }
+  }
 }

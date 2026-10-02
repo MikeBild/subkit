@@ -165,6 +165,13 @@ sign-in leads to the connector, anything else opens the chat with the subject at
 permission to act the entry says so instead of offering a link. The engine's own wording is not on the
 entry.
 
+An approval is listed before anything is refused. A workflow whose schedule or webhook would start
+a version no approval covers is an entry at once — "… hat eine neue Fassung v4, die auf Freigabe
+wartet" — due at its next scheduled start; one whose approval ends within three days or has less
+than a tenth of its runs left is a quieter one. Both lead to the workflow page's automation panel
+with the step as their label ("Freigeben", "Verlängern"), never to a review sheet with nothing in
+it. The first refused start turns the same entry into the stopped one; a workflow never has two.
+
 The navigation badge is the number of entries. List headers carry no count, and no figure reads a
 bare zero.
 
@@ -350,7 +357,15 @@ line stands on the page") was written for a page about credentials, where a comm
 Here the call is what the reader came for, so it stands in a real fenced block with a copy button.
 The same holds for a step's configuration and a run's output: they are payload, shown byte for byte.
 An identifier is allowed inside such a block and nowhere else on the page — the workflow's own id
-appears only in the call it is used in.
+appears only in the call it is used in. A header's value is payload too: a reference such as
+`Bearer {{credentials.token}}` is the configuration and is shown and copied as stored. The one
+value that is masked is a literal under a credential-shaped header name with no reference in it —
+a secret pasted into a definition, where it does not belong.
+
+The CLI tab says where its command runs: it names no environment and so runs in development, and
+the line points to the HTTP call for production. An input schema that names no fields is still
+input — the table says it is one value, and the run dialog offers it as one JSON field; a field
+that allows several types is a JSON field as well, never text by default.
 
 **One state, one action.** Whether a workflow may run on its own is decided once, in
 `src/lib/automation-state.ts`, from what the engine reports (the record, its schedules, the verified
@@ -366,6 +381,13 @@ automation status, the approvals, the gate diagnosis). The first that applies wi
 | Freigegeben | a current approval covers the running version | Freigabe ansehen |
 | Auf Abruf | nothing starts it automatically, nothing approved | (calm; the approval is offered, nothing asks for it) |
 
+"Nicht geprüft" also stands when a read the verdict rests on did not answer — the diagnosis, the
+verified status — and when the reader may not see a webhook that the visible rows do not answer
+for. A failed read is never "nothing to report": the panel says it could not verify and offers
+"Erneut prüfen". With starts in both environments, the state names the one that still waits, and
+the approval opens there. A workflow that is paused because only its webhook is switched off gets
+one line saying so and no button: the engine has no act that switches a hook back on.
+
 The panel says the state as one word and one line of facts (version, environment, valid until, runs
 left), names what starts the workflow, embeds the gate diagnosis and holds the current approval
 behind "Freigabe ansehen". **An approved workflow offers no approval button** — only "Freigabe
@@ -374,7 +396,27 @@ beside the title is the panel's own action while a step is pending, performing t
 calm state the title keeps its ordinary action (investigate the newest failed run, else "Im Chat
 ändern"). It is never a link that only scrolls to a section, and no badge repeats the state. A run
 whose cause is "Freigabe passt nicht mehr" leads to this panel. An approval's exact window and
-checksum stand behind "Details"; approvals that no longer admit a run are history, folded.
+checksum stand behind "Details"; approvals that no longer admit a run are history, folded. An
+approval that is still valid is never out of reach: while another step is pending — for this
+environment or another — "Freigabe ansehen" stays beside it, and that is where it is revoked.
+
+**The approval dialog says what it is about to do.** Where opening it starts a trial run, or needs
+a sample call because only a webhook starts the workflow, one line beside the opener says so
+before the press. Inside:
+
+- An approval that already covers the same version in the same environment heads the dialog —
+  "Bereits freigegeben bis … · N Läufe übrig" — and the action reads "Verlängern / Grenzen ändern".
+  A further approval is added beside the existing one, which stays valid until it ends or is
+  revoked; the dialog says so. It is never offered as if it were the first.
+- The scope is said where it is not the ordinary one: approving one environment while the
+  workflow is started in the other, and approving a saved change while another version runs (the
+  approval then puts the change into service).
+- One line beside the limits says where the suggestion comes from — the schedule's starts, or the
+  webhook's recent calls.
+- A version that cannot be approved offers the act that removes the refusal — the gate
+  diagnosis' own: repair automatically, review the repair, run the preparation again — as its
+  filled action, with "Ursache im Chat prüfen" beside it. Where the dialog already offers its own
+  repair for the same steps, that one stands alone.
 
 ### Error, cause, fix
 
@@ -533,6 +575,23 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 ### Chat decisions
 
 A pending `ask_user_confirm` is one interactive card, available both in the transcript and at the top of Working Context. Match its explicit `tool_call_id`; submit the elicitation ID to the canonical response endpoint. Show the question, short effect and explicit approve/reject buttons. Saving a workflow draft says “Save inactive version” and explains that it does not start the workflow. Technical parameters stay out of the default view. Both surfaces share processing, error and expiry states; prevent duplicate submissions. On completion refresh the canonical state and continue streamed activity. A completed request must not remain “Waiting” after reload.
+
+A workflow's review card (`review_workflow_automation`, and the run refusal that carries the same
+review) reads the workflow's current state from `src/lib/automation-state.ts` — the decision the
+workflow page makes — so the card and the page name the same next step, also when the card is read
+long after the tool ran. It has one button, named for that step ("Jetzt freigeben", "Änderung
+prüfen"). Two only when starts in both environments wait at once: "Produktion prüfen", filled and
+first, and "Entwicklung prüfen". A webhook-started workflow only ever offers production. The hint
+says to open the review — its content is in the dialog, not "below" — and names what an approval
+allows: scheduled runs, incoming webhook calls, or automatic runs for both. Only a pending
+decision opens the approval: an approved or on-request workflow gets no button, a paused one the
+page's own "Fortsetzen" (or the line about its switched-off webhook), and a state that could not
+be verified "Erneut prüfen".
+
+A card for a call that runs a workflow says what the call was. A preparation with every write
+held is "Probelauf ohne Wirkung", a call the engine turned away is "Lauf abgelehnt" with the
+engine's reason in the reader's words, and only a run that dispatched its writes is "Workflow
+ausgeführt". A person's or a permission's no stays "nicht ausgeführt".
 
 A pending `ask_user_choice` uses an explicit selection card in both places. Show every option and its one-line effect directly, including a grounded recommendation; do not hide the decision behind a dropdown. Selection has a visible checkmark and requires a separate submit action. Keep the answer bound to the original option value and request ID; choosing an option does not submit it. Disable the text composer with an actionable hint while a selection is required. After the server accepts the selection, show its readable label as the user response and the tool as “Answered”, including after reload. Refresh the conversation and the Übersicht's attention list after each completed response. A held workflow schedule stays open until its admission requirement is resolved; answering a question or saving an inactive draft is not a run authority. Show this remaining task with a link to the affected workflow in Working Context.
 

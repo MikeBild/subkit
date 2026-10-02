@@ -185,6 +185,8 @@ const REASON_KEYS = {
   awaiting_answer: "overview.reason.awaiting_answer",
   execution_authority_required: "overview.reason.execution_authority_required",
   execution_authority_unavailable: "overview.reason.execution_authority_unavailable",
+  version_awaiting_approval: "overview.reason.version_awaiting_approval",
+  approval_expiring: "overview.reason.approval_expiring",
   scheduler_stale: "overview.reason.scheduler_stale",
   failing: "overview.reason.failing",
   patch_proposed: "overview.reason.patch_proposed",
@@ -314,6 +316,24 @@ export function attentionSentence(
         since,
       };
     }
+    case "version_awaiting_approval": {
+      // Named for what would start it: a schedule, a webhook the reader may
+      // name, or — when its name is not theirs to read — any automatic start.
+      const version = item.approval ? `v${item.approval.version}` : "";
+      const key =
+        item.trigger?.kind === "inbound_hook"
+          ? item.trigger.name
+            ? "overview.reason.version_awaiting_approvalHook"
+            : "overview.reason.version_awaiting_approvalAny"
+          : item.trigger?.kind === "schedule"
+            ? reasonKey
+            : "overview.reason.version_awaiting_approvalAny";
+      return {
+        lead: t(key, { subject, version, hook: item.trigger?.name ?? "" }),
+        machine: null,
+        since,
+      };
+    }
     case "failing": {
       const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
@@ -396,6 +416,15 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
   switch (action.verb) {
     case "review":
       return "overview.action.review";
+    case "open":
+      // The workflow page's panel is where the step is taken; the entry names
+      // the step, never "open".
+      if (item.reason === "version_awaiting_approval") return "overview.action.approve";
+      if (item.reason === "approval_expiring") return "overview.action.extend";
+      if (item.reason === "secret_prepared") return "overview.action.openSettings";
+      if (item.reason === "budget_critical") return "overview.action.openUsage";
+      if (item.subject?.kind === "connector") return "overview.action.openConnector";
+      return "overview.action.openOperations";
     case "answer":
       return "overview.action.answer";
     case "reauth":
@@ -407,9 +436,6 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "chat":
       return "overview.action.chat";
     default:
-      if (item.reason === "secret_prepared") return "overview.action.openSettings";
-      if (item.reason === "budget_critical") return "overview.action.openUsage";
-      if (item.subject?.kind === "connector") return "overview.action.openConnector";
       return "overview.action.openOperations";
   }
 }

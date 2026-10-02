@@ -86,7 +86,7 @@ const EN = {
   "chat.schedule.review": "Review next step",
   "chat.automationCard.authorized.title": "Automatic runs are approved",
   "chat.automationCard.authorized.hint":
-    "Permission is available for the current schedule. No further approval is needed now.",
+    "The running version is approved. No further approval is needed now.",
   "chat.automationCard.upstream.title": "Report verification is incomplete",
   "chat.automationCard.upstream.hint":
     "Required data requests were not executed during the check. The report could not be verified, so recurring delivery cannot yet be approved. There is no decision for you to make yet.",
@@ -94,14 +94,19 @@ const EN = {
   "chat.automationCard.repair.hint":
     "SubKit cannot yet verify the actions of this workflow. Saving the change has not resolved the open decision.",
   "chat.automationCard.review.title": "Ready for your review",
-  "chat.automationCard.review.hint":
-    "Review the destinations and limits below. Approving allows future scheduled runs; no run starts now.",
+  "chat.automationCard.review.hint.schedule":
+    "Open the review to see the destinations and limits. Approving allows future scheduled runs; no run starts now.",
+  "chat.automationCard.review.hint.hook":
+    "Open the review to see the destinations and limits. Approving allows future incoming webhook calls; no run starts now.",
+  "chat.automationCard.review.hint.any":
+    "Open the review to see the destinations and limits. Approving allows future automatic runs; no run starts now.",
+  "chat.automationCard.review.prod": "Review production",
+  "chat.automationCard.review.dev": "Review development",
+  "chat.automationCard.repair.action": "See the cause",
   "chat.automationCard.apply.title": "Saved change waits to be applied",
   "chat.automationCard.apply.hint":
-    "Review the saved change below. Applying it makes it the version that runs, and you can allow a bounded number of runs. No run starts now.",
+    "Open the review to see the saved change. Applying it makes it the version that runs, and you can allow a bounded number of runs. No run starts now.",
   "chat.automationCard.unknown.title": "Current status needs checking",
-  "chat.automationCard.unknown.hint":
-    "Open the check below to read the current workflow status. This does not start a run.",
   "chat.schedule.completion":
     "The decision is resolved only when the schedule has valid permission.",
   "authority.sessionExpired": "Please sign in again",
@@ -147,6 +152,24 @@ const EN = {
   "authority.adjustDescription":
     "SubKit cannot yet verify the allowed actions of this workflow. Investigate the cause here in chat. A single test run does not resolve this open decision.",
   "authority.adjust": "Investigate in this chat",
+  "authority.existing.title": "Already approved until {until} · {runs} runs left",
+  "authority.existing.titleOne": "Already approved until {until} · 1 run left",
+  "authority.existing.description":
+    "A further approval extends it or changes its limits. The existing one stays valid until it ends or is revoked.",
+  "authority.existing.confirm": "Extend / change limits",
+  "authority.scope.environment.title": "This approval only applies to {selected}",
+  "authority.scope.environment.description":
+    "The workflow is started automatically in {runsIn}. It stays unapproved there.",
+  "authority.scope.version.title": "You are approving a saved change",
+  "authority.scope.version.description":
+    "{active} is running. Approving puts the saved change into service in its place.",
+  "authority.scope.version.first":
+    "No version is running yet. Approving puts this one into service.",
+  "authority.suggestion.schedule": "Suggested: as many runs as the schedule starts in 30 days.",
+  "authority.suggestion.hook":
+    "Suggested from {count} webhook calls in the last {days} days, with headroom.",
+  "authority.suggestion.hookMinimum":
+    "Suggested minimum for a webhook: only {count} calls arrived in the last {days} days.",
   "authority.repairTitle": "SubKit can work this out itself",
   "authority.repairDescription":
     "{count} step(s) do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
@@ -633,6 +656,14 @@ const EN = {
     "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
   "overview.reason.execution_authority_unavailableHook":
     "{subject} is stopped: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
+  "overview.reason.version_awaiting_approval":
+    "{subject} has a new version {version} waiting for approval — the next scheduled start will be refused otherwise",
+  "overview.reason.version_awaiting_approvalHook":
+    "{subject} has a new version {version} waiting for approval — calls from the webhook “{hook}” will be refused otherwise",
+  "overview.reason.version_awaiting_approvalAny":
+    "{subject} has a new version {version} waiting for approval — the next automatic start will be refused otherwise",
+  "overview.reason.approval_expiring":
+    "{subject} is approved for a short while only: its approval is about to end or is nearly used up",
   "overview.reason.scheduler_stale": "{heartbeat} has stopped running",
   "overview.reason.scheduler_staleOther": "A scheduler heartbeat has stopped",
   "overview.reason.failing": "{subject} is failing",
@@ -683,6 +714,8 @@ const EN = {
   "overview.action.answer": "Answer",
   "overview.action.reauth": "Sign in again",
   "overview.action.renew": "Renew",
+  "overview.action.approve": "Approve",
+  "overview.action.extend": "Extend",
   "overview.action.openRuns": "Failed runs",
   "overview.action.chat": "Resolve in chat",
   "overview.action.openSettings": "Open settings",
@@ -1562,6 +1595,7 @@ const EN = {
   "detail.canEdit": "Rename it here; change its steps in the chat.",
   "detail.readOnly": "Read-only with your permissions.",
   "detail.saved": "Changes saved",
+  "detail.saveFailed": "Could not save. Try again.",
   "detail.changeInChat": "Change in chat",
   "detail.changePrompt": "Change the workflow “{name}”: ",
   "detail.changeRecordPrompt": "Change “{name}”: ",
@@ -2259,6 +2293,17 @@ const EN = {
   "tool.name.runNamedWorkflow": "Ran the workflow “{name}”",
   "tool.name.runWorkflow.notRun": "Did not run a workflow",
   "tool.name.runNamedWorkflow.notRun": "Did not run the workflow “{name}”",
+  "tool.name.runWorkflow.trial": "Trial run without effects",
+  "tool.name.runNamedWorkflow.trial": "Trial run of “{name}” without effects",
+  "tool.name.runWorkflow.refused": "Run refused",
+  "tool.name.runNamedWorkflow.refused": "Run of “{name}” refused",
+  "tool.refusal.activationRequired": "Saved change not applied yet",
+  "tool.refusal.notSaved": "Workflow not saved yet",
+  "tool.refusal.notFound": "Workflow not found",
+  "tool.refusal.permission": "Not permitted",
+  "tool.refusal.repeatedFailure": "Same failure repeated",
+  "tool.refusal.input": "Input does not fit",
+  "tool.refusal.approval": "No valid approval",
   "tool.name.dryRunWorkflow": "Trial run of a workflow",
   "tool.name.dryRunStep": "Trial run of a step",
   "tool.name.dryRunTransform": "Trial run of a transformation",
@@ -3087,6 +3132,10 @@ const EN = {
   "automation.trigger.hooks": "Webhooks: {count}",
   "automation.trigger.paused": "{trigger} (paused)",
   "automation.formerGrants": "Earlier approvals",
+  "automation.hookOff":
+    "The webhook is switched off. It cannot be switched back on here; it has to be created again.",
+  "automation.opening.trial": "Opening the review starts a trial run without effects.",
+  "automation.opening.sample": "The review needs one sample call of the webhook.",
   "detail.moreActions": "More actions",
   "detail.editHelp.label": "About editing",
   "invocation.title": "Call",
@@ -3124,7 +3173,8 @@ const EN = {
   "invocation.schedule.state.held": "Waiting for approval",
   "invocation.schedule.state.activationRequired": "No active version",
   "invocation.cli.command": "Command",
-  "invocation.cli.runsInDev": "This command runs in development.",
+  "invocation.cli.runsInDev":
+    "The command names no environment, so it runs in development. For production, use the HTTP call.",
   "invocation.cli.runsInProd": "This command runs in production.",
   "input.title": "Input",
   "input.column.field": "Field",
@@ -3132,6 +3182,8 @@ const EN = {
   "input.column.required": "Required",
   "input.column.example": "Example",
   "input.none": "No input needed.",
+  "input.whole": "The input is one value ({type}); the schema names no fields.",
+  "input.type.any": "Several types (JSON)",
   "input.where": "Input goes in the request body under “input”. There are no query parameters.",
   "input.webhook": "A webhook call's body arrives as input.body.",
   "input.options": "Allowed: {options}",
@@ -3282,7 +3334,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.schedule.review": "Nächsten Schritt prüfen",
   "chat.automationCard.authorized.title": "Automatische Läufe sind freigegeben",
   "chat.automationCard.authorized.hint":
-    "Für den aktuellen Zeitplan liegt eine Freigabe vor. Du musst jetzt nichts weiter freigeben.",
+    "Die laufende Fassung ist freigegeben. Du musst jetzt nichts weiter freigeben.",
   "chat.automationCard.upstream.title": "Bericht noch nicht vollständig geprüft",
   "chat.automationCard.upstream.hint":
     "Benötigte Daten wurden bei der Prüfung nicht abgerufen. Deshalb konnte der Bericht noch nicht geprüft werden und der regelmäßige Versand ist noch nicht freigabefähig. Du musst dazu noch nichts entscheiden.",
@@ -3290,14 +3342,19 @@ const DE: Record<TranslationKey, string> = {
   "chat.automationCard.repair.hint":
     "SubKit kann die Aktionen dieses Ablaufs noch nicht vollständig prüfen. Das Speichern der Änderung hat die offene Entscheidung noch nicht erledigt.",
   "chat.automationCard.review.title": "Bereit für deine Prüfung",
-  "chat.automationCard.review.hint":
-    "Prüfe unten Ziele und Grenzen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt startet kein Lauf.",
+  "chat.automationCard.review.hint.schedule":
+    "Öffne die Prüfung, um Ziele und Grenzen zu sehen. Deine Freigabe erlaubt künftige geplante Läufe; jetzt startet kein Lauf.",
+  "chat.automationCard.review.hint.hook":
+    "Öffne die Prüfung, um Ziele und Grenzen zu sehen. Deine Freigabe erlaubt künftige eingehende Webhook-Aufrufe; jetzt startet kein Lauf.",
+  "chat.automationCard.review.hint.any":
+    "Öffne die Prüfung, um Ziele und Grenzen zu sehen. Deine Freigabe erlaubt künftige automatische Läufe; jetzt startet kein Lauf.",
+  "chat.automationCard.review.prod": "Produktion prüfen",
+  "chat.automationCard.review.dev": "Entwicklung prüfen",
+  "chat.automationCard.repair.action": "Ursache ansehen",
   "chat.automationCard.apply.title": "Gespeicherte Änderung wartet auf Übernahme",
   "chat.automationCard.apply.hint":
-    "Prüfe unten die gespeicherte Änderung. Übernimmst du sie, läuft künftig diese Version, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
+    "Öffne die Prüfung, um die gespeicherte Änderung zu sehen. Übernimmst du sie, läuft künftig diese Fassung, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
   "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
-  "chat.automationCard.unknown.hint":
-    "Öffne die Prüfung unten, um den aktuellen Stand des Ablaufs abzurufen. Dabei startet kein Lauf.",
   "chat.schedule.completion":
     "Die Entscheidung ist erst erledigt, wenn der Zeitplan eine gültige Freigabe hat.",
   "authority.sessionExpired": "Bitte erneut anmelden",
@@ -3355,6 +3412,25 @@ const DE: Record<TranslationKey, string> = {
   "authority.adjustDescription":
     "SubKit kann die erlaubten Aktionen dieses Ablaufs noch nicht eindeutig prüfen. Lass die Ursache hier im Chat untersuchen. Ein einzelner Testlauf erledigt diese offene Entscheidung nicht.",
   "authority.adjust": "Ursache im Chat prüfen",
+  "authority.existing.title": "Bereits freigegeben bis {until} · {runs} Läufe übrig",
+  "authority.existing.titleOne": "Bereits freigegeben bis {until} · 1 Lauf übrig",
+  "authority.existing.description":
+    "Eine weitere Freigabe verlängert sie oder ändert die Grenzen. Die bisherige bleibt gültig, bis sie endet oder widerrufen wird.",
+  "authority.existing.confirm": "Verlängern / Grenzen ändern",
+  "authority.scope.environment.title": "Diese Freigabe gilt nur für {selected}",
+  "authority.scope.environment.description":
+    "Automatisch gestartet wird der Workflow in {runsIn}. Dort bleibt er ohne Freigabe.",
+  "authority.scope.version.title": "Du gibst eine gespeicherte Änderung frei",
+  "authority.scope.version.description":
+    "Es läuft {active}. Mit der Freigabe wird die gespeicherte Änderung an ihrer Stelle übernommen.",
+  "authority.scope.version.first":
+    "Noch läuft keine Fassung. Mit der Freigabe wird diese übernommen.",
+  "authority.suggestion.schedule":
+    "Vorschlag: so viele Läufe, wie der Zeitplan in 30 Tagen startet.",
+  "authority.suggestion.hook":
+    "Vorschlag aus {count} Webhook-Aufrufen der letzten {days} Tage, mit Reserve.",
+  "authority.suggestion.hookMinimum":
+    "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kamen nur {count} Aufrufe.",
   "authority.repairTitle": "Das kann SubKit selbst herausfinden",
   "authority.repairDescription":
     "{count} Schritt(e) sagen nicht, wohin sie gehen d\u00fcrfen. SubKit hat gelesen, was jeder von ihnen tats\u00e4chlich getan hat, und kann diese Grenzen in eine vorbereitete Fassung schreiben, die du pr\u00fcfst \u2014 nichts wird dadurch aktiviert oder freigegeben.",
@@ -3844,6 +3920,14 @@ const DE: Record<TranslationKey, string> = {
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
   "overview.reason.execution_authority_unavailableHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.version_awaiting_approval":
+    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
+  "overview.reason.version_awaiting_approvalHook":
+    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – Aufrufe vom Webhook „{hook}“ werden sonst abgelehnt",
+  "overview.reason.version_awaiting_approvalAny":
+    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste automatische Start wird sonst abgelehnt",
+  "overview.reason.approval_expiring":
+    "{subject} ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht",
   "overview.reason.scheduler_stale": "{heartbeat} läuft nicht mehr",
   "overview.reason.scheduler_staleOther": "Ein Herzschlag des Zeitplaners ist ausgeblieben",
   "overview.reason.failing": "{subject} scheitert",
@@ -3895,6 +3979,8 @@ const DE: Record<TranslationKey, string> = {
   "overview.action.answer": "Antworten",
   "overview.action.reauth": "Neu anmelden",
   "overview.action.renew": "Erneuern",
+  "overview.action.approve": "Freigeben",
+  "overview.action.extend": "Verlängern",
   "overview.action.openRuns": "Fehlgeschlagene Läufe",
   "overview.action.chat": "Im Chat klären",
   "overview.action.openSettings": "Zu den Einstellungen",
@@ -4789,6 +4875,7 @@ const DE: Record<TranslationKey, string> = {
   "detail.canEdit": "Den Namen änderst du hier, die Schritte im Chat.",
   "detail.readOnly": "Mit deinen Rechten nur lesbar.",
   "detail.saved": "Änderungen gespeichert",
+  "detail.saveFailed": "Speichern fehlgeschlagen. Bitte erneut versuchen.",
   "detail.changeInChat": "Im Chat ändern",
   "detail.changePrompt": "Ändere den Workflow „{name}“: ",
   "detail.changeRecordPrompt": "Ändere „{name}“: ",
@@ -5512,6 +5599,17 @@ const DE: Record<TranslationKey, string> = {
   "tool.name.runNamedWorkflow": "Workflow „{name}“ ausgeführt",
   "tool.name.runWorkflow.notRun": "Workflow nicht ausgeführt",
   "tool.name.runNamedWorkflow.notRun": "Workflow „{name}“ nicht ausgeführt",
+  "tool.name.runWorkflow.trial": "Probelauf ohne Wirkung",
+  "tool.name.runNamedWorkflow.trial": "Probelauf von „{name}“ ohne Wirkung",
+  "tool.name.runWorkflow.refused": "Lauf abgelehnt",
+  "tool.name.runNamedWorkflow.refused": "Lauf von „{name}“ abgelehnt",
+  "tool.refusal.activationRequired": "Gespeicherte Änderung noch nicht übernommen",
+  "tool.refusal.notSaved": "Workflow noch nicht gespeichert",
+  "tool.refusal.notFound": "Workflow nicht gefunden",
+  "tool.refusal.permission": "Nicht erlaubt",
+  "tool.refusal.repeatedFailure": "Derselbe Fehler wiederholt sich",
+  "tool.refusal.input": "Eingabe passt nicht",
+  "tool.refusal.approval": "Keine gültige Freigabe",
   "tool.name.dryRunWorkflow": "Testlauf eines Workflows",
   "tool.name.dryRunStep": "Testlauf eines Schritts",
   "tool.name.dryRunTransform": "Testlauf einer Umwandlung",
@@ -6362,6 +6460,10 @@ const DE: Record<TranslationKey, string> = {
   "automation.trigger.hooks": "Webhooks: {count}",
   "automation.trigger.paused": "{trigger} (pausiert)",
   "automation.formerGrants": "Frühere Freigaben",
+  "automation.hookOff":
+    "Der Webhook ist abgeschaltet. Wieder einschalten lässt er sich hier nicht – er muss neu angelegt werden.",
+  "automation.opening.trial": "Beim Öffnen startet ein Probelauf ohne Wirkung.",
+  "automation.opening.sample": "Für die Prüfung brauchst du einen Beispielaufruf des Webhooks.",
   "detail.moreActions": "Weitere Aktionen",
   "detail.editHelp.label": "Zum Bearbeiten",
   "invocation.title": "Aufrufen",
@@ -6400,7 +6502,8 @@ const DE: Record<TranslationKey, string> = {
   "invocation.schedule.state.held": "Wartet auf Freigabe",
   "invocation.schedule.state.activationRequired": "Keine aktive Fassung",
   "invocation.cli.command": "Befehl",
-  "invocation.cli.runsInDev": "Dieser Befehl läuft in der Entwicklung.",
+  "invocation.cli.runsInDev":
+    "Der Befehl nennt keine Umgebung und läuft deshalb in der Entwicklung. Für Produktion nimm den HTTP-Aufruf.",
   "invocation.cli.runsInProd": "Dieser Befehl läuft in Produktion.",
   "input.title": "Eingabe",
   "input.column.field": "Feld",
@@ -6408,6 +6511,8 @@ const DE: Record<TranslationKey, string> = {
   "input.column.required": "Pflicht",
   "input.column.example": "Beispiel",
   "input.none": "Keine Eingabe nötig.",
+  "input.whole": "Die Eingabe ist ein Wert ({type}); das Schema nennt keine einzelnen Felder.",
+  "input.type.any": "Mehrere Typen (JSON)",
   "input.where": "Die Eingabe steht im Body unter „input“. Query-Parameter gibt es nicht.",
   "input.webhook": "Der Body eines Webhook-Aufrufs kommt als input.body an.",
   "input.options": "Erlaubt: {options}",

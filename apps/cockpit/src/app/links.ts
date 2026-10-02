@@ -39,6 +39,19 @@ export function routerPath(href: string): string {
   return href;
 }
 
+/**
+ * An engine address as a router `Link` takes it: the path, and the fragment
+ * apart. A router's `to` is a path — a `#…` left inside it becomes part of the
+ * last path segment, and the page opens for a record that does not exist.
+ */
+export function routerTarget(href: string): { to: string; hash?: string } {
+  const path = routerPath(href);
+  const at = path.indexOf("#");
+  if (at < 0) return { to: path };
+  const hash = path.slice(at + 1);
+  return hash ? { to: path.slice(0, at), hash } : { to: path.slice(0, at) };
+}
+
 function withQuery(path: string, entries: Record<string, string | null | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(entries)) if (value) params.set(key, value);
