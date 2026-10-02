@@ -601,7 +601,6 @@ export function CatalogDetailPage({
             connectorId={id}
             driver={typeof record.driver === "string" ? record.driver : null}
             canReadStats={permissions.includes("stats:read")}
-            onTest={canTest ? runTest : null}
           />
         ) : null}
         {isMcp ? (
