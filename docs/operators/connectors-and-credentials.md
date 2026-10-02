@@ -150,6 +150,21 @@ serving past the switch. A disabled connector is also skipped by the reauth
 scan — for MCP that scan is a full handshake, and probing a server an operator
 deliberately turned off would park it in backoff for no reason.
 
+A step that calls a disabled connector fails with `connector_disabled` and
+sends nothing. The error names the connector as it was resolved for the run's
+environment — a preview runs in `dev`, so a step that references the `prod`
+connector is refused for its same-slug `dev` twin when that twin is the one
+switched off — and the run reads `connector_unavailable`. Nothing falls back
+to the other environment's connector. The switch is asked before the circuit
+breaker, so a disabled connector is never reported as `circuit_open`.
+
+The circuit breaker itself counts only a remote that could not serve: a
+transport failure, a timeout, a `5xx` or a `429`. A `401`, a `404` or any
+other answered `4xx` is not counted and clears a partial count, because the
+remote did answer. A rejected credential shows up as `needs_reauth` instead,
+and the next successful authenticated call clears it — a request step, a
+probe, or `call_connector`.
+
 Four fields are worth knowing when a remote misbehaves, and every one of them
 is written by the engine rather than copied from the upstream — a remote's own
 error body can echo the credential it just rejected, so it stays in the

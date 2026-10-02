@@ -14,6 +14,8 @@
 //   2. Closed breaker → the preflight stands down and all N iterations run.
 //   3. Stale-open breaker (reset window elapsed) → preflight stands down so
 //      the half-open probe still happens per iteration.
+//   4. Disabled connector → ONE container failure named `connector_disabled`,
+//      asked before the breaker so an open one cannot hide the switch.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, like } from "drizzle-orm";
@@ -164,5 +166,46 @@ describe("for_each · circuit-breaker preflight", () => {
     // succeeds — the fan-out completes.
     expect(result.status).toBe("succeeded");
     expect(upstreamHits).toBe(5);
+  });
+
+  test("disabled connector fails the container ONCE as connector_disabled — even behind an open breaker", async () => {
+    upstreamHits = 0;
+    // Both at once: the switch is the cause, and it must be the one named.
+    await setCircuit("open", new Date(getTestNow()));
+    await ctx.testDb.db
+      .update(connectors)
+      .set({ enabled: false })
+      .where(eq(connectors.id, connectorId));
+    try {
+      const workflow_id = await createFanOutWorkflow("foreach-disabled");
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("connector_disabled");
+      const failed = result.steps.filter((s) => s.status === "failed");
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.step_key).toBe("call");
+      const error = failed[0]?.error as { code?: string; details?: unknown } | null;
+      expect(error?.code).toBe("connector_disabled");
+      expect(error?.details).toMatchObject({
+        step_id: "call",
+        connector_id: connectorId,
+        connector_slug: "foreach-circuit-mock",
+        environment: "dev",
+        reason: "disabled",
+      });
+      expect(await countIterationRows(result.execution_id)).toBe(0);
+      expect(upstreamHits).toBe(0);
+    } finally {
+      await ctx.testDb.db
+        .update(connectors)
+        .set({ enabled: true })
+        .where(eq(connectors.id, connectorId));
+      await setCircuit("closed", null);
+    }
   });
 });
