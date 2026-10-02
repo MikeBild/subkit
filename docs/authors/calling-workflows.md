@@ -20,6 +20,15 @@ curl -sS "$SK_ENGINE_URL/v1/workflows/<workflow-id>/invocation" \
 
 It never returns a key or a webhook signing secret — header names only.
 
+Two parts of that answer need reading with care:
+
+- `authority` says, per environment, whether an approval for the running version
+  **exists**. It is not a promise that the next call runs with effect: the run itself
+  also checks that the approval still covers what the workflow does today, and holds
+  or refuses the call if it does not. The run's answer is the one that counts.
+- `hooks` and `schedules` are listed only for a caller who may read them.
+  `visibility` says which; a list that is missing was withheld, not empty.
+
 ## Before you call: is it approved?
 
 A workflow that writes to other systems runs with effect only inside an approval a person
@@ -64,8 +73,12 @@ Three things to get right:
 To make a call safe to repeat, add `"idempotency_key"`: a second call with the same key
 returns the first run instead of starting another.
 
-`sk workflows invoke-snippet <workflow-id>` prints the same request for curl, Node or
-Python (`--lang`), for production or development (`--environment`).
+`sk workflows invoke-snippet <workflow-id>` prints the same request the workflow page
+shows — the engine's own snippet, with the workflow's sample input and the engine's
+public address — for curl, Node or Python (`--lang`), for production or development
+(`--environment`). If the engine cannot be reached, does not know the workflow, or has
+no public address configured, the command prints a snippet with your profile's engine
+address and an empty input instead, and says so.
 
 ## From another service (webhook)
 
@@ -101,9 +114,10 @@ hook as waiting.
 
 ## From an AI client (MCP)
 
-Each saved workflow is published as a tool named `wf_<workflow-name>`, with the workflow's
-input as its arguments. A client that lists only part of the catalog can still run any
-workflow through the `run_workflow` tool:
+A saved workflow can appear in a client's tool list as `wf_<workflow-name>`, with the
+workflow's input as its arguments. Not every workflow appears for every client: the list
+depends on what the caller may do and holds a bounded number of workflow tools. The
+`run_workflow` tool runs any saved workflow the caller may run, listed or not:
 
 ```json
 { "workflow": "<workflow-name>", "input": { "recipient_email": "ops@example.org" } }

@@ -16,6 +16,7 @@ import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
+import { requestUsedStoredCredential } from "../reauth.ts";
 import type { ConnectorView } from "../types.ts";
 import {
   type AppliedAuthMethod,
@@ -60,6 +61,9 @@ export interface GraphQLResponse<T = unknown> {
    *  driver. `oauth2_refreshed` means a stale token was rotated inline
    *  before this request went out. */
   auth_method: AppliedAuthMethod;
+  /** Whether the persisted credential is what authenticated this call —
+   *  see `requestUsedStoredCredential`. */
+  stored_credential_used: boolean;
 }
 
 export interface GraphQLNotImplementedError {
@@ -71,6 +75,8 @@ export interface GraphQLNotImplementedError {
   operation_name: string;
   credential_id: null;
   auth_method: "none";
+  /** Nothing was sent, so nothing was authenticated. */
+  stored_credential_used: false;
 }
 
 /**
@@ -165,6 +171,7 @@ export async function executeGraphQLRequest(p: {
       operation_name: operationName,
       credential_id: null,
       auth_method: "none",
+      stored_credential_used: false,
     };
   }
   const cfg = parseConfig(p.connector);
@@ -295,6 +302,15 @@ export async function executeGraphQLRequest(p: {
     operation_name: operationName,
     credential_id,
     auth_method,
+    // An override is the caller's material, not the persisted credential.
+    stored_credential_used:
+      p.credential_override === undefined &&
+      requestUsedStoredCredential({
+        credential,
+        home: cfg.endpoint,
+        url,
+        caller_headers: p.extra_headers,
+      }),
   };
 }
 

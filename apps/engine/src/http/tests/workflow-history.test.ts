@@ -210,6 +210,32 @@ describe("workflow history pagination", () => {
     expect(beyond.total).toBe(4);
   });
 
+  test("a read that names no limit gets one bounded page, and the total to page by", async () => {
+    const wf = await createWorkflow("unpaged-history");
+    // Every row carries its full definition and is checked against the
+    // schema, so an unpaged read is a page — not the whole history.
+    for (let version = 2; version <= 61; version += 1) {
+      await insertStoredVersion(wf.id, version, {
+        name: "unpaged-history",
+        steps: currentSteps(version),
+      });
+    }
+    const unpaged = (await (await history(wf.id)).json()) as {
+      items: VersionItem[];
+      total: number;
+    };
+    expect(unpaged.total).toBe(61);
+    expect(unpaged.items).toHaveLength(50);
+    expect(unpaged.items[0]?.version).toBe(61);
+    expect(unpaged.items.at(-1)?.version).toBe(12);
+
+    // The rest is one more page away.
+    const rest = (await (await history(wf.id, "?limit=200&offset=50")).json()) as {
+      items: VersionItem[];
+    };
+    expect(rest.items.map((v) => v.version)).toEqual([11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+  });
+
   test("a limit outside the allowed range is rejected", async () => {
     const wf = await createWorkflow("paged-history-bounds");
     expect((await history(wf.id, "?limit=0")).status).toBe(400);

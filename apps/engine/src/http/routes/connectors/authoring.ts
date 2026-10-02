@@ -20,7 +20,9 @@ import {
   type ConnectorView,
   CreateConnectorSchema,
   type DriverName,
+  getConnectorForDefinition,
   probeConnector,
+  restoreMaskedConnectorSecrets,
   validateConnectorAuthType,
   validateConnectorConfig,
   validateMcpAuthConsistency,
@@ -30,6 +32,7 @@ import {
   importConnectorDraftFromSpec,
   importConnectorFromSpecInputSchema,
 } from "../../../conversations/index.ts";
+import { can } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { credentialBodyToValue } from "./credential-body.ts";
@@ -105,7 +108,7 @@ const probeRoute = createRoute({
   tags: ["connectors"],
   summary: "Probe a connector definition without saving it",
   description:
-    "Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.",
+    "Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: ProbeConnectorBody } } } },
   responses: {
@@ -116,6 +119,11 @@ const probeRoute = createRoute({
     400: {
       description:
         "The request cannot be served because the credential or connector definition is malformed. Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly.",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description:
+        "The definition carries the redaction mask `***redacted***` where no stored secret can stand for it: no connector with this slug and environment exists, or the definition points somewhere other than the stored connector does. Send the real value.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -225,7 +233,39 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
 
-    const connector = draftConnectorView(body.connector);
+    // A definition read back from the API carries the mask where the stored
+    // connector keeps a secret. Saving it restores them; probing it first has
+    // to as well, or the upstream is handed the mask as a password. They are
+    // read from the connector the definition would be saved onto, under the
+    // rule a write follows: only towards the destination they are stored for,
+    // and only for a caller who may probe that connector.
+    const saved = await getConnectorForDefinition(principal.tenant_id, body.connector, db);
+    const mayUseSaved =
+      saved !== null &&
+      (
+        await can(db, {
+          tenant_id: principal.tenant_id,
+          principal,
+          permission: "connector:test",
+          resource: { type: "connector", id: saved.id },
+          quiet: true,
+        })
+      ).allow;
+    const draft = draftConnectorView(body.connector);
+    const secrets = restoreMaskedConnectorSecrets(
+      {
+        base_url: draft.base_url,
+        config: draft.config,
+        ...(draft.dsn !== null ? { dsn: draft.dsn } : {}),
+      },
+      mayUseSaved ? saved : null,
+    );
+    const connector: ConnectorView = {
+      ...draft,
+      base_url: secrets.base_url ?? null,
+      config: secrets.config ?? {},
+      dsn: secrets.dsn ?? null,
+    };
     // An explicit `null` override (rather than leaving it undefined) is what
     // stops the driver from falling back to a credential lookup for the
     // synthetic id and probing unauthenticated.

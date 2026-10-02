@@ -55,9 +55,12 @@ import {
   connectorHealthHint,
   parseDeprecation,
 } from "../../connectors/health.ts";
-import { callProvedCredentialLive, clearReauthOnSuccess } from "../../connectors/reauth.ts";
+import { clearReauthIfProved } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
-import { callConnectorDriverRefusal } from "../../connectors/services/call-connector.ts";
+import {
+  callConnectorDisabledRefusal,
+  callConnectorDriverRefusal,
+} from "../../connectors/services/call-connector.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
@@ -277,6 +280,24 @@ export const callConnectorTool: ConversationTool = {
       );
     }
 
+    // A switch that still sends the request switches nothing off — the same
+    // refusal a workflow step and a probe of this connector get.
+    if (!connector.enabled) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "call_connector.failed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: args.connector_id,
+        error_code: "connector_disabled",
+      });
+      const refusal = callConnectorDisabledRefusal(connector);
+      return structuredError("connector_disabled", refusal.message, {
+        details: refusal.details,
+        next_best_actions: refusal.next_best_actions,
+      });
+    }
+
     const guard = directConnectorGuard(ctx, connector);
     try {
       await preflightDirectConnector(ctx, connector);
@@ -400,6 +421,8 @@ export const callConnectorTool: ConversationTool = {
     let responseBody: unknown = null;
     let responseHeaders: Record<string, string> = {};
     let usedHost = "";
+    // The driver's verdict that the persisted credential authenticated the call.
+    let storedCredentialUsed = false;
     let errorDetail: string | null = null;
     let authorityChanged = false;
     // What we record in audit metadata. NEVER the full SQL or full body.
@@ -455,6 +478,7 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = res.headers;
         responseBody = res.body;
         usedHost = hostOf(connector.base_url ?? "");
+        storedCredentialUsed = res.stored_credential_used;
       } else if (driver === "http") {
         const execArgs: Parameters<typeof executeConnectorHttpRequest>[0] = {
           db: ctx.db,
@@ -474,6 +498,7 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = res.headers;
         responseBody = res.body;
         usedHost = hostOf(res.url);
+        storedCredentialUsed = res.stored_credential_used;
       } else if (driver === "postgres") {
         const sql = args.sql ?? "";
         const rowLimit = args.row_limit ?? DEFAULT_ROW_LIMIT;
@@ -495,6 +520,8 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = {};
         responseBody = { rows: res.rows, row_count: res.row_count ?? res.rows.length };
         usedHost = hostOf(connector.dsn ?? "") || "postgres";
+        // The connection string is the connector's own; the caller sends SQL.
+        storedCredentialUsed = true;
         auditMethod = allowWrites ? "WRITE" : "READ";
         auditPathSummary = summarizeSql(sql);
       } else if (driver === "s3") {
@@ -522,6 +549,8 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = res.headers;
         responseBody = res.body;
         usedHost = hostOf(connector.base_url ?? "") || "s3";
+        // The store signs every request with the connector's credential.
+        storedCredentialUsed = true;
       }
     } catch (err) {
       authorityChanged = err instanceof DirectConnectorBindingError;
@@ -539,9 +568,16 @@ export const callConnectorTool: ConversationTool = {
     const health = errorDetail ? "ok" : classifyConnectorHealth(status, responseHeaders);
 
     // The re-auth clearing edge is "a successful authenticated call proves the
-    // credential is live" (see connectors/reauth.ts); this call is one.
-    if (!errorDetail && callProvedCredentialLive(connector, status, health)) {
-      await clearReauthOnSuccess(ctx.db, connector);
+    // credential is live" (see connectors/reauth.ts). It proves the STORED
+    // credential only: a call that carried its own `Authorization`, went to
+    // another host, or came back with GraphQL `errors` lifts nothing.
+    if (!errorDetail) {
+      await clearReauthIfProved(ctx.db, connector, {
+        status,
+        health,
+        stored_credential_used: storedCredentialUsed,
+        body: responseBody,
+      });
     }
 
     // Audit ALWAYS — including when the upstream failed. The audit row

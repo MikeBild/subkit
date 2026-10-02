@@ -28,7 +28,8 @@ import { reportBoundariesFromManifest } from "../workflows/report-delivery-propo
 import { assertRequestBoundary } from "../workflows/request-boundary.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { assertStorageRequest } from "../workflows/storage-boundary.ts";
-import { JsonValueSchema, WorkflowDefSchema } from "../workflows/types.ts";
+import { executableDefinition } from "../workflows/stored-definition.ts";
+import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { createExecution } from "./state.ts";
@@ -141,7 +142,7 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
       .for("share")
       .limit(1);
     if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
-    const definition = WorkflowDefSchema.parse(version.dag);
+    const definition = executableDefinition(version.dag);
     if (definition.input_schema) {
       const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
       if (!check.valid) fail("input_schema_violation", check.errors.join("; "));

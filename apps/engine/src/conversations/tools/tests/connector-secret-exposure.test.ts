@@ -22,6 +22,8 @@ import { dryRunTransformTool } from "../dry-run-transform.ts";
 import { getConnectorTool } from "../generated/connectors.ts";
 import { updateConnectorTool } from "../generated/writes/update-connector.ts";
 import type { ToolContext } from "../index.ts";
+import { probeConnectorTool } from "../probe-connector.ts";
+import { resolveDraftProbeSecrets } from "../probe-draft-secrets.ts";
 
 // Fixture markers, not credentials.
 const CLIENT_SECRET = "fixture-client-secret-not-real";
@@ -162,6 +164,95 @@ describe("dry_run_transform does not look a connector token up", () => {
     const error = (result.data as { error: { code: string; message: string } }).error;
     expect(error.code).toBe("placeholder_unresolved");
     expect(error.message).toContain(token);
+  });
+});
+
+describe("a connector config token does not carry the secret into a probe", () => {
+  const token = `\${connector.acme-oauth.config.oauth.client_secret}`;
+
+  test("get_connector does not offer the secret path as a placeholder", async () => {
+    const result = await getConnectorTool.execute(toolContext(), { id: oauthConnectorId });
+    const offered = (result.data as { placeholders: { config: string[] } }).placeholders.config;
+    expect(offered).not.toContain(token);
+    expect(offered).toContain(`\${connector.acme-oauth.config.oauth.token_endpoint}`);
+  });
+
+  test("probe_connector refuses the token instead of sending the secret upstream", async () => {
+    // A reflecting endpoint would hand back whatever the request carried —
+    // any connector's, not only the one the token names.
+    await createConnector(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        input: {
+          name: "Echo",
+          slug: "echo",
+          driver: "http",
+          environment: "dev",
+          base_url: "https://echo.acme.test",
+          auth_type: "none",
+        },
+      },
+      ctx.testDb.db,
+    );
+    const result = await probeConnectorTool.execute(toolContext(), {
+      connector_slug: "echo",
+      method: "GET",
+      path: "/echo",
+      headers: { "X-Echo": token },
+      environment: "dev",
+    });
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(CLIENT_SECRET);
+    const error = (
+      result.data as { error: { code: string; details: { unresolved: Array<{ code: string }> } } }
+    ).error;
+    expect(error.code).toBe("placeholder_unresolved");
+    expect(error.details.unresolved.map((u) => u.code)).toEqual(["secret_withheld"]);
+  });
+});
+
+describe("a draft probe resolves the mask only for the stored destination", () => {
+  test("an unchanged bound draft probes with the stored dsn", async () => {
+    const pg = await getConnector(ctx.tenant_id, postgresConnectorId, ctx.testDb.db);
+    if (!pg) throw new Error("connector vanished");
+    const secrets = await resolveDraftProbeSecrets(
+      ctx.tenant_id,
+      hydrateDraftFromSavedConnector(pg),
+      ctx.testDb.db,
+    );
+    expect(secrets).toMatchObject({ ok: true, dsn: pg.dsn });
+  });
+
+  test("a bound draft whose host was edited is refused, not sent the stored password", async () => {
+    const pg = await getConnector(ctx.tenant_id, postgresConnectorId, ctx.testDb.db);
+    if (!pg) throw new Error("connector vanished");
+    const secrets = await resolveDraftProbeSecrets(
+      ctx.tenant_id,
+      {
+        ...hydrateDraftFromSavedConnector(pg),
+        dsn: `postgres://app_user:${CONNECTOR_SECRET_MASK}@db.elsewhere.test:5432/app`,
+      },
+      ctx.testDb.db,
+    );
+    expect(secrets.ok).toBe(false);
+    expect(JSON.stringify(secrets)).not.toContain(DSN_SECRET);
+    if (secrets.ok) throw new Error("expected a refusal");
+    expect(secrets.refusal.error_code).toBe("connector_secret_not_kept");
+    expect(secrets.refusal.message).toContain("send the real value");
+  });
+
+  test("a draft bound to a connector that is gone is refused, not probed with the mask", async () => {
+    const pg = await getConnector(ctx.tenant_id, postgresConnectorId, ctx.testDb.db);
+    if (!pg) throw new Error("connector vanished");
+    const secrets = await resolveDraftProbeSecrets(
+      ctx.tenant_id,
+      { ...hydrateDraftFromSavedConnector(pg), saved_connector_id: nextUuid() },
+      ctx.testDb.db,
+    );
+    expect(secrets.ok).toBe(false);
+    if (secrets.ok) throw new Error("expected a refusal");
+    expect(secrets.refusal.message).toContain("no stored value exists");
   });
 });
 
