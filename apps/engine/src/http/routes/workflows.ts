@@ -37,21 +37,7 @@ import {
   WorkflowListResponse,
   WorkflowSchema,
 } from "./workflow-representation.ts";
-
-const VersionSchema = z
-  .object({
-    id: z.string(),
-    workflow_id: z.string(),
-    version: z.number(),
-    note: z.string().nullable(),
-    created_at: z.string(),
-    dag: z.unknown(),
-  })
-  .openapi("WorkflowVersion");
-
-const VersionListResponse = z
-  .object({ items: z.array(VersionSchema) })
-  .openapi("WorkflowVersionListResponse");
+import { registerWorkflowVersionRoutes } from "./workflow-versions.ts";
 
 // Create/update request body. This is the full workflow definition the
 // caller submits — `createWorkflow`/`updateWorkflow` pass it straight to
@@ -91,8 +77,6 @@ const CreateBody = z
   // validateWorkflowDef rather than being silently stripped here.
   .passthrough()
   .openapi("CreateWorkflowBody");
-
-const IdVersionParam = z.object({ id: z.string().uuid(), version: z.string() });
 
 type WorkflowBody = z.infer<typeof CreateBody>;
 
@@ -218,18 +202,6 @@ const deleteRoute = createRoute({
   responses: {
     204: { description: "Deleted" },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-const historyRoute = createRoute({
-  method: "get",
-  path: "/v1/workflows/{id}/history",
-  tags: ["workflows"],
-  summary: "List workflow versions",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: VersionListResponse } } },
   },
 });
 
@@ -389,19 +361,6 @@ const deleteScheduleRoute = createRoute({
   },
 });
 
-const restoreRoute = createRoute({
-  method: "post",
-  path: "/v1/workflows/{id}/restore/{version}",
-  tags: ["workflows"],
-  summary: "Restore a previous workflow version",
-  security: [{ bearerAuth: [] }],
-  request: { params: IdVersionParam },
-  responses: {
-    200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
-    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
 const ValidateBody = z
   .object({
     name: z.string().optional(),
@@ -464,6 +423,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowAuthorityRoutes(app);
   registerWorkflowDiagnosisRoutes(app);
   registerWorkflowDraftRoutes(app);
+  registerWorkflowVersionRoutes(app);
   // Pass-2 C5: RBAC gating. Every mutation + run goes through
   // `requirePermission` which calls the `can()` evaluator. Admin
   // principals short-circuit, so existing tests keep passing.
@@ -501,14 +461,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       return requirePermission("workflow:delete", () => ({ type: "workflow", id }))(c, next);
     }
     return next();
-  });
-  app.use("/v1/workflows/:id/history", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("workflow:read", () => ({ type: "workflow", id }))(c, next);
-  });
-  app.use("/v1/workflows/:id/restore/:version", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("workflow:restore", () => ({ type: "workflow", id }))(c, next);
   });
   app.use("/v1/workflows/:id/metadata", async (c, next) => {
     const id = c.req.param("id");
@@ -865,38 +817,5 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const ok = await svc.deleteWorkflow(principal.tenant_id, id, principal.id, db);
     if (!ok) throw new NotFoundError("workflow");
     return c.body(null, 204);
-  });
-
-  app.openapi(historyRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id } = c.req.valid("param");
-    const items = await svc.listWorkflowVersions(principal.tenant_id, id, db);
-    return c.json(
-      {
-        items: items.map((v) => ({
-          id: v.id,
-          workflow_id: v.workflow_id,
-          version: v.version,
-          note: v.note,
-          created_at: v.created_at.toISOString(),
-          dag: v.dag,
-        })),
-      },
-      200,
-    );
-  });
-
-  app.openapi(restoreRoute, async (c) => {
-    const principal = requireAuth(c);
-    const db = c.get("db");
-    const { id, version } = c.req.valid("param");
-    const v = Number.parseInt(version, 10);
-    if (!Number.isFinite(v) || v <= 0) {
-      throw new BadRequestError("version must be a positive integer");
-    }
-    const wf = await svc.restoreWorkflowVersion(principal.tenant_id, id, v, principal.id, db);
-    if (!wf) throw new NotFoundError("workflow_version");
-    return c.json(await serializeOne(wf, principal.tenant_id, db), 200);
   });
 }

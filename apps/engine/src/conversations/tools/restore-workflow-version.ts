@@ -28,7 +28,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { workflows } from "../../db/schema/index.ts";
-import { restoreWorkflowVersion } from "../../workflows/service.ts";
+import { restoreWorkflowVersion, VersionNotRestorableError } from "../../workflows/versions.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -123,14 +123,35 @@ export const restoreWorkflowVersionTool: ConversationTool = {
     // `restoreWorkflowVersion` returns null when the (workflow, version) pair
     // does not exist. Surface that as a typed envelope rather than letting a
     // null flow onward — a wrong version number is an ordinary mistake the
-    // model should correct from the history, not a crash.
-    const restored = await restoreWorkflowVersion(
-      ctx.tenant_id,
-      workflowId,
-      args.version,
-      ctx.actor_id,
-      ctx.db,
-    );
+    // model should correct from the history, not a crash. The same holds for
+    // a version that exists but no longer validates against the current
+    // definition schema: the refusal names the step and field, so the next
+    // move is another version or a fresh save, not a retry.
+    let restored: Awaited<ReturnType<typeof restoreWorkflowVersion>>;
+    try {
+      restored = await restoreWorkflowVersion(
+        ctx.tenant_id,
+        workflowId,
+        args.version,
+        ctx.actor_id,
+        ctx.db,
+      );
+    } catch (error) {
+      if (!(error instanceof VersionNotRestorableError)) throw error;
+      return {
+        ok: false,
+        data: {
+          error_code: error.code,
+          message: error.message,
+          next_best_actions: ["get_workflow", "inspect_workflow"],
+          extra: {
+            workflow_id: workflowId,
+            requested_version: args.version,
+            issues: error.issues,
+          },
+        },
+      };
+    }
     if (!restored) {
       return {
         ok: false,
