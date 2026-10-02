@@ -11,6 +11,9 @@
 // included. That round trip must keep the stored secret; a connector whose
 // secret was replaced by its own mask keeps working until the access token
 // expires and then fails against the upstream with nothing pointing here.
+//
+// The breaker fields ride on the same representation: `health_state` says
+// whether a connector is usable, the breaker says why a call is refused now.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -20,6 +23,7 @@ import {
   resolveConnectorOAuthConfig,
 } from "../../../connectors/index.ts";
 import { auditLog, connectors } from "../../../db/schema/index.ts";
+import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 import { serializeConnector } from "../connector-templates/schemas.ts";
 
@@ -259,5 +263,32 @@ describe("the audit trail of those writes", () => {
     expect(text).toContain("replica.acme.test");
     expect(text).toContain("acme-client-id");
     expectNoSecret(text);
+  });
+});
+
+describe("the breaker is readable", () => {
+  test("a closed breaker reports its state, no opening time and a zero count", async () => {
+    const body = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as Json;
+    expect(body.circuit_state).toBe("closed");
+    expect(body.circuit_opened_at).toBeNull();
+    expect(body.circuit_failure_count).toBe(0);
+  });
+
+  test("an open breaker reports when it opened and how many failures it counted, on get and list", async () => {
+    const openedAt = new Date(FROZEN_NOW);
+    await ctx.db
+      .update(connectors)
+      .set({ circuit_state: "open", circuit_opened_at: openedAt, circuit_failure_count: 5 })
+      .where(eq(connectors.id, oauthConnectorId));
+
+    const expected = {
+      circuit_state: "open",
+      circuit_opened_at: openedAt.toISOString(),
+      circuit_failure_count: 5,
+    };
+    const single = (await (await send("GET", `/v1/connectors/${oauthConnectorId}`)).json()) as Json;
+    expect(single).toMatchObject(expected);
+    const list = (await (await send("GET", "/v1/connectors")).json()) as { items: Json[] };
+    expect(list.items.find((i) => i.id === oauthConnectorId)).toMatchObject(expected);
   });
 });
