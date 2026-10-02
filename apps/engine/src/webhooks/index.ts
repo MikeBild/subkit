@@ -3,6 +3,7 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./events/catalog.ts";
+export * from "./inbound/invocation-view.ts";
 export * from "./inbound/service.ts";
 export { HmacVerifierConfig } from "./inbound/verifiers/hmac.ts";
 export * from "./outbound/delivery-worker.ts";
