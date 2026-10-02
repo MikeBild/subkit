@@ -10,14 +10,17 @@
 //
 // What it stands on:
 //
-// - "Automatischer Betrieb" says ONE state with ONE action, and the action
-//   beside the title is that same action — never a link that only scrolls.
-// - An approved workflow offers no approval button, in the panel or the title.
+// - "Automatischer Betrieb" says ONE state with ONE action, and that action
+//   stands in the panel and nowhere else on the page: not beside the title,
+//   not as a link in the call block (`cockpit-single-trigger.mjs`).
+// - The title carries the page's own actions only: running it, and the menu.
+// - An approved workflow offers no approval button.
 // - After a grant the state flips to approved where the reader stands, and the
 //   hook is no longer shown as waiting.
 // - "Aufrufen" shows only the ways that exist, lands on the way the workflow is
 //   really started, and hands out a call that names its environment.
 
+import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 export const WORKFLOW = "d2f4a6c8-1b3d-4e5f-8a7b-9c0d1e2f3a41";
@@ -38,6 +41,7 @@ const TENANT = "0c2e4a6b-8d1f-4e37-9a50-b2d4f6a8c003";
 const PUBLIC = "https://engine.example.org";
 const SLUG = "example-api-demo-fetch";
 const HOOK_SLUG = "auth-notify";
+const FAILED_RUN = "c3e5a7b9-2d4f-4a61-8c03-5e7a9c1b3d04";
 
 const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -57,9 +61,9 @@ function record(state) {
     current_version: 9,
     current_version_id: VERSION,
     draft_version_id: state.scenario === "apply" ? DRAFT : VERSION,
-    health_state: "ok",
-    health_reason: null,
-    health_changed_at: null,
+    health_state: state.failedWith ? "degraded" : "ok",
+    health_reason: state.failedWith ? "2 consecutive failures" : null,
+    health_changed_at: state.failedWith ? "2026-08-10T07:00:00.000Z" : null,
     created_at: "2026-06-01T08:00:00.000Z",
     updated_at: "2026-08-10T09:00:00.000Z",
     last_executed_at: "2026-08-10T07:00:00.000Z",
@@ -510,6 +514,8 @@ export function api(state) {
       return json(route, automationStatus(state));
     if (path === `/v1/workflows/${WORKFLOW}/diagnosis`) {
       state.diagnosed.push(url.searchParams.get("environment"));
+      // A read that does not answer: the verdict must not be decided without it.
+      if (state.diagnosisFails) return json(route, { error: "unavailable" }, 500);
       return json(route, diagnosis(state));
     }
     if (path === `/v1/workflows/${WORKFLOW}/execution-authorities`) {
@@ -575,8 +581,11 @@ export function api(state) {
         ],
         total: 2,
       });
-    if (path === "/v1/executions" && url.searchParams.get("workflow_id") === WORKFLOW)
-      return json(route, { items: [], total: 0 });
+    if (path === "/v1/executions" && url.searchParams.get("workflow_id") === WORKFLOW) {
+      const items = state.failedWith ? [failedRun(state.failedWith)] : [];
+      return json(route, { items, total: items.length });
+    }
+    if (path === "/v1/patch-candidates") return json(route, { items: [], total: 0 });
     return route.fallback();
   };
 }
@@ -587,9 +596,30 @@ export const isPageApi = (url) => {
     pathname.includes(WORKFLOW) ||
     pathname.startsWith("/v1/schedules") ||
     pathname === "/v1/connectors" ||
-    (pathname === "/v1/executions" && searchParams.get("workflow_id") === WORKFLOW)
+    (["/v1/executions", "/v1/patch-candidates"].includes(pathname) &&
+      searchParams.get("workflow_id") === WORKFLOW)
   );
 };
+
+/** The newest run, failed for `causeClass` at the mail step. */
+function failedRun(causeClass) {
+  return {
+    id: FAILED_RUN,
+    workflow_id: WORKFLOW,
+    workflow_name: "Example API Demo Fetch",
+    workflow_version_id: VERSION,
+    hold_writes: false,
+    source_kind: "saved",
+    source_ref: null,
+    status: "failed",
+    request_source: "scheduler",
+    parent_execution_id: null,
+    started_at: "2026-08-10T07:00:00.000Z",
+    finished_at: "2026-08-10T07:00:04.000Z",
+    created_at: "2026-08-10T07:00:00.000Z",
+    failure: { step_key: "send_email", cause_class: causeClass },
+  };
+}
 
 const WORDS = {
   de: {
@@ -601,7 +631,9 @@ const WORDS = {
       paused: "Pausiert",
       manual: "Auf Abruf",
       legacy: "Altes Format",
+      unknown: "Nicht geprüft",
     },
+    recheck: "Erneut prüfen",
     fixInChat: "Im Chat beheben",
     unconfirmed: "nicht bestätigt",
     hidden: "darfst du nicht sehen",
@@ -632,7 +664,9 @@ const WORDS = {
       paused: "Paused",
       manual: "On request",
       legacy: "Outdated format",
+      unknown: "Not verified",
     },
+    recheck: "Check again",
     fixInChat: "Fix it in the chat",
     unconfirmed: "not confirmed",
     hidden: "may not see",
@@ -674,12 +708,20 @@ export async function open(page, stand, state, scenario) {
   return panel;
 }
 
+/** What stands beside the title, in order: the page's own actions and nothing else. */
+async function headerTriggers(page) {
+  return page
+    .locator('[data-family-slot="detail-actions"]')
+    .locator('button, a[href], [role="button"]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+}
+
 /**
- * One state, one action, and the title says the same. `action` is the label
- * the panel's own button must carry (null: none), `title` the label beside the
- * page title.
+ * One state, one action — in the panel, and only there. `action` is the label
+ * the panel's own button must carry (null: none); `openers` how many elements
+ * of the page may open the approval dialog in this state.
  */
-async function expectState(page, panel, where, words, scenario, { action, title }) {
+async function expectState(page, panel, where, words, scenario, { action, openers }) {
   const dataState = await panel.getAttribute("data-state");
   if (dataState !== scenario) throw new Error(`${where}: the panel is in "${dataState}"`);
   const said = await text(page, "workflow-automation-state");
@@ -692,12 +734,16 @@ async function expectState(page, panel, where, words, scenario, { action, title 
     throw new Error(
       `${where}: the panel's action reads "${await text(page, "workflow-automation-action")}", not "${action}"`,
     );
-  const titled = await text(page, "detail-action");
-  if (titled !== title)
-    throw new Error(`${where}: the action beside the title reads "${titled}", not "${title}"`);
-  // Never a link that only scrolls to a section of the same page.
-  const jumps = await page.locator('header a[href*="#"]').count();
-  if (jumps) throw new Error(`${where}: the title carries a jump link`);
+  // The title carries the page's own actions: run it, the menu, the help.
+  // The state's action is the panel's, in every state.
+  const beside = await headerTriggers(page);
+  if (beside.join("|") !== "workflow-run-open|workflow-menu|workflow-edit-help")
+    throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
+  // Never a link that only scrolls to a section of the same page — not beside
+  // the title, not in the call block, not in the cause block.
+  const jumps = await page.getByTestId("detail-workflows").locator('a[href*="#"]').count();
+  if (jumps) throw new Error(`${where}: the page carries ${jumps} jump link(s)`);
+  await assertSingleTriggers(page, where, { approvalOpeners: openers });
   // Exactly one filled action on the page: running the workflow.
   const filled = await page
     .getByTestId("detail-workflows")
@@ -729,13 +775,17 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
   await page.route(isPageApi, handler);
   const at = (name) => `/workflows/<page: ${name}> (${localeName})`;
   try {
-    // ── Freigabe nötig: one state, one action, the title says the same ───────
+    // ── Freigabe nötig: one state, one action, in the panel and only there ──
     let where = at("grant");
     let panel = await open(page, stand, state, "grant");
-    await expectState(page, panel, where, words, "grant", {
-      action: words.approve,
-      title: words.approve,
-    });
+    await expectState(page, panel, where, words, "grant", { action: words.approve, openers: 1 });
+    // "Jetzt freigeben" once on the whole page, by its words.
+    const approvals = await page
+      .getByTestId("detail-workflows")
+      .getByText(words.approve, { exact: true })
+      .count();
+    if (approvals !== 1)
+      throw new Error(`${where}: "${words.approve}" stands ${approvals} times on the page`);
     if (state.previews !== 0)
       throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
     if (state.diagnosed.some((environment) => environment !== "prod"))
@@ -791,8 +841,11 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const signing = (await text(page, "workflow-invocation-hook-0-signing")) ?? "";
     for (const part of ["HMAC-SHA256", "{timestamp}.{body}", "x-example-signature"])
       if (!signing.includes(part)) throw new Error(`${where}: the signing line lacks ${part}`);
+    // A held hook says so with a badge — a status, not a second trigger.
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.waiting)
       throw new Error(`${where}: a held hook is not shown as waiting`);
+    if (await page.getByTestId("workflow-invocation-hook-0").locator("a, [data-opens]").count())
+      throw new Error(`${where}: the held hook's row carries a trigger`);
     const shape = await page
       .getByTestId("workflow-invocation-hook-shape")
       .locator("pre")
@@ -829,11 +882,11 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const previewOnly = (await text(page, "workflow-invocation-preview-only")) ?? "";
     if (!previewOnly.includes(words.previewOnly))
       throw new Error(`${where}: an unapproved call is not said to be a trial run`);
-    const toPanel = await page
-      .getByTestId("workflow-invocation-to-automation")
-      .getAttribute("href");
-    if (toPanel !== "#workflow-automation")
-      throw new Error(`${where}: the trial-run line leads to ${toPanel}`);
+    // The line says what the call will be. It is text: the approval it speaks
+    // of is given in the panel, and a link here would be a second trigger.
+    if (await page.getByTestId("workflow-invocation-preview-only").locator("a, button").count())
+      throw new Error(`${where}: the trial-run line carries a trigger`);
+    await assertSingleTriggers(page, `${where}, HTTP call`, { approvalOpeners: 1 });
     // Copying hands over exactly the call that stands there.
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.getByTestId("workflow-invocation-snippet-copy").click();
@@ -979,15 +1032,16 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     for (const entry of ["change", "ask", "rename"])
       await page.getByTestId(`workflow-menu-${entry}`).waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
+    // The page behind an open menu is hidden from every check: wait it out.
+    await page.getByTestId("workflow-menu-change").waitFor({ state: "hidden" });
+
+    // With steps, facts and a menu opened and closed again: still once each.
+    await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 
     // ── The grant: where the reader stands, and the state after it ──────────
-    await page.getByTestId("detail-action").click();
-    await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
-    if (state.previews < 1) throw new Error(`${where}: the title action opened no review`);
-    await page.getByTestId("authority-grant-cancel").click();
-    await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
     await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
+    if (state.previews < 1) throw new Error(`${where}: the panel's action opened no review`);
     await page
       .waitForFunction(
         () => {
@@ -1012,11 +1066,8 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     );
     await page.waitForLoadState("networkidle");
     panel = page.getByTestId("workflow-automation");
-    // No approval button, no badge — and the title back to its ordinary action.
-    await expectState(page, panel, where, words, "approved", {
-      action: words.view,
-      title: words.change,
-    });
+    // No approval button, no badge.
+    await expectState(page, panel, where, words, "approved", { action: words.view, openers: 0 });
     const body = await page.getByTestId("detail-workflows").innerText();
     if (body.includes(words.approve))
       throw new Error(`${where}: an approved workflow still offers "${words.approve}"`);
@@ -1047,10 +1098,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     // ── Freigegeben, on a fresh page: the approval behind "Freigabe ansehen" ─
     where = at("approved");
     panel = await open(page, stand, state, "approved");
-    await expectState(page, panel, where, words, "approved", {
-      action: words.view,
-      title: words.change,
-    });
+    await expectState(page, panel, where, words, "approved", { action: words.view, openers: 0 });
     if (await page.getByTestId("workflow-automation-secondary").count())
       throw new Error(`${where}: an approval far from its end offers extending`);
     if (await page.getByTestId("authority-current").count())
@@ -1067,6 +1115,8 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await current.getByTestId("authority-current-details").click();
     await current.getByTestId("authority-version").waitFor();
     await assertNoVisibleUuids(panel, where);
+    // Two approvals stand open, each with its own "Details" and "Widerrufen".
+    await assertSingleTriggers(page, `${where}, approvals open`, { approvalOpeners: 0 });
     await capture("workflow-page-approved");
     // History is folded, and holds only what no longer admits a run.
     await page.getByTestId("workflow-former-grants-toggle").click();
@@ -1079,13 +1129,42 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     panel = await open(page, stand, state, "approved");
     if ((await text(page, "workflow-automation-secondary")) !== words.extend)
       throw new Error(`${at("expiring")}: an approval running out does not offer extending`);
+    // Extending is the one way into the approval dialog here.
+    await expectState(page, panel, at("expiring"), words, "approved", {
+      action: words.view,
+      openers: 1,
+    });
+    await capture("workflow-page-expiring");
     state.expiring = false;
 
-    // ── Reparatur nötig: the diagnosis block's own act, and the title's ──────
+    // ── Nicht geprüft: a read did not answer — one way to read again ────────
+    where = at("unknown");
+    state.diagnosisFails = true;
+    panel = await open(page, stand, state, "approved");
+    if ((await panel.getAttribute("data-state")) !== "unknown")
+      throw new Error(`${where}: the panel is in "${await panel.getAttribute("data-state")}"`);
+    if ((await text(page, "workflow-automation-state")) !== words.states.unknown)
+      throw new Error(
+        `${where}: the state reads "${await text(page, "workflow-automation-state")}"`,
+      );
+    if ((await text(page, "workflow-automation-recheck")) !== words.recheck)
+      throw new Error(`${where}: the panel does not offer to check again`);
+    // The failed read is said; reading again is the panel's one button.
+    await page.getByTestId("workflow-diagnosis-failed").waitFor();
+    if (await page.getByTestId("workflow-diagnosis-retry").count())
+      throw new Error(`${where}: the failed diagnosis offers a second way to read again`);
+    await assertSingleTriggers(page, where, { approvalOpeners: 0 });
+    await capture("workflow-page-unknown");
+    state.diagnosisFails = false;
+
+    // ── Reparatur nötig: the acts stand in the diagnosis, each once ─────────
     where = at("repair");
     panel = await open(page, stand, state, "repair");
-    await expectState(page, panel, where, words, "repair", { action: null, title: words.repair });
+    await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
     await panel.getByTestId("workflow-diagnosis-0-repair").waitFor();
+    // The step only an author can change: one conversation, under the list.
+    if ((await text(page, "workflow-diagnosis-chat")) !== words.fixInChat)
+      throw new Error(`${where}: the step that needs an author has no way to one`);
     if ((await panel.getByTestId("workflow-diagnosis").count()) !== 1)
       throw new Error(`${where}: the diagnosis is not embedded in the panel exactly once`);
     if ((await page.getByTestId("workflow-diagnosis").count()) !== 1)
@@ -1107,6 +1186,45 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-invocation").scrollIntoViewIfNeeded();
     await capture("workflow-call-unconfirmed");
 
+    // ── Unhealthy, the approval no longer fits: the cause is said, the act is
+    //    the panel's — the cause block offers none ───────────────────────────
+    where = at("unhealthy: approval");
+    state.failedWith = "authority_mismatch";
+    panel = await open(page, stand, state, "repair");
+    await page.getByTestId("workflow-cause-cause").waitFor();
+    await page.getByTestId("workflow-recent-run-0").waitFor();
+    await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
+    if (await page.getByTestId("workflow-cause-remedy").count())
+      throw new Error(`${where}: the cause block offers a remedy the panel below it owns`);
+    // The run that failed names its cause as text; its row leads to the run.
+    const failedRow = await page.getByTestId("workflow-recent-run-0").getAttribute("href");
+    if (failedRow !== `/cockpit/runs/${FAILED_RUN}`)
+      throw new Error(`${where}: the failed run's row leads to ${failedRow}`);
+    await capture("workflow-page-unhealthy");
+
+    // ── Unhealthy for another reason while the panel already leads to an
+    //    author: one conversation, offered once — by the panel ───────────────
+    where = at("unhealthy: upstream, repair pending");
+    state.failedWith = "upstream_error";
+    panel = await open(page, stand, state, "repair");
+    await page.getByTestId("workflow-cause-cause").waitFor();
+    await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
+    if (await page.getByTestId("workflow-cause-remedy").count())
+      throw new Error(`${where}: the cause block repeats the panel's way to an author`);
+
+    // ── Unhealthy, nothing pending in the panel: the remedy is the cause
+    //    block's, and stands there once ─────────────────────────────────────
+    where = at("unhealthy: upstream");
+    panel = await open(page, stand, state, "approved");
+    await page.getByTestId("workflow-cause-cause").waitFor();
+    await expectState(page, panel, where, words, "approved", { action: words.view, openers: 0 });
+    if ((await text(page, "workflow-cause-remedy")) !== words.fixInChat)
+      throw new Error(
+        `${where}: the cause block's remedy reads "${await text(page, "workflow-cause-remedy")}"`,
+      );
+    await capture("workflow-page-unhealthy-upstream");
+    state.failedWith = null;
+
     // ── Altes Format: said plainly, no run offered, the one way out ─────────
     where = at("legacy");
     state.legacy = true;
@@ -1119,15 +1237,23 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       );
     if (await page.getByTestId("workflow-run-open").count())
       throw new Error(`${where}: a run the engine refuses is still offered`);
+    // The way out is the panel's own action — the page's one filled action
+    // here, and the only "Im Chat beheben" on it. The title keeps the menu.
     const legacyFilled = await page
       .getByTestId("detail-workflows")
       .locator('button[data-variant="default"], a[data-variant="default"]')
-      .allInnerTexts();
-    if (legacyFilled.length !== 1 || legacyFilled[0].trim() !== words.fixInChat)
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+    if (legacyFilled.join("|") !== "workflow-automation-action")
       throw new Error(`${where}: the filled actions are ${JSON.stringify(legacyFilled)}`);
-    const fix = await page.getByTestId("detail-action").getAttribute("href");
+    if ((await text(page, "workflow-automation-action")) !== words.fixInChat)
+      throw new Error(`${where}: the panel does not offer the way out`);
+    const fix = await page.getByTestId("workflow-automation-action").getAttribute("href");
     if (!fix?.includes(`workflow_id=${WORKFLOW}`) || !fix.includes("prompt="))
       throw new Error(`${where}: the way out loses the workflow or the task: ${fix}`);
+    const besideLegacy = await headerTriggers(page);
+    if (besideLegacy.join("|") !== "workflow-menu|workflow-edit-help")
+      throw new Error(`${where}: beside the title stand ${JSON.stringify(besideLegacy)}`);
+    await assertSingleTriggers(page, where, { approvalOpeners: 0 });
     // No approval is offered for a version the engine would refuse to approve.
     if (await panel.locator("button", { hasText: words.approve }).count())
       throw new Error(`${where}: an approval is offered for a version that cannot run`);
@@ -1165,10 +1291,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     // ── Übernahme nötig: the saved change is what is reviewed ───────────────
     where = at("apply");
     panel = await open(page, stand, state, "apply");
-    await expectState(page, panel, where, words, "apply", {
-      action: words.review,
-      title: words.review,
-    });
+    await expectState(page, panel, where, words, "apply", { action: words.review, openers: 1 });
     const applying = (await text(page, "workflow-automation-headline")) ?? "";
     if (!applying.includes("v10") || !applying.includes("v9"))
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
@@ -1178,7 +1301,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     where = at("paused hook");
     state.hookOnly = true;
     panel = await open(page, stand, state, "paused");
-    await expectState(page, panel, where, words, "paused", { action: null, title: words.change });
+    await expectState(page, panel, where, words, "paused", { action: null, openers: 0 });
     const hookOff = (await text(page, "workflow-automation-hook-off")) ?? "";
     if (!/webhook/i.test(hookOff))
       throw new Error(`${where}: a switched-off hook is not explained: "${hookOff}"`);
@@ -1190,10 +1313,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     // ── Pausiert: resuming is the one act ────────────────────────────────────
     where = at("paused");
     panel = await open(page, stand, state, "paused");
-    await expectState(page, panel, where, words, "paused", {
-      action: words.resume,
-      title: words.resume,
-    });
+    await expectState(page, panel, where, words, "paused", { action: words.resume, openers: 0 });
     await capture("workflow-page-paused");
     await page.getByTestId("workflow-automation-action").click();
     await page.waitForFunction(
@@ -1207,13 +1327,10 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (state.resumed.length !== 1 || state.resumed[0].paused !== false)
       throw new Error(`${where}: resuming sent ${JSON.stringify(state.resumed)}`);
 
-    // ── Auf Abruf: calm — nothing asks for the approval beside the title ─────
+    // ── Auf Abruf: calm — the approval is offered once, in the panel ─────────
     where = at("manual");
     panel = await open(page, stand, state, "manual");
-    await expectState(page, panel, where, words, "manual", {
-      action: words.approve,
-      title: words.change,
-    });
+    await expectState(page, panel, where, words, "manual", { action: words.approve, openers: 1 });
     if (await page.getByTestId("workflow-automation-triggers").count())
       throw new Error(`${where}: a workflow nothing starts names a trigger`);
     const manualTabs = await page

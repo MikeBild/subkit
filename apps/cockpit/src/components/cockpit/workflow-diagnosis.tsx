@@ -5,13 +5,20 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, attentionHref, chatNewHref, runHref, workflowAutomationHref } from "@/app/links";
+import { absolute, attentionHref, chatNewHref, runHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
-import { diagnosisCauseKey, diagnosisNote, type RepairStatus } from "@/lib/gate-diagnosis";
+import {
+  diagnosisActs,
+  diagnosisCauseKey,
+  diagnosisNote,
+  diagnosisRepairable,
+  type RepairStatus,
+} from "@/lib/gate-diagnosis";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
@@ -51,34 +58,31 @@ function preparedKey(result: PrepareResponse): TranslationKey {
   return "diagnosis.prepareNotRun";
 }
 
+/** The review sheet a workflow's filed repairs wait in. */
+const repairReviewHref = (workflowId: string) =>
+  attentionHref({ review: `workflow:${workflowId}` });
+
 /**
- * The acts that remove one block: filing the engine's deterministic repair,
- * running the trial that supplies missing evidence, or handing it to an
- * author. One implementation for the block's own buttons and for the action
- * beside the page title, so the same press does the same thing in both places.
+ * Filing the engine's deterministic repair for one step. One implementation
+ * for the step's own button and for the approval dialog's remedy, so the same
+ * press does the same thing in both views.
  */
-function useGateRemedy({
+function useStepRepair({
   entry,
   diagnosis,
   environment,
   onNote,
-  onPrepared,
 }: {
   entry: GateDiagnosis;
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
   /** A repair request that opened nothing new to review. */
   onNote: (note: RepairNote) => void;
-  onPrepared: (key: TranslationKey) => void;
 }) {
-  const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const workflowId = diagnosis.workflow_id;
-  const review = attentionHref({ review: `workflow:${workflowId}` });
-  const refresh = () => client.invalidateQueries({ queryKey: ["workflow-diagnosis", workflowId] });
-
-  const repair = useMutation({
+  return useMutation({
     mutationFn: (fixer: NonNullable<GateDiagnosis["fixer"]>) =>
       apiRequest<RepairResponse>(`/v1/workflows/${encodeURIComponent(workflowId)}/repairs`, {
         method: "POST",
@@ -90,60 +94,50 @@ function useGateRemedy({
       // keeps holding for this version; sending the reader to an empty sheet
       // would hide that.
       if (result.status === "proposed") {
-        void navigate({ to: review });
+        void navigate({ to: repairReviewHref(workflowId) });
         return;
       }
       onNote(diagnosisNote(result.status));
-      void refresh();
+      void client.invalidateQueries({ queryKey: ["workflow-diagnosis", workflowId] });
     },
     onError: () => onNote("failed"),
   });
-
-  const prepare = useMutation({
-    mutationFn: () =>
-      apiRequest<PrepareResponse>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(diagnosis.workflow_version_id ?? "")}/prepare-authority`,
-        { method: "POST", body: JSON.stringify({ environment }) },
-      ),
-    onSuccess: (result) => {
-      onPrepared(preparedKey(result));
-      void invalidateWorkflowAutomation(client, workflowId);
-    },
-    onError: () => onPrepared("diagnosis.prepareFailed"),
-  });
-
-  return {
-    repair,
-    prepare,
-    reviewHref: review,
-    chatHref: chatNewHref({
-      workflowId,
-      executionId: entry.evidence.execution_id ?? null,
-      prompt: t("diagnosis.chatPrompt", { step: entry.subject.step_id }),
-    }),
-  };
 }
 
 /**
- * Why the approval gate holds this workflow, step by step — and the act that
- * removes each block, where the cockpit can perform it.
+ * Why the approval gate holds this workflow, step by step — and the acts that
+ * remove the blocks, where the cockpit can perform them.
  *
- * The same diagnosis HTTP and MCP answer with (`GET …/diagnosis`). A fixable
- * one offers "Automatisch reparieren": that files the engine's deterministic
- * repair as a patch candidate and opens it in the review sheet, where a person
- * previews and approves it — nothing is applied from here. A block that needs
- * a trial run offers it; one that needs an author points to the chat.
+ * The same diagnosis HTTP and MCP answer with (`GET …/diagnosis`). A step the
+ * engine can repair offers "Automatisch reparieren": that files the engine's
+ * deterministic repair as a patch candidate and opens it in the review sheet,
+ * where a person previews and approves it — nothing is applied from here.
+ *
+ * What does the same thing whichever step asks for it stands once, under the
+ * list: reviewing the filed repairs, the trial run, the conversation with an
+ * author. A button per step for one act would be the same press several times.
  */
 export function WorkflowGateDiagnosis({
   workflowId,
   environment,
   onOpenApproval,
+  ownRetry,
+  rejectedRepairs,
+  onRepairRejected,
 }: {
   workflowId: string;
   /** The environment the approval is judged in — the same choice the approval dialog makes. */
   environment: "dev" | "prod" | null;
-  /** Opens the approval dialog, where a sample for the trial run is given. */
+  /**
+   * Opens the approval dialog, where a sample for the trial run is given.
+   * Absent where the surrounding panel already carries the opener.
+   */
   onOpenApproval?: () => void;
+  /** False where the surrounding panel's own re-check re-reads the diagnosis. */
+  ownRetry: boolean;
+  /** The steps whose computed repair was refused for this version. */
+  rejectedRepairs: readonly string[];
+  onRepairRejected: (stepId: string) => void;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -157,16 +151,18 @@ export function WorkflowGateDiagnosis({
     return (
       <Alert variant="destructive" data-testid="workflow-diagnosis-failed">
         <AlertTitle>{t("diagnosis.loadFailed")}</AlertTitle>
-        <AlertDescription>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void diagnosis.refetch()}
-            data-testid="workflow-diagnosis-retry"
-          >
-            {t("session.retry")}
-          </Button>
-        </AlertDescription>
+        {ownRetry ? (
+          <AlertDescription>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void diagnosis.refetch()}
+              data-testid="workflow-diagnosis-retry"
+            >
+              {t("session.retry")}
+            </Button>
+          </AlertDescription>
+        ) : null}
       </Alert>
     );
   const entries = diagnosis.data?.diagnoses ?? [];
@@ -183,10 +179,22 @@ export function WorkflowGateDiagnosis({
             entry={entry}
             diagnosis={answer}
             environment={environment}
-            onOpenApproval={onOpenApproval}
+            // One run can refuse several steps: its link stands at the first.
+            showRun={
+              entries.findIndex(
+                (other) => other.evidence.execution_id === entry.evidence.execution_id,
+              ) === index
+            }
+            onRepairRejected={() => onRepairRejected(entry.subject.step_id)}
           />
         ))}
       </ul>
+      <DiagnosisActions
+        diagnosis={answer}
+        environment={environment}
+        rejectedRepairs={rejectedRepairs}
+        onOpenApproval={onOpenApproval}
+      />
     </section>
   );
 }
@@ -196,38 +204,43 @@ function DiagnosisItem({
   diagnosis,
   environment,
   index,
-  onOpenApproval,
+  showRun,
+  onRepairRejected,
 }: {
   entry: GateDiagnosis;
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
   index: number;
-  onOpenApproval?: () => void;
+  showRun: boolean;
+  onRepairRejected: () => void;
 }) {
   const { t } = useI18n();
   const session = useSession();
   const testId = `workflow-diagnosis-${index}`;
   const [note, setNote] = useState<RepairNote | null>(null);
-  const [prepared, setPrepared] = useState<TranslationKey | null>(null);
-  const { repair, prepare, reviewHref, chatHref } = useGateRemedy({
+  const repair = useStepRepair({
     entry,
     diagnosis,
     environment,
-    onNote: setNote,
-    onPrepared: setPrepared,
+    onNote: (value) => {
+      setNote(value);
+      if (value === "rejected") onRepairRejected();
+    },
   });
 
   const causeKey = diagnosisCauseKey(entry.code);
   const cause = catalogLabel(entry.code, causeKey, t);
-  const canWrite = session.permissions.includes("workflow:write");
-  const canRun = session.permissions.includes("workflow:run");
-  const canChat = session.permissions.includes("conversation:write");
-  const fixable = Boolean(entry.fixer);
+  const canRepair = diagnosisRepairable(entry, diagnosis.is_current, {
+    write: session.permissions.includes("workflow:write"),
+  });
   const sentence = (key: TranslationKey) => (
     <p className="text-sm text-muted-foreground" data-testid={`${testId}-note`}>
       {t(key)}
     </p>
   );
+  // A repair that is already filed is reviewed under the list, with the others.
+  const offersRepair = canRepair && !entry.candidate_id;
+  const runId = showRun ? entry.evidence.execution_id : undefined;
 
   return (
     <li
@@ -252,16 +265,9 @@ function DiagnosisItem({
       <p className="text-sm text-muted-foreground" data-testid={`${testId}-remedy`}>
         {t(`diagnosis.remedy.${entry.remedy_kind}`)}
       </p>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {fixable && entry.fixer && diagnosis.is_current && canWrite ? (
-          entry.candidate_id ? (
-            <Button asChild size="sm" variant="outline">
-              <a href={absolute(reviewHref)} data-testid={`${testId}-review`}>
-                {t("remedy.reviewRepair")}
-                <ArrowRight data-icon="inline-end" />
-              </a>
-            </Button>
-          ) : (
+      {offersRepair || runId ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {offersRepair ? (
             <Button
               size="sm"
               variant="outline"
@@ -272,186 +278,198 @@ function DiagnosisItem({
               <Wrench data-icon="inline-start" />
               {t("diagnosis.repair")}
             </Button>
-          )
+          ) : null}
+          {runId ? (
+            <a
+              href={absolute(runHref(runId))}
+              className="text-sm underline underline-offset-4"
+              data-testid={`${testId}-run`}
+            >
+              {t("remedy.openRun")}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {entry.fixer && !diagnosis.is_current ? sentence("diagnosis.draftOnly") : null}
+      {note ? sentence(REPAIR_NOTE_KEYS[note]) : null}
+    </li>
+  );
+}
+
+/** The acts that stand once for the whole diagnosis (`diagnosisActs`). */
+function DiagnosisActions({
+  diagnosis,
+  environment,
+  rejectedRepairs,
+  onOpenApproval,
+}: {
+  diagnosis: WorkflowDiagnosis;
+  environment: "dev" | "prod";
+  rejectedRepairs: readonly string[];
+  onOpenApproval?: () => void;
+}) {
+  const { t } = useI18n();
+  const session = useSession();
+  const client = useQueryClient();
+  const workflowId = diagnosis.workflow_id;
+  const [prepared, setPrepared] = useState<TranslationKey | null>(null);
+  const prepare = useMutation({
+    mutationFn: () =>
+      apiRequest<PrepareResponse>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(diagnosis.workflow_version_id ?? "")}/prepare-authority`,
+        { method: "POST", body: JSON.stringify({ environment }) },
+      ),
+    onSuccess: (result) => {
+      setPrepared(preparedKey(result));
+      void invalidateWorkflowAutomation(client, workflowId);
+    },
+    onError: () => setPrepared("diagnosis.prepareFailed"),
+  });
+  const acts = diagnosisActs(
+    diagnosis,
+    {
+      write: session.permissions.includes("workflow:write"),
+      run: session.permissions.includes("workflow:run"),
+      chat: session.permissions.includes("conversation:write"),
+    },
+    rejectedRepairs,
+  );
+  if (!acts.review && !acts.prepare && acts.author.length === 0) return null;
+  const [firstStep] = acts.author;
+  const chatPrompt =
+    acts.author.length === 1 && firstStep
+      ? t("diagnosis.chatPrompt", { step: firstStep })
+      : t("diagnosis.chatPromptSteps", { steps: acts.author.join(", ") });
+  return (
+    <div className="grid gap-2" data-testid="workflow-diagnosis-actions">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {acts.review ? (
+          <Button asChild size="sm" variant="outline">
+            <a
+              href={absolute(repairReviewHref(workflowId))}
+              data-testid="workflow-diagnosis-review"
+            >
+              {t("remedy.reviewRepair")}
+              <ArrowRight data-icon="inline-end" />
+            </a>
+          </Button>
         ) : null}
-        {entry.remedy_kind === "prepare" && canRun && diagnosis.workflow_version_id ? (
+        {acts.prepare ? (
           <Button
             size="sm"
             variant="outline"
             disabled={prepare.isPending}
             onClick={() => prepare.mutate()}
-            data-testid={`${testId}-prepare`}
+            data-testid="workflow-diagnosis-prepare"
           >
             {t("diagnosis.prepare")}
           </Button>
         ) : null}
-        {!fixable && entry.remedy_kind !== "prepare" && canChat ? (
-          <a
-            href={absolute(chatHref)}
-            className="text-sm underline underline-offset-4"
-            data-testid={`${testId}-chat`}
-          >
-            {t("remedy.chat")}
-          </a>
-        ) : null}
-        {entry.evidence.execution_id ? (
-          <a
-            href={absolute(runHref(entry.evidence.execution_id))}
-            className="text-sm underline underline-offset-4"
-            data-testid={`${testId}-run`}
-          >
-            {t("remedy.openRun")}
-          </a>
-        ) : null}
-      </div>
-      {fixable && !diagnosis.is_current ? sentence("diagnosis.draftOnly") : null}
-      {note ? (
-        <div className="grid gap-1">
-          {sentence(REPAIR_NOTE_KEYS[note])}
-          {note === "rejected" && canChat ? (
+        {acts.author.length > 0 ? (
+          <Button asChild size="sm" variant="outline">
             <a
-              href={absolute(chatHref)}
-              className="text-sm underline underline-offset-4"
-              data-testid={`${testId}-chat`}
+              href={absolute(
+                chatNewHref({ workflowId, executionId: acts.authorRunId, prompt: chatPrompt }),
+              )}
+              data-testid="workflow-diagnosis-chat"
             >
+              <Bot data-icon="inline-start" />
               {t("remedy.chat")}
             </a>
-          ) : null}
-        </div>
-      ) : null}
+          </Button>
+        ) : null}
+      </div>
       {prepared ? (
         <div className="grid gap-1" role="status">
-          {sentence(prepared)}
-          {prepared === "diagnosis.prepareNeedsSample" ? (
-            onOpenApproval ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={onOpenApproval}
-                data-testid={`${testId}-open-approval`}
-              >
-                {t("diagnosis.openApproval")}
-              </Button>
-            ) : (
-              <a
-                href={absolute(workflowAutomationHref(diagnosis.workflow_id))}
-                className="text-sm underline underline-offset-4"
-                data-testid={`${testId}-open-approval`}
-              >
-                {t("diagnosis.openApproval")}
-              </a>
-            )
+          <p className="text-sm text-muted-foreground" data-testid="workflow-diagnosis-prepared">
+            {t(prepared)}
+          </p>
+          {prepared === "diagnosis.prepareNeedsSample" && onOpenApproval ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              onClick={onOpenApproval}
+              data-testid="workflow-diagnosis-open-approval"
+              {...OPENS_APPROVAL}
+            >
+              {t("diagnosis.openApproval")}
+            </Button>
           ) : null}
         </div>
       ) : null}
-    </li>
+    </div>
   );
 }
 
 /**
- * The first block's act, beside the page title: the same press as the block's
- * own button below it. What a repair request answers is said as a toast — a
- * title has no room for a sentence.
+ * A step's repair as the approval dialog's remedy: the same act as the step's
+ * own button on the workflow page. What a repair request answers is said as a
+ * toast — a dialog footer has no room for a sentence.
  */
-export function DiagnosisTitleAction({
+export function DiagnosisRepairAction({
   diagnosis,
   environment,
   via,
-  variant = "outline",
-  testId = "detail-action",
+  testId,
 }: {
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
-  via: "review" | "auto" | "prepare" | "chat";
-  /** `outline` beside a page title, whose filled action is taken; filled where it is the one act. */
-  variant?: "outline" | "default";
-  testId?: string;
+  /** `review`: the repair is already filed; `auto`: the engine can compute one. */
+  via: "review" | "auto";
+  testId: string;
 }) {
-  const { t } = useI18n();
-  const session = useSession();
   const entry = diagnosis.diagnoses[0];
   if (!entry) return null;
   return (
-    <DiagnosisTitleButton
+    <DiagnosisRepairButton
       entry={entry}
       diagnosis={diagnosis}
       environment={environment}
       via={via}
-      variant={variant}
       testId={testId}
-      permissions={session.permissions}
-      t={t}
     />
   );
 }
 
-function DiagnosisTitleButton({
+function DiagnosisRepairButton({
   entry,
   diagnosis,
   environment,
   via,
-  variant,
   testId,
-  permissions,
-  t,
 }: {
   entry: GateDiagnosis;
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
-  via: "review" | "auto" | "prepare" | "chat";
-  variant: "outline" | "default";
+  via: "review" | "auto";
   testId: string;
-  permissions: readonly string[];
-  t: ReturnType<typeof useI18n>["t"];
 }) {
-  const { repair, prepare, reviewHref, chatHref } = useGateRemedy({
+  const { t } = useI18n();
+  const repair = useStepRepair({
     entry,
     diagnosis,
     environment,
     onNote: (note) => toast(t(REPAIR_NOTE_KEYS[note])),
-    onPrepared: (key) => toast(t(key)),
   });
-  if (via === "review" && permissions.includes("workflow:write"))
+  if (via === "review")
     return (
-      <Button asChild variant={variant}>
-        <a href={absolute(reviewHref)} data-testid={testId}>
+      <Button asChild>
+        <a href={absolute(repairReviewHref(diagnosis.workflow_id))} data-testid={testId}>
           {t("remedy.reviewRepair")}
           <ArrowRight data-icon="inline-end" />
         </a>
       </Button>
     );
-  if (via === "auto" && entry.fixer && permissions.includes("workflow:write"))
-    return (
-      <Button
-        variant={variant}
-        disabled={repair.isPending}
-        onClick={() => entry.fixer && repair.mutate(entry.fixer)}
-        data-testid={testId}
-      >
-        <Wrench data-icon="inline-start" />
-        {t("diagnosis.repair")}
-      </Button>
-    );
-  if (via === "prepare" && permissions.includes("workflow:run") && diagnosis.workflow_version_id)
-    return (
-      <Button
-        variant={variant}
-        disabled={prepare.isPending}
-        onClick={() => prepare.mutate()}
-        data-testid={testId}
-      >
-        {t("diagnosis.prepare")}
-      </Button>
-    );
-  if (via === "chat" && permissions.includes("conversation:write"))
-    return (
-      <Button asChild variant={variant}>
-        <a href={absolute(chatHref)} data-testid={testId}>
-          <Bot data-icon="inline-start" />
-          {t("remedy.chat")}
-        </a>
-      </Button>
-    );
-  return null;
+  if (!entry.fixer) return null;
+  return (
+    <Button
+      disabled={repair.isPending}
+      onClick={() => entry.fixer && repair.mutate(entry.fixer)}
+      data-testid={testId}
+    >
+      <Wrench data-icon="inline-start" />
+      {t("diagnosis.repair")}
+    </Button>
+  );
 }

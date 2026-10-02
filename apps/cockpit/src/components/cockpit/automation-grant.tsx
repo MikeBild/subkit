@@ -151,7 +151,6 @@ function AutomationCardBody({
         <AutomationActionButton
           automation={automation}
           action={state.primaryAction}
-          size="sm"
           testId="chat-automation-tool-resume"
         />
       ) : card.act === "recheck" ? (

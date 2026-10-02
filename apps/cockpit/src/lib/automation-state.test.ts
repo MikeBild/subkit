@@ -11,7 +11,6 @@ import {
   automationEnvironment,
   automationNeedsMoreApprovals,
   automationState,
-  automationTitleAction,
   EXTEND_BELOW_RUN_SHARE,
   EXTEND_WITHIN_DAYS,
   grantNeedsExtension,
@@ -315,9 +314,9 @@ describe("automationState — one state, by precedence", () => {
     const state = automationState(inputs({ schedules: [], status: status(), authorities: [] }));
     expect(state.state).toBe("manual");
     expect(state.facts.inactive).toBe(false);
-    // The approval is offered, but nothing asks for it beside the title.
+    // The approval is offered; nothing is pending.
     expect(state.primaryAction).toEqual({ kind: "grant" });
-    expect(automationTitleAction(state)).toBeNull();
+    expect(state.pendingEnvironments).toEqual(["dev"]);
   });
 
   test("a manual workflow with a current approval is approved", () => {
@@ -566,16 +565,6 @@ describe("automationEnvironment", () => {
 });
 
 describe("actions", () => {
-  test("the title carries the pending step, and nothing in a calm state", () => {
-    expect(automationTitleAction(automationState(inputs()))).toEqual({ kind: "grant" });
-    expect(
-      automationTitleAction(
-        automationState(inputs({ status: status(["authorized"]), authorities: [authority()] })),
-      ),
-    ).toBeNull();
-    expect(automationTitleAction(automationState(inputs({ authorities: null })))).toBeNull();
-  });
-
   test("an action is offered only to someone who may perform it", () => {
     const none = { write: false, run: false, chat: false };
     expect(automationActionPermitted({ kind: "view" }, none)).toBe(true);
@@ -647,7 +636,6 @@ describe("a read that did not answer is never read as approved", () => {
     expect(state.primaryAction).toBeNull();
     // The approval that exists stays one press away.
     expect(state.secondaryAction).toEqual({ kind: "view" });
-    expect(automationTitleAction(state)).toBeNull();
   });
 
   test("the verified status errored, and an approval exists", () => {
@@ -1056,9 +1044,8 @@ describe("a version stored in an earlier format", () => {
       inputs({ workflow: legacy, status: status(["authorized"]), authorities: [authority()] }),
     );
     expect(state.state).toBe("legacy");
-    // Changing it is an author's act — in the chat, also beside the title.
+    // Changing it is an author's act — in the chat.
     expect(state.primaryAction).toEqual({ kind: "repair", via: "chat", stepId: null });
-    expect(automationTitleAction(state)).toEqual(state.primaryAction);
     expect(state.pendingEnvironments).toEqual([]);
     // No approval is offered for a version the engine would refuse to approve.
     expect(automationState(inputs({ workflow: legacy })).state).toBe("legacy");

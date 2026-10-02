@@ -4237,7 +4237,7 @@ for (const locale of variants) {
     await verifyRunDialog(page, stand, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
     );
-    await verifyDetailAction(page, stand, locale.name, (state) =>
+    await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
     );
     await verifyWorkflowPreview(page, stand, uuid, locale.name);

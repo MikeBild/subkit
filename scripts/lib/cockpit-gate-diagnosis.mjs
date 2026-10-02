@@ -1,11 +1,13 @@
+import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 /**
  * A workflow the approval gate holds, on its own page: each refused step says
  * WHY in the reader's words, and the act that removes it is offered where the
  * cockpit can perform it — "Automatisch reparieren" files the engine's
- * deterministic repair and opens it in the review sheet, a step that needs a
- * trial run offers one, and one that needs an author leads to the chat.
+ * deterministic repair for that step and opens it in the review sheet. What
+ * does the same whichever step asks for it stands once under the list: the
+ * trial run, reviewing the filed repairs, the conversation with an author.
  *
  * Hostile on purpose: a reason this build has no sentence for (shown as the
  * engine's value, never blank), run and candidate ids that must stay off the
@@ -238,7 +240,8 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     if ((await section.locator("li[data-code]").count()) !== 4)
       throw new Error("The diagnosis does not list every refused step");
     // The diagnosis lives inside the automation panel, whose state it decides —
-    // once on the page, and its first block's act is the one beside the title.
+    // once on the page. Its acts stand in it and nowhere else: the title
+    // carries the page's own actions only.
     const automation = page.getByTestId("workflow-automation");
     if ((await automation.getByTestId("workflow-diagnosis").count()) !== 1)
       throw new Error("The diagnosis is not part of the automation panel");
@@ -252,9 +255,13 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     );
     if (await page.getByTestId("workflow-automation-action").count())
       throw new Error("The panel repeats the diagnosis' act as a second button");
-    const titled = (await page.getByTestId("detail-action").innerText()).trim();
-    if (titled !== (de ? "Automatisch reparieren" : "Repair automatically"))
-      throw new Error(`The action beside the title reads "${titled}", not the first block's act`);
+    if (await page.getByTestId("detail-action").count())
+      throw new Error("The title repeats an act of the diagnosis");
+    const repairs = await page
+      .getByTestId("detail-workflows")
+      .getByText(de ? "Automatisch reparieren" : "Repair automatically", { exact: true })
+      .count();
+    if (repairs !== 1) throw new Error(`The one computable repair is offered ${repairs} times`);
     // The page's one filled action is "Ausführen" — also on an unhealthy
     // workflow, whose cause block stands above the panel.
     const filled = await page
@@ -268,18 +275,19 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     const pageText = await page.getByTestId("detail-workflows").innerText();
     for (const stale of ["Freigabe prüfen", "Review approval"])
       if (pageText.includes(stale)) throw new Error(`The page still offers "${stale}"`);
-    // Neither the title nor the cause block leads to the panel under another
-    // name. (The call block's trial-run line does: it explains a different
-    // fact and names where that fact is decided.)
+    // Nothing on the page leads to the panel under another name: not the
+    // title, not the cause block, not the call block.
     const jumps = await page
       .getByTestId("detail-workflows")
-      .locator(
-        'header a[href*="#workflow-automation"], [data-testid="workflow-cause"] a[href*="#workflow-automation"]',
-      )
+      .locator('a[href*="#workflow-automation"]')
       .count();
-    if (jumps) throw new Error("The title or the cause block links to the automation panel");
+    if (jumps) throw new Error(`${jumps} link(s) on the page only lead to the automation panel`);
     if (await page.getByTestId("workflow-cause-remedy").count())
       throw new Error("The cause block offers a remedy the panel below it owns");
+    // Four refused steps, an unhealthy workflow, a failed run in the list:
+    // every action once.
+    await page.getByTestId("workflow-recent-run-0").waitFor();
+    await assertSingleTriggers(page, `${locale}/gate-diagnosis`, { approvalOpeners: 0 });
 
     // The cause, in the reader's words — the precise rule, not the code.
     const encoder = await item(0).getByTestId("workflow-diagnosis-0-cause").innerText();
@@ -294,17 +302,31 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     if ((await unknown.innerText()) !== "sent_on_a_sunday")
       throw new Error("A reason this build cannot word is not shown as the engine's value");
 
-    // Each block offers the act that removes it, and only that.
+    // The computable repair is its step's own button. The trial run and the
+    // conversation do the same whichever step asks: once each, under the list.
     await item(0).getByTestId("workflow-diagnosis-0-repair").waitFor();
-    await item(1).getByTestId("workflow-diagnosis-1-prepare").waitFor();
-    await item(2).getByTestId("workflow-diagnosis-2-chat").waitFor();
-    if (await item(1).getByTestId("workflow-diagnosis-1-repair").count())
-      throw new Error("A block without a fixer offers an automatic repair");
-    if (await item(2).getByTestId("workflow-diagnosis-2-repair").count())
-      throw new Error("A block that needs an author offers an automatic repair");
-    const chat = await item(2).getByTestId("workflow-diagnosis-2-chat").getAttribute("href");
+    for (const index of [1, 2, 3])
+      if (await item(index).locator("button").count())
+        throw new Error(`Block ${index} carries a button for an act that is not its own`);
+    const shared = section.getByTestId("workflow-diagnosis-actions");
+    await shared.getByTestId("workflow-diagnosis-prepare").waitFor();
+    const chat = await shared.getByTestId("workflow-diagnosis-chat").getAttribute("href");
     if (!chat?.includes("/cockpit/chat/new?") || !chat.includes(`workflow_id=${workflowId}`))
       throw new Error(`The author remedy does not open a chat about this workflow: ${chat}`);
+    // One conversation for both steps that need an author — it names both.
+    const asked = new URL(chat, "http://x").searchParams.get("prompt") ?? "";
+    const authorSteps = await section
+      .locator('li[data-remedy="author"] p:first-child')
+      .allInnerTexts();
+    if (authorSteps.length !== 2) throw new Error("The fixture lost a step that needs an author");
+    for (const step of diagnosis()
+      .diagnoses.filter((entry) => entry.remedy_kind === "author")
+      .map((entry) => entry.subject.step_id))
+      if (!asked.includes(step))
+        throw new Error(`The conversation does not name step ${step}: ${asked}`);
+    // One run refused two of the steps: its link stands once.
+    if ((await section.locator('a[data-testid$="-run"]').count()) !== 1)
+      throw new Error("The run that refused several steps is linked more than once");
 
     // The run list names the broken rule beside the class.
     const recent = page.getByTestId("workflow-recent-run-0-refusal-reason");
@@ -317,8 +339,8 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await capture("cause");
 
     // A trial run is asked for in the environment the approval is judged in.
-    await item(1).getByTestId("workflow-diagnosis-1-prepare").click();
-    await item(1).getByTestId("workflow-diagnosis-1-note").waitFor();
+    await shared.getByTestId("workflow-diagnosis-prepare").click();
+    await shared.getByTestId("workflow-diagnosis-prepared").waitFor();
     if (prepareBodies.length !== 1 || JSON.stringify(prepareBodies[0]) !== '{"environment":"prod"}')
       throw new Error(`The trial run was not asked for exactly: ${JSON.stringify(prepareBodies)}`);
 
@@ -344,15 +366,18 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
 
     // Once filed, the page leads to the open repair instead of filing again.
     await stand.visit(page, `workflows/${workflowId}`);
-    await item(0).getByTestId("workflow-diagnosis-0-review").waitFor();
+    await section.getByTestId("workflow-diagnosis-review").waitFor();
     if (await item(0).getByTestId("workflow-diagnosis-0-repair").count())
       throw new Error("A filed repair is offered for filing again");
-    // … and so does the action beside the title: the same act, the same place.
-    const reviewHref = await page.getByTestId("detail-action").getAttribute("href");
-    if (
-      reviewHref !== (await item(0).getByTestId("workflow-diagnosis-0-review").getAttribute("href"))
-    )
-      throw new Error(`The title leads to ${reviewHref}, not to the filed repair`);
+    // … once: the cause block above knows of the same open repair and leaves
+    // reviewing it to the diagnosis; the title never carried it.
+    await page.waitForLoadState("networkidle");
+    const reviews = await page
+      .getByTestId("detail-workflows")
+      .getByText(de ? "Reparatur prüfen" : "Review the repair", { exact: true })
+      .count();
+    if (reviews !== 1) throw new Error(`Reviewing the filed repair is offered ${reviews} times`);
+    await assertSingleTriggers(page, `${locale}/gate-diagnosis-filed`, { approvalOpeners: 0 });
 
     // A draft is diagnosed, never repaired: the engine would refuse it.
     current = false;
