@@ -3,17 +3,13 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import {
-  DiagnosisTitleAction,
+  DiagnosisRepairAction,
   type WorkflowDiagnosis,
   workflowDiagnosisQuery,
 } from "@/components/cockpit/workflow-diagnosis";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  type AutomationAction,
-  automationActionPermitted,
-  automationRepairAction,
-} from "@/lib/automation-state";
+import { automationActionPermitted, automationRepairAction } from "@/lib/automation-state";
 import {
   type GrantScopeWarning,
   OPENING_NOTICE_KEYS,
@@ -135,7 +131,7 @@ export function useGrantRemedy(
   workflowId: string,
   environment: ReviewEnvironment,
   enabled: boolean,
-): { diagnosis: WorkflowDiagnosis; action: Extract<AutomationAction, { kind: "repair" }> } | null {
+): { diagnosis: WorkflowDiagnosis; via: "review" | "auto" | "prepare" } | null {
   const session = useSession();
   const { permissions } = session;
   const diagnosis = useQuery({
@@ -145,13 +141,14 @@ export function useGrantRemedy(
   const [entry] = diagnosis.data?.diagnoses ?? [];
   if (!diagnosis.data || !entry) return null;
   const action = automationRepairAction(entry, diagnosis.data.is_current);
-  if (action.via === "chat") return null;
+  const { via } = action;
+  if (via === "chat") return null;
   const permitted = automationActionPermitted(action, {
     write: permissions.includes("workflow:write"),
     run: permissions.includes("workflow:run"),
     chat: permissions.includes("conversation:write"),
   });
-  return permitted ? { diagnosis: diagnosis.data, action } : null;
+  return permitted ? { diagnosis: diagnosis.data, via } : null;
 }
 
 /**
@@ -171,18 +168,17 @@ export function GrantRemedyAction({
   onRecheck: () => void;
 }) {
   const { t } = useI18n();
-  if (remedy.action.via === "prepare")
+  if (remedy.via === "prepare")
     return (
       <Button disabled={busy} onClick={onRecheck} data-testid="authority-remedy-prepare">
         {t("diagnosis.prepare")}
       </Button>
     );
   return (
-    <DiagnosisTitleAction
+    <DiagnosisRepairAction
       diagnosis={remedy.diagnosis}
       environment={environment}
-      via={remedy.action.via}
-      variant="default"
+      via={remedy.via}
       testId="authority-remedy"
     />
   );

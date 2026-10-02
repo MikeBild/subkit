@@ -4,12 +4,11 @@ import { absolute, chatNewHref } from "@/app/links";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import {
   AutomationPanel,
-  AutomationTitleAction,
+  automationPanelOffers,
   useWorkflowAutomation,
 } from "@/components/cockpit/automation-panel";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
-import { RemedyLink, useWorkflowRemedy } from "@/components/cockpit/detail-action";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
@@ -26,7 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { automationActionPermitted, automationTitleAction } from "@/lib/automation-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -57,8 +55,8 @@ interface MenuEntry {
 }
 
 /**
- * The further actions beside the title. Several stand behind "⋯"; a single
- * one is a named button — the glyph is reserved for a real menu.
+ * The page's further actions beside the title. Several stand behind "⋯"; a
+ * single one is a named button — the glyph is reserved for a real menu.
  */
 function FurtherActions({ entries }: { entries: readonly MenuEntry[] }) {
   const { t } = useI18n();
@@ -121,7 +119,9 @@ function FurtherActions({ entries }: { entries: readonly MenuEntry[] }) {
  * A workflow's page, in the order a reader asks: may it run on its own → how
  * is it called → what does it take and return → what does it do → how has it
  * been doing. Everything a reader does not decide by — technical facts, former
- * approvals — is folded below. Every fact has one home.
+ * approvals — is folded below. Every fact has one home, and every action one
+ * trigger: the header carries the page's own (run it, the menu), a section's
+ * action stands in that section and nowhere else.
  */
 export function WorkflowPage({
   id,
@@ -168,25 +168,12 @@ export function WorkflowPage({
   };
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
-  const remedy = useWorkflowRemedy(id, title, permissions);
-  // The automation state's pending step leads; a calm state leaves the title
-  // to the page's ordinary action. Nothing is shown until the state is known —
-  // an action that changes under the pointer is worse than a moment without.
-  const stateAction = automation.state ? automationTitleAction(automation.state) : null;
-  const pending =
-    stateAction &&
-    automationActionPermitted(stateAction, { write: canWrite, run: canRun, chat: canChat })
-      ? stateAction
-      : null;
-  const settled = automation.state !== null || automation.failed;
-  const ordinary = settled && !pending ? remedy : null;
   const changeHref = absolute(
     chatNewHref({ workflowId: id, prompt: t("detail.changePrompt", { name: title }) }),
   );
 
   const entries: MenuEntry[] = [
-    // "Im Chat ändern" stays reachable while the title carries another action.
-    ...(canChat && ordinary?.kind !== "chat"
+    ...(canChat
       ? [
           {
             key: "change",
@@ -244,11 +231,6 @@ export function WorkflowPage({
               versionId={versionId}
             />
           ) : null}
-          {pending ? (
-            <AutomationTitleAction automation={automation} action={pending} workflowName={title} />
-          ) : ordinary ? (
-            <RemedyLink remedy={ordinary} />
-          ) : null}
           <FurtherActions entries={entries} />
           <ContextHelp label={t("detail.editHelp.label")} testId="workflow-edit-help">
             {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
@@ -265,6 +247,7 @@ export function WorkflowPage({
           healthReason={text(record, "health_reason")}
           healthChangedAt={text(record, "health_changed_at")}
           permissions={permissions}
+          panelOffers={automationPanelOffers(automation)}
         />
         <AutomationPanel automation={automation} workflow={workflow} workflowName={title} />
         <WorkflowInvocation

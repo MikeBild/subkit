@@ -3098,6 +3098,7 @@ const EN = {
   "diagnosis.prepareFailed": "The trial run could not be started.",
   "diagnosis.openApproval": "Open the approval",
   "diagnosis.chatPrompt": "The approval refuses step “{step}”. How do I fix it?",
+  "diagnosis.chatPromptSteps": "The approval refuses the steps {steps}. How do I fix them?",
   "diagnosis.loadFailed": "Why the approval holds this workflow could not be loaded.",
   "automation.title": "Automatic operation",
   "automation.help.label": "About automatic operation",
@@ -3167,12 +3168,10 @@ const EN = {
     "An approval is stored but not confirmed here — the call may run as a trial without effect.",
   "invocation.http.refused":
     "The engine refuses this call: the version is stored in an earlier format.",
-  "invocation.http.toState": "To the state",
   "invocation.hidden.hooks": "You may not see this workflow's webhooks; it may have some.",
   "invocation.hidden.schedules": "You may not see this workflow's schedules; it may have some.",
   "invocation.hidden.both":
     "You may not see this workflow's webhooks and schedules; it may have some.",
-  "invocation.http.toAutomation": "To the approval",
   "invocation.hook.signed": "Signed with {scheme}. Headers: {headers}.",
   "invocation.hook.signedUnnamed": "Signed with {scheme}.",
   "invocation.hook.hmac": "HMAC-SHA256 ({encoding}) over {payload}. Headers: {headers}.",
@@ -6447,6 +6446,7 @@ const DE: Record<TranslationKey, string> = {
   "diagnosis.prepareFailed": "Der Probelauf konnte nicht gestartet werden.",
   "diagnosis.openApproval": "Freigabe öffnen",
   "diagnosis.chatPrompt": "Die Freigabe weist Schritt „{step}“ ab. Wie behebe ich das?",
+  "diagnosis.chatPromptSteps": "Die Freigabe weist die Schritte {steps} ab. Wie behebe ich das?",
   "diagnosis.loadFailed": "Warum die Freigabe diesen Workflow aufhält, ließ sich nicht laden.",
   "automation.title": "Automatischer Betrieb",
   "automation.help.label": "Was heißt automatischer Betrieb?",
@@ -6517,14 +6517,12 @@ const DE: Record<TranslationKey, string> = {
     "Eine Freigabe ist hinterlegt, hier aber nicht bestätigt – der Aufruf kann als Probelauf ohne Wirkung laufen.",
   "invocation.http.refused":
     "Die Engine lehnt diesen Aufruf ab: Die Fassung ist in einem älteren Format gespeichert.",
-  "invocation.http.toState": "Zum Zustand",
   "invocation.hidden.hooks":
     "Die Webhooks dieses Workflows darfst du nicht sehen; es kann welche geben.",
   "invocation.hidden.schedules":
     "Die Zeitpläne dieses Workflows darfst du nicht sehen; es kann welche geben.",
   "invocation.hidden.both":
     "Webhooks und Zeitpläne dieses Workflows darfst du nicht sehen; es kann welche geben.",
-  "invocation.http.toAutomation": "Zur Freigabe",
   "invocation.hook.signed": "Signiert nach {scheme}. Header: {headers}.",
   "invocation.hook.signedUnnamed": "Signiert nach {scheme}.",
   "invocation.hook.hmac": "HMAC-SHA256 ({encoding}) über {payload}. Header: {headers}.",

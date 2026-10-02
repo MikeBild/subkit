@@ -12,6 +12,7 @@ import {
   useGrantContext,
   useGrantRemedy,
 } from "@/components/cockpit/grant-notices";
+import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -505,6 +506,7 @@ export function GrantWorkflowAuthority({
             size="sm"
             disabled={disabled}
             data-testid={triggerTestId}
+            {...OPENS_APPROVAL}
           >
             {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
           </Button>

@@ -3,7 +3,6 @@ import { Copy } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
 import { FencedBlock, type FencedLanguage } from "@/components/cockpit/fenced-block";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { LoadFailed, queryView } from "@/components/failure-state";
@@ -208,6 +207,9 @@ function HttpMode({
       <p className={line} data-testid="workflow-invocation-responses">
         {t("invocation.http.responses")}
       </p>
+      {/* What the call will be, as a sentence. The approval and its state
+          stand in the automation panel; a link from here would be a second
+          trigger for the panel's own action. */}
       {verdict === "live" ? null : (
         <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
           {t(
@@ -216,14 +218,7 @@ function HttpMode({
               : verdict === "preview"
                 ? "invocation.http.previewOnly"
                 : "invocation.http.unconfirmed",
-          )}{" "}
-          <a
-            href={`#${WORKFLOW_AUTOMATION_ANCHOR}`}
-            className="text-foreground underline underline-offset-4"
-            data-testid="workflow-invocation-to-automation"
-          >
-            {t(verdict === "refused" ? "invocation.http.toState" : "invocation.http.toAutomation")}
-          </a>
+          )}
         </p>
       )}
     </div>
@@ -274,17 +269,6 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
           <p className={line} data-testid={`workflow-invocation-hook-${index}-signing`}>
             {signingSentence(hook, t)}
           </p>
-          {hook.state === "held" ? (
-            <p className={line}>
-              <a
-                href={`#${WORKFLOW_AUTOMATION_ANCHOR}`}
-                className="text-foreground underline underline-offset-4"
-                data-testid={`workflow-invocation-hook-${index}-to-automation`}
-              >
-                {t("invocation.http.toAutomation")}
-              </a>
-            </p>
-          ) : null}
         </div>
       ))}
       {invocation.base_url === null ? <p className={line}>{t("invocation.noAddress")}</p> : null}

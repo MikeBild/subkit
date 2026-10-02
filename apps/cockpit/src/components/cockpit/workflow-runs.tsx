@@ -52,6 +52,10 @@ export function WorkflowHealthBadge({ state }: { state: string | null }) {
  * classified failure. The engine's `health_reason` is free text in whatever
  * language the engine wrote, so it stands on the "Wortlaut der Engine" line
  * and is never passed off as the cockpit's own words.
+ *
+ * The remedy stands here and nowhere else on the page — and not here either
+ * where the automation panel below already carries it: an action has one
+ * trigger per view.
  */
 export function WorkflowCause({
   workflowId,
@@ -59,12 +63,15 @@ export function WorkflowCause({
   healthReason,
   healthChangedAt,
   permissions,
+  panelOffers,
 }: {
   workflowId: string;
   healthState: string | null;
   healthReason: string | null;
   healthChangedAt: string | null;
   permissions: readonly string[];
+  /** The remedies the automation panel on the same page carries itself. */
+  panelOffers: { reviewRepair: boolean; chat: boolean };
 }) {
   const { t, locale } = useI18n();
   const unhealthy = Boolean(healthState) && healthState !== "ok";
@@ -120,17 +127,18 @@ export function WorkflowCause({
     : t("detail.cause.noRun", { state: statusLabel(t, healthState) });
   const [lead, tail = ""] = sentence.split(SLOT);
   // "The approval no longer fits" is the automation panel's to resolve: it
-  // stands directly below, says the state and carries the one act. A remedy
-  // here could only be a link to the same page under another name. A repair
-  // that is already proposed is still offered — reviewing it is its own act.
-  const openRepair = patch.data?.items?.[0] ?? null;
-  const ownedByPanel = cause === "authority_mismatch" && !openRepair;
+  // stands directly below, says the state and carries the act — approving
+  // again, or the repair its diagnosis names. This block then says the cause
+  // and offers nothing. For every other cause it offers its remedy unless the
+  // panel already does: the filed repairs are reviewed in one sheet, and one
+  // conversation changes the workflow.
+  const ownedByPanel = cause === "authority_mismatch";
   const remedy = ownedByPanel
     ? null
     : remedyFor({
         workflowId,
         executionId: failedRun?.id ?? null,
-        patch: openRepair,
+        patch: panelOffers.reviewRepair ? null : (patch.data?.items?.[0] ?? null),
         // A run refused for its connector ran no step; the list row carries the
         // connector the refusal named.
         authState: connectorId
@@ -145,7 +153,7 @@ export function WorkflowCause({
             ? refusedSignIn(failure?.connector)
             : null,
         canRun: permissions.includes("workflow:run"),
-        canChat: permissions.includes("conversation:write"),
+        canChat: permissions.includes("conversation:write") && !panelOffers.chat,
         prompt: t("remedy.chatPrompt"),
       });
   const more = canReadRuns
