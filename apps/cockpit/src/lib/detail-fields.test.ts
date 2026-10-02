@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DETAIL_FIELDS, detailEntries } from "@/lib/detail-fields";
+import { DETAIL_FIELDS, detailEntries, recordBarFacts } from "@/lib/detail-fields";
 import { CATALOGS } from "@/lib/i18n";
 
 // The record the connector detail page renders, in the engine's own key order.
@@ -76,5 +76,25 @@ describe("cockpit detail fields", () => {
     for (const key of ["updated_at", "created_at", "last_executed_at", "auth_failed_at"]) {
       expect(DETAIL_FIELDS.find((field) => field.key === key)?.format).toBe("date");
     }
+  });
+});
+
+describe("what a record's bar may say", () => {
+  test("a lifecycle word only when the record carries one", () => {
+    expect(recordBarFacts({ status: "active" }).status).toBe("active");
+    expect(recordBarFacts({ lifecycle: "stable" }).status).toBe("stable");
+    // A file has no lifecycle: no word is made up for it.
+    expect(recordBarFacts({ filename: "report.pdf" }).status).toBeNull();
+    expect(recordBarFacts({ status: "" }).status).toBeNull();
+  });
+
+  test("a version only when it is a number", () => {
+    expect(recordBarFacts({ version: 3 }).version).toBe(3);
+    expect(recordBarFacts({ current_version: "12" }).version).toBe(12);
+    // A knowledge source's version is a content marker, not a count.
+    expect(recordBarFacts({ version: "knowledge-v4" }).version).toBeNull();
+    expect(recordBarFacts({ version: "9f2c1e7ab0" }).version).toBeNull();
+    expect(recordBarFacts({ version: 1.5 }).version).toBeNull();
+    expect(recordBarFacts({}).version).toBeNull();
   });
 });

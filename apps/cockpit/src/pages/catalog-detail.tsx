@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
@@ -29,7 +29,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { connectorAuthState, connectorHealthLabel, needsRenewal } from "@/lib/connector-auth-state";
-import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
+import {
+  type DetailEntry,
+  detailEntries,
+  recordBarFacts,
+  SCOPE_KEYS,
+  SIDE_EFFECT_KEYS,
+} from "@/lib/detail-fields";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import {
@@ -120,58 +126,58 @@ function renderDetailValue(
 }
 
 /**
- * What a connector's bar still says once its states have their own homes —
- * the sign-in in the sign-in card, switched off in the state notice: the
- * engine's health verdict when it is neither ok nor the sign-in again, and
- * that the reader may only look. With neither, there is no bar.
+ * The row under a record's title: what is a state of this record, and that
+ * the reader may only look. No label, no icon, no sentence about where things
+ * are edited — and with nothing to say, no row.
+ *
+ * A connector's states have their own homes — the sign-in in the sign-in
+ * card, switched off in the state notice — so its row carries the engine's
+ * health verdict only when that is neither ok nor the sign-in again. Every
+ * other record carries its lifecycle word and its version, when it has them
+ * (`recordBarFacts`). A workflow has no row: its version and whether it may
+ * run stand in its automation panel (`workflow-page.tsx`).
  */
-function ConnectorBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
+function RecordBar({
+  record,
+  canWrite,
+  connector,
+}: {
+  record: RecordValue;
+  canWrite: boolean;
+  connector: boolean;
+}) {
   const { t } = useI18n();
-  const health = typeof record.health_state === "string" ? record.health_state : null;
+  const health = connector && typeof record.health_state === "string" ? record.health_state : null;
   const healthKey =
     health && health !== "ok" && health !== "needs_reauth" ? connectorHealthLabel(health) : null;
-  if (!healthKey && canWrite) return null;
+  const { status, version } = connector ? { status: null, version: null } : recordBarFacts(record);
+  if (!healthKey && status === null && version === null && canWrite) return null;
   return (
     <div
       data-family-slot="detail-context"
       className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
+      data-testid="detail-record-bar"
     >
       {healthKey ? (
         <Badge variant="outline" data-testid="detail-connector-health">
           {t(healthKey)}
         </Badge>
       ) : null}
-      {canWrite ? null : <span className="text-muted-foreground">{t("detail.readOnly")}</span>}
-    </div>
-  );
-}
-
-/**
- * The state row under a record's title. A workflow has none: its version and
- * whether it may run stand in its automation panel (`workflow-page.tsx`). A
- * connector has its own (`ConnectorBar`): it has no lifecycle to name.
- */
-function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
-  const { t } = useI18n();
-  const status =
-    typeof record.status === "string"
-      ? record.status
-      : typeof record.lifecycle === "string"
-        ? record.lifecycle
-        : "active";
-  const version = record.version ?? record.current_version;
-  return (
-    <div
-      data-family-slot="detail-context"
-      className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
-    >
-      <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-      <span className="font-medium">{t("detail.governance")}</span>
-      <Badge variant="outline">{statusLabel(t, status)}</Badge>
-      {version !== undefined && <Badge variant="secondary">v{String(version)}</Badge>}
-      <span className="text-muted-foreground">
-        {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
-      </span>
+      {status !== null ? (
+        <Badge variant="outline" data-testid="detail-record-status">
+          {statusLabel(t, status)}
+        </Badge>
+      ) : null}
+      {version !== null ? (
+        <Badge variant="secondary" data-testid="detail-record-version">
+          v{version}
+        </Badge>
+      ) : null}
+      {canWrite ? null : (
+        <span className="text-muted-foreground" data-testid="detail-read-only">
+          {t("detail.readOnly")}
+        </span>
+      )}
     </div>
   );
 }
@@ -567,11 +573,7 @@ export function CatalogDetailPage({
           <DetailAction resource={resource} name={recordTitle(record)} permissions={permissions} />
         </div>
       </header>
-      {resource === "connectors" ? (
-        <ConnectorBar record={record} canWrite={canWrite} />
-      ) : (
-        <GovernanceBar record={record} canWrite={canWrite} />
-      )}
+      <RecordBar record={record} canWrite={canWrite} connector={resource === "connectors"} />
       {notice ? (
         <ConnectorStateNotice
           connectorId={id}

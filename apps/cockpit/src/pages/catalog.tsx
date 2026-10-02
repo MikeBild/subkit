@@ -39,7 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { authStateLabel, connectorAuthState } from "@/lib/connector-auth-state";
 import { SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -385,17 +384,12 @@ function catalogColumns(
       // one styled as a link looked like it led somewhere else.
       column.text("name", (row) => row.display_name, t("common.name"), {
         sortable: true,
-        width: "w-[20%]",
+        width: "w-[23%]",
       }),
-      column.custom(
-        "auth",
-        (row) => row.health_state,
-        t("catalog.auth"),
-        (row) => t(authStateLabel(connectorAuthState(row as ConnectorListItem))),
-        { width: "w-[14%]" },
-      ),
+      // One column for where the connector stands. A second one, "Zugangsdaten",
+      // read the same verdict and said it again in other words.
       column.status("health", (row) => row.health_state, t("catalog.health"), {
-        width: "w-[13%]",
+        width: "w-[18%]",
       }),
       column.custom(
         "enabled",
@@ -413,14 +407,14 @@ function catalogColumns(
         (row) => row.environment,
         t("catalog.environment"),
         (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
-        { sortable: true, width: "w-[12%]" },
+        { sortable: true, width: "w-[13%]" },
       ),
       column.custom(
         "driver",
         (row) => row.driver,
         t("catalog.driver"),
         (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
-        { sortable: true, width: "w-[11%]" },
+        { sortable: true, width: "w-[13%]" },
       ),
     ];
     // Without workflow:read the relation cannot be read at all. Dropping the
@@ -440,7 +434,7 @@ function catalogColumns(
             };
           },
           t("catalog.usedBy"),
-          { width: "w-[15%]" },
+          { width: "w-[18%]" },
         ),
       );
     }

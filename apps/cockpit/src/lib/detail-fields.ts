@@ -109,3 +109,33 @@ export function detailEntries(record: Record<string, unknown>): DetailEntry[] {
     value: record[field.key],
   }));
 }
+
+/**
+ * What the row under a record's title says — only what is a state of THIS
+ * record, taken from the record:
+ *
+ *   - its lifecycle word, when it carries one. A record without a lifecycle
+ *     gets no word: "Aktiv" on a file was a default, not a fact.
+ *   - its version, when that is a number. A knowledge source's `version` is a
+ *     content marker ("knowledge-v4"), and a "v" in front of it reads as a
+ *     version it is not.
+ */
+export function recordBarFacts(record: Record<string, unknown>): {
+  status: string | null;
+  version: number | null;
+} {
+  const status =
+    typeof record.status === "string" && record.status
+      ? record.status
+      : typeof record.lifecycle === "string" && record.lifecycle
+        ? record.lifecycle
+        : null;
+  const raw = record.version ?? record.current_version;
+  const version =
+    typeof raw === "number" && Number.isInteger(raw)
+      ? raw
+      : typeof raw === "string" && /^\d+$/.test(raw)
+        ? Number(raw)
+        : null;
+  return { status, version };
+}

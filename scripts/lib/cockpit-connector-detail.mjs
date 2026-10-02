@@ -222,6 +222,17 @@ function connectorApi(state, variant) {
         updated_at: iso(4),
       });
     if (path === `/v1/connectors/${PG_ID}/credential`) return json(route, null);
+    // "Unterhaltungen dazu" for the sign-in connector: refused, or none — the
+    // two answers the section used to word the same way.
+    if (
+      path === "/v1/conversations" &&
+      url.searchParams.get("target_connector_id") === OAUTH_ID &&
+      state.oauth.conversations !== "served"
+    ) {
+      if (state.oauth.conversations === "failed")
+        return json(route, { error: { code: "internal", message: "fixture refuses" } }, 500);
+      return json(route, { items: [], total: 0 });
+    }
     if (path === `/v1/connectors/${OAUTH_ID}/runtime`)
       return json(route, {
         // A sign-in is not a call: it moves neither of these.
@@ -275,7 +286,8 @@ const isConnectorApi = (url) => {
     path.startsWith(`/v1/connectors/${PG_ID}`) ||
     path.startsWith(`/v1/connectors/${OAUTH_ID}`) ||
     path === "/v1/stats/connectors" ||
-    path === "/v1/workflows"
+    path === "/v1/workflows" ||
+    path === "/v1/conversations"
   );
 };
 
@@ -387,6 +399,13 @@ async function openOauth(page, stand) {
  */
 async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   const set = (next) => Object.assign(oauth, { missing: [], grants: [], ...next });
+  // One action once per view, by both readings: an effect has one trigger and
+  // one filled action (this file), and no two triggers share a name or an
+  // address (the family's `assertSingleTriggers`).
+  const assertOnce = async (label) => {
+    await assertOneTriggerPerEffect(page, label);
+    await assertSingleTriggers(page, label);
+  };
   const words = de
     ? {
         connected: "Verbunden",
@@ -443,10 +462,26 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   // the sign-in card.
   if ((await occurrences(page, words.kind)) !== 1)
     throw new Error(`${where}: the kind of sign-in does not stand exactly once`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await assertNoVisibleUuids(page.locator("main").first(), where);
   await assertNoSidewaysScroll(page, where);
   await capture("connector-signin-connected");
+
+  // "Unterhaltungen dazu": a read that failed says so and offers a retry; a
+  // connector nobody talked about has no section. Neither reads as the other.
+  set({ enabled: true, needsReauth: false, conversations: "failed" });
+  await openOauth(page, stand);
+  await page.getByTestId("detail-conversations-failed").waitFor({ timeout: 15_000 });
+  if (!(await page.getByTestId("detail-conversations-failed-retry").isVisible()))
+    throw new Error(`${where}: a failed conversations read offers no retry`);
+  if (await page.getByTestId("detail-conversation-0").count())
+    throw new Error(`${where}: conversations stand beside the failure`);
+  await capture("connector-conversations-failed");
+  set({ enabled: true, needsReauth: false, conversations: "empty" });
+  await openOauth(page, stand);
+  if (await page.getByTestId("detail-conversations").count())
+    throw new Error(`${where}: an empty "Unterhaltungen dazu" section is on the page`);
+  set({ conversations: "served" });
 
   // ── Needs a sign-in ──────────────────────────────────────────────────────
   where = "/connectors/<oauth> · needs sign-in";
@@ -463,7 +498,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     throw new Error(`${where}: no "${words.renew}" in the sign-in card`);
   if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "default")
     throw new Error(`${where}: renewing the sign-in is not the page's filled action`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await capture("connector-signin-expired");
 
   // A flag typed into the address confirms nothing the connector does not bear out.
@@ -498,7 +533,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   // Signing in is the first step; switching on stands beside it, unfilled.
   if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "outline")
     throw new Error(`${where}: two filled actions compete`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await capture("connector-signin-off-expired");
 
   // ── …and back from the provider: signed in, still switched off ───────────
@@ -524,7 +559,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     throw new Error(`${where}: switching on is not the page's filled action`);
   // The switch is the person's: the sign-in did not flip it.
   if (oauth.enabled) throw new Error(`${where}: signing in switched the connector on`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await assertNoVisibleUuids(page.locator("main").first(), where);
   await assertNoSidewaysScroll(page, where);
   await capture("connector-signin-off-signed-in");
@@ -552,7 +587,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   if ((await noticeKind()) !== "off") throw new Error(`${where}: nothing says it is switched off`);
   if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "default")
     throw new Error(`${where}: switching on is not the page's filled action`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await capture("connector-signin-off");
   await withBootstrap(page, "connector:write", async () => {
     await openOauth(page, stand);
@@ -576,7 +611,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   // filled action: the sign-in works.
   if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "outline")
     throw new Error(`${where}: no unfilled "${words.renew}" for the withheld permissions`);
-  await assertOneTriggerPerEffect(page, where);
+  await assertOnce(where);
   await capture("connector-signin-partial");
 }
 
@@ -585,7 +620,15 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
   const state = {
     trusted: ["search_items"],
     sent: [],
-    oauth: { enabled: true, needsReauth: false, missing: [], grants: [], started: 0, reads: 0 },
+    oauth: {
+      enabled: true,
+      needsReauth: false,
+      missing: [],
+      grants: [],
+      started: 0,
+      reads: 0,
+      conversations: "served",
+    },
   };
   let variant = null;
   const handler = (route) => connectorApi(state, variant)(route);
