@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, workflowHref } from "@/app/links";
+import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { FencedBlock } from "@/components/cockpit/fenced-block";
 import { Badge } from "@/components/ui/badge";
@@ -56,14 +57,7 @@ export function WorkflowStepsList({
   const [results, setResults] = useState<Record<string, PreviewResult>>({});
   const [running, setRunning] = useState<string | null>(null);
 
-  const connectors = useQuery({
-    queryKey: ["connectors", "lookup"],
-    queryFn: () =>
-      apiRequest<{ items: { id: string; display_name: string }[] }>("/v1/connectors?limit=200"),
-  });
-  const connectorNames = new Map(
-    (connectors.data?.items ?? []).map((item) => [item.id, item.display_name]),
-  );
+  const connectorNames = useConnectorNames();
 
   const lastExecution = useQuery({
     queryKey: ["workflow", workflowId, versionId, "last-execution"],

@@ -9,14 +9,19 @@
 //   turns the action into "extend / change limits" — never a second identical
 //   approval offered as if it were the first.
 // - The scope is said where it is not the ordinary one: another environment
-//   than the one that starts the workflow, a saved change instead of the
-//   running version.
+//   than the one that starts the workflow. (A saved change that can be
+//   approved is covered by `cockpit-workflow-authorities.mjs`; one that cannot
+//   is not announced as being approved.)
+// - Every fact once: the environment in its select, the version where the
+//   caller can name it, no disclosure that opens onto nothing — and every
+//   action of the dialog once (`cockpit-single-trigger.mjs`).
 // - What opening the dialog sets off is said BEFORE the press.
 // - A version that cannot be approved offers the act that removes the refusal.
 // - The review card has one button; two only when both environments wait, and
 //   then each says which one it is.
 // - A card for a workflow call says what the call was: a trial, a refusal, a run.
 
+import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 import { api, isPageApi, open, WORKFLOW } from "./cockpit-workflow-page.mjs";
 
@@ -30,7 +35,6 @@ const WORDS = {
     trial: "Beim Öffnen startet ein Probelauf ohne Wirkung.",
     again: "Vorbereitung erneut ausführen",
     repair: "Automatisch reparieren",
-    savedChange: "gespeicherte Änderung",
     approve: "Jetzt freigeben",
     cause: "Ursache ansehen",
     reviewProd: "Produktion prüfen",
@@ -55,7 +59,6 @@ const WORDS = {
     trial: "Opening the review starts a trial run without effects.",
     again: "Run the preparation again",
     repair: "Repair automatically",
-    savedChange: "saved change",
     approve: "Approve now",
     cause: "See the cause",
     reviewProd: "Review production",
@@ -127,6 +130,13 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       if (await page.getByTestId(scope).count())
         throw new Error(`${where}: the ordinary scope is warned about (${scope})`);
     await assertNoVisibleUuids(page.getByRole("dialog"), where);
+    // The environment is said once — in its select, not again as a badge.
+    const said = await page
+      .getByTestId("authority-grant-review")
+      .getByText(words.production, { exact: true })
+      .count();
+    if (said) throw new Error(`${where}: the review repeats the environment the select shows`);
+    await assertSingleTriggers(page, where, DIALOG);
     await capture("already-approved");
 
     // ── Another environment than the one that starts it: said ────────────────
@@ -144,6 +154,7 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       throw new Error(`${where}: a development review inherited production's suggestion`);
     if (await page.getByTestId("authority-suggestion").count())
       throw new Error(`${where}: the one-run default is explained`);
+    await assertSingleTriggers(page, where, DIALOG);
     await capture("scope-warning");
     await closeDialog(page);
     if (state.grants.length) throw new Error(`${where}: looking at the dialog granted something`);
@@ -167,6 +178,7 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       throw new Error(`${where}: the approval opens in the environment that is already approved`);
     if (state.diagnosed.at(-1) !== "dev")
       throw new Error(`${where}: the diagnosis was asked for ${state.diagnosed.at(-1)}`);
+    await assertSingleTriggers(page, where, DIALOG);
     await capture("mixed-environments");
     await closeDialog(page);
     await page.getByTestId("workflow-automation-secondary").click();
@@ -200,10 +212,18 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       throw new Error(`${where}: two filled actions stand in the dialog`);
     if (await page.getByTestId("authority-grant-confirm").count())
       throw new Error(`${where}: a version that cannot be approved offers approving`);
-    const version = await text(page.getByTestId("authority-scope-version"));
-    if (!version.includes("v9") || !version.includes(words.savedChange))
-      throw new Error(`${where}: the saved change is not named against v9: "${version}"`);
+    // Nothing can be approved: the dialog does not say "you are approving a
+    // saved change", and offers no disclosure that would open onto nothing.
+    if (await page.getByTestId("authority-scope-version").count())
+      throw new Error(`${where}: a version that cannot be approved is announced as being approved`);
+    if (await page.getByTestId("authority-effect-details").count())
+      throw new Error(`${where}: the operations are offered for opening, and there are none`);
+    // The version is named where the caller knows it, never by a placeholder.
+    const versionLabel = await text(page.getByTestId("authority-version-label"));
+    if (!versionLabel.includes("v10"))
+      throw new Error(`${where}: the reviewed version reads "${versionLabel}"`);
     await assertNoVisibleUuids(page.getByRole("dialog"), where);
+    await assertSingleTriggers(page, where, DIALOG);
     await capture("not-approvable");
     await again.click();
     for (let attempt = 0; state.prepares.length < 2 && attempt < 100; attempt += 1)
@@ -242,6 +262,9 @@ function reviewPart(callId) {
     },
   };
 }
+
+/** The approval dialog, checked as a view of its own. */
+const DIALOG = { root: '[role="dialog"]', approvalOpeners: 0 };
 
 export async function verifyChatReviewCard(page, stand, conversation, localeName, capture) {
   const words = WORDS[localeName];

@@ -386,9 +386,12 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
       throw new Error(
         `Approval judged ${reviewedVersion} while a prepared version was waiting — the running version is the one that could not be approved`,
       );
-    const badge = await page.getByTestId("authority-grant-review").innerText();
+    const badge = await page.getByTestId("authority-version-label").innerText();
     if (!badge.includes(locale === "de" ? "vorbereitet" : "prepared"))
       throw new Error("Review does not say which version it is judging");
+    // A saved change that CAN be approved: the dialog says that approving it
+    // puts it into service.
+    await page.getByTestId("authority-scope-version").waitFor();
     // The smaller decision has to be available on its own: a called child
     // needs its repaired version in service and no permission to run by
     // itself. Taking it must not grant anything.
