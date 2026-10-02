@@ -263,6 +263,98 @@ export function toolLabel(toolName: string): ToolLabel {
 }
 
 /**
+ * What a call that runs a workflow really was.
+ *
+ * "Ran a workflow" was the title of three different events: a real run, a
+ * trial whose writes were all held back, and a call the engine refused before
+ * anything started. A reader who had asked for nothing to be executed saw "ran
+ * a workflow · found a problem" over a trial that sent nothing.
+ *
+ *   trial    the engine prepared the run with every write held
+ *            (`hold_writes`): reads ran, nothing was sent or changed.
+ *   refused  no run exists — the engine turned the call away and says why.
+ *   live     a run with its writes dispatched.
+ *
+ * Null while the call has no result to read.
+ */
+export type WorkflowRunKind = "live" | "trial" | "refused";
+
+function runPayload(output: unknown): Record<string, unknown> | null {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return null;
+  const outer = output as Record<string, unknown>;
+  const inner = outer.data;
+  // `run_workflow` answers `{ ok, data }`; a saved workflow's own action
+  // answers flat. Both carry the same fields.
+  return inner !== null && typeof inner === "object" && !Array.isArray(inner)
+    ? { ok: outer.ok, ...(inner as Record<string, unknown>) }
+    : outer;
+}
+
+/** Whether a tool is one that runs a saved workflow. */
+export function isWorkflowRunTool(toolName: string): boolean {
+  return workflowSlugFromTool(toolName) !== null || registryKey(toolName) === "run_workflow";
+}
+
+export function workflowRunKind(output: unknown): WorkflowRunKind | null {
+  const payload = runPayload(output);
+  if (!payload) return null;
+  if (payload.hold_writes === true || payload.writes_held === true || payload.preview === true)
+    return "trial";
+  if (typeof payload.execution_id === "string" && payload.execution_id) return "live";
+  if (
+    typeof payload.error_code === "string" ||
+    typeof payload.error === "string" ||
+    payload.denied === true ||
+    payload.ok === false
+  )
+    return "refused";
+  return null;
+}
+
+/** Why the engine turned a run away, where the cockpit has a word for it. */
+const REFUSAL_WORDS: Record<string, TranslationKey> = {
+  workflow_activation_required: "tool.refusal.activationRequired",
+  workflow_not_persisted: "tool.refusal.notSaved",
+  workflow_not_found: "tool.refusal.notFound",
+  permission_denied: "tool.refusal.permission",
+  principal_required: "tool.refusal.permission",
+  repair_loop_detected: "tool.refusal.repeatedFailure",
+  input_schema_violation: "tool.refusal.input",
+  execution_authority_required: "tool.refusal.approval",
+  execution_authority_unavailable: "tool.refusal.approval",
+  execution_authority_changed: "tool.refusal.approval",
+};
+
+/** The reason beside "run refused", or null when the engine named none we word. */
+export function workflowRefusalKey(output: unknown): TranslationKey | null {
+  const payload = runPayload(output);
+  if (!payload) return null;
+  if (payload.denied === true) return "tool.refusal.permission";
+  const code = typeof payload.error_code === "string" ? payload.error_code : payload.error;
+  return typeof code === "string" ? (REFUSAL_WORDS[code] ?? null) : null;
+}
+
+/**
+ * The title of a card for a call that runs a workflow, or null for any other
+ * action. `notRun`: a person or a permission stopped it before the engine was
+ * asked — that outranks what the payload says.
+ */
+export function workflowRunTitleKey(
+  label: ToolLabel,
+  notRun: boolean,
+  kind: WorkflowRunKind | null,
+): TranslationKey | null {
+  const named = label.kind === "workflow";
+  if (!named && !(label.kind === "key" && label.key === "tool.name.runWorkflow")) return null;
+  if (notRun) return named ? "tool.name.runNamedWorkflow.notRun" : "tool.name.runWorkflow.notRun";
+  if (kind === "trial")
+    return named ? "tool.name.runNamedWorkflow.trial" : "tool.name.runWorkflow.trial";
+  if (kind === "refused")
+    return named ? "tool.name.runNamedWorkflow.refused" : "tool.name.runWorkflow.refused";
+  return named ? "tool.name.runNamedWorkflow" : "tool.name.runWorkflow";
+}
+
+/**
  * How the engine says a call ended.
  *
  * `confirmation_state` is the persisted human decision; `outcome` is the

@@ -5,6 +5,7 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
 import { ContextHelp } from "@/components/cockpit/context-help";
+import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import {
   DiagnosisTitleAction,
@@ -16,6 +17,7 @@ import { GrantCard } from "@/components/cockpit/workflow-grants";
 import { LoadFailed } from "@/components/failure-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import {
   AUTOMATION_STATE_KEYS,
   type AutomationAction,
@@ -26,9 +28,11 @@ import {
   type AutomationWorkflow,
   automationActionKey,
   automationEnvironment,
+  automationNeedsMoreApprovals,
   automationState,
 } from "@/lib/automation-state";
 import { cronWords } from "@/lib/cron-words";
+import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -36,8 +40,7 @@ import type { WorkflowAuthority, WorkflowAuthorityList } from "@/lib/workflow-au
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
-/** How often the page looks again: an approval, a hold or a schedule can change under it. */
-const REFRESH_MS = 30_000;
+const REFRESH_MS = AUTOMATION_REFRESH_MS;
 
 export interface WorkflowAutomation {
   workflowId: string;
@@ -51,6 +54,7 @@ export interface WorkflowAutomation {
   versions: ReadonlyMap<string, number>;
   now: number;
   canWrite: boolean;
+  canRun: boolean;
   canChat: boolean;
   history: { hasMore: boolean; loading: boolean; more: () => void };
   /** Opens the approval dialog; every caller opens the same one. */
@@ -167,6 +171,28 @@ export function useWorkflowAutomation(
   });
   // A read that is never made is not one to wait for.
   const ready = settled && environment !== null && (!mayDiagnose || !diagnosis.isPending);
+  // A read that was made and did not answer — an error, or an answer of
+  // another shape — is not the same as one the reader may not make: the
+  // state then says "not verified" instead of deciding without it.
+  const unanswered = {
+    status: mayReadStatus && !status.isPending && verified === null,
+    diagnosis:
+      mayDiagnose &&
+      environment !== null &&
+      !diagnosis.isPending &&
+      !Array.isArray(diagnosis.data?.diagnoses),
+  };
+  const decided = ready
+    ? automationState({ ...inputs, diagnosis: diagnosis.data ?? null, unanswered })
+    : null;
+  // The approval in force can lie behind the first page of newer ones; read on
+  // until it is found rather than say "approved" with nothing to show for it.
+  const approvalOutOfSight =
+    decided !== null && automationNeedsMoreApprovals(decided, Boolean(authorities.hasNextPage));
+  const { fetchNextPage, isFetchingNextPage } = authorities;
+  useEffect(() => {
+    if (approvalOutOfSight && !isFetchingNextPage) void fetchNextPage();
+  }, [approvalOutOfSight, isFetchingNextPage, fetchNextPage]);
 
   const versions = new Map<string, number>();
   if (workflow.current_version_id && typeof workflow.current_version === "number")
@@ -174,17 +200,7 @@ export function useWorkflowAutomation(
   if (draft.data?.version_id && typeof draft.data.version === "number")
     versions.set(draft.data.version_id, draft.data.version);
 
-  const refresh = () => {
-    for (const queryKey of [
-      ["workflow-authorities", workflowId],
-      ["workflow-automation-status", workflowId],
-      ["workflow-diagnosis", workflowId],
-      ["workflow", workflowId, "schedules"],
-      ["workflow-invocation", workflowId],
-      ["catalog-detail", "workflows", workflowId],
-    ])
-      void client.invalidateQueries({ queryKey });
-  };
+  const refresh = () => void invalidateWorkflowAutomation(client, workflowId);
   const resume = useMutation({
     mutationFn: async (scheduleIds: readonly string[]) => {
       for (const id of scheduleIds)
@@ -198,13 +214,14 @@ export function useWorkflowAutomation(
 
   return {
     workflowId,
-    state: ready ? automationState({ ...inputs, diagnosis: diagnosis.data ?? null }) : null,
+    state: approvalOutOfSight ? null : decided,
     failed: Boolean(authorities.error) || (settled && items === null),
     retry: () => void authorities.refetch(),
     diagnosis: diagnosis.data ?? null,
     versions,
     now,
     canWrite: permissions.includes("workflow:write"),
+    canRun: permissions.includes("workflow:run"),
     canChat: permissions.includes("conversation:write"),
     history: {
       hasMore: Boolean(authorities.hasNextPage),
@@ -523,6 +540,18 @@ function PanelBody({
   const current: WorkflowAuthority[] = state.grant
     ? [state.grant, ...state.alsoValid]
     : state.alsoValid;
+  // What the press that opens the approval sets off, said before the press.
+  const opensApproval =
+    automation.canWrite &&
+    target !== null &&
+    actions.some(({ action }) => ["apply", "grant", "extend"].includes(action.kind));
+  const openingNotice = opensApproval
+    ? grantOpeningNotice({
+        diagnoses: automation.diagnosis?.diagnoses,
+        hookStarted: hookStartedOnly(state.triggers, workflow.webhooks_active),
+        mayRun: automation.canRun,
+      })
+    : null;
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -589,6 +618,14 @@ function PanelBody({
           {t("automation.resumeFailed")}
         </p>
       ) : null}
+      {/* Paused with nothing to resume: only a hook is stopped, and the engine
+          has no act that switches one back on. Said, instead of a dead button. */}
+      {state.state === "paused" && state.primaryAction === null ? (
+        <p className="text-sm text-muted-foreground" data-testid="workflow-automation-hook-off">
+          {t("automation.hookOff")}
+        </p>
+      ) : null}
+      <GrantOpeningNotice notice={openingNotice} />
       <TriggerLine triggers={state.triggers} hiddenHooks={hiddenHooks} />
       {/* Why the gate holds it and what removes that — in the environment the
           approval itself is judged in. Renders nothing when nothing is held. */}

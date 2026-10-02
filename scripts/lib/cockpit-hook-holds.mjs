@@ -6,7 +6,7 @@
  * Database enforcement is covered by the engine journey for refused webhooks.
  */
 export async function verifyHookHolds(page, stand, workflowId, locale, capture) {
-  const slug = "watchkit-findings";
+  const slug = "findings-inbox";
   const observedAt = new Date().toISOString();
   const hook = {
     inbound_hook_id: "00000000-0000-4000-8000-000000000591",
@@ -98,10 +98,19 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
         eligible_for_repeated_runs: prepared,
         preparation_required: !prepared,
         unavailable_steps: prepared ? [] : ["notify"],
+        // What the engine suggests for a hook that was barely called: thirty
+        // days and the floor, with the reason beside it.
         suggested_bounds: {
           valid_from: from,
-          valid_until: new Date(Date.parse(from) + 86_400_000).toISOString(),
-          max_runs: 1,
+          valid_until: new Date(Date.parse(from) + 30 * 86_400_000).toISOString(),
+          max_runs: 100,
+        },
+        suggested_bounds_basis: {
+          kind: "hook",
+          scheduled_runs: 0,
+          observed_deliveries: 3,
+          observed_days: 14,
+          minimum_applied: true,
         },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       },
@@ -196,6 +205,17 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await capture("hook-sample");
     await page.getByTestId("authority-sample-prepare").click();
     await page.getByTestId("authority-grant-review").waitFor();
+    // A hook is not offered one run for one day: thirty days, sized from its
+    // calls, with one line that says where the numbers come from.
+    if (
+      (await page.getByTestId("authority-runs").inputValue()) !== "100" ||
+      (await page.getByTestId("authority-hours").inputValue()) !== "720"
+    )
+      throw new Error("A hook-started workflow lost its thirty-day suggestion");
+    const suggestion = await page.getByTestId("authority-suggestion").innerText();
+    if (!suggestion.includes("14") || !/Webhook|webhook/.test(suggestion))
+      throw new Error(`The suggested limits are not explained: ${suggestion}`);
+    await capture("hook-suggestion");
     if (
       prepareBodies.length !== 2 ||
       JSON.stringify(prepareBodies[1].input) !== JSON.stringify(delivered)

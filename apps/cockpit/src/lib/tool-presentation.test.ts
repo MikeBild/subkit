@@ -3,10 +3,14 @@ import { translate } from "./i18n";
 import {
   humaniseToolName,
   isStaleCall,
+  isWorkflowRunTool,
   STALE_AFTER_MS,
   toolLabel,
   toolOutcomeKey,
   toolTier,
+  workflowRefusalKey,
+  workflowRunKind,
+  workflowRunTitleKey,
   workflowSlugFromTool,
 } from "./tool-presentation";
 
@@ -162,5 +166,139 @@ describe("isStaleCall", () => {
     expect(isStaleCall({ messageCreatedAt: null, hasResult: false, isStreaming: false, now })).toBe(
       false,
     );
+  });
+});
+
+describe("what a workflow call really was", () => {
+  // The three answers `run_workflow` gives (`{ ok, data }`), as the engine writes them.
+  const trial = {
+    ok: false,
+    data: {
+      execution_id: "00000000-0000-4000-8000-0000000000e1",
+      hold_writes: true,
+      writes_held: true,
+      held_step_ids: ["send_email"],
+      status: "failed",
+    },
+  };
+  const live = {
+    ok: true,
+    data: {
+      execution_id: "00000000-0000-4000-8000-0000000000e2",
+      hold_writes: false,
+      execution_authority_id: "00000000-0000-4000-8000-0000000000a1",
+      status: "succeeded",
+    },
+  };
+  const refused = {
+    ok: false,
+    data: { error_code: "workflow_activation_required", status: "failed" },
+  };
+  // A saved workflow's own action answers flat; its held preview waits for a person.
+  const heldPreview = {
+    ok: false,
+    status: "succeeded",
+    execution_id: "00000000-0000-4000-8000-0000000000e3",
+    hold_writes: true,
+    preview: true,
+    writes_held: true,
+    pending: true,
+  };
+
+  test("a preparation with every write held is a trial, whatever its status", () => {
+    expect(workflowRunKind(trial)).toBe("trial");
+    expect(workflowRunKind({ ok: true, data: { ...trial.data, status: "succeeded" } })).toBe(
+      "trial",
+    );
+    expect(workflowRunKind(heldPreview)).toBe("trial");
+  });
+
+  test("a run with its writes dispatched is a run", () => {
+    expect(workflowRunKind(live)).toBe("live");
+    expect(workflowRunKind({ ...live.data, ok: true })).toBe("live");
+  });
+
+  test("a call the engine turned away before anything started is a refusal", () => {
+    expect(workflowRunKind(refused)).toBe("refused");
+    expect(workflowRunKind({ ok: false, denied: true, permission: "workflow:run" })).toBe(
+      "refused",
+    );
+    expect(workflowRunKind({ ok: false, data: { error: "workflow_not_found" } })).toBe("refused");
+  });
+
+  test("a call without a result to read is not judged", () => {
+    expect(workflowRunKind(undefined)).toBeNull();
+    expect(workflowRunKind(null)).toBeNull();
+    expect(workflowRunKind("pending")).toBeNull();
+    expect(workflowRunKind({})).toBeNull();
+  });
+
+  test("the title says trial, refusal or run — never 'ran' over a trial", () => {
+    const generic = toolLabel("run_workflow");
+    const named = toolLabel("wf_finding-triage");
+    const title = (label: typeof generic, kind: ReturnType<typeof workflowRunKind>) => {
+      const key = workflowRunTitleKey(label, false, kind);
+      return key ? translate("de", key, { name: "finding-triage" }) : null;
+    };
+    expect(title(generic, "trial")).toBe("Probelauf ohne Wirkung");
+    expect(title(generic, "refused")).toBe("Lauf abgelehnt");
+    expect(title(generic, "live")).toBe("Workflow ausgeführt");
+    expect(title(named, "trial")).toBe("Probelauf von „finding-triage“ ohne Wirkung");
+    expect(title(named, "refused")).toBe("Lauf von „finding-triage“ abgelehnt");
+    expect(title(named, "live")).toBe("Workflow „finding-triage“ ausgeführt");
+    // No result yet: the title it always had.
+    expect(title(generic, null)).toBe("Workflow ausgeführt");
+    expect(translate("en", "tool.name.runWorkflow.trial")).toBe("Trial run without effects");
+    expect(translate("en", "tool.name.runWorkflow.refused")).toBe("Run refused");
+  });
+
+  test("a person's or a permission's no outranks what the payload says", () => {
+    expect(workflowRunTitleKey(toolLabel("run_workflow"), true, "trial")).toBe(
+      "tool.name.runWorkflow.notRun",
+    );
+    expect(workflowRunTitleKey(toolLabel("wf_report"), true, "live")).toBe(
+      "tool.name.runNamedWorkflow.notRun",
+    );
+  });
+
+  test("any other action keeps its own name", () => {
+    expect(workflowRunTitleKey(toolLabel("update_workflow"), false, "refused")).toBeNull();
+    expect(workflowRunTitleKey(toolLabel("search_knowledge"), false, null)).toBeNull();
+    expect(isWorkflowRunTool("run_workflow")).toBe(true);
+    expect(isWorkflowRunTool("wf_report")).toBe(true);
+    expect(isWorkflowRunTool("dry_run_workflow")).toBe(false);
+    expect(isWorkflowRunTool("update_workflow")).toBe(false);
+  });
+
+  test("a refusal carries the engine's reason in the reader's words", () => {
+    expect(workflowRefusalKey(refused)).toBe("tool.refusal.activationRequired");
+    expect(translate("de", "tool.refusal.activationRequired")).toBe(
+      "Gespeicherte Änderung noch nicht übernommen",
+    );
+    expect(workflowRefusalKey({ ok: false, denied: true })).toBe("tool.refusal.permission");
+    expect(workflowRefusalKey({ ok: false, data: { error_code: "permission_denied" } })).toBe(
+      "tool.refusal.permission",
+    );
+    // A reason this build has no word for falls back to the outcome word.
+    expect(workflowRefusalKey({ ok: false, data: { error_code: "run_failed" } })).toBeNull();
+    expect(workflowRefusalKey(undefined)).toBeNull();
+  });
+
+  test("every reason word exists in both catalogs", () => {
+    for (const code of [
+      "workflow_activation_required",
+      "workflow_not_persisted",
+      "workflow_not_found",
+      "permission_denied",
+      "repair_loop_detected",
+      "input_schema_violation",
+      "execution_authority_unavailable",
+    ]) {
+      const key = workflowRefusalKey({ ok: false, data: { error_code: code } });
+      expect(key, code).not.toBeNull();
+      if (!key) continue;
+      for (const locale of ["de", "en"] as const)
+        expect(translate(locale, key), code).not.toBe(key);
+    }
   });
 });

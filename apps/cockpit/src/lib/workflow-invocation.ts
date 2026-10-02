@@ -55,6 +55,19 @@ export function invocationModes(
  * The tab a reader lands on: the way the workflow is actually started — its
  * effective trigger — when that way is among the tabs, else the request.
  */
+/**
+ * A key per schedule row. Two schedules of one workflow may share cron and
+ * time zone and differ only in where they run — a development and a production
+ * schedule at 07:00 — so neither of those can be the key alone; the row's
+ * place in the engine's list makes it unique.
+ */
+export function scheduleRowKey(
+  schedule: { cron: string; timezone: string; environment: string },
+  index: number,
+): string {
+  return `${index}:${schedule.environment}:${schedule.cron}:${schedule.timezone}`;
+}
+
 export function initialInvocationMode(
   modes: readonly InvocationMode[],
   effectiveTrigger: string | null | undefined,

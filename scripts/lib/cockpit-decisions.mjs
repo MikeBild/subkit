@@ -152,6 +152,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
           valid_until: new Date(Date.parse(now) + 86_400_000).toISOString(),
           max_runs: 1,
         },
+        suggested_bounds_basis: { kind: "manual" },
       });
     if (path.endsWith("/approve")) {
       if (request.postDataJSON().expected_review_digest !== digest)

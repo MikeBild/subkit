@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { routerPath, workflowAutomationHref } from "@/app/links";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   type Attention,
@@ -99,13 +100,13 @@ describe("the sentence", () => {
   test("a held webhook is named as the webhook, never as a schedule", () => {
     const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
       item({ reason, class: "stopped", severity: "critical", trigger });
-    const hook = { kind: "inbound_hook" as const, name: "watchkit-findings" };
+    const hook = { kind: "inbound_hook" as const, name: "findings-inbox" };
     for (const reason of [
       "execution_authority_required",
       "execution_authority_unavailable",
     ] as const) {
       const german = attentionSentence(held(reason, hook), de, NOW).lead;
-      expect(german).toContain("„watchkit-findings“");
+      expect(german).toContain("„findings-inbox“");
       expect(german).not.toContain("Zeitplan");
       expect(attentionSentence(held(reason, hook), en, NOW).lead).not.toContain("schedule");
       expect(
@@ -116,11 +117,62 @@ describe("the sentence", () => {
     }
   });
 
+  test("a version waiting for approval is said before anything is refused", () => {
+    const waiting = (trigger: AttentionItem["trigger"]) =>
+      item({
+        class: "decide",
+        reason: "version_awaiting_approval",
+        trigger,
+        approval: { version: 4, environment: "prod" },
+        since: daysAgo(0),
+      });
+    expect(
+      sentenceText(attentionSentence(waiting({ kind: "schedule", name: null }), de, NOW)),
+    ).toBe(
+      "Der Workflow „Monatsbericht“ hat eine neue Fassung v4, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt — seit gerade eben.",
+    );
+    const hook = attentionSentence(waiting({ kind: "inbound_hook", name: "findings" }), de, NOW);
+    expect(hook.lead).toContain("Fassung v4");
+    expect(hook.lead).toContain("„findings“");
+    expect(hook.lead).not.toContain("geplante");
+    // A hook whose name is not the reader's to read is still not called a schedule.
+    const unnamed = attentionSentence(waiting({ kind: "inbound_hook", name: null }), de, NOW);
+    expect(unnamed.lead).toContain("automatische Start");
+    expect(unnamed.lead).not.toContain("„“");
+    expect(attentionSentence(waiting(null), en, NOW).lead).toContain("version v4");
+  });
+
+  test("an approval item leads to the workflow's panel, named for the step", () => {
+    const open = {
+      verb: "open" as const,
+      href: `/cockpit/workflows/${W}#workflow-automation`,
+      primary: true,
+      permission: "workflow:write",
+    };
+    const waiting = item({ class: "decide", reason: "version_awaiting_approval", actions: [open] });
+    const ending = item({
+      class: "decide",
+      severity: "notice",
+      reason: "approval_expiring",
+      actions: [open],
+    });
+    expect(de(actionLabelKey(open, waiting))).toBe("Freigeben");
+    expect(de(actionLabelKey(open, ending))).toBe("Verlängern");
+    expect(en(actionLabelKey(open, ending))).toBe("Extend");
+    expect(sentenceText(attentionSentence(ending, de, NOW))).toBe(
+      "Der Workflow „Monatsbericht“ ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht — seit 3 Tagen.",
+    );
+    // The engine's address is the cockpit's own panel address.
+    expect(routerPath(open.href)).toBe(workflowAutomationHref(W));
+  });
+
   test("every reason the engine names has its own words, in both languages", () => {
     const reasons: AttentionItem["reason"][] = [
       "awaiting_answer",
       "execution_authority_required",
       "execution_authority_unavailable",
+      "version_awaiting_approval",
+      "approval_expiring",
       "failing",
       "patch_proposed",
       "needs_reauth",

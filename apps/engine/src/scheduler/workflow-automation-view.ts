@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
-import { auditLog, webhooksInbound } from "../db/schema/index.ts";
+import { auditLog, executions, webhooksInbound } from "../db/schema/index.ts";
 import { inspectInboundHookAutomation, inspectScheduleAutomation } from "./automation-status.ts";
 import { nextScheduleFire } from "./next-fire.ts";
 import { listSchedules } from "./repo.ts";
@@ -98,4 +98,71 @@ export async function inboundHookAutomationView(
       };
     }),
   );
+}
+
+/** How far back a hook's deliveries are counted for a suggested run limit. */
+const DELIVERY_RATE_WINDOW_DAYS = 14;
+
+/** The refusals of the approval gate itself — a delivery that was authentic
+ *  and would have started a run under an approval. */
+const GATE_REFUSAL_REASONS = ["execution_authority_required", "execution_authority_unavailable"];
+
+/**
+ * How often the workflow's active inbound hooks were really called lately: the
+ * runs they started plus the deliveries the approval gate refused. Both are
+ * calls an approval has to cover — counting started runs alone would size the
+ * approval of a hook nobody has approved yet from zero.
+ *
+ * Null when no hook is active: nothing delivers, so there is no rate.
+ * Read-only; the count only sizes a suggestion a person still confirms.
+ */
+export async function inboundHookDeliveryRate(
+  tenant: string,
+  workflow: string,
+  db: Executor,
+  now: Date,
+): Promise<{ deliveries: number; window_days: number } | null> {
+  const hooks = await db
+    .select({ id: webhooksInbound.id })
+    .from(webhooksInbound)
+    .where(
+      and(
+        eq(webhooksInbound.tenant_id, tenant),
+        eq(webhooksInbound.workflow_id, workflow),
+        eq(webhooksInbound.active, true),
+      ),
+    );
+  if (hooks.length === 0) return null;
+  const since = new Date(now.getTime() - DELIVERY_RATE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const [started] = await db
+    .select({ n: count() })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, tenant),
+        eq(executions.workflow_id, workflow),
+        eq(executions.request_source, "webhook"),
+        gte(executions.created_at, since),
+      ),
+    );
+  const [refused] = await db
+    .select({ n: count() })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant),
+        inArray(auditLog.action, REFUSED_DELIVERY_ACTIONS),
+        gte(auditLog.ts, since),
+        eq(auditLog.resource_type, "webhook_inbound"),
+        inArray(
+          auditLog.resource_id,
+          hooks.map((hook) => hook.id),
+        ),
+        inArray(auditLog.reason, GATE_REFUSAL_REASONS),
+      ),
+    );
+  return {
+    deliveries: (started?.n ?? 0) + (refused?.n ?? 0),
+    window_days: DELIVERY_RATE_WINDOW_DAYS,
+  };
 }

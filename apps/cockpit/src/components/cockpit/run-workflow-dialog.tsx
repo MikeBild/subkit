@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/api/client";
@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { useI18n } from "@/lib/i18n-context";
 import {
   blockedSentenceKey,
@@ -41,12 +42,13 @@ import {
 } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import {
-  buildInput,
+  buildFormInput,
+  formFields,
   type InputField,
   type InputSchemaSource,
   initialInputValues,
   inputControl,
-  inputFields,
+  inputForm,
   inputItemTypeKey,
   inputSampleText,
   inputTypeKey,
@@ -180,7 +182,7 @@ function InputFieldControl({
           value={value}
           aria-invalid={invalid}
           onChange={(event) => onChange(event.target.value)}
-          placeholder={sample ?? (field.type === "array" ? "[]" : "{}")}
+          placeholder={sample ?? (field.type === "array" ? "[]" : field.union ? "" : "{}")}
           data-testid={id}
         />
       ) : (
@@ -241,7 +243,8 @@ export function RunWorkflowDialog({
         `/v1/workflows/${encodeURIComponent(workflowId)}/input-schema`,
       ),
   });
-  const fields = inputFields(schema.data?.schema ?? null);
+  const form = inputForm(schema.data?.schema ?? null);
+  const fields = formFields(form);
   // What the form holds: the schema's own defaults under whatever was typed.
   const filled = { ...initialInputValues(fields), ...values };
   const missing = missingRequired(fields, filled);
@@ -261,6 +264,7 @@ export function RunWorkflowDialog({
       : t("run.failed");
   };
 
+  const queryClient = useQueryClient();
   const run = useMutation({
     mutationFn: (target: RunEnvironment) =>
       apiRequest<RunOutcome>("/v1/executions", {
@@ -270,12 +274,23 @@ export function RunWorkflowDialog({
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
-          ...(fields.length > 0 ? { input: buildInput(fields, filled) } : {}),
+          ...(buildFormInput(form, filled) !== undefined
+            ? { input: buildFormInput(form, filled) }
+            : {}),
         }),
       }),
     onSuccess: (result) => {
       setConfirming(false);
       setFailure(null);
+      // A run spends one of the approved runs and is the newest run on the
+      // page: the panel, the steps' last results and the run list look again.
+      void invalidateWorkflowAutomation(queryClient, workflowId);
+      for (const queryKey of [
+        ["workflow-recent-runs", workflowId],
+        ["workflow-latest-failed-run", workflowId],
+        ["workflow", workflowId],
+      ])
+        void queryClient.invalidateQueries({ queryKey });
       // Engine statuses are English identifiers; they get a word first.
       setOutcome({
         status: result.status ? statusLabel(t, result.status) : t("run.started"),

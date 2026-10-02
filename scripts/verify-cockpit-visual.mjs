@@ -19,6 +19,7 @@ import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
+import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
@@ -635,7 +636,7 @@ const messages = [
  * flat, the real ones drowned and Kontoverbindungen below them was out of
  * reach. The names are words, never identifiers (cockpit-visible-uuids).
  */
-const REAL_OAUTH_CLIENTS = ["Claude", "ChatGPT", "WatchKit"];
+const REAL_OAUTH_CLIENTS = ["Claude", "ChatGPT", "Monitoring"];
 const OAUTH_CLIENTS = (() => {
   const at = (day) => `2026-08-${String(day).padStart(2, "0")}T09:00:00.000Z`;
   const dead = Array.from({ length: 200 }, (_, index) => ({
@@ -2289,9 +2290,9 @@ async function mockApi(route) {
             { protocol: "api_key", id: "api-key", label: "SubKit API key" },
             {
               protocol: "oidc",
-              id: "upraft",
-              label: "Upraft Auth",
-              issuer_url: "https://auth.mikebild.info",
+              id: "example-sso",
+              label: "Example SSO",
+              issuer_url: "https://auth.example.com",
               client_id: "oidc_subkit_public_client",
               scopes: "openid profile email",
               tenant_slug: "default",
@@ -2307,7 +2308,7 @@ async function mockApi(route) {
         },
         {
           path: "server.public_base_url",
-          value: "https://subkit.mikebild.info",
+          value: "https://subkit.example.com",
           meta: {
             source: "global",
             scope: "global",
@@ -3753,7 +3754,7 @@ async function assertAuthProviderSettings(page, label) {
     throw new Error(`${label} does not render both configured authentication provider cards`);
   }
   const callback = await page.locator('[data-testid="settings-auth-providers"] code').innerText();
-  if (callback !== "https://subkit.mikebild.info/v1/identity/login/callback") {
+  if (callback !== "https://subkit.example.com/v1/identity/login/callback") {
     throw new Error(`${label} renders the wrong OIDC callback URL: ${callback}`);
   }
   for (const testId of [
@@ -4243,6 +4244,16 @@ for (const locale of variants) {
     );
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+        fullPage: false,
+      }),
+    );
+    await verifyGrantDialog(page, stand, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
+        fullPage: false,
+      }),
+    );
+    await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
         fullPage: false,
       }),
     );

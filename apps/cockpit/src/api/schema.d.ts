@@ -18479,6 +18479,21 @@ export interface components {
                 valid_until: string;
                 max_runs: number;
             };
+            suggested_bounds_basis: {
+                /** @enum {string} */
+                kind: "manual";
+            } | {
+                /** @enum {string} */
+                kind: "schedule";
+                scheduled_runs: number;
+            } | {
+                /** @enum {string} */
+                kind: "hook";
+                scheduled_runs: number;
+                observed_deliveries: number;
+                observed_days: number;
+                minimum_applied: boolean;
+            };
         };
         AuthorityExecutionShape: {
             requests: {
@@ -22075,7 +22090,7 @@ export interface components {
             /** @enum {string} */
             class: "stopped" | "failing" | "decide";
             /** @enum {string} */
-            severity: "critical" | "urgent";
+            severity: "critical" | "urgent" | "notice";
             kind: string;
             subject: {
                 /** @enum {string} */
@@ -22084,14 +22099,20 @@ export interface components {
                 name: string | null;
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
-            /** @description What a held workflow's refused starts come from. Null unless held. */
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
+            /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
                 kind: "schedule" | "inbound_hook";
                 /** @description The webhook's slug; null for a schedule. */
                 name: string | null;
             } | null;
+            /** @description The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring. */
+            approval?: {
+                version: number;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+            };
             /** @enum {string|null} */
             cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
             counts: {

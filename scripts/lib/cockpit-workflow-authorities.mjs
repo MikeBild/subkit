@@ -334,6 +334,7 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
           ...wholeDaySpan(),
           max_runs: 1,
         },
+        suggested_bounds_basis: { kind: "manual" },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       }),
     });
@@ -526,6 +527,7 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
           ...wholeDaySpan(),
           max_runs: 1,
         },
+        suggested_bounds_basis: { kind: "manual" },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       }),
     });
@@ -696,6 +698,7 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
           ...wholeDaySpan(),
           max_runs: 1,
         },
+        suggested_bounds_basis: { kind: "manual" },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       }),
     });
@@ -826,6 +829,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
       eligible_for_repeated_runs: true,
       unavailable_steps: [],
       suggested_bounds: { ...wholeDaySpan(), max_runs: 1 },
+      suggested_bounds_basis: { kind: "manual" },
       execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
     });
     if (call !== 1) return route.fulfill({ status: 200, contentType: "application/json", body });
@@ -944,6 +948,7 @@ async function verifyTrialAlreadyRunning(page, stand, workflowId, locale, captur
           ...wholeDaySpan(),
           max_runs: 1,
         },
+        suggested_bounds_basis: { kind: "manual" },
         execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
       }),
     });
@@ -1027,6 +1032,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
         valid_until: new Date(Date.parse(from) + 86_400_000).toISOString(),
         max_runs: 1,
       },
+      suggested_bounds_basis: { kind: "manual" },
       execution_shape: {
         requests: [
           {

@@ -39,7 +39,7 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
             inbound_hooks: [
               {
                 workflow_id: workflowId,
-                slug: "watchkit-findings",
+                slug: "findings-inbox",
                 environment: "prod",
                 state: "approval_required",
                 ready: false,
@@ -99,7 +99,29 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
           },
         })
       : route.fallback();
+  // The card reads the workflow's state as it is now, so the engine has to say
+  // what the tool result said: one webhook, waiting for its approval.
+  const status = (route) =>
+    route.fulfill({
+      json: {
+        schedules: [],
+        inbound_hooks: [
+          {
+            inbound_hook_id: "00000000-0000-4000-8000-000000000602",
+            workflow_id: workflowId,
+            slug: "findings-inbox",
+            state: "approval_required",
+            ready: false,
+            environment: "prod",
+            admission_hold: null,
+            last_refused_at: null,
+            last_refused_reason: null,
+          },
+        ],
+      },
+    });
   const routes = [
+    [`**/v1/workflows/${workflowId}/automation-status`, status],
     ["**/v1/conversations", start],
     [`**/v1/conversations/${conversationId}/messages`, outcome],
     [`**/v1/conversations/${conversationId}`, detail],
@@ -122,7 +144,12 @@ export async function verifyAgentPanel(page, stand, workflowId, _locale) {
     await panel.getByTestId("agent-panel-question-0").waitFor();
     const card = panel.getByTestId("chat-automation-tool");
     await card.waitFor();
+    // One decision, one button — a hook-started workflow has one environment.
     await card.getByTestId("chat-automation-tool-review").waitFor();
+    if ((await card.locator("button").count()) !== 1)
+      throw new Error(
+        `The review card offers ${await card.locator("button").count()} buttons for one decision`,
+      );
 
     // A turn that left no words and no card: said so, with the way in.
     // The earlier card is still in the conversation; it must not stand in
