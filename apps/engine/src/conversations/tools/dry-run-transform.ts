@@ -41,6 +41,7 @@ import {
   formatError as formatJsonataError,
 } from "../../execution/jsonata-engine.ts";
 import { applySelector } from "../../execution/selectors.ts";
+import { parsePlaceholders } from "../../llm/substitution/parser.ts";
 import { resolveStringPlaceholders } from "../../llm/substitution/resolver.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
@@ -480,21 +481,28 @@ export const dryRunTransformTool: ConversationTool = {
     } else if (args.dialect === "jsonpath") {
       outcome = evalJsonPath(args.expression, resolvedSampleData);
     } else {
-      // template: resolve ${input.*}/${scope.*} placeholders using the
-      // resolver, but with `tenant_id` stubbed out so cred/connector
-      // lookups return path_empty (no DB call).
+      // template: resolve ${input.*}/${scope.*} placeholders against the
+      // sample. A ${cred.*} or ${connector.*} token is refused BEFORE the
+      // resolver runs: the resolver would look it up, and the resolved
+      // value — a decrypted credential field, a connector config leaf —
+      // would come back in this tool's result, which the model reads.
       const sample = (resolvedSampleData ?? {}) as Record<string, unknown>;
-      const r = await resolveStringPlaceholders(args.expression, {
-        tenant_id: ctx.tenant_id,
-        environment: "dev",
-        db: ctx.db,
-        input: sample.input ?? sample,
-        ...(sample.scope ? { scope: sample.scope as Record<string, unknown> } : {}),
-      });
+      const lookups = parsePlaceholders(args.expression).tokens.filter(
+        (t) => t.kind === "cred" || t.kind === "connector_url" || t.kind === "connector_config",
+      );
+      const r =
+        lookups.length > 0
+          ? { value: args.expression, unresolved: lookups.map((t) => ({ token: t.raw })) }
+          : await resolveStringPlaceholders(args.expression, {
+              tenant_id: ctx.tenant_id,
+              environment: "dev",
+              db: ctx.db,
+              input: sample.input ?? sample,
+              ...(sample.scope ? { scope: sample.scope as Record<string, unknown> } : {}),
+            });
       if (r.unresolved.length > 0) {
-        // Filter out cred/connector refs — these are expected in
-        // template dialect but we classify them as unsupported here to
-        // steer the LLM back to the connector-aware tools.
+        // Classified as unsupported here to steer the LLM back to the
+        // connector-aware tools.
         outcome = {
           ok: false,
           error: {
