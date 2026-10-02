@@ -23,6 +23,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../mcp/client/pool.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
+import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -1019,6 +1020,72 @@ describe("probe_connector_draft + draft credential", () => {
       // No credential re-collection — the probe resolved the vault row.
       expect(result.ok).toBe(true);
       expect(captured.auth).toBe("Bearer VAULT-TOKEN");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("a draft hydrated from a saved connector holds the mask, and the probe still sends the stored secret", async () => {
+    // The draft is conversation state, so it is hydrated from the public
+    // projection: a static header secret reads as the mask there. The
+    // probe is where that draft becomes a request — it must send what the
+    // saved connector stores, never the mask.
+    const HEADER_SECRET = "fixture-header-secret-not-real";
+    const captured: { key: string | null } = { key: null };
+    const server = await startLocalTargetServer((req) => {
+      captured.key = req.headers.get("x-api-key");
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const saved = await createConnector(
+        {
+          tenant_id,
+          input: {
+            name: "saved-static-header",
+            driver: "http",
+            environment: "dev",
+            auth_type: "bearer",
+            base_url: server.url,
+            config: { static_headers: { "X-Api-Key": HEADER_SECRET } },
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+      await upsertCredential(
+        {
+          tenant_id,
+          connector_id: saved.id,
+          environment: "dev",
+          mode: "bearer",
+          value: { mode: "bearer", token: "VAULT-TOKEN" },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+
+      const hydrated = hydrateDraftFromSavedConnector(saved);
+      expect(JSON.stringify(hydrated)).not.toContain(HEADER_SECRET);
+
+      const conversation_id = await seedConversation();
+      const draft = buildBearerDraft(server.url);
+      const toolCtx = await buildToolCtx(conversation_id, {
+        ...draft,
+        connector: { ...draft.connector, ...hydrated },
+      });
+
+      const result = await probeConnectorDraftTool.execute(toolCtx, {
+        method: "GET",
+        path: "/v2/projects",
+        timeout_ms: 5_000,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(captured.key).toBe(HEADER_SECRET);
+      expect(JSON.stringify(result)).not.toContain(HEADER_SECRET);
     } finally {
       await server.stop();
     }

@@ -13,6 +13,7 @@ import {
   ConnectorRecipeSchema,
   type ConnectorTemplate,
   ConnectorTemplateSchema,
+  toPublicConnector,
 } from "../../../connectors/index.ts";
 import { ForbiddenError } from "../../errors.ts";
 
@@ -325,9 +326,8 @@ export function serializeResolvedTemplate(
   };
 }
 
-export function serializeConnector(
-  connector: ConnectorView,
-): z.infer<typeof ConnectorResponseSchema> {
+export function serializeConnector(view: ConnectorView): z.infer<typeof ConnectorResponseSchema> {
+  const connector = toPublicConnector(view);
   return {
     id: connector.id,
     tenant_id: connector.tenant_id,
