@@ -16,6 +16,7 @@ import {
   recordConnectorUpdated,
 } from "../../audit/recorders/index.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
+import { toPublicConnector } from "../../connectors/public-view.ts";
 import { clearConnectorReauth } from "../../connectors/reauth.ts";
 import { createConnector, getConnector, updateConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
@@ -61,7 +62,13 @@ export function connectorFieldPatch(
   if (connector.base_url !== undefined && connector.base_url !== (existing.base_url ?? undefined)) {
     patch.base_url = connector.base_url;
   }
-  if (connector.dsn !== undefined && connector.dsn !== (existing.dsn ?? undefined)) {
+  // A draft hydrated from the saved connector carries the masked dsn. That
+  // is the stored value, not an edit.
+  if (
+    connector.dsn !== undefined &&
+    connector.dsn !== (existing.dsn ?? undefined) &&
+    connector.dsn !== (toPublicConnector(existing).dsn ?? undefined)
+  ) {
     patch.dsn = connector.dsn;
   }
   if (connector.name !== undefined && connector.name !== existing.display_name) {

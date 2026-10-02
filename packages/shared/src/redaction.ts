@@ -6,7 +6,9 @@ export interface SecretPattern {
 }
 
 const REDACTED = (kind: SecretKind): string => `***REDACTED:${kind}***`;
-const DEFAULT_REDACTED = "***redacted***";
+/** The un-kinded mask. Also what a public projection writes in place of a
+ *  secret it will not show — see `isAlreadyRedacted` for the read side. */
+export const DEFAULT_REDACTED = "***redacted***";
 const SCRUB_SECRETS_MAX_DEPTH = 16;
 
 const LOG_SENSITIVE_KEYS = new Set<string>([
@@ -45,6 +47,19 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
   /wf_(live|test)_[a-zA-Z0-9]+/g,
   /postgres(?:ql)?:\/\/[^:]+:[^@]+@/gi,
 ];
+
+/**
+ * Exact-name membership in the log net (case-insensitive).
+ *
+ * The counterpart to `SENSITIVE_KEY_PATTERN` for payloads whose keys are
+ * STRUCTURE: the pattern is a substring match, so it also fires on
+ * `token_endpoint` or `authorization_endpoint`, which name an attribute of a
+ * secret rather than the secret. A projection that must leave those readable
+ * asks this instead.
+ */
+export function isLogSensitiveKey(key: string): boolean {
+  return LOG_SENSITIVE_KEYS.has(key.toLowerCase());
+}
 
 export const SENSITIVE_KEY_PATTERN: RegExp =
   /token|secret|password|api[_-]?key|credential|authorization/i;
@@ -566,7 +581,9 @@ function isBodyKey(key: string): boolean {
   return BODY_KEY_PATTERN.test(key);
 }
 
-function isAlreadyRedacted(value: string): boolean {
+/** True for a value that is a redaction mask and nothing else — either the
+ *  un-kinded `DEFAULT_REDACTED` or a kinded `***REDACTED:<kind>***`. */
+export function isAlreadyRedacted(value: string): boolean {
   return /^\*\*\*redacted(?::[a-z_]+)?\*\*\*$/i.test(value);
 }
 

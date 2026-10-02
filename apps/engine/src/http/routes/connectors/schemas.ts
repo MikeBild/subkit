@@ -9,6 +9,7 @@ import {
   effectiveConnectorHealth,
   OperatorQuirksSchema,
   resolveConnectorOAuthConfig,
+  toPublicConnector,
 } from "../../../connectors/index.ts";
 import type { OAuth2ClientConfig } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
@@ -45,6 +46,10 @@ export const ConnectorSchema = z
     environment: z.string(),
     auth_type: z.string(),
     base_url: z.string().nullable(),
+    // `dsn` and `config` are the PUBLIC projection (`toPublicConnector`): the
+    // password inside the connection string and every secret-bearing config
+    // value read as the mask `***redacted***`, everything else as stored.
+    // Sending the mask back on a write keeps the stored secret.
     dsn: z.string().nullable(),
     config: z.record(z.string(), z.unknown()),
     operator_quirks: OperatorQuirksSchema,
@@ -221,7 +226,8 @@ export const OAuthCallbackQuery = z
   })
   .openapi("OAuthCallbackQuery");
 
-export function serialize(c: ConnectorView) {
+export function serialize(view: ConnectorView) {
+  const c = toPublicConnector(view);
   return {
     id: c.id,
     tenant_id: c.tenant_id,

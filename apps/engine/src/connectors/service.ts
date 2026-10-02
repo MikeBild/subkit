@@ -20,6 +20,7 @@ import {
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { connectorCountsAgainstHealth } from "./health-ratio.ts";
 import { carryMcpTrustList } from "./mcp-tool-trust.ts";
+import { restoreMaskedConnectorSecrets, toPublicConnector } from "./public-view.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import type {
@@ -208,12 +209,19 @@ export async function createConnector(
       )
       .limit(1);
     const existing = existingRows[0];
+    // A definition read back from the API carries the mask where its secrets
+    // were. On an upsert that means "keep the stored one"; on a fresh insert
+    // there is nothing to keep and the write is refused.
+    const secrets = restoreMaskedConnectorSecrets(
+      { config: effective.config, dsn: effective.dsn },
+      existing ?? null,
+    );
     // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
     // an upsert keeps the stored list, a fresh insert may not name one.
     const config = carryMcpTrustList(
       effective.driver,
       existing?.driver === effective.driver ? existing.config : null,
-      effective.config,
+      secrets.config,
     );
     if (existing) {
       const updated = await tx
@@ -223,7 +231,7 @@ export async function createConnector(
           driver: effective.driver,
           auth_type,
           base_url: effective.base_url ?? existing.base_url,
-          dsn: effective.dsn ?? existing.dsn,
+          dsn: secrets.dsn ?? existing.dsn,
           config: config ?? existing.config,
           operator_quirks: effective.operator_quirks ?? existing.operator_quirks,
           ...(resolved.binding ?? {}),
@@ -267,7 +275,7 @@ export async function createConnector(
         environment,
         auth_type,
         base_url: effective.base_url ?? null,
-        dsn: effective.dsn ?? null,
+        dsn: secrets.dsn ?? null,
         config: config ?? {},
         operator_quirks: effective.operator_quirks ?? {},
         ...(resolved.binding ?? {
@@ -537,7 +545,7 @@ export async function getConnectorForEnvironment(
 export async function updateConnector(
   tenant_id: string,
   id: string,
-  patch: UpdateConnectorInput,
+  requested: UpdateConnectorInput,
   actor_id: string | null,
   exec?: Executor,
 ): Promise<ConnectorView | null> {
@@ -556,6 +564,10 @@ export async function updateConnector(
       .limit(1);
     const prior = existing[0];
     if (!prior) return null;
+    // A client that reads a connector and writes it back returns the mask
+    // where a secret was. Resolved here, before anything reads the patch, so
+    // enrichment, validation and the stored row all see the kept secret.
+    const patch = restoreMaskedConnectorSecrets(requested, prior);
     if (patch.clear_template_binding && patch.template_slug) {
       throw Object.assign(
         new Error("clear_template_binding cannot be combined with template_slug"),
@@ -656,8 +668,12 @@ export async function updateConnector(
         resource_type: "connector",
         resource_id: id,
         result: "success",
-        before: { ...prior, config: prior.config ?? {} },
-        after: { ...row, config: row.config ?? {} },
+        // The trail is read back through the audit routes and tools, and it
+        // is append-only: it records the public projection, so what changed
+        // stays visible while the connection-string password and the config
+        // secrets never land in it.
+        before: toPublicConnector(prior),
+        after: toPublicConnector(row),
         metadata: {},
       },
       tx,
