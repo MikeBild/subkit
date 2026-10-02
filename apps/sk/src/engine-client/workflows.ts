@@ -21,24 +21,56 @@ export interface ScheduleUpsertResponse extends ScheduleEntry {
   upsert_status: "created" | "updated";
 }
 
+export type WorkflowVersionEntry = {
+  id: string;
+  version: number;
+  note: string | null;
+  created_at: string;
+  legacy: boolean;
+};
+
+/** The engine's answer to "how is this workflow called" — the fields `sk` reads. */
+export interface WorkflowInvocation {
+  workflow_id: string;
+  slug: string;
+  base_url: string | null;
+  http: {
+    snippets: Record<"dev" | "prod", Record<"curl" | "node" | "python", string>> | null;
+  };
+}
+
+// The engine returns history one page at a time; this is the largest page it
+// serves.
+const VERSION_PAGE_SIZE = 200;
+
 export const workflowsMethods = {
   // --------------------------- Workflow versions ---------------------------
-  /** List committed versions of a workflow (newest first). `legacy` marks a
-   *  version that can be read but no longer restored. */
-  listWorkflowVersions(
+  /** Every committed version of a workflow, newest first. The engine pages
+   *  the history, so this reads page after page until it has all of it.
+   *  `legacy` marks a version that can be read but no longer restored. */
+  async listWorkflowVersions(
     this: EngineClient,
     workflowId: string,
-  ): Promise<{
-    items: Array<{
-      id: string;
-      version: number;
-      note: string | null;
-      created_at: string;
-      legacy: boolean;
-    }>;
-    total: number;
-  }> {
-    return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/history`);
+  ): Promise<{ items: WorkflowVersionEntry[]; total: number }> {
+    const path = `/v1/workflows/${encodeURIComponent(workflowId)}/history`;
+    const items: WorkflowVersionEntry[] = [];
+    let total = 0;
+    do {
+      const page = await this.request<{ items: WorkflowVersionEntry[]; total: number }>(
+        "GET",
+        path,
+        undefined,
+        { limit: VERSION_PAGE_SIZE, offset: items.length },
+      );
+      total = page.total;
+      if (page.items.length === 0) break;
+      items.push(...page.items);
+    } while (items.length < total);
+    return { items, total };
+  },
+  /** How the workflow is called: the engine's own snippets and public address. */
+  getWorkflowInvocation(this: EngineClient, workflowId: string): Promise<WorkflowInvocation> {
+    return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`);
   },
   /** Restore a prior workflow version as a new current version. */
   restoreWorkflowVersion(
