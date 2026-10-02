@@ -1,4 +1,4 @@
-import { Bot, KeyRound, SearchCheck, ShieldCheck } from "lucide-react";
+import { Bot, KeyRound, ShieldCheck } from "lucide-react";
 import { absolute } from "@/app/links";
 import { Button } from "@/components/ui/button";
 import type { TranslationKey } from "@/lib/i18n";
@@ -12,7 +12,6 @@ const ICONS: Record<Remedy["kind"], typeof Bot> = {
   grant: ShieldCheck,
   reauth: KeyRound,
   check_auth: KeyRound,
-  open_run: SearchCheck,
   chat: Bot,
 };
 
