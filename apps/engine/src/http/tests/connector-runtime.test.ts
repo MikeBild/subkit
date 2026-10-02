@@ -8,6 +8,9 @@
 //     stopped is `denied`, never a failure.
 //   - GET /v1/connectors/{id}/runtime reports the newest success and failure
 //     (as a class, never text) and the negotiated mcp session.
+//   - POST /v1/connectors/{id}/test is a call like any other: it is the newest
+//     one on record, so the runtime read moves with it. A probe the engine
+//     refused before anything left it — a disabled connector — is not a call.
 //   - PUT /v1/connectors/{id}/mcp/tool-confirmation is permission-gated,
 //     audited, and the only way the trust list changes: a PATCH keeps it and
 //     refuses a different one.
@@ -17,7 +20,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { recordMcpExternalToolInvoked } from "../../audit/recorders/index.ts";
+import {
+  recordConnectorProbed,
+  recordMcpExternalToolInvoked,
+} from "../../audit/recorders/index.ts";
 import { createConnector } from "../../connectors/index.ts";
 import { apiKeys, auditLog, connectorMcpSessions } from "../../db/schema/index.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
@@ -208,6 +214,99 @@ describe("GET /v1/connectors/{id}/runtime", () => {
     expect(body.last_failure).toMatchObject({ code: "4xx_auth", cause_class: "auth_failed" });
     expect(body.mcp_session).toBeNull();
     expect(JSON.stringify(body)).not.toContain("upstream answered");
+  });
+});
+
+describe("POST /v1/connectors/{id}/test is the newest call on record", () => {
+  async function probeRows(connectorId: string) {
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.action, "connector.invoked"),
+          eq(auditLog.resource_id, connectorId),
+        ),
+      );
+    return rows.filter((row) => (row.metadata as { method?: string }).method === "PROBE");
+  }
+
+  async function seed(slug: string): Promise<string> {
+    const connector = await createConnector(
+      {
+        tenant_id: srv.tenantId,
+        actor_id: null,
+        input: {
+          name: slug,
+          slug,
+          driver: "http",
+          environment: "prod",
+          auth_type: "none",
+          // Nothing answers here: the probe is a real call that fails.
+          base_url: "http://127.0.0.1:9",
+          config: {},
+        },
+      },
+      srv.db,
+    );
+    return connector.id;
+  }
+
+  test("a test from the API is recorded, attributed, and read back by the runtime", async () => {
+    const id = await seed("runtime-probed");
+    const res = await call(`/v1/connectors/${id}/test`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const probe = (await res.json()) as { ok: boolean };
+    expect(probe.ok).toBe(false);
+
+    const rows = await probeRows(id);
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.result).toBe("error");
+    expect(rows[0]?.actor_id).toBe(srv.userId);
+
+    const runtime = (await (await call(`/v1/connectors/${id}/runtime`)).json()) as {
+      last_success_at: string | null;
+      last_failure: { at: string } | null;
+    };
+    expect(runtime.last_success_at).toBeNull();
+    expect(typeof runtime.last_failure?.at).toBe("string");
+  });
+
+  test("a passed test moves the last successful call", async () => {
+    const id = await seed("runtime-probed-ok");
+    await recordConnectorProbed({
+      tenant_id: srv.tenantId,
+      actor_id: srv.userId,
+      executor: srv.db,
+      connector: {
+        id,
+        slug: "runtime-probed-ok",
+        driver: "http",
+        environment: "prod",
+        base_url: "https://api.example.org",
+      },
+      result: { ok: true, status: 200, latency_ms: 12 },
+    });
+    const runtime = (await (await call(`/v1/connectors/${id}/runtime`)).json()) as {
+      last_success_at: string | null;
+      last_failure: unknown;
+    };
+    expect(typeof runtime.last_success_at).toBe("string");
+    expect(runtime.last_failure).toBeNull();
+  });
+
+  test("a disabled connector's refused test sent nothing and is not a call", async () => {
+    const id = await seed("runtime-probed-off");
+    expect((await call(`/v1/connectors/${id}/disable`, { method: "POST" })).status).toBe(200);
+    const res = await call(`/v1/connectors/${id}/test`, { method: "POST" });
+    const probe = (await res.json()) as { ok: boolean; error_code?: string };
+    expect(probe.error_code).toBe("connector_disabled");
+    expect(await probeRows(id)).toEqual([]);
+    const runtime = (await (await call(`/v1/connectors/${id}/runtime`)).json()) as {
+      last_failure: unknown;
+    };
+    expect(runtime.last_failure).toBeNull();
   });
 });
 
