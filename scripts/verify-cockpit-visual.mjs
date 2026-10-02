@@ -27,6 +27,7 @@ import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
+import { verifyWorkflowPage } from "./lib/cockpit-workflow-page.mjs";
 import { verifyWorkflowPreview } from "./lib/cockpit-workflow-preview.mjs";
 
 /** A port nothing is listening on right now — claimed immediately with --strictPort. */
@@ -1103,6 +1104,82 @@ function sse(route, body) {
   });
 }
 
+/** `GET /v1/workflows/{id}/invocation`, for a workflow nothing is bound to. */
+function workflowInvocation(workflowId) {
+  const publicUrl = "https://engine.example.test";
+  const sample = { month: "<month>" };
+  const body = { source: "saved", workflow_id: workflowId, input: sample };
+  const call = (environment, language) =>
+    language === "curl"
+      ? [
+          `curl -sS -X POST '${publicUrl}/v1/executions' \\`,
+          `  -H 'authorization: Bearer '"$SK_API_KEY" \\`,
+          `  -H 'x-subkit-environment: ${environment}' \\`,
+          `  -H 'content-type: application/json' \\`,
+          `  -d '${JSON.stringify(body)}'`,
+        ].join("\n")
+      : `# ${language}, ${environment}\n${JSON.stringify(body)}`;
+  return {
+    workflow_id: workflowId,
+    slug: "monatsreport",
+    base_url: publicUrl,
+    http: {
+      method: "POST",
+      path: "/v1/executions",
+      url: `${publicUrl}/v1/executions`,
+      headers: ["authorization", "x-subkit-environment", "content-type"],
+      body,
+      snippets: Object.fromEntries(
+        ["dev", "prod"].map((environment) => [
+          environment,
+          Object.fromEntries(
+            ["curl", "node", "python"].map((language) => [language, call(environment, language)]),
+          ),
+        ]),
+      ),
+    },
+    hooks: [],
+    mcp: {
+      tool_name: "wf_monatsreport",
+      fallback: {
+        tool_name: "run_workflow",
+        arguments: { workflow: "monatsreport", input: sample },
+      },
+    },
+    schedules: [],
+    cli: {
+      command: `sk workflows run monatsreport --input '${JSON.stringify(sample)}'`,
+      environment: "dev",
+    },
+    input: {
+      // Inferred, with a long description and an unusual type: the table has
+      // to wrap inside its card at every width.
+      source: "synthesized",
+      schema: {
+        type: "object",
+        properties: {
+          month: {
+            type: "string",
+            description:
+              "Abrechnungsmonat im Format JJJJ-MM, für den der Report aller Tochtergesellschaften erzeugt wird",
+          },
+          include_adjustments_and_consolidation_entries: { type: "boolean" },
+        },
+      },
+      sample,
+    },
+    output: { schema: null },
+    webhook_input_shape: {
+      id: "string",
+      type: "string",
+      timestamp: "number",
+      headers: "object",
+      body: "json",
+    },
+    authority: { dev: "held_preview_only", prod: "held_preview_only" },
+  };
+}
+
 async function mockApi(route) {
   const request = route.request();
   const url = new URL(request.url());
@@ -1179,6 +1256,11 @@ async function mockApi(route) {
       is_current: false,
       diagnoses: [],
     });
+  // How any workflow is called, as the engine answers it: the run request with
+  // its snippets, the tool name and the command. No hook and no schedule
+  // unless a scenario binds one — and the identifier only inside the calls.
+  const invoked = /^\/v1\/workflows\/([^/]+)\/invocation$/.exec(path);
+  if (invoked) return json(route, workflowInvocation(invoked[1]));
   if (path === "/v1/schedules") return json(route, { schedules: [], total: 0 });
   if (path === "/v1/attention") return json(route, attentionAnswer());
   if (path === "/v1/conversations" && request.method() === "GET") {
@@ -1326,9 +1408,39 @@ async function mockApi(route) {
       lifecycle: "active",
       current_version: 8,
       current_version_id: "018f4b4a-6d33-7b3a-9c2d-123456789ab8",
+      created_at: "2026-06-01T08:00:00.000Z",
+      last_executed_at: "2026-08-10T07:00:00.000Z",
+      input_schema: null,
+      output_schema: null,
+      trigger: null,
+      schedule: null,
+      webhooks_active: 0,
+      effective_trigger: { kind: "request", source: "default", state: "active" },
       steps: [
-        { id: "fetch", name: "Daten laden", kind: "request" },
-        { id: "transform", name: "Report berechnen", kind: "transform" },
+        {
+          id: "fetch",
+          name: "Daten laden",
+          kind: "request",
+          method: "GET",
+          // A path that carries an identifier: masked in the row, whole in the
+          // step's fenced block.
+          path: `/v1/reports/${runConnectorId}/rows`,
+          connector_id: uuid,
+          query: { month: "2026-07" },
+        },
+        {
+          id: "check",
+          kind: "branch",
+          when: "fetch.status = 200",
+          then_steps: ["transform"],
+          else_steps: [],
+        },
+        {
+          id: "transform",
+          name: "Report berechnen",
+          kind: "transform",
+          expression: "return { rows: input.scope.fetch.data.length };",
+        },
       ],
       // Unhealthy, with the engine's own English reason: the page has to say
       // the cause in its own words and keep this one behind "Wortlaut der
@@ -3200,7 +3312,30 @@ async function assertWorkflowDetail(page, label, language) {
   const all = await page.locator('[data-testid="workflow-all-runs"]').getAttribute("href");
   if (all !== `/cockpit/runs?workflow_id=${uuid}`)
     throw new Error(`${label} "all runs" leads to ${all}`);
-  // The approval card is headed by what the reader decides by.
+  // The page's order: whether it may run, how it is called, what it takes,
+  // what it does — and nothing of the old tabs or the "Steuerung" row.
+  for (const section of [
+    "workflow-automation",
+    "workflow-invocation",
+    "workflow-io",
+    "workflow-steps",
+    "workflow-technical",
+  ])
+    if (!(await page.locator(`[data-testid="${section}"]`).count()))
+      throw new Error(`${label} lacks its "${section}" section`);
+  await page.locator('[data-testid="workflow-automation-state"]').waitFor();
+  if (
+    await page
+      .locator('[data-testid="workflow-tab-dag"], [data-family-slot="detail-context"]')
+      .count()
+  )
+    throw new Error(`${label} still carries the old tabs or the governance row`);
+  // An approval for a version that is not running is history: folded, and
+  // headed by what the reader decides by once it is opened.
+  const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
+  if (await page.locator('[data-testid="authority-headline"]').count())
+    throw new Error(`${label} shows an earlier approval before anyone asked for it`);
+  await history.click();
   const headline = await page.locator('[data-testid="authority-headline"]').first().innerText();
   for (const expectedPart of language === "de"
     ? ["Produktion", "gültig bis", "bis zu 24 Läufe"]
@@ -3215,6 +3350,8 @@ async function assertWorkflowDetail(page, label, language) {
     .getAttribute("title");
   if (headlineTitle !== hostileAuthority.id)
     throw new Error(`${label} authority id is not kept on the headline's title`);
+  // Folded again: the frame photographs the page as a reader finds it.
+  await history.click();
 }
 
 /**
@@ -4101,6 +4238,9 @@ for (const locale of variants) {
       shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
     );
     await verifyWorkflowPreview(page, stand, uuid, locale.name);
+    await verifyWorkflowPage(page, stand, locale.name, (state) =>
+      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+    );
     await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
       shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
         fullPage: false,
