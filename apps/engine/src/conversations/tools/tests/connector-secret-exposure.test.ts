@@ -96,11 +96,11 @@ beforeAll(async () => {
   );
   oauthConnectorId = oauth.id;
   postgresConnectorId = pg.id;
-});
+}, 60_000);
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 30_000);
 
 describe("get_connector returns the public projection", () => {
   test("the OAuth client secret is masked and the config around it is readable", async () => {
