@@ -29,7 +29,7 @@ import type { ContentPublicationBoundaries } from "./content-publication-proposa
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { ReportDeliveryBoundaries } from "./report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
-import { WorkflowDefSchema } from "./types.ts";
+import { executableDefinition } from "./stored-definition.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export const GrantWorkflowAuthoritySchema = z
@@ -204,7 +204,7 @@ async function resolveGrantedAdmissionHolds(
       ),
     )
     .limit(1);
-  const definition = WorkflowDefSchema.parse(version?.dag);
+  const definition = executableDefinition(version?.dag);
   for (const schedule of schedules) {
     if (
       definition.input_schema &&

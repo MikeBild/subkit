@@ -11,7 +11,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
-import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
+import { executableDefinition } from "../workflows/stored-definition.ts";
+import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 import { validateWorkflowDef } from "../workflows/validator.ts";
 
 /** Discriminated union identifying where the definition comes from. */
@@ -102,7 +103,9 @@ async function resolveSaved(
     .limit(1);
   const versionRow = versionRows[0];
   if (!versionRow) throw new Error("workflow version not found");
-  const def = WorkflowDefSchema.parse(versionRow.dag);
+  // A version stored in an earlier format is refused by name, not thrown as
+  // a schema error the caller reads as an engine fault.
+  const def = executableDefinition(versionRow.dag);
   return {
     def,
     workflow_id: wfRow.id,
