@@ -3567,6 +3567,37 @@ step or `call_connector` clears the flag and refreshing resumes. Once the
 access token has expired, no call can succeed with it, so nothing clears the
 flag: such a connector comes back only by being authorised again.
 
+### What re-authorising does, and what it does not
+
+Authorising a connector again — signing in at the provider, entering a new
+key on the one-time credential page, replacing the key on the connector's
+page, or re-issuing the credential in a conversation — stores the new
+credential and resolves what the old one left behind:
+
+- `needs_reauth` is cleared, with `auth_failed_at` and `auth_failed_reason`.
+- The circuit breaker is closed: `circuit_state` is `closed`,
+  `circuit_failure_count` is `0` and `circuit_opened_at` is empty. The
+  failures it counted were against the credential that was just replaced.
+
+Both changes are in the audit log (`connector.reauth_cleared`,
+`connector.circuit_reset`). A token refresh does neither: it rotates material
+without anyone having authorised anything.
+
+It does **not** switch a connector on. A connector that was disabled stays
+disabled after a sign-in — that is a separate decision — and the result says
+so: "signed in, but switched off". Switch it on with `sk connectors enable`
+or with "Einschalten" on the connector's page in the Cockpit.
+
+If the provider granted fewer permissions than the connector asks for, the
+sign-in still counts and the missing permissions are named — on the result
+page, and on the connector's page for as long as they are missing.
+
+Where the browser goes after the provider depends on where the sign-in was
+started. From the Cockpit it returns to the connector's page, which reads the
+connector again and shows its state. From the terminal, a conversation or a
+one-time link it shows a result page that says what was stored and where to
+go back to. A failed sign-in always shows a result page, and stores nothing.
+
 **Secrets live only in the Credential Vault** — encrypted at rest, never logged,
 never exposed outside the engine. Workflows and steps reference credentials by
 name, not by value. The full vault model and master-key rotation procedure are in
@@ -3710,6 +3741,8 @@ The same two reads report the circuit breaker behind that verdict:
 `circuit_state` (`closed`, `open`, `half-open`), `circuit_opened_at` and
 `circuit_failure_count`. They are read-only and say why a call is being
 short-circuited right now, and how close a closed breaker is to opening.
+`circuit_opened_at` is when an open breaker tripped; a closed breaker has
+none.
 
 ### Secrets in a connector representation
 
