@@ -170,6 +170,12 @@
     },
     {
       "audience": "authors",
+      "path": "docs/authors/calling-workflows.md",
+      "title": "Calling a Workflow",
+      "summary": "A saved workflow is something other systems can start: your app, a service that sends webhooks, an AI client, a schedule, or a terminal."
+    },
+    {
+      "audience": "authors",
       "path": "docs/authors/choosing-your-surface.md",
       "title": "Choosing your surface",
       "summary": "Do the work where it actually goes faster."
