@@ -34,6 +34,7 @@ import {
   connectorFix,
   connectorLabel,
   defaultEnvironment,
+  legacyRefusal,
   RUN_ENVIRONMENTS,
   type RunEnvironment,
   refusedConnector,
@@ -68,6 +69,7 @@ interface RunOutcome {
 
 type Failure =
   | { kind: "connector"; environment: RunEnvironment; connector: UnavailableConnector }
+  | { kind: "legacy"; steps: string[] }
   | { kind: "failed"; executionId: string | null };
 
 /**
@@ -311,6 +313,11 @@ export function RunWorkflowDialog({
         });
         return;
       }
+      const legacy = legacyRefusal(error);
+      if (legacy) {
+        setFailure({ kind: "legacy", steps: legacy.steps });
+        return;
+      }
       const details = (error as { details?: Record<string, unknown> | null }).details;
       setFailure({
         kind: "failed",
@@ -453,7 +460,11 @@ export function RunWorkflowDialog({
               <p>
                 {failure.kind === "connector"
                   ? `${blockedSentence(failure.environment, failure.connector)}.`
-                  : t("run.failed")}
+                  : failure.kind === "legacy"
+                    ? failure.steps.length > 0
+                      ? t("run.legacySteps", { steps: failure.steps.join(", ") })
+                      : t("run.legacy")
+                    : t("run.failed")}
               </p>
               {failureFix && (
                 <a

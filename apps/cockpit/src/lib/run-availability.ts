@@ -54,6 +54,22 @@ export function blockingConnector(preview: unknown): UnavailableConnector | null
   return Array.isArray(list) ? asUnavailable(list[0]) : null;
 }
 
+/**
+ * A run the engine refused because the running version is stored in an
+ * earlier definition format, with the steps it names — or null for any other
+ * failure. The refusal carries its reason; "could not be started" would send
+ * the reader looking for a fault that is not one.
+ */
+export function legacyRefusal(error: unknown): { steps: string[] } | null {
+  if (!(error instanceof ApiError) || error.code !== "workflow_version_legacy") return null;
+  const issues = Array.isArray(error.details?.issues) ? error.details.issues : [];
+  const steps = issues.flatMap((issue) => {
+    const id = (issue as { step_id?: unknown } | null)?.step_id;
+    return typeof id === "string" && id ? [id] : [];
+  });
+  return { steps: [...new Set(steps)] };
+}
+
 /** The first environment that can run; development when neither can. */
 export function defaultEnvironment(
   blocked: Record<RunEnvironment, UnavailableConnector | null>,

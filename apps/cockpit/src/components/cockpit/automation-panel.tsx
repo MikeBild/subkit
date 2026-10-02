@@ -323,8 +323,10 @@ export function AutomationTitleAction({
       <AutomationActionButton automation={automation} action={action} testId="detail-action" />
     );
   // A block the diagnosis names: its own act. One it does not name — the
-  // engine reported a refusal the diagnosis could not explain — goes to an author.
-  if (automation.diagnosis?.diagnoses[0] && automation.state)
+  // engine reported a refusal the diagnosis could not explain, or the version
+  // is stored in an earlier format — goes to an author.
+  const legacy = automation.state?.state === "legacy";
+  if (automation.diagnosis?.diagnoses[0] && automation.state && !legacy)
     return (
       <DiagnosisTitleAction
         diagnosis={automation.diagnosis}
@@ -333,12 +335,15 @@ export function AutomationTitleAction({
       />
     );
   return automation.canChat ? (
-    <Button asChild variant="outline">
+    // The page's one filled action where "Ausführen" cannot be offered.
+    <Button asChild variant={legacy ? "default" : "outline"}>
       <a
         href={absolute(
           chatNewHref({
             workflowId: automation.workflowId,
-            prompt: t("automation.repairPrompt", { name: workflowName }),
+            prompt: t(legacy ? "automation.legacyPrompt" : "automation.repairPrompt", {
+              name: workflowName,
+            }),
           }),
         )}
         data-testid="detail-action"
@@ -351,6 +356,7 @@ export function AutomationTitleAction({
 }
 
 const STATE_TONE: Record<AutomationStateKind, string> = {
+  legacy: "bg-destructive",
   approved: "bg-success",
   grant: "bg-warning",
   apply: "bg-warning",
@@ -406,6 +412,8 @@ function useHeadline(state: AutomationState): string {
             active,
           });
     }
+    case "legacy":
+      return t("automation.headline.legacy");
     case "paused":
       return t("automation.headline.paused");
     case "unknown":
@@ -524,8 +532,9 @@ function PanelBody({
   // In state `repair` the act is the diagnosis block's own button below; a
   // second one here would be the same press twice. Only a refusal the
   // diagnosis does not name gets the way to an author.
+  const legacy = state.state === "legacy";
   const unnamedRepair =
-    state.primaryAction?.kind === "repair" && !automation.diagnosis?.diagnoses[0];
+    state.primaryAction?.kind === "repair" && (legacy || !automation.diagnosis?.diagnoses[0]);
   const actions = [
     { action: state.primaryAction, testId: "workflow-automation-action" },
     { action: state.secondaryAction, testId: "workflow-automation-secondary" },
@@ -586,7 +595,9 @@ function PanelBody({
                 href={absolute(
                   chatNewHref({
                     workflowId: automation.workflowId,
-                    prompt: t("automation.repairPrompt", { name: workflowName }),
+                    prompt: t(legacy ? "automation.legacyPrompt" : "automation.repairPrompt", {
+                      name: workflowName,
+                    }),
                   }),
                 )}
                 data-testid="workflow-automation-action"
@@ -629,11 +640,15 @@ function PanelBody({
       <TriggerLine triggers={state.triggers} hiddenHooks={hiddenHooks} />
       {/* Why the gate holds it and what removes that — in the environment the
           approval itself is judged in. Renders nothing when nothing is held. */}
-      <WorkflowGateDiagnosis
-        workflowId={automation.workflowId}
-        environment={state.environment}
-        onOpenApproval={automation.canWrite && target ? automation.openGrant : undefined}
-      />
+      {/* A version in an earlier format is not judged by the gate at all:
+          its one block is the format, said in the headline above. */}
+      {legacy ? null : (
+        <WorkflowGateDiagnosis
+          workflowId={automation.workflowId}
+          environment={state.environment}
+          onOpenApproval={automation.canWrite && target ? automation.openGrant : undefined}
+        />
+      )}
       {automation.grantShown && current.length > 0 ? (
         <div className="grid gap-3" data-testid="workflow-automation-grants">
           {current.map((authority, index) => (
@@ -657,7 +672,7 @@ function PanelBody({
           </Button>
         </div>
       ) : null}
-      {automation.canWrite && target ? (
+      {automation.canWrite && target && !legacy ? (
         <GrantWorkflowAuthority
           key={`${automation.workflowId}:${target.version_id}`}
           workflowId={automation.workflowId}
