@@ -10,11 +10,12 @@
 //
 // Then the hostile variants a sweep of happy fixtures never sees: a connector
 // that was never called (a counted zero opens nothing, and the empty state
-// leads to "Verbindung testen"), a runtime read that fails (a failure with a
+// says so without repeating "Verbindung testen"), a runtime read that fails (a failure with a
 // retry, not an empty page), a reader without `stats:read` ("Keine
 // Berechtigung", not a zero), and a postgres connector (no server tools, no
 // MCP words).
 
+import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 const MCP_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
@@ -315,6 +316,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     const stored = page.getByTestId("connector-mcp-tool-0-trust");
     if ((await stored.getAttribute("data-state")) !== "checked")
       throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
+    await assertSingleTriggers(page, where);
     await capture("connector-mcp");
 
     await page.getByTestId("connector-test").click();
@@ -358,6 +360,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where}: sections are cut off — ${clipped.join(", ")}`);
     await assertNoVisibleUuids(page.locator("main").first(), where);
     await assertNoSidewaysScroll(page, where);
+    await assertSingleTriggers(page, `${where} · tools`);
     await capture("connector-mcp-tools");
 
     // ── A connector nobody called ─────────────────────────────────────────────
@@ -366,8 +369,14 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await page.getByTestId("connector-runtime-unused").waitFor({ timeout: 10_000 });
     if (await page.getByTestId("connector-figure-calls-link").count())
       throw new Error(`${where} · zero: a counted zero opens a list`);
-    if (!(await page.getByTestId("connector-runtime-test").isVisible()))
-      throw new Error(`${where} · zero: the empty state does not lead to "Verbindung testen"`);
+    // The empty state says so. Testing the connection is the page's own action
+    // beside the title, and stands there only.
+    if (await page.getByTestId("connector-runtime-unused").locator("a, button").count())
+      throw new Error(`${where} · zero: the empty state repeats "Verbindung testen"`);
+    if (!(await page.getByTestId("connector-test").isVisible()))
+      throw new Error(`${where} · zero: the connection cannot be tested from the page`);
+    await page.waitForLoadState("networkidle");
+    await assertSingleTriggers(page, `${where} · zero`);
     await capture("connector-zero");
 
     // ── A runtime read that fails ─────────────────────────────────────────────
@@ -411,6 +420,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         "/connectors/<postgres>: an address with a kept secret is offered for copying",
       );
     await assertNoSidewaysScroll(page, "/connectors/<postgres>");
+    await assertSingleTriggers(page, `${where} · postgres`);
     await capture("connector-postgres");
   } finally {
     await page.unroute(isConnectorApi, handler);

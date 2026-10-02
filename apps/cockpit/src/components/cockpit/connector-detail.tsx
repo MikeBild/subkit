@@ -224,12 +224,10 @@ export function ConnectorRuntimeSection({
   connectorId,
   driver,
   canReadStats,
-  onTest,
 }: {
   connectorId: string;
   driver: string | null;
   canReadStats: boolean;
-  onTest: (() => void) | null;
 }) {
   const { t, locale } = useI18n();
   const [bounds] = useState(() => connectorStatsWindow());
@@ -340,25 +338,9 @@ export function ConnectorRuntimeSection({
         </Tile>
       </div>
       {figures && figures.calls === 0 ? (
-        <p
-          className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground"
-          data-testid="connector-runtime-unused"
-        >
-          <span>{t("connectorDetail.runtime.unused")}</span>
-          {onTest ? (
-            <>
-              <span aria-hidden="true">·</span>
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto p-0"
-                onClick={onTest}
-                data-testid="connector-runtime-test"
-              >
-                {t("detail.test")}
-              </Button>
-            </>
-          ) : null}
+        // Said, not acted on here: "Verbindung testen" stands beside the title.
+        <p className="text-sm text-muted-foreground" data-testid="connector-runtime-unused">
+          {t("connectorDetail.runtime.unused")}
         </p>
       ) : null}
       <p className="text-sm" data-testid="connector-last-failure">
