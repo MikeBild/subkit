@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ToolPart } from "@/components/ai-elements/tool";
-import { chatAutomationSummary, chatAutomationTool } from "./chat-automation-tool";
+import { chatAutomationTool } from "./chat-automation-tool";
 import { groupMessageParts } from "./chat-transcript";
 
 const id = "00000000-0000-4000-8000-000000000001";
@@ -18,31 +18,11 @@ const part = (output: unknown) =>
     input: { workflow_id: id },
     output,
   }) as ToolPart;
-test("held steps do not invent a report failure or imply approval readiness", () => {
-  const review = {
-    eligible_for_repeated_runs: false,
-    unavailable_steps: ["send_email"],
-    preview_evidence: { status: "succeeded", steps: [{ step_id: "fetch_report", held: true }] },
-  };
-  const result = (row: Record<string, unknown>) =>
-    part({ ...data, schedules: [{ workflow_id: id, environment: "prod", ...row }] });
-  expect(chatAutomationSummary(result({ state: "repair_required", review }))).toBe("repair");
-  expect(
-    chatAutomationSummary(
-      result({
-        review: { ...review, preview_evidence: { steps: [{ step_id: "send_email", held: true }] } },
-      }),
-    ),
-  ).toBe("repair");
-  expect(
-    chatAutomationSummary(
-      result({ state: "approval_required", review: { eligible_for_repeated_runs: true } }),
-    ),
-  ).toBe("review");
-  expect(chatAutomationSummary(result({ state: "authorized", ready: true }))).toBe("authorized");
-  expect(chatAutomationSummary(result({ state: "authorized", ready: false }))).toBe("unknown");
-});
-test("a webhook-only workflow is a card with the hook's environment and state", () => {
+// What the card SAYS — approved, repair, review, apply — is no longer read from
+// the tool result: it is the workflow's current state, decided in
+// `lib/automation-state.ts` and covered by its tests. Here: whether a result
+// is a card at all, and for which workflow.
+test("a webhook-only workflow is a card", () => {
   const hook = {
     workflow_id: id,
     slug: "findings",
@@ -54,10 +34,6 @@ test("a webhook-only workflow is a card with the hook's environment and state", 
   const output = (row: Record<string, unknown>) =>
     part({ ok: true, data: { ...data, schedules: [], inbound_hooks: [row] } });
   expect(chatAutomationTool(output(hook))).toEqual({ workflowId: id, environments: ["prod"] });
-  expect(chatAutomationSummary(output(hook))).toBe("repair");
-  expect(chatAutomationSummary(output({ ...hook, state: "authorized", ready: true }))).toBe(
-    "authorized",
-  );
 });
 test("server review stays actionable in the transcript and uses the bound workflow", () => {
   for (const output of [data, { ok: true, data }]) {
@@ -85,7 +61,6 @@ test("a saved change without schedule or webhook is a card in the run's environm
     },
   };
   expect(chatAutomationTool(part(review))).toEqual({ workflowId: id, environments: ["dev"] });
-  expect(chatAutomationSummary(part(review))).toBe("apply");
   expect(
     chatAutomationTool(part({ ok: true, data: { ...data, schedules: [], saved_change: null } }))
       ?.environments,
@@ -111,7 +86,6 @@ test("the run refusal that promises the review dialog carries it", () => {
     data: { error_code: "workflow_activation_required", automation_review },
   });
   expect(chatAutomationTool(refused)).toEqual({ workflowId: id, environments: ["dev"] });
-  expect(chatAutomationSummary(refused)).toBe("apply");
   expect(
     chatAutomationTool(
       refusal({ ok: false, data: { error_code: "workflow_not_found", automation_review } }),
