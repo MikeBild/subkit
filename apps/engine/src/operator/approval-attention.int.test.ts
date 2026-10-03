@@ -12,6 +12,7 @@ import {
   workflowExecutionAuthorities,
   workflows,
   workflowsSchedules,
+  workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
@@ -21,6 +22,7 @@ import {
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
   AUTHORITY_EXTEND_WITHIN_DAYS,
 } from "../workflows/authority-extension.ts";
+import { GMAIL_SEND_TARGET } from "../workflows/report-delivery-boundary.ts";
 import { type AttentionItem, buildAttention, invalidateAttention } from "./attention.ts";
 import { attentionLine } from "./health-digest.ts";
 
@@ -325,5 +327,131 @@ describe("an approval that is about to end", () => {
       valid_until: new Date(getTestNow() + HOUR),
     });
     expect(await itemsOf(manual.workflow_id)).toEqual([]);
+  });
+});
+
+describe("a version no approval may cover", () => {
+  const SENDER = "ops@example.com";
+  // Nothing leaves the engine: an approval can cover it as it stands.
+  const bounded = {
+    name: "bounded",
+    steps: [{ kind: "transform", id: "shape", language: "javascript", expression: "return {};" }],
+  };
+  // Where this request goes is decided by its input: no approval can bound it.
+  const unbounded = {
+    name: "unbounded",
+    steps: [
+      {
+        kind: "request",
+        id: "fetch_target",
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+        url: "${input.target}",
+      },
+    ],
+  };
+  // A report mail without a declared recipient that nobody has watched yet: a
+  // trial run supplies what it sends.
+  const unprepared = {
+    name: "unprepared",
+    steps: [
+      {
+        kind: "transform",
+        id: "compose",
+        language: "javascript",
+        expression: `return { raw: sk.base64UrlEncode('From: ${SENDER}\\r\\nTo: ${SENDER}\\r\\nSubject: r\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n<p>r</p>') };`,
+      },
+      {
+        kind: "request",
+        id: "send_report",
+        method: "POST",
+        url: GMAIL_SEND_TARGET,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
+        body: { raw: "${scope.compose.data.raw}" },
+      },
+    ],
+  };
+
+  async function version(workflow_id: string, n: number, dag: unknown, current = true) {
+    const [row] = await testDb.db
+      .insert(workflowVersions)
+      .values({ tenant_id, workflow_id, version: n, dag })
+      .returning();
+    if (!row) throw new Error("version fixture");
+    await testDb.db
+      .update(workflows)
+      .set(current ? { current_version_id: row.id } : { draft_version_id: row.id })
+      .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
+    return row.id;
+  }
+
+  test("is never offered for approval: the item names the step and the act that unblocks it", async () => {
+    const wf = await workflow("unbounded");
+    await version(wf.workflow_id, 2, unbounded);
+    await schedule(wf.workflow_id);
+    const [item, ...rest] = await itemsOf(wf.workflow_id);
+    expect(rest).toEqual([]);
+    expect(item).toMatchObject({
+      class: "decide",
+      reason: "version_needs_repair",
+      approval: { version: 2, environment: "prod" },
+      repair: { step_id: "fetch_target", remedy_kind: "author", steps: 1 },
+    });
+    expect(item?.repair?.code).toBeTruthy();
+    // Only an author can change where the request goes: a conversation, not "approve".
+    expect(item?.actions).toEqual([
+      {
+        verb: "chat",
+        href: `/cockpit/chat/new?workflow_id=${wf.workflow_id}`,
+        primary: true,
+        permission: "conversation:write",
+      },
+    ]);
+    expect(attentionLine(item as AttentionItem)).toContain('step "fetch_target"');
+  });
+
+  test("a step a trial run unblocks leads to the panel where the trial run starts", async () => {
+    const wf = await workflow("unprepared");
+    await version(wf.workflow_id, 2, unprepared);
+    await hook(wf.workflow_id, `${wf.slug}-in`);
+    const [item] = await itemsOf(wf.workflow_id);
+    expect(item).toMatchObject({
+      reason: "version_needs_repair",
+      trigger: { kind: "inbound_hook", name: `${wf.slug}-in` },
+      repair: {
+        step_id: "send_report",
+        code: "report_delivery_unprepared",
+        remedy_kind: "prepare",
+      },
+    });
+    expect(item?.actions).toEqual([
+      {
+        verb: "open",
+        href: `/cockpit/workflows/${wf.workflow_id}#workflow-automation`,
+        primary: true,
+        permission: "workflow:run",
+      },
+    ]);
+  });
+
+  test("is judged on the running version, never on a draft beside it", async () => {
+    // Running: blocked. Draft: a different block. The item is about what runs.
+    const blocked = await workflow("draft-beside");
+    await version(blocked.workflow_id, 2, unbounded);
+    await version(blocked.workflow_id, 3, unprepared, false);
+    await schedule(blocked.workflow_id);
+    const [item] = await itemsOf(blocked.workflow_id);
+    expect(item).toMatchObject({
+      reason: "version_needs_repair",
+      repair: { step_id: "fetch_target" },
+    });
+    // Running: approvable. Draft: blocked. Still awaiting an approval.
+    const fine = await workflow("fine-draft");
+    await version(fine.workflow_id, 2, bounded);
+    await version(fine.workflow_id, 3, unbounded, false);
+    await schedule(fine.workflow_id);
+    const [awaiting] = await itemsOf(fine.workflow_id);
+    expect(awaiting?.reason).toBe("version_awaiting_approval");
+    expect(awaiting?.repair).toBeUndefined();
   });
 });
