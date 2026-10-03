@@ -1,10 +1,10 @@
 # Cockpit-Konvention
 
-Version 2.2 · 28.09.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.3 · 03.10.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
-**v2.x ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.2 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Den Startseiten-Namen „Übersicht" tragen alle sechs bereits. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
+**v2.x ist SubKit-first — eine gewollte Abweichung von der Familie, bis die Geschwister folgen.** SubKit setzt v2.3 und `FAMILY-UI.json` 3.0 zuerst um. ContentKit, WorkKit, WikiKit, CodeKit und WatchKit arbeiten nach v1.7 und `FAMILY-UI.json` 2.3, bis ihre eigenen Umsetzungs-Schnitte folgen; bis dahin gilt in ihren Repos die v1.7-Kopie. Den Startseiten-Namen „Übersicht" tragen alle sechs bereits. Was ein Geschwister umsetzen muss, steht in `FAMILY-UI.json` unter `migration`. Die v2.3-Schnittstelle `GET /v1/operational-overview` bleibt in SubKit erhalten, damit Geschwister und Prometheus weiterlesen können.
 
 Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Übersicht" mit Betriebsleiste und Anliegen-Liste, Prüf-Seitenblatt, Zeilen, „Personen & Rechte"). Die Karten-Anatomie einer Entscheidung (§8.4) stammt aus WorkKit (Übergabe „workkit-entscheidungen-uebergabe"), §9–§11 aus SubKit (Übergabe „subkit-referenzarchitektur-uebergabe").
 
@@ -20,6 +20,7 @@ Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Über
 Änderungen v2.1: Die Startseite heißt wieder **„Übersicht"** (englisch „Overview") wie in allen sechs Produkten. §1 neu gegliedert: Seitenkopf mit Zeitfenster (24 Std · 7 Tage · 30 Tage) → Betriebsleiste mit genau vier Werten → Anliegen-Liste „Braucht dich" → Verweis auf den Audit-Trail; „keine Null-Kacheln" bleibt. §0.1: Ausführungen, Erfolgsquote, Konnektor-Gesundheit und Reparaturquote wohnen in der Betriebsleiste der Übersicht, nicht mehr auf Nutzung. §6 kanonischer Name „Übersicht". §8.5: ein Wert der Betriebsleiste, der auf gefilterte Audit-Einträge führt, ist kein zweiter Verweis auf die Geschichte. §8.6: die Betriebsleiste bleibt im leeren Zustand stehen.
 Änderungen v2.1.1: §6 Einstellungen — eine Zeile sagt, wenn ein Wert vom Standard abweicht, und setzt ihn per Entwurf zurück; „Alle | Geändert“ neben der Suche; Geheimnisse zeigen nur „Hinterlegt“ oder „Nicht hinterlegt“; ein Speichern ist ein Vorgang für alle Entwürfe der Seite, ein Konflikt behält sie.
 Änderungen v2.2: Die Betriebsleiste trägt sechs Werte statt vier — dazu **Kosten** (Ausgaben im gewählten Zeitfenster, in der Währung der Preise) und **Kontingent** (Token des Kalendermonats gegen das Monatskontingent, markiert „Monat"), je in Kurzform. §1 Betriebsleiste: ein Raster ohne seitliches Scrollen (breit 6 in einer Zeile oder 3 × 2, Telefon 2 Spalten). §0.1: Kosten und Kontingent wohnen als Kurzform in der Betriebsleiste; Nutzung behält Aufriss und Tabellen.
+Änderungen v2.3: Die Übersicht folgt dem abgenommenen Klick-Dummy. Die Betriebsleiste trägt wieder **vier** Werte — Ausführungen, Erfolgsquote, Gesunde Konnektoren, Kontingent —; Kosten zeigt Nutzung im Aufriss, entschiedene Reparaturen zeigt der Audit-Trail (§0.1). Das Zeitfenster (24 Std · 7 Tage) steht rechts in der Zusammenfassungszeile über der Leiste, nicht im Seitenkopf; der Seitenkopf trägt „Alle Läufe" und den Verweis „Was bereits entschieden wurde". Unter der Anliegen-Liste stehen die drei jüngsten Fehlschläge. Leer heißt: die Zusammenfassungszeile zählt „0 Einträge brauchen dich", die Liste sagt „Nichts braucht dich gerade." — ohne Statuszeile; den Gesundheitszustand liefern API, MCP und Prometheus, seine Ursachen sind Einträge (§1, §8.6).
 
 ---
 
@@ -52,10 +53,12 @@ und verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
 | Fakt | Ort | Sonst |
 |---|---|---|
 | Aufgaben (Entscheidungen, Scheitern, Anmeldung, Kontingent, Rückfragen, Geheimnis-Freigaben) | Übersicht, Anliegen-Liste | Objektseiten: Zustand + Link |
-| Gesundheitszustand | Statuszeile auf der Übersicht, **nur im leeren Zustand**; Ursachen sind Einträge | nirgends |
+| Gesundheitszustand | Ursachen eines schlechten Zustands sind Einträge der Übersicht; der Zustand selbst nur API, MCP, Prometheus | nirgends |
 | Komponenten/Score | nur API, MCP, Prometheus | — |
 | Zahl offener Anliegen | Abzeichen am Navigationseintrag = Zahl der Einträge | Listenköpfe ohne Zahl |
-| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Reparaturquote, Kosten, Kontingent | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1; Kosten und Kontingent nur in Kurzform: Betrag des Fensters, Prozent vom Monatskontingent mit Zustand) | Nutzung zeigt Aufriss, Tabellen und Laufzeit desselben Fensters, nicht die vier Betriebswerte; ohne Preis kein stiller Teilbetrag („mind. …"), ohne Kontingent „Kein Kontingent" |
+| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Kontingent | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1; Kontingent in Kurzform: Prozent vom Monatskontingent mit Zustand) | Nutzung zeigt Aufriss, Tabellen und Laufzeit desselben Fensters, nicht die Betriebswerte; ohne Kontingent „Kein Kontingent" |
+| Kosten | Nutzung, Aufriss desselben Fensters | ohne Preis kein stiller Teilbetrag („mind. …") |
+| Übernommene Reparaturen | Audit-Trail, entschiedene Vorschläge (§8.5) | — |
 | Datenstand | Eintrag auf der Übersicht, nur wenn veraltet | — |
 | Drift-Scan | kein Knopf im Cockpit (der Scheduler scannt; CLI/MCP behalten ihn) | — |
 | Titel wiederholende Beschreibungen | entfallen | — |
@@ -73,20 +76,21 @@ Betriebsleiste, darunter die Liste der Anliegen, die diese Person jetzt braucht.
 Entscheidungs-Seite und System-Seite aus v1.7; deren alte Adressen leiten auf die Übersicht um
 (ein Link, der einen Gegenstand nannte, öffnet dessen Prüf-Seitenblatt).
 
-**Aufbau.** Seitenkopf (Titel „Übersicht", Zeitfenster 24 Std · 7 Tage · 30 Tage, Vorgabe
-24 Std) → Betriebsleiste → „Braucht dich": die Anliegen-Liste (§8) → ein Hinweis auf nicht
-lesbare Quellen, nur wenn eine Quelle nicht geantwortet hat → genau ein Verweis „Was bereits
-entschieden wurde" auf den Audit-Trail. Kein Ereignisstrom, keine Liste letzter Läufe.
+**Aufbau.** Seitenkopf (Titel „Übersicht", „Alle Läufe" als Seitenblatt und genau ein Verweis
+„Was bereits entschieden wurde" auf den Audit-Trail) → Zusammenfassungszeile („3 Einträge brauchen
+dich") mit dem Zeitfenster rechts (24 Std · 7 Tage, Vorgabe 24 Std) → Betriebsleiste → „Braucht
+dich": die Anliegen-Liste (§8) → ein Hinweis auf nicht lesbare Quellen, nur wenn eine Quelle nicht
+geantwortet hat → „Letzte Fehlschläge": die drei jüngsten gescheiterten Läufe mit Ursache, jeder
+öffnet sein Seitenblatt. Kein Ereignisstrom; keine Liste erfolgreicher Läufe.
 
-**Betriebsleiste.** Genau sechs Werte in einem Raster ohne seitliches Scrollen — breit in einer
-Zeile oder 3 × 2, auf dem Telefon in zwei Spalten: Ausführungen, Erfolgsquote, Gesunde
-Konnektoren, Übernommene Reparaturen, Kosten, Kontingent. Ausführungen, Erfolgsquote,
-Reparaturen und Kosten zählen im gewählten Zeitfenster; „Gesunde Konnektoren" ist ein Zustand
-und trägt „Stand jetzt", „Kontingent" gilt dem Kalendermonat und trägt „Monat". Kosten zeigen den
-Betrag des Fensters — sind Modelle ohne Preis dabei, „mind. …" mit der Zahl der Aufrufe ohne
-Preis, nie ein stiller Teilbetrag; Kontingent zeigt den Anteil am Monatskontingent mit Rest und
-Zustand, ohne Kontingent „Kein Kontingent". Jeder Wert führt auf die gefilterte Liste desselben
-Fensters (§10.1), Kosten und Kontingent auf Nutzung, die den Aufriss trägt. Ein Wert,
+**Betriebsleiste.** Genau vier Werte in einem Raster ohne seitliches Scrollen — breit in einer
+Zeile oder 2 × 2, auf dem Telefon 2 × 2: Ausführungen, Erfolgsquote, Gesunde Konnektoren,
+Kontingent. Ausführungen und Erfolgsquote zählen im gewählten Zeitfenster; „Gesunde Konnektoren"
+ist ein Zustand und trägt „Stand jetzt", „Kontingent" gilt dem Kalendermonat und trägt „Monat".
+Kontingent zeigt den Anteil am Monatskontingent mit Rest und Zustand, ohne Kontingent „Kein
+Kontingent". Jeder Wert führt auf die gefilterte Liste desselben Fensters (§10.1), Kontingent auf
+Nutzung, die den Aufriss trägt. Kosten und übernommene Reparaturen stehen nicht in der Leiste:
+Kosten zeigt Nutzung im Aufriss, entschiedene Reparaturen der Audit-Trail (§0.1). Ein Wert,
 der nicht gelesen werden konnte, sagt „nicht lesbar" und bietet an, erneut zu lesen — je Wert,
 nicht für die ganze Leiste. Die Leiste ist kompakt (je Wert etwa 72 px hoch), damit die Anliegen im
 ersten Screen stehen. Sie zeigt Zahlen, keine Aufgaben: was jemanden braucht, ist ein Eintrag
@@ -97,17 +101,19 @@ Worten („Keine im Zeitraum", „Keine aktiven Konnektoren") und trägt keinen 
 „Blockiert: 0" beantwortet eine Frage, die niemand gestellt hat, und eine Wand aus Nullen
 lehrt, die Seite zu überlesen.
 
-**Leer.** Ist nichts offen, bleibt die Betriebsleiste stehen, und statt der Liste steht dort
-„Alles erledigt." und **eine** Statuszeile (Gesundheitszustand · nächste geplante Ausführung).
-Das gilt **nur**, wenn jede Quelle, die diese Person lesen darf, geantwortet hat. Hat eine
-Quelle nicht geantwortet, nennt die Seite, was fehlt — ein falsches „Alles erledigt" ist
-schlimmer als keines. Wer keine Quelle lesen darf, landet auf dem ersten sichtbaren
-Navigationseintrag.
+**Leer.** Ist nichts offen, bleibt die Betriebsleiste stehen, die Zusammenfassungszeile zählt
+in Worten („0 Einträge brauchen dich" — ein Satz, keine Kachel), und an der Stelle der Einträge
+steht „Nichts braucht dich gerade." — keine Statuszeile. Das gilt **nur**, wenn jede Quelle, die
+diese Person lesen darf, geantwortet hat. Hat eine Quelle nicht geantwortet, nennt die Seite, was
+fehlt, und zählt nicht; ohne Einträge sagt sie höchstens, dass aus den Quellen, die geantwortet
+haben, nichts ansteht — ein falsches „Nichts braucht dich" ist schlimmer als keines. Konnte die
+Liste gar nicht gelesen werden, sagt die Seite das mit „Erneut versuchen" und zählt nichts. Wer
+keine Quelle lesen darf, landet auf dem ersten sichtbaren Navigationseintrag.
 
 **Abzeichen.** Der Navigationseintrag „Übersicht" trägt die Zahl der Einträge der Liste —
 dieselbe Zahl, nicht eine zweite Zählung.
 
-Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Die sechs Betriebswerte wohnen
+Regeln: Kein Zähler ohne Link. Kein Rot ohne Weg zur Ursache. Die vier Betriebswerte wohnen
 in der Betriebsleiste der Übersicht; Nutzung zeigt Aufriss, Tabellen und Laufzeit, nicht
 diese Werte ein zweites Mal. Komponenten und Score liefern API, MCP und Prometheus. „Nichts zu tun" ist ein
 ruhiger Zustand, kein inszenierter Erfolg.
@@ -207,9 +213,9 @@ Gegenstand") ist die Antwort darauf.
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung); darüber bleibt die Betriebsleiste (§1) stehen — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Nichts braucht dich gerade." an der Stelle der Einträge, die Zusammenfassungszeile zählt „0 Einträge brauchen dich"; darüber bleibt die Betriebsleiste (§1) stehen — keine Statuszeile, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Nichts braucht dich" und keine Zählung, sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Ursachen eines schlechten Zustands sind selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
-**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
+**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Nichts braucht dich gerade." meldet, bleibt ein Konventionsbruch.
 
 **8.8 Produkt-Spezifisch bleibt:** die Quellen und Arten (Kinds) und ihre Badges, die Resolver-Formulare im Seitenblatt, die Quell-Referenzen. Familienweit sind die eine Engine-Quelle, die drei Klassen und ihre Reihenfolge, die Eintrags-Anatomie, das Seitenblatt, die Sprache, die Trennung von Zustand und Geschichte und die Leere-Regel.
 

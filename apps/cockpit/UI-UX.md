@@ -32,7 +32,7 @@ Navigation follows the work instead of the engine's directory tree:
 - **Installation** — Usage, Settings, Credentials, People & access, Notifications, Audit
 
 The first block carries no heading and the last one carries the family's name for it. The
-convention (v2.2, §1 and §6) names both: Übersicht stands ungrouped at the top, and the
+convention (v2.3, §1 and §6) names both: Übersicht stands ungrouped at the top, and the
 administration block is called "Installation". There is no Decisions, System or Access entry any more:
 their facts each have one home (see "One fact, one home" below), and their old addresses redirect.
 
@@ -119,8 +119,8 @@ name.
 
 Tasks live on one page only: the Übersicht, the start page. Under its operations bar it lists what
 needs the reader — one sentence per subject with one primary action and at most one secondary link —
-and says "Alles erledigt." with one status line when nothing is open and every source it may read
-has answered. Object pages
+and says "Nichts braucht dich gerade." when nothing is open and every source it may read has
+answered. Object pages
 show their state and at most link to the entry; every fact has exactly one home.
 
 Every read has four states — loading, error, empty, ready — decided once by `queryView` in
@@ -173,32 +173,29 @@ text, one left edge, centred actions, one filled button and the two sheet widths
 ### Übersicht — operations bar and attention list
 
 The Übersicht (`/`, English "Overview") is the start page and the only place a task lives. Top to
-bottom: the page header with the title and the window switch (24 Std · 7 Tage · 30 Tage, 24 hours by
-default); the operations bar; "Braucht dich", the attention list; a notice naming the sources that
-could not be read, only when one failed; and one link into the audit trail, "Was bereits entschieden
-wurde".
+bottom: the page header with the title, "Alle Läufe" (all runs as the large sheet) and one link into
+the audit trail, "Was bereits entschieden wurde"; the summary line counting the entries ("3 Einträge
+brauchen dich") with the window switch on its right (24 Std · 7 Tage, 24 hours by default); the
+operations bar; "Braucht dich", the attention list; a notice naming the sources that could not be
+read, only when one failed; and "Letzte Fehlschläge", the three newest failed runs with their cause,
+each opening its run sheet.
 
-The operations bar holds exactly six figures in a grid that never scrolls sideways — six in a row
-on a wide screen, three by two on a desktop, two columns on a phone — each about 72px tall so the
-attention list stays on the first screen: Ausführungen, Erfolgsquote, Übernommene Reparaturen and
-Kosten over the chosen window, Gesunde Konnektoren, marked "Stand jetzt" because it is a state of
-now, and Kontingent, marked "Monat" because the cap is spent against the calendar month. Every
-figure links to the list that counts the same rows over the same bounds — the runs by
-`started_from`/`started_to`, the failed runs of that window, the decided repairs by
-`ts_from`/`ts_to`, the connectors unwell now, Nutzung over the same window for Kosten
-(`/usage?window=…`), Nutzung for Kontingent. Kosten is the window's amount in the prices' currency
-from `GET /v1/stats/llm` (built-in price catalog plus `tokens.prices` overrides); when some calls
-had no price it reads "mind. …" with the number of unpriced calls, and when none had a price it
-says "Modelle ohne Preis" and leads to Nutzung, never "0,00". Kontingent is the month's share of
+The operations bar holds exactly four figures in a grid that never scrolls sideways — four in a row
+on a wide screen, two by two where four do not fit and on a phone — each about 72px tall so the
+attention list stays on the first screen: Ausführungen and Erfolgsquote over the chosen window,
+Gesunde Konnektoren, marked "Stand jetzt" because it is a state of now, and Kontingent, marked
+"Monat" because the cap is spent against the calendar month. Every figure links to the list that
+counts the same rows over the same bounds — the runs by `started_from`/`started_to`, the failed runs
+of that window, the connectors unwell now, Nutzung for Kontingent. Kontingent is the month's share of
 `tokens.monthly_budget` from `GET /v1/status` — "27 % von 150 Mio. Token", the remainder and the
 pressure word (Reichlich · Wird knapp · Fast aufgebraucht, on the rounded percentage at the
 engine's 75/90 thresholds); with no cap it reads "Kein Kontingent", without a percentage, and links
-the setting only for `settings:write`. A figure with nothing to count says so in words and has no
-link; there is no link beside "100 %" when nothing failed or every connector is healthy. A figure
-whose read failed says "nicht lesbar" with its own retry. The bar is shown to readers with
-`stats:read`, which is also what Kosten and Kontingent read; connector health reads connectors only
-with `connector:read`. The figures and their reads live in `src/pages/operations-figures.ts` and
-`src/pages/operations-bar.tsx`.
+the setting only for `settings:write`. Spend is Nutzung's, broken down over the same window; decided
+repairs are the audit trail's. A figure with nothing to count says so in words and has no link;
+there is no link beside "100 %" when nothing failed or every connector is healthy. A figure whose
+read failed says "nicht lesbar" with its own retry. The bar is shown to readers with `stats:read`;
+connector health reads connectors only with `connector:read`. The figures and their reads live in
+`src/pages/operations-figures.ts` and `src/pages/operations-bar.tsx`.
 
 The attention list reads one engine list, `GET /v1/attention`, which the digest, the MCP connect line
 and the MCP tool `get_attention` render too; the page never assembles its own list from several
@@ -224,10 +221,12 @@ it. The first refused start turns the same entry into the stopped one; a workflo
 The navigation badge is the number of entries. List headers carry no count, and no figure reads a
 bare zero.
 
-When nothing is open and every source the reader may read has answered, the operations bar stays and
-the list gives way to "Alles erledigt." and one status line — the health state and the next scheduled
-run. When a source did not answer, the page names it and offers to read again; it never says "all
-clear" over a gap. A source the reader may not read does not count as missing. A reader who may read
+When nothing is open and every source the reader may read has answered, the operations bar stays,
+the summary line reads "0 Einträge brauchen dich" and the list says "Nichts braucht dich gerade." —
+no status line; the health state is the API's, MCP's and Prometheus', its causes are entries. When a
+source did not answer, the page names it and offers to read again, counts nothing, and without entries
+says only that nothing is due from the sources that answered; it never says "all clear" over a gap.
+When the list itself could not be read, it says so with a retry and counts nothing. A source the reader may not read does not count as missing. A reader who may read
 no source at all lands on the first navigation entry they can see.
 
 Warnings, test and authoring failures and unused keys are not entries: they are the state of an
@@ -784,7 +783,7 @@ Workflow preparation includes inspection, validation and the supported preview w
 
 ## Attention grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v2.2 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v2.3 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). The Übersicht's attention list and its review sheet are measured against it. SubKit offers no "remind me later" in the sheet because the engine has no deferred state, which §8.4 allows; the reason is recorded above under "Review sheet". The copy below is never adjusted to this product, or it would no longer be a copy.
 
 ### 8. Anliegen-Grammatik
 
@@ -826,8 +825,8 @@ Gegenstand") ist die Antwort darauf.
 > durch einen Markdown-Renderer geschickt hat statt sie zu lesen. **Auch eine Korrektur kann
 > beschädigen, was sie korrigiert.**
 
-**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Alles erledigt." und eine Statuszeile (Gesundheitszustand · nächste geplante Ausführung); darüber bleibt die Betriebsleiste (§1) stehen — nichts sonst, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Alles erledigt", sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Statuszeile erscheint nur im leeren Zustand; ist etwas offen, sind die Ursachen eines schlechten Zustands selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
+**8.6 Leere.** Nichts offen und jede lesbare Quelle hat geantwortet: „Nichts braucht dich gerade." an der Stelle der Einträge, die Zusammenfassungszeile zählt „0 Einträge brauchen dich"; darüber bleibt die Betriebsleiste (§1) stehen — keine Statuszeile, keine Kachel mit 0. Eine Quelle hat nicht geantwortet: kein „Nichts braucht dich" und keine Zählung, sondern ein Hinweis, welche Quelle nicht lesbar war, mit „Erneut lesen"; die Einträge der übrigen Quellen stehen trotzdem da. Eine Quelle, die die Person nicht lesen darf, zählt nicht als fehlend. Die Ursachen eines schlechten Zustands sind selbst Einträge. Alle Fälle sind getrennt testbar (§4 gilt).
 
-**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Alles erledigt" meldet, bleibt ein Konventionsbruch.
+**8.7 Kein Incident-Banner.** Ein offenes Budget- oder Health-Gate und eine gerissene Frist sind Einträge der Klasse „gestoppt" oder „scheitert" und stehen damit oben in der Liste. Ein zusätzliches Banner wäre ein zweiter Ort für denselben Fakt (§0.1). Eine Startseite, die bei offenen Gates „Nichts braucht dich gerade." meldet, bleibt ein Konventionsbruch.
 
 **8.8 Produkt-Spezifisch bleibt:** die Quellen und Arten (Kinds) und ihre Badges, die Resolver-Formulare im Seitenblatt, die Quell-Referenzen. Familienweit sind die eine Engine-Quelle, die drei Klassen und ihre Reihenfolge, die Eintrags-Anatomie, das Seitenblatt, die Sprache, die Trennung von Zustand und Geschichte und die Leere-Regel.

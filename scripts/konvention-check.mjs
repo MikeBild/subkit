@@ -44,7 +44,7 @@ import { textOutsidePayloads } from "./lib/cockpit-visible-uuids.mjs";
  * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
-const KONVENTION_VERSION = "2.2";
+const KONVENTION_VERSION = "2.3";
 
 /** The version the repository copy actually names — the label, never the assert. */
 let konventionVersionImRepo = null;
@@ -2128,66 +2128,73 @@ async function checkOverviewGateOpen(page, badge) {
 }
 
 /**
- * Übersicht with nothing open: the operations bar stays (§8.6), and below it
- * "Alles erledigt." and ONE status line — the health word and the next
- * scheduled run — and nothing else. No zero, no badge.
+ * Übersicht with nothing open (§1 Leer, §8.6): the operations bar stays, the
+ * summary line counts zero in words, and "Braucht dich" holds the one line
+ * "Nichts braucht dich gerade." and nothing else — no entry, no status line,
+ * no badge. The one way to the history still reads as the convention names it.
  */
 async function checkOverviewCalm(page) {
+  const empty = page.locator('[data-testid="attention-empty"]:visible');
   try {
-    await page
-      .locator('[data-testid="attention-calm"]')
-      .waitFor({ state: "visible", timeout: 15_000 });
+    await empty.waitFor({ state: "visible", timeout: 15_000 });
   } catch {
-    breach("§1", "/ (calm)", 'nothing is open, and the page does not say "Alles erledigt."');
+    breach(
+      "§1",
+      "/ (calm)",
+      `nothing is open, and the page does not say "${german("overview.count.none")}"`,
+    );
     return;
   }
   await checkOperationsBar(page, "/ (calm)");
   const shape = await page.evaluate(() => {
-    const content = document.querySelector(
-      '[data-testid="attention-page"] [data-family-slot="content"]',
+    const text = (element) =>
+      element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
+    // The table draws its empty state for the desktop and the phone; the one
+    // shown is what "Braucht dich" says.
+    const shown = [...document.querySelectorAll('[data-testid="attention-empty"]')].find(
+      (element) => element.getClientRects().length > 0,
     );
-    // The operations bar stays in the calm state (§8.6) and is measured on
-    // its own; what is asserted here is everything BELOW it.
-    const rest = content instanceof HTMLElement ? content.cloneNode(true) : null;
-    rest?.querySelector('[data-testid="operations-bar"]')?.remove();
     return {
-      // Paragraphs, not innerText: a detached clone has no layout to break
-      // its text into lines.
-      lines:
-        rest instanceof HTMLElement
-          ? [...rest.querySelectorAll("p, li, h2, h3")]
-              .map((line) => (line.textContent ?? "").replace(/\s+/g, " ").trim())
-              .filter(Boolean)
-          : [],
+      section: text(shown),
+      summary: text(
+        document.querySelector('[data-testid="overview-summary"] [data-slot="summary-line-text"]'),
+      ),
+      history: text(document.querySelector('[data-testid="attention-history"]')),
       status: document.querySelectorAll('[data-testid="attention-status"]').length,
-      list: Boolean(document.querySelector('[data-testid="attention-list"]')),
+      entries: document.querySelectorAll('[data-testid="attention-list"] [data-attention-id]')
+        .length,
       badge: Boolean(document.querySelector('[data-testid="nav-overview-count"]')),
       unread: Boolean(document.querySelector('[data-testid="attention-unread"]')),
       body: document.body.innerText,
     };
   });
-  if (shape.status !== 1)
-    breach("§1", "/ (calm)", `${shape.status} status lines instead of exactly one`);
-  const [done, status, history, ...rest] = shape.lines;
-  if (done !== german("overview.calm"))
-    breach("§5", "/ (calm)", `opens with "${done}" instead of "${german("overview.calm")}"`);
-  if (!status?.startsWith(`${german("overview.health.healthy")} · `))
-    breach("§1", "/ (calm)", `the status line reads "${status}"`);
-  if (history !== german("overview.history.link"))
-    breach("§8.5", "/ (calm)", `the way to the history reads "${history}"`);
-  if (rest.length > 0)
-    breach("§1", "/ (calm)", `more than "Alles erledigt" and one status line: ${rest.join(" / ")}`);
-  if (shape.list) breach("§1", "/ (calm)", "an entry list although nothing is open");
+  const none = german("overview.count.none");
+  if (shape.section !== none)
+    breach("§1, §8.6", "/ (calm)", `"Braucht dich" reads "${shape.section}" instead of "${none}"`);
+  const zero = german("overview.count.other", { count: 0 });
+  if (shape.summary !== zero)
+    breach("§1", "/ (calm)", `the summary reads "${shape.summary}" instead of "${zero}"`);
+  if (shape.history !== german("overview.history.link"))
+    breach("§8.5", "/ (calm)", `the way to the history reads "${shape.history}"`);
+  if (shape.status > 0) breach("§1, §8.6", "/ (calm)", `${shape.status} status lines`);
+  if (shape.entries > 0) breach("§1", "/ (calm)", "an entry although nothing is open");
   if (shape.badge) breach("§8.1", "/ (calm)", "a badge although nothing is open");
   if (shape.unread) breach("§1", "/ (calm)", "a source is called unreadable in the calm fixture");
+  if (shape.body.includes(german("overview.calm")))
+    breach(
+      "§1",
+      "/ (calm)",
+      `"${german("overview.calm")}" stands beside "${none}" — one calm line`,
+    );
   const healthy = (shape.body.match(/\bGesund\b/g) ?? []).length;
   if (healthy > 1) breach("§12", "/ (calm)", `"Gesund" stands ${healthy} times`);
 }
 
 /**
- * Übersicht when a source could not be read: never "Alles erledigt". The list may
- * be missing exactly the entry that matters, so the page names what it could
- * not read and offers to read again.
+ * Übersicht when a source could not be read: no all-clear in any wording and
+ * no count. The list may be missing exactly the entry that matters, so the
+ * page names what it could not read, offers to read again, and says at most
+ * that nothing is due from the sources that answered.
  */
 async function checkOverviewFailedSource(page) {
   try {
@@ -2203,9 +2210,19 @@ async function checkOverviewFailedSource(page) {
     body: document.body.innerText,
     unread: document.querySelector('[data-testid="attention-unread"]')?.textContent ?? "",
     status: document.querySelectorAll('[data-testid="attention-status"]').length,
+    summary:
+      document.querySelector('[data-testid="overview-summary"] [data-slot="summary-line-text"]')
+        ?.textContent ?? "",
   }));
-  if (shape.body.includes(german("overview.calm")))
-    breach("§1, §12", "/ (failed source)", '"Alles erledigt" although a source could not be read');
+  for (const key of ["overview.calm", "overview.count.none"])
+    if (shape.body.includes(german(key)))
+      breach(
+        "§1, §12",
+        "/ (failed source)",
+        `"${german(key)}" although a source could not be read`,
+      );
+  if (/\d/.test(shape.summary))
+    breach("§1, §12", "/ (failed source)", `counts over the gap: "${shape.summary}"`);
   if (!shape.unread.includes(german("overview.source.connectors")))
     breach("§1", "/ (failed source)", `the unread source is not named: "${shape.unread}"`);
   if (shape.status > 0)
@@ -2227,16 +2244,15 @@ async function checkNoZeroKpiTile(page, where) {
 }
 
 /**
- * §1, §10.1 — the operations bar on the Übersicht: exactly six figures in one
- * row or three by two, never scrolling sideways, ABOVE the attention list or
- * the calm sentence, the window switch in the header with 24 hours chosen.
- * Every figure link opens the list of the same window — runs and failed runs
- * by `started_from`/`started_to`, the decided repairs by `ts_from`/`ts_to`,
- * the cost Nutzung over the chosen window — and connector health, a state of
- * now, the unwell connectors; the budget, the month's, Nutzung. Kosten reads
- * the fixture's partly priced amount as a floor with its unpriced calls,
- * Kontingent the month's share of the cap with remainder and state. A figure
- * without a number says why in words.
+ * §1, §10.1 — the operations bar on the Übersicht: exactly four figures in one
+ * row or two by two, never scrolling sideways, ABOVE the attention list or
+ * the calm sentence, the window switch on the summary line above the bar with
+ * 24 hours chosen. Every figure link opens the list of the same window — runs
+ * and failed runs by `started_from`/`started_to` — and connector health, a
+ * state of now, the unwell connectors; the budget, the month's, Nutzung.
+ * Kontingent reads the month's share of the cap with remainder and state. A
+ * figure without a number says why in words. Kosten and the decided repairs
+ * are not the bar's (§0.1): Nutzung and the audit trail carry them.
  */
 async function checkOperationsBar(page, where) {
   const bar = page.locator('[data-testid="operations-bar"] [data-figure-state]');
@@ -2253,7 +2269,7 @@ async function checkOperationsBar(page, where) {
       '[data-testid="attention-list"], [data-testid="attention-calm"], [data-testid="attention-unread"]',
     );
     const switcher = document.querySelector(
-      '[data-family-slot="page-header"] [data-testid="operations-window"]',
+      '[data-testid="overview-summary"] [data-testid="operations-window"]',
     );
     return {
       figures: figures.map((figure) => ({
@@ -2270,34 +2286,32 @@ async function checkOperationsBar(page, where) {
         barElement && below
           ? Boolean(barElement.compareDocumentPosition(below) & Node.DOCUMENT_POSITION_FOLLOWING)
           : null,
+      // The window is chosen before the figures it counts are read.
+      switchFirst:
+        barElement && switcher
+          ? Boolean(switcher.compareDocumentPosition(barElement) & Node.DOCUMENT_POSITION_FOLLOWING)
+          : null,
       options: switcher
         ? [...switcher.querySelectorAll("button")].map((button) => ({
             text: (button.textContent ?? "").trim(),
-            pressed: button.getAttribute("aria-pressed"),
+            // A segmented control is a radio group: its choice is
+            // `aria-checked`; a row of toggle buttons says `aria-pressed`.
+            pressed: button.getAttribute("aria-checked") ?? button.getAttribute("aria-pressed"),
           }))
         : null,
     };
   });
-  const expected = ["runs", "successRate", "connectorHealth", "repairRate", "cost", "budget"].map(
+  const expected = ["runs", "successRate", "connectorHealth", "budget"].map(
     (id) => `operations-figure-${id}`,
   );
   if (shape.figures.map((figure) => figure.id).join("|") !== expected.join("|"))
     breach("§1", where, `the bar holds ${shape.figures.map((figure) => figure.id).join(", ")}`);
-  // Six in a row or three by two on a desktop — never a third row, never a
-  // bar that scrolls sideways.
+  // Four in a row or two by two — never a third row, never a bar that
+  // scrolls sideways.
   if (shape.tops.length !== 1 && shape.tops.length !== 2)
-    breach("§1", where, `the six figures stand in ${shape.tops.length} rows, not one or two`);
+    breach("§1", where, `the four figures stand in ${shape.tops.length} rows, not one or two`);
   if (shape.overflow) breach("§1", where, "the operations bar scrolls sideways");
   const byId = Object.fromEntries(shape.figures.map((figure) => [figure.id, figure]));
-  // Kosten — the window's money in short form. The fixture is partly priced,
-  // so the amount is a floor and says what it leaves out.
-  const cost = byId["operations-figure-cost"];
-  if (cost?.state === "value") {
-    if (!/mind\.\s*87,22\s*\$/.test(cost.text))
-      breach("§1", `${where} · cost`, `"${cost.text}" is not the window's amount as a floor`);
-    if (!/Aufrufe ohne Preis: 12/.test(cost.text))
-      breach("§1", `${where} · cost`, `"${cost.text}" does not name the unpriced calls`);
-  } else if (cost) breach("§1", `${where} · cost`, `reads "${cost.text}" (${cost.state})`);
   // Kontingent — the month's share of the cap, with what is left and its state.
   const budget = byId["operations-figure-budget"];
   if (budget?.state === "value") {
@@ -2310,22 +2324,19 @@ async function checkOperationsBar(page, where) {
   } else if (budget) breach("§1", `${where} · budget`, `reads "${budget.text}" (${budget.state})`);
   if (shape.first === false)
     breach("§1", where, "the operations bar stands below the attention list");
-  if (!shape.options) breach("§1", where, "no window switch in the page header");
+  if (!shape.options) breach("§1", where, "no window switch on the summary line");
   else {
+    if (shape.switchFirst === false)
+      breach("§1", where, "the window switch stands below the figures it chooses for");
     const labels = shape.options.map((option) => option.text).join(" / ");
-    if (labels !== "24 Std / 7 Tage / 30 Tage")
-      breach("§1", `${where} · window`, `offers ${labels}`);
+    if (labels !== "24 Std / 7 Tage") breach("§1", `${where} · window`, `offers ${labels}`);
     if (shape.options[0]?.pressed !== "true")
       breach("§1", `${where} · window`, "24 hours is not the window chosen by default");
   }
-  const chosen = shape.options?.findIndex((option) => option.pressed === "true") ?? -1;
-  const chosenWindow = ["24h", "7d", "30d"][chosen] ?? null;
   for (const figure of shape.figures) {
-    // Two word-answers keep a way onward: calls without a price lead to
-    // Nutzung, which names the models; no cap leads to the setting.
-    const onward =
-      (figure.state === "unpriced" && figure.id === "operations-figure-cost") ||
-      (figure.state === "uncapped" && figure.id === "operations-figure-budget");
+    // A word-answer keeps a way onward only where there is somewhere to go:
+    // no cap leads to the setting.
+    const onward = figure.state === "uncapped" && figure.id === "operations-figure-budget";
     if (figure.state !== "value" && !onward && figure.href)
       breach("§1", `${where} · ${figure.id}`, `"${figure.text}" carries a link to nothing counted`);
     if (!figure.href) continue;
@@ -2334,17 +2345,11 @@ async function checkOperationsBar(page, where) {
     const windowed =
       figure.id === "operations-figure-connectorHealth"
         ? query.get("health") === "not_ok"
-        : figure.id === "operations-figure-repairRate"
-          ? Boolean(query.get("ts_from") && query.get("ts_to"))
-          : figure.id === "operations-figure-cost"
-            ? // Nutzung over the window the amount was read over; thirty days
-              // is Nutzung's default and is left out of the address.
-              target.pathname.endsWith("/usage") && (query.get("window") ?? "30d") === chosenWindow
-            : figure.id === "operations-figure-budget"
-              ? figure.state === "uncapped"
-                ? query.get("leaf") === "tokens.monthly_budget"
-                : target.pathname.endsWith("/usage")
-              : Boolean(query.get("started_from") && query.get("started_to"));
+        : figure.id === "operations-figure-budget"
+          ? figure.state === "uncapped"
+            ? query.get("leaf") === "tokens.monthly_budget"
+            : target.pathname.endsWith("/usage")
+          : Boolean(query.get("started_from") && query.get("started_to"));
     if (!windowed)
       breach("§10.1", `${where} · ${figure.id}`, `links to ${figure.href} — not the same window`);
     if (figure.id === "operations-figure-successRate" && query.get("status") !== "failed")
@@ -4211,9 +4216,9 @@ try {
   await checkOverviewUnreadable(browser);
   await checkReviewNotPermitted(browser);
 
-  // Second fixture variant: nothing open — "Alles erledigt" and one status
-  // line. Then the same calm installation with one source that failed: the
-  // page must say what it could not read, never "Alles erledigt".
+  // Second fixture variant: nothing open — "Nichts braucht dich gerade." and
+  // a summary counting zero. Then the same calm installation with one source
+  // that failed: the page must say what it could not read, and claim nothing.
   for (const failedAttentionSource of [null, "connectors"]) {
     const calm = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
