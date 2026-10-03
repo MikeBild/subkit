@@ -64,16 +64,17 @@ export interface CockpitColumnMeta {
   /** The cell holds links or controls of its own (relations, chips). */
   interactive?: boolean;
   /**
-   * `low`: a column a narrower table can do without. It is left out below the
-   * large breakpoint, so a tablet shows the columns that matter at a width
-   * that fits; the column picker still lists it.
+   * `low`: a column a narrower table can do without. It is left out while the
+   * list itself is narrower than 56rem — measured on the list, not the window,
+   * because the sidebar takes a third of a tablet — so the columns that matter
+   * fit; the column picker still lists it. Below 42rem the list shows cards.
    */
   priority?: "high" | "low";
 }
 
 /** The class a column's head and cells take for its priority. */
 export function priorityClass(priority: CockpitColumnMeta["priority"]): string | undefined {
-  return priority === "low" ? "hidden lg:table-cell" : undefined;
+  return priority === "low" ? "hidden @4xl:table-cell" : undefined;
 }
 
 /** The next page of an endless list: what `useInfiniteQuery` hands back. */
@@ -515,7 +516,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col"
+      className="@container flex min-h-0 flex-1 flex-col"
       data-testid={`${collectionId}`}
       data-family-slot="list-surface"
       data-family-list-kind="table"
@@ -596,7 +597,7 @@ export function DataTable<TData extends RowData>({
         </DropdownMenu>
       </div>
       <div
-        className="hidden min-h-0 flex-1 overflow-auto sm:block"
+        className="hidden min-h-0 flex-1 overflow-auto @2xl:block"
         data-testid={`${collectionId}-desktop`}
       >
         <Table>
@@ -771,7 +772,7 @@ export function DataTable<TData extends RowData>({
         ) : null}
       </div>
       <div
-        className="min-h-0 flex-1 overflow-y-auto sm:hidden"
+        className="min-h-0 flex-1 overflow-y-auto @2xl:hidden"
         data-testid={`${collectionId}-mobile`}
       >
         {showSkeleton ? (
