@@ -63,9 +63,15 @@ export const attentionHref = {
       executionId ? `&execution_id=${encodeURIComponent(executionId)}` : ""
     }`,
   connector: (id: string) => `/cockpit/connectors/${encodeURIComponent(id)}`,
-  connections: "/cockpit/api-access?section=grants",
+  // An account connection is renewed on the connector that uses it; with
+  // several users (or none known) the connector list is the honest target.
+  connection: (connectorIds: readonly string[]) =>
+    connectorIds.length === 1 && connectorIds[0]
+      ? `/cockpit/connectors/${encodeURIComponent(connectorIds[0])}`
+      : "/cockpit/connectors",
+  // The run list is an overlay on Übersicht, narrowed by the query it carries.
   failedRuns: (workflowId: string) =>
-    `/cockpit/runs?workflow_id=${encodeURIComponent(workflowId)}&status=failed`,
+    `/cockpit?runs=all&workflow_id=${encodeURIComponent(workflowId)}&status=failed`,
   operations: "/cockpit/audit?scope=operations",
   // Prepared secret versions are decided on the settings page today.
   settings: "/cockpit/settings",
@@ -579,7 +585,7 @@ const readConnections: TenantReader = async (db, tenantId) => {
           actions: [
             {
               verb: "renew",
-              href: attentionHref.connections,
+              href: attentionHref.connection(view.used_by.map((user) => user.connector_id)),
               primary: true,
               permission: "connection:write",
             },

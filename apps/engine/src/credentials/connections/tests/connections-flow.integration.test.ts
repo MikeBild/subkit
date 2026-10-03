@@ -152,9 +152,9 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     ]);
 
     const landed = await approveInBrowser(body.authorization_url);
-    // Kontoverbindungen are a section of Zugangsdaten; the callback lands on it.
-    expect(landed.pathname).toBe("/cockpit/api-access");
-    expect(landed.searchParams.get("section")).toBe("grants");
+    // A sign-in belongs to its connector; the callback lands on the connector list.
+    expect(landed.pathname).toBe("/cockpit/connectors");
+    expect(landed.searchParams.get("section")).toBeNull();
     expect(landed.searchParams.get("connected")).toBe("probe");
     expect(landed.searchParams.get("renewed")).toBeNull();
   });
@@ -556,8 +556,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       expect(new URL(callback).searchParams.get("error")).toBe("access_denied");
       const landed = await fetch(callback, { redirect: "manual" });
       const where = new URL(landed.headers.get("location") ?? "");
-      expect(where.pathname).toBe("/cockpit/api-access");
-      expect(where.searchParams.get("section")).toBe("grants");
+      expect(where.pathname).toBe("/cockpit/connectors");
       expect(where.searchParams.get("failed")).toBe("denied");
       expect(where.searchParams.get("name")).toBe("refused");
       // Replaying the same callback cannot do anything: the state is gone.
@@ -577,8 +576,7 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     });
     expect(landed.status).toBe(302);
     const where = new URL(landed.headers.get("location") ?? "");
-    expect(where.pathname).toBe("/cockpit/api-access");
-    expect(where.searchParams.get("section")).toBe("grants");
+    expect(where.pathname).toBe("/cockpit/connectors");
     expect(where.searchParams.get("failed")).toBe("state_invalid");
   });
 

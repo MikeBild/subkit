@@ -399,13 +399,16 @@ describe("every source, as an admin reads it", () => {
     expect(chat?.href).toStartWith(`/cockpit/chat/new?workflow_id=${wf.chat}&execution_id=`);
     expect(items.get(`workflow:${wf.chat}`)?.actions.find((a) => !a.primary)).toMatchObject({
       verb: "open_runs",
-      href: `/cockpit/runs?workflow_id=${wf.chat}&status=failed`,
+      href: `/cockpit?runs=all&workflow_id=${wf.chat}&status=failed`,
     });
     expect(primary(`conversation:${ownConversationId}`)).toMatchObject({
       verb: "answer",
       href: `/cockpit/chat/${ownConversationId}`,
     });
-    expect(primary(`connection:${connectionId}`)?.href).toBe("/cockpit/api-access?section=grants");
+    // A sign-in is renewed on the one connector that uses it.
+    expect(primary(`connection:${connectionId}`)?.href).toBe(
+      `/cockpit/connectors/${brokenConnectorId}`,
+    );
   });
 
   test("ordering: stopped → failing → decide, then nearest deadline, then oldest", async () => {
