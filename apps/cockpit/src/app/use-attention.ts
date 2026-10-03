@@ -10,6 +10,7 @@ import {
   NO_HIDDEN,
   settleHidden,
 } from "@/pages/overview-model";
+import { useLiveQueryOptions } from "./live-events";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
 // Entries decided in this tab, hidden as what they were when decided.
@@ -63,10 +64,11 @@ export function canReadAttention(permissions: readonly string[]): boolean {
  */
 export function useAttention(permissions: readonly string[]) {
   const enabled = canReadAttention(permissions);
+  const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: ["attention"],
     enabled,
-    refetchInterval: 60_000,
+    ...live,
     staleTime: 30_000,
     queryFn: async () => {
       const attention = await apiRequest<Attention>("/v1/attention");

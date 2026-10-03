@@ -27,6 +27,7 @@ import {
   skillDecision,
 } from "@/pages/decisions-model";
 import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
+import { useLiveQueryOptions } from "./live-events";
 
 /**
  * The ids two of the decision sources name their target with, as names. The
@@ -53,10 +54,11 @@ function useNameIndex(permissions: readonly string[], enabled: boolean): NameInd
 
 /** Schedules held for an approval — what the chat's hand-off asks about. */
 export function useHeldSchedules(permissions: readonly string[]): HeldSchedule[] {
+  const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: ["decisions", "held"],
     enabled: permissions.includes("workflow:read"),
-    refetchInterval: 60_000,
+    ...live,
     staleTime: 30_000,
     queryFn: listHeldSchedules,
   });
