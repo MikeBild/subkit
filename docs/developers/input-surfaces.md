@@ -246,7 +246,7 @@ are held. When effects were held, the text result explicitly reports
 not a successful live effect or a conforming final output object.
 MCP marks this as `isError: true` because the requested live output is unavailable;
 clients must not validate a preparation envelope against the final output schema.
-Review and grant the exact version's finite authority in the workflow Cockpit to enable
+Review and grant the exact version's authority in the workflow Cockpit to enable
 repeated live runs. Dynamic or unknown effects are ineligible for that reusable
 authority and remain held on this entry point. Existing active versions do not
 receive authority automatically.

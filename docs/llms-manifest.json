@@ -262,7 +262,7 @@
       "audience": "developers",
       "path": "docs/developers/bounded-requests.md",
       "title": "Bounded requests",
-      "summary": "A scheduled workflow runs without a person present, so a person approves its effects once, for a finite number of runs."
+      "summary": "A scheduled workflow runs without a person present, so a person approves its effects once, until revoked or for a limited number of runs."
     },
     {
       "audience": "developers",

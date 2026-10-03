@@ -6,7 +6,7 @@
 Work that runs when it should, whether or not anyone is watching — and nothing gets in
 without being checked at the door. Scheduled runs survive a restart and still fire when
 due within its approved boundary; an inbound webhook needs both verified ingress and
-a matching finite execution authority before work starts; and a Before-Request Hook can apply your own policy in front of every
+a matching live execution authority before work starts; and a Before-Request Hook can apply your own policy in front of every
 connector call. The trigger is the only thing that differs: one execution contract, one
 permission check, one audit trail.
 
@@ -23,7 +23,7 @@ extends is in [RBAC & Roles](../admins/rbac-and-roles.md).
 ```mermaid
 flowchart LR
     cron[["Cron schedule<br/>(workflows_schedules)"]] --> rec{Reconciler<br/>due?}
-    rec -->|due| authority{Matching finite<br/>execution authority?}
+    rec -->|due| authority{Matching live<br/>execution authority?}
     hook[["Inbound webhook<br/>(webhooks_inbound)"]] --> verify{Signature<br/>valid?}
     verify -->|no| drop[Reject]
     verify -->|yes| dedup{Replay-id<br/>seen?}
@@ -126,15 +126,22 @@ sequenceDiagram
 | Execution authority | An active version, exact effect manifest, production environment, validity window and remaining run allowance are required. A signature or `verify: none` never creates authority. |
 | Replay dedup | Accepted deliveries are suppressed. Concurrent retries and interrupted enqueueing reuse the same charged execution and queue job UUID, not an additional allowance. Foreign side effects are not promised exactly once. |
 
-### Finite authority for webhook runs
+### Execution authority for webhook runs
 
 In the workflow Cockpit, review the active version's production effect manifest,
-targets and credentials, then grant an explicit finite validity window and run
-limit. Existing active workflows receive no authority automatically. Both direct
-CRUD bindings and reverse-bound triggers use this check; a development grant
-cannot authorize a production webhook. No new configuration file or service is
-needed. Expiry, revocation, exhausted limits or changed version/configuration stop
-new runs. The worker repeats the authority check before external dispatch.
+targets and credentials, then grant it **until revoked** (the default) or with a
+validity window and run limit you choose. Existing active workflows receive no
+authority automatically. Both direct CRUD bindings and reverse-bound triggers use
+this check; a development grant cannot authorize a production webhook. No new
+configuration file or service is needed. Revocation, an expiry or exhausted limit
+you set, or a changed configuration stop new runs. The worker repeats the
+authority check before external dispatch.
+
+A saved change does not need a new approval when it reaches nothing new: when
+the new version becomes active, a live approval follows it with what is left of
+it, and the old one ends. A change that adds a connector or an address, or
+writes where the workflow only read, waits for a person; the attention item says
+what is new.
 
 The first reusable-authority version accepts only statically bounded requests.
 Runtime substitutions in request data, unknown effects and destructive operations
@@ -153,6 +160,7 @@ deduplicated and are not interpreted as new approvals.
 
 #### Suggested window and run limit
 
+These apply only when a person chooses **limit** instead of **until revoked**.
 The review suggests limits; a person confirms or changes them, and nothing is
 granted until they do.
 
@@ -178,9 +186,9 @@ written for them:
 
 | Item | When | Class |
 |---|---|---|
-| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment | *decide*, due at the next scheduled start |
+| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment — the earlier approval did not follow because the version reaches more; the item names what is new | *decide*, due at the next scheduled start |
 | A new version cannot be approved yet | The same, but the gate would refuse any approval for it (the automation panel's `repair_required`): a step's effects are not bounded, or a report mail has not been observed | *decide*; names the leading blocked step and offers the act its diagnosis offers — a repair, a preparation run, or a conversation — never the approval |
-| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left | *decide*, lower severity (`notice`) |
+| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left; an approval until revoked never ends this way | *decide*, lower severity (`notice`) |
 
 The approval items lead to the workflow's page, where the automation panel offers
 the approval or the extension; the blocked one leads to its repair. One workflow is one item: the
@@ -386,8 +394,8 @@ events) to an sk workflow:
    the `webhook-type` header to the event name — which must match one of the workflow's
    `events[]`.
 6. **Review the production execution authority.** Activate the exact workflow
-   version and separately approve its manifest, finite validity and run limit in
-   the workflow Cockpit. A trigger binding or signing secret grants no live runs.
+   version and separately approve its manifest — until revoked, or with a
+   validity and run limit — in the workflow Cockpit. A trigger binding or signing secret grants no live runs.
 7. **Verify.** Trigger an upstream event and confirm a `200 { accepted: true }` plus a
    new execution (`webhook.trigger.fired` in the Audit Log). A `bad_signature` means the
    two secrets diverged; `event_not_subscribed` means the upstream's `webhook-type` is
