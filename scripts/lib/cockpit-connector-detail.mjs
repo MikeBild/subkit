@@ -361,6 +361,16 @@ async function occurrences(page, word) {
   return body.split(word).length - 1;
 }
 
+/** Choose one of the page's tabs. */
+async function openTab(page, tab) {
+  await page.getByTestId(`connector-tabs-tab-${tab}`).click();
+}
+
+/** Open a folded section of the current tab. */
+async function unfold(page, testId) {
+  await page.getByTestId(`${testId}-toggle`).click();
+}
+
 /**
  * Press "Neu anmelden" and come back as the provider round-trip does: a full
  * page load of the connector's page with the flag, which the page then drops.
@@ -376,14 +386,24 @@ async function signInAtProvider(page) {
   await page.waitForURL((url) => url.pathname.endsWith(OAUTH_ID) && !url.search, {
     timeout: 15_000,
   });
-  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByTestId("connector-strip-state").waitFor({ state: "visible", timeout: 10_000 });
   await page.waitForLoadState("networkidle");
+  // Where the sign-in itself stands is said in "Verbindung".
+  await openTab(page, "verbindung");
+  await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
+}
+
+/**
+ * The sign-in's state where it stands: the strip when it is the connector's
+ * whole state ("Verbunden"), else the badge of "Anmeldung".
+ */
+async function signInWord(page) {
+  return (await text(page, "connector-auth-state")) ?? (await text(page, "connector-strip-state"));
 }
 
 async function openOauth(page, stand) {
-  await stand.visit(page, `connectors/${OAUTH_ID}`);
-  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
-  await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
+  await stand.visit(page, `connectors/${OAUTH_ID}?tab=verbindung`);
+  await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
   // The sign-in state settles with the credential read; read it after that.
   await page.waitForLoadState("networkidle");
 }
@@ -394,14 +414,14 @@ async function openOauth(page, stand) {
  * The state that matters most is the one a person lands in after the provider:
  * the engine has stored the credential, cleared the sign-in flag and closed the
  * breaker — and left the connector switched off, because switching it on is a
- * separate decision. The page must say exactly that, once, with the one act
+ * separate decision. The strip must say exactly that, once, with the one act
  * that changes it.
  */
 async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   const set = (next) => Object.assign(oauth, { missing: [], grants: [], ...next });
   // One action once per view, by both readings: an effect has one trigger and
-  // one filled action (this file), and no two triggers share a name or an
-  // address (the family's `assertSingleTriggers`).
+  // at most one filled action (this file), and no two triggers share a name
+  // or an address (the family's `assertSingleTriggers`).
   const assertOnce = async (label) => {
     await assertOneTriggerPerEffect(page, label);
     await assertSingleTriggers(page, label);
@@ -437,19 +457,22 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         kind: "Sign-in with the provider (OAuth)",
         readOnly: "takes permission to change this connector",
       };
-  const notice = page.getByTestId("connector-state-notice");
-  const noticeKind = async () =>
-    (await notice.count()) ? await notice.getAttribute("data-notice") : null;
+  const strip = page.getByTestId("connector-state");
+  const noticeKind = async () => (await strip.getAttribute("data-notice")) || null;
+  /** The strip's one action is this one, and stands in the strip. */
+  const stripOffers = async (testId) =>
+    (await strip.getByTestId(testId).count()) === 1 &&
+    (await page.getByTestId(testId).count()) === 1;
   let where = "/connectors/<oauth> · signed in";
 
   // ── Signed in ────────────────────────────────────────────────────────────
   set({ enabled: true, needsReauth: false });
   await openOauth(page, stand);
-  if ((await text(page, "connector-auth-state")) !== words.connected)
-    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.connected)
+    throw new Error(`${where}: the sign-in reads "${await signInWord(page)}"`);
   if ((await occurrences(page, words.connected)) !== 1)
     throw new Error(`${where}: the sign-in state does not stand exactly once`);
-  if (await notice.count()) throw new Error(`${where}: a notice with nothing to say`);
+  if (await noticeKind()) throw new Error(`${where}: a notice with nothing to say`);
   for (const id of ["connector-renew-signin", "connector-enable", "detail-action"])
     if (await page.getByTestId(id).count())
       throw new Error(`${where}: "${id}" is offered with nothing to fix`);
@@ -459,7 +482,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   if ((await page.getByTestId("detail-connectors").innerText()).includes(words.steps))
     throw new Error(`${where}: the page talks about a connector's steps`);
   // How it signs in is a fact of the connection, said there and not again in
-  // the sign-in card.
+  // the sign-in block.
   if ((await occurrences(page, words.kind)) !== 1)
     throw new Error(`${where}: the kind of sign-in does not stand exactly once`);
   await assertOnce(where);
@@ -467,18 +490,32 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   await assertNoSidewaysScroll(page, where);
   await capture("connector-signin-connected");
 
-  // "Unterhaltungen dazu": a read that failed says so and offers a retry; a
-  // connector nobody talked about has no section. Neither reads as the other.
+  // "Unterhaltungen dazu" ("Verwendung"): a read that failed says so and
+  // offers a retry; a connector nobody talked about has no section. Neither
+  // reads as the other.
   set({ enabled: true, needsReauth: false, conversations: "failed" });
   await openOauth(page, stand);
-  await page.getByTestId("detail-conversations-failed").waitFor({ timeout: 15_000 });
-  if (!(await page.getByTestId("detail-conversations-failed-retry").isVisible()))
-    throw new Error(`${where}: a failed conversations read offers no retry`);
-  if (await page.getByTestId("detail-conversation-0").count())
+  await openTab(page, "verwendung");
+  await page.getByTestId("detail-conversations-toggle").click();
+  await page
+    .getByTestId("detail-conversation-retry")
+    .filter({ visible: true })
+    .first()
+    .waitFor({ timeout: 15_000 });
+  if (await page.getByTestId("detail-conversation-row-0").count())
     throw new Error(`${where}: conversations stand beside the failure`);
   await capture("connector-conversations-failed");
   set({ enabled: true, needsReauth: false, conversations: "empty" });
   await openOauth(page, stand);
+  await openTab(page, "verwendung");
+  await page.getByTestId("connector-usage-summary").waitFor();
+  await page.waitForLoadState("networkidle");
+  // While the list loads the section stands with its skeleton; once the
+  // answer is empty it goes.
+  await page
+    .getByTestId("detail-conversations")
+    .waitFor({ state: "detached", timeout: 10_000 })
+    .catch(() => {});
   if (await page.getByTestId("detail-conversations").count())
     throw new Error(`${where}: an empty "Unterhaltungen dazu" section is on the page`);
   set({ conversations: "served" });
@@ -487,25 +524,26 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   where = "/connectors/<oauth> · needs sign-in";
   set({ enabled: true, needsReauth: true });
   await openOauth(page, stand);
-  if ((await text(page, "connector-auth-state")) !== words.expired)
-    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.expired)
+    throw new Error(`${where}: the sign-in reads "${await signInWord(page)}"`);
   if ((await occurrences(page, words.expired)) !== 1)
     throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
   const sentence = (await text(page, "connector-credential-sentence")) ?? "";
   if (!sentence.includes(words.whatRenewDoes) || sentence.includes(words.misleading))
     throw new Error(`${where}: the line does not say what the button does — "${sentence}"`);
   if ((await text(page, "connector-renew-signin")) !== words.renew)
-    throw new Error(`${where}: no "${words.renew}" in the sign-in card`);
-  if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "default")
-    throw new Error(`${where}: renewing the sign-in is not the page's filled action`);
+    throw new Error(`${where}: no "${words.renew}" in the strip`);
+  // Renewing has one home: the strip (D6).
+  if (!(await stripOffers("connector-renew-signin")))
+    throw new Error(`${where}: renewing the sign-in is not the strip's one action`);
   await assertOnce(where);
   await capture("connector-signin-expired");
 
   // A flag typed into the address confirms nothing the connector does not bear out.
   await stand.visit(page, `connectors/${OAUTH_ID}?signed_in=1`);
-  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
-  if (await notice.count())
-    throw new Error(`${where}: a typed flag made the page confirm a sign-in`);
+  await page.getByTestId("connector-strip-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.waitForLoadState("networkidle");
+  if (await noticeKind()) throw new Error(`${where}: a typed flag made the page confirm a sign-in`);
   if (new URL(page.url()).searchParams.has("signed_in"))
     throw new Error(`${where}: the flag stays in the address`);
 
@@ -520,19 +558,20 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   });
 
   // ── Switched off AND needing a sign-in ───────────────────────────────────
+  // The lost sign-in leads; switching on is the next state, counted, and gets
+  // its action once the sign-in is back (D15).
   where = "/connectors/<oauth> · switched off, needs sign-in";
   set({ enabled: false, needsReauth: true });
   await openOauth(page, stand);
   if ((await noticeKind()) !== "off") throw new Error(`${where}: nothing says it is switched off`);
-  if ((await occurrences(page, words.off)) !== 1)
-    throw new Error(`${where}: "${words.off}" does not stand exactly once`);
+  if (!(await stripOffers("connector-renew-signin")))
+    throw new Error(`${where}: the lost sign-in is not the strip's action`);
+  if (await page.getByTestId("connector-enable").count())
+    throw new Error(`${where}: a second action stands beside the lost sign-in`);
+  if (!(await strip.innerText()).includes("+1"))
+    throw new Error(`${where}: switched off is not counted beside the lost sign-in`);
   if ((await occurrences(page, words.expired)) !== 1)
     throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
-  if ((await text(page, "connector-enable")) !== words.enable)
-    throw new Error(`${where}: no "${words.enable}"`);
-  // Signing in is the first step; switching on stands beside it, unfilled.
-  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "outline")
-    throw new Error(`${where}: two filled actions compete`);
   await assertOnce(where);
   await capture("connector-signin-off-expired");
 
@@ -544,19 +583,17 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     throw new Error(`${where}: "${words.renew}" started ${oauth.started - startedBefore} sign-ins`);
   if ((await noticeKind()) !== "signed_in_off")
     throw new Error(`${where}: the page says "${await noticeKind()}" after the sign-in`);
-  if (!(await notice.innerText()).includes(words.signedInOff))
-    throw new Error(`${where}: the notice reads "${await notice.innerText()}"`);
+  if (!(await strip.innerText()).includes(words.signedInOff))
+    throw new Error(`${where}: the strip reads "${await strip.innerText()}"`);
   // The sign-in is fresh, not the one the page showed before it left.
-  if ((await text(page, "connector-auth-state")) !== words.connected)
-    throw new Error(`${where}: still reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.connected)
+    throw new Error(`${where}: still reads "${await signInWord(page)}"`);
   if (await occurrences(page, words.expired))
     throw new Error(`${where}: "${words.expired}" for a connector that was just signed in`);
   if (await page.getByTestId("connector-renew-signin").count())
     throw new Error(`${where}: a renewal is offered for a sign-in that works`);
-  if ((await page.getByTestId("connector-enable").count()) !== 1)
-    throw new Error(`${where}: not exactly one "${words.enable}"`);
-  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "default")
-    throw new Error(`${where}: switching on is not the page's filled action`);
+  if (!(await stripOffers("connector-enable")))
+    throw new Error(`${where}: "${words.enable}" is not the strip's one action`);
   // The switch is the person's: the sign-in did not flip it.
   if (oauth.enabled) throw new Error(`${where}: signing in switched the connector on`);
   await assertOnce(where);
@@ -578,15 +615,15 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
 
   // The sentence is said once: a reload has nothing to repeat.
   await openOauth(page, stand);
-  if (await notice.count()) throw new Error(`${where}: the confirmation repeats on reload`);
+  if (await noticeKind()) throw new Error(`${where}: the confirmation repeats on reload`);
 
   // ── Switched off, nothing else ───────────────────────────────────────────
   where = "/connectors/<oauth> · switched off";
   set({ enabled: false, needsReauth: false });
   await openOauth(page, stand);
   if ((await noticeKind()) !== "off") throw new Error(`${where}: nothing says it is switched off`);
-  if ((await page.getByTestId("connector-enable").getAttribute("data-variant")) !== "default")
-    throw new Error(`${where}: switching on is not the page's filled action`);
+  if (!(await stripOffers("connector-enable")))
+    throw new Error(`${where}: switching on is not the strip's one action`);
   await assertOnce(where);
   await capture("connector-signin-off");
   await withBootstrap(page, "connector:write", async () => {
@@ -607,10 +644,9 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   const withheld = (await text(page, "connector-missing-scopes")) ?? "";
   if (!withheld.includes(words.missing))
     throw new Error(`${where}: the withheld permissions are not named — "${withheld}"`);
-  // The way to get them is to sign in again — offered, but not as the page's
-  // filled action: the sign-in works.
-  if ((await page.getByTestId("connector-renew-signin").getAttribute("data-variant")) !== "outline")
-    throw new Error(`${where}: no unfilled "${words.renew}" for the withheld permissions`);
+  // The way to get them is to sign in again — the strip's one action.
+  if ((await text(page, "connector-renew-signin")) !== words.renew)
+    throw new Error(`${where}: no "${words.renew}" for the withheld permissions`);
   await assertOnce(where);
   await capture("connector-signin-partial");
 }
@@ -634,19 +670,23 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
   const handler = (route) => connectorApi(state, variant)(route);
   await page.route(isConnectorApi, handler);
   const where = `/connectors/<mcp> (${localeName})`;
+  /** "Verbindung", with its runtime unfolded. */
+  const openConnection = async (id) => {
+    await stand.visit(page, `connectors/${id}?tab=verbindung`);
+    await page.getByTestId("connector-connection-facts").waitFor({ timeout: 10_000 });
+    await unfold(page, "connector-runtime-section");
+    await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
+  };
   try {
     // ── The MCP connector, answered in full ──────────────────────────────────
-    await stand.visit(page, `connectors/${MCP_ID}`);
-    await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
+    await openConnection(MCP_ID);
     await page.getByTestId("connector-figure-calls-link").waitFor({ timeout: 10_000 });
 
     const order = await page.evaluate(() =>
       [
         "connector-connection-facts",
-        "connector-runtime",
-        "connector-mcp-tools",
         "connector-credentials",
-        "connector-workflows",
+        "connector-runtime-section",
         "connector-technical",
       ].map((id) => {
         const element = document.querySelector(`[data-testid="${id}"]`);
@@ -659,11 +699,11 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       if (order[i] < order[i - 1])
         throw new Error(`${where}: the sections are not in reading order`);
 
-    const address = await text(page, "connector-fact-address");
-    if (!address?.includes(ADDRESS)) throw new Error(`${where}: the address is not shown whole`);
     // An address without a secret is copied as it stands.
-    if (!(await page.getByTestId("connector-copy-address").count()))
-      throw new Error(`${where}: a plain address cannot be copied`);
+    const copy = page.getByTestId("connector-copy-address");
+    if (!(await copy.count())) throw new Error(`${where}: a plain address cannot be copied`);
+    const address = await copy.inputValue();
+    if (!address.includes(ADDRESS)) throw new Error(`${where}: the address is not shown whole`);
     const facts = {
       kind: de ? "MCP-Server" : "MCP server",
       transport: "Streamable HTTP",
@@ -671,7 +711,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       environment: de ? "Produktion" : "Production",
     };
     for (const [fact, expected] of Object.entries(facts)) {
-      const shown = await text(page, `connector-fact-${fact}`);
+      const shown = await page.getByTestId(`connector-fact-${fact}`).textContent();
       if (!shown?.includes(expected))
         throw new Error(`${where}: "${fact}" reads "${shown}" instead of "${expected}"`);
     }
@@ -696,43 +736,12 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     )
       throw new Error(`${where}: the success rate does not open the failures of its window`);
 
-    const failure = await text(page, "connector-last-failure");
+    const failure = await page.getByTestId("connector-last-failure").textContent();
     const cause = de ? "Fehler im Fremdsystem" : "Error in the external system";
     if (!failure?.includes(cause))
       throw new Error(`${where}: the last failure is not worded as its cause — "${failure}"`);
 
-    // The session's facts stand because there is a session; no permanent
-    // sentence repeats what the switch beside each tool already says.
-    for (const id of ["connector-mcp-protocol", "connector-mcp-capabilities"])
-      if (!(await page.getByTestId(id).isVisible()))
-        throw new Error(`${where}: "${id}" is missing for a negotiated session`);
-    if (await page.getByTestId("connector-mcp-note").count())
-      throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" switch`);
-
-    // Before "Verbindung testen": the stored trust shows, the list does not.
-    if (!(await page.getByTestId("connector-mcp-load-hint").isVisible()))
-      throw new Error(`${where}: nothing says the tool list comes from "Verbindung testen"`);
-    const stored = page.getByTestId("connector-mcp-tool-0-trust");
-    if ((await stored.getAttribute("data-state")) !== "checked")
-      throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
-    await assertSingleTriggers(page, where);
-    await capture("connector-mcp");
-
-    await page.getByTestId("connector-test").click();
-    await page.getByTestId("connector-mcp-tool-1").waitFor({ state: "visible", timeout: 10_000 });
-    const second = await text(page, "connector-mcp-tool-1");
-    if (
-      !second?.includes("create_ticket") ||
-      !second.includes(de ? "meldet: schreibt" : "reports: writes")
-    )
-      throw new Error(`${where}: the tool list does not show what the server claims — "${second}"`);
-    await page.getByTestId("connector-mcp-tool-1-trust").click();
-    for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
-      await page.waitForTimeout(50);
-    if (state.sent.at(-1)?.tool !== "create_ticket" || state.sent.at(-1)?.confirm !== false)
-      throw new Error(`${where}: "Ohne Rückfrage" sent ${JSON.stringify(state.sent.at(-1))}`);
-
-    // The sign-in card: one way, the fitting one — no connection picker for a
+    // The sign-in block: one way, the fitting one — no connection picker for a
     // header key, and the replacement keeps the header's name.
     if (await page.getByTestId("connector-connection-select").count())
       throw new Error(`${where}: "Verbindung wählen" is offered for a header key`);
@@ -740,31 +749,54 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     const header = await page.getByTestId("connector-key-header").inputValue();
     if (header !== "X-API-KEY")
       throw new Error(`${where}: the key form does not keep the header name — "${header}"`);
-
-    // A section taller than the screen keeps its height; the page scrolls. The
-    // column once squeezed the sign-in card to a sliver that hid its form.
-    const clipped = await page.evaluate(() =>
-      [
-        "connector-connection-facts",
-        "connector-runtime",
-        "connector-mcp-tools",
-        "connector-credentials",
-        "connector-workflows",
-      ].filter((id) => {
-        const element = document.querySelector(`[data-testid="${id}"]`);
-        return element instanceof HTMLElement && element.scrollHeight > element.clientHeight + 1;
-      }),
-    );
-    if (clipped.length > 0)
-      throw new Error(`${where}: sections are cut off — ${clipped.join(", ")}`);
     await assertNoVisibleUuids(page.locator("main").first(), where);
+    await assertNoSidewaysScroll(page, where);
+    await assertSingleTriggers(page, where);
+    await capture("connector-mcp");
+
+    // ── "Werkzeuge": the session, and one decision per tool ─────────────────
+    await openTab(page, "werkzeuge");
+    const session = (await text(page, "connector-mcp-session")) ?? "";
+    if (!session.includes(RUNTIME.mcp_session.protocol_version))
+      throw new Error(`${where}: the negotiated session is not said — "${session}"`);
+    if (await page.getByTestId("connector-mcp-note").count())
+      throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" choice`);
+    // Before reading the server: the stored trust shows, the rest does not.
+    const stored = (await text(page, "connector-mcp-tool-row-0")) ?? "";
+    if (!stored.includes("search_items") || !stored.includes(de ? "Ohne Rückfrage" : "Without"))
+      throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
+    await page.getByTestId("connector-mcp-reload").click();
+    await page
+      .getByTestId("connector-mcp-tool-row-1")
+      .waitFor({ state: "attached", timeout: 10_000 });
+    let second = page.getByTestId("connector-mcp-tool-row-1");
+    if (!(await second.isVisible())) second = page.getByTestId("connector-mcp-tool-mobile-row-1");
+    const secondText = await second.innerText();
+    if (
+      !secondText.includes("create_ticket") ||
+      !secondText.includes(de ? "meldet: schreibt" : "reports: writes")
+    )
+      throw new Error(
+        `${where}: the tool list does not show what the server claims — "${secondText}"`,
+      );
+    let secondLink = page.getByTestId("connector-mcp-tool-row-link-1");
+    if (!(await secondLink.isVisible()))
+      secondLink = page.getByTestId("connector-mcp-tool-mobile-row-link-1");
+    await secondLink.click();
+    await page.getByTestId("connector-mcp-tool-1-trusted").click();
+    for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
+      await page.waitForTimeout(50);
+    if (state.sent.at(-1)?.tool !== "create_ticket" || state.sent.at(-1)?.confirm !== false)
+      throw new Error(`${where}: "Ohne Rückfrage" sent ${JSON.stringify(state.sent.at(-1))}`);
+    await page.getByTestId("connector-mcp-tool-1-close").click();
+    await page.getByTestId("connector-mcp-tool-1-sheet").waitFor({ state: "hidden" });
     await assertNoSidewaysScroll(page, where);
     await assertSingleTriggers(page, `${where} · tools`);
     await capture("connector-mcp-tools");
 
     // ── A connector nobody called ─────────────────────────────────────────────
     variant = "zero";
-    await stand.visit(page, `connectors/${MCP_ID}`);
+    await openConnection(MCP_ID);
     await page.getByTestId("connector-runtime-unused").waitFor({ timeout: 10_000 });
     if (await page.getByTestId("connector-figure-calls-link").count())
       throw new Error(`${where} · zero: a counted zero opens a list`);
@@ -772,18 +804,19 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     // beside the title, and stands there only.
     if (await page.getByTestId("connector-runtime-unused").locator("a, button").count())
       throw new Error(`${where} · zero: the empty state repeats "Verbindung testen"`);
-    if (!(await page.getByTestId("connector-test").isVisible()))
+    if (!(await page.getByTestId("connector-menu").isVisible()))
       throw new Error(`${where} · zero: the connection cannot be tested from the page`);
-    // A week without a call is one sentence, not four tiles of placeholders.
+    // A week without a call is one sentence, not four figures of placeholders.
     if (await page.getByTestId("connector-figure-calls").count())
-      throw new Error(`${where} · zero: placeholder tiles stand beside the sentence`);
+      throw new Error(`${where} · zero: placeholder figures stand beside the sentence`);
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, `${where} · zero`);
     await capture("connector-zero");
 
     // ── A runtime read that fails ─────────────────────────────────────────────
     variant = "failed";
-    await stand.visit(page, `connectors/${MCP_ID}`);
+    await stand.visit(page, `connectors/${MCP_ID}?tab=verbindung`);
+    await unfold(page, "connector-runtime-section");
     await page.getByTestId("connector-runtime-failed").waitFor({ timeout: 10_000 });
     if (!(await page.getByTestId("connector-runtime-failed-retry").isVisible()))
       throw new Error(`${where} · failed: the failure offers no retry`);
@@ -794,10 +827,9 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     // ── A reader without stats:read ───────────────────────────────────────────
     variant = null;
     await withBootstrap(page, "stats:read", async () => {
-      await stand.visit(page, `connectors/${MCP_ID}`);
+      await openConnection(MCP_ID);
       await page.getByTestId("connector-runtime-not-permitted").waitFor({ timeout: 10_000 });
-      // One sentence for what the reader may not see — no tile per figure, no
-      // zero, no link.
+      // One sentence for what the reader may not see — no figure, no zero, no link.
       for (const id of [
         "connector-figure-calls",
         "connector-figure-success",
@@ -807,32 +839,31 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         if (await page.getByTestId(id).count())
           throw new Error(`${where} · no permission: "${id}" stands for a figure it may not read`);
       // What it may read is still said: the newest successful call.
-      if (!(await page.getByTestId("connector-last-success").isVisible()))
+      if (!(await page.getByTestId("connector-last-success").count()))
         throw new Error(`${where} · no permission: the last successful call is gone too`);
       await capture("connector-no-permission");
     });
 
     // ── A postgres connector ──────────────────────────────────────────────────
-    await stand.visit(page, `connectors/${PG_ID}`);
-    await page.getByTestId("connector-runtime").waitFor({ timeout: 10_000 });
-    if (await page.getByTestId("connector-mcp-tools").count())
+    await openConnection(PG_ID);
+    if (await page.getByTestId("connector-tabs-tab-werkzeuge").count())
       throw new Error("/connectors/<postgres>: server tools on a database connector");
-    const kind = await text(page, "connector-fact-kind");
+    const kind = await page.getByTestId("connector-fact-kind").textContent();
     if (!kind?.includes(de ? "PostgreSQL-Datenbank" : "PostgreSQL database"))
       throw new Error(`/connectors/<postgres>: the kind reads "${kind}"`);
-    const dsn = (await text(page, "connector-fact-address")) ?? "";
+    const dsn = (await page.getByTestId("connector-fact-address").textContent()) ?? "";
     if (!dsn.includes("reader:•••@db.example.org:5432/lager") || dsn.includes("redacted"))
       throw new Error(`/connectors/<postgres>: a kept secret reads as a literal: "${dsn}"`);
-    if (!(await text(page, "connector-address-secret")))
+    if (!(await page.getByTestId("connector-fact-address-help").count()))
       throw new Error("/connectors/<postgres>: nothing says the secret is kept");
     if (await page.getByTestId("connector-copy-address").count())
       throw new Error(
         "/connectors/<postgres>: an address with a kept secret is offered for copying",
       );
-    // It signs in with nothing: the connection says so, once. No sign-in card,
-    // no second and third wording of the same absence.
+    // It signs in with nothing: the connection says so, once. No sign-in
+    // block, no second and third wording of the same absence.
     if (await page.getByTestId("connector-credentials").count())
-      throw new Error("/connectors/<postgres>: a sign-in card for a connector that needs none");
+      throw new Error("/connectors/<postgres>: a sign-in block for a connector that needs none");
     const pgBody = await page.getByTestId("detail-connectors").innerText();
     for (const repeat of de
       ? ["Ohne Zugangsdaten", "Noch keine Zugangsdaten"]
@@ -841,7 +872,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         throw new Error(`/connectors/<postgres>: "${repeat}" repeats that it needs no sign-in`);
     if (pgBody.split(de ? "Ohne Anmeldung" : "No sign-in").length - 1 !== 1)
       throw new Error("/connectors/<postgres>: that it needs no sign-in does not stand once");
-    // Nothing failed and nothing negotiated: neither is said as a placeholder.
+    // Nothing failed: no "last failure" placeholder.
     if (await page.getByTestId("connector-last-failure").count())
       throw new Error('/connectors/<postgres>: "last failure" with no failure');
     await assertNoSidewaysScroll(page, "/connectors/<postgres>");

@@ -97,7 +97,8 @@ export function remedyFor(input: RemedyInput): Remedy | null {
     return {
       kind: expired ? "reauth" : "check_auth",
       labelKey: expired ? (card ? "remedy.reconnect" : "remedy.reauth") : "remedy.checkAuth",
-      href: `${connectorHref(input.authState.connectorId)}${card ? "#connector-credentials" : ""}`,
+      // The sign-in block stands in the connector's "Verbindung" tab.
+      href: `${connectorHref(input.authState.connectorId)}${card ? "?tab=verbindung" : ""}`,
     };
   }
   if (input.canChat) {

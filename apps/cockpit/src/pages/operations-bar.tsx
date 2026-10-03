@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/api/client";
 import { absolute } from "@/app/links";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ActionButton, TileSkeleton } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -15,9 +14,7 @@ import {
   operatingFigures,
   operatingFiguresEndpoint,
   type Read,
-  STATS_WINDOWS,
   STATUS_ENDPOINT,
-  type StatsWindow,
   type WindowBounds,
   windowSpend,
 } from "./operations-figures";
@@ -61,12 +58,6 @@ const PRESSURE_TONE = {
   tightening: "text-warning",
   critical: "text-destructive",
 } as const;
-
-const WINDOW_OPTION: Record<StatsWindow, TranslationKey> = {
-  "24h": "overview.operations.windowOption.24h",
-  "7d": "overview.operations.windowOption.7d",
-  "30d": "overview.operations.windowOption.30d",
-};
 
 /** Whether the reader may see the bar at all: every figure but one is a stats read. */
 export function canReadOperations(permissions: readonly string[]): boolean {
@@ -133,37 +124,6 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
   return { allowed, figures, pending, retry };
 }
 
-/** The window the figures count over: 24 hours, 7 days or 30 days. */
-export function WindowSwitch({
-  value,
-  onChange,
-}: {
-  value: StatsWindow;
-  onChange: (window: StatsWindow) => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <fieldset
-      className="flex flex-wrap gap-2"
-      aria-label={t("overview.operations.window")}
-      data-testid="operations-window"
-    >
-      {STATS_WINDOWS.map((candidate) => (
-        <Button
-          key={candidate}
-          size="sm"
-          variant={candidate === value ? "default" : "outline"}
-          aria-pressed={candidate === value}
-          onClick={() => onChange(candidate)}
-          data-testid={`operations-window-${candidate}`}
-        >
-          {t(WINDOW_OPTION[candidate])}
-        </Button>
-      ))}
-    </fieldset>
-  );
-}
-
 /**
  * Six figures — three by two on a desktop, six in a row on a wide screen, two
  * columns on a phone — each a link into the list or page that counts the same
@@ -174,21 +134,28 @@ export function OperationsBar({
   figures,
   pending,
   onRetry,
+  ids = OPERATING_FIGURE_IDS,
 }: {
   figures: readonly OperatingFigure[];
   pending: boolean;
   onRetry: (id: OperatingFigureId) => void;
+  /** The figures shown, in order — the Übersicht leads with four (R1). */
+  ids?: readonly OperatingFigureId[];
 }) {
   const { t } = useI18n();
   return (
     <section
       aria-label={t("overview.operations.label")}
-      className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6"
+      className={
+        ids.length === 4
+          ? "grid grid-cols-2 gap-2 lg:grid-cols-4"
+          : "grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6"
+      }
       data-testid="operations-bar"
       data-family-slot="operations-bar"
     >
       {pending
-        ? OPERATING_FIGURE_IDS.map((id) => <Skeleton key={id} className="h-[72px] w-full" />)
+        ? ids.map((id) => <TileSkeleton key={id} />)
         : figures.map((figure) => <Figure key={figure.id} figure={figure} onRetry={onRetry} />)}
     </section>
   );
@@ -237,15 +204,14 @@ function Figure({
                     : t(NONE_TEXT[figure.id])}
           </span>
           {figure.state === "unreadable" ? (
-            <Button
-              variant="link"
+            <ActionButton
+              variant="ghost"
               size="sm"
-              className="h-auto p-0"
               onClick={() => onRetry(figure.id)}
-              data-testid={`operations-figure-${figure.id}-retry`}
+              testId={`operations-figure-${figure.id}-retry`}
             >
               {t("session.retry")}
-            </Button>
+            </ActionButton>
           ) : null}
           {onward ? (
             <a

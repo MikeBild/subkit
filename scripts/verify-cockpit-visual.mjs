@@ -6,7 +6,6 @@ import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { leafSchemaMeta, listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
-import { verifyAgentPanel } from "./lib/cockpit-agent-panel.mjs";
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
@@ -160,6 +159,8 @@ const routes = [
   // authority stand, which checked none of it for identifiers.
   `workflows/${uuid}`,
   "connectors",
+  // A connector's own page: its status strip and its tabs.
+  `connectors/${uuid}`,
   // The connector-health component's own drilldown. Photographed narrowed,
   // because the fixture's healthy connectors are exactly what it must hide.
   "connectors?health=not_ok",
@@ -199,7 +200,7 @@ const routes = [
  * A focused look while a page is rebuilt — never the gate. Each variable is a
  * whitespace-separated list; a route names a record as `$id`:
  *
- *   COCKPIT_SWEEP_ROUTES="usage audit knowledge/$id"
+ *   COCKPIT_SWEEP_ROUTES="/ usage audit knowledge/$id"   ("/" is Übersicht)
  *   COCKPIT_SWEEP_VARIANTS="de-dark"  COCKPIT_SWEEP_VIEWPORTS="desktop mobile"
  *   COCKPIT_SWEEP_STANDS="verifyApiAccess verifyChatChoices"
  *
@@ -211,7 +212,10 @@ const sweepList = (name) => process.env[name]?.split(/\s+/).filter(Boolean) ?? n
 const ROUTE_FILTER = sweepList("COCKPIT_SWEEP_ROUTES");
 const focused = ROUTE_FILTER !== null;
 const sweptRoutes = focused
-  ? routes.filter((route) => ROUTE_FILTER.includes(route.replaceAll(uuid, "$id")))
+  ? // Übersicht's route is the root: named "/" here.
+    routes.filter((route) =>
+      ROUTE_FILTER.includes(route === "" ? "/" : route.replaceAll(uuid, "$id")),
+    )
   : routes;
 const STAND_FILTER = sweepList("COCKPIT_SWEEP_STANDS") ?? [];
 /** Whether a stand runs: always in the full sweep, by name in a focused one. */
@@ -2959,7 +2963,8 @@ function markerFor(route) {
   // A run's own address renders the list AND the sheet for that run. Waiting
   // on the list marker would photograph the page before the record arrived,
   // which is the frame that proves nothing.
-  if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
+  if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-invocation"]';
+  if (/^connectors\/.+/.test(path)) return '[data-testid="connector-strip-state"]';
   // A record of Wissen, once it has loaded: its facts stand under the document.
   // A file opens as a sheet over the Dateien list, at its own address.
   if (/^files\/.+/.test(path)) return '[data-testid="file-sheet"] [data-testid="file-facts"]';
@@ -2970,7 +2975,7 @@ function markerFor(route) {
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
   // The run sheets open over whichever page names them.
-  if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-facts"]';
+  if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-summary"]';
   if (/(^|&)runs=all/.test(query)) return '[data-testid="resource-runs"]';
   if (path === "" || path === "decisions" || path === "operations")
     return query.startsWith("review=") || query.startsWith("workflow_id=")
@@ -3006,7 +3011,9 @@ function documentThemeMatches(classes, theme) {
  * not scroll — it is cut off, and `document.scrollWidth` passes it. Instead:
  * no page container may be wider inside than out (scrolling or clipped alike),
  * and no visible element may reach past the window's right edge unless it sits
- * in a container built to scroll sideways (a wide table, a tab bar).
+ * in a container built to scroll sideways (a wide table, a tab bar). A
+ * scroller that bleeds into the page gutter on a phone (the tab bar) widens
+ * its container but stays inside the window: that is not sideways scroll.
  */
 async function assertNoHorizontalScroll(page, label) {
   const found = await page.evaluate(() => {
@@ -3025,7 +3032,35 @@ async function assertNoHorizontalScroll(page, label) {
       ),
     ]
       .filter((node) => node.scrollWidth > node.clientWidth + 1)
-      .map((node) => `${node.getAttribute("data-testid") ?? node.tagName} is wider than its frame`);
+      .flatMap((node) => {
+        // Name what reaches furthest right outside any scroller of its own,
+        // so the message points at the cause.
+        const frame = node.getBoundingClientRect();
+        const inner = frame.left + node.clientWidth;
+        const clipped = (el) => {
+          for (let up = el.parentElement; up && up !== node; up = up.parentElement) {
+            const x = window.getComputedStyle(up).overflowX;
+            if (x === "auto" || x === "scroll" || x === "hidden" || x === "clip") return true;
+          }
+          return false;
+        };
+        let widest = null;
+        for (const child of node.querySelectorAll("*")) {
+          const right = child.getBoundingClientRect().right;
+          if (right > inner + 1 && !clipped(child) && (!widest || right > widest.right))
+            widest = { child, right };
+        }
+        const name = (el) =>
+          el.getAttribute("data-testid") ?? el.getAttribute("data-slot") ?? el.tagName;
+        // Wider only by a bleed that ends inside the window: the gutter, not a scroll.
+        if (widest && widest.right <= width + 1) return [];
+        const culprit = widest
+          ? ` (${name(widest.child)} reaches ${Math.round(widest.right)}px of ${Math.round(inner)}px)`
+          : "";
+        return [
+          `${node.getAttribute("data-testid") ?? node.tagName} is wider than its frame${culprit}`,
+        ];
+      });
     const poking = [...document.querySelectorAll("body *")]
       .filter((node) => {
         const rect = node.getBoundingClientRect();
@@ -3151,14 +3186,28 @@ async function assertOpenOnce(page, label) {
   const before = await page.evaluate(() => window.history.length);
   await open.focus();
   await page.keyboard.press("Enter");
-  await page.locator('[data-testid="run-detail-facts"]').waitFor({ state: "visible" });
+  await page
+    .locator('[data-testid="run-detail-summary"]')
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(async () => {
+      const sheet = await page
+        .locator('[role="dialog"]')
+        .last()
+        .innerText()
+        .catch(() => "");
+      throw new Error(
+        `${label}: Enter on the run's link opened no run (${page.url()}): ${sheet.slice(0, 300)}`,
+      );
+    });
   const after = await page.evaluate(() => window.history.length);
   if (after - before !== 1)
     throw new Error(
       `${label}: Enter on the run's link added ${after - before} history entries — the record opened more than once`,
     );
+  // Back leaves the run for the list it was opened from, as the reader left it.
   await page.goBack();
-  await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+  await page.locator('[data-testid="run-detail"]').waitFor({ state: "hidden" });
+  await page.locator('[data-testid="resource-runs"]').waitFor({ state: "visible" });
 }
 
 /**
@@ -3169,7 +3218,11 @@ async function assertOpenOnce(page, label) {
  */
 async function assertOverviewHostile(page, label, language) {
   const shape = await page.evaluate(() => {
-    const entries = [...document.querySelectorAll('[data-testid="attention-list"] > li')];
+    // One row per entry — the table on a desktop, its cards on a phone; the
+    // entry's id rides on its completing verb.
+    const entries = [
+      ...document.querySelectorAll('[data-testid="attention-list"] [data-attention-id]'),
+    ].filter((entry) => entry.getClientRects().length > 0);
     return {
       ids: entries.map((entry) => entry.getAttribute("data-attention-id")),
       primaries: entries.map((entry) => entry.querySelectorAll('[data-testid$="-primary"]').length),
@@ -3200,16 +3253,19 @@ async function assertOverviewHostile(page, label, language) {
     throw new Error(`${label}: the engine's wording stands on the list`);
   // A version no approval may cover names its step and offers the preparation.
   const blocked = await page.evaluate((id) => {
-    const entry = document.querySelector(`[data-attention-id="workflow:${id}"]`);
+    const entry = [...document.querySelectorAll(`[data-attention-id="workflow:${id}"]`)].find(
+      (node) => node.getClientRects().length > 0,
+    );
+    const row = entry?.closest('tr, [data-testid*="mobile-row"]');
     return {
-      text: entry?.textContent ?? "",
+      text: row?.textContent ?? "",
       action: entry?.querySelector('[data-testid$="-primary"]')?.textContent?.trim() ?? "",
     };
   }, BLOCKED_WORKFLOW_ID);
   const wants =
     language === "de"
-      ? { sentence: "nicht freigeben", action: "Vorbereitung ausführen", refused: "Freigeben" }
-      : { sentence: "cannot be approved", action: "Run the preparation", refused: "Approve" };
+      ? { sentence: "blockiert", action: "Vorbereitung ausführen", refused: "Freigeben" }
+      : { sentence: "blocked", action: "Run the preparation", refused: "Approve" };
   if (!blocked.text.includes(wants.sentence) || !blocked.text.includes("send_notification_email"))
     throw new Error(`${label}: the blocked version does not name its step (${blocked.text})`);
   if (blocked.action !== wants.action || blocked.action === wants.refused)
@@ -3218,8 +3274,8 @@ async function assertOverviewHostile(page, label, language) {
 }
 
 /**
- * The operations bar: six figures above the list — three by two on a desktop,
- * six in a row where they fit, two columns on a phone, never scrolling
+ * The operations bar: four figures above the list (R1) — four in a row on a
+ * desktop, two by two where four do not fit and on a phone, never scrolling
  * sideways — compact enough that the attention list still starts on the first
  * screen, and every link carrying the window it counted.
  */
@@ -3242,9 +3298,6 @@ async function assertOperationsBar(page, label) {
       innerHeight: window.innerHeight,
       phone: window.innerWidth < 640,
       overflow: bar ? bar.scrollWidth > bar.clientWidth + 1 : false,
-      cost: (bar?.querySelector('[data-testid="operations-figure-cost"]')?.textContent ?? "")
-        .replace(/\s+/g, " ")
-        .trim(),
       budget: (bar?.querySelector('[data-testid="operations-figure-budget"]')?.textContent ?? "")
         .replace(/\s+/g, " ")
         .trim(),
@@ -3254,15 +3307,15 @@ async function assertOperationsBar(page, label) {
           ?.getAttribute("data-budget-pressure") ?? null,
     };
   });
-  if (shape.count !== 6)
+  if (shape.count !== 4)
     throw new Error(`${label}: the operations bar holds ${shape.count} figures`);
-  // Two columns on a phone; three by two on a desktop, six in a row where
-  // six fit. Never a bar that scrolls sideways.
+  // Two by two on a phone; four in a row on a desktop, two by two where four
+  // do not fit. Never a bar that scrolls sideways.
   const grids = shape.phone
-    ? [[3, 2]]
+    ? [[2, 2]]
     : [
-        [2, 3],
-        [1, 6],
+        [1, 4],
+        [2, 2],
       ];
   if (!grids.some(([rows, columns]) => shape.rows === rows && shape.columns === columns))
     throw new Error(
@@ -3278,10 +3331,8 @@ async function assertOperationsBar(page, label) {
   for (const href of shape.links)
     if (!/started_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
       throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
-  // Kosten and Kontingent in short form, from the fixture: the window's amount
-  // as a floor (partly priced), the month's share of the cap in its state.
-  if (!/(mind\.\s*412,87\s*€|at least\s*€412\.87)/.test(shape.cost ?? ""))
-    throw new Error(`${label}: the cost figure reads "${shape.cost}"`);
+  // Kontingent in short form, from the fixture: the month's share of the cap
+  // in its state.
   if (!/95\s*%/.test(shape.budget ?? "") || shape.pressure !== "critical")
     throw new Error(`${label}: the budget figure reads "${shape.budget}" (${shape.pressure})`);
 }
@@ -3294,9 +3345,10 @@ async function assertOperationsBar(page, label) {
  * after a decision, an empty sheet.
  */
 async function assertReviewCloseLeavesNoTrail(page, label) {
-  const open = page.locator(
-    `[data-testid="attention-list"] > li[data-attention-id="workflow:${uuid}"] [data-testid$="-primary"]`,
-  );
+  // The first entry whose completing verb is "Prüfen": it opens the review sheet.
+  const open = page
+    .locator('[data-testid="attention-list"] [data-attention-verb="review"]:visible')
+    .first();
   const sheet = page.locator('[data-testid="attention-review"]');
   // A page of ours before Übersicht, so Back has somewhere of ours to go: the
   // blank page a fresh tab starts on refuses the cockpit's storage.
@@ -3336,10 +3388,10 @@ async function assertLandsOnOverview(page, label, review) {
 }
 
 /**
- * Übersicht with nothing open: the operations bar stays, and below it "Alles
- * erledigt." and one status line, nothing else — no badge. Swaps the answer
- * and restores it in `finally`: a scenario that leaves its route behind
- * poisons every frame after it.
+ * Übersicht with nothing open: the operations bar stays, "Braucht dich" says
+ * "Nichts braucht dich gerade." in its empty table, the summary counts zero —
+ * and no badge. Swaps the answer and restores it in `finally`: a scenario
+ * that leaves its route behind poisons every frame after it.
  */
 async function verifyOverviewCalm(page, label, language, capture) {
   const pattern = "**/v1/attention*";
@@ -3347,17 +3399,21 @@ async function verifyOverviewCalm(page, label, language, capture) {
   await page.route(pattern, calm);
   try {
     await stand.visit(page, "");
-    await page.locator('[data-testid="attention-calm"]').waitFor({ state: "visible" });
+    const list = page.locator('[data-testid="attention"][data-family-state="empty"]');
+    await list.waitFor({ state: "visible" });
     const shape = await page.evaluate(() => ({
-      status: document.querySelectorAll('[data-testid="attention-status"]').length,
       badge: document.querySelectorAll('[data-testid="nav-overview-count"]').length,
-      text: document.querySelector('[data-testid="attention-calm"]')?.innerText ?? "",
+      text: document.querySelector('[data-testid="attention"]')?.innerText ?? "",
+      summary: document.querySelector('[data-testid="overview-summary"]')?.innerText ?? "",
     }));
-    if (shape.status !== 1) throw new Error(`${label}: ${shape.status} status lines, not one`);
     if (shape.badge) throw new Error(`${label}: a badge although nothing is open`);
     await assertOperationsBar(page, label);
-    if (!shape.text.startsWith(language === "de" ? "Alles erledigt." : "All done."))
+    if (
+      !shape.text.includes(language === "de" ? "Nichts braucht dich gerade" : "Nothing needs you")
+    )
       throw new Error(`${label}: the calm state reads "${shape.text}"`);
+    if (!/^0\b/.test(shape.summary.trim()))
+      throw new Error(`${label}: the summary does not count zero ("${shape.summary}")`);
     await capture();
   } finally {
     await page.unroute(pattern, calm);
@@ -3423,7 +3479,7 @@ async function assertAuditActionChip(page, label) {
 }
 
 async function assertRunDetail(page, label, language) {
-  const facts = page.locator('[data-testid="run-detail-facts"]');
+  const facts = page.locator('[data-testid="run-detail-summary"]');
   if (!(await facts.isVisible()))
     throw new Error(`${label} opened no run sheet — the address rendered the bare list`);
   // The title is the workflow, and leads there.
@@ -3469,7 +3525,7 @@ async function assertRunDetail(page, label, language) {
   const remedyText = (await remedy.innerText()).trim();
   if (remedyText !== (language === "de" ? "Neu anmelden" : "Sign in again"))
     throw new Error(`${label} remedy reads ${JSON.stringify(remedyText)}`);
-  const audit = await page.locator('[data-testid="run-detail-cause-more-0"]').getAttribute("href");
+  const audit = await page.locator('[data-testid="run-detail-audit"]').getAttribute("href");
   if (!audit?.startsWith("/cockpit/audit?resource_type=execution&resource_id="))
     throw new Error(`${label} offers no way into the audit trail (${audit})`);
   // The payload is evidence, not the headline: closed until asked for, and a
@@ -3524,71 +3580,104 @@ async function assertRunDetail(page, label, language) {
  * sentence, and the latest runs lead to their sheets.
  */
 async function assertWorkflowDetail(page, label, language) {
-  const badge = page.locator('[data-testid="workflow-health-badge"]');
-  await badge.waitFor();
-  const cause = page.locator('[data-testid="workflow-cause"]');
-  await cause.waitFor();
-  const causeText = await page.locator('[data-testid="workflow-cause-cause"]').innerText();
+  // The state stands in the strip alone: no badge beside the title repeats it.
+  if (await page.locator('[data-testid="workflow-health-badge"]').count())
+    throw new Error(`${label}: a badge beside the title repeats the strip`);
+  // The strip: the state in one line and at most one action (D15).
+  const strip = page.locator('[data-testid="workflow-automation"]');
+  await strip.waitFor();
+  await page.locator('[data-testid="workflow-automation-state"]').waitFor();
+  const stripActions = await strip
+    .locator(
+      '[data-testid="workflow-automation-action"], [data-testid="workflow-automation-recheck"], [data-testid="workflow-automation-failed-retry"]',
+    )
+    .count();
+  if (stripActions > 1)
+    throw new Error(`${label}: the status strip offers ${stripActions} actions, not one`);
   // The newest failed run in the fixture stopped at `write_products` because
   // a sign-in was rejected; the engine's English reason is NOT the cause.
-  const expected = language === "de" ? "Ursache: Anmeldung abgelehnt" : "cause: Sign-in rejected";
-  if (!causeText.includes(expected) || causeText.includes("consecutive"))
-    throw new Error(`${label} states the workflow's cause as ${JSON.stringify(causeText)}`);
-  const guidance = await page.locator('[data-testid="workflow-cause-guidance"]').innerText();
-  if (!guidance.includes("3 consecutive scheduled runs failed"))
-    throw new Error(`${label} drops the engine's own wording of the health reason`);
-  if (!(await page.locator('[data-testid="workflow-cause-remedy"]').isVisible()))
-    throw new Error(`${label} shows red with no way to the fix`);
-  const runs = page.locator('[data-testid^="workflow-recent-run-"]');
-  const count = await runs.count();
-  if (count < 1 || count > 5)
-    throw new Error(`${label} lists ${count} latest runs, not up to five`);
-  const first = await runs.first().getAttribute("href");
-  if (!first?.startsWith("/cockpit?run="))
-    throw new Error(`${label} latest run leads to ${first}, not to its sheet`);
-  const all = await page.locator('[data-testid="workflow-all-runs"]').getAttribute("href");
-  if (all !== `/cockpit?runs=all&workflow_id=${uuid}`)
-    throw new Error(`${label} "all runs" leads to ${all}`);
-  // The page's order: whether it may run, how it is called, what it takes,
-  // what it does — and nothing of the old tabs or the "Steuerung" row.
-  for (const section of [
-    "workflow-automation",
-    "workflow-invocation",
-    "workflow-io",
-    "workflow-steps",
-    "workflow-technical",
-  ])
-    if (!(await page.locator(`[data-testid="${section}"]`).count()))
-      throw new Error(`${label} lacks its "${section}" section`);
-  await page.locator('[data-testid="workflow-automation-state"]').waitFor();
+  const stripText = await strip.innerText();
+  if (stripText.includes("consecutive"))
+    throw new Error(`${label}: the strip passes the engine's wording off as its own`);
+  const failing = (await strip.getAttribute("data-strip")) === "failing";
+  if (failing) {
+    const expected = language === "de" ? "Ursache: Anmeldung abgelehnt" : "cause: Sign-in rejected";
+    if (!stripText.includes(expected))
+      throw new Error(`${label} states the workflow's cause as ${JSON.stringify(stripText)}`);
+    if (!(await page.locator('[data-testid="workflow-automation-action"]').isVisible()))
+      throw new Error(`${label} shows red with no way to the cause`);
+  }
+  // The tabs, in the order a reader asks, and the first one open.
+  const tabs = await page
+    .locator('[data-testid="workflow-tabs-list"] [role="tab"]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+  const expectedTabs = ["verwenden", "verlauf", "aufbau", "freigaben"].map(
+    (tab) => `workflow-tabs-tab-${tab}`,
+  );
+  if (JSON.stringify(tabs) !== JSON.stringify(expectedTabs))
+    throw new Error(`${label}: the tabs are ${JSON.stringify(tabs)}`);
+  if (!(await page.locator('[data-testid="workflow-invocation"]').isVisible()))
+    throw new Error(`${label}: "Verwenden" does not open on the call`);
+  if (await page.locator('[data-testid="workflow-io"]').isVisible())
+    throw new Error(`${label}: input and output stand open instead of folded`);
   if (
     await page
-      .locator('[data-testid="workflow-tab-dag"], [data-family-slot="detail-context"]')
+      .locator(
+        '[data-testid="workflow-tab-dag"], [data-family-slot="detail-context"], [data-testid="agent-panel"]',
+      )
       .count()
   )
-    throw new Error(`${label} still carries the old tabs or the governance row`);
-  // An approval for a version that is not running is history: folded, and
-  // headed by what the reader decides by once it is opened.
-  const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
+    throw new Error(`${label} still carries the old tabs, the governance row or the agent panel`);
+  const opened = async (tab, marker) => {
+    await page.locator(`[data-testid="workflow-tabs-tab-${tab}"]`).click();
+    await page.locator(marker).filter({ visible: true }).first().waitFor({ state: "visible" });
+    if (new URL(page.url()).searchParams.get("tab") !== tab)
+      throw new Error(`${label}: the tab "${tab}" is not in the address`);
+  };
+  // Verlauf: the runs, each opening its sheet on this page.
+  await opened(
+    "verlauf",
+    '[data-testid="workflow-runs-row-0"], [data-testid="workflow-runs-mobile-row-0"]',
+  );
+  let runLink = page.locator('[data-testid="workflow-runs-row-link-0"]');
+  if (!(await runLink.isVisible().catch(() => false)))
+    runLink = page.locator('[data-testid="workflow-runs-mobile-row-link-0"]');
+  const runHref = await runLink.getAttribute("href");
+  if (!runHref?.startsWith(`/cockpit/workflows/${uuid}?`) || !runHref.includes("run="))
+    throw new Error(`${label}: a run leads to ${runHref}, not to its sheet on this page`);
+  // Aufbau: the steps as one table, the technical facts folded.
+  await opened("aufbau", '[data-testid="workflow-steps"]');
+  if (!(await page.locator('[data-testid="workflow-technical"]').isVisible()))
+    throw new Error(`${label}: "Technische Angaben" is missing from "Aufbau"`);
+  // Freigaben: an approval for a version that is not running is history:
+  // folded, and headed by what the reader decides by once it is opened.
+  await opened("freigaben", '[data-testid="workflow-approvals-summary"]');
   if (await page.locator('[data-testid="authority-headline"]').count())
     throw new Error(`${label} shows an earlier approval before anyone asked for it`);
+  const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
   await history.click();
-  const headline = await page.locator('[data-testid="authority-headline"]').first().innerText();
+  let first = page.locator('[data-testid="workflow-former-approvals-row-link-0"]');
+  if (!(await first.isVisible().catch(() => false)))
+    first = page.locator('[data-testid="workflow-former-approvals-mobile-row-link-0"]');
+  await first.click();
+  const headline = page.locator('[data-testid="authority-headline"]');
+  await headline.waitFor();
+  const headlineText = await headline.innerText();
   for (const expectedPart of language === "de"
     ? ["Produktion", "gültig bis", "bis zu 24 Läufe"]
     : ["Production", "valid until", "up to 24 runs"])
-    if (!headline.includes(expectedPart))
+    if (!headlineText.includes(expectedPart))
       throw new Error(
-        `${label} authority headline ${JSON.stringify(headline)} lacks ${expectedPart}`,
+        `${label} authority headline ${JSON.stringify(headlineText)} lacks ${expectedPart}`,
       );
-  const headlineTitle = await page
-    .locator('[data-testid="authority-headline"]')
-    .first()
-    .getAttribute("title");
+  const headlineTitle = await headline.locator("[title]").first().getAttribute("title");
   if (headlineTitle !== hostileAuthority.id)
     throw new Error(`${label} authority id is not kept on the headline's title`);
-  // Folded again: the frame photographs the page as a reader finds it.
-  await history.click();
+  await page.locator('[data-testid="authority-sheet-close"]').click();
+  await page.locator('[data-testid="authority-sheet"]').waitFor({ state: "hidden" });
+  // Back to the first tab: the frame photographs the page as a reader finds it.
+  await page.locator('[data-testid="workflow-tabs-tab-verwenden"]').click();
+  await page.locator('[data-testid="workflow-invocation"]').waitFor({ state: "visible" });
 }
 
 /**
@@ -4202,6 +4291,8 @@ async function assertInteractiveSelectors(page, label) {
           rect.width > 0 &&
           rect.height > 0;
         if (!visible || element.hasAttribute("data-testid")) return [];
+        // A copy field's read-only value is addressed by the field's own id.
+        if (element.closest('[data-slot="copy-field"][data-testid]')) return [];
         return [
           `${element.tagName.toLowerCase()}[${element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 32) || "unlabelled"}] ${element.outerHTML.slice(0, 180)}`,
         ];
@@ -4609,7 +4700,6 @@ for (const locale of variants) {
       await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
       );
-    if (standOn(verifyAgentPanel)) await verifyAgentPanel(page, stand, uuid, locale.name);
     if (standOn(verifyChatApprovals))
       await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
@@ -4991,7 +5081,7 @@ for (const locale of focused ? [] : variants) {
       viewport: { width: 1600, height: 1000 },
     });
     const cards = await Promise.all(
-      routes.map(async (route) => {
+      sweptRoutes.map(async (route) => {
         // Read back by the label the frame was WRITTEN under, not by a name
         // rebuilt here. A second place that knows how a frame is called is a
         // second place that can be wrong about it.
@@ -5066,6 +5156,8 @@ if (errors.length) throw new Error(errors.join("; "));
 // next to a DIRECTORY called x.png — it answered 3, missing the two below and
 // counting the directory. Both errors point the same way, towards a number that
 // looks fine.
+// A focused run may walk only stands that photograph nothing.
+if (framesWritten === 0) await prepareOutput();
 const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
   (entry) => entry.isFile() && entry.name.endsWith(".png"),
 ).length;
