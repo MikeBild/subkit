@@ -56,6 +56,8 @@ export {
   cancelConversation,
   clearConversationTurnFailure,
   countConversations,
+  type DeleteConversationResult,
+  deleteConversation,
   type ListConversationsParams,
   listConversations,
   type PatchConversationParams,
