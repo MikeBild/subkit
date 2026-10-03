@@ -21,7 +21,7 @@ import {
   SettingsSaveBar,
   SettingsSection,
   SettingsSectionNav,
-  SettingsStorageNote,
+  SettingsSummary,
 } from "@/pages/settings";
 import {
   SETTING_GROUPS,
@@ -255,14 +255,16 @@ describe("what a row says it applies to", () => {
 });
 
 describe("how a change is stored", () => {
-  test("is answered once, beside the search, in the plan's words", () => {
-    // Behind (?): the button is named for the question, the answer is its tooltip.
-    const html = render(<SettingsStorageNote />);
-    expect(html).toContain('data-testid="settings-storage"');
-    expect(html).toContain('aria-label="Wie wird gespeichert?"');
+  test("is answered once, behind the summary line's (?), in the plan's words", () => {
+    // Behind (?): the summary counts, the answer is the tooltip of its help.
+    const html = render(
+      <SettingsSummary total={6} changed={1} filter="all" onFilter={() => undefined} />,
+    );
+    expect(html).toContain("6 Einstellungen · 1 geändert");
+    expect(html).toContain('data-testid="settings-summary-help"');
     expect(de("settings.storage.body")).toContain("bis dahin läuft die vorherige Version weiter");
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
-    expect(source.match(/<SettingsStorageNote \/>/g)?.length).toBe(1);
+    expect(source.match(/<SettingsSummary\b/g)?.length).toBe(1);
   });
 });
 
