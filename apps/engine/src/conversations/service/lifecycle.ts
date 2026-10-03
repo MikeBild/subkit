@@ -1,8 +1,8 @@
 // Conversation lifecycle endpoints — cancel, list, patch metadata.
 
-import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, ConversationDeletedMetadataSchema } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
   connectors,
@@ -10,10 +10,13 @@ import {
   conversationHidden,
   conversationMessages,
   conversations,
+  fileLinks,
+  mcpTasks,
   workflows,
 } from "../../db/schema/index.ts";
+import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/clock.ts";
-import { cancelConversationAbort } from "../abort.ts";
+import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
@@ -397,6 +400,111 @@ export async function setConversationHidden(
     exec,
   );
   return rowToRecord(row);
+}
+
+/** How long an unfinished background turn counts as still running. Matches
+ *  the MCP task TTL; past it the turn is presumed dead and no longer blocks. */
+const BACKGROUND_TURN_LIVE_MS = 600_000;
+
+export type DeleteConversationResult =
+  | { kind: "deleted"; id: string; title: string | null }
+  | { kind: "not_found" }
+  | { kind: "forbidden" }
+  | { kind: "turn_running" };
+
+/**
+ * Remove a conversation for everyone: the row and, by cascade, its messages,
+ * tool calls, elicitations and hide marks. Its file links have no foreign key
+ * and are removed in the same transaction; the files themselves stay. Only the
+ * owner or an administrator may delete, and never while a turn runs — the
+ * worker would otherwise write into a conversation that no longer exists.
+ */
+export async function deleteConversation(
+  p: {
+    tenant_id: string;
+    conversation_id: string;
+    actor_id: string;
+    actor_type: "user" | "system_account" | "system";
+    actor_is_admin: boolean;
+    request_source: RequestSource;
+  },
+  exec: Db,
+): Promise<DeleteConversationResult> {
+  const [row] = await exec
+    .select({ id: conversations.id, title: conversations.title, owner_id: conversations.owner_id })
+    .from(conversations)
+    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
+    .limit(1);
+  if (!row) return { kind: "not_found" };
+  if (!p.actor_is_admin && row.owner_id !== p.actor_id) return { kind: "forbidden" };
+  if (hasConversationAbort(p.tenant_id, p.conversation_id)) return { kind: "turn_running" };
+  const [liveTask] = await exec
+    .select({ id: mcpTasks.id })
+    .from(mcpTasks)
+    .where(
+      and(
+        eq(mcpTasks.tenant_id, p.tenant_id),
+        eq(mcpTasks.conversation_id, p.conversation_id),
+        isNull(mcpTasks.result),
+        isNull(mcpTasks.failure_reason),
+        isNull(mcpTasks.cancelled_at),
+        // A turn parked on a provider limit resumes later and still counts.
+        or(
+          gt(mcpTasks.created_at, new Date(now() - BACKGROUND_TURN_LIVE_MS)),
+          gt(mcpTasks.parked_until, new Date(now())),
+        ),
+      ),
+    )
+    .limit(1);
+  if (liveTask) return { kind: "turn_running" };
+
+  await exec.transaction(async (tx) => {
+    const [counted] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.tenant_id, p.tenant_id),
+          eq(conversationMessages.conversation_id, p.conversation_id),
+        ),
+      );
+    const links = await tx
+      .delete(fileLinks)
+      .where(
+        and(
+          eq(fileLinks.tenant_id, p.tenant_id),
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.resource_id, p.conversation_id),
+        ),
+      )
+      .returning({ id: fileLinks.id });
+    await tx
+      .delete(conversations)
+      .where(
+        and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+      );
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_type,
+        actor_id: p.actor_id,
+        action: AuditAction.CONVERSATION_DELETED,
+        resource_type: "conversation",
+        resource_id: p.conversation_id,
+        result: "success",
+        metadata: ConversationDeletedMetadataSchema.parse({
+          conversation_id: p.conversation_id,
+          title: row.title,
+          owner_id: row.owner_id,
+          message_count: Number(counted?.n ?? 0),
+          file_links_removed: links.length,
+          request_source: p.request_source,
+        }),
+      },
+      tx as unknown as Db,
+    );
+  });
+  return { kind: "deleted", id: row.id, title: row.title };
 }
 
 export async function countConversations(p: ListConversationsParams, exec: Db): Promise<number> {

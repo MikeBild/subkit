@@ -144,6 +144,11 @@ export function setConversationHidden(id: string, hidden: boolean): Promise<Conv
   });
 }
 
+/** Removes the conversation for everyone (owner or admin); 409 while a turn runs. */
+export function deleteConversation(id: string): Promise<{ id: string; deleted: true }> {
+  return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export function getConversation(id: string): Promise<ConversationDetail> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`);
 }

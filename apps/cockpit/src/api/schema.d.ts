@@ -11450,7 +11450,59 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a conversation for everyone
+         * @description Removes the conversation with its messages, tool calls and file links; the files themselves stay. Only the owner or an administrator may delete. Refused with 409 while a turn is running. Hiding (`/hide`) only takes it out of the caller's own list.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeleteConversationResponse"];
+                    };
+                };
+                /** @description Forbidden — neither the owner nor an administrator */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A turn is still running */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         /** Patch conversation metadata (model, title) */
@@ -21863,6 +21915,12 @@ export interface components {
             reason?: string;
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
+        };
+        DeleteConversationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {boolean} */
+            deleted: true;
         };
         ContextSnapshot: {
             conversation_id: string;
