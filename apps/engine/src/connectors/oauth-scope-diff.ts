@@ -10,6 +10,7 @@
 // recorded scope data" (legacy pre-6.2.4 credential rows).
 
 import { and, eq, isNull, ne } from "drizzle-orm";
+import { parseScopeList } from "../credentials/authority-scopes.ts";
 // biome-ignore lint/style/useImportType: Db is the runtime type the drizzle queries operate on
 import { type Db } from "../db/client.ts";
 import { credentials } from "../db/schema/index.ts";
@@ -34,13 +35,6 @@ export interface ScopeDiff {
   note?: string;
 }
 
-function splitScopes(s: string): string[] {
-  return s
-    .split(/\s+/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-}
-
 /**
  * Pure-function diff used by both surfaces (and the unit test). Returns
  * null when the diff is structurally not applicable:
@@ -58,9 +52,13 @@ export function diffOauthScopes(
   grantedScopeStr: string | null | undefined,
 ): ScopeDiff | null {
   if (!expectedScopeStr) return null;
-  const expected = splitScopes(expectedScopeStr);
+  const expected = parseScopeList(expectedScopeStr);
   if (expected.length === 0) return null;
-  if (grantedScopeStr === null || grantedScopeStr === undefined || grantedScopeStr === "") {
+  // A string with no scope token in it (empty, blanks, separators only) is
+  // read like no string: the stored form of " , " is "", and the callback and
+  // every later reader must agree on what the grant was.
+  const granted = parseScopeList(grantedScopeStr ?? "");
+  if (granted.length === 0) {
     // H4: expected is known but we never recorded granted (pre-G6 row).
     // Surface as "unknown" so the LLM can prompt the user to re-auth
     // rather than assuming the credential is fully provisioned.
@@ -72,7 +70,6 @@ export function diffOauthScopes(
       note: "this credential was issued before the engine started tracking OAuth grant scopes; cannot verify whether every requested scope was granted. Re-run authenticate_oauth to record the current grant set.",
     };
   }
-  const granted = splitScopes(grantedScopeStr);
   const grantedSet = new Set(granted);
   const missing = expected.filter((s) => !grantedSet.has(s));
   if (missing.length === 0) {

@@ -68,6 +68,8 @@ async function revision(id: string, database = ctx): Promise<number> {
 
 test("scope comparison preserves case and distinguishes unknown from an empty grant", () => {
   expect(sameAuthorityScopes("read write", " write read read ")).toBe(true);
+  expect(sameAuthorityScopes("read write", "write,read")).toBe(true);
+  expect(sameAuthorityScopes("read write", "read, write ,read")).toBe(true);
   expect(sameAuthorityScopes("read", "Read")).toBe(false);
   expect(sameAuthorityScopes(null, "")).toBe(false);
   expect(sameAuthorityScopes(null, null)).toBe(true);
@@ -90,8 +92,35 @@ test("ordinary refresh and omitted scopes preserve the credential authority iden
   expect(value?.value.mode).toBe("oauth2");
   if (value?.value.mode !== "oauth2") throw new Error("missing OAuth fixture");
   expect(value.value.access_token).toBe("refreshed-again");
-  expect(value.value.scope).toBe("write read read");
-  expect(value.row.granted_scopes).toBe("write read read");
+  // Stored in the one form: tokens in order, each once, space-separated.
+  expect(value.value.scope).toBe("write read");
+  expect(value.row.granted_scopes).toBe("write read");
+});
+
+test("a comma-separated grant is stored space-separated and is the same authority", async () => {
+  const f = await fixture();
+  await upsertCredential(
+    { ...f.input, value: { ...f.input.value, scope: "read,write,read" } },
+    ctx.db,
+  );
+  expect(await revision(f.credential.id)).toBe(1);
+  let stored = await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db);
+  if (stored?.value.mode !== "oauth2") throw new Error("missing OAuth fixture");
+  expect(stored.value.scope).toBe("read write");
+  expect(stored.row.granted_scopes).toBe("read write");
+
+  // A row written before the stored form was one: the comma list a server
+  // answered with. Reading it as the same set keeps a refresh from looking
+  // like a new grant.
+  await ctx.pool.query("UPDATE subkit.credentials SET granted_scopes=$1 WHERE id=$2", [
+    "read,write",
+    f.credential.id,
+  ]);
+  const refresh = { tenant_id: f.tenant, credential_id: f.credential.id, actor_id: null };
+  await rotateOAuth2Tokens({ ...refresh, access_token: "refreshed", scope: "write, read" }, ctx.db);
+  expect(await revision(f.credential.id)).toBe(1);
+  stored = await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db);
+  expect(stored?.row.granted_scopes).toBe("write read");
 });
 
 test("expanded, reduced, and changed authentication grants advance the authority revision", async () => {
