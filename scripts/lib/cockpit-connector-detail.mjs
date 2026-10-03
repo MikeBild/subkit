@@ -763,7 +763,10 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" choice`);
     // Before reading the server: the stored trust shows, the rest does not.
     const stored = (await text(page, "connector-mcp-tool-row-0")) ?? "";
-    if (!stored.includes("search_items") || !stored.includes(de ? "Ohne Rückfrage" : "without asking"))
+    if (
+      !stored.includes("search_items") ||
+      !stored.includes(de ? "Ohne Rückfrage" : "without asking")
+    )
       throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
     await page.getByTestId("connector-mcp-reload").click();
     await page
