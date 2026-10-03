@@ -16,8 +16,8 @@ import { causeClassLabel } from "@/lib/cause-class";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
-  executionsQuery,
   FAILED_RUN_STATUSES,
   formatRunDuration,
   isExecutionRecord,
@@ -28,7 +28,7 @@ import {
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
@@ -69,19 +69,14 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
   const { t, dateTime, locale } = useI18n();
   const sheets = useOpenRunSheet();
   const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(0);
   const summary = useWeek(workflowId);
-  const query = useQuery({
-    queryKey: ["workflow-runs", workflowId, status, page],
-    queryFn: () => {
-      const params = executionsQuery(
-        { status, source: "all", workflowId, q: "", startedFrom: null, startedTo: null },
-        { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-      );
-      return apiRequest<ExecutionList>(`/v1/executions?${params}`);
-    },
-  });
-  const rows = runsOf(query.data);
+  const list = useInfiniteList<ExecutionListItem>(
+    "/v1/executions",
+    { workflow_id: workflowId, status: status === "all" ? null : status },
+    { limit: PAGE_SIZE },
+  );
+  const { query } = list;
+  const rows = list.items.filter((item): item is ExecutionListItem => isExecutionRecord(item));
   const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
     const column = tableColumns<ExecutionListItem>({ t, dateTime });
     return [
@@ -155,10 +150,7 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
               selects={[
                 {
                   value: status,
-                  onChange: (next) => {
-                    setStatus(next);
-                    setPage(0);
-                  },
+                  onChange: setStatus,
                   label: t("catalog.filterStatus"),
                   testId: "workflow-runs-status",
                   options: [
@@ -177,8 +169,9 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
               status: statusLabel(t, run.status),
             })
           }
-          paging={{ page, onPageChange: setPage, total: query.data?.total ?? undefined }}
-          pageSize={PAGE_SIZE}
+          infinite={list.infinite}
+          total={list.total}
+          getRowId={(run) => run.id}
         />
       </div>
     </>

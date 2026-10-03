@@ -1,7 +1,11 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
+import { apiRequest } from "@/api/client";
 import { absolute, chatNewHref } from "@/app/links";
 import {
-  useTriggerWords,
+  useWaitingConnector,
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
@@ -12,13 +16,13 @@ import {
   ActionMenu,
   type ActionMenuItem,
   CollapsibleSection,
+  ConfirmDialog,
   type Fact,
   FactList,
   Page,
   PageHeader,
   type PageTab,
   PageTabs,
-  StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
@@ -27,6 +31,12 @@ import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
 import { WorkflowRuns } from "@/components/cockpit/workflow-runs";
+import {
+  StepAddDialog,
+  StepSaveBar,
+  stepId,
+  useStepDraft,
+} from "@/components/cockpit/workflow-step-editor";
 import {
   useWorkflowSteps,
   WorkflowStepsList,
@@ -123,6 +133,10 @@ export function WorkflowPage({
   const { t } = useI18n();
   const [renaming, setRenaming] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
+  const navigate = useNavigate();
+  const client = useQueryClient();
   const canWrite = permissions.includes("workflow:write");
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
@@ -149,12 +163,46 @@ export function WorkflowPage({
     legacy,
   };
   const health = text(record, "health_state");
+  // Switched off: archived, its schedule and webhook unbound (D17).
+  const disabled = record.lifecycle === "archived";
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
-  const steps = useWorkflowSteps({ workflowId: id, versionId, steps: stepRecords });
+  const editor = useStepDraft(stepRecords);
+  const steps = useWorkflowSteps({ workflowId: id, versionId, steps: editor.steps });
   const connectorNames = useConnectorNames();
-  const triggerWords = useTriggerWords();
+  const waitingConnector = useWaitingConnector(
+    steps.views.map((view) => ({
+      connectorId: view.definition.connectorId,
+      connector: view.definition.connector,
+    })),
+  );
   const technical = useTechnicalFacts(record);
+  const lifecycle = useMutation({
+    mutationFn: (next: "active" | "archived") =>
+      apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
+        method: "PATCH",
+        body: JSON.stringify({ lifecycle: next }),
+      }),
+    onSuccess: async (_result, next) => {
+      toast.success(
+        t(next === "archived" ? "workflowPage.disabled" : "workflowPage.enabled", { name: title }),
+      );
+      setConfirming(null);
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", id] });
+      automation.refresh();
+    },
+    onError: () => toast.error(t("common.actionFailed")),
+  });
+  const remove = useMutation({
+    mutationFn: () => apiRequest(`/v1/workflows/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      toast.success(t("workflowPage.deleted", { name: title }));
+      setConfirming(null);
+      await client.invalidateQueries({ queryKey: ["catalog"] });
+      void navigate({ to: "/workflows" });
+    },
+    onError: () => toast.error(t("common.actionFailed")),
+  });
 
   const menu: ActionMenuItem[] = [
     ...(canChat
@@ -180,34 +228,45 @@ export function WorkflowPage({
             onSelect: () => setMoving(true),
             testId: "workflow-menu-category",
           },
+          disabled
+            ? {
+                label: t("workflowStrip.action.enable"),
+                onSelect: () => lifecycle.mutate("active"),
+                testId: "workflow-menu-enable",
+              }
+            : {
+                label: t("workflowPage.disable"),
+                onSelect: () => setConfirming("disable"),
+                testId: "workflow-menu-disable",
+              },
+          {
+            label: t("workflowPage.delete"),
+            onSelect: () => setConfirming("delete"),
+            destructive: true,
+            testId: "workflow-menu-delete",
+          },
         ]
       : []),
   ];
 
-  // "Verwenden": what starts it on its own and whether that runs live.
+  // "Verwenden": what starts it on its own (R2); the approval is the strip's.
   const state = automation.state;
-  const listedHooks = state?.triggers.filter((entry) => entry.kind === "hook").length ?? 0;
-  const started =
-    state && (state.triggers.length > 0 || webhooksActive > 0)
-      ? triggerWords(state.triggers, listedHooks === 0 ? webhooksActive : 0).join(" · ")
-      : null;
-  const verdict =
-    state?.state === "approved"
-      ? t("workflowPage.approvedIn", {
-          environment: t(
-            state.environment === "prod" ? "authority.production" : "authority.development",
-          ),
-        })
-      : null;
+  const kinds = [
+    ...((state?.triggers.some((entry) => entry.kind === "hook") ?? false) || webhooksActive > 0
+      ? [t("invocation.mode.webhook")]
+      : []),
+    ...(state?.triggers.some((entry) => entry.kind === "schedule" && !entry.paused)
+      ? [t("invocation.mode.schedule")]
+      : []),
+  ];
   const useSummary = state ? (
-    <>
-      {started ? (
-        <span data-testid="workflow-automation-triggers">{started}</span>
-      ) : (
-        t("automation.headline.manual")
-      )}
-      {verdict ? ` · ${verdict}` : null}
-    </>
+    kinds.length > 0 ? (
+      <span data-testid="workflow-automation-triggers">
+        {t("workflowPage.calledBy", { kinds: kinds.join(t("workflowPage.and")) })}
+      </span>
+    ) : (
+      t("workflowPage.calledOnRequest")
+    )
   ) : null;
   // "Aufbau": version · steps · connectors.
   const connectors = [
@@ -236,6 +295,9 @@ export function WorkflowPage({
           {useSummary ? <SummaryLine text={useSummary} testId="workflow-use-summary" /> : null}
           <WorkflowInvocation
             workflowId={id}
+            workflowName={title}
+            canWrite={canWrite}
+            canChat={canChat}
             effectiveTrigger={effectiveTrigger}
             approvedEnvironment={state?.state === "approved" ? state.environment : null}
           />
@@ -266,14 +328,36 @@ export function WorkflowPage({
             text={buildSummary}
             help={canRun && steps.views.length > 0 ? t("workflow.testRunSecondary") : undefined}
             aside={
-              canRun && steps.views.length > 0 ? (
-                <WorkflowTestRun steps={steps} definition={draftDefinition(record, stepRecords)} />
-              ) : undefined
+              <>
+                {canRun && steps.views.length > 0 ? (
+                  <WorkflowTestRun
+                    steps={steps}
+                    definition={draftDefinition(record, editor.steps as RecordValue[])}
+                  />
+                ) : null}
+                {canWrite && !legacy ? (
+                  <ActionMenu
+                    items={[
+                      {
+                        label: t("stepEditor.addTitle"),
+                        onSelect: () => setAdding(true),
+                        testId: "step-add",
+                      },
+                    ]}
+                  />
+                ) : null}
+              </>
             }
             testId="workflow-build-summary"
           />
           <WorkflowTestResult steps={steps} />
-          <WorkflowStepsList key={`${id}:${versionId ?? "none"}`} steps={steps} canRun={canRun} />
+          <WorkflowStepsList
+            key={`${id}:${versionId ?? "none"}`}
+            steps={steps}
+            canRun={canRun}
+            {...(canWrite && !legacy ? { editor } : {})}
+          />
+          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
           <div className="flex flex-col gap-2">
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
@@ -305,7 +389,6 @@ export function WorkflowPage({
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          badge={health ? <StatusBadge state={health} testId="workflow-health-badge" /> : undefined}
           purpose={purpose || undefined}
           secondary={
             canChat ? (
@@ -327,7 +410,7 @@ export function WorkflowPage({
           }
           menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
           action={
-            canRun && !legacy ? (
+            canRun && !legacy && !disabled ? (
               <RunWorkflowDialog
                 workflowId={id}
                 workflowName={title}
@@ -345,6 +428,9 @@ export function WorkflowPage({
           workflow={workflow}
           workflowName={title}
           health={health}
+          disabled={disabled}
+          lastRunAt={text(record, "last_executed_at")}
+          waitingConnector={waitingConnector}
           permissions={permissions}
         />
         <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
@@ -358,6 +444,39 @@ export function WorkflowPage({
           onOpenChange={setRenaming}
         />
       ) : null}
+      {canWrite ? (
+        <StepAddDialog
+          open={adding}
+          onOpenChange={setAdding}
+          taken={editor.steps.map(stepId)}
+          onAdd={editor.add}
+        />
+      ) : null}
+      <ConfirmDialog
+        open={confirming === "disable"}
+        onOpenChange={(next) => !next && setConfirming(null)}
+        object={title}
+        verb={t("workflowPage.disable")}
+        consequence={t("workflowPage.disableConsequence")}
+        pending={lifecycle.isPending}
+        onConfirm={async () => {
+          await lifecycle.mutateAsync("archived").catch(() => undefined);
+        }}
+        testId="workflow-disable-confirm"
+      />
+      <ConfirmDialog
+        open={confirming === "delete"}
+        onOpenChange={(next) => !next && setConfirming(null)}
+        object={title}
+        verb={t("workflowPage.delete")}
+        consequence={t("workflowPage.deleteConsequence")}
+        destructive
+        pending={remove.isPending}
+        onConfirm={async () => {
+          await remove.mutateAsync().catch(() => undefined);
+        }}
+        testId="workflow-delete-confirm"
+      />
       {canWrite && moving ? (
         <WorkflowRecategorize record={{ ...record, id }} onClose={() => setMoving(false)} />
       ) : null}

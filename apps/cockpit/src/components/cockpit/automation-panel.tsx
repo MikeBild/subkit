@@ -1,17 +1,21 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import {
   absolute,
   attentionHref,
   chatNewHref,
+  connectorHref,
   routerTarget,
   WORKFLOW_AUTOMATION_ANCHOR,
 } from "@/app/links";
+import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
-import { ActionMenu, type ActionMenuItem, StatusStrip } from "@/components/cockpit/patterns";
+import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
+import { type ActionSpec, StatusStrip } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import {
   type WorkflowDiagnosis,
@@ -29,16 +33,17 @@ import {
   automationState,
 } from "@/lib/automation-state";
 import { causeClassLabel } from "@/lib/cause-class";
+import { connectorAuthState } from "@/lib/connector-auth-state";
 import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
-import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
+import { formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
 import {
   STRIP_STATE_KEYS,
-  type StripAction,
   stripActionKey,
+  type WaitingConnector,
   workflowStrip,
 } from "@/lib/workflow-strip";
 import { isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
@@ -393,17 +398,44 @@ function useFailingLine(): (
   };
 }
 
+/** The first connector this workflow uses whose sign-in is gone (R7). */
+export function useWaitingConnector(
+  steps: readonly { connectorId: string | null; connector: string | null }[],
+): WaitingConnector | null {
+  const records = useConnectorRecords();
+  for (const step of steps) {
+    const record = records.find(
+      (item) =>
+        (step.connectorId !== null && item.id === step.connectorId) ||
+        (step.connector !== null && item.slug === step.connector),
+    );
+    if (!record) continue;
+    const state = connectorAuthState(record);
+    if (state === "expired" || state === "credentials_missing")
+      return {
+        id: record.id,
+        name: record.display_name,
+        state: state === "expired" ? "expired" : "missing",
+      };
+  }
+  return null;
+}
+
 /**
- * A workflow's state in one line (P3) — whether it may run on its own, whether
- * its runs fail, whether a repair waits — and the one action of the top state
- * (D15). The approval dialog it opens is mounted here, once; the gate's own
- * diagnosis stands right below it while a step is refused.
+ * A workflow's state in one line (P3) — whether it is switched on, may run
+ * on its own, waits for a connector, fails, or has a repair waiting — and the
+ * one action of the top state (D15). The approval dialog it opens is mounted
+ * here, once; the gate's own diagnosis stands right below it while a step is
+ * refused (R5).
  */
 export function WorkflowStatus({
   automation,
   workflow,
   workflowName,
   health,
+  disabled,
+  lastRunAt,
+  waitingConnector,
   permissions,
 }: {
   automation: WorkflowAutomation;
@@ -411,21 +443,41 @@ export function WorkflowStatus({
   workflowName: string;
   /** The engine's run health of the workflow. */
   health: string | null;
+  /** The workflow is switched off. */
+  disabled: boolean;
+  lastRunAt: string | null;
+  waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { state } = automation;
   const navigate = useNavigate();
   const sheets = useOpenRunSheet();
+  const client = useQueryClient();
   const runHealth = useRunHealth(automation.workflowId, health, permissions);
   const failingLine = useFailingLine();
   const headline = useHeadline(state);
+  const enable = useMutation({
+    mutationFn: () =>
+      apiRequest(`/v1/workflows/${encodeURIComponent(automation.workflowId)}/metadata`, {
+        method: "PATCH",
+        body: JSON.stringify({ lifecycle: "active" }),
+      }),
+    onSuccess: async () => {
+      toast.success(t("workflowPage.enabled", { name: workflowName }));
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows"] });
+      automation.refresh();
+    },
+    onError: () => toast.error(t("common.actionFailed")),
+  });
   const strip = workflowStrip({
     automation: state,
     failed: automation.failed,
+    disabled,
     health,
     failedRunId: runHealth.failedRun?.id ?? null,
     repairPrepared: runHealth.repairPrepared,
+    waitingConnector,
     rights: { write: automation.canWrite, chat: automation.canChat },
   });
   // A link that names the strip lands on it. The browser's own jump happens
@@ -446,45 +498,116 @@ export function WorkflowStatus({
           mayRun: automation.canRun,
         })
       : null;
-  const facts =
-    strip.kind === "failing"
-      ? failingLine(runHealth.failedRun?.failure ?? null, health ?? "failing")
-      : strip.kind === "failed"
-        ? t("authority.loadFailed")
-        : strip.kind === "repairPrepared"
-          ? t("workflowStrip.headline.repairPrepared")
-          : headline;
-  // The one approval dialog of the page: its own trigger is the strip's
-  // action where approving is the next step, and it is opened by request
-  // (`openRequest`) from the diagnosis otherwise.
-  const grant =
-    automation.canWrite && state && target && !legacy
-      ? (label: string | null) => (
-          <GrantWorkflowAuthority
-            key={`${automation.workflowId}:${target.version_id}`}
-            workflowId={automation.workflowId}
-            versionId={target.version_id}
-            {...(target.activation ? { activation: target.activation } : {})}
-            versionLabel={t(
-              target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning",
-              { version: target.version == null ? "—" : `v${target.version}` },
-            )}
-            initialEnvironment={state.environment}
-            openRequest={automation.grantRequest}
-            onCompleted={automation.refresh}
-            withTrigger={label !== null}
-            triggerLabel={label ?? undefined}
-            triggerTestId="workflow-automation-action"
-            triggerSize="default"
-          />
-        )
-      : null;
+  const version = (value: number | null | undefined) =>
+    value === null || value === undefined ? t("authority.noneActive") : `v${value}`;
+  const blocked = Math.max(1, automation.diagnosis?.diagnoses.length ?? 0);
+  const line = ((): string | null => {
+    switch (strip.kind) {
+      case "loading":
+        return null;
+      case "failed":
+        return t("authority.loadFailed");
+      case "disabled":
+        return t("workflowStrip.line.disabled");
+      case "paused":
+        return state?.primaryAction === null
+          ? t("automation.hookOff")
+          : t("workflowStrip.line.paused");
+      case "stopped":
+        return t("workflowStrip.line.stopped");
+      case "repair":
+        return t(
+          blocked === 1 ? "workflowStrip.line.blocked.one" : "workflowStrip.line.blocked.other",
+          { count: blocked },
+        );
+      case "unapproved":
+        return t("workflowStrip.line.unapproved");
+      case "grant":
+        return t("workflowStrip.line.grant", { version: version(state?.facts.version) });
+      case "apply":
+        return t("workflowStrip.line.apply", {
+          prepared: version(state?.facts.preparedVersion),
+          active: version(state?.facts.version),
+        });
+      case "connector":
+        return waitingConnector
+          ? t(
+              waitingConnector.state === "expired"
+                ? "workflowStrip.line.connectorExpired"
+                : "workflowStrip.line.connectorMissing",
+              { name: waitingConnector.name },
+            )
+          : null;
+      case "failing":
+        return failingLine(runHealth.failedRun?.failure ?? null, health ?? "failing");
+      case "repairPrepared":
+        return t("workflowStrip.headline.repairPrepared");
+      case "approved":
+      case "manual":
+        return lastRunAt
+          ? t("workflowStrip.line.running", { when: formatRelativeTime(locale, lastRunAt) })
+          : t("workflowStrip.line.runningNever");
+      default:
+        return headline;
+    }
+  })();
   const help = [
-    ...strip.lower.map((kind) => t(STRIP_STATE_KEYS[kind])),
-    ...(!automation.canWrite && strip.action === null && strip.kind !== "approved"
+    ...(strip.lower.length > 0
+      ? [
+          t("workflowStrip.also", {
+            states: strip.lower.map((kind) => t(STRIP_STATE_KEYS[kind])).join(", "),
+          }),
+        ]
+      : []),
+    ...(notice ? [t(OPENING_NOTICE_KEYS[notice])] : []),
+    ...(!automation.canWrite && strip.action === null && strip.tone !== "ok"
       ? [t("automation.noRight")]
       : []),
   ];
+  const action = ((): ActionSpec | null => {
+    const a = strip.action;
+    if (!a) return null;
+    const label = t(stripActionKey(a));
+    const base = { label, variant: "outline" as const, testId: "workflow-automation-action" };
+    switch (a.kind) {
+      case "retry":
+        return { ...base, onClick: automation.retry, testId: "workflow-automation-failed-retry" };
+      case "chat":
+        return {
+          ...base,
+          href: absolute(
+            chatNewHref({
+              workflowId: automation.workflowId,
+              prompt: t("automation.legacyPrompt", { name: workflowName }),
+            }),
+          ),
+        };
+      case "enable":
+        return { ...base, onClick: () => enable.mutate(), pending: enable.isPending };
+      case "resume":
+        return {
+          ...base,
+          pending: automation.resume.pending,
+          onClick: () => automation.resume.run(a.scheduleIds),
+        };
+      case "approve":
+        return { ...base, onClick: automation.openGrant, data: OPENS_APPROVAL };
+      case "recheck":
+        return { ...base, onClick: automation.refresh, testId: "workflow-automation-recheck" };
+      case "connector":
+        return { ...base, onClick: () => void navigate({ to: connectorHref(a.connectorId) }) };
+      case "cause":
+        return { ...base, onClick: () => sheets.run(a.runId) };
+      case "review":
+        return {
+          ...base,
+          onClick: () =>
+            void navigate(
+              routerTarget(attentionHref({ review: `workflow:${automation.workflowId}` })),
+            ),
+        };
+    }
+  })();
   return (
     <div className="flex flex-col gap-3">
       <div
@@ -498,138 +621,59 @@ export function WorkflowStatus({
       >
         <StatusStrip
           tone={strip.tone}
+          loading={strip.kind === "loading"}
           testId="workflow-status-strip"
           line={
             <>
               <span className="font-medium" data-testid="workflow-automation-state">
                 {t(STRIP_STATE_KEYS[strip.kind])}
               </span>
-              {facts ? (
+              {line ? (
                 <>
                   {" · "}
-                  <span data-testid="workflow-automation-headline">{facts}</span>
+                  <span data-testid="workflow-automation-headline">{line}</span>
                 </>
+              ) : null}
+              {strip.lower.length > 0 ? (
+                <span data-testid="workflow-strip-more">
+                  {t("workflowStrip.line.more", { count: strip.lower.length })}
+                </span>
               ) : null}
             </>
           }
-          help={help.length > 0 ? help.join(" · ") : undefined}
-          more={
-            notice || strip.lower.length > 0 ? (
-              <>
-                {notice ? (
-                  <span data-testid="grant-opening-notice">{t(OPENING_NOTICE_KEYS[notice])}</span>
-                ) : null}
-                {notice && strip.lower.length > 0 ? " · " : null}
-                {strip.lower.length > 0 ? (
-                  <span data-testid="workflow-strip-more">
-                    {t("workflowStrip.more", { count: strip.lower.length })}
-                  </span>
-                ) : null}
-              </>
-            ) : undefined
-          }
-          action={
-            strip.action?.kind === "approve" ? (
-              grant ? (
-                grant(t(stripActionKey(strip.action)))
-              ) : null
-            ) : strip.action ? (
-              <StripActionButton
-                action={strip.action}
-                automation={automation}
-                workflowName={workflowName}
-                onOpenRun={sheets.run}
-                onReview={() =>
-                  void navigate(
-                    routerTarget(attentionHref({ review: `workflow:${automation.workflowId}` })),
-                  )
-                }
-              />
-            ) : undefined
-          }
+          help={help.length > 0 ? help.join(" ") : undefined}
+          action={action ?? undefined}
         />
       </div>
-      {/* Why the gate holds it and what removes that — in the environment the
-          approval itself is judged in. Renders nothing when nothing is held.
-          A version in an earlier format is not judged by the gate at all. */}
-      {state && !legacy ? (
+      {/* Why the gate holds it and what removes that — one row per refused
+          step, each with its own fix, right under the strip (R5). */}
+      {state && !legacy && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}
           environment={state.environment}
-          // The approval has one opener. Where the strip's action is that
-          // opener, the diagnosis names it and adds none.
           onOpenApproval={
             automation.canWrite && target && !opensApproval ? automation.openGrant : undefined
           }
-          // "Erneut prüfen" in the strip re-reads the diagnosis with everything else.
           ownRetry={state.state !== "unknown"}
           rejectedRepairs={automation.rejectedRepairs}
           onRepairRejected={automation.noteRejectedRepair}
         />
       ) : null}
-      {/* Without an opener in the strip the dialog still answers the
-          diagnosis' request ("Freigabe öffnen" for a sample call). */}
-      {grant && !opensApproval ? grant(null) : null}
+      {automation.canWrite && state && target && !legacy ? (
+        <GrantWorkflowAuthority
+          key={`${automation.workflowId}:${target.version_id}`}
+          workflowId={automation.workflowId}
+          versionId={target.version_id}
+          {...(target.activation ? { activation: target.activation } : {})}
+          versionLabel={t(
+            target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning",
+            { version: target.version == null ? "—" : `v${target.version}` },
+          )}
+          initialEnvironment={state.environment}
+          openRequest={automation.grantRequest}
+          onCompleted={automation.refresh}
+        />
+      ) : null}
     </div>
   );
-}
-
-function StripActionButton({
-  action,
-  automation,
-  workflowName,
-  onOpenRun,
-  onReview,
-}: {
-  action: StripAction;
-  automation: WorkflowAutomation;
-  workflowName: string;
-  onOpenRun: (runId: string) => void;
-  onReview: () => void;
-}) {
-  const { t } = useI18n();
-  const label = t(stripActionKey(action));
-  const item = ((): ActionMenuItem => {
-    switch (action.kind) {
-      case "retry":
-        return { label, onSelect: automation.retry, testId: "workflow-automation-failed-retry" };
-      case "chat": {
-        const prompt: TranslationKey =
-          automation.state?.state === "legacy"
-            ? "automation.legacyPrompt"
-            : "automation.repairPrompt";
-        return {
-          label,
-          href: absolute(
-            chatNewHref({
-              workflowId: automation.workflowId,
-              prompt: t(prompt, { name: workflowName }),
-            }),
-          ),
-          testId: "workflow-automation-action",
-        };
-      }
-      case "resume":
-        return {
-          label,
-          disabled: automation.resume.pending,
-          onSelect: () => automation.resume.run(action.scheduleIds),
-          testId: "workflow-automation-action",
-        };
-      // The approval dialog renders its own opener (see `WorkflowStatus`).
-      case "approve":
-        return { label, onSelect: automation.openGrant, testId: "workflow-automation-action" };
-      case "recheck":
-        return { label, onSelect: automation.refresh, testId: "workflow-automation-recheck" };
-      case "cause":
-        return {
-          label,
-          onSelect: () => onOpenRun(action.runId),
-          testId: "workflow-automation-action",
-        };
-      case "review":
-        return { label, onSelect: onReview, testId: "workflow-automation-action" };
-    }
-  })();
-  return <ActionMenu items={[item]} />;
 }
