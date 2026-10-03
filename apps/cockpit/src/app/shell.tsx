@@ -52,6 +52,7 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
+import { LiveEventsProvider, type LiveStatus, useLiveStatus } from "./live-events";
 import { navigationItem, navigationTarget, visibleNavigation } from "./navigation";
 import { useSession } from "./session";
 import {
@@ -62,6 +63,7 @@ import {
   useShellHeaderState,
 } from "./shell-header";
 import { useAttention } from "./use-attention";
+import { VersionNotice } from "./version-notice";
 
 const THEMES: {
   value: Theme;
@@ -106,23 +108,24 @@ export function AppShell() {
   const active = navigationItem(pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/");
 
   return (
-    <SidebarProvider
-      data-testid="cockpit-shell"
-      data-cockpit-ui
-      className="h-svh min-h-0 overflow-hidden"
-    >
-      <Sidebar
-        collapsible="icon"
-        mobileTitle={t("app.cockpit")}
-        mobileDescription={t("nav.mobileDescription")}
-        mobileCloseLabel={t("common.close")}
-        mobileCloseTestId="cockpit-sidebar-mobile-close"
-        data-testid="cockpit-sidebar"
-        data-cockpit-ui="product-sidebar"
+    <LiveEventsProvider>
+      <SidebarProvider
+        data-testid="cockpit-shell"
+        data-cockpit-ui
+        className="h-svh min-h-0 overflow-hidden"
       >
-        <SidebarHeader data-testid="cockpit-sidebar-header">
-          <SidebarMenu>
-            {/*
+        <Sidebar
+          collapsible="icon"
+          mobileTitle={t("app.cockpit")}
+          mobileDescription={t("nav.mobileDescription")}
+          mobileCloseLabel={t("common.close")}
+          mobileCloseTestId="cockpit-sidebar-mobile-close"
+          data-testid="cockpit-sidebar"
+          data-cockpit-ui="product-sidebar"
+        >
+          <SidebarHeader data-testid="cockpit-sidebar-header">
+            <SidebarMenu>
+              {/*
               The wordmark (§6): product icon plus the product name in its
               canonical spelling, top of the sidebar.
 
@@ -143,84 +146,87 @@ export function AppShell() {
               the name is painted on, and a container does not necessarily carry
               the same value.
             */}
-            <SidebarMenuItem data-testid="cockpit-wordmark">
-              <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
-                <Link to="/" data-testid="cockpit-home-link">
-                  <span
-                    data-testid="cockpit-wordmark-icon"
-                    className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
-                  >
-                    <Workflow data-icon="inline-start" />
-                  </span>
-                  <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                    <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
-                      {t("app.name")}
+              <SidebarMenuItem data-testid="cockpit-wordmark">
+                <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
+                  <Link to="/" data-testid="cockpit-home-link">
+                    <span
+                      data-testid="cockpit-wordmark-icon"
+                      className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
+                    >
+                      <Workflow data-icon="inline-start" />
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {session.tenant.display_name}
+                    <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                      <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
+                        {t("app.name")}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {session.tenant.display_name}
+                      </span>
                     </span>
-                  </span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
 
-        <SidebarContent data-testid="cockpit-navigation" key={pathname}>
-          <nav aria-label={t("nav.label")}>
-            {groups.map((group) => (
-              <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                {/* No heading where the group has no name: Übersicht stands
+          <SidebarContent data-testid="cockpit-navigation" key={pathname}>
+            <nav aria-label={t("nav.label")}>
+              {groups.map((group) => (
+                <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
+                  {/* No heading where the group has no name: Übersicht stands
                     ungrouped, and a rendered label above it makes it a group. */}
-                {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.items.map((item) => {
-                      const label = t(item.labelKey);
-                      const target = navigationTarget(item, session.permissions);
-                      return (
-                        <SidebarMenuItem key={item.path}>
-                          <SidebarMenuButton asChild tooltip={label} isActive={active === item}>
-                            <Link
-                              to={target}
-                              data-testid={
-                                item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
-                              }
-                            >
-                              <item.icon data-icon="inline-start" />
-                              <span>{label}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                          {item.path === "/" && <AttentionCounter />}
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
-          </nav>
-        </SidebarContent>
+                  {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {group.items.map((item) => {
+                        const label = t(item.labelKey);
+                        const target = navigationTarget(item, session.permissions);
+                        return (
+                          <SidebarMenuItem key={item.path}>
+                            <SidebarMenuButton asChild tooltip={label} isActive={active === item}>
+                              <Link
+                                to={target}
+                                data-testid={
+                                  item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
+                                }
+                              >
+                                <item.icon data-icon="inline-start" />
+                                <span>{label}</span>
+                              </Link>
+                            </SidebarMenuButton>
+                            {item.path === "/" && <AttentionCounter />}
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))}
+            </nav>
+          </SidebarContent>
 
-        <SidebarFooter data-testid="cockpit-sidebar-footer">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <AccountMenu />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-        <SidebarRail
-          aria-label={t("nav.toggle")}
-          title={t("nav.toggle")}
-          data-testid="sidebar-rail"
-        />
-      </Sidebar>
+          <SidebarFooter data-testid="cockpit-sidebar-footer">
+            <SidebarMenu>
+              <SidebarMenuItem className="relative">
+                <AccountMenu />
+                <LiveIndicator />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+          <SidebarRail
+            aria-label={t("nav.toggle")}
+            title={t("nav.toggle")}
+            data-testid="sidebar-rail"
+          />
+        </Sidebar>
 
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden" data-testid="cockpit-content">
-        <ShellContent />
-      </SidebarInset>
-      <Toaster richColors position="bottom-right" />
-    </SidebarProvider>
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden" data-testid="cockpit-content">
+          <ShellContent />
+        </SidebarInset>
+        <Toaster richColors position="bottom-right" />
+        <VersionNotice />
+      </SidebarProvider>
+    </LiveEventsProvider>
   );
 }
 
@@ -300,6 +306,41 @@ function AttentionCounter() {
     >
       {badge.count}
     </SidebarMenuBadge>
+  );
+}
+
+const LIVE_DOT: Record<LiveStatus, string> = {
+  live: "bg-success",
+  connecting: "bg-muted-foreground/40",
+  reconnecting: "bg-warning animate-pulse motion-reduce:animate-none",
+  offline: "bg-muted-foreground/40",
+};
+
+const LIVE_LABEL = {
+  live: "platform.live.live",
+  connecting: "platform.live.connecting",
+  reconnecting: "platform.live.reconnecting",
+  offline: "platform.live.offline",
+} as const satisfies Record<LiveStatus, TranslationKey>;
+
+/**
+ * Whether the Cockpit is live: one dot on the account avatar, its state in the
+ * tooltip and for a screen reader. No text in the footer.
+ */
+function LiveIndicator() {
+  const { status } = useLiveStatus();
+  const { t } = useI18n();
+  const label = t(LIVE_LABEL[status]);
+  return (
+    <span
+      role="status"
+      data-testid="cockpit-live-indicator"
+      data-live-status={status}
+      className="pointer-events-none absolute top-1.5 left-7 flex size-2.5 items-center justify-center rounded-full bg-sidebar"
+    >
+      <span aria-hidden="true" className={cn("size-1.5 rounded-full", LIVE_DOT[status])} />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 
