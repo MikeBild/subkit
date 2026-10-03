@@ -1387,8 +1387,6 @@ export function ChatPage() {
   );
   const [showHidden, setShowHidden] = useState(false);
   const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode>(DEFAULT_AUTHORING_MODE);
-  const [conversationSearch, setConversationSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
   const [streamedDiffs, setStreamedDiffs] = useState<StreamedDiff[]>([]);
   // The engine has always streamed `tool_call_start`, `tool_log` and
@@ -1443,13 +1441,9 @@ export function ChatPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(conversationSearch.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [conversationSearch]);
   const conversations = useQuery({
-    queryKey: ["conversations", debouncedSearch, showHidden ? "hidden" : "visible"],
-    queryFn: () => listConversations(debouncedSearch, showHidden ? { hidden: "only" } : {}),
+    queryKey: ["conversations", "", showHidden ? "hidden" : "visible"],
+    queryFn: () => listConversations("", showHidden ? { hidden: "only" } : {}),
   });
   const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
   useEffect(() => {
@@ -2130,14 +2124,21 @@ export function ChatPage() {
               setRenameTitle(current.title || t("chat.untitled"));
             },
           },
-          {
-            label: t("chat.hide"),
-            testId: "chat-hide",
-            onSelect: () => {
-              hide.mutate({ id: current.id, hidden: true });
-              startNew();
-            },
-          },
+          // Out of the list, never deleted — and back again from the hidden view.
+          current.hidden
+            ? {
+                label: t("chat.unhide"),
+                testId: "chat-unhide",
+                onSelect: () => hide.mutate({ id: current.id, hidden: false }),
+              }
+            : {
+                label: t("chat.hide"),
+                testId: "chat-hide",
+                onSelect: () => {
+                  hide.mutate({ id: current.id, hidden: true });
+                  startNew();
+                },
+              },
         ]
       : [];
   const headerText =
@@ -2152,33 +2153,29 @@ export function ChatPage() {
                 ? "chat.untitled"
                 : "chat.new",
           );
-  // The page's own header stands over the conversation list: "Chat" and the
-  // one page action. "New" is a reset to the empty state, not a form; on a new
-  // conversation it would only throw the draft away, so it is not there.
-  const chatHeader = (
-    <PageHeader
-      testId="chat-header"
-      title={t("nav.chat")}
-      action={
-        selection.kind === "new" && !activeId ? null : (
-          <Button
-            variant={cardActs ? "outline" : "default"}
-            onClick={startNew}
-            data-testid="conversation-new"
-          >
-            {t("chat.new")}
-          </Button>
-        )
-      }
-    />
-  );
+  // The page's own header stands over the conversation list: "Chat", in a
+  // 72px head with its divider (R18). The page action stands under it.
+  const chatHeader = <PageHeader testId="chat-header" title={t("nav.chat")} />;
+  // "New" is a reset to the empty state, not a form. On a new conversation it
+  // would only throw the draft away, so it is not there.
+  const newConversation =
+    selection.kind === "new" && !activeId ? null : (
+      <Button
+        variant={cardActs ? "outline" : "default"}
+        onClick={startNew}
+        className="md:w-full"
+        data-testid="conversation-new"
+      >
+        {t("chat.new")}
+      </Button>
+    );
   // The open conversation's own head, on the line of the page title (R18):
   // its name and state on the left; the list (on a phone), the working
   // context and the menu on the right. The mode and what the conversation
   // consumed stand with the composer: they describe what the next message is
   // sent under.
   const conversationHead = (
-    <div className="border-b pt-3 pb-3 md:pt-6" data-testid="chat-conversation-head">
+    <div className="py-3 md:pt-6 md:pb-0" data-testid="chat-conversation-head">
       <div className="flex min-h-8 items-center gap-2">
         <span
           className="min-w-0 flex-1 truncate text-sm font-semibold"
@@ -2213,13 +2210,6 @@ export function ChatPage() {
         </IconButton>
         {menuItems.length > 0 ? <ActionMenu items={menuItems} testId="chat-menu" /> : null}
       </div>
-      {/* §5: the state line of a conversation that has one. A new
-          conversation has no state yet, and says nothing. */}
-      {summaryLine ? (
-        <p className="mt-1 truncate text-xs text-muted-foreground" data-testid="chat-summary">
-          {summaryLine}
-        </p>
-      ) : null}
     </div>
   );
   const list = (
@@ -2233,18 +2223,11 @@ export function ChatPage() {
       activeId={activeId}
       showHidden={showHidden}
       onToggleHidden={() => setShowHidden((value) => !value)}
-      onHide={(conversation, hidden) => hide.mutate({ id: conversation.id, hidden })}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
         navigate("select", false);
         setChatPath(id);
         setListOpen(false);
-      }}
-      search={conversationSearch}
-      onSearchChange={setConversationSearch}
-      onRename={(conversation) => {
-        setRenameTarget(conversation);
-        setRenameTitle(conversation.title || t("chat.untitled"));
       }}
       labelsFor={(conversation) => ({
         untitled: t("chat.untitled"),
@@ -2433,15 +2416,16 @@ export function ChatPage() {
           search box shares it, and a row's hover fills that same width (R18). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row" data-testid="chat-layout">
         <aside
-          className="flex shrink-0 flex-col border-b md:w-72 md:border-r md:border-b-0 md:pr-4"
+          className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch md:border-r md:border-b-0 md:pr-2"
           data-testid="chat-list-panel"
         >
-          {chatHeader}
+          <div className="md:h-18 md:border-b">{chatHeader}</div>
+          {newConversation ? <div className="md:pt-2">{newConversation}</div> : null}
           <section
             id="chat-conversation-list"
             aria-label={t("chat.conversations")}
             className={cn(
-              "min-h-0 flex-1 flex-col pb-3",
+              "col-span-2 min-h-0 flex-1 flex-col pt-2 pb-4",
               listOpen ? "flex max-h-[40vh] md:max-h-none" : "hidden md:flex",
             )}
           >
@@ -2457,7 +2441,20 @@ export function ChatPage() {
           data-dragging={dragging ? "true" : undefined}
           {...dropFiles}
         >
-          <ReadingColumn testId="chat-header-column">{conversationHead}</ReadingColumn>
+          {/* The open conversation's head: as high as the list's head, its
+            divider across the whole conversation side (R18). */}
+          <ReadingColumn testId="chat-header-column" className="shrink-0 border-b md:h-18">
+            {conversationHead}
+          </ReadingColumn>
+          {/* §5: the state line of a conversation that has one. A new
+            conversation has no state yet, and says nothing. */}
+          {summaryLine ? (
+            <ReadingColumn className="pt-2">
+              <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
+                {summaryLine}
+              </p>
+            </ReadingColumn>
+          ) : null}
           {/* The turn that just died, and the one that died before a reload. A
             known cause is the line; the engine's own sentence stays one (?)
             deep — it tells the reader what to do, and is kept verbatim. */}
@@ -2832,7 +2829,7 @@ export function ChatPage() {
           </MessageScrollerProvider>
 
           <div
-            className="scrollbar-thin shrink-0 overflow-y-auto border-t px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
+            className="scrollbar-thin shrink-0 overflow-y-auto px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
             data-testid="chat-composer-area"
             // No composer aimed at a conversation that could not be opened.
             hidden={conversationFailed}

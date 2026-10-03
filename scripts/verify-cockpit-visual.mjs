@@ -31,6 +31,7 @@ import {
   isSheetView,
   patternMigratedView,
   patternViewRoot,
+  TRANSCRIPT,
 } from "./lib/cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
@@ -3650,19 +3651,20 @@ async function assertChat(page, label) {
       composer: rect("chat-composer"),
       composerSubmit: rect("chat-composer-submit"),
       main: rect("chat-main"),
-      // The chat's header is the shell's top bar now, filled through a slot:
-      // its row holds the sidebar toggle and the header, in the same column
-      // as the transcript and the composer.
+      // The open conversation's head stands in the same reading column as
+      // the transcript and the composer.
       headerColumn: document
-        .querySelector('[data-testid="cockpit-header"][data-cockpit-header="chat"] > div')
+        .querySelector('[data-testid="chat-header-column"] > div')
         ?.getBoundingClientRect()
         .toJSON(),
+      tools: rect("chat-composer-tools"),
+      attach: rect("chat-attach"),
       transcriptColumn: document
         .querySelector('[data-slot="message-scroller-content"]')
         ?.getBoundingClientRect()
         .toJSON(),
       scrollbars: {
-        header: scrollbar('[data-testid="cockpit-header"]'),
+        header: scrollbar('[data-testid="chat-header-column"]'),
         transcript: scrollbar('[data-slot="message-scroller-viewport"]'),
         composer: scrollbar('[data-testid="chat-composer-area"]'),
       },
@@ -3687,8 +3689,10 @@ async function assertChat(page, label) {
   // permanent list is the state this check exists to catch.
   if (layout.transcript.width < layout.main.width - 4)
     throw new Error(`${label} transcript does not span the conversation column`);
-  if (Math.abs(layout.composer.height - 48) > 1)
-    throw new Error(`${label} one-line composer is ${layout.composer.height}px, expected 48px`);
+  // One box (R15): the field, and under it the toolbar — attach on the
+  // left, send on the right, both inside the box's 8px padding.
+  if (layout.tools.top < layout.composer.top + 40)
+    throw new Error(`${label} the composer's toolbar does not stand under its field`);
   if (
     Math.abs(layout.composerSubmit.width - 32) > 1 ||
     Math.abs(layout.composerSubmit.height - 32) > 1
@@ -3698,12 +3702,13 @@ async function assertChat(page, label) {
   const submitBottomInset = layout.composer.bottom - layout.composerSubmit.bottom;
   if (Math.abs(submitRightInset - 8) > 1 || Math.abs(submitBottomInset - 8) > 1)
     throw new Error(`${label} composer submit control is not inset by 8px`);
+  if (Math.abs(layout.attach.left - layout.composer.left - 8) > 1)
+    throw new Error(`${label} the attach control does not open the toolbar on the left`);
   if (
-    Math.abs(layout.inputStyle.paddingLeft - 16) > 1 ||
-    Math.abs(layout.inputStyle.paddingTop - 11) > 1 ||
+    Math.abs(layout.inputStyle.paddingLeft - 8) > 1 ||
     Math.abs(layout.inputStyle.lineHeight - 24) > 1
   )
-    throw new Error(`${label} composer input spacing is not 16px/11px with 24px leading`);
+    throw new Error(`${label} composer input spacing is not 8px with 24px leading`);
   if (!layout.headerColumn || !layout.transcriptColumn)
     throw new Error(`${label} shared chat columns are missing`);
   for (const [area, scrollbar] of Object.entries(layout.scrollbars)) {
@@ -3723,7 +3728,9 @@ async function assertChat(page, label) {
       );
   }
   const composerInput = page.locator('[data-testid="chat-composer-input"]');
-  await composerInput.fill("first line\nsecond line");
+  const oneLine = (await page.locator('[data-testid="chat-composer"]').boundingBox())?.height ?? 0;
+  // More lines than the placeholder wraps to on a phone.
+  await composerInput.fill("first line\nsecond line\nthird line\nfourth line");
   const multiline = await page.evaluate(() => {
     const rect = (testId) => {
       const element = document.querySelector(`[data-testid="${testId}"]`);
@@ -3732,10 +3739,33 @@ async function assertChat(page, label) {
     };
     return { composer: rect("chat-composer"), submit: rect("chat-composer-submit") };
   });
-  if (multiline.composer.height <= 48) throw new Error(`${label} multiline composer did not grow`);
+  if (multiline.composer.height <= oneLine)
+    throw new Error(`${label} multiline composer did not grow`);
   if (Math.abs(multiline.composer.bottom - multiline.submit.bottom - 8) > 1)
     throw new Error(`${label} multiline submit control is not bottom-aligned`);
   await composerInput.fill("");
+  // A file joins the message as a chip on top of the box (R15); the chip
+  // opens its preview and comes out again with its own control.
+  await page.locator('[data-testid="chat-attach-input"]').setInputFiles({
+    name: "notizen.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Notizen\n\nZwei Punkte für den Wochenbericht."),
+  });
+  const chip = page.locator('[data-testid="chat-attachment-0"]');
+  await chip.waitFor({ state: "visible" });
+  const chipBox = await chip.boundingBox();
+  const fieldBox = await composerInput.boundingBox();
+  if (!chipBox || !fieldBox || chipBox.y >= fieldBox.y)
+    throw new Error(`${label} the attached file does not stand above the field`);
+  await page.locator('[data-testid="chat-attachment-0-open"]').click();
+  const preview = page.locator('[data-testid="chat-attachment-preview-body"]');
+  await preview.waitFor({ state: "visible" });
+  if (!(await preview.innerText()).includes("Zwei Punkte"))
+    throw new Error(`${label} the attachment preview does not show the file`);
+  await page.locator('[data-testid="chat-attachment-preview-close"]').click();
+  await preview.waitFor({ state: "hidden" });
+  await page.locator('[data-testid="chat-attachment-0-remove"]').click();
+  await chip.waitFor({ state: "detached" });
   const assistantMetadata = await page
     .locator('[data-testid="chat-message-1-metadata"]')
     .textContent();
@@ -3773,8 +3803,9 @@ async function assertChat(page, label) {
 }
 
 /**
- * The conversation list opens on demand. Every check that reads a row has to
- * open it first — a closed panel yields an empty, green screenshot, which is
+ * The conversation list stands beside the conversation on a wide screen and
+ * folds under the page title on a phone. Every check that reads a row has to
+ * see it first — a folded list yields an empty, green screenshot, which is
  * exactly the false pass these fixtures exist to prevent.
  */
 async function openConversationList(page) {
@@ -3783,14 +3814,14 @@ async function openConversationList(page) {
     await page.locator('[data-testid="conversation-list-trigger"]').click();
     await list.waitFor({ state: "visible" });
   }
-  // Visibility starts at the beginning of the 200 ms sheet transition. Wait
-  // for its documented duration before clicking a moving row or close button.
-  await page.waitForTimeout(250);
 }
 
+/** Fold the list again where it folds (a phone); beside the conversation it stays. */
 async function closeConversationList(page) {
-  if (!(await page.locator('[data-testid="conversation-list"]').isVisible())) return;
-  await page.locator('[data-testid="conversation-list-close"]').click();
+  const trigger = page.locator('[data-testid="conversation-list-trigger"]');
+  if (!(await trigger.isVisible())) return;
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") return;
+  await trigger.click();
   await page.locator('[data-testid="conversation-list"]').waitFor({ state: "hidden" });
 }
 
@@ -4323,6 +4354,8 @@ for (const locale of variants) {
       if (migrated !== null)
         await assertSingleTriggers(page, `${locale.artifact}/${viewport.name}/${route}`, {
           root: patternViewRoot(migrated),
+          // A link a message itself carries is the conversation's content.
+          ...(migrated === "chat" ? { content: TRANSCRIPT.content } : {}),
         });
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -4688,7 +4721,10 @@ for (const locale of variants) {
         throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
       if ((await gatesFor()) === autoGates)
         throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
-      await page.locator('[data-testid="conversation-new"]').click();
+      // A new conversation offers no "New" (it would only throw the draft
+      // away): opening the new chat again is the reset.
+      await stand.visit(page, "chat/new");
+      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
       if ((await pillText()) !== autoName)
         throw new Error(`${locale.artifact}: new chat retains an unintended override`);
       await page.waitForTimeout(300);
