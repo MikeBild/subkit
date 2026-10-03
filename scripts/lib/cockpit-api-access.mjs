@@ -3,7 +3,8 @@
 // A deploy verifier registered an OAuth client on every run and never came
 // back: ~500 registrations nobody holds a grant for, against four real
 // applications. Listed flat, the real applications drowned. The sections are
-// tabs (`?section=keys|clients|grants`, keys first), each list a table.
+// tabs (`?section=keys|clients`, keys first), each list a table. What SubKit
+// holds on another system's side lives on that connector's page.
 //
 // The fixture (verify-cockpit-visual.mjs) holds 200 dead, 31 retired or
 // revoked and 3 real registrations, and 40 revoked keys among 5 live ones.
@@ -15,8 +16,8 @@
 // its result.
 
 const TAB_NAMES = {
-  de: ["Schlüssel", "Apps", "Zugriff in deinem Namen"],
-  en: ["Keys", "Apps", "Access on your behalf"],
+  de: ["Schlüssel", "Apps"],
+  en: ["Keys", "Apps"],
 };
 const RETIRED_NAMES = {
   de: ["Kontoverbindung", "Verbundene Anwendungen"],
@@ -85,12 +86,9 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (shape.tabs.join("|") !== TAB_NAMES[locale].join("|"))
     throw new Error(`${where}: the tabs are "${shape.tabs.join(", ")}"`);
   if (!shape.tabListVisible) throw new Error(`${where}: the tab bar is not on screen`);
-  // Only a count someone acts on. The fixture's keys are all fine; its
-  // grants hold one expiring, one expired and one unreadable.
+  // Only a count someone acts on. The fixture's keys are all fine.
   if (shape.counts.clients !== null || shape.counts.keys !== null)
     throw new Error(`${where}: a tab counts what needs nobody — ${JSON.stringify(shape.counts)}`);
-  if (shape.counts.grants !== String(fixture.grantsToRenew))
-    throw new Error(`${where}: the grants tab counts "${shape.counts.grants}"`);
 
   // ── Apps ─────────────────────────────────────────────────────────────────
   let text = await assertNoCommandLine(page, `${where} · clients`);
@@ -153,22 +151,12 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   const keysTotal = await page.getByTestId("api-access-total-keys").innerText();
   if (!keysTotal.includes(String(fixture.activeKeys)))
     throw new Error(`${where}: the keys' total says "${keysTotal}"`);
-  // The developer's way to a short-lived token: one link to the guide.
-  const guide = await page.getByTestId("api-access-token-exchange-link").getAttribute("href");
-  if (guide !== "/llms/developers/token-exchange.md")
-    throw new Error(`${where}: the developer link leads to "${guide}"`);
 
   // No task list on this page: the tasks it used to repeat live on Übersicht.
   const taskLists = await page
     .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')
     .count();
   if (taskLists > 0) throw new Error(`${where}: a second task list stands above the sections`);
-
-  // ── Access on your behalf ────────────────────────────────────────────────
-  await openTab(page, stand, "grants", "connections");
-  text = await assertNoCommandLine(page, `${where} · grants`);
-  for (const retired of RETIRED_NAMES[locale])
-    if (text.includes(retired)) throw new Error(`${where}: the retired name "${retired}" stands`);
 
   // A sign-in comes back to the connectors list with its result in the query;
   // the list says it once, with the name it carried.

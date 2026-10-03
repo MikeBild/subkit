@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, apiAccessHref } from "@/app/links";
+import { absolute, connectorHref } from "@/app/links";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,7 +123,8 @@ export function ConnectorCredentials({
   const line = signInLine(state, way);
   const renewLabel = t(signInActionLabel(state));
   const missingScopes = current?.missing_scopes ?? [];
-  const grantsHref = absolute(apiAccessHref("grants"));
+  // Account connections live on the connector they sign in to (its Verbindung tab).
+  const grantsHref = absolute(`${connectorHref(connectorId)}?tab=verbindung`);
   // The account connections page is one address: it is linked once. The
   // renewal leads there when the sign-in rides on a lost connection; otherwise
   // the connection's own line does; otherwise the chooser's hint.
