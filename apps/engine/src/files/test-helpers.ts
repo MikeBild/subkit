@@ -27,6 +27,7 @@ import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks, files } from "../db/schema/index.ts";
 import { getObjectStore } from "../storage/object-store.ts";
+import { insertFileRow } from "./slug.ts";
 
 export interface AttachInlineForTestParams {
   db: Db;
@@ -123,7 +124,7 @@ export async function attachInlineForTest(
   const key = buildObjectKey(p.tenant_id, file_uuid);
   const storage_uri = composeStorageUri(key);
   await getObjectStore().put(key, bytes);
-  await p.db.insert(files).values({
+  await insertFileRow(p.db, {
     id: file_uuid,
     tenant_id: p.tenant_id,
     status: "ready",
