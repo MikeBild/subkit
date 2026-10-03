@@ -8,7 +8,7 @@ import {
   ATTENTION_SOURCES,
   ATTENTION_SUBJECT_KINDS,
 } from "../../../operator/attention.ts";
-import { BoundaryGrowthSchema } from "../../../workflows/authority-growth.ts";
+import { BoundaryGrowthSchema } from "../../../workflows/index.ts";
 
 const SourceState = z.enum(["answered", "failed", "not_permitted"]);
 
