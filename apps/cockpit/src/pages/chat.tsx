@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
 import { Fragment, type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ApiError,
   apiRequest,
@@ -8,6 +9,7 @@ import {
   type ConversationDetail,
   type ConversationReference,
   cancelConversation,
+  deleteConversation,
   getConversation,
   listConversations,
   renameConversation,
@@ -73,6 +75,7 @@ import {
   Button,
   ChatCard,
   CodeBlock,
+  ConfirmDialog,
   DataState,
   type Fact,
   FactList,
@@ -1407,6 +1410,7 @@ export function ChatPage() {
   const [dragging, setDragging] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   // The transcript and the composer are mounted under this key. It moves only
@@ -1805,6 +1809,23 @@ export function ChatPage() {
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
+  // Gone for everyone: leave it, drop its cached detail, refresh the list.
+  const remove = useMutation({
+    mutationFn: (target: Conversation) => deleteConversation(target.id),
+    onSuccess: async (_result, target) => {
+      setDeleteTarget(null);
+      if (activeId === target.id) startNew();
+      queryClient.removeQueries({ queryKey: ["conversation", target.id] });
+      toast.success(t("chat.deleted", { title: target.title || t("chat.untitled") }));
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? t("chat.delete.running")
+          : t("common.actionFailed"),
+      ),
+  });
   const rename = useMutation({
     mutationFn: () => renameConversation(renameTarget?.id ?? "", renameTitle.trim()),
     onSuccess: async () => {
@@ -2112,7 +2133,7 @@ export function ChatPage() {
   const unanchoredForm = unanchored(pendingForm);
   const decisionErrorFor = (id: string | undefined) =>
     decide.isError && decide.variables?.elicitationId === id;
-  // The open conversation: rename it, or put it out of the list.
+  // The open conversation: rename it, put it out of the list, or delete it.
   const menuItems =
     current && !conversationFailed
       ? [
@@ -2139,6 +2160,13 @@ export function ChatPage() {
                   startNew();
                 },
               },
+          // Gone for everyone, after one confirmation.
+          {
+            label: t("chat.delete"),
+            testId: "chat-delete",
+            destructive: true,
+            onSelect: () => setDeleteTarget(current),
+          },
         ]
       : [];
   const headerText =
@@ -2954,6 +2982,22 @@ export function ChatPage() {
           />
         </Field>
       </FormDialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(value) => !value && setDeleteTarget(null)}
+        object={t("chat.delete.object")}
+        verb={t("chat.delete.verb")}
+        consequence={t("chat.delete.consequence", {
+          title: deleteTarget?.title || t("chat.untitled"),
+        })}
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => {
+          if (deleteTarget) remove.mutate(deleteTarget);
+        }}
+        testId="conversation-delete-dialog"
+      />
     </Page>
   );
 }
