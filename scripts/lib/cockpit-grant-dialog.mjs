@@ -186,13 +186,14 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     const standing = await open(page, stand, state, "approved");
     if ((await standing.getAttribute("data-state")) !== "approved")
       throw new Error(`${where}: the panel is in "${await standing.getAttribute("data-state")}"`);
-    const standingLine = await text(page.getByTestId("workflow-automation-headline"));
-    if (!standingLine.includes(words.untilRevoked) || !standingLine.includes(words.soFar))
-      throw new Error(`${where}: the headline reads "${standingLine}"`);
     // Nothing runs out: the strip offers nothing at all.
     if (await page.getByTestId("workflow-automation-action").count())
       throw new Error(`${where}: an approval until revoked is offered for extension`);
     await openTab(page, "freigaben");
+    // How long it holds stands with the approval itself, in "Freigaben".
+    const approvals = await text(page.getByTestId("workflow-approvals"));
+    if (!approvals.includes(words.untilRevoked))
+      throw new Error(`${where}: "Freigaben" does not say "${words.untilRevoked}": "${approvals}"`);
     // Revoking is the one way it ends — offered once, on the approval itself.
     const revoke = page.getByTestId("authority-current-revoke").filter({ visible: true });
     await revoke.first().waitFor();
@@ -234,8 +235,13 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     state.trialNeeded = true;
     state.unsupported = true;
     await open(page, stand, state, "apply");
-    const notice = await text(page.getByTestId("grant-opening-notice"));
-    if (notice !== words.trial) throw new Error(`${where}: the opener says "${notice}"`);
+    // What the press sets off stands in the strip's (?), before the press.
+    await page.getByTestId("workflow-status-strip-help").hover();
+    const tip = page.getByRole("tooltip");
+    await tip.first().waitFor();
+    const notice = await text(tip);
+    if (!notice.includes(words.trial)) throw new Error(`${where}: the opener says "${notice}"`);
+    await page.mouse.move(0, 0);
     if (state.prepares.length)
       throw new Error(`${where}: opening the page started ${state.prepares.length} trial runs`);
     await capture("opening-notice");
