@@ -123,6 +123,24 @@ async function fixture(extraDefinition: Record<string, unknown> = {}) {
   return { input, context: { db: ctx.db, request, principal }, workflow, session, version };
 }
 
+test("a human grants a boundary until revoked; a lost response does not grant twice", async () => {
+  const f = await fixture();
+  const { valid_until: _until, max_runs: _runs, ...openEnded } = f.input;
+  const authority = await grantWorkflowAuthority(f.workflow.id, openEnded, f.context);
+  expect(authority).toMatchObject({ valid_until: null, max_runs: null, reserved_runs: 0 });
+  expect(authority.approved_manifest).toEqual(authority.effect_manifest);
+  const retry = await grantWorkflowAuthority(
+    f.workflow.id,
+    { ...openEnded, valid_until: null, max_runs: null },
+    f.context,
+  );
+  expect(retry.id).toBe(authority.id);
+  await revokeWorkflowAuthority(f.workflow.id, authority.id, f.context);
+  await expect(grantWorkflowAuthority(f.workflow.id, openEnded, f.context)).rejects.toMatchObject({
+    code: "authority_revoked",
+  });
+});
+
 test("a human grants a finite exact boundary without activating or running its draft", async () => {
   const f = await fixture();
   const authority = await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
@@ -447,7 +465,7 @@ for (const scenario of [
     if (scenario === "exhausted") {
       await ctx.db
         .update(workflowExecutionAuthorities)
-        .set({ reserved_runs: authority.max_runs })
+        .set({ reserved_runs: authority.max_runs ?? 0 })
         .where(
           and(
             eq(workflowExecutionAuthorities.tenant_id, f.workflow.tenant_id),

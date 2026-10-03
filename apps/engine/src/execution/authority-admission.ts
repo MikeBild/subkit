@@ -11,6 +11,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import {
   assertContentRelease,
@@ -173,10 +174,7 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
           input.execution_authority_id
             ? eq(workflowExecutionAuthorities.id, input.execution_authority_id)
             : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
-          isNull(workflowExecutionAuthorities.revoked_at),
-          sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-          sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
-          sql`${workflowExecutionAuthorities.reserved_runs} < ${workflowExecutionAuthorities.max_runs}`,
+          authorityLive(),
         ),
       )
       .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
@@ -292,7 +290,7 @@ export async function assertExecutionAuthorityCurrent(
         eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
         isNull(workflowExecutionAuthorities.revoked_at),
         sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-        sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
+        authorityNotExpired(),
         sql`${workflowExecutionAuthorities.reserved_runs} > 0`,
       ),
     )

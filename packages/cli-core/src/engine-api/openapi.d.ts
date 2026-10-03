@@ -5107,8 +5107,8 @@ export interface paths {
                         /** Format: date-time */
                         valid_from: string;
                         /** Format: date-time */
-                        valid_until: string;
-                        max_runs: number;
+                        valid_until?: string | null;
+                        max_runs?: number | null;
                         activation?: {
                             /** Format: uuid */
                             expected_current_version_id: string | null;
@@ -18291,10 +18291,11 @@ export interface components {
             /** Format: date-time */
             valid_from: string;
             /** Format: date-time */
-            valid_until: string;
-            max_runs: number;
+            valid_until: string | null;
+            max_runs: number | null;
             reserved_runs: number;
-            remaining_runs: number;
+            remaining_runs: number | null;
+            open_ended: boolean;
             /** Format: uuid */
             created_by: string;
             /** Format: date-time */
@@ -18303,10 +18304,14 @@ export interface components {
             revoked_at: string | null;
             /** Format: uuid */
             revoked_by: string | null;
+            /** Format: uuid */
+            inherited_from: string | null;
+            /** Format: uuid */
+            superseded_by: string | null;
             active_version: boolean;
             ready_for_new_run: boolean;
             /** @enum {string} */
-            state: "approved" | "not_yet_valid" | "expired" | "revoked" | "exhausted" | "invalidated" | "unavailable";
+            state: "approved" | "not_yet_valid" | "expired" | "revoked" | "superseded" | "exhausted" | "invalidated" | "unavailable";
         };
         WorkflowEffectManifest: {
             /** @enum {number} */
@@ -22000,8 +22005,8 @@ export interface components {
                 /** Format: date-time */
                 valid_from: string;
                 /** Format: date-time */
-                valid_until: string;
-                max_runs: number;
+                valid_until?: string | null;
+                max_runs?: number | null;
                 activation?: {
                     /** Format: uuid */
                     expected_current_version_id: string | null;

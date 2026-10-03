@@ -18,7 +18,7 @@
 // person applies it; that is the workflow page's "change waiting" state, not a
 // task on this list.
 
-import { and, eq, gt, isNull, lte, type SQL, sql } from "drizzle-orm";
+import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
   webhooksInbound,
@@ -32,6 +32,7 @@ import {
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
   AUTHORITY_EXTEND_WITHIN_DAYS,
 } from "../workflows/authority-extension.ts";
+import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -57,10 +58,7 @@ function covering(now: Date, environment: SQL): SQL | undefined {
     eq(workflowExecutionAuthorities.workflow_id, workflows.id),
     eq(workflowExecutionAuthorities.workflow_version_id, workflows.current_version_id),
     sql`${workflowExecutionAuthorities.execution_environment} = ${environment}`,
-    isNull(workflowExecutionAuthorities.revoked_at),
-    lte(workflowExecutionAuthorities.valid_from, now),
-    gt(workflowExecutionAuthorities.valid_until, now),
-    sql`${workflowExecutionAuthorities.reserved_runs} < ${workflowExecutionAuthorities.max_runs}`,
+    authorityLive(now),
   );
 }
 
@@ -72,20 +70,24 @@ function approvalColumns(db: Db, now: Date, environment: SQL) {
       .select({ one: sql`1` })
       .from(workflowExecutionAuthorities)
       .where(covering(now, environment))}`,
-    // An approval with room: it ends later than the threshold and has runs to spare.
+    // An approval with room: it ends later than the threshold and has runs to
+    // spare. One without an end date or without a run limit has room on that
+    // side by definition — an open-ended approval is never "ending".
     comfortable: sql<boolean>`EXISTS ${db
       .select({ one: sql`1` })
       .from(workflowExecutionAuthorities)
       .where(
         and(
           covering(now, environment),
-          gt(workflowExecutionAuthorities.valid_until, soon),
-          sql`(${workflowExecutionAuthorities.max_runs} - ${workflowExecutionAuthorities.reserved_runs})::float8 / ${workflowExecutionAuthorities.max_runs} >= ${AUTHORITY_EXTEND_BELOW_RUN_SHARE}`,
+          authorityNotExpired(soon),
+          sql`(${workflowExecutionAuthorities.max_runs} IS NULL OR (${workflowExecutionAuthorities.max_runs} - ${workflowExecutionAuthorities.reserved_runs})::float8 / ${workflowExecutionAuthorities.max_runs} >= ${AUTHORITY_EXTEND_BELOW_RUN_SHARE})`,
         ),
       )}`,
-    // When the last covering approval ends.
+    // When the last covering approval ends; null when one has no end date.
     ends: sql<Date | string | null>`(${db
-      .select({ until: sql`max(${workflowExecutionAuthorities.valid_until})` })
+      .select({
+        until: sql`CASE WHEN bool_or(${workflowExecutionAuthorities.valid_until} IS NULL) THEN NULL ELSE max(${workflowExecutionAuthorities.valid_until}) END`,
+      })
       .from(workflowExecutionAuthorities)
       .where(covering(now, environment))})`,
   };
