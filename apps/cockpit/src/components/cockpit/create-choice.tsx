@@ -7,7 +7,7 @@ import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
 import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
-import { ActionButton, ChoiceCard, FormDialog } from "@/components/cockpit/patterns";
+import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
 import { useI18n } from "@/lib/i18n-context";
 import { DEFAULT_RHYTHM, type RhythmValue, rhythmToCron, validTime } from "@/lib/schedule-rhythm";
@@ -75,31 +75,36 @@ function CreateChoiceDialog({
         step="choose"
         testId={`create-${kind}-dialog`}
       >
-        <ChoiceCard
-          icon={<MessageSquare />}
-          title={t(kind === "workflow" ? "create.workflow.chat" : "create.connector.chat")}
-          line={t(kind === "workflow" ? "create.workflow.chatLine" : "create.connector.chatLine")}
-          onSelect={() =>
-            window.location.assign(
-              absolute(
-                chatNewHref({
-                  prompt: t(
-                    kind === "workflow" ? "create.workflow.prompt" : "create.connector.prompt",
-                  ),
-                }),
+        <ChoiceCards
+          items={[
+            {
+              icon: <MessageSquare />,
+              title: t(kind === "workflow" ? "create.workflow.chat" : "create.connector.chat"),
+              line: t(
+                kind === "workflow" ? "create.workflow.chatLine" : "create.connector.chatLine",
               ),
-            )
-          }
-          testId={`create-${kind}-chat`}
-        />
-        <ChoiceCard
-          icon={<PencilLine />}
-          title={t("create.byHand")}
-          line={t(
-            kind === "workflow" ? "create.workflow.byHandLine" : "create.connector.byHandLine",
-          )}
-          onSelect={() => setStep("manual")}
-          testId={`create-${kind}-manual`}
+              onSelect: () =>
+                window.location.assign(
+                  absolute(
+                    chatNewHref({
+                      prompt: t(
+                        kind === "workflow" ? "create.workflow.prompt" : "create.connector.prompt",
+                      ),
+                    }),
+                  ),
+                ),
+              testId: `create-${kind}-chat`,
+            },
+            {
+              icon: <PencilLine />,
+              title: t("create.byHand"),
+              line: t(
+                kind === "workflow" ? "create.workflow.byHandLine" : "create.connector.byHandLine",
+              ),
+              onSelect: () => setStep("manual"),
+              testId: `create-${kind}-manual`,
+            },
+          ]}
         />
       </FormDialog>
     );
