@@ -6,16 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import {
-  absolute,
-  chatNewHref,
-  connectorHref,
-  recordHref,
-  runsHref,
-  workflowHref,
-  workflowsHref,
-} from "@/app/links";
-import { KNOWLEDGE_TABS } from "@/app/navigation";
+import { absolute, chatNewHref, recordHref, runsHref, workflowsHref } from "@/app/links";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
@@ -27,7 +18,6 @@ import {
   FormDialog,
   Page,
   PageHeader,
-  RouteTabs,
   RowName,
   Select,
   SelectContent,
@@ -37,7 +27,6 @@ import {
   SelectValue,
 } from "@/components/cockpit/patterns";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -59,7 +48,8 @@ import {
 } from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
-type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
+/** The lists this page draws; sources and skills have pages of their own. */
+type CatalogResource = "workflows" | "connectors" | "files";
 type CatalogRow = Record<string, unknown>;
 type ConnectorListItem = components["schemas"]["ConnectorListItem"];
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
@@ -115,24 +105,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
     statuses: ["enabled", "disabled", "ok", "degraded", "needs_reauth"],
-  },
-  knowledge: {
-    endpoint: "/v1/knowledge-sources",
-    permission: "knowledge:read",
-    titleKey: "resource.knowledge.title",
-    emptyKey: "resource.knowledge.empty",
-    actionKey: "resource.knowledge.action",
-    defaultSort: "updated_at",
-    statuses: ["active", "inactive", "processing", "error"],
-  },
-  skills: {
-    endpoint: "/v1/skills",
-    permission: "skill:read",
-    titleKey: "resource.skills.title",
-    emptyKey: "resource.skills.empty",
-    actionKey: "resource.skills.action",
-    defaultSort: "updated_at",
-    statuses: ["draft", "active", "archived"],
   },
   files: {
     endpoint: "/v1/files",
@@ -431,112 +403,6 @@ function catalogColumns(
     return columns;
   }
 
-  if (resource === "knowledge") {
-    return [
-      column.text("name", (row) => row.name, t("common.name"), {
-        sortable: true,
-        width: "w-[22%]",
-      }),
-      column.status("status", (row) => row.status, t("resource.field.status"), {
-        sortable: true,
-        width: "w-[12%]",
-      }),
-      column.link(
-        "scope",
-        (row): Relation | null => {
-          const scope = stringField(row, "scope");
-          if (!scope) return null;
-          const workflowId = stringField(row, "workflow_id");
-          const key = SCOPE_KEYS[scope];
-          return {
-            href: scope === "workflow" && workflowId ? absolute(workflowHref(workflowId)) : null,
-            label: key ? t(key) : scope,
-          };
-        },
-        t("resource.field.scope"),
-        { width: "w-[14%]" },
-      ),
-      column.text("source_type", (row) => row.source_type, t("catalog.sourceType"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-      column.text("chunk_count", (row) => row.chunk_count, t("catalog.chunks"), {
-        width: "w-[9%]",
-      }),
-      column.bytes("bytes_total", (row) => row.bytes_total, t("catalog.size"), {
-        sortable: true,
-        width: "w-[11%]",
-      }),
-      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-    ];
-  }
-
-  if (resource === "skills") {
-    return [
-      column.text("title", (row) => row.title, t("resource.field.title"), {
-        sortable: true,
-        width: "w-[22%]",
-      }),
-      column.status("status", (row) => row.status, t("resource.field.status"), {
-        sortable: true,
-        width: "w-[12%]",
-      }),
-      column.link(
-        "scope",
-        (row): Relation | null => {
-          const scope = stringField(row, "scope");
-          if (!scope) return null;
-          const connectorId = stringField(row, "connector_id");
-          const workflowId = stringField(row, "workflow_id");
-          const href =
-            scope === "connector" && connectorId
-              ? absolute(connectorHref(connectorId))
-              : scope === "workflow" && workflowId
-                ? absolute(workflowHref(workflowId))
-                : null;
-          const key = SCOPE_KEYS[scope];
-          return { href, label: key ? t(key) : scope };
-        },
-        t("resource.field.scope"),
-        { sortable: true, width: "w-[13%]" },
-      ),
-      column.custom(
-        "side_effects",
-        (row) => row.side_effects,
-        t("catalog.sideEffects"),
-        (row) => {
-          const value = stringField(row, "side_effects");
-          const key = value ? SIDE_EFFECT_KEYS[value] : undefined;
-          return key ? t(key) : (value ?? MISSING);
-        },
-        { width: "w-[13%]" },
-      ),
-      column.custom(
-        "maturity",
-        (row) => row.maturity,
-        t("catalog.maturity"),
-        // The engine's enum is two English words; rendering them raw is the
-        // same defect as an untranslated status.
-        (row) =>
-          row.maturity === "experimental"
-            ? t("catalog.maturity.experimental")
-            : t("catalog.maturity.stable"),
-        { width: "w-[12%]" },
-      ),
-      column.text("version", (row) => row.version, t("catalog.version"), {
-        sortable: true,
-        width: "w-[9%]",
-      }),
-      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-    ];
-  }
-
   return [
     // Text, like the connector name: the row already opens this record.
     column.text("filename", (row) => row.filename, t("catalog.filename"), {
@@ -660,13 +526,6 @@ export function CatalogPage({
     [categories],
   );
   const title = t(config.titleKey);
-  const knowledgeTabs = KNOWLEDGE_TABS.some((tab) => tab.path === `/${resource}`)
-    ? KNOWLEDGE_TABS.filter((tab) => permissions.includes(tab.permission)).map((tab) => ({
-        to: tab.path,
-        label: t(tab.labelKey),
-        testId: `knowledge-tab-${tab.path.slice(1)}`,
-      }))
-    : [];
   const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
   const hasActiveFilters =
     Boolean(state.q) ||
@@ -696,7 +555,6 @@ export function CatalogPage({
     });
   }, [setState]);
 
-  const pageTitle = knowledgeTabs.length > 0 ? t("nav.knowledge") : title;
   if (!permissions.includes(config.permission)) {
     return (
       <Page
@@ -704,7 +562,7 @@ export function CatalogPage({
         surface="collection"
         testId={`catalog-${resource}`}
         scroll="page"
-        header={<PageHeader title={pageTitle} />}
+        header={<PageHeader title={title} />}
       >
         <DataState
           state="empty"
@@ -762,21 +620,15 @@ export function CatalogPage({
       testId={`catalog-${resource}`}
       scroll="content"
       header={
-        <>
-          <PageHeader
-            // Sources, skills and files are the tabs of one page, Wissen.
-            title={pageTitle}
-            // The header yields its action only to the one state that shows
-            // the same action itself: a loaded, unfiltered, empty list. While
-            // loading, after a failed read, or when a search matches nothing,
-            // the empty state offers no "create" — hiding the header's there
-            // left no way to start one until the reader cleared the filters.
-            action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
-          />
-          {knowledgeTabs.length > 1 ? (
-            <RouteTabs tabs={knowledgeTabs} label={t("nav.knowledge")} testId="knowledge-tabs" />
-          ) : null}
-        </>
+        <PageHeader
+          title={title}
+          // The header yields its action only to the one state that shows
+          // the same action itself: a loaded, unfiltered, empty list. While
+          // loading, after a failed read, or when a search matches nothing,
+          // the empty state offers no "create" — hiding the header's there
+          // left no way to start one until the reader cleared the filters.
+          action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
+        />
       }
     >
       <DataTable

@@ -1978,16 +1978,11 @@ async function checkOverviewNavEntry(page) {
     return {
       groupHeading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
       first: links[0]?.getAttribute("data-testid") ?? null,
-      // Runs are a sheet over Übersicht, skills and files tabs of Wissen,
-      // notifications a tab of Einstellungen: none has an entry of its own.
-      gone: [
-        "nav-decisions",
-        "nav-operations",
-        "nav-runs",
-        "nav-skills",
-        "nav-files",
-        "nav-notifications",
-      ].filter((id) => document.querySelector(`[data-testid="${id}"]`)),
+      // Runs are a sheet over Übersicht, notifications a tab of Einstellungen:
+      // neither has an entry of its own.
+      gone: ["nav-decisions", "nav-operations", "nav-runs", "nav-notifications"].filter((id) =>
+        document.querySelector(`[data-testid="${id}"]`),
+      ),
     };
   });
   if (placement?.groupHeading)
@@ -3510,9 +3505,9 @@ async function checkResumeLine(page) {
 /**
  * §4 / §5 — a broken answer meets a designed German state, not a catch-all.
  *
- * The knowledge page read `content.data?.documents[index]`: the optional chain
- * stopped after `.data?`, so a body without a `documents` array did not render
- * a failure — it threw, and the router's own default replaced the entire
+ * The knowledge page once read `content.data?.documents[index]`: the optional
+ * chain stopped after `.data?`, so a body without the array it expected did not
+ * render a failure — it threw, and the router's own default replaced the entire
  * cockpit with "Something went wrong! / Show Error". No sidebar, no product,
  * no way back, and not a German word on it.
  *
@@ -4279,7 +4274,8 @@ try {
   const busyMock = apiMock(true);
   await broken.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, { items: [], total: 0 });
+    // The source's sections, answered without the `items` array they come in.
+    if (path === `/v1/knowledge-sources/${ID}/chunks`) return json(route, { documents: [] });
     return busyMock(route);
   });
   const brokenPage = await broken.newPage();

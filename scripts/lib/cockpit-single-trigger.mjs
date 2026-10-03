@@ -171,6 +171,8 @@ export const PATTERN_MIGRATED_VIEWS = [
   "knowledge",
   "skills",
   "files",
+  "knowledge/$id",
+  "skills/$id",
   "audit",
   "usage",
   "people",

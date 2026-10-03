@@ -1547,14 +1547,56 @@ async function mockApi(route) {
       health_state: "ok",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
+  // An address source: read from a page, so it can be read again ("Jetzt
+  // einlesen"), with three pages a reader can open.
   if (path === `/v1/knowledge-sources/${uuid}`)
     return json(route, {
       id: uuid,
+      tenant_id: uuid,
       name: "Betriebshandbuch",
+      slug: "betriebshandbuch",
+      description: null,
+      tags: [],
+      scope: "global",
+      workflow_id: null,
       status: "active",
-      source_type: "file_upload",
+      last_error: null,
+      source_type: "url",
+      source_uri: "https://docs.example.com/betrieb",
+      mime_type: "text/markdown",
       version: "knowledge-v4",
+      bytes_total: 18400,
+      chunk_count: 3,
+      refresh_strategy: "manual",
+      refresh_cron: null,
+      last_refreshed_at: "2026-08-10T09:00:00.000Z",
+      created_at: "2026-07-01T09:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/knowledge-sources/${uuid}/chunks`)
+    return json(route, {
+      knowledge_source_id: uuid,
+      name: "Betriebshandbuch",
+      chunk_count: 3,
+      items: [
+        ["/betrieb/einleitung", "Einleitung", "# Einleitung\n\nWie wir den Betrieb führen."],
+        [
+          "/betrieb/pruefungen",
+          "Prüfungen",
+          "| Prüfung | Intervall |\n|---|---|\n| Konnektor-Zustand | täglich |",
+        ],
+        [
+          "/betrieb/eskalation",
+          "Eskalation",
+          "1. Bereitschaft anrufen\n2. Ursache im Audit prüfen",
+        ],
+      ].map(([chunkPath, title, content], ordinal) => ({
+        ordinal,
+        title,
+        path: chunkPath,
+        content,
+        byte_size: content.length,
+      })),
     });
   if (path === `/v1/knowledge-sources/${uuid}/content`)
     return json(route, {
@@ -1573,11 +1615,14 @@ async function mockApi(route) {
     return json(route, {
       id: uuid,
       title: "Sichere Reports",
+      slug: "sichere-reports",
       body: "# Sichere Reports\n\nVor externen Schreibzugriffen immer eine Freigabe einholen.",
       scope: "global",
       status: "active",
+      source: "manual",
       maturity: "stable",
       version: 3,
+      created_at: "2026-07-01T09:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
   if (path === `/v1/files/${uuid}`)

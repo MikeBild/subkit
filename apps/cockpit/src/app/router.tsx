@@ -6,8 +6,10 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
 import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
+import { SkillPage, SkillsPage } from "@/pages/skills";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
@@ -77,14 +79,33 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   }),
 );
 
+/** Sources and skills have pages of their own; the other records share the catalogue. */
+const OWN_PAGES: Partial<
+  Record<
+    (typeof CATALOG_RESOURCES)[number],
+    {
+      list: (props: { permissions: readonly string[] }) => React.ReactElement;
+      record: (props: { permissions: readonly string[] }) => React.ReactElement;
+    }
+  >
+> = {
+  knowledge: { list: KnowledgeSourcesPage, record: KnowledgeSourcePage },
+  skills: { list: SkillsPage, record: SkillPage },
+};
+
 const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
     component: () => {
       const session = useSession();
+      const Own = OWN_PAGES[resource]?.list;
+      if (Own) return <Own permissions={session.permissions} />;
       return (
-        <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
+        <CatalogPage
+          resource={resource as "workflows" | "connectors" | "files"}
+          permissions={session.permissions}
+        />
       );
     },
   }),
@@ -93,6 +114,8 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
     path: `/${resource}/$resourceId`,
     component: () => {
       const session = useSession();
+      const Own = OWN_PAGES[resource]?.record;
+      if (Own) return <Own permissions={session.permissions} />;
       return (
         <CatalogDetailPage
           resource={resource as DetailResource}
