@@ -20,6 +20,7 @@ import {
 } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
+import { routeViewTransition } from "./view-transition";
 
 const rootRoute = createRootRoute({ component: AppShell, notFoundComponent: NotFoundPage });
 
@@ -116,6 +117,7 @@ export const router = createRouter({
   basepath: "/cockpit",
   trailingSlash: "never",
   defaultErrorComponent: RouteErrorPage,
+  defaultViewTransition: routeViewTransition,
 });
 
 declare module "@tanstack/react-router" {

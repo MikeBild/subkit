@@ -178,3 +178,233 @@
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
 }
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Motion (product-owned, `--sk-` prefixed). Two durations and two curves, and
+   nothing else: content settles in on the standard curve and leaves on the exit
+   curve. No bounce, no parallax, nothing that loops except a skeleton while it
+   stands in for content. Every duration is zero for a reader who asked for
+   reduced motion. */
+:root {
+  --sk-dur-fast: 120ms;
+  --sk-dur-base: 180ms;
+  --sk-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --sk-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --sk-row-arrival: 1200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sk-dur-fast: 0ms;
+    --sk-dur-base: 0ms;
+    --sk-row-arrival: 0ms;
+  }
+}
+
+@keyframes sk-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sk-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sk-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes sk-row-arrive {
+  from {
+    background-color: color-mix(in oklab, var(--accent) 14%, transparent);
+  }
+}
+
+@keyframes sk-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@keyframes sk-collapsible-open {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes sk-collapsible-close {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+/* Skeleton → content, a panel shown, a list's first rows. */
+.sk-fade-in {
+  animation: sk-fade-in var(--sk-dur-fast) var(--sk-ease-standard) both;
+}
+
+/* A row that arrived through a live update: a brief accent wash that fades. */
+.sk-row-new {
+  animation: sk-row-arrive var(--sk-row-arrival) var(--sk-ease-standard) both;
+}
+
+/* A row that went: it fades where it stood before the list closes over it. */
+.sk-row-leave {
+  animation: sk-fade-out var(--sk-dur-base) var(--sk-ease-exit) both;
+}
+
+/* The one skeleton look. The shimmer is slow and faint; under reduced motion
+   the block stands still. */
+.sk-skeleton {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--background) 45%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.6s linear infinite;
+}
+
+.sk-collapsible[data-state="open"] {
+  animation: sk-collapsible-open var(--sk-dur-base) var(--sk-ease-standard);
+}
+
+.sk-collapsible[data-state="closed"] {
+  animation: sk-collapsible-close var(--sk-dur-base) var(--sk-ease-exit);
+}
+
+/* Sheets slide in on the base duration and leave faster; dialogs fade and
+   scale from .98. Stated on the primitives' own slots so every sheet and
+   dialog moves the same way. */
+[data-slot="sheet-content"][data-state="open"],
+[data-slot="sheet-overlay"][data-state="open"],
+[data-slot="dialog-overlay"][data-state="open"],
+[data-slot="alert-dialog-overlay"][data-state="open"] {
+  animation-duration: var(--sk-dur-base);
+  animation-timing-function: var(--sk-ease-standard);
+}
+
+[data-slot="sheet-content"][data-state="closed"],
+[data-slot="sheet-overlay"][data-state="closed"],
+[data-slot="dialog-overlay"][data-state="closed"],
+[data-slot="alert-dialog-overlay"][data-state="closed"] {
+  animation-duration: var(--sk-dur-fast);
+  animation-timing-function: var(--sk-ease-exit);
+}
+
+@keyframes sk-dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+@keyframes sk-dialog-out {
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+[data-slot="dialog-content"][data-state="open"],
+[data-slot="alert-dialog-content"][data-state="open"] {
+  animation: sk-dialog-in var(--sk-dur-base) var(--sk-ease-standard) both;
+}
+
+[data-slot="dialog-content"][data-state="closed"],
+[data-slot="alert-dialog-content"][data-state="closed"] {
+  animation: sk-dialog-out var(--sk-dur-fast) var(--sk-ease-exit) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* Route changes (View Transitions): the content area crossfades and settles
+   4px; the sidebar and the top bar stand still. A change of the query alone —
+   a run sheet, a tab, a filter — is no route change and does not transition
+   (see `app/view-transition.ts`). */
+[data-testid="cockpit-sidebar"] {
+  view-transition-name: sk-sidebar;
+}
+
+[data-testid="cockpit-header"] {
+  view-transition-name: sk-header;
+}
+
+[data-testid="page-content"] {
+  view-transition-name: sk-content;
+}
+
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-old(sk-sidebar),
+::view-transition-new(sk-sidebar),
+::view-transition-old(sk-header),
+::view-transition-new(sk-header),
+::view-transition-group(sk-sidebar),
+::view-transition-group(sk-header),
+::view-transition-group(sk-content) {
+  animation: none;
+}
+
+::view-transition-old(sk-content) {
+  animation: sk-fade-out var(--sk-dur-fast) var(--sk-ease-exit) both;
+}
+
+::view-transition-new(sk-content) {
+  animation: sk-settle-in var(--sk-dur-base) var(--sk-ease-standard) both;
+}
+
+/* Touch: every control is at least 40px high, an icon button 40px wide. */
+@media (pointer: coarse) {
+  [data-cockpit-ui]
+    :is(
+      [data-slot="button"],
+      [data-slot="tabs-trigger"],
+      [data-slot="select-trigger"],
+      [data-slot="sidebar-menu-button"],
+      [data-slot="dropdown-menu-item"],
+      [data-slot="toggle-group-item"]
+    ) {
+    min-height: 40px;
+  }
+
+  [data-cockpit-ui] [data-slot="button"][data-size^="icon"] {
+    min-width: 40px;
+  }
+
+  [data-cockpit-ui] [data-slot="tabs-list"] {
+    height: auto;
+  }
+}

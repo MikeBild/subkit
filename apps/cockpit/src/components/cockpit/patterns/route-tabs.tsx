@@ -1,5 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
+import { useEdgeFade } from "./tab-motion";
 
 export interface RouteTab {
   /** Router-relative path of the tab's own page. */
@@ -32,12 +34,16 @@ export function RouteTabs({
 }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = activeRouteTab(pathname, tabs);
+  const scroller = useRef<HTMLElement>(null);
+  const edgeFade = useEdgeFade(scroller);
   return (
     <nav
       aria-label={label}
       data-slot="page-tabs"
       data-testid={testId}
-      className="flex overflow-x-auto border-b"
+      ref={scroller}
+      style={edgeFade}
+      className="scrollbar-none flex overflow-x-auto border-b"
     >
       {tabs.map((tab) => {
         const current = tab.to === active;
