@@ -94,6 +94,7 @@ import sql0073ConnectorCapabilityCandidate from "./0073_connector_capability_can
 import sql0074FailOrphanedPreparations from "./0074_fail_orphaned_preparations.sql" with { type: "text" };
 import sql0075OauthFlowOrigin from "./0075_oauth_flow_origin.sql" with { type: "text" };
 import sql0076WorkflowAuthorityOpenEndedInheritance from "./0076_workflow_authority_open_ended_inheritance.sql" with { type: "text" };
+import sql0077SkillAppliesToFileSlug from "./0077_skill_applies_to_file_slug.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -195,6 +196,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0074_fail_orphaned_preparations": sql0074FailOrphanedPreparations,
   "0075_oauth_flow_origin": sql0075OauthFlowOrigin,
   "0076_workflow_authority_open_ended_inheritance": sql0076WorkflowAuthorityOpenEndedInheritance,
+  "0077_skill_applies_to_file_slug": sql0077SkillAppliesToFileSlug,
 };
 
 const journal = journalMeta as unknown as Journal;

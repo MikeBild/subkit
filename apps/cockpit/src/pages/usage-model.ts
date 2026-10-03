@@ -40,6 +40,8 @@ export type ConsumptionAxis = (typeof CONSUMPTION_AXES)[number];
 export interface ConsumptionRow {
   /** The workflow, purpose, user or model this row is about. Empty when none. */
   key: string;
+  /** The name the engine's model catalog gives the row's model, when it knows one. */
+  name?: string;
   /** True when the engine could not attribute these calls along this axis. */
   unattributed: boolean;
   calls: number;
@@ -89,9 +91,11 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
     const priced = isRecord(group.cost) ? group.cost : null;
     const amount = priced ? numberOrNull(priced.amount) : null;
     const unpriced = priced ? (numberOrNull(priced.unpriced_calls) ?? 0) : 0;
+    const name = axis === "model" && typeof group.model_name === "string" ? group.model_name : "";
     return [
       {
         key: keyed,
+        ...(name ? { name } : {}),
         // An empty dimension is a real answer, not a missing row.
         //
         // `llm_usage` carries no workflow: the attribution comes from a join

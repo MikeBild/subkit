@@ -47,7 +47,13 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
-import { skillScopeKey, skillStateLabelKey } from "@/pages/skills-model";
+import {
+  SKILL_APPLIES_TO,
+  type SkillAppliesTo,
+  skillAppliesToOptionKey,
+  skillScopeKey,
+  skillStateLabelKey,
+} from "@/pages/skills-model";
 
 type Skill = components["schemas"]["Skill"];
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -81,6 +87,12 @@ function rowTitle(row: SkillRow): string {
 
 function rowScope(row: SkillRow): string {
   return row.kind === "skill" ? row.skill.scope : row.candidate.scope;
+}
+
+function rowScopeKey(row: SkillRow) {
+  return row.kind === "skill"
+    ? skillScopeKey(row.skill.scope, row.skill.applies_to)
+    : skillScopeKey(row.candidate.scope);
 }
 
 /** Skills (V7): the rules SubKit follows, and the ones it proposes to follow. */
@@ -164,7 +176,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           "scope",
           (row) => rowScope(row),
           t("skills.column.scope"),
-          (row) => t(skillScopeKey(rowScope(row))),
+          (row) => t(rowScopeKey(row)),
           { sortable: true, width: "w-[20%]" },
         ),
         meta: { width: "w-[20%]", priority: "low" },
@@ -185,7 +197,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         surface="collection"
         scroll="page"
         testId="catalog-skills"
-        header={<PageHeader title={title} />}
+        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
         <DataState
           state="empty"
@@ -219,6 +231,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       testId="catalog-skills"
       header={
         <PageHeader
+          eyebrow={t("nav.group.knowledge")}
           title={title}
           action={empty ? undefined : newButton("skills-new")}
           secondary={
@@ -518,7 +531,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         <Section testId="skill-content">
           <SummaryLine
             text={t("skills.appliesTo", {
-              scope: t(skillScopeKey(skill.scope)),
+              scope: t(skillScopeKey(skill.scope, skill.applies_to)),
               when: dateTime(skill.updated_at),
             })}
           />
@@ -561,16 +574,26 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
   const canWrite = permissions.includes("skill:write");
   const query = useSkill(id, permissions.includes("skill:read"));
   const skill = query.data;
-  const original = { title: skill?.title ?? "", body: skill?.body ?? "" };
+  const original = {
+    title: skill?.title ?? "",
+    body: skill?.body ?? "",
+    appliesTo: (skill?.applies_to ?? "both") as SkillAppliesTo,
+  };
   const [title, setTitle] = useState(original.title);
   const [body, setBody] = useState(original.body);
+  const [appliesTo, setAppliesTo] = useState<SkillAppliesTo>(original.appliesTo);
   const [view, setView] = useState<"edit" | "preview">("edit");
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     setTitle(skill?.title ?? "");
     setBody(skill?.body ?? "");
-  }, [skill?.title, skill?.body]);
-  const dirty = title !== original.title || body !== original.body;
+    setAppliesTo((skill?.applies_to ?? "both") as SkillAppliesTo);
+  }, [skill?.title, skill?.body, skill?.applies_to]);
+  const changes =
+    (title !== original.title ? 1 : 0) +
+    (body !== original.body ? 1 : 0) +
+    (appliesTo !== original.appliesTo ? 1 : 0);
+  const dirty = changes > 0;
   useDirtyGuard(dirty);
 
   const save = useMutation({
@@ -582,13 +605,19 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
               scope: "global",
               title: title.trim(),
               body,
+              applies_to: appliesTo,
               status: "active",
               source: "manual",
             }),
           })
         : apiRequest<Skill>(`${ENDPOINT}/${encodeURIComponent(id)}`, {
             method: "PATCH",
-            body: JSON.stringify({ title: title.trim(), body, expected_version: skill?.version }),
+            body: JSON.stringify({
+              title: title.trim(),
+              body,
+              applies_to: appliesTo,
+              expected_version: skill?.version,
+            }),
           }),
     onSuccess: (saved) => {
       toast.success(t("skills.saved"));
@@ -674,6 +703,20 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
               />
             </Field>
             <Field>
+              <FieldLabel>{t("skills.editor.appliesTo")}</FieldLabel>
+              <SegmentedControl
+                label={t("skills.editor.appliesTo")}
+                value={appliesTo}
+                onValueChange={(next) => setAppliesTo(next as SkillAppliesTo)}
+                options={SKILL_APPLIES_TO.map((value) => ({
+                  value,
+                  label: t(skillAppliesToOptionKey(value)),
+                  testId: `skill-applies-to-${value}`,
+                }))}
+                testId="skill-applies-to"
+              />
+            </Field>
+            <Field>
               <FieldLabel htmlFor="skill-body">{t("skills.editor.body")}</FieldLabel>
               <Textarea
                 id="skill-body"
@@ -700,12 +743,13 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
       </div>
       {dirty ? (
         <SaveBar
-          count={(title !== original.title ? 1 : 0) + (body !== original.body ? 1 : 0)}
+          count={changes}
           notice={problem ?? undefined}
           discard={{
             onClick: () => {
               setTitle(original.title);
               setBody(original.body);
+              setAppliesTo(original.appliesTo);
               setProblem(null);
             },
             testId: "skill-discard",

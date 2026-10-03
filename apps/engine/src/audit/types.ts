@@ -300,6 +300,9 @@ export const AuditAction = {
   // user and reversible; the row and its history stay.
   CONVERSATION_HIDDEN: "conversation.hidden",
   CONVERSATION_UNHIDDEN: "conversation.unhidden",
+  // A conversation was removed for everyone, with its messages, tool calls
+  // and file links. The audit row keeps the id and title; the files stay.
+  CONVERSATION_DELETED: "conversation.deleted",
   // An explicit `load_skill` tool call mutated the conversation's persisted
   // `loaded_skills` palette (tenant-visible state that survives session
   // resumption). Metadata carries skill_slug / skill_id / already_loaded so
@@ -833,6 +836,18 @@ export const ConversationForkedMetadataSchema = z.object({
   request_source: RequestSourceSchema,
 });
 export type ConversationForkedMetadata = z.infer<typeof ConversationForkedMetadataSchema>;
+
+/** `conversation.deleted` metadata. The row is gone afterwards, so the
+ *  audit entry carries what a reader needs to recognise it. */
+export const ConversationDeletedMetadataSchema = z.object({
+  conversation_id: z.string().uuid(),
+  title: z.string().nullable(),
+  owner_id: z.string().uuid().nullable(),
+  message_count: z.number().int().nonnegative(),
+  file_links_removed: z.number().int().nonnegative(),
+  request_source: RequestSourceSchema,
+});
+export type ConversationDeletedMetadata = z.infer<typeof ConversationDeletedMetadataSchema>;
 
 /** `tool_policy.changed` metadata. Emitted from the
  *  `PUT /v1/conversations/:id/tool-policies` handler. */

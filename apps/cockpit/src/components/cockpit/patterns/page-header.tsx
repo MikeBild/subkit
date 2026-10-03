@@ -10,7 +10,7 @@ import { Skeleton } from "./skeleton";
 /**
  * The page's header (P2) and the only place an h1 renders.
  *
- * back · [toggle] h1 badge … actions, then the purpose line below. The actions
+ * back · eyebrow · [toggle] h1 badge … actions, then the purpose line below. The actions
  * are centred on the h1 row, not on the whole header, so a purpose that wraps
  * never pushes them down. On a phone they take their own row at full width.
  *
@@ -19,6 +19,7 @@ import { Skeleton } from "./skeleton";
  */
 export function PageHeader({
   title,
+  eyebrow,
   back,
   badge,
   purpose,
@@ -29,6 +30,8 @@ export function PageHeader({
   testId,
 }: {
   title: string;
+  /** A small muted label above the h1 naming the area the page belongs to ("Wissen"). */
+  eyebrow?: string;
   /** The list this record belongs to — detail pages only. */
   back?: { to: string; label: string };
   /** A `StatusBadge`, on the h1 row. */
@@ -64,6 +67,15 @@ export function PageHeader({
       className="flex flex-col gap-1 pt-6 pb-4"
     >
       {back ? <BackLink to={back.to} label={back.label} /> : null}
+      {eyebrow ? (
+        <p
+          data-slot="page-eyebrow"
+          data-testid="page-eyebrow"
+          className="text-xs leading-4 font-medium text-muted-foreground"
+        >
+          {eyebrow}
+        </p>
+      ) : null}
       {loadingRow ? (
         <div
           className={cn(

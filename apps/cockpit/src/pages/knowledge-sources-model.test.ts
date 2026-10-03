@@ -1,5 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { documentUnderTitle, sourceKind, sourceSections } from "./knowledge-sources-model";
+import {
+  documentUnderTitle,
+  REFRESH_CRON,
+  refreshFields,
+  refreshRhythm,
+  sourceKind,
+  sourceSections,
+} from "./knowledge-sources-model";
+
+describe("refreshRhythm", () => {
+  test("reads the offered rhythms back from the engine's fields", () => {
+    expect(refreshRhythm("manual", null)).toBe("never");
+    expect(refreshRhythm("scheduled", REFRESH_CRON.daily)).toBe("daily");
+    expect(refreshRhythm("scheduled", " 0 6  * * 1 ")).toBe("weekly");
+  });
+
+  test("a rhythm set elsewhere stays honest, never a nearby offer", () => {
+    expect(refreshRhythm("scheduled", "0 9 * * *")).toBe("custom");
+    expect(refreshRhythm("scheduled", "every:3600")).toBe("custom");
+    expect(refreshRhythm("webhook", null)).toBe("custom");
+  });
+
+  test("each offered rhythm round-trips through the fields it writes", () => {
+    for (const rhythm of ["never", "daily", "weekly"] as const) {
+      const fields = refreshFields(rhythm);
+      expect(refreshRhythm(fields.refresh_strategy, fields.refresh_cron)).toBe(rhythm);
+    }
+  });
+});
 
 const chunk = (
   ordinal: number,

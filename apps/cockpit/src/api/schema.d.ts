@@ -11450,7 +11450,59 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a conversation for everyone
+         * @description Removes the conversation with its messages, tool calls and file links; the files themselves stay. Only the owner or an administrator may delete. Refused with 409 while a turn is running. Hiding (`/hide`) only takes it out of the caller's own list.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeleteConversationResponse"];
+                    };
+                };
+                /** @description Forbidden — neither the owner nor an administrator */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A turn is still running */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         /** Patch conversation metadata (model, title) */
@@ -17769,6 +17821,7 @@ export interface components {
                 key: {
                     [key: string]: string;
                 };
+                model_name?: string;
                 buckets: {
                     ts: string;
                     calls: number;
@@ -21130,6 +21183,11 @@ export interface components {
             maturity: "experimental" | "stable";
             /** @default [] */
             tags: string[];
+            /**
+             * @default both
+             * @enum {string}
+             */
+            applies_to: "chat" | "authoring" | "both";
             /** @enum {string} */
             status: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -21245,6 +21303,8 @@ export interface components {
             maturity?: "experimental" | "stable";
             tags?: string[];
             /** @enum {string} */
+            applies_to?: "chat" | "authoring" | "both";
+            /** @enum {string} */
             status?: "draft" | "active" | "archived";
             /** @enum {string} */
             source?: "manual" | "candidate" | "template" | "memory";
@@ -21272,6 +21332,8 @@ export interface components {
             /** @enum {string} */
             maturity?: "experimental" | "stable";
             tags?: string[];
+            /** @enum {string} */
+            applies_to?: "chat" | "authoring" | "both";
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
         };
@@ -21863,6 +21925,12 @@ export interface components {
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
         };
+        DeleteConversationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {boolean} */
+            deleted: true;
+        };
         ContextSnapshot: {
             conversation_id: string;
             connector_id: string | null;
@@ -22035,7 +22103,7 @@ export interface components {
             source: "right-arrow" | "tab" | "typed-over" | "dismissed";
         };
         ConversationAttachment: components["schemas"]["File"] & {
-            slug: string;
+            slug?: string;
         };
         /** @enum {string} */
         FileStatus: "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
@@ -22050,6 +22118,8 @@ export interface components {
             created_at: string;
             updated_at: string;
             deleted_at: string | null;
+            slug: string | null;
+            reference: string | null;
         };
         ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
             filename: string;
@@ -22091,9 +22161,15 @@ export interface components {
             sha256: string;
         };
         FileList: {
-            items: components["schemas"]["File"][];
+            items: components["schemas"]["FileListItem"][];
             total: number;
             next_cursor?: string | null;
+        };
+        FileListItem: components["schemas"]["File"] & {
+            usage: {
+                workflows: number;
+                conversations: number;
+            };
         };
         FileStats: {
             total: number;

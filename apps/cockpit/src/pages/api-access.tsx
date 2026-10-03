@@ -342,7 +342,7 @@ function KeysSection({
     if (items.length === 0) return null;
     return (
       <span data-action-scope="api-key">
-        <ActionMenu items={items} testId={`api-key-menu-${index}`} />
+        <ActionMenu items={items} size="sm" testId={`api-key-menu-${index}`} />
       </span>
     );
   };

@@ -13,6 +13,33 @@ export function sourceKind(sourceType: string): SourceKind {
   return "file";
 }
 
+/** How often an address is read again. "custom" is a rhythm set elsewhere
+ *  (a cron the cockpit does not offer, or a webhook); it is shown, not offered. */
+export type RefreshRhythm = "never" | "daily" | "weekly" | "custom";
+
+/** The rhythms the cockpit offers, as the engine's cron expressions. */
+export const REFRESH_CRON = { daily: "0 6 * * *", weekly: "0 6 * * 1" } as const;
+
+/** The engine's `refresh_strategy` + `refresh_cron`, as the rhythm a reader recognises. */
+export function refreshRhythm(strategy: string, cron: string | null | undefined): RefreshRhythm {
+  if (strategy === "manual") return "never";
+  if (strategy !== "scheduled") return "custom";
+  const normalized = (cron ?? "").trim().replace(/\s+/g, " ");
+  if (normalized === REFRESH_CRON.daily) return "daily";
+  if (normalized === REFRESH_CRON.weekly) return "weekly";
+  return "custom";
+}
+
+/** The fields that put a source on one of the offered rhythms. */
+export function refreshFields(rhythm: Exclude<RefreshRhythm, "custom">): {
+  refresh_strategy: "manual" | "scheduled";
+  refresh_cron: string | null;
+} {
+  return rhythm === "never"
+    ? { refresh_strategy: "manual", refresh_cron: null }
+    : { refresh_strategy: "scheduled", refresh_cron: REFRESH_CRON[rhythm] };
+}
+
 export interface SourceSection {
   key: string;
   title: string;

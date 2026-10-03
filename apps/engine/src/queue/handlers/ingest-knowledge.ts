@@ -9,6 +9,7 @@ import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
 import { ingestKnowledgeSource } from "../../knowledge/service.ts";
+import { refreshKnowledgeSource } from "../../knowledge/url-source.ts";
 import { log } from "../../logging/logger.ts";
 import { withJobContext } from "../job-context.ts";
 
@@ -21,6 +22,9 @@ export interface IngestKnowledgeJob {
   content: string;
   mime?: string;
   actor_id?: string | null;
+  /** A scheduled refresh: read the source's address again instead of
+   *  ingesting `content`. Only address (url) sources can be read again. */
+  read_address_again?: boolean;
 }
 
 export interface RegisterIngestKnowledgeOptions {
@@ -44,6 +48,24 @@ export async function processIngestKnowledgeJob(
   });
   const started = Date.now();
   try {
+    if (data.read_address_again) {
+      const refreshed = await refreshKnowledgeSource(
+        {
+          tenant_id: data.tenant_id,
+          actor_id: data.actor_id ?? null,
+          id: data.knowledge_source_id,
+        },
+        db,
+      );
+      log.queue.job.completed({
+        msg: "knowledge.ingest job read the address again",
+        queue: INGEST_KNOWLEDGE_QUEUE,
+        job_id: job.id,
+        found: refreshed !== null,
+        duration_ms: Date.now() - started,
+      });
+      return;
+    }
     const result = await ingestKnowledgeSource(
       {
         tenant_id: data.tenant_id,
