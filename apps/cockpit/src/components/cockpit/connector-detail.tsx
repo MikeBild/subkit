@@ -575,17 +575,26 @@ interface WorkflowItem {
   name?: string | null;
 }
 
+/**
+ * The workflows whose current version uses this connector: the "Verwendung"
+ * table, the strip's count and the delete consequence read the same query.
+ */
+export function useConnectorWorkflows(slug: string | null) {
+  return useQuery({
+    queryKey: ["connector-workflows", slug],
+    queryFn: () =>
+      apiRequest<{ items?: WorkflowItem[]; total?: number }>(
+        `/v1/workflows?connector=${encodeURIComponent(slug ?? "")}&limit=50`,
+      ),
+    enabled: slug !== null,
+  });
+}
+
 /** The workflows whose current version uses this connector (V6a). */
 export function ConnectorWorkflows({ slug }: { slug: string }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
-  const query = useQuery({
-    queryKey: ["connector-workflows", slug],
-    queryFn: () =>
-      apiRequest<{ items?: WorkflowItem[]; total?: number }>(
-        `/v1/workflows?connector=${encodeURIComponent(slug)}&limit=50`,
-      ),
-  });
+  const query = useConnectorWorkflows(slug);
   const rows = query.data?.items ?? [];
   const columns = useMemo<CockpitColumn<WorkflowItem>[]>(() => {
     const column = tableColumns<WorkflowItem>({ t, dateTime });

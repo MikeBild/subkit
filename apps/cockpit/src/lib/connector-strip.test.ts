@@ -56,11 +56,11 @@ describe("connector status strip (D15)", () => {
     expect(connectorStrip(input({ probe: { ok: true } })).kind).toBe("tested");
   });
 
-  test("missing credentials or withheld permissions are completed", () => {
-    expect(connectorStrip(input({ auth: "credentials_missing", way: "key" })).action).toEqual({
-      kind: "complete",
-      way: "key",
-      first: true,
+  test("missing credentials read as not signed in; withheld permissions are completed", () => {
+    expect(connectorStrip(input({ auth: "credentials_missing", way: "key" }))).toMatchObject({
+      kind: "notSignedIn",
+      tone: "warn",
+      action: { kind: "complete", way: "key", first: true },
     });
     expect(connectorStrip(input({ missingScopes: 1 })).kind).toBe("incomplete");
   });

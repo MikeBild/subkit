@@ -5,7 +5,7 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { FormError, SelectField, TextField } from "@/components/cockpit/form-field";
+import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
   ActionMenu,
@@ -64,7 +64,7 @@ function ScheduleDialog({
   workflowId: string;
   schedule: ScheduleEntry | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const client = useQueryClient();
   const [value, setValue] = useState<RhythmValue>(
     () => (schedule ? cronToRhythm(schedule.cron) : null) ?? DEFAULT_RHYTHM,
@@ -95,6 +95,43 @@ function ScheduleDialog({
     },
     onError: () => setError(t("schedule.saveFailed")),
   });
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t(schedule ? "schedule.editTitle" : "schedule.createTitle")}
+      submit={{ label: t(schedule ? "common.save" : "schedule.create"), pending: save.isPending }}
+      onSubmit={() => {
+        if (!validTime(value.time)) return setError(t("schedule.timeInvalid"));
+        setError(null);
+        save.mutate(rhythmToCron(value));
+      }}
+      error={error}
+      testId="schedule-dialog"
+    >
+      <FactList
+        items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
+      />
+      <ScheduleFields value={value} onChange={setValue} invalid={Boolean(error)} />
+    </FormDialog>
+  );
+}
+
+/**
+ * Rhythmus · Wochentag (weekly only) · Uhrzeit — shared by the schedule
+ * dialog and a workflow created by hand.
+ */
+export function ScheduleFields({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: RhythmValue;
+  onChange(value: RhythmValue): void;
+  invalid?: boolean;
+}) {
+  const { t, locale } = useI18n();
+  const setValue = onChange;
   const days = Array.from({ length: 7 }, (_, index) => {
     // 2023-01-01 was a Sunday: day `index` of that week is weekday `index`.
     const date = new Date(Date.UTC(2023, 0, 1 + index));
@@ -110,21 +147,7 @@ function ScheduleDialog({
     (day): day is { value: string; label: string } => Boolean(day),
   );
   return (
-    <FormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t(schedule ? "schedule.editTitle" : "schedule.createTitle")}
-      submit={{ label: t(schedule ? "common.save" : "schedule.create"), pending: save.isPending }}
-      onSubmit={() => {
-        if (!validTime(value.time)) return setError(t("schedule.timeInvalid"));
-        setError(null);
-        save.mutate(rhythmToCron(value));
-      }}
-      testId="schedule-dialog"
-    >
-      <FactList
-        items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
-      />
+    <>
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">{t("schedule.rhythm")}</span>
         <SegmentedControl
@@ -154,10 +177,9 @@ function ScheduleDialog({
         label={t("schedule.time")}
         value={value.time}
         onChange={(time) => setValue({ ...value, time })}
-        invalid={Boolean(error)}
+        invalid={Boolean(invalid)}
       />
-      <FormError message={error} testId="schedule-error" />
-    </FormDialog>
+    </>
   );
 }
 
