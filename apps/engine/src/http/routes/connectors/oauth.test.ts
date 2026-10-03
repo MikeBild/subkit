@@ -27,7 +27,7 @@
 //      origin.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   browserSessionCookie,
   signBrowserCsrf,
@@ -48,6 +48,7 @@ import {
   events,
   sessions,
 } from "../../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -56,6 +57,7 @@ let mock: MockOAuthServer;
 let connectorId: string;
 // The configured address is process-wide; hand it back as it was found.
 let publicBaseUrlBefore = "";
+const uuid = createDeterministicUuidFactory(0x0a17);
 
 beforeAll(async () => {
   server = await createHttpTestServer("oauth-callback");
@@ -428,6 +430,48 @@ describe("GET /v1/oauth/callback", () => {
       headers: { authorization: `Bearer ${server.apiKey}` },
     });
     expect(((await res.json()) as { missing_scopes: string[] }).missing_scopes).toEqual([]);
+  });
+
+  test("after a sign-in the runtime no longer names the rejected sign-in before it", async () => {
+    const runtime = async () => {
+      const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/runtime`, {
+        headers: { authorization: `Bearer ${server.apiKey}` },
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as { last_success_at: string | null; last_failure: unknown };
+    };
+    // The sign-ins earlier in this file happened long ago; the rejected call
+    // came after them, before this one. Times are the database's, the clock
+    // the audit writer stamps with.
+    await server.db
+      .update(auditLog)
+      .set({ ts: sql`${auditLog.ts} - interval '60 days'` })
+      .where(
+        and(
+          eq(auditLog.tenant_id, server.tenantId),
+          inArray(auditLog.action, ["credential.created", "credential.updated"]),
+        ),
+      );
+    await server.db.insert(auditLog).values({
+      id: uuid(),
+      ts: sql`now() - interval '1 day'`,
+      tenant_id: server.tenantId,
+      actor_type: "system",
+      action: "connector.invoked",
+      resource_type: "connector",
+      resource_id: connectorId,
+      result: "error",
+      metadata: { connector_id: connectorId, driver: "http", status_code: 401 },
+    });
+    const before = await runtime();
+    expect(before.last_failure).toMatchObject({ cause_class: "auth_failed" });
+    await seedStateRow("state-runtime-renewed", { requested_scopes: "read" });
+    const body = await (await callback("state=state-runtime-renewed&code=c")).text();
+    expect(body).toContain("Signed in");
+    const after = await runtime();
+    expect(after.last_failure).toBeNull();
+    // A sign-in is not a call.
+    expect(after.last_success_at).toBe(before.last_success_at);
   });
 
   test("a provider that reports no scope granted what was asked: not a partial grant", async () => {
