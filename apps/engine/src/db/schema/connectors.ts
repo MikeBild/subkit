@@ -351,8 +351,9 @@ export const credentials = pgTable(
     oauth2_refresh_auth_tag: bytea("oauth2_refresh_auth_tag"),
     oauth2_expires_at: timestamp("oauth2_expires_at", { withTimezone: true }),
     // G6 (runtime-logs review plan): scopes the IdP actually granted
-    // on the most recent OAuth flow. Space-separated, raw from the
-    // token-exchange response's `scope` field. Diffed against the
+    // on the most recent OAuth flow, from the token-exchange response's
+    // `scope` field, stored space-separated whatever separator the server
+    // answered with. Diffed against the
     // matching `connector_oauth_states.requested_scopes` at callback
     // time; when granted ⊊ requested, the credential is `partial_grant`
     // and probe / test surface the missing scopes to the LLM.

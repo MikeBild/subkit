@@ -411,6 +411,25 @@ describe("GET /v1/oauth/callback", () => {
     expect((await summary()).missing_scopes).toEqual([]);
   });
 
+  test("a grant reported as a comma list is the full grant, stored space-separated", async () => {
+    const state = "state-scope-commas";
+    await seedStateRow(state, { requested_scopes: "openid profile read" });
+    mock.setGrantedScope("read,openid,profile");
+    let body: string;
+    try {
+      body = await (await callback(`state=${state}&code=c`)).text();
+    } finally {
+      mock.setGrantedScope(null);
+    }
+    expect(body).toContain("Signed in");
+    expect(body).not.toContain("did not grant");
+    expect((await getCredentialRow())?.granted_scopes).toBe("read openid profile");
+    const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credential`, {
+      headers: { authorization: `Bearer ${server.apiKey}` },
+    });
+    expect(((await res.json()) as { missing_scopes: string[] }).missing_scopes).toEqual([]);
+  });
+
   test("a provider that reports no scope granted what was asked: not a partial grant", async () => {
     const state = "state-scope-omitted";
     await seedStateRow(state, { requested_scopes: "read mail.send" });
