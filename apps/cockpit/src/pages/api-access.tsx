@@ -19,7 +19,6 @@ import {
   CopyField,
   DataState,
   Field,
-  FieldError,
   FieldGroup,
   FieldLabel,
   FormDialog,
@@ -466,6 +465,7 @@ function CreateKeyDialog({
         disabled: !name.trim() || picked.length === 0,
       }}
       onSubmit={() => issue.mutate()}
+      error={issue.error ? t("apiKeys.actionFailed") : null}
       testId="api-key-create-dialog"
     >
       <FieldGroup>
@@ -515,9 +515,6 @@ function CreateKeyDialog({
             ))}
           </div>
         </Field>
-        {issue.error ? (
-          <FieldError data-testid="api-key-create-failed">{t("apiKeys.actionFailed")}</FieldError>
-        ) : null}
       </FieldGroup>
     </FormDialog>
   );
