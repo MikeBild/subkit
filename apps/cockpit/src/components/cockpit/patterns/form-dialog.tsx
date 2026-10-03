@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,10 @@ export { type DialogSize, dialogWidthClass } from "./dialog-frame";
  * A dialog of two steps keeps its width: its first step offers ChoiceCards
  * and only "Abbrechen" (no `submit`); its second has "‹ Zurück" (`back`)
  * above the title. `step` names the step shown; a new one fades in.
+ *
+ * A review that offers more than one way on (the approval dialog: re-check,
+ * adjust, a smaller decision) puts them in `actions`, before the one filled
+ * verb; `trigger` is the dialog's own opener where it has one.
  */
 export function FormDialog({
   open,
@@ -44,6 +49,10 @@ export function FormDialog({
   error,
   back,
   step,
+  actions,
+  trigger,
+  titleTestId,
+  cancelTestId,
   size = "default",
   testId,
   children,
@@ -54,13 +63,25 @@ export function FormDialog({
   /** One line under the title. */
   description?: string;
   /** Omitted: the step's choices proceed by themselves. */
-  submit?: { label: string; pending?: boolean; disabled?: boolean; destructive?: boolean };
+  submit?: {
+    label: string;
+    pending?: boolean;
+    disabled?: boolean;
+    destructive?: boolean;
+    testId?: string;
+  };
   onSubmit?(): void | Promise<void>;
   /** The one error line, above the footer. */
   error?: string | null;
   /** Back to the previous step. */
   back?: { label: string; onClick(): void; testId?: string };
   step?: string;
+  /** Further ways on, in the footer before the filled verb (outline). */
+  actions?: ReactNode;
+  /** The dialog's own opener. */
+  trigger?: ReactNode;
+  titleTestId?: string;
+  cancelTestId?: string;
   size?: DialogSize;
   testId: string;
   /** The fields. */
@@ -70,9 +91,16 @@ export function FormDialog({
   const pending = Boolean(submit?.pending);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent
         className={cn(dialogWidthClass(size), DIALOG_FRAME)}
         showCloseButton={false}
+        // Focus lands on the dialog, not on its close ×: a focused × opens its
+        // tooltip, and the first Escape would close the tooltip, not the dialog.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
         aria-describedby={undefined}
         data-testid={testId}
       >
@@ -96,7 +124,10 @@ export function FormDialog({
             ) : null}
             <DialogTitleRow
               title={
-                <DialogTitle className={DIALOG_TITLE} data-testid={`${testId}-title`}>
+                <DialogTitle
+                  className={DIALOG_TITLE}
+                  data-testid={titleTestId ?? `${testId}-title`}
+                >
                   {title}
                 </DialogTitle>
               }
@@ -128,16 +159,17 @@ export function FormDialog({
               variant="ghost"
               disabled={pending}
               onClick={() => onOpenChange(false)}
-              data-testid={`${testId}-cancel`}
+              data-testid={cancelTestId ?? `${testId}-cancel`}
             >
               {t("common.cancel")}
             </Button>
+            {actions}
             {submit ? (
               <Button
                 type="submit"
                 disabled={pending || submit.disabled}
                 className={submit.destructive ? FILLED_DESTRUCTIVE : undefined}
-                data-testid={`${testId}-submit`}
+                data-testid={submit.testId ?? `${testId}-submit`}
               >
                 {submit.label}
               </Button>

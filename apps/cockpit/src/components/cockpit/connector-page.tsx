@@ -44,6 +44,7 @@ import {
   connectorStripActionKey,
 } from "@/lib/connector-strip";
 import { useI18n } from "@/lib/i18n-context";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { type ConnectionItem, connectionStateKey } from "@/pages/connections-model";
 import {
   asInspect,
@@ -243,16 +244,17 @@ export function ConnectorPage({
     probe.mutate();
     if (isMcp) inspect.mutate();
   };
-  const enable = useMutation({
+  // Switched on at once; put back if the engine refuses.
+  const enable = useOptimisticAction({
+    queryKey: ["catalog-detail", "connectors", id],
     mutationFn: () =>
       apiRequest<RecordValue>(`/v1/connectors/${encodeURIComponent(id)}/enable`, {
         method: "POST",
       }),
-    onSuccess: (connector) => {
-      client.setQueryData(["catalog-detail", "connectors", id], connector);
-      toast.success(t("connectorState.enabled"));
-    },
-    onError: () => toast.error(t("connectorState.enableFailed")),
+    apply: (current: RecordValue | undefined) =>
+      current ? { ...current, enabled: true } : current,
+    errorMessage: () => t("connectorState.enableFailed"),
+    onSuccess: () => toast.success(t("connectorState.enabled")),
   });
   // The connector's own OAuth sign-in: the engine mints the authorization URL
   // and the provider brings the browser back to its callback.
@@ -318,7 +320,7 @@ export function ConnectorPage({
   const act = (action: ConnectorStripAction) => {
     switch (action.kind) {
       case "enable":
-        return enable.mutate();
+        return enable.mutate(undefined);
       case "recheck":
         return runTest();
       case "renew":

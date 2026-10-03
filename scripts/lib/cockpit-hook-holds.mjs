@@ -147,10 +147,13 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
   for (const [pattern, handler] of routes) await page.route(pattern, handler);
   try {
     await stand.visit(page, "");
-    const entry = page.locator('[data-testid="attention-list"] > li').first();
+    // The entry's row: its name and reason; its verb carries the entry's id.
+    const entry = page
+      .locator('[data-testid="attention-list"] [data-attention-id]:visible')
+      .first();
     await entry.waitFor();
-    const sentence = await entry.innerText();
-    if (!sentence.includes(slug)) throw new Error("Übersicht does not name the waiting webhook");
+    const sentence = await page.getByTestId("attention-list").innerText();
+    // The row names the workflow alone; the webhook is named on its card.
     if (sentence.includes(locale === "de" ? "Zeitplan" : "schedule"))
       throw new Error(`A held webhook is announced as a schedule: ${sentence}`);
     await capture("today");
@@ -158,6 +161,8 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     const sheet = page.getByTestId("attention-review");
     const card = sheet.getByTestId("inbound-hook-admission-held");
     await card.waitFor();
+    if (!(await card.innerText()).includes(slug))
+      throw new Error("The review does not name the waiting webhook");
     if ((await card.innerText()).includes(locale === "de" ? "Zeitplan" : "Schedule"))
       throw new Error("The hook card speaks of a schedule");
     const action = card.getByTestId("inbound-hook-admission-review");
@@ -238,8 +243,9 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
       throw new Error(
         `A held webhook reads as "${await panel.getAttribute("data-state")}", not as approval needed`,
       );
-    if (!(await page.getByTestId("workflow-automation-triggers").innerText()).includes(slug))
-      throw new Error("The panel does not name the webhook it is about");
+    // "Verwenden" says how it is called: by webhook.
+    if (!(await page.getByTestId("workflow-automation-triggers").innerText()).includes("Webhook"))
+      throw new Error("The page does not say it is called by webhook");
     if (
       !(await page.getByTestId("workflow-automation-headline").innerText()).includes(
         locale === "de" ? "Produktion" : "Production",

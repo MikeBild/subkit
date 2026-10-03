@@ -281,7 +281,9 @@ async function assertRecordHeader(page, where, de) {
   if (found.titleBadges !== 0) throw new Error(`${where}: the state stands beside the title too`);
   // "Im Chat ändern" once; whatever else the reader's rights allow, once each.
   if (!found.actions.includes("detail-action"))
-    throw new Error(`${where}: the header lacks "Im Chat ändern" — ${JSON.stringify(found.actions)}`);
+    throw new Error(
+      `${where}: the header lacks "Im Chat ändern" — ${JSON.stringify(found.actions)}`,
+    );
   if (new Set(found.actions).size !== found.actions.length)
     throw new Error(`${where}: an action stands twice beside the title — ${found.actions}`);
 }
