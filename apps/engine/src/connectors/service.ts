@@ -5,6 +5,7 @@
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
@@ -515,7 +516,7 @@ export async function listConnectorCredentials(
     mode: r.mode,
     environment: r.environment,
     has_oauth_refresh: r.oauth2_refresh_ciphertext != null,
-    granted_scopes: r.granted_scopes,
+    granted_scopes: storedScopes(r.granted_scopes),
     oauth2_expires_at: r.oauth2_expires_at?.toISOString() ?? null,
     connection_id: r.connection_id,
     created_at: r.created_at.toISOString(),
