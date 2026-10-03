@@ -381,12 +381,21 @@ function useHeadline(state: AutomationState): string {
       return [
         versionFact,
         environmentWord(state.environment),
-        state.facts.validUntil
-          ? t("automation.fact.until", { until: dateTime(state.facts.validUntil) })
-          : null,
+        state.facts.untilRevoked
+          ? t("automation.fact.untilRevoked")
+          : state.facts.validUntil
+            ? t("automation.fact.until", { until: dateTime(state.facts.validUntil) })
+            : null,
         state.facts.runsLeft !== null && state.facts.runsMax !== null
           ? t("automation.fact.runs", { left: state.facts.runsLeft, max: state.facts.runsMax })
-          : null,
+          : state.facts.runsSoFar !== null
+            ? t(
+                state.facts.runsSoFar === 1
+                  ? "automation.fact.runsSoFar.one"
+                  : "automation.fact.runsSoFar.other",
+                { count: state.facts.runsSoFar },
+              )
+            : null,
       ]
         .filter(Boolean)
         .join(" · ");

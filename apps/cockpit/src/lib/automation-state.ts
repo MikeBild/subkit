@@ -164,9 +164,15 @@ export interface AutomationState {
     version: number | null;
     /** The saved change's number, in state `apply`. */
     preparedVersion: number | null;
+    /** Null on an approval without an end date (see `untilRevoked`). */
     validUntil: string | null;
+    /** Null on an approval without a run limit. */
     runsLeft: number | null;
     runsMax: number | null;
+    /** Runs started under the approval so far. */
+    runsSoFar: number | null;
+    /** The approval has no end date: it stands until it is revoked. */
+    untilRevoked: boolean;
     /** The step the gate refuses first, in state `repair`. */
     blockedStep: string | null;
     /** In state `manual`: the workflow has no running version at all. */
@@ -221,9 +227,16 @@ export function grantNeedsExtension(
   grant: Pick<WorkflowAuthority, "valid_until" | "remaining_runs" | "max_runs">,
   now: number,
 ): boolean {
-  const until = Date.parse(grant.valid_until);
+  // No end date is no date pressure, no run limit no run pressure: an approval
+  // that stands until revoked is never offered for extension.
+  const until = grant.valid_until === null ? Number.NaN : Date.parse(grant.valid_until);
   if (Number.isFinite(until) && until - now < EXTEND_WITHIN_MS) return true;
-  return grant.max_runs > 0 && grant.remaining_runs / grant.max_runs < EXTEND_BELOW_RUN_SHARE;
+  return (
+    grant.max_runs !== null &&
+    grant.remaining_runs !== null &&
+    grant.max_runs > 0 &&
+    grant.remaining_runs / grant.max_runs < EXTEND_BELOW_RUN_SHARE
+  );
 }
 
 /** What starts the workflow on its own, from the best source the page has. */
@@ -422,6 +435,8 @@ export function automationState(input: AutomationInputs): AutomationState {
     validUntil: null,
     runsLeft: null,
     runsMax: null,
+    runsSoFar: null,
+    untilRevoked: false,
     blockedStep: null,
     inactive: false,
   } satisfies AutomationState["facts"];
@@ -519,6 +534,8 @@ export function automationState(input: AutomationInputs): AutomationState {
         validUntil: grant.valid_until,
         runsLeft: grant.remaining_runs,
         runsMax: grant.max_runs,
+        runsSoFar: grant.reserved_runs,
+        untilRevoked: grant.valid_until === null,
       }
     : facts;
   const approved = (): AutomationState => ({

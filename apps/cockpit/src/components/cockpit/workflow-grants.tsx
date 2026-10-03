@@ -103,10 +103,12 @@ function GrantTechnicalDetails({
           <div>
             <dt className="text-muted-foreground">{t("authority.runs")}</dt>
             <dd>
-              {t("authority.remaining", {
-                remaining: authority.remaining_runs,
-                max: authority.max_runs,
-              })}
+              {authority.max_runs === null || authority.remaining_runs === null
+                ? t("authority.runsUnlimited", { count: authority.reserved_runs })
+                : t("authority.remaining", {
+                    remaining: authority.remaining_runs,
+                    max: authority.max_runs,
+                  })}
             </dd>
           </div>
           <div className="sm:col-span-2">
@@ -116,9 +118,13 @@ function GrantTechnicalDetails({
                 {formatDateTime(locale, authority.valid_from)}
               </time>
               {" — "}
-              <time dateTime={authority.valid_until}>
-                {formatDateTime(locale, authority.valid_until)}
-              </time>
+              {authority.valid_until === null ? (
+                t("authority.headline.untilRevoked")
+              ) : (
+                <time dateTime={authority.valid_until}>
+                  {formatDateTime(locale, authority.valid_until)}
+                </time>
+              )}
             </dd>
           </div>
           <div className="min-w-0 sm:col-span-2">
