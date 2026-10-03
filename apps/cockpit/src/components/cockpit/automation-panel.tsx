@@ -39,6 +39,7 @@ import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/
 import { formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
 import {
   STRIP_STATE_KEYS,
@@ -454,22 +455,23 @@ export function WorkflowStatus({
   const { state } = automation;
   const navigate = useNavigate();
   const sheets = useOpenRunSheet();
-  const client = useQueryClient();
   const runHealth = useRunHealth(automation.workflowId, health, permissions);
   const failingLine = useFailingLine();
   const headline = useHeadline(state);
-  const enable = useMutation({
+  // Switched on at once; put back if the engine refuses.
+  const enable = useOptimisticAction({
+    queryKey: ["catalog-detail", "workflows", automation.workflowId],
     mutationFn: () =>
       apiRequest(`/v1/workflows/${encodeURIComponent(automation.workflowId)}/metadata`, {
         method: "PATCH",
         body: JSON.stringify({ lifecycle: "active" }),
       }),
-    onSuccess: async () => {
+    apply: (current: Record<string, unknown> | undefined) =>
+      current ? { ...current, lifecycle: "active" } : current,
+    onSuccess: () => {
       toast.success(t("workflowPage.enabled", { name: workflowName }));
-      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows"] });
       automation.refresh();
     },
-    onError: () => toast.error(t("common.actionFailed")),
   });
   const strip = workflowStrip({
     automation: state,
@@ -590,7 +592,7 @@ export function WorkflowStatus({
           ),
         };
       case "enable":
-        return { ...base, onClick: () => enable.mutate(), pending: enable.isPending };
+        return { ...base, onClick: () => enable.mutate(undefined), pending: enable.isPending };
       case "resume":
         return {
           ...base,

@@ -175,7 +175,12 @@ export function GrantRemedyAction({
   const { t } = useI18n();
   if (remedy.via === "prepare")
     return (
-      <Button disabled={busy} onClick={onRecheck} data-testid="authority-remedy-prepare">
+      <Button
+        type="button"
+        disabled={busy}
+        onClick={onRecheck}
+        data-testid="authority-remedy-prepare"
+      >
         {t("diagnosis.prepare")}
       </Button>
     );
@@ -251,6 +256,7 @@ function DiagnosisRepairButton({
   if (!entry.fixer) return null;
   return (
     <Button
+      type="button"
       disabled={repair.isPending}
       onClick={() => entry.fixer && repair.mutate(entry.fixer)}
       data-testid={testId}

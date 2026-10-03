@@ -46,6 +46,7 @@ import {
 } from "@/components/cockpit/workflow-steps-list";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { connectorNameOf } from "@/lib/workflow-steps";
 import { WorkflowRecategorize } from "@/pages/catalog";
 
@@ -178,21 +179,23 @@ export function WorkflowPage({
     })),
   );
   const technical = useTechnicalFacts(record);
-  const lifecycle = useMutation({
+  // Switched on or off at once; put back if the engine refuses.
+  const lifecycle = useOptimisticAction({
+    queryKey: ["catalog-detail", "workflows", id],
     mutationFn: (next: "active" | "archived") =>
       apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
         method: "PATCH",
         body: JSON.stringify({ lifecycle: next }),
       }),
-    onSuccess: async (_result, next) => {
+    apply: (current: RecordValue | undefined, next) =>
+      current ? { ...current, lifecycle: next } : current,
+    onSuccess: (_result, next) => {
       toast.success(
         t(next === "archived" ? "workflowPage.disabled" : "workflowPage.enabled", { name: title }),
       );
       setConfirming(null);
-      await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", id] });
       automation.refresh();
     },
-    onError: () => toast.error(t("common.actionFailed")),
   });
   const remove = useMutation({
     mutationFn: () => apiRequest(`/v1/workflows/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -440,13 +443,7 @@ export function WorkflowPage({
         <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
       </div>
       {canWrite ? (
-        <MetadataDialog
-          resource="workflows"
-          id={id}
-          title={title}
-          open={renaming}
-          onOpenChange={setRenaming}
-        />
+        <MetadataDialog id={id} title={title} open={renaming} onOpenChange={setRenaming} />
       ) : null}
       {canWrite ? (
         <StepDialog

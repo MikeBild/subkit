@@ -1,6 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
@@ -19,9 +17,11 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import { automationQueryKeys } from "@/lib/automation-queries";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { type AuthorityPages, withAuthorityRevoked } from "@/lib/optimistic-authorities";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
@@ -145,21 +145,26 @@ function RevokeApproval({
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const client = useQueryClient();
-  const revoke = useMutation({
+  // Revoked at once on screen; put back if the engine refuses. A revoked
+  // approval changes the verdict, the diagnosis and what the call promises —
+  // and the attention list, once a start is refused.
+  const revoke = useOptimisticAction({
+    queryKey: ["workflow-authorities", authority.workflow_id],
     mutationFn: () =>
       apiRequest<WorkflowAuthority>(
         `/v1/workflows/${encodeURIComponent(authority.workflow_id)}/execution-authorities/${encodeURIComponent(authority.id)}/revoke`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
-      // A revoked approval changes the verdict, the diagnosis and what the
-      // call promises — and the attention list, once a start is refused.
-      await invalidateWorkflowAutomation(client, authority.workflow_id);
-      await client.invalidateQueries({ queryKey: ["attention"] });
-      setOpen(false);
-    },
-    onError: () => toast.error(t("authority.revokeFailed")),
+    apply: (current: AuthorityPages | undefined) =>
+      withAuthorityRevoked(current, authority.id, new Date().toISOString()),
+    invalidate: [
+      ...automationQueryKeys(authority.workflow_id).filter(
+        (key) => key[0] !== "workflow-authorities" || key.length > 2,
+      ),
+      ["attention"],
+    ],
+    errorMessage: () => t("authority.revokeFailed"),
+    onSuccess: () => setOpen(false),
   });
   return (
     <>
@@ -181,7 +186,7 @@ function RevokeApproval({
         destructive
         pending={revoke.isPending}
         onConfirm={async () => {
-          await revoke.mutateAsync().catch(() => undefined);
+          await revoke.mutateAsync(undefined).catch(() => undefined);
         }}
         testId="authority-revoke"
       />
