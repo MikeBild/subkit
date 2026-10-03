@@ -7,10 +7,10 @@ import {
   automationPanelOffers,
   useWorkflowAutomation,
 } from "@/components/cockpit/automation-panel";
-import { ContextHelp } from "@/components/cockpit/context-help";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
+import { ContextHelp } from "@/components/cockpit/patterns/context-help";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { FormerGrants } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";

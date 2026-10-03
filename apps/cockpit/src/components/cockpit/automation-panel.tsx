@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
-import { ContextHelp } from "@/components/cockpit/context-help";
 import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
+import { ContextHelp } from "@/components/cockpit/patterns/context-help";
 import {
   type WorkflowDiagnosis,
   WorkflowGateDiagnosis,
