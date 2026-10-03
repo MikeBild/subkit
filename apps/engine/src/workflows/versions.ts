@@ -18,6 +18,7 @@ import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
 import {
   describeVersionIssues,
@@ -129,7 +130,8 @@ export async function restoreWorkflowVersion(
 ): Promise<WorkflowView | null> {
   const db = exec ?? getDb();
   const updatedId = await db.transaction(async (tx) => {
-    if (!(await lockWorkflowForVersionWrite(tx, tenant_id, id))) return null;
+    const locked = await lockWorkflowForVersionWrite(tx, tenant_id, id);
+    if (!locked) return null;
     const targetRows = await tx
       .select()
       .from(workflowVersions)
@@ -183,6 +185,13 @@ export async function restoreWorkflowVersion(
         updated_at: new Date(),
       })
       .where(eq(workflows.id, id));
+    await carryApprovalsForward(tx, {
+      tenant_id,
+      workflow_id: id,
+      from_version_id: locked.current_version_id,
+      to_version_id: v.id,
+      actor_id,
+    });
     await auditAwait(
       {
         tenant_id,
