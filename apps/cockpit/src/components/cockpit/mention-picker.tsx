@@ -9,7 +9,7 @@
 // The entity icons are the navigation's own (`Workflow`, `Cable`), so a
 // workflow reads as the same thing in the rail, the picker and the transcript.
 
-import { Cable, CircleAlert, Layers, Workflow } from "lucide-react";
+import { Cable, CircleAlert, FileText, Layers, Library, Sparkles, Workflow } from "lucide-react";
 import {
   type KeyboardEvent,
   type RefObject,
@@ -47,18 +47,32 @@ import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
 
 // Categories first: a block of the catalog is the broadest thing to point at.
-const TYPE_ORDER: MentionCandidateType[] = ["category", "workflow", "connector"];
+// Then the automation objects, then what SubKit knows: sources, skills, files.
+const TYPE_ORDER: MentionCandidateType[] = [
+  "category",
+  "workflow",
+  "connector",
+  "knowledge_source",
+  "skill",
+  "file",
+];
 
-const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
+export const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
   category: Layers,
   workflow: Workflow,
   connector: Cable,
+  knowledge_source: Library,
+  skill: Sparkles,
+  file: FileText,
 };
 
 const GROUP_HEADING = {
   category: "chat.mention.categories",
   workflow: "chat.mention.workflows",
   connector: "chat.mention.connectors",
+  knowledge_source: "chat.mention.sources",
+  skill: "chat.mention.skills",
+  file: "chat.mention.files",
 } as const;
 
 const candidateKey = (c: Pick<MentionCandidate, "type" | "id">) => `${c.type}:${c.id}`;
@@ -78,6 +92,8 @@ export interface UseMentionInputOptions {
   /** The in-progress query (null when the picker is closed) — the owner
    *  fetches candidates for it. */
   onQueryChange: (query: string | null) => void;
+  /** A stored file was picked: it joins the message as an attachment. */
+  onPickFile?: (candidate: MentionCandidate) => void;
 }
 
 export function useMentionInput({
@@ -88,6 +104,7 @@ export function useMentionInput({
   setReferences,
   candidates,
   onQueryChange,
+  onPickFile,
 }: UseMentionInputOptions) {
   const [mention, setMention] = useState<MentionQuery | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
@@ -162,6 +179,15 @@ export function useMentionInput({
     (candidate: MentionCandidate) => {
       if (!mention) return;
       const caret = textareaRef.current?.selectionStart ?? value.length;
+      // A file is not a word in the text: the typed `@query` goes, and the
+      // file stands above the field as an attachment.
+      if (candidate.type === "file") {
+        pendingCaret.current = mention.start;
+        setValue(value.slice(0, mention.start) + value.slice(caret));
+        onPickFile?.(candidate);
+        close();
+        return;
+      }
       // A category is a phrase, not a reference: it goes into the text as
       // `@kategorie/<name>` and nothing travels beside it.
       if (!isReferenceCandidate(candidate)) {
@@ -184,7 +210,7 @@ export function useMentionInput({
       if (!already) setReferences([...references, reference]);
       close();
     },
-    [mention, textareaRef, value, setValue, references, setReferences, close],
+    [mention, textareaRef, value, setValue, references, setReferences, close, onPickFile],
   );
 
   // A mention is one unit: a single Backspace or Delete removes the whole
@@ -342,10 +368,12 @@ export function MentionPicker({
                       ) : (
                         <>
                           <span className="truncate font-medium">{item.title}</span>
-                          <span className="truncate text-muted-foreground text-xs">
-                            {MENTION_TRIGGER}
-                            {item.label}
-                          </span>
+                          {item.type === "file" ? null : (
+                            <span className="truncate text-muted-foreground text-xs">
+                              {MENTION_TRIGGER}
+                              {item.label}
+                            </span>
+                          )}
                         </>
                       )}
                     </CommandItem>

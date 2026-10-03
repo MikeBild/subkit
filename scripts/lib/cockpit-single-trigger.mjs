@@ -166,6 +166,7 @@ export const TRANSCRIPT = {
  * covers every view. `$id` stands for the record the sweep opens.
  */
 export const PATTERN_MIGRATED_VIEWS = [
+  "chat",
   "workflows",
   "connectors",
   "knowledge",

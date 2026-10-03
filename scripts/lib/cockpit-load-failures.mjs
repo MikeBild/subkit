@@ -81,10 +81,10 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
     // failure line.
     if (!(await page.getByTestId("conversation-new").isVisible()))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way on");
-    if (!(await page.getByTestId("conversation-list-trigger").isVisible()))
+    if (!(await listReachable(page)))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way to the list");
-    // The header must not call a failed conversation a new one.
-    const title = (await page.locator('[data-testid="chat-header"] h1').innerText()).trim();
+    // The conversation's head must not call a failed conversation a new one.
+    const title = (await page.getByTestId("chat-title").innerText()).trim();
     if (title === "Neue Unterhaltung" || title === "New conversation")
       throw new Error("/chat/<id>: the header titles a failed conversation as a new one");
     await capture("chat");
@@ -124,11 +124,20 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
         .catch(() => false)
     )
       throw new Error("/chat/<unknown>: offers a retry that cannot help");
-    for (const way of ["conversation-list-trigger", "conversation-new"])
-      if (!(await page.getByTestId(way).isVisible()))
-        throw new Error(`/chat/<unknown>: the way on "${way}" is missing`);
+    if (!(await listReachable(page)))
+      throw new Error('/chat/<unknown>: the way on "conversation-list" is missing');
+    if (!(await page.getByTestId("conversation-new").isVisible()))
+      throw new Error('/chat/<unknown>: the way on "conversation-new" is missing');
     await capture("chat-missing");
   } finally {
     await page.unroute(detail, missing);
   }
+}
+
+/** The conversation list is in reach: beside the page, or one toggle away on a phone. */
+async function listReachable(page) {
+  return (
+    (await page.getByTestId("conversation-list").isVisible()) ||
+    (await page.getByTestId("conversation-list-trigger").isVisible())
+  );
 }
