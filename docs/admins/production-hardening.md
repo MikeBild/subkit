@@ -234,8 +234,8 @@ success ratio. “No runs (24 h)” is missing execution evidence, not a 100% sc
 Open the held workflow's entry on the **Overview** (the Cockpit start page), then
 **Execution authority**. For
 `execution_authority_unavailable`, review the exact active version, production
-or development environment, destinations, validity and finite run limit, then
-issue an applicable human grant. The next due retry discovers it automatically.
+or development environment and destinations, then issue an applicable human
+grant — until revoked, or limited by runs and time. The next due retry discovers it automatically.
 For `execution_authority_required`, the current effects cannot be covered by
 reusable authority: inspect a concrete preview or revise the workflow to use
 supported, statically bound effects. Dynamic requests, unresolved subworkflow

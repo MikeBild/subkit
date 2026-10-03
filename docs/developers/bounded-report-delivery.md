@@ -6,7 +6,7 @@ the blocked schedule on the Cockpit's start page, the **Overview**, until a matc
 persisted and its admission hold is resolved.
 
 The chat review prepares missing report evidence with writes held, then presents
-the fixed sender, recipient, next scheduled time and finite run/expiry bounds.
+the fixed sender, recipient, next scheduled time and any run/expiry bounds.
 Confirming may atomically activate the exact reviewed draft and grant its bounds.
 It does not send a report immediately. Completion refreshes the Overview's attention list and
 server readiness; reload uses the same persisted state.

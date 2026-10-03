@@ -2448,11 +2448,32 @@ endpoints are activation-capable and are not equivalent to saving an inert draft
 
 ### Execution authority persistence boundary
 
-`workflow_execution_authorities` stores a separate, finite boundary for a tenant,
+`workflow_execution_authorities` stores a separate boundary for a tenant,
 workflow, exact version, effect-manifest digest and snapshot, execution environment,
-static target constraints, validity window and maximum run count. Existing active
-workflows receive no authority rows during migration. A stored mode or activation
-is not an implicit grant.
+static target constraints, validity window and maximum run count. The end of the
+window and the run count are optional: without them the approval stands until it
+is revoked, and runs are still counted. Existing active workflows receive no
+authority rows during migration. A stored mode or activation is not an implicit
+grant.
+
+A person approves an effect boundary for an environment — the connectors a
+workflow reaches, at which addresses, and whether it only reads or also writes.
+When a newer version becomes active (draft activation, update, restore, an
+applied repair), each live approval of the version it replaces is compared with
+the new version's boundary, computed by the same preview the grant dialog shows:
+
+- **Equal or narrower** — a new approval for the new version takes over what is
+  left (environment, remaining runs, end date), records the approval it came
+  from (`inherited_from`) and the boundary a person approved, and the old
+  approval ends (`superseded_by`) in the same transaction. The allowance is
+  never doubled, and concurrent activations carry an approval exactly once.
+  The audit log records `workflow.authority_inherited`.
+- **Wider** — a new connector, a new address, a read that now writes, or a
+  changed connection: nothing is carried. The version waits for a person, and
+  the attention item and the grant review say in one line what is new.
+
+Saving a draft carries nothing; only activation does. Revocation is always
+available and ends an approval at once, whatever its bounds.
 
 Database constraints bind both the tenant-owned workflow and its exact version.
 Once created, the authority's identity and approved boundary cannot change.
@@ -2504,9 +2525,11 @@ for hashing and execution. `request_review_truncated` and
 clients must not present such a projection as a complete payload review.
 
 In the cockpit, open a workflow and choose **Review execution authority**.
-The dialog starts in development and inherits the preview's finite suggestions
-(one run, 24 hours). Review the targets, connector IDs, request content and
-iteration/retry explanation, then confirm the exact count and window. Changing
+The dialog starts in development and offers two choices: **until revoked**
+(the default — no run limit, no end date) or **limit**, which shows the run
+count and window fields with the preview's suggestions (one run, 24 hours).
+Review the targets, connector IDs, request content and iteration/retry
+explanation, then confirm. Changing
 the environment or preparing a fresh review replaces the entire displayed
 snapshot. A conflict never retries the grant automatically. Shortened or opaque
 payload projections cannot be granted through this dialog.
@@ -2528,12 +2551,16 @@ are labelled as having no stored binding, not retroactively approved or denied.
 Preparation reads the stored exact version and the connector selected for the
 requested environment. It does not decrypt credentials, refresh OAuth, probe
 the destination, or execute a workflow. The response includes an effect manifest,
-its digest, eligibility and unavailable-step reasons. The suggested bounds are
-one run during the next 24 hours, requiring no operator configuration. The
-human may choose a different finite count and interval: at most 10,000 runs and
-31 days. The grant request sends the displayed `valid_from`, `valid_until`,
-`max_runs`, `execution_environment`, `workflow_version_id` and
-`expected_manifest_digest` explicitly.
+its digest, eligibility and unavailable-step reasons, and — when the workflow
+has an earlier approval in that environment — `boundary_growth`: what this
+version reaches beyond it (empty when nothing). The suggested bounds are one run
+during the next 24 hours, requiring no operator configuration. The human may
+grant until revoked (`valid_until` and `max_runs` null or omitted) or choose a
+finite count and interval: at most 10,000 runs and 31 days. The grant request
+sends `valid_from`, `valid_until`, `max_runs`, `execution_environment`,
+`workflow_version_id` and `expected_manifest_digest` explicitly. A read
+authority reports `open_ended`, a null `remaining_runs` when there is no run
+limit, and the state `superseded` once a newer version took it over.
 
 Only a signed browser session matching the authenticated principal can grant or
 revoke. Its database session must still be live, and a matching CSRF proof is
@@ -4968,7 +4995,7 @@ After a deploy, a discovery run against an SPA documentation site with no cheape
 Work that runs when it should, whether or not anyone is watching — and nothing gets in
 without being checked at the door. Scheduled runs survive a restart and still fire when
 due within its approved boundary; an inbound webhook needs both verified ingress and
-a matching finite execution authority before work starts; and a Before-Request Hook can apply your own policy in front of every
+a matching live execution authority before work starts; and a Before-Request Hook can apply your own policy in front of every
 connector call. The trigger is the only thing that differs: one execution contract, one
 permission check, one audit trail.
 
@@ -4985,7 +5012,7 @@ extends is in [RBAC & Roles](../admins/rbac-and-roles.md).
 ```mermaid
 flowchart LR
     cron[["Cron schedule<br/>(workflows_schedules)"]] --> rec{Reconciler<br/>due?}
-    rec -->|due| authority{Matching finite<br/>execution authority?}
+    rec -->|due| authority{Matching live<br/>execution authority?}
     hook[["Inbound webhook<br/>(webhooks_inbound)"]] --> verify{Signature<br/>valid?}
     verify -->|no| drop[Reject]
     verify -->|yes| dedup{Replay-id<br/>seen?}
@@ -5088,15 +5115,22 @@ sequenceDiagram
 | Execution authority | An active version, exact effect manifest, production environment, validity window and remaining run allowance are required. A signature or `verify: none` never creates authority. |
 | Replay dedup | Accepted deliveries are suppressed. Concurrent retries and interrupted enqueueing reuse the same charged execution and queue job UUID, not an additional allowance. Foreign side effects are not promised exactly once. |
 
-### Finite authority for webhook runs
+### Execution authority for webhook runs
 
 In the workflow Cockpit, review the active version's production effect manifest,
-targets and credentials, then grant an explicit finite validity window and run
-limit. Existing active workflows receive no authority automatically. Both direct
-CRUD bindings and reverse-bound triggers use this check; a development grant
-cannot authorize a production webhook. No new configuration file or service is
-needed. Expiry, revocation, exhausted limits or changed version/configuration stop
-new runs. The worker repeats the authority check before external dispatch.
+targets and credentials, then grant it **until revoked** (the default) or with a
+validity window and run limit you choose. Existing active workflows receive no
+authority automatically. Both direct CRUD bindings and reverse-bound triggers use
+this check; a development grant cannot authorize a production webhook. No new
+configuration file or service is needed. Revocation, an expiry or exhausted limit
+you set, or a changed configuration stop new runs. The worker repeats the
+authority check before external dispatch.
+
+A saved change does not need a new approval when it reaches nothing new: when
+the new version becomes active, a live approval follows it with what is left of
+it, and the old one ends. A change that adds a connector or an address, or
+writes where the workflow only read, waits for a person; the attention item says
+what is new.
 
 The first reusable-authority version accepts only statically bounded requests.
 Runtime substitutions in request data, unknown effects and destructive operations
@@ -5115,6 +5149,7 @@ deduplicated and are not interpreted as new approvals.
 
 #### Suggested window and run limit
 
+These apply only when a person chooses **limit** instead of **until revoked**.
 The review suggests limits; a person confirms or changes them, and nothing is
 granted until they do.
 
@@ -5140,9 +5175,9 @@ written for them:
 
 | Item | When | Class |
 |---|---|---|
-| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment | *decide*, due at the next scheduled start |
+| A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment — the earlier approval did not follow because the version reaches more; the item names what is new | *decide*, due at the next scheduled start |
 | A new version cannot be approved yet | The same, but the gate would refuse any approval for it (the automation panel's `repair_required`): a step's effects are not bounded, or a report mail has not been observed | *decide*; names the leading blocked step and offers the act its diagnosis offers — a repair, a preparation run, or a conversation — never the approval |
-| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left | *decide*, lower severity (`notice`) |
+| An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left; an approval until revoked never ends this way | *decide*, lower severity (`notice`) |
 
 The approval items lead to the workflow's page, where the automation panel offers
 the approval or the extension; the blocked one leads to its repair. One workflow is one item: the
@@ -5348,8 +5383,8 @@ events) to an sk workflow:
    the `webhook-type` header to the event name — which must match one of the workflow's
    `events[]`.
 6. **Review the production execution authority.** Activate the exact workflow
-   version and separately approve its manifest, finite validity and run limit in
-   the workflow Cockpit. A trigger binding or signing secret grants no live runs.
+   version and separately approve its manifest — until revoked, or with a
+   validity and run limit — in the workflow Cockpit. A trigger binding or signing secret grants no live runs.
 7. **Verify.** Trigger an upstream event and confirm a `200 { accepted: true }` plus a
    new execution (`webhook.trigger.fired` in the Audit Log). A `bad_signature` means the
    two secrets diverged; `event_not_subscribed` means the upstream's `webhook-type` is
@@ -8224,7 +8259,7 @@ the blocked schedule on the Cockpit's start page, the **Overview**, until a matc
 persisted and its admission hold is resolved.
 
 The chat review prepares missing report evidence with writes held, then presents
-the fixed sender, recipient, next scheduled time and finite run/expiry bounds.
+the fixed sender, recipient, next scheduled time and any run/expiry bounds.
 Confirming may atomically activate the exact reviewed draft and grant its bounds.
 It does not send a report immediately. Completion refreshes the Overview's attention list and
 server readiness; reload uses the same persisted state.
@@ -8268,10 +8303,11 @@ by verification fixtures.
 # Bounded requests
 
 A scheduled workflow runs without a person present, so a person approves its
-effects once, for a finite number of runs. That only works for a request whose
-target a reviewer can read. A request step whose path or body is filled in at run
-time is reported as `dynamic_request` and blocks repeated runs — unless the
-author declares a boundary on the step and a human approves it.
+effects once, until revoked or for a limited number of runs. That only works
+for a request whose target a reviewer can read. A request step whose path or
+body is filled in at run time is reported as `dynamic_request` and blocks
+repeated runs — unless the author declares a boundary on the step and a human
+approves it.
 
 ```json
 {
@@ -10917,7 +10953,7 @@ are held. When effects were held, the text result explicitly reports
 not a successful live effect or a conforming final output object.
 MCP marks this as `isError: true` because the requested live output is unavailable;
 clients must not validate a preparation envelope against the final output schema.
-Review and grant the exact version's finite authority in the workflow Cockpit to enable
+Review and grant the exact version's authority in the workflow Cockpit to enable
 repeated live runs. Dynamic or unknown effects are ineligible for that reusable
 authority and remain held on this entry point. Existing active versions do not
 receive authority automatically.
@@ -14577,8 +14613,8 @@ success ratio. “No runs (24 h)” is missing execution evidence, not a 100% sc
 Open the held workflow's entry on the **Overview** (the Cockpit start page), then
 **Execution authority**. For
 `execution_authority_unavailable`, review the exact active version, production
-or development environment, destinations, validity and finite run limit, then
-issue an applicable human grant. The next due retry discovers it automatically.
+or development environment and destinations, then issue an applicable human
+grant — until revoked, or limited by runs and time. The next due retry discovers it automatically.
 For `execution_authority_required`, the current effects cannot be covered by
 reusable authority: inspect a concrete preview or revise the workflow to use
 supported, statically bound effects. Dynamic requests, unresolved subworkflow
