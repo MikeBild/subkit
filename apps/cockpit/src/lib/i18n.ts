@@ -192,6 +192,9 @@ const EN = {
   "authority.versionRunning": "{version} · currently running",
   "authority.noneActive": "no version yet",
   "authority.activateOnly": "Put into service only",
+  "authority.carryOver.confirm": "Take over — the approval stays",
+  "authority.carryOver.hint":
+    "This version reaches nothing the current approval does not already cover. Putting it into service carries that approval over; nothing new needs approving.",
   "authority.activatedOnly": "The change is in service. No approval was given.",
   "authority.configuredConnector": "Configured connector",
   "authority.reviewExpired": "Review is no longer current",
@@ -3525,6 +3528,9 @@ const DE: Record<TranslationKey, string> = {
   "authority.versionRunning": "{version} · läuft derzeit",
   "authority.noneActive": "noch keine Fassung",
   "authority.activateOnly": "Nur in Betrieb nehmen",
+  "authority.carryOver.confirm": "Übernehmen – Freigabe gilt weiter",
+  "authority.carryOver.hint":
+    "Diese Fassung erreicht nichts, was die bestehende Freigabe nicht schon abdeckt. Beim Übernehmen gilt die Freigabe weiter; neu freizugeben ist nichts.",
   "authority.activatedOnly": "Die Änderung ist in Betrieb. Eine Freigabe wurde nicht erteilt.",
   "authority.configuredConnector": "Konfigurierter Konnektor",
   "authority.reviewExpired": "Prüfung nicht mehr aktuell",
