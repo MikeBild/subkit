@@ -6,6 +6,7 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { FilesPage } from "@/pages/files";
 import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
 import { UsagePage } from "@/pages/usage";
@@ -77,37 +78,51 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   }),
 );
 
-const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
+// Dateien is its own page: a file opens as a sheet over the list, at the
+// file's own address.
+const filesRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
   createRoute({
     getParentRoute: () => rootRoute,
-    path: `/${resource}`,
-    component: () => {
-      const session = useSession();
-      return (
-        <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
-      );
-    },
+    path: "/files/$resourceId",
+    component: FilesPage,
   }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: `/${resource}/$resourceId`,
-    component: () => {
-      const session = useSession();
-      return (
-        <CatalogDetailPage
-          resource={resource as DetailResource}
-          permissions={session.permissions}
-        />
-      );
-    },
-  }),
-]);
+];
+
+const catalogRoutes = CATALOG_RESOURCES.filter((resource) => resource !== "files").flatMap(
+  (resource) => [
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: `/${resource}`,
+      component: () => {
+        const session = useSession();
+        return (
+          <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
+        );
+      },
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: `/${resource}/$resourceId`,
+      component: () => {
+        const session = useSession();
+        return (
+          <CatalogDetailPage
+            resource={resource as DetailResource}
+            permissions={session.permissions}
+          />
+        );
+      },
+    }),
+  ],
+);
 
 const routeTree = rootRoute.addChildren([
   ...chatRoutes,
   ...dedicatedRoutes,
   ...redirectRoutes,
   ...catalogRoutes,
+  ...filesRoutes,
 ]);
 
 // One catch-all for every route: a render fault keeps the shell, the language

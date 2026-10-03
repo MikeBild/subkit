@@ -47,6 +47,44 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return body as T;
 }
 
+/**
+ * A JSON POST whose body is large enough that the reader should see it go:
+ * the same request as `apiRequest`, sent so the browser reports how much of
+ * the body has left (`onProgress` with 0…1).
+ */
+export function apiUpload<T>(
+  path: string,
+  body: unknown,
+  onProgress: (fraction: number) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", path);
+    request.withCredentials = true;
+    request.setRequestHeader("accept", "application/json");
+    request.setRequestHeader("content-type", "application/json");
+    request.setRequestHeader("x-subkit-client", "cockpit");
+    if (csrfToken) request.setRequestHeader("x-subkit-csrf", csrfToken);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    };
+    request.onload = () => {
+      let parsed: unknown = null;
+      try {
+        parsed = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        parsed = null;
+      }
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(1);
+        resolve(parsed as T);
+      } else reject(new ApiError(request.status, parsed, request.getResponseHeader("x-trace-id")));
+    };
+    request.onerror = () => reject(new ApiError(0, null, null));
+    request.send(JSON.stringify(body));
+  });
+}
+
 export async function apiText(path: string): Promise<string> {
   const headers = new Headers({ accept: "text/plain", "x-subkit-client": "cockpit" });
   const response = await fetch(path, { credentials: "same-origin", headers });
