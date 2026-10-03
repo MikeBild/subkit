@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button, ChatCard } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatReauth } from "./chat-reauth";
 
@@ -31,27 +30,23 @@ export function ChatReauthCard({
   }, []);
   const expired = Date.parse(action.expiresAt) <= now;
   return (
-    <Card size="sm" tone="question" data-testid="chat-reauth-card">
-      <CardHeader>
-        <CardTitle data-testid="chat-reauth-title">
+    <ChatCard
+      testId="chat-reauth-card"
+      title={
+        <span data-testid="chat-reauth-title">
           {connectorName
             ? t("chat.reauth.titleNamed", { name: connectorName })
             : t("chat.reauth.title")}
-        </CardTitle>
-        <CardDescription>
-          {t(
-            pending
-              ? "chat.reauth.pendingHelp"
-              : expired
-                ? "chat.reauth.expired"
-                : "chat.reauth.help",
-          )}
-        </CardDescription>
-      </CardHeader>
-      <CardFooter>
-        {pending || expired ? (
+        </span>
+      }
+      line={t(
+        pending ? "chat.reauth.pendingHelp" : expired ? "chat.reauth.expired" : "chat.reauth.help",
+      )}
+      // While a question waits, answering it is the way on: no second button.
+      action={
+        pending ? null : expired ? (
           <Button disabled={busy} onClick={() => onRenew(action)} data-testid="chat-reauth-renew">
-            {t(pending ? "chat.reauth.continue" : "chat.reauth.renew")}
+            {t("chat.reauth.renew")}
           </Button>
         ) : (
           <Button asChild>
@@ -64,8 +59,8 @@ export function ChatReauthCard({
               {t("chat.reauth.open")}
             </a>
           </Button>
-        )}
-      </CardFooter>
-    </Card>
+        )
+      }
+    />
   );
 }

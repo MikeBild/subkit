@@ -14,11 +14,14 @@
 import { Eye, EyeOff, Pencil, Search } from "lucide-react";
 import type { Conversation } from "@/api/client";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { LoadFailed } from "@/components/failure-state";
-import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import {
+  Button,
+  DataState,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  ScrollArea,
+} from "@/components/cockpit/patterns";
 import { formatShortRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
@@ -57,13 +60,10 @@ export function ConversationList({
   const now = t("chat.time.now");
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
-      {/* No "new" button here: the panel's own close control owns this
-          corner, and starting a conversation is a thing you do on the page,
+      {/* No "new" button and no title here: the sheet's own header names
+          the list, and starting a conversation is a thing you do on the page,
           not inside the list of the ones you already have. */}
-      <div className="px-3 pt-3 pb-2">
-        <p className="text-sm font-semibold">{t("chat.conversations")}</p>
-      </div>
-      <div className="px-2 pb-2">
+      <div className="pb-2">
         <InputGroup>
           <InputGroupAddon>
             <Search />
@@ -78,11 +78,12 @@ export function ConversationList({
         </InputGroup>
       </div>
       <ScrollArea className="h-0 min-h-0 flex-1">
-        <div className="grid gap-0.5 p-2">
+        <div className="grid gap-0.5 py-2">
           {/* A list that did not load is not a list with nothing in it. */}
           {failed ? (
-            <LoadFailed
-              title={failed.title}
+            <DataState
+              state="error"
+              line={failed.title}
               onRetry={failed.onRetry}
               testId="conversation-list-load-failed"
             />
@@ -171,12 +172,11 @@ export function ConversationList({
           )}
         </div>
       </ScrollArea>
-      <Separator />
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className="m-2 justify-start text-xs text-muted-foreground"
+        className="mt-2 justify-start text-xs text-muted-foreground"
         data-testid="conversation-toggle-hidden"
         onClick={onToggleHidden}
       >
