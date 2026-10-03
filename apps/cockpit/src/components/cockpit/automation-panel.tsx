@@ -1,43 +1,50 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Play, ShieldCheck } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, WORKFLOW_AUTOMATION_ANCHOR } from "@/app/links";
-import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
+import {
+  absolute,
+  attentionHref,
+  chatNewHref,
+  routerTarget,
+  WORKFLOW_AUTOMATION_ANCHOR,
+} from "@/app/links";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
-import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
-import { ContextHelp } from "@/components/cockpit/patterns/context-help";
+import { ActionMenu, type ActionMenuItem, StatusStrip } from "@/components/cockpit/patterns";
+import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import {
   type WorkflowDiagnosis,
   WorkflowGateDiagnosis,
   workflowDiagnosisQuery,
 } from "@/components/cockpit/workflow-diagnosis";
-import { GrantCard } from "@/components/cockpit/workflow-grants";
-import { LoadFailed } from "@/components/failure-state";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import {
-  AUTOMATION_STATE_KEYS,
-  type AutomationAction,
   type AutomationState,
-  type AutomationStateKind,
   type AutomationStatusLike,
   type AutomationTrigger,
   type AutomationWorkflow,
-  automationActionKey,
   automationEnvironment,
   automationNeedsMoreApprovals,
   automationState,
 } from "@/lib/automation-state";
+import { causeClassLabel } from "@/lib/cause-class";
 import { cronWords } from "@/lib/cron-words";
-import { diagnosisActs } from "@/lib/gate-diagnosis";
-import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
-import { LOCALE_TAGS } from "@/lib/i18n";
+import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
+import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import type { WorkflowAuthority, WorkflowAuthorityList } from "@/lib/workflow-authorities";
+import { statusLabel } from "@/lib/status-label";
+import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
+import {
+  STRIP_STATE_KEYS,
+  type StripAction,
+  stripActionKey,
+  workflowStrip,
+} from "@/lib/workflow-strip";
+import { isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
+
+/** The words of a catalogue label, machine value or not. */
+const catalogText = (label: { text: string }) => label.text;
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
@@ -61,10 +68,6 @@ export interface WorkflowAutomation {
   /** Opens the approval dialog; every caller opens the same one. */
   openGrant: () => void;
   grantRequest: number;
-  /** Shows the current approval inside the panel and scrolls to it. */
-  showGrant: () => void;
-  grantShown: boolean;
-  setGrantShown: (shown: boolean) => void;
   resume: { pending: boolean; failed: boolean; run: (scheduleIds: readonly string[]) => void };
   /** The steps whose computed repair was refused: only an author can change them now. */
   rejectedRepairs: readonly string[];
@@ -91,7 +94,6 @@ export function useWorkflowAutomation(
     return () => window.clearInterval(timer);
   }, []);
   const [grantRequest, setGrantRequest] = useState(0);
-  const [grantShown, setGrantShown] = useState(false);
   const [rejectedRepairs, setRejectedRepairs] = useState<readonly string[]>([]);
 
   const authorities = useInfiniteQuery({
@@ -235,16 +237,6 @@ export function useWorkflowAutomation(
     },
     openGrant: () => setGrantRequest((value) => value + 1),
     grantRequest,
-    showGrant: () => {
-      setGrantShown(true);
-      window.requestAnimationFrame(() =>
-        document
-          .getElementById(WORKFLOW_AUTOMATION_ANCHOR)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
-    },
-    grantShown,
-    setGrantShown,
     resume: {
       pending: resume.isPending,
       failed: resume.isError,
@@ -257,112 +249,7 @@ export function useWorkflowAutomation(
   };
 }
 
-/**
- * One action of the automation state, as a button. It stands where the state
- * is shown — the panel, or the chat's review card — and nowhere else in the
- * same view: a second trigger for the same act is a defect, not a shortcut.
- *
- * `outline`, never filled: the page's one filled action is "Ausführen".
- */
-export function AutomationActionButton({
-  automation,
-  action,
-  testId,
-}: {
-  automation: WorkflowAutomation;
-  action: AutomationAction;
-  testId: string;
-}) {
-  const { t } = useI18n();
-  const label = t(automationActionKey(action));
-  switch (action.kind) {
-    case "resume":
-      return automation.canWrite ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={automation.resume.pending}
-          onClick={() => automation.resume.run(action.scheduleIds)}
-          data-testid={testId}
-        >
-          <Play data-icon="inline-start" />
-          {label}
-        </Button>
-      ) : null;
-    case "apply":
-    case "grant":
-    case "extend":
-      return automation.canWrite && automation.state?.target ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={automation.openGrant}
-          data-testid={testId}
-          {...OPENS_APPROVAL}
-        >
-          <ShieldCheck data-icon="inline-start" />
-          {label}
-        </Button>
-      ) : null;
-    case "view":
-      return (
-        <Button variant="outline" size="sm" onClick={automation.showGrant} data-testid={testId}>
-          {label}
-        </Button>
-      );
-    case "repair":
-      return null;
-  }
-}
-
-/**
- * Whether the panel shows the way to an author instead of an act of its own:
- * a version in an earlier format, or a refusal the diagnosis does not name.
- */
-function panelLeadsToAuthor(automation: WorkflowAutomation): boolean {
-  const { state } = automation;
-  return (
-    state?.primaryAction?.kind === "repair" &&
-    (state.state === "legacy" || !automation.diagnosis?.diagnoses[0])
-  );
-}
-
-/**
- * The remedies the panel itself carries. A cause block on the same page
- * leaves these to it: the same remedy offered twice is two triggers for one
- * act.
- */
-export function automationPanelOffers(automation: WorkflowAutomation): {
-  reviewRepair: boolean;
-  chat: boolean;
-} {
-  const { state, diagnosis } = automation;
-  if (!state) return { reviewRepair: false, chat: false };
-  // A version in an earlier format is not judged by the gate: no diagnosis.
-  const acts =
-    diagnosis && state.state !== "legacy"
-      ? diagnosisActs(
-          diagnosis,
-          { write: automation.canWrite, run: automation.canRun, chat: automation.canChat },
-          automation.rejectedRepairs,
-        )
-      : null;
-  return {
-    reviewRepair: acts?.review ?? false,
-    chat: automation.canChat && (panelLeadsToAuthor(automation) || (acts?.author.length ?? 0) > 0),
-  };
-}
-
-const STATE_TONE: Record<AutomationStateKind, string> = {
-  legacy: "bg-destructive",
-  approved: "bg-success",
-  grant: "bg-warning",
-  apply: "bg-warning",
-  repair: "bg-destructive",
-  paused: "bg-muted-foreground",
-  manual: "bg-muted-foreground",
-  unknown: "bg-muted-foreground",
-};
+type ExecutionList = components["schemas"]["ExecutionListResponse"];
 
 function useEnvironmentWord() {
   const { t } = useI18n();
@@ -370,10 +257,11 @@ function useEnvironmentWord() {
     t(environment === "prod" ? "authority.production" : "authority.development");
 }
 
-/** The sentence beside the state word — the facts a reader decides by. */
-function useHeadline(state: AutomationState): string {
+/** The facts beside the state word — what a reader decides by. */
+function useHeadline(state: AutomationState | null): string | null {
   const { t, dateTime } = useI18n();
   const environmentWord = useEnvironmentWord();
+  if (!state) return null;
   const version = state.facts.version === null ? null : `v${state.facts.version}`;
   const versionFact = version ? t("automation.fact.version", { version }) : null;
   switch (state.state) {
@@ -422,7 +310,11 @@ function useHeadline(state: AutomationState): string {
     case "legacy":
       return t("automation.headline.legacy");
     case "paused":
-      return t("automation.headline.paused");
+      // Paused with nothing to resume: only a hook is stopped, and the engine
+      // has no act that switches one back on. Said, instead of a dead button.
+      return state.primaryAction === null
+        ? t("automation.hookOff")
+        : t("automation.headline.paused");
     case "unknown":
       return t("automation.headline.unknown");
     case "manual":
@@ -432,276 +324,312 @@ function useHeadline(state: AutomationState): string {
   }
 }
 
-/** What starts the workflow on its own, in one line. */
-function TriggerLine({
-  triggers,
-  hiddenHooks,
-}: {
-  triggers: readonly AutomationTrigger[];
-  hiddenHooks: number;
-}) {
+/** What starts the workflow on its own, as words — the summary of "Verwenden". */
+export function useTriggerWords(): (
+  triggers: readonly AutomationTrigger[],
+  hiddenHooks: number,
+) => string[] {
   const { t, locale } = useI18n();
-  const parts = triggers.map((trigger) => {
-    const text =
-      trigger.kind === "schedule"
-        ? t("automation.trigger.schedule", {
-            when: cronWords(trigger.cron ?? "", t, LOCALE_TAGS[locale]),
-            timezone: trigger.timezone ?? "UTC",
-          })
-        : t("automation.trigger.hook", { slug: trigger.slug ?? "" });
-    return trigger.paused ? t("automation.trigger.paused", { trigger: text }) : text;
-  });
-  if (hiddenHooks > 0) parts.push(t("automation.trigger.hooks", { count: hiddenHooks }));
-  if (parts.length === 0) return null;
-  return (
-    <p className="text-sm text-muted-foreground" data-testid="workflow-automation-triggers">
-      {parts.join(" · ")}
-    </p>
-  );
+  return (triggers, hiddenHooks) => {
+    const parts = triggers.map((trigger) => {
+      const text =
+        trigger.kind === "schedule"
+          ? t("automation.trigger.schedule", {
+              when: cronWords(trigger.cron ?? "", t, LOCALE_TAGS[locale]),
+              timezone: trigger.timezone ?? "UTC",
+            })
+          : t("automation.trigger.hook", { slug: trigger.slug ?? "" });
+      return trigger.paused ? t("automation.trigger.paused", { trigger: text }) : text;
+    });
+    if (hiddenHooks > 0) parts.push(t("automation.trigger.hooks", { count: hiddenHooks }));
+    return parts;
+  };
 }
 
 /**
- * "Automatischer Betrieb": whether this workflow may run on its own — one
- * state, the facts that head it, and one action. The action stands here and
- * nowhere else on the page: not beside the title, not as a link in another
- * section. The gate's diagnosis and the current approval are embedded here,
- * so nothing about the approval is said or offered in a second place.
+ * The newest failed run of this workflow and an open repair — the two facts
+ * beside the automation decision that the strip orders it against.
  */
-export function AutomationPanel({
+function useRunHealth(workflowId: string, health: string | null, permissions: readonly string[]) {
+  const unhealthy = Boolean(health) && health !== "ok";
+  const runs = useQuery({
+    queryKey: ["workflow-latest-failed-run", workflowId],
+    enabled: unhealthy && permissions.includes("execution:read"),
+    // The list filters by ONE status, and the engine counts three as failed
+    // (failed, timed_out, aborted): the newest twenty are read and judged here.
+    queryFn: () =>
+      apiRequest<ExecutionList>(
+        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
+      ),
+  });
+  const patch = useQuery({
+    queryKey: ["run-open-repair", workflowId],
+    enabled: permissions.includes("workflow:read"),
+    queryFn: () =>
+      apiRequest<{ items: { id: string }[] }>(
+        `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
+      ),
+  });
+  const failed = latestFailedRun((runs.data?.items ?? []).filter(isExecutionRecord));
+  return {
+    failedRun: failed,
+    repairPrepared: (patch.data?.items?.length ?? 0) > 0,
+  };
+}
+
+/** The sentence a failing workflow's strip says: where its newest failed run stopped. */
+function useFailingLine(): (
+  failure: { cause_class?: string | null; step_key?: string | null } | null,
+  health: string,
+) => string {
+  const { t } = useI18n();
+  return (failure, health) => {
+    const cause = failure?.cause_class && failure.cause_class !== "ok" ? failure.cause_class : null;
+    if (!cause) return t("detail.cause.noRun", { state: statusLabel(t, health) });
+    const words = catalogText(causeClassLabel(cause, t));
+    return failure?.step_key
+      ? t("detail.cause.atStep", { step: failure.step_key, cause: words })
+      : t("detail.cause.class", { cause: words });
+  };
+}
+
+/**
+ * A workflow's state in one line (P3) — whether it may run on its own, whether
+ * its runs fail, whether a repair waits — and the one action of the top state
+ * (D15). The approval dialog it opens is mounted here, once; the gate's own
+ * diagnosis stands right below it while a step is refused.
+ */
+export function WorkflowStatus({
   automation,
   workflow,
   workflowName,
+  health,
+  permissions,
 }: {
   automation: WorkflowAutomation;
   workflow: AutomationWorkflow;
   workflowName: string;
+  /** The engine's run health of the workflow. */
+  health: string | null;
+  permissions: readonly string[];
 }) {
   const { t } = useI18n();
   const { state } = automation;
-  // A link that names this panel lands on it. The browser's own jump happens
-  // before the record has loaded and the panel exists, so it is made here.
-  const anchor = useRef<HTMLElement>(null);
+  const navigate = useNavigate();
+  const sheets = useOpenRunSheet();
+  const runHealth = useRunHealth(automation.workflowId, health, permissions);
+  const failingLine = useFailingLine();
+  const headline = useHeadline(state);
+  const strip = workflowStrip({
+    automation: state,
+    failed: automation.failed,
+    health,
+    failedRunId: runHealth.failedRun?.id ?? null,
+    repairPrepared: runHealth.repairPrepared,
+    rights: { write: automation.canWrite, chat: automation.canChat },
+  });
+  // A link that names the strip lands on it. The browser's own jump happens
+  // before the record has loaded and the strip exists, so it is made here.
+  const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (window.location.hash === `#${WORKFLOW_AUTOMATION_ANCHOR}`)
       anchor.current?.scrollIntoView({ block: "start" });
   }, []);
+  const legacy = state?.state === "legacy";
+  const target = state?.target ?? null;
+  const opensApproval = strip.action?.kind === "approve";
+  const notice =
+    opensApproval && state
+      ? grantOpeningNotice({
+          diagnoses: automation.diagnosis?.diagnoses,
+          hookStarted: hookStartedOnly(state.triggers, workflow.webhooks_active),
+          mayRun: automation.canRun,
+        })
+      : null;
+  const facts =
+    strip.kind === "failing"
+      ? failingLine(runHealth.failedRun?.failure ?? null, health ?? "failing")
+      : strip.kind === "failed"
+        ? t("authority.loadFailed")
+        : strip.kind === "repairPrepared"
+          ? t("workflowStrip.headline.repairPrepared")
+          : headline;
+  // The one approval dialog of the page: its own trigger is the strip's
+  // action where approving is the next step, and it is opened by request
+  // (`openRequest`) from the diagnosis otherwise.
+  const grant =
+    automation.canWrite && state && target && !legacy
+      ? (label: string | null) => (
+          <GrantWorkflowAuthority
+            key={`${automation.workflowId}:${target.version_id}`}
+            workflowId={automation.workflowId}
+            versionId={target.version_id}
+            {...(target.activation ? { activation: target.activation } : {})}
+            versionLabel={t(
+              target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning",
+              { version: target.version == null ? "—" : `v${target.version}` },
+            )}
+            initialEnvironment={state.environment}
+            openRequest={automation.grantRequest}
+            onCompleted={automation.refresh}
+            withTrigger={label !== null}
+            triggerLabel={label ?? undefined}
+            triggerTestId="workflow-automation-action"
+            triggerSize="default"
+          />
+        )
+      : null;
+  const help = [
+    ...strip.lower.map((kind) => t(STRIP_STATE_KEYS[kind])),
+    ...(!automation.canWrite && strip.action === null && strip.kind !== "approved"
+      ? [t("automation.noRight")]
+      : []),
+  ];
   return (
-    <section
-      ref={anchor}
-      id={WORKFLOW_AUTOMATION_ANCHOR}
-      data-family-slot="workflow-automation"
-      data-testid="workflow-automation"
-      data-state={automation.failed ? "failed" : (state?.state ?? "loading")}
-      className="flex min-w-0 scroll-mt-4 flex-col gap-3 rounded-xl border p-4"
-    >
-      <div className="flex items-center gap-1">
-        <h2 className="text-sm font-semibold">{t("automation.title")}</h2>
-        <ContextHelp label={t("automation.help.label")} testId="workflow-automation-help">
-          {t("automation.help")}
-        </ContextHelp>
-      </div>
-      {automation.failed ? (
-        <LoadFailed
-          title={t("authority.loadFailed")}
-          onRetry={automation.retry}
-          testId="workflow-automation-failed"
+    <div className="flex flex-col gap-3">
+      <div
+        ref={anchor}
+        id={WORKFLOW_AUTOMATION_ANCHOR}
+        className="scroll-mt-4"
+        data-family-slot="workflow-automation"
+        data-testid="workflow-automation"
+        data-state={automation.failed ? "failed" : (state?.state ?? "loading")}
+        data-strip={strip.kind}
+      >
+        <StatusStrip
+          tone={strip.tone}
+          testId="workflow-status-strip"
+          line={
+            <>
+              <span className="font-medium" data-testid="workflow-automation-state">
+                {t(STRIP_STATE_KEYS[strip.kind])}
+              </span>
+              {facts ? (
+                <>
+                  {" · "}
+                  <span data-testid="workflow-automation-headline">{facts}</span>
+                </>
+              ) : null}
+            </>
+          }
+          help={help.length > 0 ? help.join(" · ") : undefined}
+          more={
+            notice || strip.lower.length > 0 ? (
+              <>
+                {notice ? (
+                  <span data-testid="grant-opening-notice">{t(OPENING_NOTICE_KEYS[notice])}</span>
+                ) : null}
+                {notice && strip.lower.length > 0 ? " · " : null}
+                {strip.lower.length > 0 ? (
+                  <span data-testid="workflow-strip-more">
+                    {t("workflowStrip.more", { count: strip.lower.length })}
+                  </span>
+                ) : null}
+              </>
+            ) : undefined
+          }
+          action={
+            strip.action?.kind === "approve" ? (
+              grant ? (
+                grant(t(stripActionKey(strip.action)))
+              ) : null
+            ) : strip.action ? (
+              <StripActionButton
+                action={strip.action}
+                automation={automation}
+                workflowName={workflowName}
+                onOpenRun={sheets.run}
+                onReview={() =>
+                  void navigate(
+                    routerTarget(attentionHref({ review: `workflow:${automation.workflowId}` })),
+                  )
+                }
+              />
+            ) : undefined
+          }
         />
-      ) : state ? (
-        <PanelBody
-          automation={automation}
-          state={state}
-          workflow={workflow}
-          workflowName={workflowName}
-        />
-      ) : (
-        <Skeleton className="h-10 w-full" data-testid="workflow-automation-loading" />
-      )}
-    </section>
-  );
-}
-
-function PanelBody({
-  automation,
-  state,
-  workflow,
-  workflowName,
-}: {
-  automation: WorkflowAutomation;
-  state: AutomationState;
-  workflow: AutomationWorkflow;
-  workflowName: string;
-}) {
-  const { t } = useI18n();
-  const headline = useHeadline(state);
-  const { target } = state;
-  const listedHooks = state.triggers.filter((trigger) => trigger.kind === "hook").length;
-  const hiddenHooks = listedHooks === 0 ? (workflow.webhooks_active ?? 0) : 0;
-  // In state `repair` the act is the diagnosis block's own button below; a
-  // second one here would be the same press twice. Only a refusal the
-  // diagnosis does not name gets the way to an author.
-  const legacy = state.state === "legacy";
-  const toAuthor = panelLeadsToAuthor(automation);
-  const actions = [
-    { action: state.primaryAction, testId: "workflow-automation-action" },
-    { action: state.secondaryAction, testId: "workflow-automation-secondary" },
-  ].filter(
-    (entry): entry is { action: AutomationAction; testId: string } =>
-      entry.action !== null && entry.action.kind !== "repair",
-  );
-  const needsRight =
-    !automation.canWrite &&
-    actions.some(({ action }) => action.kind !== "view") &&
-    state.state !== "manual";
-  const current: WorkflowAuthority[] = state.grant
-    ? [state.grant, ...state.alsoValid]
-    : state.alsoValid;
-  // What the press that opens the approval sets off, said before the press.
-  const opensApproval =
-    automation.canWrite &&
-    target !== null &&
-    actions.some(({ action }) => ["apply", "grant", "extend"].includes(action.kind));
-  const openingNotice = opensApproval
-    ? grantOpeningNotice({
-        diagnoses: automation.diagnosis?.diagnoses,
-        hookStarted: hookStartedOnly(state.triggers, workflow.webhooks_active),
-        mayRun: automation.canRun,
-      })
-    : null;
-  return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span
-            className="inline-flex items-center gap-1.5 text-sm font-semibold"
-            data-testid="workflow-automation-state"
-          >
-            <span
-              aria-hidden="true"
-              className={cn("size-2 rounded-full", STATE_TONE[state.state])}
-            />
-            {t(AUTOMATION_STATE_KEYS[state.state])}
-          </span>
-          <span className="min-w-0 text-sm" data-testid="workflow-automation-headline">
-            {headline}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {actions.map(({ action, testId }) => (
-            <AutomationActionButton
-              key={testId}
-              automation={automation}
-              action={action}
-              testId={testId}
-            />
-          ))}
-          {toAuthor && automation.canChat ? (
-            // Filled only where "Ausführen" cannot be offered: the way out of
-            // an earlier format is then the page's one filled action.
-            <Button asChild variant={legacy ? "default" : "outline"} size="sm">
-              <a
-                href={absolute(
-                  chatNewHref({
-                    workflowId: automation.workflowId,
-                    prompt: t(legacy ? "automation.legacyPrompt" : "automation.repairPrompt", {
-                      name: workflowName,
-                    }),
-                  }),
-                )}
-                data-testid="workflow-automation-action"
-              >
-                <Bot data-icon="inline-start" />
-                {t("remedy.chat")}
-              </a>
-            </Button>
-          ) : null}
-          {state.state === "unknown" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={automation.refresh}
-              data-testid="workflow-automation-recheck"
-            >
-              {t("automation.action.recheck")}
-            </Button>
-          ) : null}
-        </div>
       </div>
-      {needsRight ? (
-        <p className="text-sm text-muted-foreground" data-testid="workflow-automation-no-right">
-          {t("automation.noRight")}
-        </p>
-      ) : null}
-      {automation.resume.failed ? (
-        <p className="text-sm text-destructive" role="alert">
-          {t("automation.resumeFailed")}
-        </p>
-      ) : null}
-      {/* Paused with nothing to resume: only a hook is stopped, and the engine
-          has no act that switches one back on. Said, instead of a dead button. */}
-      {state.state === "paused" && state.primaryAction === null ? (
-        <p className="text-sm text-muted-foreground" data-testid="workflow-automation-hook-off">
-          {t("automation.hookOff")}
-        </p>
-      ) : null}
-      <GrantOpeningNotice notice={openingNotice} />
-      <TriggerLine triggers={state.triggers} hiddenHooks={hiddenHooks} />
       {/* Why the gate holds it and what removes that — in the environment the
-          approval itself is judged in. Renders nothing when nothing is held. */}
-      {/* A version in an earlier format is not judged by the gate at all:
-          its one block is the format, said in the headline above. */}
-      {legacy ? null : (
+          approval itself is judged in. Renders nothing when nothing is held.
+          A version in an earlier format is not judged by the gate at all. */}
+      {state && !legacy ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}
           environment={state.environment}
-          // The approval has one opener in the panel. Where the state's own
-          // action is that opener, the diagnosis names it and adds none.
+          // The approval has one opener. Where the strip's action is that
+          // opener, the diagnosis names it and adds none.
           onOpenApproval={
             automation.canWrite && target && !opensApproval ? automation.openGrant : undefined
           }
-          // "Erneut prüfen" above re-reads the diagnosis with everything else.
+          // "Erneut prüfen" in the strip re-reads the diagnosis with everything else.
           ownRetry={state.state !== "unknown"}
           rejectedRepairs={automation.rejectedRepairs}
           onRepairRejected={automation.noteRejectedRepair}
         />
-      )}
-      {automation.grantShown && current.length > 0 ? (
-        <div className="grid gap-3" data-testid="workflow-automation-grants">
-          {current.map((authority, index) => (
-            <GrantCard
-              key={authority.id}
-              authority={authority}
-              versions={automation.versions}
-              now={automation.now}
-              canWrite={automation.canWrite}
-              testId={index === 0 && state.grant ? "authority-current" : `authority-valid-${index}`}
-            />
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 w-fit"
-            onClick={() => automation.setGrantShown(false)}
-            data-testid="workflow-automation-grants-hide"
-          >
-            {t("automation.action.hide")}
-          </Button>
-        </div>
       ) : null}
-      {automation.canWrite && target && !legacy ? (
-        <GrantWorkflowAuthority
-          key={`${automation.workflowId}:${target.version_id}`}
-          workflowId={automation.workflowId}
-          versionId={target.version_id}
-          {...(target.activation ? { activation: target.activation } : {})}
-          versionLabel={t(
-            target.kind === "prepared" ? "authority.versionPrepared" : "authority.versionRunning",
-            { version: target.version == null ? "—" : `v${target.version}` },
-          )}
-          initialEnvironment={state.environment}
-          openRequest={automation.grantRequest}
-          onCompleted={automation.refresh}
-        />
-      ) : null}
-    </>
+      {/* Without an opener in the strip the dialog still answers the
+          diagnosis' request ("Freigabe öffnen" for a sample call). */}
+      {grant && !opensApproval ? grant(null) : null}
+    </div>
   );
+}
+
+function StripActionButton({
+  action,
+  automation,
+  workflowName,
+  onOpenRun,
+  onReview,
+}: {
+  action: StripAction;
+  automation: WorkflowAutomation;
+  workflowName: string;
+  onOpenRun: (runId: string) => void;
+  onReview: () => void;
+}) {
+  const { t } = useI18n();
+  const label = t(stripActionKey(action));
+  const item = ((): ActionMenuItem => {
+    switch (action.kind) {
+      case "retry":
+        return { label, onSelect: automation.retry, testId: "workflow-automation-failed-retry" };
+      case "chat": {
+        const prompt: TranslationKey =
+          automation.state?.state === "legacy"
+            ? "automation.legacyPrompt"
+            : "automation.repairPrompt";
+        return {
+          label,
+          href: absolute(
+            chatNewHref({
+              workflowId: automation.workflowId,
+              prompt: t(prompt, { name: workflowName }),
+            }),
+          ),
+          testId: "workflow-automation-action",
+        };
+      }
+      case "resume":
+        return {
+          label,
+          disabled: automation.resume.pending,
+          onSelect: () => automation.resume.run(action.scheduleIds),
+          testId: "workflow-automation-action",
+        };
+      // The approval dialog renders its own opener (see `WorkflowStatus`).
+      case "approve":
+        return { label, onSelect: automation.openGrant, testId: "workflow-automation-action" };
+      case "recheck":
+        return { label, onSelect: automation.refresh, testId: "workflow-automation-recheck" };
+      case "cause":
+        return {
+          label,
+          onSelect: () => onOpenRun(action.runId),
+          testId: "workflow-automation-action",
+        };
+      case "review":
+        return { label, onSelect: onReview, testId: "workflow-automation-action" };
+    }
+  })();
+  return <ActionMenu items={[item]} />;
 }

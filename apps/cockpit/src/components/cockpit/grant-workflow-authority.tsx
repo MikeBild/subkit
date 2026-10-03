@@ -74,6 +74,8 @@ export function GrantWorkflowAuthority({
   triggerVariant = "outline",
   triggerTestId = "authority-grant-open",
   openRequest,
+  withTrigger = false,
+  triggerSize = "sm",
 }: {
   workflowId: string;
   versionId: string;
@@ -96,6 +98,10 @@ export function GrantWorkflowAuthority({
    * its own — the caller owns the buttons, so one dialog can answer several.
    */
   openRequest?: number;
+  /** Renders the own trigger beside `openRequest`: the dialog's opener in a strip that also answers requests. */
+  withTrigger?: boolean;
+  /** `default` in a header, strip or sheet; `sm` in a card or row. */
+  triggerSize?: "sm" | "default";
 }) {
   const { t, dateTime, locale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -531,11 +537,11 @@ export function GrantWorkflowAuthority({
   }, [openRequest]);
   return (
     <Dialog open={open} onOpenChange={openDialog}>
-      {openRequest === undefined && (
+      {(openRequest === undefined || withTrigger) && (
         <DialogTrigger asChild>
           <Button
             variant={triggerVariant}
-            size="sm"
+            size={triggerSize}
             disabled={disabled}
             data-testid={triggerTestId}
             {...OPENS_APPROVAL}

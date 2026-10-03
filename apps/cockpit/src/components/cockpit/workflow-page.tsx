@@ -1,32 +1,42 @@
-import { Bot, MessageCircleQuestion, MoreHorizontal, Pencil } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { absolute, chatNewHref } from "@/app/links";
-import { AgentPanel } from "@/components/cockpit/agent-panel";
 import {
-  AutomationPanel,
-  automationPanelOffers,
+  useTriggerWords,
   useWorkflowAutomation,
+  WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
+import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
-import { IconButton } from "@/components/cockpit/icon-button";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
-import { ContextHelp, PageHeader } from "@/components/cockpit/patterns";
+import {
+  ActionMenu,
+  type ActionMenuItem,
+  CollapsibleSection,
+  type Fact,
+  FactList,
+  Page,
+  PageHeader,
+  type PageTab,
+  PageTabs,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
-import { FormerGrants } from "@/components/cockpit/workflow-grants";
+import { MISSING } from "@/components/cockpit/table-columns";
+import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
-import { RecentRuns, WorkflowCause, WorkflowHealthBadge } from "@/components/cockpit/workflow-runs";
-import { WorkflowStepsList } from "@/components/cockpit/workflow-steps-list";
-import { WorkflowTechnicalFacts } from "@/components/cockpit/workflow-technical-facts";
-import { Button } from "@/components/ui/button";
+import { WorkflowRuns } from "@/components/cockpit/workflow-runs";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import type { TranslationKey } from "@/lib/i18n";
+  useWorkflowSteps,
+  WorkflowStepsList,
+  WorkflowTestResult,
+  WorkflowTestRun,
+} from "@/components/cockpit/workflow-steps-list";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
+import { connectorNameOf } from "@/lib/workflow-steps";
+import { WorkflowRecategorize } from "@/pages/catalog";
 
 type RecordValue = Record<string, unknown>;
 
@@ -45,83 +55,55 @@ function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): Re
   };
 }
 
-interface MenuEntry {
-  key: string;
-  labelKey: TranslationKey;
-  icon: ReactNode;
-  /** A link, or an act on this page. */
-  href?: string;
-  onSelect?: () => void;
+/** "Technische Angaben": what someone quoting the workflow needs, folded. */
+function useTechnicalFacts(record: RecordValue): Fact[] {
+  const { t, dateTime } = useI18n();
+  const slug = text(record, "slug");
+  const lifecycle = text(record, "lifecycle");
+  const created = text(record, "created_at");
+  const updated = text(record, "updated_at");
+  const lastRun = text(record, "last_executed_at");
+  const version = record.current_version;
+  return [
+    {
+      label: t("resource.field.slug"),
+      value: slug ? <span className="break-all font-mono text-xs">{slug}</span> : MISSING,
+      testId: "workflow-technical-slug",
+    },
+    {
+      label: t("catalog.version"),
+      value: typeof version === "number" ? `v${version}` : MISSING,
+      testId: "workflow-technical-version",
+    },
+    {
+      label: t("catalog.lifecycle"),
+      value: lifecycle ? statusLabel(t, lifecycle) : MISSING,
+      testId: "workflow-technical-lifecycle",
+    },
+    {
+      label: t("resource.field.createdAt"),
+      value: created ? dateTime(created) : MISSING,
+      testId: "workflow-technical-created",
+    },
+    {
+      label: t("catalog.updated"),
+      value: updated ? dateTime(updated) : MISSING,
+      testId: "workflow-technical-updated",
+    },
+    {
+      label: t("catalog.lastRun"),
+      value: lastRun ? dateTime(lastRun) : MISSING,
+      testId: "workflow-technical-last-run",
+    },
+  ];
 }
 
 /**
- * The page's further actions beside the title. Several stand behind "⋯"; a
- * single one is a named button — the glyph is reserved for a real menu.
- */
-function FurtherActions({ entries }: { entries: readonly MenuEntry[] }) {
-  const { t } = useI18n();
-  if (entries.length === 0) return null;
-  if (entries.length === 1) {
-    const [entry] = entries;
-    if (!entry) return null;
-    return entry.href ? (
-      <Button asChild variant="outline">
-        <a href={entry.href} data-testid={`workflow-menu-${entry.key}`}>
-          {entry.icon}
-          {t(entry.labelKey)}
-        </a>
-      </Button>
-    ) : (
-      <Button variant="outline" onClick={entry.onSelect} data-testid={`workflow-menu-${entry.key}`}>
-        {entry.icon}
-        {t(entry.labelKey)}
-      </Button>
-    );
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <IconButton
-          label={t("detail.moreActions")}
-          variant="outline"
-          size="icon"
-          data-testid="workflow-menu"
-        >
-          <MoreHorizontal />
-        </IconButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {entries.map((entry) =>
-          entry.href ? (
-            <DropdownMenuItem key={entry.key} asChild>
-              <a href={entry.href} data-testid={`workflow-menu-${entry.key}`}>
-                {entry.icon}
-                {t(entry.labelKey)}
-              </a>
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem
-              key={entry.key}
-              onSelect={entry.onSelect}
-              data-testid={`workflow-menu-${entry.key}`}
-            >
-              {entry.icon}
-              {t(entry.labelKey)}
-            </DropdownMenuItem>
-          ),
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/**
- * A workflow's page, in the order a reader asks: may it run on its own → how
- * is it called → what does it take and return → what does it do → how has it
- * been doing. Everything a reader does not decide by — technical facts, former
- * approvals — is folded below. Every fact has one home, and every action one
- * trigger: the header carries the page's own (run it, the menu), a section's
- * action stands in that section and nowhere else.
+ * A workflow's page (V4): the header with its one filled action, the status
+ * strip with the one action of its top state, and four tabs in the order a
+ * reader asks — how do I call it, how has it been doing, what does it do, who
+ * approved it. Each tab is a summary line, one main element and the rest
+ * folded. Every fact has one home, and every action one trigger.
  */
 export function WorkflowPage({
   id,
@@ -139,8 +121,8 @@ export function WorkflowPage({
   permissions: readonly string[];
 }) {
   const { t } = useI18n();
-  const [asking, setAsking] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [moving, setMoving] = useState(false);
   const canWrite = permissions.includes("workflow:write");
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
@@ -155,7 +137,7 @@ export function WorkflowPage({
       : null;
   const effectiveTrigger = typeof trigger === "string" ? trigger : null;
   const webhooksActive = typeof record.webhooks_active === "number" ? record.webhooks_active : 0;
-  const steps = Array.isArray(record.steps)
+  const stepRecords = Array.isArray(record.steps)
     ? record.steps.filter((step): step is RecordValue => Boolean(step) && typeof step === "object")
     : [];
   const workflow = {
@@ -166,63 +148,184 @@ export function WorkflowPage({
     webhooks_active: webhooksActive,
     legacy,
   };
+  const health = text(record, "health_state");
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
-  const changeHref = absolute(
-    chatNewHref({ workflowId: id, prompt: t("detail.changePrompt", { name: title }) }),
-  );
+  const steps = useWorkflowSteps({ workflowId: id, versionId, steps: stepRecords });
+  const connectorNames = useConnectorNames();
+  const triggerWords = useTriggerWords();
+  const technical = useTechnicalFacts(record);
 
-  const entries: MenuEntry[] = [
+  const menu: ActionMenuItem[] = [
     ...(canChat
       ? [
           {
-            key: "change",
-            labelKey: "detail.changeInChat" as const,
-            icon: <Bot data-icon="inline-start" />,
-            href: changeHref,
-          },
-        ]
-      : []),
-    ...(canChat
-      ? [
-          {
-            key: "ask",
-            labelKey: "agentPanel.open" as const,
-            icon: <MessageCircleQuestion data-icon="inline-start" />,
-            onSelect: () => setAsking(true),
+            label: t("workflowPage.ask"),
+            href: absolute(
+              chatNewHref({ workflowId: id, prompt: t("workflowPage.askPrompt", { name: title }) }),
+            ),
+            testId: "workflow-menu-ask",
           },
         ]
       : []),
     ...(canWrite
       ? [
           {
-            key: "rename",
-            labelKey: "detail.editMetadata" as const,
-            icon: <Pencil data-icon="inline-start" />,
+            label: t("detail.editMetadata"),
             onSelect: () => setRenaming(true),
+            testId: "workflow-menu-rename",
+          },
+          {
+            label: t("catalog.changeCategory"),
+            onSelect: () => setMoving(true),
+            testId: "workflow-menu-category",
           },
         ]
       : []),
   ];
 
+  // "Verwenden": what starts it on its own and whether that runs live.
+  const state = automation.state;
+  const listedHooks = state?.triggers.filter((entry) => entry.kind === "hook").length ?? 0;
+  const started =
+    state && (state.triggers.length > 0 || webhooksActive > 0)
+      ? triggerWords(state.triggers, listedHooks === 0 ? webhooksActive : 0).join(" · ")
+      : null;
+  const verdict =
+    state?.state === "approved"
+      ? t("workflowPage.approvedIn", {
+          environment: t(
+            state.environment === "prod" ? "authority.production" : "authority.development",
+          ),
+        })
+      : null;
+  const useSummary = state ? (
+    <>
+      {started ? (
+        <span data-testid="workflow-automation-triggers">{started}</span>
+      ) : (
+        t("automation.headline.manual")
+      )}
+      {verdict ? ` · ${verdict}` : null}
+    </>
+  ) : null;
+  // "Aufbau": version · steps · connectors.
+  const connectors = [
+    ...new Set(
+      steps.views
+        .map((view) => connectorNameOf(view.definition, connectorNames))
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
+  const buildSummary = [
+    version === null ? null : t("automation.fact.version", { version: `v${version}` }),
+    t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
+      count: steps.views.length,
+    }),
+    connectors.length > 0 ? connectors.join(", ") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const tabs: PageTab[] = [
+    {
+      value: "verwenden",
+      label: t("workflowPage.tab.use"),
+      content: (
+        <>
+          {useSummary ? <SummaryLine text={useSummary} testId="workflow-use-summary" /> : null}
+          <WorkflowInvocation
+            workflowId={id}
+            effectiveTrigger={effectiveTrigger}
+            approvedEnvironment={state?.state === "approved" ? state.environment : null}
+          />
+          <CollapsibleSection label={t("workflowPage.io")} testId="workflow-io-section">
+            <WorkflowInputOutput
+              workflowId={id}
+              byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
+            />
+          </CollapsibleSection>
+        </>
+      ),
+    },
+    ...(permissions.includes("execution:read")
+      ? [
+          {
+            value: "verlauf",
+            label: t("workflowPage.tab.history"),
+            content: <WorkflowRuns workflowId={id} />,
+          },
+        ]
+      : []),
+    {
+      value: "aufbau",
+      label: t("workflowPage.tab.build"),
+      content: (
+        <>
+          <SummaryLine
+            text={buildSummary}
+            help={canRun && steps.views.length > 0 ? t("workflow.testRunSecondary") : undefined}
+            aside={
+              canRun && steps.views.length > 0 ? (
+                <WorkflowTestRun steps={steps} definition={draftDefinition(record, stepRecords)} />
+              ) : undefined
+            }
+            testId="workflow-build-summary"
+          />
+          <WorkflowTestResult steps={steps} />
+          <WorkflowStepsList key={`${id}:${versionId ?? "none"}`} steps={steps} canRun={canRun} />
+          <div className="flex flex-col gap-2">
+            <CollapsibleSection
+              label={t("connectorDetail.technical.title")}
+              testId="workflow-technical"
+            >
+              <FactList items={technical} />
+            </CollapsibleSection>
+            {permissions.includes("conversation:read") ? (
+              <ConversationsAbout target={{ workflow_id: id }} />
+            ) : null}
+          </div>
+        </>
+      ),
+    },
+    {
+      value: "freigaben",
+      label: t("workflowPage.tab.approvals"),
+      content: <WorkflowApprovals automation={automation} />,
+    },
+  ];
+
   return (
-    <main
-      data-family-surface="detail"
-      className="flex min-h-0 flex-1 flex-col overflow-auto"
-      data-testid="detail-workflows"
-    >
-      <div className="shrink-0 px-6">
+    <Page
+      kind="detail"
+      scroll="page"
+      testId="detail-workflows"
+      surface="detail"
+      header={
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          badge={<WorkflowHealthBadge state={text(record, "health_state")} />}
+          badge={health ? <StatusBadge state={health} testId="workflow-health-badge" /> : undefined}
           purpose={purpose || undefined}
           secondary={
-            <ContextHelp label={t("detail.editHelp.label")} testId="workflow-edit-help">
-              {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
-            </ContextHelp>
+            canChat ? (
+              <ActionMenu
+                items={[
+                  {
+                    label: t("detail.changeInChat"),
+                    href: absolute(
+                      chatNewHref({
+                        workflowId: id,
+                        prompt: t("detail.changePrompt", { name: title }),
+                      }),
+                    ),
+                    testId: "workflow-menu-change",
+                  },
+                ]}
+              />
+            ) : undefined
           }
-          menu={<FurtherActions entries={entries} />}
+          menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
           action={
             canRun && !legacy ? (
               <RunWorkflowDialog
@@ -234,57 +337,18 @@ export function WorkflowPage({
             ) : undefined
           }
         />
-      </div>
-      <div
-        data-family-slot="detail-main"
-        className="flex min-h-0 flex-1 flex-col gap-5 p-6 [&>*]:shrink-0"
-      >
-        <WorkflowCause
-          workflowId={id}
-          healthState={text(record, "health_state")}
-          healthReason={text(record, "health_reason")}
-          healthChangedAt={text(record, "health_changed_at")}
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <WorkflowStatus
+          automation={automation}
+          workflow={workflow}
+          workflowName={title}
+          health={health}
           permissions={permissions}
-          panelOffers={automationPanelOffers(automation)}
         />
-        <AutomationPanel automation={automation} workflow={workflow} workflowName={title} />
-        <WorkflowInvocation
-          workflowId={id}
-          effectiveTrigger={effectiveTrigger}
-          approvedEnvironment={
-            automation.state?.state === "approved" ? automation.state.environment : null
-          }
-        />
-        <WorkflowInputOutput
-          workflowId={id}
-          byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
-        />
-        <WorkflowStepsList
-          key={`${id}:${versionId ?? "none"}`}
-          workflowId={id}
-          versionId={versionId}
-          steps={steps}
-          definition={draftDefinition(record, steps)}
-          canRun={canRun}
-        />
-        {permissions.includes("execution:read") ? <RecentRuns workflowId={id} /> : null}
-        <WorkflowTechnicalFacts record={record} />
-        <FormerGrants
-          items={automation.state?.history ?? []}
-          versions={automation.versions}
-          now={automation.now}
-          canWrite={canWrite}
-          hasMore={automation.history.hasMore}
-          loadingMore={automation.history.loading}
-          onMore={automation.history.more}
-        />
-        {permissions.includes("conversation:read") ? (
-          <ConversationsAbout target={{ workflow_id: id }} />
-        ) : null}
+        <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
       </div>
-      {canChat ? (
-        <AgentPanel workflowId={id} workflowName={title} open={asking} onOpenChange={setAsking} />
-      ) : null}
       {canWrite ? (
         <MetadataDialog
           resource="workflows"
@@ -294,6 +358,9 @@ export function WorkflowPage({
           onOpenChange={setRenaming}
         />
       ) : null}
-    </main>
+      {canWrite && moving ? (
+        <WorkflowRecategorize record={{ ...record, id }} onClose={() => setMoving(false)} />
+      ) : null}
+    </Page>
   );
 }

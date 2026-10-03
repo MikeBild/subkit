@@ -1,17 +1,22 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Play } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, workflowHref } from "@/app/links";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
-import { FencedBlock } from "@/components/cockpit/fenced-block";
-import { ContextHelp } from "@/components/cockpit/patterns/context-help";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  ActionMenu,
+  type CockpitColumn,
+  CodeBlock,
+  type Fact,
+  FactList,
+  RecordSheet,
+  Section,
+  StatusBadge,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
+import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
-import { statusLabel } from "@/lib/status-label";
 import {
   type WorkflowPreviewSource,
   workflowPreviewRequest,
@@ -34,31 +39,30 @@ interface PreviewResult {
   preview: string;
 }
 
+/** One copy action per block: the same "Kopieren" beside two blocks is two acts. */
+function Copyable({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-w-0" data-action-scope="copy">
+      {children}
+    </div>
+  );
+}
+
 /**
- * "Schritte": the saved steps, one compact row each — its number, its id, what
- * kind it is, one line on what it does and how it last ended. Opening a row
- * shows the whole configuration, the last result and the step's own preview.
+ * The saved steps and their previews. One hook for the table and the sheet,
+ * so a preview started in a step's sheet is the same press as anywhere else.
  */
-export function WorkflowStepsList({
+export function useWorkflowSteps({
   workflowId,
   versionId,
   steps,
-  definition,
-  canRun,
 }: {
   workflowId: string;
   versionId: string | null;
   steps: readonly unknown[];
-  /** The saved definition, replayed as a draft for a whole-workflow preview. */
-  definition: Record<string, unknown>;
-  canRun: boolean;
 }) {
-  const { t } = useI18n();
   const [results, setResults] = useState<Record<string, PreviewResult>>({});
   const [running, setRunning] = useState<string | null>(null);
-
-  const connectorNames = useConnectorNames();
-
   const lastExecution = useQuery({
     queryKey: ["workflow", workflowId, versionId, "last-execution"],
     queryFn: () =>
@@ -77,7 +81,6 @@ export function WorkflowStepsList({
         `/v1/executions/${encodeURIComponent(executionId ?? "")}/steps`,
       ),
   });
-
   const preview = useMutation({
     mutationFn: (body: WorkflowPreviewSource) =>
       apiRequest<Record<string, unknown>>("/v1/executions", {
@@ -85,7 +88,6 @@ export function WorkflowStepsList({
         body: JSON.stringify(workflowPreviewRequest(body)),
       }),
   });
-
   async function runOne(key: string, body: WorkflowPreviewSource): Promise<void> {
     setRunning(key);
     try {
@@ -103,235 +105,260 @@ export function WorkflowStepsList({
       setRunning(null);
     }
   }
+  return {
+    views: joinStepsWithLastRun(steps, runSteps.data?.items ?? []),
+    pending: lastExecution.isPending,
+    results,
+    running,
+    runOne,
+  };
+}
 
-  const views = joinStepsWithLastRun(steps, runSteps.data?.items ?? []);
-  const whole = results.__workflow;
+export type WorkflowSteps = ReturnType<typeof useWorkflowSteps>;
 
+/** "Testlauf": the whole saved workflow as a preview without effects, and its result. */
+export function WorkflowTestRun({
+  steps,
+  definition,
+}: {
+  steps: WorkflowSteps;
+  definition: Record<string, unknown>;
+}) {
+  const { t } = useI18n();
   return (
-    <section className="grid min-w-0 gap-2" data-testid="workflow-steps">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">
-          {t("workflow.stepsTitle", { count: views.length })}
-        </h2>
-        {canRun && views.length > 0 ? (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={running !== null}
-              data-testid="workflow-test-run"
-              onClick={() => void runOne("__workflow", { source: "draft", definition })}
-            >
-              <Play data-icon="inline-start" />
-              {t(running === "__workflow" ? "workflow.testing" : "workflow.testRun")}
-            </Button>
-            <ContextHelp label={t("workflow.testRunHelp.label")} testId="workflow-test-run-help">
-              {t("workflow.testRunSecondary")}
-            </ContextHelp>
-          </div>
-        ) : null}
-      </div>
-      {whole ? (
-        <pre
-          className={`max-h-60 overflow-auto rounded-md border p-2 text-xs ${whole.ok ? "" : "text-destructive"}`}
-          data-testid="workflow-test-result"
-        >
-          {whole.preview}
-        </pre>
-      ) : null}
-      {views.length === 0 ? (
-        <p
-          className="rounded-xl border p-4 text-sm text-muted-foreground"
-          data-testid="workflow-no-steps"
-        >
-          {t("workflow.noSteps")}
-        </p>
-      ) : (
-        <ol className="grid min-w-0 divide-y rounded-xl border" data-testid="workflow-step-list">
-          {views.map((view, index) => (
-            <StepRow
-              key={view.definition.id}
-              view={view}
-              connectorName={connectorNameOf(view.definition, connectorNames)}
-              index={index}
-              canRun={canRun}
-              running={running === view.definition.id}
-              busy={running !== null}
-              result={results[view.definition.id] ?? null}
-              onPreview={() =>
-                void runOne(view.definition.id, { source: "step", step: view.definition.raw })
-              }
-            />
-          ))}
-        </ol>
-      )}
-    </section>
+    <ActionMenu
+      items={[
+        {
+          label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
+          disabled: steps.running !== null,
+          onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
+          testId: "workflow-test-run",
+        },
+      ]}
+    />
   );
 }
 
-function StepRow({
+export function WorkflowTestResult({ steps }: { steps: WorkflowSteps }) {
+  const { t } = useI18n();
+  const whole = steps.results.__workflow;
+  if (!whole) return null;
+  return (
+    <Copyable>
+      <CodeBlock
+        label={t(whole.ok ? "workflow.testRun" : "workflowSteps.testFailed")}
+        code={whole.preview}
+        lang="json"
+        testId="workflow-test-result"
+      />
+    </Copyable>
+  );
+}
+
+/**
+ * The saved steps as one table (V4c): number, id, kind, what it does and how
+ * it last ended. A row opens the step's sheet with its whole configuration,
+ * its last result and its own preview.
+ */
+export function WorkflowStepsList({ steps, canRun }: { steps: WorkflowSteps; canRun: boolean }) {
+  const { t, dateTime } = useI18n();
+  const connectorNames = useConnectorNames();
+  const [open, setOpen] = useState<number | null>(null);
+  const rows = steps.views.map((view, index) => ({ view, index }));
+  const columns = useMemo<CockpitColumn<{ view: WorkflowStepView; index: number }>[]>(() => {
+    const column = tableColumns<{ view: WorkflowStepView; index: number }>({ t, dateTime });
+    return [
+      column.custom(
+        "id",
+        (row) => row.view.definition.id,
+        t("workflowSteps.column.step"),
+        (row) => (
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+              {row.index + 1}
+            </span>
+            <span className="min-w-0 truncate font-mono text-xs font-medium">
+              {row.view.definition.id}
+            </span>
+          </span>
+        ),
+        { width: "w-[26%]" },
+      ),
+      column.custom(
+        "kind",
+        (row) => row.view.definition.kind,
+        t("workflowSteps.column.kind"),
+        (row) => t(workflowStepKindKey(row.view.definition.kind)),
+        { width: "w-[16%]" },
+      ),
+      column.custom(
+        "essence",
+        (row) => row.index,
+        t("workflowSteps.column.does"),
+        (row) => (
+          <span className="block truncate" data-testid={`workflow-step-${row.index}-essence`}>
+            {stepEssenceText(row.view.definition, t, {
+              connector: connectorNameOf(row.view.definition, connectorNames),
+            })}
+          </span>
+        ),
+        { width: "w-[38%]" },
+      ),
+      column.custom(
+        "last",
+        (row) => row.view.lastRun?.status ?? null,
+        t("workflowSteps.column.last"),
+        (row) =>
+          row.view.lastRun ? (
+            <StatusBadge
+              state={row.view.lastRun.status}
+              testId={`workflow-step-${row.index}-status`}
+            />
+          ) : (
+            <span
+              className="text-xs text-muted-foreground"
+              data-testid={`workflow-step-${row.index}-never-ran`}
+            >
+              {t("workflow.neverRanShort")}
+            </span>
+          ),
+        { width: "w-[20%]" },
+      ),
+    ];
+  }, [t, dateTime, connectorNames]);
+  const selected = open === null ? null : (steps.views[open] ?? null);
+  return (
+    <div data-testid="workflow-steps">
+      <RecordTable
+        columns={columns}
+        data={rows}
+        collectionId="workflow-step-list"
+        emptyLine={t("workflow.noSteps")}
+        pending={steps.pending && steps.views.length === 0}
+        onOpen={(row) => setOpen(row.index)}
+        rowLabel={(row) => t("workflow.step", { count: row.index + 1 })}
+        pageSize={25}
+      />
+      {selected && open !== null ? (
+        <StepSheet
+          view={selected}
+          index={open}
+          connectorName={connectorNameOf(selected.definition, connectorNames)}
+          canRun={canRun}
+          steps={steps}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** One step (O6): what it is configured with, how it last ended, and its own preview. */
+function StepSheet({
   view,
-  connectorName,
   index,
+  connectorName,
   canRun,
-  running,
-  busy,
-  result,
-  onPreview,
+  steps,
+  onClose,
 }: {
   view: WorkflowStepView;
-  connectorName: string | null;
   index: number;
+  connectorName: string | null;
   canRun: boolean;
-  running: boolean;
-  busy: boolean;
-  result: PreviewResult | null;
-  onPreview: () => void;
+  steps: WorkflowSteps;
+  onClose: () => void;
 }) {
   const { t } = useI18n();
   const testId = `workflow-step-${index}`;
   const { definition, lastRun } = view;
-  const essence = stepEssenceText(definition, t, { connector: connectorName });
   const lastResult = stepResultPreview(lastRun);
   const called = definition.essence.kind === "call" ? definition.essence : null;
-
-  return (
-    <li className="min-w-0" data-testid={testId}>
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="group flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
-            data-testid={`${testId}-toggle`}
-          >
-            <span className="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-              {index + 1}
-            </span>
-            <span className="grid min-w-0 flex-1 gap-x-3 gap-y-0.5 sm:grid-cols-[minmax(0,12rem)_minmax(0,9rem)_minmax(0,1fr)] sm:items-baseline">
-              <span className="min-w-0 truncate font-mono text-xs font-medium">
-                {definition.id}
-              </span>
-              <span className="min-w-0 truncate text-muted-foreground">
-                {t(workflowStepKindKey(definition.kind))}
-              </span>
-              <span className="min-w-0 truncate" data-testid={`${testId}-essence`}>
-                {essence}
-              </span>
-            </span>
-            {lastRun ? (
-              <Badge variant="secondary" className="shrink-0" data-testid={`${testId}-status`}>
-                {statusLabel(t, lastRun.status)}
-              </Badge>
-            ) : (
-              <span
-                className="shrink-0 text-xs text-muted-foreground"
-                data-testid={`${testId}-never-ran`}
+  const result = steps.results[definition.id] ?? null;
+  const running = steps.running === definition.id;
+  const facts: Fact[] = [
+    { label: t("workflowSteps.column.kind"), value: t(workflowStepKindKey(definition.kind)) },
+    ...(connectorName ? [{ label: t("authority.connector"), value: connectorName }] : []),
+    ...(called?.workflowId
+      ? [
+          {
+            label: t("workflow.fact.calls"),
+            value: (
+              <a
+                href={absolute(workflowHref(called.workflowId))}
+                className="underline underline-offset-4"
+                data-testid={`${testId}-called-workflow`}
               >
-                {t("workflow.neverRanShort")}
-              </span>
-            )}
-            <ChevronRight
-              aria-hidden="true"
-              className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90"
+                {called.slug ?? t("workflow.fact.callsOpen")}
+              </a>
+            ),
+          },
+        ]
+      : []),
+    ...definition.facts.map((fact) => ({
+      label: t(fact.labelKey),
+      value: "valueKey" in fact ? t(fact.valueKey) : fact.value,
+    })),
+  ];
+  return (
+    <RecordSheet
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={<span className="font-mono">{definition.id}</span>}
+      badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
+      action={
+        canRun ? (
+          <ActionMenu
+            items={[
+              {
+                label: t(running ? "workflow.testing" : "workflow.testStep"),
+                disabled: steps.running !== null,
+                onSelect: () =>
+                  void steps.runOne(definition.id, { source: "step", step: definition.raw }),
+                testId: `${testId}-test`,
+              },
+            ]}
+          />
+        ) : undefined
+      }
+      testId={`${testId}-sheet`}
+      closeTestId={`${testId}-close`}
+    >
+      <div className="flex flex-col gap-3" data-testid={`${testId}-configuration`}>
+        <FactList items={facts} />
+        {definition.blocks.map((block, blockIndex) => (
+          <Copyable key={`${block.labelKey}:${blockIndex}`}>
+            <CodeBlock
+              label={t(block.labelKey)}
+              code={block.code}
+              lang={block.language}
+              testId={`${testId}-block-${blockIndex}`}
             />
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="grid min-w-0 gap-3 border-t bg-muted/20 p-3 lg:grid-cols-2">
-            <div
-              className="grid min-w-0 content-start gap-2"
-              data-testid={`${testId}-configuration`}
-            >
-              <p className="text-xs font-medium text-muted-foreground">
-                {t("workflow.configuration")}
-              </p>
-              {connectorName || definition.facts.length > 0 || called?.workflowId ? (
-                <dl className="grid gap-1 text-sm">
-                  {connectorName ? (
-                    <div className="flex gap-2">
-                      <dt className="text-muted-foreground">{t("authority.connector")}</dt>
-                      <dd className="min-w-0 truncate">{connectorName}</dd>
-                    </div>
-                  ) : null}
-                  {called?.workflowId ? (
-                    <div className="flex gap-2">
-                      <dt className="text-muted-foreground">{t("workflow.fact.calls")}</dt>
-                      <dd className="min-w-0 truncate">
-                        <a
-                          href={absolute(workflowHref(called.workflowId))}
-                          className="underline underline-offset-4"
-                          data-testid={`${testId}-called-workflow`}
-                        >
-                          {called.slug ?? t("workflow.fact.callsOpen")}
-                        </a>
-                      </dd>
-                    </div>
-                  ) : null}
-                  {definition.facts.map((fact) => (
-                    <div key={fact.labelKey} className="flex gap-2">
-                      <dt className="text-muted-foreground">{t(fact.labelKey)}</dt>
-                      <dd className="min-w-0 truncate">
-                        {"valueKey" in fact ? t(fact.valueKey) : fact.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-              {definition.blocks.map((block, blockIndex) => (
-                <FencedBlock
-                  key={`${block.labelKey}:${blockIndex}`}
-                  label={t(block.labelKey)}
-                  code={block.code}
-                  language={block.language}
-                  testId={`${testId}-block-${blockIndex}`}
-                />
-              ))}
-              {!connectorName &&
-              definition.facts.length === 0 &&
-              definition.blocks.length === 0 &&
-              !called?.workflowId ? (
-                <p className="text-sm text-muted-foreground">{t("workflow.noConfiguration")}</p>
-              ) : null}
-            </div>
-            <div className="grid min-w-0 content-start gap-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t("workflow.lastResult")}
-              </p>
-              {lastResult ? (
-                <pre
-                  className="max-h-60 overflow-auto rounded-md border bg-background p-2 text-xs"
-                  data-testid={`${testId}-last-result`}
-                >
-                  {lastResult}
-                </pre>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("workflow.neverRan")}</p>
-              )}
-              {canRun ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-2 w-fit"
-                  disabled={busy}
-                  data-testid={`${testId}-test`}
-                  onClick={onPreview}
-                >
-                  <Play data-icon="inline-start" />
-                  {t(running ? "workflow.testing" : "workflow.testStep")}
-                </Button>
-              ) : null}
-              {result ? (
-                <pre
-                  className={`max-h-60 overflow-auto rounded-md border bg-background p-2 text-xs ${result.ok ? "" : "text-destructive"}`}
-                  data-testid={`${testId}-test-result`}
-                >
-                  {result.preview}
-                </pre>
-              ) : null}
-            </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </li>
+          </Copyable>
+        ))}
+        {facts.length <= 1 && definition.blocks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("workflow.noConfiguration")}</p>
+        ) : null}
+      </div>
+      <Section label={t("workflow.lastResult")}>
+        {lastResult ? (
+          <Copyable>
+            <CodeBlock code={lastResult} lang="json" testId={`${testId}-last-result`} />
+          </Copyable>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("workflow.neverRan")}</p>
+        )}
+      </Section>
+      {result ? (
+        <Copyable>
+          <CodeBlock
+            label={t(result.ok ? "workflow.testStep" : "workflowSteps.testFailed")}
+            code={result.preview}
+            lang="json"
+            testId={`${testId}-test-result`}
+          />
+        </Copyable>
+      ) : null}
+    </RecordSheet>
   );
 }

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot, FolderTree, Search } from "lucide-react";
@@ -1033,6 +1033,42 @@ function RecategorizeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * "Kategorie ändern" on a workflow's own page: the same dialog as the list's,
+ * with the blocks read for it.
+ */
+export function WorkflowRecategorize({
+  record,
+  onClose,
+}: {
+  record: CatalogRow;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: ["workflow-categories"],
+    queryFn: () => apiRequest<{ categories?: CategoryCount[] }>("/v1/workflows?limit=1"),
+  });
+  const categories = useMemo(() => query.data?.categories ?? [], [query.data]);
+  const counts = useMemo(
+    () => new Map(categories.map((entry) => [entry.category, entry.count])),
+    [categories],
+  );
+  return (
+    <RecategorizeDialog
+      row={record}
+      categories={categories}
+      counts={counts}
+      onClose={onClose}
+      onDone={() => {
+        void client.invalidateQueries({ queryKey: ["catalog-detail", "workflows"] });
+        void client.invalidateQueries({ queryKey: ["catalog", "workflows"] });
+        onClose();
+      }}
+    />
   );
 }
 
