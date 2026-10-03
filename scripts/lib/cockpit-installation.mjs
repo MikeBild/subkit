@@ -6,8 +6,8 @@
 // system account and the engine. Each of those used to reach the screen as
 // "Unbekannt", as `*` or `sk_cli`, or as an act that happened on one click.
 // This asserts the words, the J5 journey from the red budget badge to the
-// focused budget field, and that a confirmation stands between the click and
-// a role change or a revoked grant.
+// focused budget field, that a role change shows its consequence before it is
+// saved, and that a confirmation stands between the click and a revoked grant.
 
 // Personen & Rechte is one page; its sections are tabs whose content is the
 // section's own list.
@@ -43,25 +43,36 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     }
   }
 
-  // A custom role is named by its name, and a role change asks first.
+  // A custom role is named by its name, and a role change shows what it does
+  // before it is saved: the person's sheet names the person and the change,
+  // and "Speichern" appears only once another role is picked.
   await stand.visit(page, "people");
   await page.getByTestId("people-list").waitFor({ state: "visible" });
-  if ((await page.getByTestId("people-role-badge-1").innerText()).trim() !== "Revision")
+  // The table draws a row and, for narrow screens, a card; the row is the one shown here.
+  const roleCell = page.getByTestId("people-list-row-1").getByTestId("people-role-badge-1");
+  if ((await roleCell.innerText()).trim() !== "Revision")
     throw new Error("/people: a custom role is not named by its own name");
-  await page.getByTestId("people-role-1").click();
-  await page.getByTestId("people-role-1-member").click();
-  const roleConfirm = page.getByTestId("people-role-confirm");
-  await roleConfirm.waitFor({ state: "visible" });
-  if (!(await roleConfirm.innerText()).includes("reviewer@example.com"))
-    throw new Error("/people: the role-change confirmation does not name the person");
+  await page.getByTestId("people-list-row-link-1").click();
+  const sheet = page.getByTestId("people-sheet");
+  await sheet.waitFor({ state: "visible" });
+  if (await page.getByTestId("people-role-save").isVisible())
+    throw new Error("/people: the person's sheet offers to save before anything changed");
+  await page.getByTestId("people-role").click();
+  await page.getByTestId("people-role-member").click();
+  const roleChange = page.getByTestId("people-role-change");
+  await roleChange.waitFor({ state: "visible" });
+  if (!(await roleChange.innerText()).includes("reviewer@example.com"))
+    throw new Error("/people: the role change does not name the person");
+  await page.getByTestId("people-role-save").waitFor({ state: "visible" });
   await capture("role-change");
-  await page.getByTestId("people-role-confirm-cancel").click();
-  await roleConfirm.waitFor({ state: "hidden" });
+  await page.getByTestId("people-sheet-close").click();
+  await sheet.waitFor({ state: "hidden" });
 
   // A grant is revoked only after its consequence was read.
   await stand.visit(page, "people?section=grants");
   await page.getByTestId("grants-list").waitFor({ state: "visible" });
-  await page.getByTestId("grant-revoke-0").click();
+  await page.getByTestId("grants-list-row-link-0").click();
+  await page.getByTestId("grant-revoke").click();
   const revokeConfirm = page.getByTestId("grant-revoke-confirm");
   await revokeConfirm.waitFor({ state: "visible" });
   await capture("grant-revoke");
