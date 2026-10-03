@@ -165,6 +165,11 @@ const routes = [
   "knowledge",
   "skills",
   "files",
+  // A record of each Wissen tab: one document, its back link to Wissen and
+  // its facts collapsed below it.
+  `knowledge/${uuid}`,
+  `skills/${uuid}`,
+  `files/${uuid}`,
   "audit",
   // The repair rate's drilldown: the decided repairs, by the engine's verbs.
   "audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
@@ -2854,6 +2859,9 @@ function markerFor(route) {
   // on the list marker would photograph the page before the record arrived,
   // which is the frame that proves nothing.
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
+  // A record of Wissen, once it has loaded: its facts stand under the document.
+  if (/^(knowledge|skills|files)\/.+/.test(path))
+    return `[data-testid="detail-${path.split("/")[0]}"] [data-testid="detail-overview"]`;
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";

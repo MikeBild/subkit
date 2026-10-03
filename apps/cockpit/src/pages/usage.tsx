@@ -239,7 +239,7 @@ export function UsagePage() {
         (row) => {
           if (row.unattributed)
             return (
-              <span className="truncate text-muted-foreground">
+              <span className="block break-words text-muted-foreground">
                 {t("resource.usage.unattributed")}
               </span>
             );
@@ -248,16 +248,16 @@ export function UsagePage() {
           if (axis === "flow") {
             const key = `usage.flow.${row.key}` as TranslationKey;
             const named = t(key);
-            return <span className="truncate">{named === key ? row.key : named}</span>;
+            return <span className="block break-words">{named === key ? row.key : named}</span>;
           }
           if (axis === "user") {
             const name = personName.get(row.key);
-            if (name) return <span className="truncate">{name}</span>;
+            if (name) return <span className="block break-words">{name}</span>;
             // An unreadable directory cannot name the person; it must not
             // assert the workspace has dropped them.
             const unreadable = Boolean(people.error) || personName.size === 0;
             return (
-              <span className="truncate text-muted-foreground">
+              <span className="block break-words text-muted-foreground">
                 {t(unreadable ? "resource.usage.personUnreadable" : "resource.usage.unknownPerson")}
               </span>
             );
@@ -268,7 +268,7 @@ export function UsagePage() {
             if (name)
               return (
                 <a
-                  className="truncate font-medium underline-offset-4 hover:underline"
+                  className="block break-words font-medium underline-offset-4 hover:underline"
                   href={absolute(workflowHref(row.key))}
                   data-testid="usage-workflow-link"
                 >
@@ -277,7 +277,7 @@ export function UsagePage() {
               );
             if (!lookup || lookup.kind === "pending") return MISSING;
             return (
-              <span className="truncate text-muted-foreground">
+              <span className="block break-words text-muted-foreground">
                 {t(
                   lookup.kind === "gone"
                     ? "resource.usage.unknownWorkflow"
@@ -286,7 +286,7 @@ export function UsagePage() {
               </span>
             );
           }
-          return <span className="truncate">{row.key}</span>;
+          return <span className="block break-words">{row.key}</span>;
         },
         { width: "w-[46%]" },
       ),
@@ -294,7 +294,9 @@ export function UsagePage() {
         "tokens",
         (row) => row.tokens,
         t("resource.field.tokens"),
-        (row) => <span className="tabular-nums">{number.format(row.tokens)}</span>,
+        (row) => (
+          <span className="whitespace-nowrap tabular-nums">{number.format(row.tokens)}</span>
+        ),
         { width: "w-[20%]" },
       ),
       column.custom(
@@ -303,7 +305,7 @@ export function UsagePage() {
         t("resource.field.share"),
         // A share of nothing is not nought per cent — the dash says so.
         (row) => (
-          <span className="tabular-nums">
+          <span className="whitespace-nowrap tabular-nums">
             {row.share === null ? MISSING : percent.format(row.share)}
           </span>
         ),
@@ -313,7 +315,7 @@ export function UsagePage() {
         "calls",
         (row) => row.calls,
         t("resource.field.calls"),
-        (row) => <span className="tabular-nums">{number.format(row.calls)}</span>,
+        (row) => <span className="whitespace-nowrap tabular-nums">{number.format(row.calls)}</span>,
         { width: "w-[17%]" },
       ),
     ];
@@ -327,21 +329,29 @@ export function UsagePage() {
         "executions",
         (row) => row.executions,
         t("resource.field.executions"),
-        (row) => <span className="tabular-nums">{row.executions}</span>,
+        (row) => <span className="whitespace-nowrap tabular-nums">{row.executions}</span>,
         { width: "w-[22%]" },
       ),
       column.custom(
         "average_duration_ms",
         (row) => row.average_duration_ms,
         t("resource.field.averageDuration"),
-        (row) => <span className="tabular-nums">{formatDurationMs(row.average_duration_ms)}</span>,
+        (row) => (
+          <span className="whitespace-nowrap tabular-nums">
+            {formatDurationMs(row.average_duration_ms)}
+          </span>
+        ),
         { width: "w-[22%]" },
       ),
       column.custom(
         "p95_duration_ms",
         (row) => row.p95_duration_ms,
         t("resource.field.p95Duration"),
-        (row) => <span className="tabular-nums">{formatDurationMs(row.p95_duration_ms)}</span>,
+        (row) => (
+          <span className="whitespace-nowrap tabular-nums">
+            {formatDurationMs(row.p95_duration_ms)}
+          </span>
+        ),
         { width: "w-[22%]" },
       ),
     ];
@@ -377,7 +387,7 @@ export function UsagePage() {
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-3" data-testid="usage-consumption">
           <SummaryLine
-            testId="usage-summary-line"
+            testId="usage-cap-line"
             text={<span data-testid={capLine.testId}>{t(capLine.key)}</span>}
             help={t("resource.usage.consumptionDescription")}
             aside={
@@ -484,32 +494,29 @@ export function UsagePage() {
           )}
         </div>
 
-        <Section
-          label={t("resource.usage.consumption")}
-          testId="usage-breakdown"
-          aside={
-            <>
-              {/* The breakdown covers the window, the tiles the calendar
-                  month: two periods, said where the table is read. */}
-              <ContextHelp label={t("resource.usage.consumption")} testId="usage-breakdown-window">
-                {t("resource.usage.breakdownWindow")}
-              </ContextHelp>
-              <SegmentedControl
-                label={t("resource.usage.axisPicker")}
-                testId="usage-axis"
-                value={axis}
-                onValueChange={(next) => {
-                  if (isAxis(next)) setAxis(next);
-                }}
-                options={CONSUMPTION_AXES.map((candidate) => ({
-                  value: candidate,
-                  label: t(AXIS_LABEL[candidate]),
-                  testId: `usage-axis-${candidate}`,
-                }))}
-              />
-            </>
-          }
-        >
+        <Section label={t("resource.usage.consumption")} testId="usage-breakdown">
+          {/* One axis at a time: four tables side by side would be four
+              answers to one question. The breakdown covers the window, the
+              tiles the calendar month — two periods, said where the table is
+              read. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl
+              label={t("resource.usage.axisPicker")}
+              testId="usage-axis"
+              value={axis}
+              onValueChange={(next) => {
+                if (isAxis(next)) setAxis(next);
+              }}
+              options={CONSUMPTION_AXES.map((candidate) => ({
+                value: candidate,
+                label: t(AXIS_LABEL[candidate]),
+                testId: `usage-axis-${candidate}`,
+              }))}
+            />
+            <ContextHelp label={t("resource.usage.consumption")} testId="usage-breakdown-window">
+              {t("resource.usage.breakdownWindow")}
+            </ContextHelp>
+          </div>
           <DataTable
             // Every `data-testid` the table emits derives from `collectionId`,
             // so the two tables on this page each need their own.
