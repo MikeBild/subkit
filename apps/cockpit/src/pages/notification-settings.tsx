@@ -10,7 +10,6 @@ import {
   type CockpitColumn,
   FactList,
   Field,
-  FieldError,
   FieldGroup,
   FieldLabel,
   FormDialog,
@@ -552,6 +551,7 @@ function CreateRuleDialog({
         disabled: !name.trim(),
       }}
       onSubmit={() => create.mutate()}
+      error={create.error ? t("notifications.createFailed") : null}
       testId="notifications-rule-dialog"
     >
       <FieldGroup>
@@ -638,11 +638,6 @@ function CreateRuleDialog({
             </SelectContent>
           </Select>
         </Field>
-        {create.error ? (
-          <FieldError data-testid="notifications-rule-failed">
-            {t("notifications.createFailed")}
-          </FieldError>
-        ) : null}
       </FieldGroup>
     </FormDialog>
   );
@@ -692,6 +687,7 @@ function CreateChannelDialog({
         disabled: !workspace.trim() || !channelId.trim(),
       }}
       onSubmit={() => create.mutate()}
+      error={create.error ? t("notifications.createFailed") : null}
       testId="notifications-channel-dialog"
     >
       <FieldGroup>
@@ -763,11 +759,6 @@ function CreateChannelDialog({
             </SelectContent>
           </Select>
         </Field>
-        {create.error ? (
-          <FieldError data-testid="notifications-channel-failed">
-            {t("notifications.createFailed")}
-          </FieldError>
-        ) : null}
       </FieldGroup>
     </FormDialog>
   );

@@ -338,6 +338,7 @@ export function ConnectDialog({
         if (found && canStart)
           start.mutate({ name: name.trim(), base_url: found.base_url, scopes });
       }}
+      error={start.error ? failureSentence(start.error, t) : null}
       testId="connection-create-dialog"
     >
       <FieldGroup>
@@ -432,11 +433,6 @@ export function ConnectDialog({
               )}
             </Field>
           </>
-        ) : null}
-        {start.error ? (
-          <FieldError data-testid="connection-create-start-failed">
-            {failureSentence(start.error, t)}
-          </FieldError>
         ) : null}
       </FieldGroup>
     </FormDialog>
