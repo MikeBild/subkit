@@ -91,6 +91,11 @@ function cockpitHref(path: string, query: Record<string, string>): string {
   return `/cockpit${path}?${new URLSearchParams(query).toString()}`;
 }
 
+/** The run list: an overlay on Übersicht (`?runs=all`), narrowed by the query it carries. */
+export function cockpitRunsHref(query: Record<string, string>): string {
+  return cockpitHref("", { runs: "all", ...query });
+}
+
 /** The longest window the figures are read over — the stats routes' day-bucket cap. */
 export const OPERATING_WINDOW_MAX_MS = 366 * 86_400_000;
 
@@ -169,8 +174,8 @@ export async function readOperatingFigures(
       failed,
       finished,
       success_rate_percent: percent(succeeded, finished),
-      href: cockpitHref("/runs", runWindow),
-      failed_href: failed > 0 ? cockpitHref("/runs", { status: "failed", ...runWindow }) : null,
+      href: cockpitRunsHref(runWindow),
+      failed_href: failed > 0 ? cockpitRunsHref({ status: "failed", ...runWindow }) : null,
     },
     connectors: {
       enabled: enabled.total,

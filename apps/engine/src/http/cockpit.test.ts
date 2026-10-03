@@ -221,5 +221,11 @@ describe("cockpit browser boundary", () => {
     );
     expect(accepted.status).toBe(302);
     expect(accepted.headers.get("location")).toStartWith("/v1/identity/login/start?login_state=");
+
+    // The start page's overlays live in its query: a run link is a cockpit page.
+    const overlay = await app.request(
+      `http://subkit.test/v1/identity/cockpit-login?return_to=${encodeURIComponent("/cockpit?run=abc")}`,
+    );
+    expect(overlay.status).toBe(302);
   });
 });
