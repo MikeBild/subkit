@@ -15,9 +15,9 @@ import {
   workflowHref,
   workflowsHref,
 } from "@/app/links";
-import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/data-table";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
+import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/patterns/data-table";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,7 @@ import {
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
 import { catalogListParams } from "@/pages/catalog-model";
+import { useConnectionCallback } from "@/pages/connection-callback";
 import { driverLabel, environmentLabel } from "@/pages/connector-detail-model";
 import {
   type ConnectorHealthFilter,
@@ -585,6 +586,8 @@ export function CatalogPage({
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const config = CONFIG[resource];
+  // A connector sign-in comes back to this list with its result in the query.
+  useConnectionCallback(resource === "connectors");
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
   const [recategorize, setRecategorize] = useState<CatalogRow | null>(null);

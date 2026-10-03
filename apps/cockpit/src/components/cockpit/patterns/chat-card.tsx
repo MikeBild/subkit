@@ -1,0 +1,42 @@
+import type { ReactNode } from "react";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { type Fact, FactList } from "./fact-list";
+
+/** Every interactive card in chat (P19): title, one line, the facts it needs, one action. */
+export function ChatCard({
+  title,
+  line,
+  facts,
+  action,
+  secondary,
+  testId,
+  children,
+}: {
+  title: ReactNode;
+  line?: ReactNode;
+  facts?: readonly Fact[];
+  action: ReactNode;
+  secondary?: ReactNode;
+  testId?: string;
+  children?: ReactNode;
+}) {
+  const body = (facts && facts.length > 0) || children;
+  return (
+    <Card data-slot="chat-card" data-testid={testId}>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {line ? <p className="text-sm text-muted-foreground">{line}</p> : null}
+      </CardHeader>
+      {body ? (
+        <CardContent className="flex flex-col gap-3">
+          {facts && facts.length > 0 ? <FactList items={facts} /> : null}
+          {children}
+        </CardContent>
+      ) : null}
+      <CardFooter className="flex flex-wrap justify-end gap-2">
+        {secondary}
+        {action}
+      </CardFooter>
+    </Card>
+  );
+}
