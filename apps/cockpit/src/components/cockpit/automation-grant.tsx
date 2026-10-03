@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
+import { Play } from "lucide-react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import type { ToolPart } from "@/components/ai-elements/tool";
-import {
-  AutomationActionButton,
-  useWorkflowAutomation,
-} from "@/components/cockpit/automation-panel";
+import { useWorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { GrantOpeningNotice } from "@/components/cockpit/grant-notices";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { Button } from "@/components/ui/button";
-import { type AutomationWorkflow, automationCard } from "@/lib/automation-state";
+import {
+  type AutomationWorkflow,
+  automationActionKey,
+  automationCard,
+} from "@/lib/automation-state";
 import { grantOpeningNotice, hookStartedOnly } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { chatAutomationTool } from "@/pages/chat-automation-tool";
@@ -157,12 +159,20 @@ function AutomationCardBody({
       {/* One decision, one button. Two only when starts in both halves of the
           installation wait at once — then each says which half it is. */}
       {/* Not a decision: the page's own act for the state, or none at all. */}
-      {card.act === "resume" && state.primaryAction ? (
-        <AutomationActionButton
-          automation={automation}
-          action={state.primaryAction}
-          testId="chat-automation-tool-resume"
-        />
+      {card.act === "resume" && state.primaryAction?.kind === "resume" && automation.canWrite ? (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={automation.resume.pending}
+          onClick={() =>
+            state.primaryAction?.kind === "resume" &&
+            automation.resume.run(state.primaryAction.scheduleIds)
+          }
+          data-testid="chat-automation-tool-resume"
+        >
+          <Play data-icon="inline-start" />
+          {t(automationActionKey(state.primaryAction))}
+        </Button>
       ) : card.act === "recheck" ? (
         <Button
           variant="outline"

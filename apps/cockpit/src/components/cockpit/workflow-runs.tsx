@@ -1,26 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, runHref, runsHref } from "@/app/links";
-import { CauseFix } from "@/components/cockpit/cause-fix";
+import {
+  type CockpitColumn,
+  FilterBar,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
-import { LoadFailed, queryView } from "@/components/failure-state";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { runHereHref, useOpenRunSheet } from "@/components/cockpit/run-sheet";
+import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
-import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
-import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
-import { remedyFor } from "@/lib/remedy";
-import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
-import { cn } from "@/lib/utils";
-import { isExecutionRecord, latestFailedRun, stepConnectorId } from "@/pages/runs-model";
+import {
+  executionsQuery,
+  FAILED_RUN_STATUSES,
+  formatRunDuration,
+  isExecutionRecord,
+  RUN_STATUSES,
+  runDurationMs,
+} from "@/pages/runs-model";
 
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
-type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
+
+const PAGE_SIZE = 10;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Only what is a run. A 200 that carries something else — a proxy's page, a
@@ -31,240 +40,147 @@ function runsOf(list: ExecutionList | undefined): ExecutionListItem[] {
   return (list?.items ?? []).filter((item): item is ExecutionListItem => isExecutionRecord(item));
 }
 
-/** A workflow's health, beside its name: a dot and the word, never colour alone. */
-export function WorkflowHealthBadge({ state }: { state: string | null }) {
+/** How the last seven days went, in one sentence. */
+function useWeek(workflowId: string): string | null {
   const { t } = useI18n();
-  if (!state) return null;
-  const tone =
-    state === "ok" ? "bg-success" : state === "degraded" ? "bg-destructive" : "bg-warning";
-  return (
-    <Badge variant="outline" className="gap-1.5" data-testid="workflow-health-badge">
-      <span aria-hidden="true" className={cn("size-2 rounded-full", tone)} />
-      {statusLabel(t, state)}
-    </Badge>
-  );
-}
-
-/**
- * Why this workflow is unhealthy and what to do — on its own page.
- *
- * The cause is the cockpit's sentence, built from the newest failed run's
- * classified failure. The engine's `health_reason` is free text in whatever
- * language the engine wrote, so it stands on the "Wortlaut der Engine" line
- * and is never passed off as the cockpit's own words.
- *
- * The remedy stands here and nowhere else on the page — and not here either
- * where the automation panel below already carries it: an action has one
- * trigger per view.
- */
-export function WorkflowCause({
-  workflowId,
-  healthState,
-  healthReason,
-  healthChangedAt,
-  permissions,
-  panelOffers,
-}: {
-  workflowId: string;
-  healthState: string | null;
-  healthReason: string | null;
-  healthChangedAt: string | null;
-  permissions: readonly string[];
-  /** The remedies the automation panel on the same page carries itself. */
-  panelOffers: { reviewRepair: boolean; chat: boolean };
-}) {
-  const { t, locale } = useI18n();
-  const unhealthy = Boolean(healthState) && healthState !== "ok";
-  const canReadRuns = permissions.includes("execution:read");
-  const latestFailed = useQuery({
-    queryKey: ["workflow-latest-failed-run", workflowId],
-    enabled: unhealthy && canReadRuns,
-    // The list filters by ONE status, and the engine counts three as failed
-    // (failed, timed_out, aborted). Asking for `failed` alone skipped a
-    // workflow whose newest failure was a timeout and named an older cause.
+  const [from] = useState(() => new Date(Date.now() - WEEK_MS).toISOString());
+  const week = useQuery({
+    queryKey: ["workflow-runs-week", workflowId, from],
     queryFn: () =>
       apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
+        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&started_from=${encodeURIComponent(from)}&limit=100`,
       ),
   });
-  const failedRun = latestFailedRun(runsOf(latestFailed.data));
-  const failure = failedRun?.failure ?? null;
-  // A rejected sign-in names no connector on the list row; the run's steps do.
-  const failedSteps = useQuery({
-    queryKey: ["run-steps", failedRun?.id ?? ""],
-    enabled: failure?.cause_class === "auth_failed" && Boolean(failedRun),
-    queryFn: () =>
-      apiRequest<ExecutionStepList>(
-        `/v1/executions/${encodeURIComponent(failedRun?.id ?? "")}/steps`,
-      ),
+  if (!week.data) return null;
+  const runs = runsOf(week.data);
+  const total = week.data.total ?? runs.length;
+  const failed = runs.filter((run) => FAILED_RUN_STATUSES.has(run.status)).length;
+  return t(total === 1 ? "workflowRuns.week.one" : "workflowRuns.week.other", {
+    count: total,
+    failed,
   });
-  const patch = useQuery({
-    queryKey: ["run-open-repair", workflowId],
-    enabled: unhealthy && permissions.includes("workflow:read"),
-    queryFn: () =>
-      apiRequest<{ items: { id: string }[] }>(
-        `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
-      ),
-  });
-  const stoppingStep =
-    failedSteps.data?.items?.find((step) => step.step_key === failure?.step_key) ?? null;
-  const connectorId = stepConnectorId(stoppingStep);
-  // Where the sign-in really stands, as the connector reports it.
-  const connector = useQuery({
-    queryKey: ["connector", connectorId ?? ""],
-    enabled: connectorId !== null && permissions.includes("connector:read"),
-    queryFn: () =>
-      apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
-  });
-  if (!unhealthy || !healthState) return null;
-  const cause = failure?.cause_class && failure.cause_class !== "ok" ? failure.cause_class : null;
-  const causeLabel = cause ? causeClassLabel(cause, t) : null;
-  const SLOT = "\u0000";
-  const sentence = causeLabel
-    ? failure?.step_key
-      ? t("detail.cause.atStep", { step: failure.step_key, cause: SLOT })
-      : t("detail.cause.class", { cause: SLOT })
-    : t("detail.cause.noRun", { state: statusLabel(t, healthState) });
-  const [lead, tail = ""] = sentence.split(SLOT);
-  // "The approval no longer fits" is the automation panel's to resolve: it
-  // stands directly below, says the state and carries the act — approving
-  // again, or the repair its diagnosis names. This block then says the cause
-  // and offers nothing. For every other cause it offers its remedy unless the
-  // panel already does: the filed repairs are reviewed in one sheet, and one
-  // conversation changes the workflow.
-  const ownedByPanel = cause === "authority_mismatch";
-  const remedy = ownedByPanel
-    ? null
-    : remedyFor({
-        workflowId,
-        executionId: failedRun?.id ?? null,
-        patch: panelOffers.reviewRepair ? null : (patch.data?.items?.[0] ?? null),
-        // A run refused for its connector ran no step; the list row carries the
-        // connector the refusal named.
-        authState: connectorId
-          ? {
-              connectorId,
-              state:
-                connector.data && typeof connector.data === "object"
-                  ? connectorAuthState(connector.data)
-                  : "unproven",
-            }
-          : cause === "connector_unavailable"
-            ? refusedSignIn(failure?.connector)
-            : null,
-        canRun: permissions.includes("workflow:run"),
-        canChat: permissions.includes("conversation:write") && !panelOffers.chat,
-        prompt: t("remedy.chatPrompt"),
-      });
-  const more = canReadRuns
-    ? [
-        {
-          label: t("detail.failedRuns"),
-          href: runsHref({ workflowId, status: "failed" }),
-        },
-      ]
-    : [];
-  return (
-    <CauseFix
-      testId="workflow-cause"
-      status={{
-        tone: healthState === "degraded" ? "critical" : "warning",
-        label: t("workflows.health", { state: statusLabel(t, healthState) }),
-      }}
-      since={healthChangedAt ? formatRelativeTime(locale, healthChangedAt) : null}
-      cause={
-        <>
-          {lead}
-          {causeLabel ? <LabelText label={causeLabel} /> : null}
-          {tail}
-          <RefusalReasonLine
-            reason={failure?.refusal_reason}
-            testId="workflow-cause-refusal-reason"
-            className="mt-1 block"
-          />
-        </>
-      }
-      guidance={healthReason}
-      remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
-      // The page's one filled action is "Ausführen".
-      remedyVariant="outline"
-      more={more}
-    />
-  );
 }
 
 /**
- * The five newest runs of this workflow, each leading to its own sheet, and
- * the way to all of them. A property of the current workflow — how it has been
- * doing — not a history stream (§0): the full log lives on the runs page.
+ * "Verlauf": the runs of this workflow, newest first, each opening its sheet
+ * on this page (`?run=`). The engine pages and narrows them.
  */
-export function RecentRuns({ workflowId }: { workflowId: string }) {
-  const { t, dateTime } = useI18n();
+export function WorkflowRuns({ workflowId }: { workflowId: string }) {
+  const { t, dateTime, locale } = useI18n();
+  const sheets = useOpenRunSheet();
+  const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(0);
+  const summary = useWeek(workflowId);
   const query = useQuery({
-    queryKey: ["workflow-recent-runs", workflowId],
-    queryFn: () =>
-      apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=5`,
-      ),
+    queryKey: ["workflow-runs", workflowId, status, page],
+    queryFn: () => {
+      const params = executionsQuery(
+        { status, source: "all", workflowId, q: "", startedFrom: null, startedTo: null },
+        { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      );
+      return apiRequest<ExecutionList>(`/v1/executions?${params}`);
+    },
   });
-  const view = queryView(query, (data) => runsOf(data).length === 0);
+  const rows = runsOf(query.data);
+  const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
+    const column = tableColumns<ExecutionListItem>({ t, dateTime });
+    return [
+      column.date(
+        "started_at",
+        (run) => run.started_at ?? run.created_at,
+        t("runs.column.started"),
+        {
+          width: "w-[28%]",
+        },
+      ),
+      column.custom(
+        "status",
+        (run) => run.status,
+        t("resource.field.status"),
+        (run) => <StatusBadge state={run.status} />,
+        { width: "w-[20%]" },
+      ),
+      column.custom(
+        "cause",
+        (run) => run.failure?.cause_class ?? null,
+        t("runs.column.cause"),
+        (run, index) => {
+          const cause = run.failure?.cause_class;
+          return cause && cause !== "ok" ? (
+            <span className="text-muted-foreground">
+              <LabelText label={causeClassLabel(cause, t)} />
+              <RefusalReasonLine
+                reason={run.failure?.refusal_reason}
+                testId={`workflow-recent-run-${index}-refusal-reason`}
+                className="block text-xs"
+              />
+            </span>
+          ) : null;
+        },
+        { width: "w-[36%]" },
+      ),
+      column.custom(
+        "duration",
+        (run) => runDurationMs(run),
+        t("runs.column.duration"),
+        (run) => {
+          const ms = runDurationMs(run);
+          return (
+            <span className="tabular-nums">
+              {ms === null ? MISSING : formatRunDuration(locale, ms)}
+            </span>
+          );
+        },
+        { width: "w-[16%]" },
+      ),
+    ];
+  }, [t, dateTime, locale]);
   return (
-    <section className="grid gap-2" data-testid="workflow-recent-runs">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">{t("detail.recentRuns")}</h2>
-        <a
-          href={absolute(runsHref({ workflowId }))}
-          className="text-sm underline underline-offset-4"
-          data-testid="workflow-all-runs"
-        >
-          {t("detail.allRuns")}
-        </a>
-      </div>
-      {view === "loading" ? (
-        <Skeleton className="h-24 w-full" />
-      ) : view === "error" ? (
-        <LoadFailed
-          title={t("runs.detail.loadFailed")}
-          onRetry={() => void query.refetch()}
-          testId="workflow-recent-runs-failed"
+    <>
+      <SummaryLine text={summary ?? t("workflowRuns.title")} testId="workflow-runs-summary" />
+      <div data-testid="workflow-recent-runs">
+        <RecordTable
+          columns={columns}
+          data={rows}
+          collectionId="workflow-runs"
+          emptyLine={t("detail.noRuns")}
+          pending={query.isPending}
+          error={
+            query.error
+              ? { line: t("runs.detail.loadFailed"), onRetry: () => void query.refetch() }
+              : null
+          }
+          toolbar={
+            <FilterBar
+              selects={[
+                {
+                  value: status,
+                  onChange: (next) => {
+                    setStatus(next);
+                    setPage(0);
+                  },
+                  label: t("catalog.filterStatus"),
+                  testId: "workflow-runs-status",
+                  options: [
+                    { value: "all", label: t("catalog.allStatuses") },
+                    ...RUN_STATUSES.map((value) => ({ value, label: statusLabel(t, value) })),
+                  ],
+                },
+              ]}
+            />
+          }
+          onOpen={(run) => sheets.run(run.id)}
+          rowHref={(run) => runHereHref(run.id)}
+          rowLabel={(run) =>
+            t("workflowRuns.open", {
+              when: dateTime(run.started_at ?? run.created_at),
+              status: statusLabel(t, run.status),
+            })
+          }
+          paging={{ page, onPageChange: setPage, total: query.data?.total ?? undefined }}
+          pageSize={PAGE_SIZE}
         />
-      ) : view === "empty" ? (
-        <p className="text-sm text-muted-foreground" data-testid="workflow-recent-runs-empty">
-          {t("detail.noRuns")}
-        </p>
-      ) : (
-        <ul className="grid gap-1">
-          {runsOf(query.data).map((run, index) => {
-            const cause = run.failure?.cause_class;
-            return (
-              <li key={run.id}>
-                <a
-                  href={absolute(runHref(run.id))}
-                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                  data-testid={`workflow-recent-run-${index}`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Badge variant="outline">{statusLabel(t, run.status)}</Badge>
-                    {cause && cause !== "ok" ? (
-                      <span className="min-w-0 truncate text-muted-foreground">
-                        <LabelText label={causeClassLabel(cause, t)} />
-                        <RefusalReasonLine
-                          reason={run.failure?.refusal_reason}
-                          testId={`workflow-recent-run-${index}-refusal-reason`}
-                          className="inline before:content-['_·_']"
-                        />
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {dateTime(run.started_at ?? run.created_at)}
-                  </span>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+      </div>
+    </>
   );
 }
