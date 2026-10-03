@@ -103,7 +103,10 @@ test("every address a link builder produces resolves to one of the cockpit's pag
     .map(([name, href]) => `${name}: ${href}`);
   expect(dead).toEqual([]);
   // And the absolute form is the same page under the router's base.
-  for (const href of Object.values(built)) expect(links.absolute(href)).toBe(`/cockpit${href}`);
+  for (const href of Object.values(built))
+    expect(links.absolute(href)).toBe(
+      href.startsWith("/?") ? `/cockpit${href.slice(1)}` : `/cockpit${href}`,
+    );
 });
 
 test("Übersicht and its review sheet resolve to the start page, spelled as the engine spells them", () => {

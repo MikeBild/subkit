@@ -8,7 +8,7 @@ import {
   PAGE_ROUTES,
   REDIRECT_ROUTES,
 } from "@/app/route-table";
-import { apiAccessSectionFromUrl, peopleSectionFromUrl, reviewFromUrl } from "./links";
+import { peopleSectionFromUrl, reviewFromUrl } from "./links";
 
 /**
  * The router cannot be imported here — it reaches `window` while it loads — so
@@ -41,8 +41,6 @@ describe("cockpit route table", () => {
       "CHAT_PATH",
       "NEW_CHAT_PATH",
       "CONVERSATION_PATH",
-      "RUNS_PATH",
-      "RUN_PATH",
     ]);
     const unknown = registeredPaths().filter((path) => !fromTable.has(path));
     expect(unknown, "a route exists that the sweep can never find").toEqual([]);
@@ -73,49 +71,10 @@ describe("cockpit route table", () => {
     // Each of these is reachable by typing, bookmarking or being sent a link,
     // and none of them appears in NAVIGATION.
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
-    for (const path of ["/chat/new", "/chat/$conversationId", "/runs/$resourceId"]) {
+    for (const path of ["/chat/new", "/chat/$conversationId"]) {
       expect(ALL_ROUTE_PATHS).toContain(path);
       expect(linked.has(path)).toBe(false);
     }
-  });
-
-  test("gives one run an address without giving it a second surface", () => {
-    // The sheet opened from local state, so nothing outside the page could
-    // point at a single run — not an audit row, not a decision, not a metric.
-    // The fix is an address, NOT a second detail view: both paths resolve to
-    // the same component, and to the same FUNCTION, because React preserves a
-    // page's state across a route change only while the element type is
-    // identical. Two components would cost the reader their filters and their
-    // page on every click, and leave two run views to keep in step.
-    expect(ALL_ROUTE_PATHS).toContain("/runs");
-    expect(ALL_ROUTE_PATHS).toContain("/runs/$resourceId");
-    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
-    expect([...source.matchAll(/component:\s*RunsPage\b/g)]).toHaveLength(2);
-    expect(source).toContain("RUN_ROUTES");
-    // And not through CATALOG_RESOURCES: that list wires the generic
-    // catalogue pair, whose resource maps have no entry for runs.
-    expect(CATALOG_RESOURCES as readonly string[]).not.toContain("runs");
-  });
-
-  test("sends the old Kontoverbindungen address to its section on Zugangsdaten, query and all", () => {
-    // `/connections` became a section of `/api-access`. A bookmark and an
-    // OAuth callback issued before the move both still land on the old path,
-    // the callback with its result in the query — dropping it would swallow
-    // the one sentence that says whether the connection worked.
-    expect(REDIRECT_ROUTES).toContain("/connections");
-    expect(PAGE_ROUTES as readonly string[]).not.toContain("/connections");
-    expect(ALL_ROUTE_PATHS).toContain("/connections");
-    const landed = legacyTarget("/connections", "?connected=wiki&renewed=1");
-    expect(landed).toBe("/api-access?section=grants&connected=wiki&renewed=1");
-    expect(apiAccessSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("grants");
-    expect(legacyTarget("/connections", "?failed=denied&name=wiki+crm&section=keys")).toBe(
-      "/api-access?section=grants&failed=denied&name=wiki+crm",
-    );
-    expect(legacyTarget("/connections", "")).toBe("/api-access?section=grants");
-    // Values that look like JSON numbers stay exactly as sent.
-    expect(legacyTarget("/connections", "?connected=1e5&name=12345678901234567890")).toBe(
-      "/api-access?section=grants&connected=1e5&name=12345678901234567890",
-    );
   });
 
   test("sends the old Zugriff address to the roles of Personen & Rechte", () => {
@@ -158,6 +117,16 @@ describe("cockpit route table", () => {
     expect(legacyTarget("/operations", "?tab=health")).toBe("/");
   });
 
+  test("old run, connection and notification addresses are gone, not redirected", () => {
+    // Every producer links the new address — a run is `?run=<id>` on the view
+    // that opened it, all runs are `?runs=all`, a sign-in comes back to the
+    // connectors, notifications are a tab of Einstellungen — so the old
+    // addresses have no route and no redirect of their own.
+    for (const gone of ["/runs", "/runs/$resourceId", "/connections", "/notifications"]) {
+      expect(ALL_ROUTE_PATHS).not.toContain(gone);
+    }
+  });
+
   test("builds every redirect as a browser navigation on the raw query", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toContain("REDIRECT_ROUTES.map(");
@@ -168,6 +137,8 @@ describe("cockpit route table", () => {
     const code = source.replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);
     expect(source).not.toContain("ConnectionsPage");
+    expect(source).not.toContain("RunsPage");
+    expect(source).not.toContain("NotificationsPage");
     expect(source).not.toContain("DecisionsPage");
     expect(source).not.toContain("OperationsPage");
     expect(source).not.toMatch(/\bAccessPage\b/);

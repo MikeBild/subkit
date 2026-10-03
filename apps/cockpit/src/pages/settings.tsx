@@ -16,7 +16,7 @@ import { absolute, auditHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader, PageTabs } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import {
@@ -48,6 +48,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
+import { NotificationSettings } from "@/pages/admin";
 import {
   isUnset,
   type SettingItem,
@@ -919,7 +920,53 @@ export function SettingRow({
   );
 }
 
+/**
+ * Einstellungen: the system settings and the notification rules, each a tab
+ * behind its own read permission. A reader holding only one of them sees that
+ * one without a tab bar — a single tab is a heading nobody needs.
+ */
 export function SettingsPage() {
+  const { t } = useI18n();
+  const session = useSession();
+  const tabs = [
+    ...(session.permissions.includes("settings:read")
+      ? [
+          {
+            value: "system",
+            label: t("settings.tab.system"),
+            testId: "settings-tab-system",
+            content: <SystemSettings />,
+          },
+        ]
+      : []),
+    ...(session.permissions.includes("notification:read")
+      ? [
+          {
+            value: "benachrichtigungen",
+            label: t("nav.notifications"),
+            testId: "settings-tab-benachrichtigungen",
+            content: <NotificationSettings />,
+          },
+        ]
+      : []),
+  ];
+  return (
+    <Page
+      kind="settings"
+      scroll="page"
+      testId="admin-settings"
+      header={<PageHeader title={t("resource.settings.title")} />}
+    >
+      {tabs.length > 1 ? (
+        <PageTabs tabs={tabs} param="tab" testId="settings-tabs" />
+      ) : (
+        tabs[0]?.content
+      )}
+    </Page>
+  );
+}
+
+function SystemSettings() {
   const { t } = useI18n();
   const session = useSession();
   const client = useQueryClient();
@@ -1198,7 +1245,7 @@ export function SettingsPage() {
   }
 
   return (
-    <PageFrame testId="admin-settings" title={t("resource.settings.title")} scroll="page">
+    <div data-testid="settings-system">
       <PreparedChanges canDecide={canWrite} />
       <div
         className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
@@ -1417,7 +1464,7 @@ export function SettingsPage() {
           pendingFields={attention?.restart ?? restartNow.status?.pending_restart_fields ?? []}
         />
       ) : null}
-    </PageFrame>
+    </div>
   );
 }
 

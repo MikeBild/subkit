@@ -1,13 +1,12 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
-import { NotificationsPage, PeopleAndAccessPage } from "@/pages/admin";
+import { PeopleAndAccessPage } from "@/pages/admin";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { OverviewPage } from "@/pages/overview";
-import { RunsPage } from "@/pages/runs";
 import { SettingsPage } from "@/pages/settings";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
@@ -18,7 +17,6 @@ import {
   PAGE_ROUTES,
   type PageRoute,
   REDIRECT_ROUTES,
-  RUN_ROUTES,
 } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
@@ -37,23 +35,6 @@ const chatRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: CONVERSATION_PATH, component: ChatPage }),
 ];
 
-// The run log and one run, behind one component and deliberately the same
-// FUNCTION: React preserves a page's state across a route change only while
-// the element type is identical, so a wrapper here — or a second detail page —
-// would throw away the list, its filters and its page number the moment a
-// reader opened a row, and would leave two run views to keep in step. The id
-// selects a row in the sheet the list already has.
-//
-// Read off the table by position for the reason given above CHAT_ROUTES: a
-// parameterised path inside a mapped tuple loses its literal type and makes
-// `params` required on every `<Link>` in the same union.
-const [RUNS_PATH, RUN_PATH] = RUN_ROUTES;
-
-const runRoutes = [
-  createRoute({ getParentRoute: () => rootRoute, path: RUNS_PATH, component: RunsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: RUN_PATH, component: RunsPage }),
-];
-
 // Every page is its own module (CUI-PAGE-2). There is no generic resource
 // renderer any more: a list that cannot say which columns it has cannot say
 // which relations matter either.
@@ -67,7 +48,6 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/usage": UsagePage,
   "/people": PeopleAndAccessPage,
   "/api-access": ApiAccessPage,
-  "/notifications": NotificationsPage,
   "/settings": SettingsPage,
 };
 
@@ -124,7 +104,6 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
 
 const routeTree = rootRoute.addChildren([
   ...chatRoutes,
-  ...runRoutes,
   ...dedicatedRoutes,
   ...redirectRoutes,
   ...catalogRoutes,

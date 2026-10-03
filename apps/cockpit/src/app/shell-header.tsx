@@ -14,9 +14,9 @@ import { useI18n } from "@/lib/i18n-context";
 //
 // The bar used to stand on every page holding one icon: 48px of empty band
 // above a page header that already names the page. It stays where it carries
-// something — a phone (the navigation is an offcanvas sheet opened from it), a
-// record's breadcrumb, the chat's own header — and a page frame that has
-// claimed the toggle puts it beside its heading instead.
+// something — a phone (the navigation is an offcanvas sheet opened from it),
+// the chat's own header — and a page header that has claimed the toggle puts
+// it beside its heading instead.
 //
 // Exactly ONE toggle exists in the document at a time, never two copies hidden
 // by CSS: the sweeps click `sidebar-trigger` by test id, and a second element,
@@ -33,11 +33,10 @@ export type TriggerOwner = "bar" | "page";
  */
 export function triggerOwner(input: {
   mobile: boolean;
-  breadcrumb: boolean;
   chatHeader: boolean;
   pageFrames: number;
 }): TriggerOwner {
-  if (input.mobile || input.breadcrumb || input.chatHeader || input.pageFrames === 0) return "bar";
+  if (input.mobile || input.chatHeader || input.pageFrames === 0) return "bar";
   return "page";
 }
 

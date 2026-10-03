@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronRight, MoreHorizontal, Plug, Plus, RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
@@ -89,9 +89,7 @@ import {
   connectionStateKey,
   type DiscoveryItem,
   parseTypedScopes,
-  readCallbackOutcome,
   suggestConnectionName,
-  withoutCallbackParams,
 } from "@/pages/connections-model";
 
 type IssuedApiKey = ApiKeyItem & { plaintext_key: string };
@@ -969,28 +967,7 @@ function GrantsSection({ query }: { query: ListQuery<ConnectionItem> }) {
   const canWrite = session.permissions.includes("connection:write");
   const [connectOpen, setConnectOpen] = useState(false);
   const [disconnect, setDisconnect] = useState<ConnectionItem | null>(null);
-  const [outcome, setOutcome] = useState(() => readCallbackOutcome(window.location.search));
   const refresh = () => client.invalidateQueries({ queryKey: CONNECTIONS_QUERY });
-
-  // The other side sends the browser back here with its result in the query.
-  // Say it once, then drop those words from the address — and only those, so
-  // a reload stays in this section without repeating the sentence.
-  useEffect(() => {
-    if (!outcome) return;
-    if (outcome.kind === "connected") {
-      toast.success(
-        t(outcome.renewed ? "connections.renewed" : "connections.connected", {
-          name: outcome.name,
-        }),
-      );
-      setOutcome(null);
-    }
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${withoutCallbackParams(window.location.search)}`,
-    );
-  }, [outcome, t]);
 
   const renew = useMutation({
     mutationFn: (id: string) =>
@@ -1037,16 +1014,6 @@ function GrantsSection({ query }: { query: ListQuery<ConnectionItem> }) {
       }
       action={connectButton}
     >
-      {outcome?.kind === "failed" && (
-        <Alert variant="destructive" data-testid="connection-failed">
-          <AlertTitle>
-            {outcome.name
-              ? t("connections.failedTitleNamed", { name: outcome.name })
-              : t("connections.failedTitle")}
-          </AlertTitle>
-          <AlertDescription>{t(connectionFailureKey(outcome.code))}</AlertDescription>
-        </Alert>
-      )}
       {view === "loading" ? (
         <LoadingRows testId="connections-loading" />
       ) : view === "error" ? (

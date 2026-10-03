@@ -1,9 +1,6 @@
 import {
-  Activity,
-  Bell,
   Boxes,
   Cable,
-  FileStack,
   Gauge,
   History,
   KeyRound,
@@ -12,7 +9,6 @@ import {
   type LucideIcon,
   MessageSquare,
   Settings,
-  Sparkles,
   Users,
   Workflow,
 } from "lucide-react";
@@ -21,6 +17,8 @@ import type { TranslationKey } from "@/lib/i18n";
 export interface NavigationItem {
   labelKey: TranslationKey;
   path: string;
+  /** Further addresses the entry stands for — the tabs of its page. */
+  paths?: readonly string[];
   permission: string;
   /** Alternatives to `permission`: the entry shows when any one of them is granted. */
   anyPermissions?: readonly string[];
@@ -29,9 +27,9 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  id: "home" | "work" | "build" | "knowledge" | "admin";
-  /** Absent where there must be no heading: Übersicht stands ungrouped, and a
-   *  heading above it is a group whatever the table calls it. */
+  id: "home" | "build" | "admin";
+  /** Absent where there must be no heading: Übersicht and Chat stand
+   *  ungrouped, and a heading above them is a group whatever the table calls it. */
   labelKey?: TranslationKey;
   items: readonly NavigationItem[];
 }
@@ -52,10 +50,20 @@ export const ATTENTION_READ_PERMISSIONS = [
   "skill:read",
 ] as const;
 
+/**
+ * The tabs of Wissen. Each is its own address, so a link and a reload land on
+ * the same tab, and each sits behind its own read permission.
+ */
+export const KNOWLEDGE_TABS = [
+  { path: "/knowledge", labelKey: "nav.knowledgeSources", permission: "knowledge:read" },
+  { path: "/skills", labelKey: "nav.skills", permission: "skill:read" },
+  { path: "/files", labelKey: "nav.files", permission: "file:read" },
+] as const satisfies readonly { path: string; labelKey: TranslationKey; permission: string }[];
+
 export const NAVIGATION: readonly NavigationGroup[] = [
   {
-    // Übersicht stands alone, without a heading: it is the one place a task
-    // lives, and a group around it would make it one list among several.
+    // Übersicht and Chat stand at the top without a heading: a heading above
+    // them is noise, and the two are where a day starts.
     id: "home",
     items: [
       {
@@ -65,20 +73,15 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         anyPermissions: ATTENTION_READ_PERMISSIONS,
         icon: ListChecks,
         // The review sheet resolves an entry's decisions through the reads
-        // the decision cards have always used.
+        // the decision cards have always used; the run sheets read executions.
         api: [
           "GET /v1/attention",
           "GET /v1/patch-candidates",
           "GET /v1/skill-candidates",
           "GET /v1/schedules",
+          "GET /v1/executions",
         ],
       },
-    ],
-  },
-  {
-    id: "work",
-    labelKey: "nav.group.work",
-    items: [
       {
         labelKey: "nav.chat",
         path: "/chat",
@@ -101,13 +104,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/workflows", "GET /v1/connectors"],
       },
       {
-        labelKey: "nav.runs",
-        path: "/runs",
-        permission: "execution:read",
-        icon: Activity,
-        api: ["GET /v1/executions"],
-      },
-      {
         labelKey: "nav.connectors",
         path: "/connectors",
         permission: "connector:read",
@@ -115,40 +111,21 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         // The workflow read is inverted into the "used by" relation.
         api: ["GET /v1/connectors", "GET /v1/workflows"],
       },
-    ],
-  },
-  {
-    id: "knowledge",
-    labelKey: "nav.group.knowledge",
-    items: [
       {
+        // One entry for sources, skills and files: they are the tabs of one
+        // page, each its own address, and the entry is active on all three.
         labelKey: "nav.knowledge",
         path: "/knowledge",
+        paths: KNOWLEDGE_TABS.map((tab) => tab.path),
         permission: "knowledge:read",
+        anyPermissions: KNOWLEDGE_TABS.map((tab) => tab.permission),
         icon: Library,
-        api: ["GET /v1/knowledge-sources"],
-      },
-      {
-        labelKey: "nav.skills",
-        path: "/skills",
-        permission: "skill:read",
-        icon: Sparkles,
-        api: ["GET /v1/skills"],
-      },
-      {
-        labelKey: "nav.files",
-        path: "/files",
-        permission: "file:read",
-        icon: FileStack,
-        api: ["GET /v1/files"],
+        api: ["GET /v1/knowledge-sources", "GET /v1/skills", "GET /v1/files"],
       },
     ],
   },
   {
-    // "Installation": how it runs and what it costs, how it is configured, who
-    // may do what, what is announced, and what happened. There is no System
-    // entry any more — the health state is one line on Übersicht when nothing is
-    // open, and every cause of an unwell installation is an entry there.
+    // Verwaltung: what you read first (Nutzung, Audit), then what you configure.
     id: "admin",
     labelKey: "nav.group.admin",
     items: [
@@ -160,25 +137,14 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/stats/executions"],
       },
       {
-        labelKey: "nav.settings",
-        path: "/settings",
-        permission: "settings:read",
-        icon: Settings,
-        api: ["GET /v1/settings"],
+        labelKey: "nav.audit",
+        path: "/audit",
+        permission: "audit:read",
+        icon: History,
+        api: ["GET /v1/audit-log"],
       },
       {
-        // The one page for everything that holds or grants rights: API keys,
-        // connected applications, account connections — each section behind
-        // its own read permission, so the entry shows for any of them.
-        labelKey: "nav.apiAccess",
-        path: "/api-access",
-        permission: "api_key:read",
-        anyPermissions: ["api_key:read", "mcp_oauth_client:read", "connection:read"],
-        icon: KeyRound,
-        api: ["GET /v1/identity/api-keys", "GET /v1/oauth/clients", "GET /v1/connections"],
-      },
-      {
-        // Personen & Rechte: the people, their roles, groups and grants on one
+        // Personen & Rechte: the people, their roles, groups and access on one
         // page — each section behind its own read, so the entry shows for
         // either.
         labelKey: "nav.people",
@@ -189,18 +155,24 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/identity/users", "GET /v1/rbac/roles"],
       },
       {
-        labelKey: "nav.notifications",
-        path: "/notifications",
-        permission: "notification:read",
-        icon: Bell,
-        api: ["GET /v1/notifications/rules", "GET /v1/notifications/channels"],
+        // API-Zugang: the keys for scripts and the apps with access to SubKit,
+        // each section behind its own read permission.
+        labelKey: "nav.apiAccess",
+        path: "/api-access",
+        permission: "api_key:read",
+        anyPermissions: ["api_key:read", "mcp_oauth_client:read", "connection:read"],
+        icon: KeyRound,
+        api: ["GET /v1/identity/api-keys", "GET /v1/oauth/clients", "GET /v1/connections"],
       },
       {
-        labelKey: "nav.audit",
-        path: "/audit",
-        permission: "audit:read",
-        icon: History,
-        api: ["GET /v1/audit-log"],
+        // Einstellungen holds the system settings and, as a tab, the
+        // notification rules and channels.
+        labelKey: "nav.settings",
+        path: "/settings",
+        permission: "settings:read",
+        anyPermissions: ["settings:read", "notification:read"],
+        icon: Settings,
+        api: ["GET /v1/settings", "GET /v1/notifications/rules", "GET /v1/notifications/channels"],
       },
     ],
   },
@@ -221,9 +193,18 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
 }
 
 export function navigationItem(pathname: string): NavigationItem | undefined {
+  const under = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
   return NAVIGATION.flatMap((group) => group.items).find((item) =>
-    item.path === "/"
-      ? pathname === "/"
-      : pathname === item.path || pathname.startsWith(`${item.path}/`),
+    item.path === "/" ? pathname === "/" : [item.path, ...(item.paths ?? [])].some(under),
   );
+}
+
+/**
+ * Where an entry links: its own path, or — for Wissen — the first tab the
+ * reader may open.
+ */
+export function navigationTarget(item: NavigationItem, permissions: readonly string[]): string {
+  if (item.path !== "/knowledge") return item.path;
+  const allowed = new Set(permissions);
+  return KNOWLEDGE_TABS.find((tab) => allowed.has(tab.permission))?.path ?? item.path;
 }

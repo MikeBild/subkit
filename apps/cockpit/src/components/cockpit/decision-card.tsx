@@ -8,6 +8,7 @@ import {
   getPatchCandidatePreview,
   listSkillCandidateEvidence,
 } from "@/api/decisions";
+import { absolute, runHref } from "@/app/links";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -403,13 +404,13 @@ function SkillEvidenceList({
               {/* A run the person cannot open is not linked — the permission is
                   evaluated per object, so the link would lead to a refusal. */}
               {entry.execution_id && canReadRuns && (
-                <Link
-                  to="/runs"
+                <a
+                  href={absolute(runHref(entry.execution_id))}
                   className="underline underline-offset-2"
                   data-testid={`${testId}-evidence-run-${index}`}
                 >
                   {t("decisions.context.failedRun")}
-                </Link>
+                </a>
               )}
             </li>
           ))}

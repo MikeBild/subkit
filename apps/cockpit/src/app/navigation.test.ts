@@ -3,6 +3,7 @@ import {
   ATTENTION_READ_PERMISSIONS,
   NAVIGATION,
   navigationItem,
+  navigationTarget,
   visibleNavigation,
 } from "./navigation";
 
@@ -28,34 +29,56 @@ describe("cockpit navigation contract", () => {
     expect(paths(["audit:read"])).not.toContain("/");
   });
 
-  test("Übersicht stands alone at the top, without a heading", () => {
+  test("Übersicht and Chat stand at the top, without a heading", () => {
     const home = NAVIGATION[0];
     expect(home?.id).toBe("home");
     expect(home?.labelKey).toBeUndefined();
-    expect(home?.items.map((item) => item.path)).toEqual(["/"]);
+    expect(home?.items.map((item) => item.path)).toEqual(["/", "/chat"]);
   });
 
-  test("the groups are the v3 information architecture, in order", () => {
+  test("the groups are the decided information architecture, in order", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
-      ["/"],
-      ["/chat"],
-      ["/workflows", "/runs", "/connectors"],
-      ["/knowledge", "/skills", "/files"],
-      ["/usage", "/settings", "/api-access", "/people", "/notifications", "/audit"],
+      ["/", "/chat"],
+      ["/workflows", "/connectors", "/knowledge"],
+      ["/usage", "/audit", "/people", "/api-access", "/settings"],
     ]);
     expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
       undefined,
-      "nav.group.work",
       "nav.group.automation",
-      "nav.group.knowledge",
       "nav.group.admin",
     ]);
   });
 
   test("no entry for a page that was a second place for the same facts", () => {
     const all = NAVIGATION.flatMap((group) => group.items).map((item) => item.path);
-    for (const gone of ["/decisions", "/operations", "/connections", "/access"])
+    for (const gone of [
+      "/decisions",
+      "/operations",
+      "/connections",
+      "/access",
+      "/runs",
+      "/skills",
+      "/files",
+      "/notifications",
+    ])
       expect(all).not.toContain(gone);
+  });
+
+  test("Wissen is one entry, active on its three tabs, linking the first one the reader may open", () => {
+    for (const path of ["/knowledge", "/skills/abc", "/files"])
+      expect(navigationItem(path)?.labelKey).toBe("nav.knowledge");
+    for (const permission of ["knowledge:read", "skill:read", "file:read"])
+      expect(paths([permission])).toContain("/knowledge");
+    const knowledge = navigationItem("/knowledge");
+    if (!knowledge) throw new Error("no Wissen entry");
+    expect(navigationTarget(knowledge, ["knowledge:read", "skill:read"])).toBe("/knowledge");
+    expect(navigationTarget(knowledge, ["skill:read", "file:read"])).toBe("/skills");
+    expect(navigationTarget(knowledge, ["file:read"])).toBe("/files");
+  });
+
+  test("Einstellungen shows for the settings or the notifications alone", () => {
+    expect(paths(["settings:read"])).toContain("/settings");
+    expect(paths(["notification:read"])).toContain("/settings");
   });
 
   test("keeps the API contract next to each route", () => {
@@ -65,7 +88,7 @@ describe("cockpit navigation contract", () => {
     expect(navigationItem("/")?.api).toContain("GET /v1/attention");
   });
 
-  test("Zugangsdaten is the one rights entry, shown for any of its three sections", () => {
+  test("API-Zugang is one entry, shown for any of its sections", () => {
     for (const permission of ["api_key:read", "mcp_oauth_client:read", "connection:read"]) {
       expect(paths([permission])).toContain("/api-access");
     }

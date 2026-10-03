@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
 import type { components } from "@/api/schema";
-import { useRecordCrumb } from "@/app/record-crumb";
 import {
   ConnectorCredentials,
   useConnectorCredential,
@@ -400,7 +399,6 @@ export function CatalogDetailPage({
   });
   const record = query.data;
   // The breadcrumb names the record once it has one; an id never stands in.
-  useRecordCrumb(record ? recordTitle(record) : null);
   // A probe result is a paragraph that names latency or the missing scopes,
   // not a cell in a list. It belongs on the connector it describes.
   const probe = useMutation({
