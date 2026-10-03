@@ -191,6 +191,7 @@ export function FilesPage() {
       scroll="content"
       header={
         <PageHeader
+          eyebrow={t("nav.group.knowledge")}
           title={t("files.title")}
           action={items.length > 0 && unfiltered ? uploadAction : undefined}
         />
