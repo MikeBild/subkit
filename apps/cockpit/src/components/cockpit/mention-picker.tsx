@@ -9,7 +9,7 @@
 // The entity icons are the navigation's own (`Workflow`, `Cable`), so a
 // workflow reads as the same thing in the rail, the picker and the transcript.
 
-import { Cable, CircleAlert, FileText, Layers, Library, Sparkles, Workflow } from "lucide-react";
+import { BookOpen, Cable, CircleAlert, FileText, Layers, Sparkles, Workflow } from "lucide-react";
 import {
   type KeyboardEvent,
   type RefObject,
@@ -61,7 +61,7 @@ export const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
   category: Layers,
   workflow: Workflow,
   connector: Cable,
-  knowledge_source: Library,
+  knowledge_source: BookOpen,
   skill: Sparkles,
   file: FileText,
 };

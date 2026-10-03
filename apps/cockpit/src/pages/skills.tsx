@@ -32,6 +32,7 @@ import {
   Input,
   Page,
   PageHeader,
+  SaveBar,
   Section,
   SegmentedControl,
   StatusBadge,
@@ -146,16 +147,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           width: "w-[44%]",
         },
       ),
-      {
-        ...column.custom(
-          "scope",
-          (row) => rowScope(row),
-          t("skills.column.scope"),
-          (row) => t(skillScopeKey(rowScope(row))),
-          { sortable: true, width: "w-[20%]" },
-        ),
-        meta: { width: "w-[20%]", priority: "low" },
-      },
       column.custom(
         "status",
         (row) => (row.kind === "skill" ? row.skill.status : "proposed"),
@@ -168,6 +159,16 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           ),
         { sortable: true, width: "w-[16%]" },
       ),
+      {
+        ...column.custom(
+          "scope",
+          (row) => rowScope(row),
+          t("skills.column.scope"),
+          (row) => t(skillScopeKey(rowScope(row))),
+          { sortable: true, width: "w-[20%]" },
+        ),
+        meta: { width: "w-[20%]", priority: "low" },
+      },
       column.date(
         "updated_at",
         (row) => (row.kind === "skill" ? row.skill.updated_at : row.candidate.updated_at),
@@ -640,7 +641,7 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
 
   return (
     <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-      <div className="flex flex-col gap-4 pb-20">
+      <div className="flex flex-col gap-4">
         <SummaryLine
           text={t("skills.editor.summary")}
           aside={
@@ -693,32 +694,25 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
             testId="skill-editor-preview-body"
           />
         )}
-        {problem ? <FieldError data-testid="skill-editor-error">{problem}</FieldError> : null}
+        {problem && !dirty ? (
+          <FieldError data-testid="skill-editor-error">{problem}</FieldError>
+        ) : null}
       </div>
       {dirty ? (
-        <div
-          data-slot="save-bar"
-          data-testid="skill-save-bar"
-          className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6"
-        >
-          <span className="text-sm text-muted-foreground">{t("skills.editor.unsaved")}</span>
-          <span className="ml-auto flex items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setTitle(original.title);
-                setBody(original.body);
-                setProblem(null);
-              }}
-              data-testid="skill-discard"
-            >
-              {t("common.discard")}
-            </Button>
-            <Button onClick={submit} pending={save.isPending} data-testid="skill-save">
-              {t("common.save")}
-            </Button>
-          </span>
-        </div>
+        <SaveBar
+          count={(title !== original.title ? 1 : 0) + (body !== original.body ? 1 : 0)}
+          notice={problem ?? undefined}
+          discard={{
+            onClick: () => {
+              setTitle(original.title);
+              setBody(original.body);
+              setProblem(null);
+            },
+            testId: "skill-discard",
+          }}
+          save={{ onClick: submit, pending: save.isPending, testId: "skill-save" }}
+          testId="skill-save-bar"
+        />
       ) : null}
     </Page>
   );

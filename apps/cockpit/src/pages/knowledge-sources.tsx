@@ -103,6 +103,14 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           width: "w-[34%]",
         },
       ),
+      // A phone card shows the first three cells: the name, its state, its kind.
+      column.custom(
+        "status",
+        (row) => row.status,
+        t("resource.field.status"),
+        (row) => <StatusBadge state={row.status} />,
+        { sortable: true, width: "w-[14%]" },
+      ),
       column.custom(
         "source_type",
         (row) => row.source_type,
@@ -120,13 +128,6 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         ),
         meta: { width: "w-[20%]", priority: "low" },
       },
-      column.custom(
-        "status",
-        (row) => row.status,
-        t("resource.field.status"),
-        (row) => <StatusBadge state={row.status} />,
-        { sortable: true, width: "w-[14%]" },
-      ),
       column.date(
         "updated_at",
         (row) => row.last_refreshed_at ?? row.updated_at,
