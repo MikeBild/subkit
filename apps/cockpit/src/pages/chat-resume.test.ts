@@ -31,6 +31,11 @@ describe("cockpit chat resume", () => {
   test("speaks German in every state the engine can be in", () => {
     for (const entry of STAGES) {
       const line = summary(entry);
+      // A conversation that is only getting started has nothing to state yet.
+      if (entry.stage === "onboarding") {
+        expect(line).toBeNull();
+        continue;
+      }
       // The seven English openings the engine composes its sentence from.
       expect(line, `${entry.stage} still reads as engine prose`).not.toMatch(
         /^You (were|have|saved)\b/,
@@ -53,15 +58,11 @@ describe("cockpit chat resume", () => {
     // The screenshot case: `one_sentence` reached the cockpit as bare prose, so
     // the old equality test missed even the one state it covered. Nothing here
     // reads `one_sentence`, so there is nothing left to miss.
-    expect(resumeSummaryLine({ stage: "onboarding", active_target: null }, de)).toBe(
-      translate("de", "chat.summary.inProgress"),
-    );
+    expect(resumeSummaryLine({ stage: "onboarding", active_target: null }, de)).toBeNull();
   });
 
-  test("falls back to the neutral German line for a stage it has not learned", () => {
-    expect(resumeSummaryLine({ stage: "some_future_stage", active_target: null }, de)).toBe(
-      translate("de", "chat.summary.inProgress"),
-    );
+  test("says nothing for a stage it has not learned, rather than a filler", () => {
+    expect(resumeSummaryLine({ stage: "some_future_stage", active_target: null }, de)).toBeNull();
   });
 
   test("names an unnamed target without leaking the word none", () => {

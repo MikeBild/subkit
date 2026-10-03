@@ -249,17 +249,12 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       throw new Error("The answer field does not carry the question's placeholder");
     // "Wartet auf dich" once, amber (§2), in the header badge — not red
     // there and amber in the list, and not repeated under the title.
-    // Read the tone from the unconditional class tokens: every badge carries
-    // `aria-invalid:border-destructive` from its base, which a substring
-    // check mistook for a red badge.
+    // The badge is a state (`StatusBadge`): its tone is the pattern's own
+    // reading of the state, not a class a page chose.
     const status = page.getByTestId("chat-status");
-    const tone = ((await status.getAttribute("class")) ?? "")
-      .split(/\s+/)
-      .filter((token) => !token.includes(":"));
     if (
-      (await status.getAttribute("data-waiting")) !== "true" ||
-      tone.some((token) => token.includes("destructive")) ||
-      !tone.includes("text-warning")
+      (await status.getAttribute("data-state")) !== "awaiting_input" ||
+      (await status.getAttribute("data-tone")) !== "warn"
     )
       throw new Error("The waiting badge is not the amber waiting state");
     if (/wartet|waiting/i.test(await page.getByTestId("chat-summary").innerText()))

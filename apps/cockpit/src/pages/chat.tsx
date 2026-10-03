@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   ApiError,
   apiRequest,
@@ -33,7 +32,6 @@ import {
   workflowHref,
 } from "@/app/links";
 import { useSession } from "@/app/session";
-import { CHAT_COLUMN, useChatHeaderSlot } from "@/app/shell-header";
 import { useHeldSchedules } from "@/app/use-decisions";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
@@ -63,49 +61,50 @@ import { AutomationGrant, AutomationToolCard } from "@/components/cockpit/automa
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MentionChips, MentionPicker, useMentionInput } from "@/components/cockpit/mention-picker";
-import { LoadFailed, queryView } from "@/components/failure-state";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { InputGroupAddon } from "@/components/ui/input-group";
-import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
-import {
+  ActionMenu,
+  Bubble,
+  BubbleContent,
+  Button,
+  ChatCard,
+  CodeBlock,
+  DataState,
+  type Fact,
+  FactList,
+  Field,
+  FieldLabel,
+  FormDialog,
+  Input,
+  InputGroupAddon,
+  Message,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
   MessageScroller,
   MessageScrollerButton,
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-  useMessageScroller,
-} from "@/components/ui/message-scroller";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
+  Page,
+  PageHeader,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+  READING_COLUMN,
+  RecordSheet,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Spinner } from "@/components/ui/spinner";
+  Spinner,
+  StatusBadge,
+  StatusStrip,
+  useMessageScroller,
+} from "@/components/cockpit/patterns";
+import { queryView } from "@/components/failure-state";
 import { formatDateTime, formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
@@ -229,19 +228,34 @@ export function originLine(
 }
 
 /**
- * The column every region of this page shares.
- *
- * `Page` states the rule for the rest of the Cockpit: a body must be
- * centred in the SAME box as its own heading, and the horizontal padding must
- * sit OUTSIDE that box in both places — put the padding on the same element as
- * the cap and the content starts one padding-width right of the title naming
- * it. Chat builds its own three regions instead of using `Page`, and it
- * had drifted into three different left edges: the header at the page margin,
- * the transcript centred inside its own padding, the composer centred without
- * any. The width is the workbench width `Page` gives its wide surfaces,
- * because a transcript carries tool cards, diffs and payloads, not prose alone.
+ * The column every region of this page shares: header, transcript and
+ * composer stand in one centred reading column (`READING_COLUMN`), the one
+ * exception to the left-aligned pages. Each region reserves the scrollbar
+ * gutter on both edges, as the transcript's scroller does, so the three
+ * begin on one line whether or not a scrollbar is drawn.
  */
-const COLUMN = CHAT_COLUMN;
+function ReadingColumn({
+  testId,
+  className,
+  children,
+}: {
+  testId?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "scrollbar-thin overflow-hidden px-4 [scrollbar-gutter:stable_both-edges]",
+        className,
+      )}
+      data-testid={testId}
+    >
+      <div className={READING_COLUMN}>{children}</div>
+    </div>
+  );
+}
+
 const NO_LIVE_REVIEWS: ReadonlySet<string> = new Set();
 
 /** Where a catalogue object lives in the Cockpit. */
@@ -387,9 +401,7 @@ function StarterCards({
                 }
               >
                 {entry.category}
-                <Badge variant="secondary" className="ml-2 tabular-nums">
-                  {entry.count}
-                </Badge>
+                <span className="ml-1.5 text-muted-foreground tabular-nums">{entry.count}</span>
               </Button>
             ))}
           </div>
@@ -408,11 +420,16 @@ function actionLabel(
   notRun = false,
   workflowNameFor: (slug: string) => string | null = () => null,
   run: WorkflowRunKind | null = null,
+  /** The call never reported back: its past-tense name would claim the act. */
+  unfinished = false,
 ): string {
   const label = toolLabel(toolName);
   if (label.kind === "literal") return label.text;
   if (label.kind === "background") return t(label.words.past);
   const runTitle = workflowRunTitleKey(label, notRun, run);
+  // "Korrektur freigegeben" beside "Abgelehnt": the title must not claim what
+  // the outcome denies. The outcome carries the result; the title stays neutral.
+  if (!runTitle && label.kind === "key" && (notRun || unfinished)) return t("tool.action");
   // The name its author gave it when there is one; the slug otherwise. The
   // slug is never dressed up — see `toolLabel`.
   const name = label.kind === "workflow" ? (workflowNameFor(label.slug) ?? label.slug) : "";
@@ -447,6 +464,7 @@ type RestoreComposer = (text: string, references: ConversationReference[]) => vo
  */
 function ChatComposer({
   disabled,
+  locked,
   status,
   placeholder,
   describedBy,
@@ -454,7 +472,10 @@ function ChatComposer({
   onStop,
   restoreRef,
 }: {
+  /** The field takes no text: a turn is running, or a question takes its answer. */
   disabled: boolean;
+  /** Nothing can be sent: an open choice or form takes the answer instead. */
+  locked: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
   placeholder: string;
   /** The id of a hint that says where the answer goes, when one is shown. */
@@ -548,12 +569,16 @@ function ChatComposer({
             once the approval-mode caption was gone that row held one button
             and a band of empty space taller than the field itself. */}
             <InputGroupAddon align="inline-end" className="self-end p-[7px] has-[>button]:mr-0">
+              {/* While a turn streams the same button stops it: pressable, and
+                  named for what it does then. The page's one filled button is
+                  its action; the send control stays secondary. */}
               <PromptInputSubmit
+                variant="secondary"
                 status={status}
                 onStop={onStop}
-                disabled={disabled}
-                aria-label={t("chat.submit")}
-                tooltip={t("chat.submit")}
+                disabled={status === "streaming" ? false : disabled || locked}
+                aria-label={t(status === "streaming" ? "chat.stop" : "chat.submit")}
+                tooltip={t(status === "streaming" ? "chat.stop" : "chat.submit")}
                 data-testid="chat-composer-submit"
               />
             </InputGroupAddon>
@@ -738,18 +763,20 @@ function UsagePills({
       )}
       {budget && (
         // A warning with its way to the cause: Nutzung carries the month.
-        <Badge
-          asChild
-          variant={budget === "critical" ? "destructive" : "outline"}
+        <a
+          href={absolute(usageHref())}
+          data-testid="chat-budget"
+          data-budget={budget}
           className={cn(
-            "h-6 rounded-full px-2.5",
-            budget === "tightening" && "border-warning/40 bg-warning/10 text-warning",
+            pill,
+            "underline-offset-4 hover:underline",
+            budget === "critical"
+              ? "border-destructive/40 text-destructive"
+              : "border-warning/40 bg-warning/10 text-warning",
           )}
         >
-          <a href={absolute(usageHref())} data-testid="chat-budget" data-budget={budget}>
-            {t(budget === "critical" ? "chat.budget.critical" : "chat.budget.tightening")}
-          </a>
-        </Badge>
+          {t(budget === "critical" ? "chat.budget.critical" : "chat.budget.tightening")}
+        </a>
       )}
     </>
   );
@@ -1020,7 +1047,7 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
-                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor, runKind)}
+                  title={actionLabel(t, tool.toolName, notRun, workflowNameFor, runKind, stale)}
                   outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
@@ -1034,6 +1061,7 @@ function ChatMessage({
                     notRun,
                     workflowNameFor,
                     runKind,
+                    stale,
                   )}
                   outcomeKey={headerOutcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
@@ -1522,6 +1550,21 @@ export function ChatPage() {
   const pendingChoice = chatChoice(detail.data);
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
   const pendingText = useMemo(() => chatText(detail.data), [detail.data]);
+  // An open choice or form locks the composer — until it expires. Expired, it
+  // asks for a new request, and the composer is the way to ask (§ dead end).
+  const [clock, setClock] = useState(Date.now);
+  const lockingId = pendingChoice?.id ?? pendingForm?.id ?? null;
+  useEffect(() => {
+    if (!lockingId) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [lockingId]);
+  const open = (question: { expiresAt: string } | null) =>
+    question !== null && Date.parse(question.expiresAt) > clock;
+  const choiceOpen = open(pendingChoice);
+  const formOpen = open(pendingForm);
+  const anyQuestion = Boolean(pendingDecision || pendingChoice || pendingForm || pendingText);
+  const anyQuestionOpen = open(pendingDecision) || choiceOpen || formOpen || open(pendingText);
   // A question with no tool row to stand beside — parked from prose, or a
   // call the transcript did not anchor — is shown below the transcript.
   const pendingTextInline = pendingText ? questionIsInTranscript(pendingText, messages) : false;
@@ -1602,10 +1645,15 @@ export function ChatPage() {
   const liveReviewCalls = useMemo(() => new Set(reviewCards.values()), [reviewCards]);
   // What the context panel says under "Nächste Aktion"; null while a question
   // waits — answering it is the next action, and its card says so.
+  // A saved workflow's next step is the held schedule's row, where there is
+  // one; without a hold its sentence ("not approved yet") would contradict the
+  // transcript's "enabled". The fallback "continue the conversation" is no
+  // next action at all.
   const nextActionSaid =
-    pendingDecision || pendingChoice || pendingForm || pendingText
+    anyQuestion || resume?.stage === "workflow_saved" || !resume
       ? null
-      : resumeNextAction(resume?.stage, t);
+      : resumeNextAction(resume.stage, t);
+  const nextAction = nextActionSaid === t("chat.context.continue") ? null : nextActionSaid;
   const automationStatus = useQuery({
     queryKey: ["workflow-automation-status", targetWorkflowId],
     enabled: Boolean(targetWorkflowId && session.permissions.includes("schedule:read")),
@@ -1644,15 +1692,20 @@ export function ChatPage() {
     : "";
   // Only an outcome the reader can act on gets a chip; the rest is the
   // resting state and the row already carries it.
+  // An expired question waits for nobody: no "Wartet auf dich" over it.
+  const waitsForYou = anyQuestion
+    ? anyQuestionOpen
+    : Boolean(resume?.pending_approval) || activeRow?.outcome === "awaiting_you";
+  // The engine state each word stands for, so the badge takes its tone from it.
   const badge =
     send.isPending || decide.isPending
-      ? { label: t("chat.outcome.in_progress"), waiting: false }
-      : resume?.pending_approval || activeRow?.outcome === "awaiting_you"
-        ? { label: t("chat.outcome.awaiting_you"), waiting: true }
+      ? { label: t("chat.outcome.in_progress"), state: "running" }
+      : waitsForYou
+        ? { label: t("chat.outcome.awaiting_you"), state: "awaiting_input" }
         : resume?.stage === "workflow_saved"
-          ? { label: t("chat.resume.stage.workflowSaved"), waiting: false }
+          ? { label: t("chat.resume.stage.workflowSaved"), state: "committed" }
           : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
-            ? { label: t("chat.outcome.in_progress"), waiting: false }
+            ? { label: t("chat.outcome.in_progress"), state: "running" }
             : null;
   // Titles are prose the model wrote: internal references never reach a row.
   const listRows = useMemo(
@@ -1686,15 +1739,35 @@ export function ChatPage() {
   const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
   // A text question is answered by the next message — said in so many words,
   // naming the question, so a message is never an answer by surprise.
-  const composerHint =
-    pendingChoice || pendingForm
-      ? { text: t("chat.choice.hint"), visible: true }
+  const composerHint = choiceOpen
+    ? { text: t("chat.choice.hint"), visible: true }
+    : formOpen
+      ? null
       : pendingText && !send.isPending
         ? {
             text: t("chat.text.composerHint", { question: questionExcerpt(pendingText.question) }),
             visible: true,
           }
         : null;
+  // The tool calls the transcript draws a row for: a question anchored there
+  // is answered there, and only an unanchored one stands below it.
+  const anchoredCalls = useMemo(
+    () =>
+      new Set(
+        messages.flatMap((message) =>
+          groupMessageParts(message.parts).flatMap((group) =>
+            group.kind === "tool"
+              ? [group.tool.toolCallId]
+              : group.kind === "background"
+                ? group.tools.map((tool) => tool.toolCallId)
+                : [],
+          ),
+        ),
+      ),
+    [messages],
+  );
+  const unanchored = <T extends { toolCallId: string }>(question: T | null): T | null =>
+    question && !anchoredCalls.has(question.toolCallId) ? question : null;
   // The mode in force: the one being picked, the one the conversation was
   // started in — or, while a conversation begun here loads its detail, the
   // one it was just sent in, so the pill does not pass through "loading". A
@@ -1727,97 +1800,110 @@ export function ChatPage() {
     queryFn: () => apiRequest<unknown>("/v1/status"),
   });
   const budget = budgetPill(budgetPressure(budgetSummary(monthStatus.data)));
-  const headerSlot = useChatHeaderSlot();
-  // The chat's header lives in the shell's top bar, beside the sidebar toggle:
-  // title and state on the left, the mode and what this conversation consumed
-  // in the middle, the three ways out on the right. On a phone the pills take
-  // a second row instead of scrolling sideways.
+  const busy = send.isPending || decide.isPending;
+  const showPreparation = Boolean(
+    resume?.unsaved && targetWorkflowId && !anyQuestion && status === "ready",
+  );
+  const showScheduleStep = Boolean(
+    heldTarget &&
+      !resume?.unsaved &&
+      targetWorkflowId &&
+      !reviewCards.has(targetWorkflowId) &&
+      !anyQuestion &&
+      status === "ready",
+  );
+  // One filled button per view: while a card in the transcript asks for its
+  // act, that act is the filled one and "Neue Unterhaltung" steps back.
+  const cardActs = anyQuestionOpen || showPreparation || showScheduleStep;
+  const unanchoredDecision = unanchored(pendingDecision);
+  const unanchoredChoice = unanchored(pendingChoice);
+  const unanchoredForm = unanchored(pendingForm);
+  const decisionErrorFor = (id: string | undefined) =>
+    decide.isError && decide.variables?.elicitationId === id;
+  // The open conversation: rename it, or put it out of the list.
+  const menuItems =
+    current && !conversationFailed
+      ? [
+          {
+            label: t("chat.rename"),
+            testId: "chat-rename",
+            onSelect: () => {
+              setRenameTarget(current);
+              setRenameTitle(current.title || t("chat.untitled"));
+            },
+          },
+          {
+            label: t("chat.hide"),
+            testId: "chat-hide",
+            onSelect: () => {
+              hide.mutate({ id: current.id, hidden: true });
+              startNew();
+            },
+          },
+        ]
+      : [];
+  const headerText =
+    headerTitle.kind === "title"
+      ? headerTitle.text
+      : headerTitle.kind === "loading"
+        ? " "
+        : t(
+            headerTitle.kind === "unavailable"
+              ? "chat.unavailable"
+              : headerTitle.kind === "untitled"
+                ? "chat.untitled"
+                : "chat.new",
+          );
+  // Title and state on the left; the list, the working context and the action
+  // on the right. The mode and what the conversation consumed stand with the
+  // composer: they describe what the next message is sent under.
   const chatHeader = (
-    <div
-      className="flex min-h-8 min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5"
-      data-testid="chat-header"
-    >
-      <div className="min-w-0 flex-1">
-        <h1
-          className="truncate text-sm font-semibold"
-          data-testid="chat-title"
-          data-title-kind={headerTitle.kind}
-          aria-busy={headerTitle.kind === "loading" || undefined}
-        >
-          {headerTitle.kind === "title"
-            ? headerTitle.text
-            : headerTitle.kind === "loading"
-              ? " "
-              : t(
-                  headerTitle.kind === "unavailable"
-                    ? "chat.unavailable"
-                    : headerTitle.kind === "untitled"
-                      ? "chat.untitled"
-                      : "chat.new",
-                )}
-        </h1>
-        {/* §5: the state line of a conversation that has one. A new
-            conversation has no state yet, and says nothing rather than a
-            sentence about the product. */}
-        {summaryLine ? (
-          <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-            {summaryLine}
-          </p>
-        ) : null}
-      </div>
-      <div
-        className="order-last flex w-full flex-wrap items-center gap-1.5 sm:order-none sm:w-auto"
-        data-testid="chat-pills"
-      >
-        {conversationFailed || !pillLabel ? null : (
-          <ModePill
-            mode={pillMode}
-            label={pillLabel}
-            editable={!activeId}
-            disabled={send.isPending}
-            onChange={setNewPermissionMode}
-          />
-        )}
-        <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {/* A badge earns its place by changing what the reader does next.
-            "Waiting for you" and "In progress" do; "Answered" and "Idle"
-            are the resting state and were on almost every conversation. */}
-        {current && badge && (
-          // "Wartet auf dich" is amber (§2) — the same tone the list
-          // gives it. It was red here and amber there: one state, two
-          // alarms of different weight.
-          <Badge
-            variant="outline"
-            className={cn(badge.waiting && "border-warning/40 bg-warning/10 text-warning")}
-            data-testid="chat-status"
-            data-waiting={badge.waiting || undefined}
+    <PageHeader
+      testId="chat-header"
+      title={headerText}
+      badge={
+        current && badge ? (
+          // "Wartet auf dich" is amber (§2) — the same tone the list gives it.
+          <StatusBadge state={badge.state} label={badge.label} testId="chat-status" />
+        ) : null
+      }
+      // §5: the state line of a conversation that has one. A new
+      // conversation has no state yet, and says nothing.
+      purpose={summaryLine ? <span data-testid="chat-summary">{summaryLine}</span> : undefined}
+      secondary={
+        <span className="flex items-center gap-1">
+          <IconButton
+            label={t("chat.conversations.open")}
+            data-testid="conversation-list-trigger"
+            onClick={() => setListOpen(true)}
           >
-            {badge.label}
-          </Badge>
-        )}
-        <IconButton
-          label={t("chat.conversations.open")}
-          data-testid="conversation-list-trigger"
-          onClick={() => setListOpen(true)}
-        >
-          <List />
-        </IconButton>
-        {/* "New" is a reset to the empty state, not a form: the composer
-            and the starter cards are the way in. */}
-        <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={startNew}>
-          <MessageSquarePlus />
-        </IconButton>
-        <IconButton
-          label={t("chat.toggleContext")}
-          data-testid="chat-context-toggle"
-          onClick={() => setContextOpen((open) => !open)}
-        >
-          <PanelRight />
-        </IconButton>
-      </div>
-    </div>
+            <List />
+          </IconButton>
+          <IconButton
+            label={t("chat.toggleContext")}
+            data-testid="chat-context-toggle"
+            onClick={() => setContextOpen((value) => !value)}
+          >
+            <PanelRight />
+          </IconButton>
+        </span>
+      }
+      menu={menuItems.length > 0 ? <ActionMenu items={menuItems} testId="chat-menu" /> : null}
+      // "New" is a reset to the empty state, not a form. On a new
+      // conversation it would only throw the draft away, so it is not there.
+      action={
+        selection.kind === "new" && !activeId ? null : (
+          <Button
+            variant={cardActs ? "outline" : "default"}
+            onClick={startNew}
+            data-testid="conversation-new"
+          >
+            <MessageSquarePlus data-icon="inline-start" />
+            {t("chat.new")}
+          </Button>
+        )
+      }
+    />
   );
   const list = (
     <ConversationList
@@ -1855,122 +1941,256 @@ export function ChatPage() {
       })}
     />
   );
+  const blocked =
+    send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked";
+  const target = resume?.active_target;
+  const targetNamed = Boolean(target && target.kind !== "none" && (target.name || target.kind));
+  // The working context states facts, and only facts that have a value: no
+  // "Noch keines", no "Noch nichts", no next action that only says "continue".
+  const contextFacts: Fact[] = [
+    ...(current && origin
+      ? [{ label: t("chat.context.origin"), value: origin, testId: "chat-origin" }]
+      : []),
+    ...(anyQuestion
+      ? []
+      : [
+          {
+            label: t("chat.context.stage"),
+            value: decide.isPending
+              ? t("chat.decision.processing")
+              : resumeStageLabel(resume?.stage, t),
+            // The engine's own sentence stays one (?) deep: the evidence behind
+            // the line, not the line itself.
+            help: resume?.one_sentence
+              ? hideTechnicalIdentifiers(resume.one_sentence, t("tool.referenceHiddenInline"))
+              : undefined,
+            testId: "chat-context-stage",
+          },
+        ]),
+    ...(targetNamed
+      ? [
+          {
+            label: t("chat.context.target"),
+            value: localizedTarget(target?.name || target?.kind, t),
+            testId: "chat-context-target",
+          },
+        ]
+      : []),
+    ...(nextAction
+      ? [
+          {
+            label: t("chat.context.nextAction"),
+            value: nextAction,
+            testId: "chat-context-next-action",
+          },
+        ]
+      : []),
+    ...(heldTarget && targetWorkflowId
+      ? [
+          {
+            label: t("chat.schedule.pending"),
+            value: (
+              <span className="flex flex-col items-start gap-2">
+                <span>{t("chat.schedule.effect")}</span>
+                <AutomationGrant
+                  workflowId={targetWorkflowId}
+                  environment={heldTarget.execution_mode}
+                  testId="chat-context-review-schedule"
+                  onPrepareSingleRun={() => {
+                    setContextOpen(false);
+                    void submitTurn(t("chat.activation.singlePrompt"));
+                  }}
+                  onAdjust={() => {
+                    setContextOpen(false);
+                    void submitTurn(t("authority.adjustPrompt"));
+                  }}
+                />
+              </span>
+            ),
+            testId: "chat-context-held-schedule",
+          },
+        ]
+      : []),
+    ...(current
+      ? [
+          {
+            label: t("chat.context.checkpoint"),
+            value: t(resume?.unsaved ? "chat.context.unsaved" : "chat.context.saved"),
+            testId: "chat-context-checkpoint",
+          },
+        ]
+      : []),
+    ...(resume?.pending_approval && !anyQuestion
+      ? [
+          {
+            label: t("chat.context.approval"),
+            value: resume.pending_approval.summary,
+            testId: "chat-context-approval",
+          },
+        ]
+      : []),
+  ];
+  const references = referencedResources;
+  if (references.length > 0)
+    contextFacts.push({
+      label: t("chat.context.references"),
+      testId: "chat-context-references",
+      value: (
+        <ul className="grid gap-1.5">
+          {references.map((resource, index) => (
+            <li
+              key={`${resource.type}-${resource.id}`}
+              className="flex min-w-0 items-center gap-2"
+              data-testid={`chat-context-reference-${index}`}
+            >
+              {resource.unresolved ? (
+                <span className="min-w-0 flex-1 truncate">{resource.label}</span>
+              ) : (
+                <a
+                  className="min-w-0 flex-1 truncate underline-offset-4 hover:underline"
+                  data-testid={`chat-context-reference-link-${index}`}
+                  href={catalogHref(resource.type, resource.id)}
+                >
+                  {resource.label}
+                </a>
+              )}
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {resource.unresolved
+                  ? t("chat.context.referenceUnavailable")
+                  : `${t(`chat.created.kind.${resource.type}`)} · ${formatRelativeTime(locale, resource.at)}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+    });
+  if (createdResources.length > 0)
+    contextFacts.push({
+      label: t("chat.created.title"),
+      testId: "chat-context-created",
+      value: (
+        <ul className="grid gap-1">
+          {createdResources.map((resource, index) => (
+            <li key={`${resource.kind}-${resource.id}`} className="flex items-baseline gap-2">
+              <a
+                className="truncate underline-offset-4 hover:underline"
+                href={catalogHref(resource.kind, resource.id)}
+                data-testid={`chat-context-created-${index}`}
+              >
+                {resource.name || resource.slug || t(`chat.created.kind.${resource.kind}`)}
+              </a>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {t(`chat.created.kind.${resource.kind}`)} ·{" "}
+                {formatRelativeTime(locale, resource.at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+    });
 
   return (
-    <div
-      className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden"
-      data-cockpit-ui="chat-workspace"
-      data-testid="chat-workspace"
+    <Page
+      kind="list"
+      scroll="content"
+      testId="chat-workspace"
+      header={<ReadingColumn testId="chat-header-column">{chatHeader}</ReadingColumn>}
     >
       {/* The list is a way back in, not a permanent neighbour: it opens on
-          demand at every width, and the conversation keeps the whole page.
-          A reader who is reading one conversation is not choosing another. */}
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
-        {headerSlot ? createPortal(chatHeader, headerSlot) : null}
-
-        {/* The turn that just died, and the one that died before a reload. The
-            engine's own sentence is shown verbatim: "you have reached your
-            specified API usage limits" tells the reader what to do, and a
-            constant string does not. */}
+          demand at every width, and the conversation keeps the whole page. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
+        {/* The turn that just died, and the one that died before a reload. A
+            known cause is the line; the engine's own sentence stays one (?)
+            deep — it tells the reader what to do, and is kept verbatim. */}
         {(send.error || turnFailure) && (
-          <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
-            {send.error instanceof ApiError && send.error.code === "pending_elicitation_blocked" ? (
-              <>
-                <AlertTitle>{t("chat.failed")}</AlertTitle>
-                <AlertDescription>
-                  {t(
-                    (send.error.details?.pending_elicitation as { tool_name?: unknown } | undefined)
-                      ?.tool_name === "ask_user_text"
+          <ReadingColumn className="pb-3">
+            <StatusStrip
+              tone="error"
+              testId="chat-error"
+              line={
+                blocked ? (
+                  t(
+                    (send.error instanceof ApiError
+                      ? (send.error.details?.pending_elicitation as
+                          | { tool_name?: unknown }
+                          | undefined)
+                      : undefined
+                    )?.tool_name === "ask_user_text"
                       ? "chat.text.blocked"
                       : "chat.pendingQuestionRequired",
-                  )}
-                </AlertDescription>
-              </>
-            ) : (
-              <>
-                {/* A known cause is the headline; the provider's own words stay
-                    one click away instead of a block of red monospace. */}
-                <AlertTitle data-testid={failureCauseText ? "chat-error-cause" : undefined}>
-                  {failureCauseText ?? t("chat.failed")}
-                </AlertTitle>
-                <AlertDescription>
-                  <p>{t(failureCauseText ? "chat.failedKept" : "chat.failedDescription")}</p>
-                  {!failureCauseText && <p className="mt-1">{t("chat.retryManual")}</p>}
-                  {turnFailureMessage && (
-                    <details className="mt-1 text-xs" data-testid="chat-error-detail">
-                      <summary className="cursor-pointer">{t("chat.failedDetail")}</summary>
-                      <p className="mt-1 break-words font-mono">{turnFailureMessage}</p>
-                    </details>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={send.isPending || decide.isPending}
-                      onClick={() => void retryTurn()}
-                      data-testid="chat-error-retry"
-                    >
-                      {t("chat.retryCheck")}
-                    </Button>
-                  </div>
-                </AlertDescription>
-              </>
-            )}
-          </Alert>
+                  )
+                ) : (
+                  <span data-testid={failureCauseText ? "chat-error-cause" : undefined}>
+                    {failureCauseText ?? t("chat.failed")}
+                  </span>
+                )
+              }
+              help={
+                blocked
+                  ? undefined
+                  : [
+                      t(failureCauseText ? "chat.failedKept" : "chat.failedDescription"),
+                      failureCauseText ? null : t("chat.retryManual"),
+                      turnFailureMessage,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
+              }
+              action={
+                blocked ? undefined : (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void retryTurn()}
+                    data-testid="chat-error-retry"
+                  >
+                    {t("chat.retryCheck")}
+                  </Button>
+                )
+              }
+            />
+          </ReadingColumn>
         )}
 
         {decide.isError && !pendingDecision && !pendingChoice && !pendingForm && (
-          <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-decision-error">
-            <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
-          </Alert>
+          <ReadingColumn className="pb-3">
+            <StatusStrip
+              tone="error"
+              testId="chat-decision-error"
+              line={t("chat.decision.failed")}
+            />
+          </ReadingColumn>
         )}
         <MessageScrollerProvider key={sessionKey} autoScroll>
           <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
           <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
-            {/* `both-edges` is the operative part, the same as the shared page
-                frame: the primitive's default utility sets plain `stable`, so
-                this page-level override must win in computed style. The visual
-                sweep measures the resulting three column edges on Linux. */}
+            {/* `both-edges` is the operative part: the primitive's default
+                utility sets plain `stable`, so this override must win in
+                computed style. The header and the composer reserve the same
+                gutter, so the three columns share their edges. */}
             <MessageScrollerViewport
-              className="px-4 py-6 sm:px-6"
+              className="px-4 py-6"
               style={{ scrollbarGutter: "stable both-edges" }}
             >
-              <MessageScrollerContent className={COLUMN}>
+              <MessageScrollerContent className={READING_COLUMN}>
                 {conversationFailed ? (
-                  <LoadFailed
-                    title={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
-                    description={conversationMissing ? t("chat.notFoundDescription") : undefined}
+                  // Unknown or not the reader's: retrying cannot help, and the
+                  // way on — the list, a new conversation — is in the header.
+                  <DataState
+                    state="error"
+                    line={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
                     onRetry={conversationMissing ? undefined : () => void detail.refetch()}
                     testId="chat-load-failed"
-                  >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setListOpen(true)}
-                      data-testid="chat-load-failed-list"
-                    >
-                      {t("chat.conversations.open")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={startNew}
-                      data-testid="chat-load-failed-new"
-                    >
-                      {t("chat.new")}
-                    </Button>
-                  </LoadFailed>
+                  />
                 ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
-                  // `place-items-center` on a box taller than the scroller splits
-                  // the overflow between top and bottom, and the top half is
-                  // clipped — which is where the icon sat. `m-auto` centres the
-                  // same way while keeping the whole block below the top edge.
+                  // `m-auto` centres while keeping the whole block below the
+                  // scroller's top edge; `place-items-center` clipped its top.
                   <div className="flex flex-1 py-10 text-center" data-testid="chat-empty">
-                    <div className="m-auto max-w-2xl">
+                    <div className="m-auto">
                       <span className="mx-auto grid size-10 place-items-center rounded-full bg-muted">
                         <MessageSquarePlus />
                       </span>
-                      <h2 className="mt-4 font-semibold">{t("chat.empty.title")}</h2>
+                      <p className="mt-4 font-semibold">{t("chat.empty.title")}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t("chat.empty.description")}
                       </p>
@@ -2001,15 +2221,13 @@ export function ChatPage() {
                         onChoice={submitChoice}
                         onText={submitText}
                         answersQuestion={answerMessageIds.has(message.id)}
-                        approvalBusy={send.isPending || decide.isPending}
-                        approvalError={
-                          decide.isError &&
-                          decide.variables?.elicitationId ===
-                            (pendingDecision?.id ??
-                              pendingChoice?.id ??
-                              pendingForm?.id ??
-                              pendingText?.id)
-                        }
+                        approvalBusy={busy}
+                        approvalError={decisionErrorFor(
+                          pendingDecision?.id ??
+                            pendingChoice?.id ??
+                            pendingForm?.id ??
+                            pendingText?.id,
+                        )}
                         onApproval={submitApproval}
                         nameFor={nameFor}
                         workflowNameFor={workflowNameFor}
@@ -2032,19 +2250,17 @@ export function ChatPage() {
                             },
                           ])
                         }
-                        onReauth={(action) => {
-                          if (pendingDecision || pendingChoice || pendingForm || pendingText) {
-                            setContextOpen(true);
-                            return;
-                          }
+                        // While a question waits the card offers no button;
+                        // answering the question is the way on.
+                        onReauth={(action) =>
                           void submitTurn(t("chat.reauth.prompt"), [
                             {
                               type: "connector",
                               id: action.connectorId,
                               label: action.label || t("chat.reauth.title"),
                             },
-                          ]);
-                        }}
+                          ])
+                        }
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
                         }
@@ -2053,10 +2269,8 @@ export function ChatPage() {
                   ))
                 )}
                 {/* The request just sent, where and as the saved one will stand:
-                    left, under "Du", in the question tone. It used to be a dark
-                    bubble on the right that vanished when the turn ended and
-                    came back on the left after a gap. It stays until the saved
-                    request is in the transcript, so there is no gap. */}
+                    left, under "Du", in the question tone. It stays until the
+                    saved request is in the transcript, so there is no gap. */}
                 {showOptimistic && optimistic ? (
                   <MessageScrollerItem key="optimistic" data-testid="chat-pending-message">
                     <ChatMessage
@@ -2084,8 +2298,7 @@ export function ChatPage() {
                 {liveCalls.length > 0 && (
                   <MessageScrollerItem>
                     {/* `liveTick` is the render trigger: the interval bumps it so
-                        the ages below re-read the clock. Reading it here is what
-                        makes that dependency visible instead of incidental. */}
+                        the ages below re-read the clock. */}
                     <div className="grid gap-1" data-testid="chat-live-calls" data-tick={liveTick}>
                       {liveCalls.map((call, index) => {
                         const running = elapsedMs(call, Date.now());
@@ -2093,6 +2306,7 @@ export function ChatPage() {
                           <div
                             key={call.callId}
                             className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground"
+                            data-action-scope="live-call"
                             data-testid={`chat-live-call-${index}`}
                           >
                             <span className="font-medium">
@@ -2101,9 +2315,7 @@ export function ChatPage() {
                             {call.logTail && (
                               <details className="min-w-0 w-full">
                                 <summary>{t("chat.activity.details")}</summary>
-                                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words">
-                                  {call.logTail}
-                                </pre>
+                                <CodeBlock code={call.logTail} />
                               </details>
                             )}
                             {running !== null && (
@@ -2149,99 +2361,109 @@ export function ChatPage() {
                   </MessageScrollerItem>
                 )}
                 <MessageScrollerItem data-testid="chat-next-action">
+                  {/* A question the transcript drew no row for stands here,
+                      once — it is never also a copy in the working context. */}
+                  {unanchoredDecision && (
+                    <ChatApprovalCard
+                      approval={unanchoredDecision}
+                      busy={busy}
+                      error={decisionErrorFor(unanchoredDecision.id)}
+                      onDecision={submitApproval}
+                      testId="chat-approval"
+                    />
+                  )}
+                  {unanchoredChoice && (
+                    <ChatChoiceCard
+                      choice={unanchoredChoice}
+                      busy={busy}
+                      error={decisionErrorFor(unanchoredChoice.id)}
+                      onAnswer={submitChoice}
+                      testId="chat-choice"
+                    />
+                  )}
+                  {unanchoredForm && (
+                    <ChatFormCard
+                      form={unanchoredForm}
+                      busy={busy}
+                      error={decisionErrorFor(unanchoredForm.id)}
+                      onAnswer={submitForm}
+                      testId="chat-form"
+                    />
+                  )}
                   {pendingText && !pendingTextInline && (
                     <ChatTextCard
                       text={pendingText}
-                      busy={send.isPending || decide.isPending}
-                      error={decide.isError && decide.variables?.elicitationId === pendingText.id}
+                      busy={busy}
+                      error={decisionErrorFor(pendingText.id)}
                       onAnswer={submitText}
                       testId="chat-text-question"
                     />
                   )}
-                  {resume?.unsaved &&
-                    targetWorkflowId &&
-                    !pendingDecision &&
-                    !pendingChoice &&
-                    !pendingForm &&
-                    !pendingText &&
-                    status === "ready" && (
-                      <Alert className="bg-accent/10" data-testid="chat-preparation-next-step">
-                        <AlertTitle>{t("chat.preparation.title")}</AlertTitle>
-                        <AlertDescription>
-                          <p>{t("chat.preparation.effect")}</p>
-                          <Button
-                            size="sm"
-                            onClick={() => void submitTurn(t("chat.preparation.prompt"))}
-                            data-testid="chat-continue-preparation"
-                          >
-                            {t("chat.preparation.continue")}
-                          </Button>
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                  {showPreparation && (
+                    <ChatCard
+                      testId="chat-preparation-next-step"
+                      title={t("chat.preparation.title")}
+                      line={t("chat.preparation.effect")}
+                      action={
+                        <Button
+                          onClick={() => void submitTurn(t("chat.preparation.prompt"))}
+                          data-testid="chat-continue-preparation"
+                        >
+                          {t("chat.preparation.continue")}
+                        </Button>
+                      }
+                    />
+                  )}
 
                   {/* The way into the approval, once: where the transcript
                       already shows this workflow's review card, that card is it. */}
-                  {heldTarget &&
-                    !resume?.unsaved &&
-                    targetWorkflowId &&
-                    !reviewCards.has(targetWorkflowId) &&
-                    !pendingDecision &&
-                    !pendingChoice &&
-                    !pendingForm &&
-                    !pendingText &&
-                    status === "ready" && (
-                      <Alert className="bg-accent/10" data-testid="chat-schedule-next-step">
-                        <AlertTitle>{t("chat.schedule.pending")}</AlertTitle>
-                        <AlertDescription>
-                          <p>{t("chat.schedule.effect")}</p>
-                          <AutomationGrant
-                            workflowId={targetWorkflowId}
-                            environment={heldTarget.execution_mode}
-                            testId="chat-review-schedule"
-                            onPrepareSingleRun={() =>
-                              void submitTurn(t("chat.activation.singlePrompt"))
-                            }
-                            onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
-                          />
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                  {showScheduleStep && heldTarget && targetWorkflowId && (
+                    <ChatCard
+                      testId="chat-schedule-next-step"
+                      title={t("chat.schedule.pending")}
+                      line={t("chat.schedule.effect")}
+                      action={
+                        <AutomationGrant
+                          workflowId={targetWorkflowId}
+                          environment={heldTarget.execution_mode}
+                          testId="chat-review-schedule"
+                          onPrepareSingleRun={() =>
+                            void submitTurn(t("chat.activation.singlePrompt"))
+                          }
+                          onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
+                        />
+                      }
+                    />
+                  )}
 
                   {!heldTarget &&
                     !resume?.unsaved &&
                     readyAutomations > 0 &&
                     status === "ready" && (
-                      <Alert
-                        className="bg-accent/10 border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
-                        data-testid="chat-automation-ready"
-                      >
-                        <AlertTitle>{t("chat.automation.ready")}</AlertTitle>
-                        <AlertDescription>
-                          <p>{t("chat.automation.readyHint")}</p>
-                          {readySchedules.map(
-                            (schedule, index) =>
-                              schedule.next_run_at && (
-                                <p key={`${schedule.next_run_at}-${index}`}>
-                                  {t("authority.report.next", {
-                                    time: new Intl.DateTimeFormat(locale, {
-                                      dateStyle: "medium",
-                                      timeStyle: "short",
-                                      timeZone: schedule.timezone,
-                                    }).format(new Date(schedule.next_run_at)),
-                                    zone: schedule.timezone,
-                                  })}
-                                </p>
-                              ),
-                          )}
-                        </AlertDescription>
-                      </Alert>
+                      <StatusStrip
+                        tone="ok"
+                        testId="chat-automation-ready"
+                        line={t("chat.automation.ready")}
+                        help={t("chat.automation.readyHint")}
+                        more={readySchedules
+                          .filter((schedule) => schedule.next_run_at)
+                          .map((schedule) =>
+                            t("authority.report.next", {
+                              time: new Intl.DateTimeFormat(locale, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                                timeZone: schedule.timezone,
+                              }).format(new Date(schedule.next_run_at as string)),
+                              zone: schedule.timezone,
+                            }),
+                          )
+                          .join(" · ")}
+                      />
                     )}
                 </MessageScrollerItem>
               </MessageScrollerContent>
             </MessageScrollerViewport>
-            {/* One name, not two: the caption below IS the accessible name, so
-                an aria-label beside it would be a second source for one fact. */}
+            {/* One name, not two: the caption below IS the accessible name. */}
             <MessageScrollerButton
               direction="end"
               label={t("chat.scrollBottom")}
@@ -2251,13 +2473,13 @@ export function ChatPage() {
         </MessageScrollerProvider>
 
         <div
-          className="scrollbar-thin shrink-0 overflow-y-auto border-t bg-background/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
+          className="scrollbar-thin shrink-0 overflow-y-auto border-t px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
           data-testid="chat-composer-area"
           // No composer aimed at a conversation that could not be opened.
           hidden={conversationFailed}
         >
-          <div className={COLUMN}>
-            {(send.isPending || decide.isPending) && (
+          <div className={READING_COLUMN}>
+            {busy && (
               <div
                 role="status"
                 aria-live="polite"
@@ -2277,10 +2499,19 @@ export function ChatPage() {
               </div>
             )}
             {/* Where the answer goes, shown above the field. A text question
-                names itself here: a placeholder alone ("your answer to the
-                question") was the only sign of a question nobody could see,
-                and the next message was taken as its answer. A choice or form
-                disables the field and points at its card. */}
+                names itself here; an open choice points at its card. */}
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="chat-pills">
+              {conversationFailed || !pillLabel ? null : (
+                <ModePill
+                  mode={pillMode}
+                  label={pillLabel}
+                  editable={!activeId}
+                  disabled={send.isPending}
+                  onChange={setNewPermissionMode}
+                />
+              )}
+              <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
+            </div>
             {composerHint ? (
               <p
                 id="chat-composer-hint"
@@ -2295,9 +2526,8 @@ export function ChatPage() {
               initialInput={selection.kind === "new" ? initialPrompt : ""}
             >
               <ChatComposer
-                disabled={
-                  send.isPending || decide.isPending || Boolean(pendingChoice || pendingForm)
-                }
+                disabled={busy || choiceOpen || formOpen}
+                locked={choiceOpen || formOpen}
                 status={status}
                 // While a text question waits, the field takes its answer.
                 placeholder={
@@ -2311,283 +2541,54 @@ export function ChatPage() {
             </PromptInputProvider>
           </div>
         </div>
-      </section>
+      </div>
 
-      <Sheet open={contextOpen} onOpenChange={setContextOpen}>
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col gap-0 p-0 sm:max-w-sm"
-          closeLabel={t("common.close")}
-          closeTestId="chat-context-close"
-          data-cockpit-ui="context-panel"
-          data-testid="chat-context"
-        >
-          <SheetHeader className="border-b p-4 pr-12">
-            <SheetTitle>{t("chat.context.title")}</SheetTitle>
-            <SheetDescription>{t("chat.context.description")}</SheetDescription>
-          </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1">
-            {pendingChoice && (
-              <div className="p-4">
-                <ChatChoiceCard
-                  choice={pendingChoice}
-                  busy={send.isPending || decide.isPending}
-                  error={decide.isError}
-                  onAnswer={submitChoice}
-                  testId="chat-context-choice"
-                />
-              </div>
-            )}
-            {pendingForm && (
-              <ChatFormCard
-                form={pendingForm}
-                busy={decide.isPending}
-                error={decide.isError}
-                onAnswer={submitForm}
-                testId="chat-context-form"
-              />
-            )}
-            {pendingText && (
-              <div className="p-4">
-                <ChatTextCard
-                  text={pendingText}
-                  busy={send.isPending || decide.isPending}
-                  error={decide.isError && decide.variables?.elicitationId === pendingText.id}
-                  onAnswer={submitText}
-                  testId="chat-context-text-question"
-                />
-              </div>
-            )}
-            {pendingDecision && (
-              <div className="p-4 pb-0">
-                <ChatApprovalCard
-                  approval={pendingDecision}
-                  busy={send.isPending || decide.isPending}
-                  error={
-                    decide.isError &&
-                    decide.variables?.elicitationId ===
-                      (pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id)
-                  }
-                  onDecision={submitApproval}
-                  testId="chat-context-approval"
-                />
-              </div>
-            )}
-            <dl className="grid gap-4 p-4 text-sm">
-              {/* Where it came from, whose it is, when it last moved. It stood
-                  in the header as a third line; the header now carries the
-                  title and what the reader acts on, and this is context. */}
-              {current && origin ? (
-                <div data-testid="chat-origin">
-                  <dt className="text-xs text-muted-foreground">{t("chat.context.origin")}</dt>
-                  <dd className="mt-1">{origin}</dd>
-                </div>
-              ) : null}
-              <div data-testid="chat-context-stage">
-                <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
-                <dd className="mt-1 font-medium">
-                  {decide.isPending
-                    ? t("chat.decision.processing")
-                    : pendingChoice || pendingForm || pendingText
-                      ? t("chat.choice.title")
-                      : resumeStageLabel(resume?.stage, t)}
-                </dd>
-              </div>
-              <div data-testid="chat-context-target">
-                <dt className="text-xs text-muted-foreground">{t("chat.context.target")}</dt>
-                <dd className="mt-1 font-medium">
-                  {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
-                </dd>
-              </div>
-              {nextActionSaid !== null && (
-                <div data-testid="chat-context-next-action">
-                  <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
-                  <dd className="mt-1">{nextActionSaid}</dd>
-                </div>
-              )}
-              {heldTarget && targetWorkflowId && (
-                <div data-testid="chat-context-held-schedule">
-                  <dt className="text-xs text-muted-foreground">{t("chat.schedule.pending")}</dt>
-                  <dd className="mt-1 flex flex-col gap-2">
-                    {/* Said once in this panel: "Nächste Aktion" above says the
-                        same sentence for a workflow that was just saved. */}
-                    {nextActionSaid === t("chat.schedule.effect") ? null : (
-                      <p>{t("chat.schedule.effect")}</p>
-                    )}
-                    <AutomationGrant
-                      workflowId={targetWorkflowId}
-                      environment={heldTarget.execution_mode}
-                      testId="chat-context-review-schedule"
-                      onPrepareSingleRun={() => {
-                        setContextOpen(false);
-                        void submitTurn(t("chat.activation.singlePrompt"));
-                      }}
-                      onAdjust={() => {
-                        setContextOpen(false);
-                        void submitTurn(t("authority.adjustPrompt"));
-                      }}
-                    />
-                  </dd>
-                </div>
-              )}
-              <div data-testid="chat-context-checkpoint">
-                <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
-                <dd className="mt-1">
-                  {t(resume?.unsaved ? "chat.context.unsaved" : "chat.context.saved")}
-                </dd>
-              </div>
-              <div data-testid="chat-context-references">
-                <dt className="text-xs text-muted-foreground">{t("chat.context.references")}</dt>
-                <dd className="mt-1">
-                  {referencedResources.length === 0 ? (
-                    <span className="text-muted-foreground">
-                      {t("chat.context.referencesEmpty")}
-                    </span>
-                  ) : (
-                    <ul className="grid gap-1.5">
-                      {referencedResources.map((resource, index) => (
-                        <li
-                          key={`${resource.type}-${resource.id}`}
-                          className="flex min-w-0 items-center gap-2"
-                          data-testid={`chat-context-reference-${index}`}
-                        >
-                          {resource.unresolved ? (
-                            <span className="min-w-0 flex-1 truncate">{resource.label}</span>
-                          ) : (
-                            <a
-                              className="min-w-0 flex-1 truncate underline-offset-4 hover:underline"
-                              data-testid={`chat-context-reference-link-${index}`}
-                              href={catalogHref(resource.type, resource.id)}
-                            >
-                              {resource.label}
-                            </a>
-                          )}
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {t(`chat.created.kind.${resource.type}`)} ·{" "}
-                            {formatRelativeTime(locale, resource.at)}
-                          </span>
-                          {resource.unresolved && (
-                            <Badge variant="outline" className="shrink-0">
-                              {t("chat.context.referenceUnavailable")}
-                            </Badge>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </dd>
-              </div>
-              <div data-testid="chat-context-created">
-                <dt className="text-xs text-muted-foreground">{t("chat.created.title")}</dt>
-                <dd className="mt-1">
-                  {createdResources.length === 0 ? (
-                    <span className="text-muted-foreground">{t("chat.created.empty")}</span>
-                  ) : (
-                    <ul className="grid gap-1">
-                      {createdResources.map((resource, index) => (
-                        <li
-                          key={`${resource.kind}-${resource.id}`}
-                          className="flex items-baseline gap-2"
-                        >
-                          <a
-                            className="truncate underline-offset-4 hover:underline"
-                            href={catalogHref(resource.kind, resource.id)}
-                            data-testid={`chat-context-created-${index}`}
-                          >
-                            {resource.name ||
-                              resource.slug ||
-                              t(`chat.created.kind.${resource.kind}`)}
-                          </a>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {t(`chat.created.kind.${resource.kind}`)} ·{" "}
-                            {formatRelativeTime(locale, resource.at)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </dd>
-              </div>
-              {resume?.pending_approval && !pendingDecision && !pendingChoice && !pendingForm && (
-                <div
-                  className="rounded-lg border border-warning/40 bg-warning/10 p-3"
-                  data-testid="chat-context-approval"
-                >
-                  <dt className="text-xs font-medium">{t("chat.context.approval")}</dt>
-                  <dd className="mt-1 text-xs">{resume.pending_approval.summary}</dd>
-                </div>
-              )}
-              {/* The engine's own sentence is kept, one disclosure deep: it is
-                  the evidence behind the German line above, and throwing it
-                  away would make a wrong line unarguable. It is not the line
-                  itself — nobody reads the working context in another language
-                  by accident. */}
-              {resume?.one_sentence && (
-                <details
-                  className="text-xs text-muted-foreground"
-                  data-testid="chat-context-engine-wording"
-                >
-                  <summary className="cursor-pointer select-none">
-                    {t("chat.resume.engineWording")}
-                  </summary>
-                  <p className="mt-2">
-                    {hideTechnicalIdentifiers(resume.one_sentence, t("tool.referenceHiddenInline"))}
-                  </p>
-                </details>
-              )}
-            </dl>
-          </ScrollArea>
-        </SheetContent>
-      </Sheet>
+      <RecordSheet
+        open={contextOpen}
+        onOpenChange={setContextOpen}
+        title={t("chat.context.title")}
+        testId="chat-context"
+        closeTestId="chat-context-close"
+      >
+        {contextFacts.length > 0 ? (
+          <FactList items={contextFacts} testId="chat-context-facts" />
+        ) : (
+          <DataState state="empty" line={t("chat.context.empty")} testId="chat-context-empty" />
+        )}
+      </RecordSheet>
 
-      <Sheet open={listOpen} onOpenChange={setListOpen}>
-        <SheetContent
-          side="left"
-          className="w-80 p-0"
-          closeLabel={t("chat.conversations.close")}
-          closeTestId="conversation-list-close"
-          data-testid="conversation-list-panel"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>{t("chat.conversations")}</SheetTitle>
-          </SheetHeader>
-          {list}
-        </SheetContent>
-      </Sheet>
+      <RecordSheet
+        open={listOpen}
+        onOpenChange={setListOpen}
+        title={t("chat.conversations")}
+        testId="conversation-list-panel"
+        closeTestId="conversation-list-close"
+      >
+        {list}
+      </RecordSheet>
 
-      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>
-        <DialogContent data-testid="conversation-rename-dialog">
-          <DialogHeader>
-            <DialogTitle>{t("chat.rename")}</DialogTitle>
-            <DialogDescription>{t("chat.renameDescription")}</DialogDescription>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="conversation-rename-title">{t("resource.field.title")}</FieldLabel>
-            <Input
-              id="conversation-rename-title"
-              value={renameTitle}
-              onChange={(event) => setRenameTitle(event.target.value)}
-              data-testid="conversation-rename-title"
-            />
-          </Field>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRenameTarget(null)}
-              data-testid="conversation-rename-cancel"
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              disabled={!renameTitle.trim() || rename.isPending}
-              onClick={() => rename.mutate()}
-              data-testid="conversation-rename-save"
-            >
-              {t("common.saveChanges")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <FormDialog
+        open={Boolean(renameTarget)}
+        onOpenChange={(value) => !value && setRenameTarget(null)}
+        title={t("chat.rename")}
+        submit={{
+          label: t("common.saveChanges"),
+          pending: rename.isPending,
+          disabled: !renameTitle.trim(),
+        }}
+        onSubmit={() => rename.mutate()}
+        testId="conversation-rename-dialog"
+      >
+        <Field>
+          <FieldLabel htmlFor="conversation-rename-title">{t("resource.field.title")}</FieldLabel>
+          <Input
+            id="conversation-rename-title"
+            value={renameTitle}
+            onChange={(event) => setRenameTitle(event.target.value)}
+            data-testid="conversation-rename-title"
+          />
+        </Field>
+      </FormDialog>
+    </Page>
   );
 }
