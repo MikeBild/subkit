@@ -206,7 +206,9 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await page.getByTestId("authority-sample-prepare").click();
     await page.getByTestId("authority-grant-review").waitFor();
     // A hook is not offered one run for one day: thirty days, sized from its
-    // calls, with one line that says where the numbers come from.
+    // calls, with one line that says where the numbers come from — once the
+    // reader chooses limits instead of "until revoked".
+    await page.getByTestId("authority-limit-limited").click();
     if (
       (await page.getByTestId("authority-runs").inputValue()) !== "100" ||
       (await page.getByTestId("authority-hours").inputValue()) !== "720"
