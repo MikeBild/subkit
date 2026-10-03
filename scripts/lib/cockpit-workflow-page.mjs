@@ -727,7 +727,7 @@ export async function open(page, stand, state, scenario) {
 /** What stands beside the title, in order: the page's own actions and nothing else. */
 async function headerTriggers(page) {
   return page
-    .locator('[data-family-slot="detail-actions"]')
+    .locator('[data-slot="page-actions"]')
     .locator('button, a[href], [role="button"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
 }
@@ -753,7 +753,7 @@ async function expectState(page, panel, where, words, scenario, { action, opener
   // The title carries the page's own actions: run it, the menu, the help.
   // The state's action is the panel's, in every state.
   const beside = await headerTriggers(page);
-  if (beside.join("|") !== "workflow-run-open|workflow-menu|workflow-edit-help")
+  if (beside.join("|") !== "workflow-edit-help|workflow-menu|workflow-run-open")
     throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
   // Never a link that only scrolls to a section of the same page — not beside
   // the title, not in the call block, not in the cause block.
@@ -1214,7 +1214,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the cause block offers a remedy the panel below it owns`);
     // The run that failed names its cause as text; its row leads to the run.
     const failedRow = await page.getByTestId("workflow-recent-run-0").getAttribute("href");
-    if (failedRow !== `/cockpit/runs/${FAILED_RUN}`)
+    if (failedRow !== `/cockpit?run=${FAILED_RUN}`)
       throw new Error(`${where}: the failed run's row leads to ${failedRow}`);
     await capture("workflow-page-unhealthy");
 
@@ -1267,7 +1267,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!fix?.includes(`workflow_id=${WORKFLOW}`) || !fix.includes("prompt="))
       throw new Error(`${where}: the way out loses the workflow or the task: ${fix}`);
     const besideLegacy = await headerTriggers(page);
-    if (besideLegacy.join("|") !== "workflow-menu|workflow-edit-help")
+    if (besideLegacy.join("|") !== "workflow-edit-help|workflow-menu")
       throw new Error(`${where}: beside the title stand ${JSON.stringify(besideLegacy)}`);
     await assertSingleTriggers(page, where, { approvalOpeners: 0 });
     // No approval is offered for a version the engine would refuse to approve.

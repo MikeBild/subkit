@@ -26,6 +26,12 @@ import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
+import {
+  assertSingleTriggers,
+  isSheetView,
+  patternMigratedView,
+  patternViewRoot,
+} from "./lib/cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPage } from "./lib/cockpit-workflow-page.mjs";
@@ -142,12 +148,12 @@ const routes = [
   "operations",
   "chat",
   "workflows",
-  "runs",
-  // One run, at its own address. The sheet used to open only from local list
-  // state, so the frame that shows a single run's evidence — its boundary, its
-  // stored approval, its steps, its result — was never taken. The route
-  // shipped; nothing photographed it.
-  `runs/${uuid}`,
+  // All runs, in the large sheet over Übersicht.
+  "?runs=all",
+  // One run, at its own address (`?run=<id>` on the view that opened it). The
+  // frame shows a single run's evidence — its boundary, its stored approval,
+  // its steps, its result.
+  `?run=${uuid}`,
   // The workflow's own page: health beside the title, the cause and its fix,
   // the latest runs, and the approval cards. It was only ever visited by the
   // authority stand, which checked none of it for identifiers.
@@ -170,16 +176,14 @@ const routes = [
   "people?section=groups",
   "people?section=grants",
   "access",
-  // Zugangsdaten, at each of its tabs: the bare address opens the apps.
+  // API-Zugang, at each of its tabs: the bare address opens the apps.
   "api-access",
   "api-access?section=keys",
   "api-access?section=grants",
-  // The old address of Zugriff in deinem Namen, with a callback result in its
-  // query: it must land on the grants tab of Zugangsdaten and say the sentence.
-  "connections?failed=denied&name=Postfach",
-  // Benachrichtigungen: the seeded rule's event list and a hostile long one,
-  // each entry named, beside channels in every delivery state.
-  "notifications",
+  // Benachrichtigungen, a tab of Einstellungen: the seeded rule's event list
+  // and a hostile long one, each entry named, beside channels in every
+  // delivery state.
+  "settings?tab=benachrichtigungen",
   "settings",
   // The sign-in providers live in their own section; the list alone opens on
   // the first one.
@@ -997,7 +1001,7 @@ const ATTENTION_ITEMS = [
       },
       {
         verb: "open_runs",
-        href: `/cockpit/runs?workflow_id=${runWorkflowId}&status=failed`,
+        href: `/cockpit?runs=all&workflow_id=${runWorkflowId}&status=failed`,
         primary: false,
         permission: "execution:read",
       },
@@ -1030,7 +1034,7 @@ const ATTENTION_ITEMS = [
     actions: [
       {
         verb: "renew",
-        href: "/cockpit/api-access?section=grants",
+        href: "/cockpit/connectors",
         primary: true,
         permission: "connection:write",
       },
@@ -2077,8 +2081,8 @@ async function mockApi(route) {
         failed: 4,
         finished: 40,
         success_rate_percent: 90,
-        href: `/cockpit/runs?${new URLSearchParams(window)}`,
-        failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,
+        href: `/cockpit?${new URLSearchParams({ runs: "all", ...window })}`,
+        failed_href: `/cockpit?${new URLSearchParams({ runs: "all", status: "failed", ...window })}`,
       },
       connectors: {
         enabled: 32,
@@ -2827,18 +2831,17 @@ function markerFor(route) {
   // A run's own address renders the list AND the sheet for that run. Waiting
   // on the list marker would photograph the page before the record arrived,
   // which is the frame that proves nothing.
-  if (/^runs\/.+/.test(path)) return '[data-testid="run-detail-facts"]';
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
+  // The run sheets open over whichever page names them.
+  if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-facts"]';
+  if (/(^|&)runs=all/.test(query)) return '[data-testid="resource-runs"]';
   if (path === "" || path === "decisions" || path === "operations")
     return query.startsWith("review=") || query.startsWith("workflow_id=")
       ? '[data-testid="attention-review-body"]'
       : '[data-testid="attention-list"]';
-  // The old Kontoverbindungen address redirects; the frame is where it lands,
-  // and the callback sentence it carried must be on it.
-  if (path === "connections") return '[data-testid="connection-failed"]';
   // Installation surfaces name their frame after the section, not the record
   // type.
   if (path === "access") return '[data-testid="roles-section"]';
@@ -2846,11 +2849,12 @@ function markerFor(route) {
     return `[data-testid="${query.slice("section=".length)}-section"]`;
   if (path === "api-access" && query.startsWith("section="))
     return `[data-testid="api-access-section-${query.slice("section=".length)}"]`;
+  // Benachrichtigungen is photographed once its rules — the fixture's point — are in.
+  if (path === "settings" && query === "tab=benachrichtigungen")
+    return '[data-testid="notifications-rules"]';
   if (path === "settings" && query.startsWith("section="))
     return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
   if (["people", "api-access", "settings"].includes(path)) return `[data-testid="admin-${path}"]`;
-  // Benachrichtigungen is photographed once its rules — the fixture's point — are in.
-  if (path === "notifications") return '[data-testid="notifications-rules"]';
   // Connectors render through the shared catalog table like every other list.
   if (["workflows", "connectors", "knowledge", "skills", "files"].includes(path))
     return `[data-testid="catalog-${path}"]`;
@@ -2930,8 +2934,8 @@ async function assertViewport(page, label) {
  * running product before they were true here.
  *
  * The address itself: a run reached by URL must render THAT run's evidence.
- * Before the route existed every `/runs/<id>` landed on "page not found", so
- * no audit row, decision or metric could point at a single run.
+ * A run's address is `?run=<id>` on whichever view opened it, so an audit
+ * row, a decision or a metric can point at a single run.
  *
  * And the result: the steps fixture ends with the pair production stores for a
  * step that produced nothing — `output_preview` absent, `result_preview` the
@@ -2964,7 +2968,7 @@ async function assertOpenOnce(page, label) {
   if (!(await open.isVisible().catch(() => false)))
     throw new Error(`${label}: the first run names itself with no link`);
   const href = await open.getAttribute("href");
-  if (!href || !/^\/cockpit\/runs\/[^/?]+$/.test(href))
+  if (!href || !/^\/cockpit\?(?:[^#]*&)?run=[^&#]+/.test(href))
     throw new Error(`${label}: the run link leads to ${href}, not to the run's own address`);
   const before = await page.evaluate(() => window.history.length);
   await open.focus();
@@ -3362,10 +3366,10 @@ async function assertWorkflowDetail(page, label, language) {
   if (count < 1 || count > 5)
     throw new Error(`${label} lists ${count} latest runs, not up to five`);
   const first = await runs.first().getAttribute("href");
-  if (!first?.startsWith("/cockpit/runs/"))
+  if (!first?.startsWith("/cockpit?run="))
     throw new Error(`${label} latest run leads to ${first}, not to its sheet`);
   const all = await page.locator('[data-testid="workflow-all-runs"]').getAttribute("href");
-  if (all !== `/cockpit/runs?workflow_id=${uuid}`)
+  if (all !== `/cockpit?runs=all&workflow_id=${uuid}`)
     throw new Error(`${label} "all runs" leads to ${all}`);
   // The page's order: whether it may run, how it is called, what it takes,
   // what it does — and nothing of the old tabs or the "Steuerung" row.
@@ -3725,7 +3729,9 @@ async function closeConversationList(page) {
  * Both were found by looking at a screenshot, which is the wrong instrument —
  * a 32px offset is a measurement, so measure it.
  */
-async function assertHeadingAlignment(page, label) {
+async function assertHeadingAlignment(page, label, route = null, wide = false) {
+  const view = route === null ? null : patternMigratedView(route);
+  if (view !== null) await assertPatternLayout(page, label, view, wide);
   const measured = await page.evaluate(() => {
     // The page's own heading, not the chat title the shell's top bar carries:
     // that one lives in the bar, above the page, and `assertChat` measures it
@@ -3777,6 +3783,126 @@ async function assertHeadingAlignment(page, label) {
   if (measured.offset !== null && Math.abs(measured.offset) > 2) {
     throw new Error(`${label} indents its content ${measured.offset}px against its own title row`);
   }
+}
+
+/** The two sheet widths (spec §4): `sm:max-w-xl` and `sm:max-w-5xl`, in px. */
+const SHEET_WIDTHS = { default: 576, wide: 1024 };
+
+/**
+ * Spec §6 rule 3 on a view built from the pattern set: one h1, no heading that
+ * repeats the h1 or the open tab, one left edge for back link, title row,
+ * strip, tab bar, summary line and table, the page actions centred on the h1
+ * row, at most one filled button, and sheets only in their two widths.
+ */
+async function assertPatternLayout(page, label, view, wide) {
+  const sheet = isSheetView(view);
+  const shape = await page.evaluate(
+    ({ sheet, widths }) => {
+      const visible = (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+          return false;
+        const box = element.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      };
+      const clean = (value) => (value ?? "").replace(/\s+/g, " ").trim();
+      const content = document.querySelector('[data-testid="page-content"]');
+      const sheets = [...document.querySelectorAll("[data-sheet-size]")]
+        .filter(visible)
+        .map((element) => ({
+          size: element.getAttribute("data-sheet-size"),
+          width: Math.round(element.getBoundingClientRect().width),
+          cap: widths[element.getAttribute("data-sheet-size") ?? ""] ?? null,
+        }));
+      if (sheet) return { sheets, sheetOnly: true };
+      const inPage = (selector) =>
+        content
+          ? [...content.querySelectorAll(selector)].filter(
+              (element) => visible(element) && !element.closest('[role="dialog"]'),
+            )
+          : [];
+      const h1s = inPage("h1");
+      const h1 = h1s[0];
+      const title = clean(h1?.textContent);
+      const tab = inPage(
+        '[role="tab"][aria-selected="true"], [data-slot="page-tabs"] [aria-current="page"]',
+      )[0];
+      const tabLabel = clean(tab?.textContent);
+      const repeats = inPage('h2, h3, h4, h5, h6, [data-slot="page-back"]')
+        .map((element) => clean(element.textContent))
+        .filter((text) => text && (text === title || (tabLabel && text === tabLabel)));
+      const edges = [
+        '[data-slot="page-back"]',
+        '[data-testid="page-title-row"]',
+        '[data-slot="status-strip"]',
+        '[role="tablist"], [data-slot="page-tabs"]',
+        '[data-slot="summary-line"]',
+        '[data-slot="table-container"]',
+      ]
+        .map((selector) => [selector, inPage(selector)[0]])
+        .filter(([, element]) => element)
+        .map(([selector, element]) => [selector, Math.round(element.getBoundingClientRect().left)]);
+      const actions = inPage('[data-slot="page-actions"]')[0];
+      const centre = (element) => {
+        const box = element.getBoundingClientRect();
+        return box.top + box.height / 2;
+      };
+      const filled = [
+        ...document.querySelectorAll('button[data-variant="default"], a[data-variant="default"]'),
+      ].filter(
+        (element) =>
+          visible(element) &&
+          !element.closest('[role="dialog"], [role="alertdialog"], [data-sheet-size]'),
+      );
+      return {
+        sheetOnly: false,
+        sheets,
+        h1Count: h1s.length,
+        repeats,
+        edges,
+        actionOffset:
+          h1 && actions && actions.children.length > 0
+            ? Math.round(centre(actions) - centre(h1))
+            : null,
+        filled: filled.map(
+          (element) => clean(element.textContent) || element.getAttribute("data-testid"),
+        ),
+      };
+    },
+    { sheet, widths: SHEET_WIDTHS },
+  );
+  for (const open of shape.sheets) {
+    if (open.cap === null)
+      throw new Error(
+        `${label}: a sheet has the size "${open.size}" — only default and wide exist`,
+      );
+    if (open.width > open.cap + 1)
+      throw new Error(
+        `${label}: a ${open.size} sheet is ${open.width}px wide, not at most ${open.cap}px`,
+      );
+  }
+  if (sheet && shape.sheets.length !== 1)
+    throw new Error(`${label}: ${shape.sheets.length} run sheets are open, not one`);
+  if (shape.sheetOnly) return;
+  if (shape.h1Count !== 1)
+    throw new Error(`${label}: ${shape.h1Count} h1 elements on the page, not exactly one`);
+  if (shape.repeats.length > 0)
+    throw new Error(
+      `${label}: a heading repeats the title or the open tab — ${JSON.stringify(shape.repeats)}`,
+    );
+  const lefts = shape.edges.map(([, left]) => left);
+  if (lefts.length > 1 && Math.max(...lefts) - Math.min(...lefts) > 2)
+    throw new Error(
+      `${label}: the page's blocks start at different x — ${JSON.stringify(shape.edges)}`,
+    );
+  if (wide && shape.actionOffset !== null && Math.abs(shape.actionOffset) > 2)
+    throw new Error(
+      `${label}: the page actions sit ${shape.actionOffset}px off the title's centre`,
+    );
+  if (shape.filled.length > 1)
+    throw new Error(
+      `${label}: ${shape.filled.length} filled buttons — ${JSON.stringify(shape.filled)}`,
+    );
 }
 
 async function assertTables(page, label) {
@@ -4110,7 +4236,18 @@ for (const locale of variants) {
         throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong theme`);
       await assertViewport(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
-      await assertHeadingAlignment(page, `${locale.artifact}/${viewport.name}/${route}`);
+      await assertHeadingAlignment(
+        page,
+        `${locale.artifact}/${viewport.name}/${route}`,
+        route,
+        viewport.width >= 1024,
+      );
+      // Spec §6 rule 2: every migrated view and run sheet offers each action once.
+      const migrated = patternMigratedView(route);
+      if (migrated !== null)
+        await assertSingleTriggers(page, `${locale.artifact}/${viewport.name}/${route}`, {
+          root: patternViewRoot(migrated),
+        });
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "")
@@ -4127,7 +4264,7 @@ for (const locale of variants) {
         );
       if (route.startsWith("connectors?health="))
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "notifications")
+      if (route === "settings?tab=benachrichtigungen")
         await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -4151,9 +4288,9 @@ for (const locale of variants) {
         throw new Error(
           `${locale.artifact}/${viewport.name}/workflows: a list row repeats the engine's wording`,
         );
-      if (route === "runs")
+      if (route === "?runs=all")
         await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (/^runs\/.+/.test(route))
+      if (/^\?run=.+/.test(route))
         await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`, locale.name);
       if (/^workflows\/.+/.test(route))
         await assertWorkflowDetail(
@@ -4186,7 +4323,7 @@ for (const locale of variants) {
           }
         }
       }
-      if (route === "" || route === "runs" || route === "usage")
+      if (route === "" || route === "workflows" || route === "usage")
         headingLeft.set(
           route,
           await page.evaluate(() =>

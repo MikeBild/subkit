@@ -13,7 +13,7 @@
 // section's own list.
 const PAGES = [
   { route: "people", marker: "admin-people", tabs: ["people", "roles", "groups", "grants"] },
-  { route: "notifications", marker: "admin-notifications" },
+  { route: "settings?tab=benachrichtigungen", marker: "admin-notifications" },
   { route: "settings", marker: "admin-settings" },
   { route: "usage", marker: "resource-usage" },
   { route: "audit", marker: "resource-audit" },

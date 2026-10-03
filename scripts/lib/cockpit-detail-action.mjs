@@ -238,7 +238,7 @@ const STALE = ["Sicher im Chat fortsetzen", "Continue safely in chat"];
 /** The test ids of what stands beside the title, in order. */
 async function besideTitle(page) {
   return page
-    .locator('[data-family-slot="detail-actions"]')
+    .locator('[data-slot="page-actions"]')
     .locator('button, a[href], [role="button"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
 }
@@ -248,7 +248,7 @@ async function expectWorkflowTitle(page, where) {
   await page.getByTestId("workflow-automation-state").waitFor({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
   const beside = await besideTitle(page);
-  if (beside.join("|") !== "workflow-run-open|workflow-menu|workflow-edit-help")
+  if (beside.join("|") !== "workflow-edit-help|workflow-menu|workflow-run-open")
     throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
   if (await page.getByTestId("detail-action").count())
     throw new Error(`${where}: the title carries a state's action`);
@@ -344,7 +344,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await stand.visit(page, `workflows/${FAILED}`);
     await expectWorkflowTitle(page, where);
     const newest = await page.getByTestId("workflow-recent-run-0").getAttribute("href");
-    if (newest !== `/cockpit/runs/${FAILED_RUN}`)
+    if (newest !== `/cockpit?run=${FAILED_RUN}`)
       throw new Error(`${where}: the newest run's row leads to ${newest}`);
     await assertSingleTriggers(page, where);
 
