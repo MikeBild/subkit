@@ -59,6 +59,7 @@ export function RecordSheet({
               type="button"
               onClick={back.onClick}
               data-slot="sheet-back"
+              data-testid={`${testId}-back`}
               className="inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline"
             >
               <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />

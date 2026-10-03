@@ -58,7 +58,11 @@ export function FilterBar({
           </SelectTrigger>
           <SelectContent>
             {select.options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                data-testid={`${select.testId ?? "filter"}-option-${option.value}`}
+              >
                 {option.label}
               </SelectItem>
             ))}
