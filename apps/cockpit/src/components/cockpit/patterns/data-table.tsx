@@ -583,7 +583,7 @@ export function DataTable<TData extends RowData>({
               <Button
                 variant="outline"
                 size="sm"
-                className="ms-auto"
+                className="ms-auto hidden @2xl:inline-flex"
                 data-testid={`${collectionId}-columns`}
               >
                 <Columns3 data-icon="inline-start" />
