@@ -1,20 +1,16 @@
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
+import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/patterns";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ChatApproval } from "./chat-approval";
 
+/**
+ * A decision the conversation waits for: the title says what is decided, one
+ * line what it does, the deadline below, and the verb itself as the button.
+ * A saved draft says "inactive" once — on the button; the engine's own
+ * question repeated it a second, third and fourth time.
+ */
 export function ChatApprovalCard({
   approval,
   busy,
@@ -38,76 +34,46 @@ export function ChatApprovalCard({
   const expired = !Number.isFinite(deadline) || deadline <= now;
   const readable = (value: string) =>
     hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+  const title = t(
+    approval.oauth
+      ? "chat.reauth.title"
+      : approval.singleRun
+        ? "chat.singleRun.title"
+        : approval.savesInactiveWorkflow
+          ? "chat.decision.saveTitle"
+          : "chat.decision.title",
+  );
+  const line = approval.oauth
+    ? t(approval.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp")
+    : approval.singleRun
+      ? t("chat.singleRun.effect", {
+          name: approval.workflowName ?? t("chat.singleRun.thisWorkflow"),
+        })
+      : approval.savesInactiveWorkflow
+        ? t("chat.decision.saveEffect")
+        : approval.externalTool
+          ? t("chat.decision.externalTool", {
+              connector: approval.externalTool.connector,
+              tool: approval.externalTool.tool,
+            })
+          : readable(approval.question);
+  // What will change, where the engine says more than the line: behind (?).
+  const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
-    <Card size="sm" tone="question" data-testid={testId}>
-      <CardHeader>
-        <CardTitle>
-          {t(
-            approval.oauth
-              ? "chat.reauth.title"
-              : approval.singleRun
-                ? "chat.singleRun.title"
-                : approval.savesInactiveWorkflow
-                  ? "chat.decision.saveTitle"
-                  : "chat.decision.title",
-          )}
-        </CardTitle>
-        <CardDescription>
-          {approval.oauth
-            ? t(approval.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp")
-            : approval.singleRun
-              ? t("chat.singleRun.effect", {
-                  name: approval.workflowName ?? t("chat.singleRun.thisWorkflow"),
-                })
-              : approval.externalTool
-                ? t("chat.decision.externalTool", {
-                    connector: approval.externalTool.connector,
-                    tool: approval.externalTool.tool,
-                  })
-                : readable(approval.question)}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {approval.authorizationUrl && !expired && (
-          <Button asChild>
-            <a
-              href={approval.authorizationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid={`${testId}-sign-in`}
-            >
-              {t("chat.oauth.signIn")}
-            </a>
-          </Button>
-        )}
-        {approval.savesInactiveWorkflow && <p>{t("chat.decision.saveEffect")}</p>}
-        {approval.externalTool?.server_claim && (
-          <p className="text-sm text-muted-foreground" data-testid={`${testId}-server-claim`}>
-            {t("chat.decision.serverClaim", {
-              claim: readable(approval.externalTool.server_claim),
-            })}
-          </p>
-        )}
-        {(approval.description || approval.singleRun) && (
-          <details>
-            <summary className="cursor-pointer">{t("chat.decision.details")}</summary>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {readable(approval.description ?? approval.question)}
-            </p>
-          </details>
-        )}
-        <p className="text-xs text-muted-foreground">
-          {expired
-            ? t("chat.decision.expired")
-            : `${t("chat.decision.validUntil")} ${formatDateTime(locale, approval.expiresAt)}`}
-        </p>
-        {error && (
-          <Alert variant="destructive" role="alert">
-            <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-      <CardFooter className="flex flex-wrap gap-2">
+    <ChatCard
+      testId={testId}
+      title={
+        <span className="flex items-center gap-1">
+          {title}
+          {details ? (
+            <ContextHelp label={t("chat.decision.details")} testId={`${testId}-details`}>
+              {readable(details)}
+            </ContextHelp>
+          ) : null}
+        </span>
+      }
+      line={line}
+      secondary={
         <Button
           variant="outline"
           disabled={busy || expired}
@@ -116,6 +82,8 @@ export function ChatApprovalCard({
         >
           {t("chat.approval.decline")}
         </Button>
+      }
+      action={
         <Button
           disabled={
             busy || expired || (approval.oauth === "complete" && !approval.authorizationUrl)
@@ -138,7 +106,37 @@ export function ChatApprovalCard({
                     : "chat.approval.approve",
           )}
         </Button>
-      </CardFooter>
-    </Card>
+      }
+    >
+      {approval.authorizationUrl && !expired && (
+        <Button asChild variant="outline" className="w-fit">
+          <a
+            href={approval.authorizationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`${testId}-sign-in`}
+          >
+            {t("chat.oauth.signIn")}
+          </a>
+        </Button>
+      )}
+      {approval.externalTool?.server_claim && (
+        <p className="text-sm text-muted-foreground" data-testid={`${testId}-server-claim`}>
+          {t("chat.decision.serverClaim", {
+            claim: readable(approval.externalTool.server_claim),
+          })}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground" data-testid={`${testId}-deadline`}>
+        {expired
+          ? t("chat.decision.expired")
+          : `${t("chat.decision.validUntil")} ${formatDateTime(locale, approval.expiresAt)}`}
+      </p>
+      {error && (
+        <p role="alert" className="text-sm text-destructive" data-testid={`${testId}-error`}>
+          {t("chat.decision.failed")}
+        </p>
+      )}
+    </ChatCard>
   );
 }
