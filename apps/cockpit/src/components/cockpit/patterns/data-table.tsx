@@ -52,6 +52,7 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
+import { useColumnToggleClaim } from "./column-toggle-claim";
 import { DataState, LOADING_ROWS } from "./data-state";
 import { useRowMotion } from "./row-motion";
 import { Skeleton } from "./skeleton";
@@ -453,6 +454,14 @@ export function DataTable<TData extends RowData>({
     }),
   );
   const visibleColumns = table.getAllLeafColumns().filter((column) => column.getIsVisible());
+  // "Spalten" only where there is a choice (two or more named columns a reader
+  // can hide), only on a page's primary list, and only once per page.
+  const hideableColumns = table
+    .getAllLeafColumns()
+    .filter((column) => column.getCanHide() && typeof column.columnDef.header === "string");
+  const showColumnPicker = useColumnToggleClaim(
+    collectionTier === "primary" && hideableColumns.length > 1,
+  );
   // The action column exists only for something to put in it: row actions, or
   // the refresh in its head. A column that held a lone "Öffnen" per row is gone.
   const hasActionColumn = Boolean(rowActions) || Boolean(onRefresh && refreshLabel);
@@ -536,7 +545,7 @@ export function DataTable<TData extends RowData>({
       aria-busy={pending ? true : undefined}
     >
       <div
-        className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+        className="flex flex-wrap items-center gap-2 border-b px-3 py-2 max-sm:px-0"
         data-family-slot="list-toolbar"
       >
         {usesDefaultSearch && (
@@ -568,25 +577,23 @@ export function DataTable<TData extends RowData>({
         >
           {showSkeleton ? "" : `${recordsLabel ?? t("platform.results")}: ${resultCount}`}
         </span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="ms-auto"
-              data-testid={`${collectionId}-columns`}
-            >
-              <Columns3 data-icon="inline-start" />
-              {columnsLabel}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
-            <DropdownMenuGroup>
-              {table
-                .getAllLeafColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => (
+        {showColumnPicker ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ms-auto"
+                data-testid={`${collectionId}-columns`}
+              >
+                <Columns3 data-icon="inline-start" />
+                {columnsLabel}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                {hideableColumns.map((column) => (
                   <DropdownMenuCheckboxItem
                     key={column.id}
                     checked={column.getIsVisible()}
@@ -597,9 +604,10 @@ export function DataTable<TData extends RowData>({
                       : column.id}
                   </DropdownMenuCheckboxItem>
                 ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       <div
         className="hidden min-h-0 flex-1 overflow-auto @2xl:block"

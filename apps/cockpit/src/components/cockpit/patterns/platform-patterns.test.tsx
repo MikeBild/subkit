@@ -204,6 +204,15 @@ describe("files", () => {
     const csv = render(<FilePreview name="a.csv" text={"x,y\n1,2"} testId="c" />);
     expect(csv).toContain("<table");
   });
+
+  test("a previewed document adds no h1 or h2 to the page", () => {
+    const md = render(
+      <FilePreview name="a.md" mimeType="text/markdown" text={"# Titel\n\n## Teil\n\nText"} />,
+    );
+    expect(md).not.toMatch(/<h[12][\s>]/);
+    expect(md).toMatch(/<h3[^>]*>Titel</);
+    expect(md).toMatch(/<h4[^>]*>Teil</);
+  });
 });
 
 describe("actions", () => {
