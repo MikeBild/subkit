@@ -117,6 +117,64 @@ describe("the sentence", () => {
     }
   });
 
+  test("a version no approval may cover names its step and never offers to approve", () => {
+    const blocked = (repair: AttentionItem["repair"], actions: AttentionItem["actions"] = []) =>
+      item({
+        class: "decide",
+        reason: "version_needs_repair",
+        trigger: { kind: "inbound_hook", name: "findings" },
+        approval: { version: 9, environment: "prod" },
+        repair,
+        actions,
+        since: daysAgo(0),
+      });
+    const prepare = {
+      step_id: "send_email",
+      code: "report_delivery_unprepared",
+      remedy_kind: "prepare" as const,
+      steps: 1,
+      candidate_id: null,
+      execution_id: null,
+    };
+    expect(sentenceText(attentionSentence(blocked(prepare), de, NOW))).toBe(
+      "Der Workflow „Monatsbericht“ lässt sich in Fassung v9 nicht freigeben – Schritt „send_email“: wer seine E-Mail bekommt, hat noch niemand gesehen — seit gerade eben.",
+    );
+    // A code this build has no words for falls back to what removes the block;
+    // other blocked steps are counted, never listed.
+    const author = {
+      ...prepare,
+      step_id: "create_reader",
+      code: "novel_code",
+      remedy_kind: "author" as const,
+      steps: 3,
+    };
+    const lead = attentionSentence(blocked(author), de, NOW).lead;
+    expect(lead).toContain("„create_reader“: nur eine Änderung am Workflow löst das");
+    expect(lead).toContain("(und 2 weitere Schritte)");
+    expect(lead).not.toMatch(/[a-z]+_[a-z_]+:/);
+    expect(attentionSentence(blocked(null as never), en, NOW).lead).toContain(
+      "cannot be approved in version v9",
+    );
+    // The act its diagnosis offers — never "approve".
+    const open = { verb: "open" as const, href: "/x", primary: true, permission: "workflow:run" };
+    const chat = {
+      verb: "chat" as const,
+      href: "/y",
+      primary: true,
+      permission: "conversation:write",
+    };
+    expect(de(actionLabelKey(open, blocked(prepare, [open])))).toBe("Vorbereitung ausführen");
+    expect(de(actionLabelKey(open, blocked({ ...prepare, remedy_kind: "patch" }, [open])))).toBe(
+      "Automatisch reparieren",
+    );
+    expect(de(actionLabelKey(chat, blocked(author, [chat])))).toBe("Im Chat beheben");
+    for (const remedy of ["patch", "prepare", "declare", "reconnect", "author"] as const) {
+      const entry = blocked({ ...prepare, remedy_kind: remedy }, [open]);
+      expect(de(actionLabelKey(open, entry))).not.toBe("Freigeben");
+      expect(de(actionLabelKey(chat, entry))).not.toBe("Freigeben");
+    }
+  });
+
   test("a hold says what lifts it: a missing approval, or a change to the workflow", () => {
     // `unavailable` is the gate finding no approval with runs left: a grant
     // lifts it. `required` is a version no approval may cover: only a change does.
@@ -192,6 +250,7 @@ describe("the sentence", () => {
       "execution_authority_required",
       "execution_authority_unavailable",
       "version_awaiting_approval",
+      "version_needs_repair",
       "approval_expiring",
       "failing",
       "patch_proposed",
