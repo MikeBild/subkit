@@ -243,6 +243,18 @@ test("a draft is diagnosed but never repaired", async () => {
   const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
   expect(diagnosis).toMatchObject({ workflow_version_id: draft.id, is_current: false });
   expect(await proposeGateRepairs(db, target(wf.workflow_id, draft.id))).toEqual([]);
+  // The running version a refused start is about can still be asked for by id.
+  const running = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev", {
+    version_id: wf.version_id,
+  });
+  expect(running).toMatchObject({ workflow_version_id: wf.version_id, is_current: true });
+  expect(running?.diagnoses.map((entry) => entry.subject.step_id)).toContain("send_email");
+  // A version that is not this workflow's is not found — never a clean bill.
+  expect(
+    await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev", {
+      version_id: crypto.randomUUID(),
+    }),
+  ).toBeNull();
 });
 
 test("a contradicted declaration on a connector-backed send is declared from what was observed", async () => {
