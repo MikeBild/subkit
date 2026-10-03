@@ -33,19 +33,22 @@ export interface ActionMenuItem {
  */
 export function ActionMenu({
   items,
+  size = "default",
   label,
   testId,
 }: {
   items: readonly ActionMenuItem[];
   label?: string;
   testId?: string;
+  /** `sm` for a row action inside a table or a card. */
+  size?: "default" | "sm";
 }) {
   const { t } = useI18n();
   const [only] = items;
   if (!only) return null;
   if (items.length === 1) {
     const button = only.href ? (
-      <Button variant="outline" asChild data-testid={only.testId ?? testId}>
+      <Button variant="outline" size={size} asChild data-testid={only.testId ?? testId}>
         <a href={only.href} data-testid={only.testId ?? testId} {...only.data}>
           {only.label}
         </a>
@@ -53,6 +56,7 @@ export function ActionMenu({
     ) : (
       <Button
         variant="outline"
+        size={size}
         disabled={only.disabled}
         onClick={only.onSelect}
         data-testid={only.testId ?? testId}
@@ -76,7 +80,7 @@ export function ActionMenu({
       <DropdownMenuTrigger asChild>
         <IconButton
           variant="outline"
-          size="icon"
+          size={size === "sm" ? "icon-sm" : "icon"}
           label={label ?? t("pattern.moreActions")}
           data-testid={testId ?? "action-menu"}
         >

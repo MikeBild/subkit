@@ -12,9 +12,9 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  ChevronLeft,
   ChevronRight,
   Columns3,
+  Loader2,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -23,13 +23,14 @@ import {
   type MouseEvent,
   type ReactNode,
   useContext,
+  useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { absolute } from "@/app/links";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -48,8 +49,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useI18n } from "@/lib/i18n-context";
+import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { DataState, LOADING_ROWS } from "./data-state";
+import { useRowMotion } from "./row-motion";
+import { Skeleton } from "./skeleton";
 
 /** A column states its own width; that is what keeps the table `table-fixed`. */
 export interface CockpitColumnMeta {
@@ -58,7 +63,83 @@ export interface CockpitColumnMeta {
   ownsRowLink?: boolean;
   /** The cell holds links or controls of its own (relations, chips). */
   interactive?: boolean;
+  /**
+   * `low`: a column a narrower table can do without. It is left out below the
+   * large breakpoint, so a tablet shows the columns that matter at a width
+   * that fits; the column picker still lists it.
+   */
+  priority?: "high" | "low";
 }
+
+/** The class a column's head and cells take for its priority. */
+export function priorityClass(priority: CockpitColumnMeta["priority"]): string | undefined {
+  return priority === "low" ? "hidden lg:table-cell" : undefined;
+}
+
+/** The next page of an endless list: what `useInfiniteQuery` hands back. */
+export interface InfiniteRows {
+  fetchNextPage(): unknown;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+}
+
+/**
+ * Loads the next page as the end of the list comes near: a sentinel row just
+ * past the last one, watched by an IntersectionObserver on the list's own
+ * scroll container. A button stays for the keyboard and for a page too short
+ * to scroll.
+ */
+function InfiniteSentinel({
+  infinite,
+  testId,
+  className,
+}: {
+  infinite: InfiniteRows;
+  testId: string;
+  className?: string;
+}) {
+  const { t } = useI18n();
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = infinite;
+  useEffect(() => {
+    const element = sentinel.current;
+    if (!element || !hasNextPage || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage)
+          void fetchNextPage();
+      },
+      { rootMargin: "0px 0px 320px 0px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  if (!hasNextPage && !isFetchingNextPage) return null;
+  return (
+    <div
+      ref={sentinel}
+      className={cn(
+        "flex h-11 items-center justify-center text-sm text-muted-foreground",
+        className,
+      )}
+      data-slot="infinite-sentinel"
+      data-testid={testId}
+    >
+      {isFetchingNextPage ? (
+        <span role="status" className="inline-flex items-center gap-2">
+          <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+          {t("platform.loadingMore")}
+        </span>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => void fetchNextPage()}>
+          {t("platform.loadMore")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+const SKELETON_WIDTHS = ["w-3/4", "w-1/2", "w-2/3", "w-1/3", "w-2/5"] as const;
 
 /**
  * Which visible column names the row and carries its link.
@@ -241,17 +322,13 @@ export function DataTable<TData extends RowData>({
   error,
   emptyState,
   hasActiveFilters,
-  mode = "offset",
-  page,
-  pageSize,
+  infinite,
+  getRowId,
+  skeletonRows = LOADING_ROWS,
   total,
-  hasNext,
   onPageChange,
-  previousLabel,
-  nextLabel,
   columnsLabel,
   recordsLabel,
-  loadedLabel,
   actionsLabel,
   rowActions,
   collectionId = "data-table",
@@ -292,20 +369,39 @@ export function DataTable<TData extends RowData>({
   emptyState: TableEmptyState;
   hasActiveFilters: boolean;
   /**
-   * `offset` knows the total and counts `x–y / total`; `cursor` does not and
-   * never invents one — it says how many rows are loaded and offers the step.
+   * An endless list: the next page loads as the reader nears the end of the
+   * rows (`useInfiniteList`). Without it the list shows every row it is given;
+   * there is no pager.
    */
-  mode?: "offset" | "cursor";
-  page: number;
-  pageSize: number;
+  infinite?: InfiniteRows;
+  /**
+   * A row's stable identity. With it, a row that arrives through a live update
+   * washes in with the accent and a row that goes fades out where it stood.
+   */
+  getRowId?(row: TData): string;
+  /** How many placeholder rows stand in while the first rows load. */
+  skeletonRows?: number;
+  /** The number of records the filters match, where the engine counts them. */
   total?: number;
+  /** Called with 0 when the built-in search changes what the list shows. */
+  onPageChange?(page: number): void;
+  /** @deprecated No pager any more; ignored until every list is endless. */
+  mode?: "offset" | "cursor";
+  /** @deprecated No pager any more; ignored. */
+  page?: number;
+  /** @deprecated No pager any more; ignored. */
+  pageSize?: number;
+  /** @deprecated No pager any more; ignored. */
   hasNext?: boolean;
-  onPageChange(page: number): void;
-  previousLabel: string;
-  nextLabel: string;
+  /** @deprecated No pager any more; ignored. */
+  previousLabel?: string;
+  /** @deprecated No pager any more; ignored. */
+  nextLabel?: string;
   columnsLabel: string;
-  recordsLabel: string;
-  loadedLabel: string;
+  /** The result count's label, for assistive technology. */
+  recordsLabel?: string;
+  /** @deprecated The result count is stated by the table itself; ignored. */
+  loadedLabel?: string;
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
@@ -321,11 +417,26 @@ export function DataTable<TData extends RowData>({
     if (!needle || collectionTier === "embedded") return data;
     return data.filter((row) => searchText(row).toLocaleLowerCase().includes(needle));
   }, [collectionTier, data, queryText, searchText]);
+  const { t } = useI18n();
+  const phase = useLoadingPhase(Boolean(pending));
+  const arrivedContent = useArrived(phase);
+  // Rows that just left stay a moment for their fade; they are part of the
+  // table's data until then, flagged so they render inert.
+  const motion = useRowMotion(filteredData, getRowId, !pending && !error);
+  const tableData = useMemo(() => motion.display.map((entry) => entry.row), [motion.display]);
+  const leavingAt = (index: number) => motion.display[index]?.leaving === true;
+  const rowMotionClass = (row: TData, index: number) =>
+    leavingAt(index)
+      ? "sk-row-leave pointer-events-none"
+      : getRowId && motion.arrived.has(getRowId(row))
+        ? "sk-row-new"
+        : undefined;
   const table = useTable(
     {
       features: cockpitTableFeatures,
       columns,
-      data: filteredData,
+      data: tableData,
+      ...(getRowId ? { getRowId: (row: TData) => getRowId(row) } : {}),
       state: { sorting },
       manualSorting: true,
       onSortingChange: (updater) => onSortingChange(functionalUpdate(updater, sorting)),
@@ -354,12 +465,12 @@ export function DataTable<TData extends RowData>({
     linkColumn ?? visibleColumns[0]?.id,
   );
   const rows = table.getRowModel().rows;
-  const offsetTotal = queryText.trim() ? filteredData.length : (total ?? data.length);
-  const firstRecord = offsetTotal === 0 ? 0 : page * pageSize + 1;
-  const lastRecord = Math.min(offsetTotal, (page + 1) * pageSize);
-  const canPrevious = page > 0;
-  const canNext = mode === "cursor" ? Boolean(hasNext) : lastRecord < offsetTotal;
-  const empty = !pending && !error && rows.length === 0;
+  // The result count is stated for assistive technology, not drawn: a list
+  // shows its rows, and a footer counting them was noise. Where the engine
+  // counts the matches it says that number; otherwise the rows shown.
+  const resultCount = queryText.trim() ? filteredData.length : (total ?? data.length);
+  const showSkeleton = phase !== "content";
+  const empty = !showSkeleton && !error && rows.length === 0;
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
 
@@ -432,7 +543,7 @@ export function DataTable<TData extends RowData>({
               value={queryText}
               onChange={(event) => {
                 setQueryText(event.target.value);
-                onPageChange(0);
+                onPageChange?.(0);
               }}
               placeholder={searchLabel}
               className="pl-8"
@@ -442,6 +553,15 @@ export function DataTable<TData extends RowData>({
           </label>
         )}
         {toolbar}
+        <span
+          className="sr-only"
+          aria-live="polite"
+          data-family-slot="collection-meta"
+          data-family-result-count
+          data-testid={`${collectionId}-count`}
+        >
+          {showSkeleton ? "" : `${recordsLabel ?? t("platform.results")}: ${resultCount}`}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -476,7 +596,7 @@ export function DataTable<TData extends RowData>({
         </DropdownMenu>
       </div>
       <div
-        className="hidden min-h-0 flex-1 overflow-auto md:block"
+        className="hidden min-h-0 flex-1 overflow-auto sm:block"
         data-testid={`${collectionId}-desktop`}
       >
         <Table>
@@ -486,7 +606,13 @@ export function DataTable<TData extends RowData>({
                 {headerGroup.headers.map((header) => {
                   const sorted = header.column.getIsSorted();
                   return (
-                    <TableHead key={header.id} className={header.column.columnDef.meta?.width}>
+                    <TableHead
+                      key={header.id}
+                      className={cn(
+                        header.column.columnDef.meta?.width,
+                        priorityClass(header.column.columnDef.meta?.priority),
+                      )}
+                    >
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <Button
                           variant="ghost"
@@ -533,20 +659,39 @@ export function DataTable<TData extends RowData>({
             ))}
           </TableHeader>
           <TableBody
-            data-family-slot={pending ? "data-state" : undefined}
-            data-family-state={pending ? "loading" : undefined}
-            aria-busy={pending ? true : undefined}
+            data-family-slot={showSkeleton ? "data-state" : undefined}
+            data-family-state={showSkeleton ? "loading" : undefined}
+            data-loading-phase={showSkeleton ? phase : undefined}
+            aria-busy={showSkeleton ? true : undefined}
+            className={arrivedContent ? "sk-fade-in" : undefined}
           >
-            {pending ? (
-              Array.from({ length: LOADING_ROWS }, (_, rowIndex) => (
+            {showSkeleton ? (
+              // The final rows' shape: one bar per column at the row's height,
+              // invisible for the first moments so a fast answer never flashes.
+              Array.from({ length: skeletonRows }, (_, rowIndex) => (
                 <TableRow
                   key={rowIndex}
-                  className="h-11"
+                  className={cn(
+                    "h-11 hover:bg-transparent",
+                    phase === "reserve" ? "invisible" : "sk-fade-in",
+                  )}
                   data-testid={`${collectionId}-skeleton-row-${rowIndex}`}
                 >
-                  <TableCell colSpan={bodySpan}>
-                    <span className="block h-4 w-full animate-pulse rounded-md bg-muted" />
-                  </TableCell>
+                  {visibleColumns.map((column, columnIndex) => (
+                    <TableCell
+                      key={column.id}
+                      className={priorityClass(column.columnDef.meta?.priority)}
+                    >
+                      <Skeleton
+                        className={cn(
+                          "h-4",
+                          SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length],
+                        )}
+                      />
+                    </TableCell>
+                  ))}
+                  {hasActionColumn ? <TableCell /> : null}
+                  {hasChevron ? <TableCell className="w-8" /> : null}
                 </TableRow>
               ))
             ) : error || empty ? (
@@ -555,14 +700,20 @@ export function DataTable<TData extends RowData>({
               </TableRow>
             ) : (
               rows.map((row, index) => {
-                const open = onOpen ? () => onOpen(row.original) : null;
+                const leaving = leavingAt(index);
+                const open = onOpen && !leaving ? () => onOpen(row.original) : null;
                 return (
                   <TableRow
                     key={row.id}
-                    data-family-slot="list-row"
-                    data-family-collection-row="true"
-                    className={cn("h-11", open && "cursor-pointer")}
-                    data-testid={`${collectionId}-row-${index}`}
+                    data-family-slot={leaving ? undefined : "list-row"}
+                    data-family-collection-row={leaving ? undefined : "true"}
+                    aria-hidden={leaving ? true : undefined}
+                    className={cn(
+                      "h-11",
+                      open && "cursor-pointer",
+                      rowMotionClass(row.original, index),
+                    )}
+                    data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
                     // The whole row is a convenience for the pointer. The
                     // keyboard and the screen reader reach the record through
                     // the link in its name cell, so the row is no tab stop.
@@ -576,7 +727,10 @@ export function DataTable<TData extends RowData>({
                     }
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
+                      <TableCell
+                        key={cell.id}
+                        className={priorityClass(cell.column.columnDef.meta?.priority)}
+                      >
                         {open && cell.column.id === linkColumnId ? (
                           <LinkedCell
                             owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
@@ -612,19 +766,45 @@ export function DataTable<TData extends RowData>({
             )}
           </TableBody>
         </Table>
+        {infinite && !showSkeleton && !error ? (
+          <InfiniteSentinel infinite={infinite} testId={`${collectionId}-more`} />
+        ) : null}
       </div>
       <div
-        className="min-h-0 flex-1 overflow-y-auto md:hidden"
+        className="min-h-0 flex-1 overflow-y-auto sm:hidden"
         data-testid={`${collectionId}-mobile`}
       >
-        {pending ? (
-          <DataState state="loading" className="p-4" />
+        {showSkeleton ? (
+          // A card's shape: three label/value lines, as many cards as rows.
+          <div
+            className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
+            data-family-slot="data-state"
+            data-family-state="loading"
+            aria-busy="true"
+          >
+            {Array.from({ length: skeletonRows }, (_, cardIndex) => (
+              <div key={cardIndex} className="flex flex-col gap-3 p-4">
+                {[0, 1, 2].map((line) => (
+                  <span key={line} className="flex h-5 items-center justify-between gap-4">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton
+                      className={cn(
+                        "h-3.5",
+                        SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
+                      )}
+                    />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
         ) : error || empty ? (
           <div className="px-4">{stateBlock}</div>
         ) : (
-          <div className="grid divide-y">
+          <div className={cn("grid divide-y", arrivedContent && "sk-fade-in")}>
             {rows.map((row, index) => {
-              const open = onOpen ? () => onOpen(row.original) : null;
+              const leaving = leavingAt(index);
+              const open = onOpen && !leaving ? () => onOpen(row.original) : null;
               // Three facts fit a 390px card; a seven-column table does not.
               // The naming cell leads the card and carries its link; the card
               // itself is not a button, because it holds links of its own.
@@ -674,13 +854,12 @@ export function DataTable<TData extends RowData>({
                 // The keyboard and the screen reader reach the record through
                 // the link in the card's title; the click on the rest of the
                 // card is a pointer convenience, as on the desktop row.
-                // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard access is the title link
-                // biome-ignore lint/a11y/noStaticElementInteractions: the card holds links of its own and must not be a button
                 <div
                   key={row.id}
                   className={cn(
                     "flex min-w-0 flex-col gap-3 p-4 text-left",
                     open && "cursor-pointer",
+                    rowMotionClass(row.original, index),
                   )}
                   onClick={
                     open
@@ -690,10 +869,12 @@ export function DataTable<TData extends RowData>({
                         }
                       : undefined
                   }
-                  data-testid={`${collectionId}-mobile-row-${index}`}
-                  data-family-slot="list-row"
-                  data-family-collection-row="true"
+                  aria-hidden={leaving ? true : undefined}
+                  data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
+                  data-family-slot={leaving ? undefined : "list-row"}
+                  data-family-collection-row={leaving ? undefined : "true"}
                   data-family-collection-mobile-card="true"
+                  data-action-scope="row"
                 >
                   {card}
                   {actions ? <span className="flex justify-end gap-1">{actions}</span> : null}
@@ -702,44 +883,10 @@ export function DataTable<TData extends RowData>({
             })}
           </div>
         )}
+        {infinite && !showSkeleton && !error ? (
+          <InfiniteSentinel infinite={infinite} testId={`${collectionId}-mobile-more`} />
+        ) : null}
       </div>
-      <footer
-        className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2"
-        data-family-slot="pagination"
-      >
-        <span
-          className="text-xs text-muted-foreground"
-          data-family-slot="collection-meta"
-          data-family-result-count
-        >
-          {mode === "cursor"
-            ? loadedLabel
-            : `${recordsLabel}: ${firstRecord}–${lastRecord} / ${offsetTotal}`}
-        </span>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">{page + 1}</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canPrevious}
-            onClick={() => onPageChange(page - 1)}
-            data-testid={`${collectionId}-previous`}
-          >
-            <ChevronLeft data-icon="inline-start" />
-            {previousLabel}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canNext}
-            onClick={() => onPageChange(page + 1)}
-            data-testid={`${collectionId}-next`}
-          >
-            {nextLabel}
-            <ChevronRight data-icon="inline-end" />
-          </Button>
-        </div>
-      </footer>
     </div>
   );
 }
