@@ -584,3 +584,96 @@ export function reviewNavigation(history: ReviewHistory, href: (review: string |
     },
   };
 }
+
+// --------------------------------------------------------------------------
+// One entry as a row (R1): the object alone as its name, the reason in a few
+// words, the state as a badge — never the object named twice.
+
+const SHORT_REASON_KEYS = {
+  awaiting_answer: "overview.short.awaiting_answer",
+  execution_authority_required: "overview.short.execution_authority_required",
+  execution_authority_unavailable: "overview.short.execution_authority_unavailable",
+  version_awaiting_approval: "overview.short.version_awaiting_approval",
+  version_needs_repair: "overview.short.version_needs_repair",
+  approval_expiring: "overview.short.approval_expiring",
+  scheduler_stale: "overview.short.scheduler_stale",
+  failing: "overview.short.failing",
+  patch_proposed: "overview.short.patch_proposed",
+  needs_reauth: "overview.short.needs_reauth",
+  needs_update: "overview.short.needs_update",
+  degraded: "overview.short.degraded",
+  unhealthy: "overview.short.unhealthy",
+  refresh_refused: "overview.short.refresh_refused",
+  refresh_failed: "overview.short.refresh_failed",
+  expired_no_refresh: "overview.short.expired_no_refresh",
+  secret_unreadable: "overview.short.secret_unreadable",
+  secret_prepared: "overview.short.secret_prepared",
+  skills_proposed: "overview.short.skills_proposed",
+  budget_critical: "overview.short.budget_critical",
+  risk_critical: "overview.short.risk_critical",
+} as const satisfies Record<AttentionItem["reason"], TranslationKey>;
+
+/** The badge an entry carries: an engine-state word for the tone, and its label. */
+const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
+  awaiting_answer: { state: "pending", label: "overview.state.answer" },
+  execution_authority_required: { state: "pending", label: "workflowStrip.state.grant" },
+  execution_authority_unavailable: { state: "failed", label: "workflowStrip.state.stopped" },
+  version_awaiting_approval: { state: "pending", label: "workflowStrip.state.grant" },
+  version_needs_repair: { state: "needs_attention", label: "automation.state.repair" },
+  approval_expiring: { state: "expiring", label: "workflowStrip.state.expiring" },
+  scheduler_stale: { state: "degraded", label: "overview.state.stale" },
+  failing: { state: "failed", label: "workflowStrip.state.failing" },
+  patch_proposed: { state: "proposed", label: "workflowStrip.state.repairPrepared" },
+  needs_reauth: { state: "expired", label: "connectorStrip.state.expired" },
+  needs_update: { state: "needs_update", label: "connectors.healthState.needsUpdate" },
+  degraded: { state: "failed", label: "workflowStrip.state.failing" },
+  unhealthy: { state: "failed", label: "workflowStrip.state.failing" },
+  refresh_refused: { state: "expired", label: "connectorStrip.state.expired" },
+  refresh_failed: { state: "expired", label: "connectorStrip.state.expired" },
+  expired_no_refresh: { state: "expired", label: "connectorStrip.state.expired" },
+  secret_unreadable: { state: "failed", label: "overview.state.secret" },
+  secret_prepared: { state: "pending", label: "overview.state.decide" },
+  skills_proposed: { state: "proposed", label: "overview.state.decide" },
+  budget_critical: { state: "critical", label: "overview.state.budget" },
+  risk_critical: { state: "critical", label: "overview.state.risk" },
+};
+
+export interface AttentionRow {
+  /** The object alone: a workflow's name and the version it is about. */
+  name: string;
+  /** The reason, in a few words, without the object. */
+  reason: string;
+  /** A reason this build has no words for, as the engine's value. */
+  machine: string | null;
+  badge: { state: string; label: TranslationKey };
+}
+
+export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
+  const name =
+    item.subject?.name?.trim() ||
+    (item.reason === "skills_proposed"
+      ? t("overview.object.skills")
+      : item.reason === "budget_critical"
+        ? t("overview.object.budget")
+        : t("overview.unnamed"));
+  const version = item.approval ? ` v${item.approval.version}` : "";
+  const key = (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+  const badge = (STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
+    state: "pending",
+    label: "overview.state.decide",
+  };
+  const count =
+    item.reason === "failing"
+      ? (item.counts.failures ?? 1)
+      : item.reason === "patch_proposed"
+        ? (item.counts.patches ?? 1)
+        : item.reason === "skills_proposed"
+          ? (item.counts.skills ?? 1)
+          : (item.repair?.steps ?? 1);
+  return {
+    name: `${name}${version}`,
+    reason: key ? t(key, { count, step: item.repair?.step_id ?? "" }) : t("overview.short.other"),
+    machine: key ? null : item.reason,
+    badge,
+  };
+}
