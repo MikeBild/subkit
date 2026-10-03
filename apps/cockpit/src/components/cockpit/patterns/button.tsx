@@ -33,7 +33,9 @@ export function Button({
       data-pending={pending ? "true" : undefined}
       className={cn("relative", className)}
     >
-      <span className={cn("inline-flex items-center gap-[inherit]", pending && "invisible")}>
+      <span
+        className={cn("inline-flex min-w-0 items-center gap-[inherit]", pending && "invisible")}
+      >
         {children}
       </span>
       {pending ? (
