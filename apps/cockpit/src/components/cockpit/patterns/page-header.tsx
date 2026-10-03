@@ -87,7 +87,12 @@ export function PageHeader({
             data-slot="page-title-row"
           >
             {ownsTrigger ? <SidebarToggle className="shrink-0" /> : null}
-            <h1 className="min-w-0 text-2xl font-semibold leading-8 tracking-[-0.02em]">{title}</h1>
+            <h1
+              title={title}
+              className="min-w-0 max-w-full truncate text-2xl font-semibold leading-8 tracking-[-0.02em]"
+            >
+              {title}
+            </h1>
             {badge}
             {actions ? (
               <div

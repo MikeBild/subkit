@@ -88,7 +88,8 @@ describe("P2 PageHeader", () => {
     expect(html).toContain('data-testid="detail-back"');
     expect(html).toContain('data-slot="page-back"');
     expect(html).toMatch(/href="\/workflows"/);
-    expect(count(html, /upraft-auth-notify/g)).toBe(1);
+    // Once as text (the h1); its `title` attribute is the tooltip of a truncated name.
+    expect(count(html, />upraft-auth-notify</g)).toBe(1);
   });
 });
 
