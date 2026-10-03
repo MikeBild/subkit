@@ -92,13 +92,15 @@ describe("deleteConversation", () => {
 
   test("someone else may not delete it; an administrator may", async () => {
     const id = await newConversation("Somebody's chat");
-    const stranger = crypto.randomUUID();
+    const stranger = "7f3c2a10-5b4e-4c6d-9e8f-0a1b2c3d4e5f";
     expect(await del(id, stranger, false)).toEqual({ kind: "forbidden" });
     expect((await del(id, stranger, true)).kind).toBe("deleted");
   });
 
   test("an unknown conversation is not found", async () => {
-    expect(await del(crypto.randomUUID(), ctx.user_id, true)).toEqual({ kind: "not_found" });
+    expect(await del("0d9e8f7a-6b5c-4d3e-8f2a-1b0c9d8e7f6a", ctx.user_id, true)).toEqual({
+      kind: "not_found",
+    });
   });
 
   test("a turn running in this process blocks the delete", async () => {

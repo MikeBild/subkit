@@ -11,7 +11,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
-import { hasBuiltinAdminRole } from "../../../rbac/evaluator.ts";
+import { hasBuiltinAdminRole } from "../../../rbac/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
