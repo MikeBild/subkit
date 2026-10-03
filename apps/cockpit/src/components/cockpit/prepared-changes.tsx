@@ -1,21 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { ListTable } from "@/components/cockpit/list-table";
+import { Button, type CockpitColumn, ContextHelp, Section } from "@/components/cockpit/patterns";
+import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 
 /** A secret version somebody prepared and nobody has approved yet. */
-export interface PreparedChange {
+export type PreparedChange = {
   name: string;
   version: number;
   reference: string;
   prepared_by: string;
   pending_since: string;
   bindings: string[];
-}
+};
 
 interface ApprovalOutcome {
   name: string;
@@ -79,59 +80,95 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
     onError: () => toast.error(t("prepared.decisionFailed")),
   });
 
+  const columns = useMemo<CockpitColumn<PreparedChange>[]>(() => {
+    const column = tableColumns<PreparedChange>({ t, dateTime });
+    return [
+      column.custom(
+        "target",
+        (change) => change.name,
+        t("prepared.column.setting"),
+        (change) => (
+          <span className="block truncate font-medium">{preparedChangeTarget(change.name)}</span>
+        ),
+        { width: "w-[30%]" },
+      ),
+      column.custom(
+        "prepared",
+        (change) => change.pending_since,
+        t("prepared.column.prepared"),
+        (change) =>
+          t("prepared.meta", {
+            version: String(change.version),
+            by: change.prepared_by || "—",
+            since: dateTime(change.pending_since),
+          }),
+        { width: "w-[40%]" },
+      ),
+      column.custom(
+        "bindings",
+        (change) => change.bindings.length,
+        t("prepared.column.rebinds"),
+        (change) => (
+          <span className="block truncate" title={change.bindings.join(", ")}>
+            {change.bindings.length > 0 ? change.bindings.join(", ") : "—"}
+          </span>
+        ),
+        { width: "w-[30%]" },
+      ),
+    ];
+  }, [t, dateTime]);
+
   const items = query.data?.items ?? [];
   if (items.length === 0) return null;
   const busy = approve.isPending || reject.isPending;
 
   return (
-    <section className="mb-6" data-testid="prepared-changes" data-family-slot="waiting">
-      <h2 className="text-base font-semibold">{t("prepared.title")}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t("prepared.description")}</p>
-      <div className="mt-3 grid gap-2">
-        {items.map((change, index) => (
-          <Card key={change.reference} size="sm" data-testid={`prepared-change-${index}`}>
-            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{preparedChangeTarget(change.name)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("prepared.meta", {
-                    version: String(change.version),
-                    by: change.prepared_by || "—",
-                    since: dateTime(change.pending_since),
-                  })}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {change.bindings.length > 0
-                    ? t("prepared.rebinds", { paths: change.bindings.join(", ") })
-                    : t("prepared.rebindsNothing")}
-                </p>
-              </div>
-              {canDecide && (
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => reject.mutate(change)}
-                    data-testid={`prepared-change-reject-${index}`}
-                  >
-                    {t("prepared.reject")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => approve.mutate(change)}
-                    data-testid={`prepared-change-approve-${index}`}
-                  >
-                    {t("prepared.approve")}
-                  </Button>
-                </div>
-              )}
-              {!canDecide && <Badge variant="outline">{t("prepared.readOnly")}</Badge>}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </section>
+    <div data-testid="prepared-changes" data-family-slot="waiting">
+      <Section
+        label={t("prepared.title")}
+        aside={
+          <ContextHelp label={t("prepared.title")} testId="prepared-changes-help">
+            {canDecide ? t("prepared.description") : t("prepared.readOnly")}
+          </ContextHelp>
+        }
+      >
+        <ListTable<PreparedChange>
+          id="prepared-change"
+          columns={columns}
+          rows={items}
+          pending={false}
+          failed={false}
+          resource={t("prepared.title")}
+          onRetry={() => void query.refetch()}
+          empty=""
+          rowActions={
+            canDecide
+              ? (change, index) => (
+                  <span data-action-scope="prepared-change" className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => reject.mutate(change)}
+                      data-testid={`prepared-change-reject-${index}`}
+                    >
+                      {t("prepared.reject")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => approve.mutate(change)}
+                      data-testid={`prepared-change-approve-${index}`}
+                    >
+                      {t("prepared.approve")}
+                    </Button>
+                  </span>
+                )
+              : undefined
+          }
+        />
+      </Section>
+    </div>
   );
 }
