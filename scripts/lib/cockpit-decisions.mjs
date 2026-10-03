@@ -180,7 +180,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
   };
   for (const pattern of patterns) await page.route(pattern, handler);
   const listed = () =>
-    page.locator(`[data-testid="attention-list"] > li[data-attention-id="workflow:${id}"]`);
+    page.locator(`[data-testid="attention-list"] [data-attention-id="workflow:${id}"]`).first();
   const openSheet = async () => {
     await stand.visit(page, `?review=workflow:${id}`);
     await page.getByTestId("attention-review-body").waitFor();
@@ -221,7 +221,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     if (await listed().count()) throw new Error("The decided entry is still on Übersicht");
     await page.reload();
     await page.getByTestId("attention-page").waitFor();
-    await page.getByTestId("attention-history").waitFor();
+    await page.getByTestId("attention").waitFor();
     if ((await listed().count()) !== 0 || attempts !== 2)
       throw new Error("Settled decision returned after reload");
     await capture("settled-reload");
@@ -253,7 +253,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await page.getByTestId("authority-grant-confirm").click();
     await card.waitFor({ state: "detached" });
     await stand.visit(page, "");
-    await page.getByTestId("attention-history").waitFor();
+    await page.getByTestId("attention").waitFor();
     if ((await listed().count()) !== 0 || attempts !== 3)
       throw new Error("Combined approval did not settle after reload");
   } finally {
