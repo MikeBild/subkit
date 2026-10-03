@@ -163,8 +163,8 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
 // since a closed <details> keeps its content in the markup and out of
 // innerText — no engine English anywhere in the page's text, "Gilt für" exactly
 // on the rows that can differ per workspace, a copy icon for the key (the
-// fixture reader may change settings), and one answer below the list on how a
-// change is stored.
+// fixture reader may change settings), and one answer — behind the summary
+// line's (?) — on how a change is stored.
 async function verifySettingRows(page, rows, section, where) {
   const shape = await page.evaluate(() => {
     const main = document.querySelector('[data-testid="admin-settings"]');
@@ -181,7 +181,7 @@ async function verifySettingRows(page, rows, section, where) {
         appliesTo: Boolean(item.querySelector('[data-testid^="setting-applies-to-"]')),
         copy: Boolean(item.querySelector('[data-testid^="setting-copy-key-"]')),
       })),
-      storage: main?.querySelectorAll('[data-testid="settings-storage"]').length ?? 0,
+      storage: main?.querySelectorAll('[data-testid="settings-summary-help"]').length ?? 0,
     };
   });
   if (shape.disclosures > 0)

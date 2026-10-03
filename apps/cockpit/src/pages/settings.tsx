@@ -1,17 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, auditHref, settingsHref } from "@/app/links";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { useDirtyGuard } from "@/app/version-notice";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   ConfirmDialog,
   ContextHelp,
   DataState,
-  FilterBar,
   Input,
   Page,
   PageHeader,
@@ -24,8 +26,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Spinner,
+  SummaryLine,
   Switch,
+  tabFromSearch,
   useCopy,
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
@@ -33,7 +36,7 @@ import { LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
-import { NotificationSettings } from "@/pages/notification-settings";
+import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
 import {
   isUnset,
   type SettingItem,
@@ -49,7 +52,6 @@ import {
   settingIsChanged,
   settingLabel,
   settingLeafTarget,
-  settingMatches,
   settingMetaLabel,
   settingNavigation,
   settingResetDraft,
@@ -487,15 +489,29 @@ export function SettingCopyKey({ item, index }: { item: SettingItem; index: numb
 }
 
 /**
- * How a saved setting is kept and when it takes effect — asked once, answered
- * once, below the list instead of beside every row.
+ * What the System tab holds, in one line: how many settings and how many
+ * differ from their default — how a saved one is kept behind (?), the choice
+ * between all and only the changed ones on the right.
  */
-export function SettingsStorageNote() {
+export function SettingsSummary({
+  total,
+  changed,
+  filter,
+  onFilter,
+}: {
+  total: number;
+  changed: number;
+  filter: SettingsFilter;
+  onFilter: (filter: SettingsFilter) => void;
+}) {
   const { t } = useI18n();
   return (
-    <ContextHelp label={t("settings.storage.title")} testId="settings-storage">
-      {t("settings.storage.body")}
-    </ContextHelp>
+    <SummaryLine
+      testId="settings-summary"
+      text={t("settings.summary", { count: String(total), changed: String(changed) })}
+      help={t("settings.storage.body")}
+      aside={<SettingsFilterToggle filter={filter} onChange={onFilter} />}
+    />
   );
 }
 
@@ -721,7 +737,7 @@ export function SettingNumberInput({
   );
 }
 
-/** The one filter beside the search: every setting, or only those not at their default. */
+/** Every setting, or only those not at their default. */
 export function SettingsFilterToggle({
   filter,
   onChange,
@@ -796,7 +812,7 @@ export function SettingsSection({
         ) : null
       }
     >
-      <div>{children}</div>
+      <div className="overflow-hidden rounded-lg border">{children}</div>
     </Section>
   );
 }
@@ -840,9 +856,9 @@ export function SettingRow({
     <div
       data-action-scope="setting"
       className={cn(
-        "-mx-2 grid scroll-mt-24 gap-3 rounded-lg border-t px-2 py-4 first:border-t-0",
+        "grid scroll-mt-24 gap-3 border-t px-4 py-3 first:border-t-0",
         !wide && "@min-[560px]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]",
-        highlighted && "bg-muted ring-1 ring-ring/40",
+        highlighted && "bg-muted ring-1 ring-ring/40 ring-inset",
       )}
       data-highlighted={highlighted || undefined}
       data-setting-path={item.path}
@@ -916,6 +932,12 @@ export function SettingRow({
 export function SettingsPage() {
   const { t } = useI18n();
   const session = useSession();
+  const [createRule, setCreateRule] = useState(false);
+  const [createChannel, setCreateChannel] = useState(false);
+  const notificationActions = useNotificationActions({
+    onCreateRule: () => setCreateRule(true),
+    onCreateChannel: () => setCreateChannel(true),
+  });
   const tabs = [
     ...(session.permissions.includes("settings:read")
       ? [
@@ -933,17 +955,36 @@ export function SettingsPage() {
             value: "benachrichtigungen",
             label: t("nav.notifications"),
             testId: "settings-tab-benachrichtigungen",
-            content: <NotificationSettings />,
+            content: (
+              <NotificationSettings
+                createRule={createRule}
+                onCreateRule={setCreateRule}
+                createChannel={createChannel}
+                onCreateChannel={setCreateChannel}
+              />
+            ),
           },
         ]
       : []),
   ];
+  // The header carries the open tab's acts: none on System (its save bar
+  // appears with a change), a rule and a channel on Benachrichtigungen.
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const values = tabs.map((tab) => tab.value);
+  const active = tabFromSearch(searchStr, "tab", values, values[0] ?? "");
+  const onNotifications = active === "benachrichtigungen";
   return (
     <Page
       kind="settings"
       scroll="page"
       testId="admin-settings"
-      header={<PageHeader title={t("resource.settings.title")} />}
+      header={
+        <PageHeader
+          title={t("resource.settings.title")}
+          action={onNotifications ? notificationActions.action : null}
+          secondary={onNotifications ? notificationActions.secondary : null}
+        />
+      }
     >
       {tabs.length > 1 ? (
         <PageTabs tabs={tabs} param="tab" testId="settings-tabs" />
@@ -960,10 +1001,9 @@ function SystemSettings() {
   const client = useQueryClient();
   const canWrite = session.permissions.includes("settings:write");
   // The view lives in the address: a reload, a shared link and the J5 link
-  // from the usage page all land on the same section, search, filter and field.
+  // from the usage page all land on the same section, filter and field.
   const [linked] = useState(() => settingsViewFromUrl(window.location.search));
   const [leaf, setLeaf] = useState(linked.leaf);
-  const [search, setSearch] = useState(linked.leaf ? "" : linked.q);
   const [filter, setFilter] = useState<SettingsFilter>(linked.leaf ? "all" : linked.filter);
   // Drafts belong to the page, not to a section: switching sections, searching
   // or filtering keeps them until they are saved or discarded. Nothing saves
@@ -982,9 +1022,11 @@ function SystemSettings() {
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [leafMissing, setLeafMissing] = useState(false);
   const focused = useRef(false);
+  const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => apiRequest<SettingsResponse>("/v1/settings"),
+    ...live,
   });
   const allItems = query.data?.items ?? [];
   const publicBaseUrlItem = allItems.find((item) => item.path === "server.public_base_url");
@@ -993,23 +1035,15 @@ function SystemSettings() {
     (typeof publicBaseUrlItem?.value === "string"
       ? publicBaseUrlItem.value
       : (globalThis.location?.origin ?? ""));
-  const needle = search.trim();
-  const listMode = needle !== "" || filter === "changed";
+  const listMode = filter === "changed";
   const nav = useMemo(
     () => settingNavigation([...new Set(allItems.map((item) => settingSectionOf(item.path)))]),
     [allItems],
   );
   const orderedSections = useMemo(() => nav.flatMap((group) => group.sections), [nav]);
   const hits = useMemo(
-    () =>
-      listMode
-        ? allItems.filter(
-            (item) =>
-              (!needle || settingMatches(item, needle, t)) &&
-              (filter !== "changed" || settingIsChanged(item)),
-          )
-        : [],
-    [allItems, listMode, needle, filter, t],
+    () => (listMode ? allItems.filter((item) => settingIsChanged(item)) : []),
+    [allItems, listMode],
   );
   const hitSections = useMemo(
     () => (listMode ? new Set(hits.map((item) => settingSectionOf(item.path))) : null),
@@ -1036,17 +1070,19 @@ function SystemSettings() {
     : (orderedSections[0] ?? "");
   const attention = settingsAttention(query.data);
   const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
+  const changedCount = useMemo(() => allItems.filter(settingIsChanged).length, [allItems]);
+  // A reload or a new version must not drop what is typed and not yet saved.
+  useDirtyGuard(changedItems.length > 0);
   useEffect(() => {
     const href = absolute(
       settingsHref(leaf, {
         section: leaf ? null : activeSection || null,
-        q: leaf ? null : search.trim() || null,
         filter: leaf || filter === "all" ? null : filter,
       }),
     );
     if (`${window.location.pathname}${window.location.search}` !== href)
       window.history.replaceState(window.history.state, "", href);
-  }, [leaf, activeSection, search, filter]);
+  }, [leaf, activeSection, filter]);
   // Once the list is on screen: open the linked leaf's section, scroll to its
   // row, mark it and put the cursor in it. Once — a later refetch must not pull
   // focus back.
@@ -1119,7 +1155,6 @@ function SystemSettings() {
 
   function openSection(section: string) {
     setLeaf(null);
-    setSearch("");
     setFilter("all");
     setHighlighted(null);
     setLeafMissing(false);
@@ -1128,7 +1163,6 @@ function SystemSettings() {
 
   function openLeaf(path: string) {
     focused.current = false;
-    setSearch("");
     setFilter("all");
     setLeafMissing(false);
     setActiveSection(settingSectionOf(path));
@@ -1231,32 +1265,19 @@ function SystemSettings() {
 
   return (
     <div data-testid="settings-system" className="flex flex-col gap-4">
-      <PreparedChanges canDecide={canWrite} />
-      <div className="flex items-center gap-2" data-family-slot="configuration-content">
-        <FilterBar
-          search={{
-            value: search,
-            onChange: (next) => {
-              setLeaf(null);
-              setHighlighted(null);
-              setSearch(next);
-            },
-            placeholder: t("settings.search"),
-            testId: "settings-search",
+      {settingsView === "ready" ? (
+        <SettingsSummary
+          total={allItems.length}
+          changed={changedCount}
+          filter={filter}
+          onFilter={(next) => {
+            setLeaf(null);
+            setHighlighted(null);
+            setFilter(next);
           }}
-          segmented={
-            <SettingsFilterToggle
-              filter={filter}
-              onChange={(next) => {
-                setLeaf(null);
-                setHighlighted(null);
-                setFilter(next);
-              }}
-            />
-          }
         />
-        <SettingsStorageNote />
-      </div>
+      ) : null}
+      <PreparedChanges canDecide={canWrite} />
       {settingsView === "loading" ? (
         <DataState state="loading" testId="settings-loading" />
       ) : settingsView === "error" ? (
@@ -1335,8 +1356,18 @@ function SystemSettings() {
                 hits.length === 0 ? (
                   <DataState
                     state="empty"
-                    line={needle ? t("settings.noMatches") : t("settings.allDefault")}
-                    testId={needle ? "settings-no-matches" : "settings-all-default"}
+                    line={t("settings.allDefault")}
+                    testId="settings-all-default"
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFilter("all")}
+                        data-testid="settings-show-all"
+                      >
+                        {t("settings.showAll")}
+                      </Button>
+                    }
                   />
                 ) : (
                   <div className="grid gap-8" data-testid="settings-hits">
@@ -1470,11 +1501,11 @@ export function SettingsSaveBar({
         ) : (
           <Button
             className="flex-1 sm:flex-none"
-            disabled={pending || invalid || count === 0}
+            pending={pending}
+            disabled={invalid || count === 0}
             onClick={onSave}
             data-testid="settings-save"
           >
-            {pending && <Spinner data-icon="inline-start" />}
             {t("common.save")}
           </Button>
         )}
