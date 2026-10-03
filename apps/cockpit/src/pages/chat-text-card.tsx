@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
+  Button,
+  ChatCard,
+  Field,
+  FieldDescription,
+  FieldLabel,
+  Input,
+  Spinner,
+  Textarea,
+} from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { type ChatText, textAnswerAcceptable } from "./chat-text";
@@ -66,38 +62,15 @@ export function ChatTextCard({
     onChange: (event: { target: { value: string } }) => setValue(event.target.value),
   };
   return (
-    <Card size="sm" tone="question" data-testid={testId}>
-      <CardHeader>
-        <CardTitle>{t("chat.choice.title")}</CardTitle>
-        <CardDescription data-testid={`${testId}-question`} className="whitespace-pre-line">
+    <ChatCard
+      testId={testId}
+      title={t("chat.choice.title")}
+      line={
+        <span data-testid={`${testId}-question`} className="whitespace-pre-line">
           {hideTechnicalIdentifiers(text.question, t("tool.referenceHiddenInline"))}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <Field>
-            <FieldLabel htmlFor={fieldId}>{t("chat.text.label")}</FieldLabel>
-            {text.multiline ? (
-              <Textarea {...fieldProps} />
-            ) : (
-              <Input {...fieldProps} type="text" autoComplete="off" />
-            )}
-            {rejected && <FieldDescription role="alert">{t("chat.text.invalid")}</FieldDescription>}
-          </Field>
-        </form>
-        {expired && <p>{t("chat.decision.expired")}</p>}
-        {error && (
-          <Alert variant="destructive" role="alert">
-            <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-      <CardFooter>
+        </span>
+      }
+      action={
         <Button
           disabled={disabled || !acceptable}
           onClick={submit}
@@ -106,7 +79,30 @@ export function ChatTextCard({
           {busy && <Spinner aria-hidden="true" aria-label={undefined} />}
           {t(busy ? "chat.decision.processing" : "chat.text.submit")}
         </Button>
-      </CardFooter>
-    </Card>
+      }
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <Field>
+          <FieldLabel htmlFor={fieldId}>{t("chat.text.label")}</FieldLabel>
+          {text.multiline ? (
+            <Textarea {...fieldProps} />
+          ) : (
+            <Input {...fieldProps} type="text" autoComplete="off" />
+          )}
+          {rejected && <FieldDescription role="alert">{t("chat.text.invalid")}</FieldDescription>}
+        </Field>
+      </form>
+      {expired && <p className="text-sm text-muted-foreground">{t("chat.decision.expired")}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {t("chat.decision.failed")}
+        </p>
+      )}
+    </ChatCard>
   );
 }

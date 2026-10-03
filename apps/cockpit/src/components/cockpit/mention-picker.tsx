@@ -19,15 +19,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { Badge } from "@/components/ui/badge";
 import {
   Command,
   CommandEmpty,
   CommandGroup,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { PopoverContent } from "@/components/ui/popover";
+  PopoverContent,
+} from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ConversationReference,
@@ -396,16 +395,21 @@ export function MentionChips({
         const missing = gone.has(`${reference.type}:${reference.id}`);
         const Icon = missing ? CircleAlert : TYPE_ICON[reference.type];
         return (
-          <Badge
+          // A chip is a reference, not a state: no dot, no badge.
+          <span
             key={i}
-            variant={missing ? "destructive" : "secondary"}
-            className={cn("mx-0.5 align-baseline", missing && "line-through")}
+            className={cn(
+              "mx-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 align-baseline text-xs font-medium [&>svg]:size-3",
+              missing
+                ? "bg-destructive/10 text-destructive line-through"
+                : "bg-secondary text-secondary-foreground",
+            )}
             title={missing ? t("chat.mention.unresolved") : undefined}
             data-testid={`${testIdPrefix}-chip-${index++}`}
           >
-            <Icon />
+            <Icon aria-hidden="true" />
             {segment.text}
-          </Badge>
+          </span>
         );
       })}
     </span>
