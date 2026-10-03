@@ -188,7 +188,8 @@ export async function diagnoseWorkflow(
       ),
     )
     .limit(1);
-  if (!version) return { ...base, diagnoses: [] };
+  // A version asked for by id that is not this workflow's is not found, not clean.
+  if (!version) return options.version_id ? null : { ...base, diagnoses: [] };
   const preview = options.preview ?? (await previewWorkflowAuthority(input, db));
   const held =
     options.held !== undefined ? options.held : await inspectHeldPreviewEvidence(input, db);

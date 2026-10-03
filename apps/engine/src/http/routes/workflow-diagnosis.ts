@@ -1,6 +1,6 @@
 // Why the approval gate holds a workflow, and the deterministic repairs for it.
 //
-//   GET  /v1/workflows/{id}/diagnosis?environment=  — workflow:read
+//   GET  /v1/workflows/{id}/diagnosis?environment=&version_id=  — workflow:read
 //   POST /v1/workflows/{id}/repairs                 — workflow:write
 //
 // The diagnosis is read-only. A repair request names a step and a fixer and
@@ -30,11 +30,14 @@ const diagnosisRoute = createRoute({
   tags: ["workflows"],
   summary: "Why the approval gate holds this workflow, and what removes it",
   description:
-    "Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.",
+    "Diagnoses the saved version (the draft when there is one, or `version_id` when given — such as the running version a refused start is about) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.",
   security: [{ bearerAuth: [] }],
   request: {
     params: workflowParam,
-    query: z.object({ environment: z.enum(["dev", "prod"]).default("prod") }),
+    query: z.object({
+      environment: z.enum(["dev", "prod"]).default("prod"),
+      version_id: z.string().uuid().optional(),
+    }),
   },
   responses: {
     200: {
@@ -103,11 +106,13 @@ export function registerWorkflowDiagnosisRoutes(app: OpenAPIHono<AppEnv>): void 
 
   app.openapi(diagnosisRoute, async (c) => {
     const principal = requireAuth(c);
+    const query = c.req.valid("query");
     const result = await diagnoseWorkflow(
       c.get("db"),
       principal.tenant_id,
       c.req.valid("param").id,
-      c.req.valid("query").environment,
+      query.environment,
+      query.version_id ? { version_id: query.version_id } : {},
     );
     if (!result) throw new NotFoundError("workflow");
     return c.json(result, 200);
