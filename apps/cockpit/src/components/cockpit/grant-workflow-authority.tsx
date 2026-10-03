@@ -14,37 +14,33 @@ import {
   useGrantRemedy,
 } from "@/components/cockpit/grant-notices";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import {
+  Button,
+  CodeBlock,
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FormDialog,
+  Input,
+  SegmentedControl,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+  Textarea,
+} from "@/components/cockpit/patterns";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
 import { growthLine } from "@/lib/authority-growth";
 import { authorityIssues } from "@/lib/authority-issues";
-import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
+import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
+import { type AuthorityPages, withProvisionalAuthority } from "@/lib/optimistic-authorities";
 import { environmentToCorrectTo } from "@/lib/resolved-environment";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   AUTHORITY_EFFECT_KEYS,
   acceptReview,
@@ -320,7 +316,26 @@ export function GrantWorkflowAuthority({
   const input = review
     ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
     : null;
-  const grant = useMutation({
+  // The approval stands in the strip and in "Freigaben" the moment it is
+  // given; a refusal puts the read back and says so in the error line.
+  const grant = useOptimisticAction({
+    queryKey: ["workflow-authorities", workflowId],
+    apply: (current: AuthorityPages | undefined) =>
+      review && input
+        ? withProvisionalAuthority(current, review, input, new Date().toISOString())
+        : current,
+    invalidate: [
+      ...automationQueryKeys(workflowId).filter(
+        (key) => key[0] !== "workflow-authorities" || key.length > 2,
+      ),
+      ["decisions"],
+      ["attention"],
+      ["patch-candidate"],
+      ["workflow-schedule-holds"],
+      ["conversation"],
+      ["workflows"],
+    ],
+    errorMessage: () => t("authority.grantFailed"),
     mutationFn: () => {
       const checked = review
         ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
@@ -335,14 +350,7 @@ export function GrantWorkflowAuthority({
         },
       );
     },
-    onSuccess: async () => {
-      await invalidateWorkflowAutomation(client, workflowId);
-      await client.invalidateQueries({ queryKey: ["decisions"] });
-      await client.invalidateQueries({ queryKey: ["attention"] });
-      await client.invalidateQueries({ queryKey: ["patch-candidate"] });
-      await client.invalidateQueries({ queryKey: ["workflow-schedule-holds"] });
-      await client.invalidateQueries({ queryKey: ["conversation"] });
-      await client.invalidateQueries({ queryKey: ["workflows"] });
+    onSuccess: () => {
       onCompleted?.();
       setOpen(false);
       toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
@@ -535,11 +543,73 @@ export function GrantWorkflowAuthority({
     requested.current = openRequest;
     if (!disabled) openDialog(true);
   }, [openRequest]);
+  // What failed, in the dialog's one error line.
+  const failure = actionError
+    ? `${t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")} ${t(
+        sessionExpired ? "authority.sessionExpiredHint" : "authority.grantFailedDescription",
+      )}`
+    : null;
+  const confirmable = !unsupported && !carriesOver;
   return (
-    <Dialog open={open} onOpenChange={openDialog}>
-      {(openRequest === undefined || withTrigger) && (
-        <DialogTrigger asChild>
+    <FormDialog
+      open={open}
+      onOpenChange={openDialog}
+      size="wide"
+      testId="authority-grant-dialog"
+      titleTestId="authority-dialog-title"
+      cancelTestId="authority-grant-cancel"
+      title={
+        existing
+          ? existing.open_ended
+            ? t("authority.existing.titleUntilRevoked")
+            : t(
+                existing.remaining_runs === 1
+                  ? "authority.existing.titleOne"
+                  : "authority.existing.title",
+                {
+                  until:
+                    existing.valid_until === null
+                      ? t("authority.headline.untilRevoked")
+                      : dateTime(existing.valid_until),
+                  runs: existing.remaining_runs ?? t("authority.headline.runs.unlimited"),
+                },
+              )
+          : t(
+              recurringContent
+                ? "authority.content.title"
+                : recurringReport
+                  ? "authority.report.title"
+                  : unsupported
+                    ? "authority.adjustTitle"
+                    : activation
+                      ? "chat.activation.title"
+                      : onGrant
+                        ? "decisions.applyAndAuthorize"
+                        : "authority.grantOpen",
+            )
+      }
+      description={
+        existing
+          ? t("authority.existing.description")
+          : t(
+              recurringContent
+                ? "authority.content.description"
+                : recurringReport
+                  ? "authority.report.description"
+                  : unsupported
+                    ? "authority.adjustDescription"
+                    : activation
+                      ? "chat.activation.description"
+                      : onGrant
+                        ? "decisions.applyAndAuthorizeDescription"
+                        : "authority.grantDescription",
+            )
+      }
+      error={failure}
+      trigger={
+        openRequest === undefined || withTrigger ? (
           <Button
+            type="button"
             variant={triggerVariant}
             size={triggerSize}
             disabled={disabled}
@@ -548,576 +618,38 @@ export function GrantWorkflowAuthority({
           >
             {triggerLabel ?? t(onGrant ? "decisions.applyAndAuthorize" : "authority.grantOpen")}
           </Button>
-        </DialogTrigger>
-      )}
-      <DialogContent
-        closeLabel={t("common.close")}
-        className="flex max-h-[85svh] flex-col overflow-hidden sm:max-w-2xl"
-      >
-        <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
-          <DialogTitle data-testid="authority-dialog-title">
-            {existing
-              ? existing.open_ended
-                ? t("authority.existing.titleUntilRevoked")
-                : t(
-                    existing.remaining_runs === 1
-                      ? "authority.existing.titleOne"
-                      : "authority.existing.title",
-                    {
-                      until:
-                        existing.valid_until === null
-                          ? t("authority.headline.untilRevoked")
-                          : dateTime(existing.valid_until),
-                      runs: existing.remaining_runs ?? t("authority.headline.runs.unlimited"),
-                    },
-                  )
-              : t(
-                  recurringContent
-                    ? "authority.content.title"
-                    : recurringReport
-                      ? "authority.report.title"
-                      : unsupported
-                        ? "authority.adjustTitle"
+        ) : undefined
+      }
+      {...(confirmable
+        ? {
+            submit: {
+              label: t(
+                grant.isPending
+                  ? "authority.granting"
+                  : existing
+                    ? "authority.existing.confirm"
+                    : recurringContent
+                      ? "authority.content.confirm"
+                      : recurringReport
+                        ? "authority.report.confirm"
                         : activation
-                          ? "chat.activation.title"
+                          ? "chat.activation.confirm"
                           : onGrant
                             ? "decisions.applyAndAuthorize"
-                            : "authority.grantOpen",
-                )}
-          </DialogTitle>
-          <DialogDescription>
-            {existing
-              ? t("authority.existing.description")
-              : t(
-                  recurringContent
-                    ? "authority.content.description"
-                    : recurringReport
-                      ? "authority.report.description"
-                      : unsupported
-                        ? "authority.adjustDescription"
-                        : activation
-                          ? "chat.activation.description"
-                          : onGrant
-                            ? "decisions.applyAndAuthorizeDescription"
-                            : "authority.grantDescription",
-                )}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
-          {reviewContent}
-          <GrantScopeWarnings warnings={scopeWarnings} />
-          {recurringContent &&
-            publications.map((publication, index) => (
-              <Alert key={index} data-testid="authority-content-boundary" className="bg-accent/10">
-                <AlertTitle>
-                  {t("authority.content.members", {
-                    count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
-                  })}
-                </AlertTitle>
-                <AlertDescription>
-                  <p>{publication.origin}</p>
-                  <ul>
-                    {publication.sources.flatMap((source) =>
-                      source.item_ids.flatMap((id) => {
-                        const label = review?.content_items?.find((item) => item.id === id)?.label;
-                        return label ? [<li key={id}>{label}</li>] : [];
-                      }),
-                    )}
-                  </ul>
-                  <p>{t("authority.content.scope")}</p>
-                  <details>
-                    <summary>{t("authority.content.targets")}</summary>
-                    <ul>
-                      {publication.sources.flatMap((source) =>
-                        source.item_ids.map((id) => (
-                          <li
-                            key={id}
-                            className="break-all"
-                          >{`${publication.origin}/v1/content/${id}`}</li>
-                        )),
-                      )}
-                    </ul>
-                    <p className="break-all">{`${publication.origin}/v1/sites/${publication.site_id}`}</p>
-                  </details>
-                  {review?.schedules?.map((schedule, scheduleIndex) => (
-                    <p key={scheduleIndex}>
-                      {t("authority.report.next", {
-                        time: schedule.next_run_at
-                          ? new Intl.DateTimeFormat(locale, {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                              timeZone: schedule.timezone,
-                            }).format(new Date(schedule.next_run_at))
-                          : t("common.unknown"),
-                        zone: schedule.timezone,
-                      })}
-                    </p>
-                  ))}
-                </AlertDescription>
-              </Alert>
-            ))}
-          {callGroups.map((group) =>
-            group.step_id === null ? (
-              <BoundaryPanels key="own" effects={group.effects} />
-            ) : (
-              <section
-                key={effectKey([group.step_id], "$call")}
-                className="flex flex-col gap-4 rounded-md border border-border/60 p-3"
-                data-testid="authority-call-section"
-              >
-                <p className="font-medium">
-                  {t("authority.call.title", {
-                    step: group.step_id,
-                    name: group.workflow_name ?? t("common.unknown"),
-                    version: group.version ?? t("common.unknown"),
-                  })}
-                </p>
-                <p className="text-muted-foreground text-sm">{t("authority.call.scope")}</p>
-                <BoundaryPanels effects={group.effects} />
-              </section>
-            ),
-          )}
-          {recurringReport && (
-            <Alert data-testid="authority-report-boundary" className="bg-accent/10">
-              <AlertTitle>{t("authority.report.recipients")}</AlertTitle>
-              <AlertDescription>
-                {deliveries.map((delivery, index) => (
-                  <p key={`${delivery.to}:${index}`}>
-                    {t("authority.report.delivery", { from: delivery.from, to: delivery.to })}
-                  </p>
-                ))}
-                <p>{t("authority.report.variable")}</p>
-                {review?.schedules?.map((schedule, index) => (
-                  <p key={index}>
-                    {t("authority.report.next", {
-                      time: schedule.next_run_at
-                        ? new Intl.DateTimeFormat(locale, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                            timeZone: schedule.timezone,
-                          }).format(new Date(schedule.next_run_at))
-                        : t("common.unknown"),
-                      zone: schedule.timezone,
-                    })}
-                  </p>
-                ))}
-              </AlertDescription>
-            </Alert>
-          )}
-          {/* The reasons, wherever the version cannot be approved — not only on
-              the surface that has no approve button. A reviewer who cannot see
-              why is being asked to judge something they cannot see. */}
-          {unsupported && issues.length > 0 && (
-            <Alert data-testid="authority-issues">
-              <AlertTitle>{t("authority.issuesTitle")}</AlertTitle>
-              <AlertDescription>
-                <ul className="flex flex-col gap-2">
-                  {issues.map((issue) => (
-                    <li key={issue.key}>
-                      <span className="font-medium">
-                        {issue.call_step_id
-                          ? t("authority.issueInCall", {
-                              step: issue.step_id,
-                              call: issue.call_step_id,
-                            })
-                          : t("authority.issueStep", { step: issue.step_id })}
-                      </span>
-                      <br />
-                      {/* The engine's own reason when it gave one, and the
-                          blanket code only when it did not. Showing both would
-                          print two different statements about the same step —
-                          one of which says the target is unbounded for a step
-                          whose address is a constant. */}
-                      {t(issue.reasonKey ?? issue.messageKey)}
-                      {issue.evidence && (
-                        <>
-                          <br />
-                          <span className="break-all font-mono text-xs">
-                            {t("authority.issueEvidence", {
-                              declared: issue.evidence.declared_prefix,
-                              observed: issue.evidence.observed_key,
-                            })}
-                          </span>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                  {(review?.unavailable_steps ?? []).map((step) => (
-                    <li key={`unavailable:${step}`}>{t("authority.issueUnavailable", { step })}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-          {unsupported && issues.length === 0 && !onSingleRun && (
-            <Alert data-testid="authority-needs-adjustment">
-              <AlertTitle>{t("schedules.held.status")}</AlertTitle>
-              <AlertDescription>
-                {t("authority.unsupportedSteps", {
-                  steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
-                })}
-              </AlertDescription>
-            </Alert>
-          )}
-          {/* The refusal used to end at "investigate the cause in the chat" — a
-              technical question handed to the one person who cannot answer it.
-              SubKit has read what these steps really did; this is it saying so
-              and offering to write it down. Approving stays a human act. */}
-          {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
-            <Alert data-testid="authority-repair" className="bg-accent/10">
-              <AlertTitle>{t("authority.repairTitle")}</AlertTitle>
-              <AlertDescription className="flex flex-col items-start gap-3">
-                <p>
-                  {t("authority.repairDescription", {
-                    count: String(repairable.data?.proposals?.length ?? 0),
-                  })}
-                </p>
-                {(repairable.data?.unproposable?.length ?? 0) > 0 && (
-                  <p data-testid="authority-repair-remaining">
-                    {t("authority.repairNone", {
-                      steps: (repairable.data?.unproposable ?? [])
-                        .map((entry) => entry.step_id)
-                        .join(", "),
-                    })}
-                  </p>
-                )}
-                {repair.error && (
-                  <p data-testid="authority-repair-failed">{t("authority.repairFailed")}</p>
-                )}
-                {repair.isSuccess && (
-                  <p data-testid="authority-repair-done">
-                    {t("authority.repairDone", {
-                      count: String(repair.data?.applied_step_ids?.length ?? 0),
-                    })}
-                  </p>
-                )}
-                <Button
-                  size="sm"
-                  disabled={busy || repair.isPending}
-                  onClick={() => repair.mutate()}
-                  data-testid="authority-repair-apply"
-                >
-                  {t(repair.isPending ? "authority.repairWorking" : "authority.repairAction")}
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-          {incomplete && !unsupported && (
-            <Alert data-testid="authority-incomplete">
-              <AlertTitle>{t("authority.incompleteTitle")}</AlertTitle>
-              <AlertDescription>{t("authority.incompleteDescription")}</AlertDescription>
-            </Alert>
-          )}
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="authority-environment">{t("authority.environment")}</FieldLabel>
-              <Select
-                value={environment}
-                disabled={busy}
-                onValueChange={(value) => {
-                  if (value !== "dev" && value !== "prod") return;
-                  setEnvironment(value);
-                  grant.reset();
-                  startReview(value);
-                }}
-              >
-                <SelectTrigger id="authority-environment" data-testid="authority-environment">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="dev" data-testid="authority-environment-dev">
-                      {t("authority.development")}
-                    </SelectItem>
-                    <SelectItem value="prod" data-testid="authority-environment-prod">
-                      {t("authority.production")}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            {boundsVisible && (
-              <Field>
-                <FieldLabel id="authority-limit-label">{t("authority.limit.label")}</FieldLabel>
-                <ToggleGroup
-                  type="single"
-                  variant="outline"
-                  value={limit}
-                  disabled={busy}
-                  onValueChange={(next) => {
-                    if (next === "until_revoked" || next === "limited") setLimit(next);
-                  }}
-                  aria-labelledby="authority-limit-label"
-                  data-testid="authority-limit"
-                >
-                  <ToggleGroupItem
-                    value="until_revoked"
-                    data-testid="authority-limit-until-revoked"
-                  >
-                    {t("authority.limit.untilRevoked")}
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="limited" data-testid="authority-limit-limited">
-                    {t("authority.limit.limited")}
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <p className="text-sm text-muted-foreground" data-testid="authority-limit-hint">
-                  {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
-                </p>
-              </Field>
-            )}
-            {boundsVisible && limited && (
-              <>
-                <Field data-invalid={invalidRuns}>
-                  <FieldLabel htmlFor="authority-runs">{t("authority.runs")}</FieldLabel>
-                  <Input
-                    id="authority-runs"
-                    data-testid="authority-runs"
-                    type="number"
-                    min={1}
-                    max={10000}
-                    step={1}
-                    value={runs}
-                    disabled={busy}
-                    aria-invalid={invalidRuns}
-                    onChange={(event) => setRuns(event.target.value)}
-                  />
-                  {invalidRuns && <FieldError>{t("authority.runsError")}</FieldError>}
-                </Field>
-                <Field data-invalid={invalidHours}>
-                  <FieldLabel htmlFor="authority-hours">{t("authority.hours")}</FieldLabel>
-                  <Input
-                    id="authority-hours"
-                    data-testid="authority-hours"
-                    type="number"
-                    min={1}
-                    max={744}
-                    step={1}
-                    value={hours}
-                    disabled={busy}
-                    aria-invalid={invalidHours}
-                    onChange={(event) => setHours(event.target.value)}
-                  />
-                  {invalidHours && <FieldError>{t("authority.hoursError")}</FieldError>}
-                </Field>
-                {review && <GrantSuggestionNote review={review} />}
-              </>
-            )}
-          </FieldGroup>
-          {prepare.isPending &&
-            (trialStartedAt === null ? (
-              <p role="status">{t("common.loading")}</p>
-            ) : (
-              // Six minutes of "loading" is what sent people to a second tab.
-              // The counter is the part that makes waiting bearable: it says
-              // this is still moving, without claiming to know how long it
-              // takes — nothing here can know that.
-              <Alert data-testid="authority-trial-running" className="bg-accent/10">
-                <AlertTitle>{t("authority.trial.title")}</AlertTitle>
-                <AlertDescription>
-                  <p>{t("authority.trial.what")}</p>
-                  <p role="status">{t("authority.trial.elapsed", { seconds: elapsed })}</p>
-                </AlertDescription>
-              </Alert>
-            ))}
-          {trialElsewhere && !prepare.isPending && (
-            <Alert data-testid="authority-trial-elsewhere" className="bg-accent/10">
-              <AlertTitle>{t("authority.trial.title")}</AlertTitle>
-              <AlertDescription>{t("authority.trial.alreadyRunning")}</AlertDescription>
-            </Alert>
-          )}
-          {sample && !prepare.isPending && (
-            <Alert data-testid="authority-sample" className="bg-accent/10">
-              <AlertTitle>{t("authority.sample.title", { slug: sample.slug })}</AlertTitle>
-              <AlertDescription className="flex flex-col gap-3">
-                <p>{t("authority.sample.what", { slug: sample.slug })}</p>
-                <Field>
-                  <FieldLabel htmlFor="authority-sample-input">
-                    {t("authority.sample.label")}
-                  </FieldLabel>
-                  <Textarea
-                    id="authority-sample-input"
-                    data-testid="authority-sample-input"
-                    className="min-h-40 font-mono text-xs"
-                    value={sampleText}
-                    disabled={busy}
-                    aria-invalid={sampleInvalid || sampleRefused !== null}
-                    onChange={(event) => {
-                      setSampleText(event.target.value);
-                      setSampleInvalid(false);
-                    }}
-                  />
-                  {sampleInvalid && <FieldError>{t("authority.sample.invalid")}</FieldError>}
-                  {sampleRefused !== null && (
-                    <FieldError data-testid="authority-sample-refused">
-                      {t("authority.sample.schema", { detail: sampleRefused })}
-                    </FieldError>
-                  )}
-                </Field>
-                <Button
-                  className="w-fit"
-                  disabled={busy}
-                  data-testid="authority-sample-prepare"
-                  onClick={() => {
-                    let parsed: unknown;
-                    try {
-                      parsed = JSON.parse(sampleText);
-                    } catch {
-                      setSampleInvalid(true);
-                      return;
-                    }
-                    startReview(environment, sample.versionId, parsed);
-                  }}
-                >
-                  {t("authority.sample.prepare")}
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
-          {prepare.error && sampleRefused === null && (
-            <Alert variant="destructive">
-              <AlertTitle>{t("authority.loadFailed")}</AlertTitle>
-              <AlertDescription>{t("authority.retryDescription")}</AlertDescription>
-            </Alert>
-          )}
-          {review && (
-            <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-              {/* The version, where the caller can name it. The environment
-                  stands in the select above, and nowhere a second time. */}
-              {versionLabel ? (
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline" data-testid="authority-version-label">
-                    {versionLabel}
-                  </Badge>
-                </div>
-              ) : null}
-              {carriesOver ? (
-                <p className="text-sm font-medium" data-testid="authority-carry-over">
-                  {t("authority.carryOver.hint")}
-                </p>
-              ) : null}
-              {review && growthLine(t, review.boundary_growth) ? (
-                // Why the earlier approval did not carry over to this version.
-                <p className="text-sm font-medium" data-testid="authority-growth">
-                  {growthLine(t, review.boundary_growth)}
-                </p>
-              ) : null}
-              {input && (
-                <p className="text-sm">
-                  {t("authority.window")}
-                  {": "}
-                  {dateTime(input.valid_from)}
-                  {" — "}
-                  {input.valid_until === null
-                    ? t("authority.headline.untilRevoked")
-                    : dateTime(input.valid_until)}
-                </p>
-              )}
-              {hasEffectDetails ? (
-                <details
-                  open={!unsupported && !recurringReport && !recurringContent}
-                  data-testid="authority-effect-details"
-                >
-                  <summary className="cursor-pointer text-sm font-medium">
-                    {t("authority.effects")}
-                  </summary>
-                  <div className="mt-3 flex flex-col gap-3">
-                    <p className="text-sm text-muted-foreground">
-                      {t("authority.runNotRequestDescription")}
-                    </p>
-                    {review.manifest.effects.map((effect) => (
-                      <div key={effect.step_id} className="min-w-0 text-sm">
-                        {/* What happens and where it happens lead; the authored
-                            step id follows as provenance. It used to lead, and a
-                            reader deciding whether to approve was met with
-                            `fetch_route` — an identifier that answers a different
-                            question than the one they are being asked. Nothing is
-                            hidden and nothing is invented: every part of this was
-                            already on screen, in the wrong order. */}
-                        <p className="font-medium">
-                          {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-                          {" · "}
-                          {effect.connector_id
-                            ? (connectorNames.get(effect.connector_id) ??
-                              t("authority.configuredConnector"))
-                            : t("authority.directRequest")}
-                        </p>
-                        <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
-                        {effect.read_path && <p>{t("authority.readPath")}</p>}
-                        <p className="text-muted-foreground text-xs">
-                          {t("authority.issueStep", { step: effect.step_id })}
-                          {" · "}
-                          {effect.operation}
-                        </p>
-                      </div>
-                    ))}
-                    {review.execution_shape.requests.map((request) => (
-                      <details key={request.step_id}>
-                        <summary className="cursor-pointer text-sm font-medium">
-                          {t("authority.requestReview", { step: request.step_id })}
-                        </summary>
-                        <p className="my-2 text-sm">
-                          {t("authority.attempts", {
-                            count: request.retry_policy_max_attempts ?? t("common.unknown"),
-                          })}
-                        </p>
-                        <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap break-all">
-                          {request.redacted_request_json}
-                        </pre>
-                      </details>
-                    ))}
-                    {review.execution_shape.iterations.map((iteration) => (
-                      <p
-                        key={`${iteration.step_id}:${iteration.kind}`}
-                        className="break-words text-sm"
-                      >
-                        {t("authority.iteration", {
-                          step: iteration.step_id,
-                          children: iteration.body_step_ids.join(", "),
-                        })}
-                      </p>
-                    ))}
-                    <p className="text-sm text-muted-foreground">
-                      {t("authority.maskedDescription")}
-                    </p>
-                  </div>
-                </details>
-              ) : null}
-              {!input && boundsVisible && !invalidRuns && !invalidHours && (
-                <Alert>
-                  <AlertTitle>{t("authority.reviewExpired")}</AlertTitle>
-                  <AlertDescription>{t("authority.reviewExpiredHint")}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-          )}
-          {(grant.error || activateOnly.error) && (
-            <Alert variant="destructive">
-              <AlertTitle>
-                {t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")}
-              </AlertTitle>
-              <AlertDescription>
-                {t(
-                  sessionExpired
-                    ? "authority.sessionExpiredHint"
-                    : "authority.grantFailedDescription",
-                )}
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
-        {/* The row wraps: three long actions would otherwise push the first one
-            out of the dialog's box, where it cannot be pressed. */}
-        <DialogFooter className="shrink-0 sm:flex-wrap">
-          <Button
-            variant="outline"
-            disabled={submitting}
-            onClick={() => openDialog(false)}
-            data-testid="authority-grant-cancel"
-          >
-            {t("common.cancel")}
-          </Button>
+                            : grantConfirmKey(limit, runs),
+                { count: runs },
+              ),
+              pending: grant.isPending,
+              disabled: busy || !input || Boolean(grant.error),
+              testId: "authority-grant-confirm",
+            },
+            onSubmit: () => grant.mutate(undefined),
+          }
+        : {})}
+      actions={
+        <>
           {sessionExpired && (
-            <Button asChild data-testid="authority-sign-in">
+            <Button asChild>
               <a
                 data-testid="authority-sign-in"
                 href={`/v1/identity/cockpit-login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
@@ -1132,6 +664,7 @@ export function GrantWorkflowAuthority({
               (incomplete && !unsupported) ||
               (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
               <Button
+                type="button"
                 variant="outline"
                 disabled={busy}
                 onClick={() => {
@@ -1144,24 +677,25 @@ export function GrantWorkflowAuthority({
               </Button>
             )}
           {/* Two different decisions, and a reader must be able to make the
-              smaller one. Putting a repaired version into service is not the
-              same as permitting repeated unattended runs — a called child
-              needs only the first, and forcing them together would make
-              every activation buy a permission nobody asked for.
+                smaller one. Putting a repaired version into service is not the
+                same as permitting repeated unattended runs — a called child
+                needs only the first, and forcing them together would make
+                every activation buy a permission nobody asked for.
 
-              Which is why it sits OUTSIDE the branch below. It used to live in
-              the approvable half only, so a version with one step still
-              unbound could not be put into service at all — and a child whose
-              other steps the repair had just bound stayed on its old version
-              because of the one step nobody could bind. The engine never asked
-              for that: `activate-draft` checks that the reviewed digest still
-              matches and nothing else, and authorizes no run.
+                Which is why it sits OUTSIDE the branch below. It used to live in
+                the approvable half only, so a version with one step still
+                unbound could not be put into service at all — and a child whose
+                other steps the repair had just bound stayed on its old version
+                because of the one step nobody could bind. The engine never asked
+                for that: `activate-draft` checks that the reviewed digest still
+                matches and nothing else, and authorizes no run.
 
-              Not while the review is stale or the session is gone: the smaller
-              decision is still a decision, and offering it when it cannot be
-              carried out is offering a dead button. */}
+                Not while the review is stale or the session is gone: the smaller
+                decision is still a decision, and offering it when it cannot be
+                carried out is offering a dead button. */}
           {activation && review && !incomplete && !sessionExpired && !actionError && (
             <Button
+              type="button"
               variant={carriesOver ? "default" : "outline"}
               disabled={busy}
               onClick={() => activateOnly.mutate("nothing")}
@@ -1174,6 +708,7 @@ export function GrantWorkflowAuthority({
             <>
               {onAdjust ? (
                 <Button
+                  type="button"
                   variant={remedy ? "outline" : "default"}
                   onClick={() => {
                     setOpen(false);
@@ -1200,6 +735,7 @@ export function GrantWorkflowAuthority({
               )}
               {onSingleRun && !incomplete && (
                 <Button
+                  type="button"
                   disabled={busy || Boolean(activateOnly.error) || Boolean(incomplete)}
                   data-testid="authority-single-run"
                   onClick={() => {
@@ -1216,32 +752,522 @@ export function GrantWorkflowAuthority({
                 </Button>
               )}
             </>
-          ) : carriesOver ? null : (
+          ) : null}
+        </>
+      }
+    >
+      {reviewContent}
+      <GrantScopeWarnings warnings={scopeWarnings} />
+      {recurringContent &&
+        publications.map((publication, index) => (
+          <Notice key={index} testId="authority-content-boundary">
+            <NoticeTitle>
+              {t("authority.content.members", {
+                count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
+              })}
+            </NoticeTitle>
+            <div className="flex flex-col gap-1">
+              <p>{publication.origin}</p>
+              <ul>
+                {publication.sources.flatMap((source) =>
+                  source.item_ids.flatMap((id) => {
+                    const label = review?.content_items?.find((item) => item.id === id)?.label;
+                    return label ? [<li key={id}>{label}</li>] : [];
+                  }),
+                )}
+              </ul>
+              <p>{t("authority.content.scope")}</p>
+              <details>
+                <summary>{t("authority.content.targets")}</summary>
+                <ul>
+                  {publication.sources.flatMap((source) =>
+                    source.item_ids.map((id) => (
+                      <li
+                        key={id}
+                        className="break-all"
+                      >{`${publication.origin}/v1/content/${id}`}</li>
+                    )),
+                  )}
+                </ul>
+                <p className="break-all">{`${publication.origin}/v1/sites/${publication.site_id}`}</p>
+              </details>
+              {review?.schedules?.map((schedule, scheduleIndex) => (
+                <p key={scheduleIndex}>
+                  {t("authority.report.next", {
+                    time: schedule.next_run_at
+                      ? new Intl.DateTimeFormat(locale, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                          timeZone: schedule.timezone,
+                        }).format(new Date(schedule.next_run_at))
+                      : t("common.unknown"),
+                    zone: schedule.timezone,
+                  })}
+                </p>
+              ))}
+            </div>
+          </Notice>
+        ))}
+      {callGroups.map((group) =>
+        group.step_id === null ? (
+          <BoundaryPanels key="own" effects={group.effects} />
+        ) : (
+          <section
+            key={effectKey([group.step_id], "$call")}
+            className="flex flex-col gap-4 rounded-md border border-border/60 p-3"
+            data-testid="authority-call-section"
+          >
+            <p className="font-medium">
+              {t("authority.call.title", {
+                step: group.step_id,
+                name: group.workflow_name ?? t("common.unknown"),
+                version: group.version ?? t("common.unknown"),
+              })}
+            </p>
+            <p className="text-muted-foreground text-sm">{t("authority.call.scope")}</p>
+            <BoundaryPanels effects={group.effects} />
+          </section>
+        ),
+      )}
+      {recurringReport && (
+        <Notice testId="authority-report-boundary">
+          <NoticeTitle>{t("authority.report.recipients")}</NoticeTitle>
+          <div className="flex flex-col gap-1">
+            {deliveries.map((delivery, index) => (
+              <p key={`${delivery.to}:${index}`}>
+                {t("authority.report.delivery", { from: delivery.from, to: delivery.to })}
+              </p>
+            ))}
+            <p>{t("authority.report.variable")}</p>
+            {review?.schedules?.map((schedule, index) => (
+              <p key={index}>
+                {t("authority.report.next", {
+                  time: schedule.next_run_at
+                    ? new Intl.DateTimeFormat(locale, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone: schedule.timezone,
+                      }).format(new Date(schedule.next_run_at))
+                    : t("common.unknown"),
+                  zone: schedule.timezone,
+                })}
+              </p>
+            ))}
+          </div>
+        </Notice>
+      )}
+      {/* The reasons, wherever the version cannot be approved — not only on
+          the surface that has no approve button. A reviewer who cannot see
+          why is being asked to judge something they cannot see. */}
+      {unsupported && issues.length > 0 && (
+        <Notice testId="authority-issues">
+          <NoticeTitle>{t("authority.issuesTitle")}</NoticeTitle>
+          <div className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-2">
+              {issues.map((issue) => (
+                <li key={issue.key}>
+                  <span className="font-medium">
+                    {issue.call_step_id
+                      ? t("authority.issueInCall", {
+                          step: issue.step_id,
+                          call: issue.call_step_id,
+                        })
+                      : t("authority.issueStep", { step: issue.step_id })}
+                  </span>
+                  <br />
+                  {/* The engine's own reason when it gave one, and the
+                      blanket code only when it did not. Showing both would
+                      print two different statements about the same step —
+                      one of which says the target is unbounded for a step
+                      whose address is a constant. */}
+                  {t(issue.reasonKey ?? issue.messageKey)}
+                  {issue.evidence && (
+                    <>
+                      <br />
+                      <span className="break-all font-mono text-xs">
+                        {t("authority.issueEvidence", {
+                          declared: issue.evidence.declared_prefix,
+                          observed: issue.evidence.observed_key,
+                        })}
+                      </span>
+                    </>
+                  )}
+                </li>
+              ))}
+              {(review?.unavailable_steps ?? []).map((step) => (
+                <li key={`unavailable:${step}`}>{t("authority.issueUnavailable", { step })}</li>
+              ))}
+            </ul>
+          </div>
+        </Notice>
+      )}
+      {unsupported && issues.length === 0 && !onSingleRun && (
+        <Notice testId="authority-needs-adjustment">
+          <NoticeTitle>{t("schedules.held.status")}</NoticeTitle>
+          <div className="flex flex-col gap-1">
+            {t("authority.unsupportedSteps", {
+              steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
+            })}
+          </div>
+        </Notice>
+      )}
+      {/* The refusal used to end at "investigate the cause in the chat" — a
+          technical question handed to the one person who cannot answer it.
+          SubKit has read what these steps really did; this is it saying so
+          and offering to write it down. Approving stays a human act. */}
+      {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
+        <Notice testId="authority-repair">
+          <NoticeTitle>{t("authority.repairTitle")}</NoticeTitle>
+          <div className="flex flex-col items-start gap-3">
+            <p>
+              {t("authority.repairDescription", {
+                count: String(repairable.data?.proposals?.length ?? 0),
+              })}
+            </p>
+            {(repairable.data?.unproposable?.length ?? 0) > 0 && (
+              <p data-testid="authority-repair-remaining">
+                {t("authority.repairNone", {
+                  steps: (repairable.data?.unproposable ?? [])
+                    .map((entry) => entry.step_id)
+                    .join(", "),
+                })}
+              </p>
+            )}
+            {repair.error && (
+              <p data-testid="authority-repair-failed">{t("authority.repairFailed")}</p>
+            )}
+            {repair.isSuccess && (
+              <p data-testid="authority-repair-done">
+                {t("authority.repairDone", {
+                  count: String(repair.data?.applied_step_ids?.length ?? 0),
+                })}
+              </p>
+            )}
             <Button
-              disabled={busy || !input || Boolean(grant.error)}
-              onClick={() => grant.mutate()}
-              data-testid="authority-grant-confirm"
+              type="button"
+              size="sm"
+              disabled={busy || repair.isPending}
+              onClick={() => repair.mutate()}
+              data-testid="authority-repair-apply"
             >
-              {t(
-                grant.isPending
-                  ? "authority.granting"
-                  : existing
-                    ? "authority.existing.confirm"
-                    : recurringContent
-                      ? "authority.content.confirm"
-                      : recurringReport
-                        ? "authority.report.confirm"
-                        : activation
-                          ? "chat.activation.confirm"
-                          : onGrant
-                            ? "decisions.applyAndAuthorize"
-                            : grantConfirmKey(limit, runs),
-                { count: runs },
-              )}
+              {t(repair.isPending ? "authority.repairWorking" : "authority.repairAction")}
             </Button>
+          </div>
+        </Notice>
+      )}
+      {incomplete && !unsupported && (
+        <Notice testId="authority-incomplete">
+          <NoticeTitle>{t("authority.incompleteTitle")}</NoticeTitle>
+          <div className="flex flex-col gap-1">{t("authority.incompleteDescription")}</div>
+        </Notice>
+      )}
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="authority-environment">{t("authority.environment")}</FieldLabel>
+          <Select
+            value={environment}
+            disabled={busy}
+            onValueChange={(value) => {
+              if (value !== "dev" && value !== "prod") return;
+              setEnvironment(value);
+              grant.reset();
+              startReview(value);
+            }}
+          >
+            <SelectTrigger id="authority-environment" data-testid="authority-environment">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="dev" data-testid="authority-environment-dev">
+                  {t("authority.development")}
+                </SelectItem>
+                <SelectItem value="prod" data-testid="authority-environment-prod">
+                  {t("authority.production")}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        {boundsVisible && (
+          <Field>
+            <FieldLabel>{t("authority.limit.label")}</FieldLabel>
+            <SegmentedControl
+              label={t("authority.limit.label")}
+              value={limit}
+              onValueChange={(next) => {
+                if (!busy && (next === "until_revoked" || next === "limited")) setLimit(next);
+              }}
+              testId="authority-limit"
+              options={[
+                {
+                  value: "until_revoked",
+                  label: t("authority.limit.untilRevoked"),
+                  testId: "authority-limit-until-revoked",
+                },
+                {
+                  value: "limited",
+                  label: t("authority.limit.limited"),
+                  testId: "authority-limit-limited",
+                },
+              ]}
+            />
+            <p className="text-sm text-muted-foreground" data-testid="authority-limit-hint">
+              {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
+            </p>
+          </Field>
+        )}
+        {boundsVisible && limited && (
+          <>
+            <Field data-invalid={invalidRuns}>
+              <FieldLabel htmlFor="authority-runs">{t("authority.runs")}</FieldLabel>
+              <Input
+                id="authority-runs"
+                data-testid="authority-runs"
+                type="number"
+                min={1}
+                max={10000}
+                step={1}
+                value={runs}
+                disabled={busy}
+                aria-invalid={invalidRuns}
+                onChange={(event) => setRuns(event.target.value)}
+              />
+              {invalidRuns && <FieldError>{t("authority.runsError")}</FieldError>}
+            </Field>
+            <Field data-invalid={invalidHours}>
+              <FieldLabel htmlFor="authority-hours">{t("authority.hours")}</FieldLabel>
+              <Input
+                id="authority-hours"
+                data-testid="authority-hours"
+                type="number"
+                min={1}
+                max={744}
+                step={1}
+                value={hours}
+                disabled={busy}
+                aria-invalid={invalidHours}
+                onChange={(event) => setHours(event.target.value)}
+              />
+              {invalidHours && <FieldError>{t("authority.hoursError")}</FieldError>}
+            </Field>
+            {review && <GrantSuggestionNote review={review} />}
+          </>
+        )}
+      </FieldGroup>
+      {prepare.isPending &&
+        (trialStartedAt === null ? (
+          <p role="status">{t("common.loading")}</p>
+        ) : (
+          // Six minutes of "loading" is what sent people to a second tab.
+          // The counter is the part that makes waiting bearable: it says
+          // this is still moving, without claiming to know how long it
+          // takes — nothing here can know that.
+          <Notice testId="authority-trial-running">
+            <NoticeTitle>{t("authority.trial.title")}</NoticeTitle>
+            <div className="flex flex-col gap-1">
+              <p>{t("authority.trial.what")}</p>
+              <p role="status">{t("authority.trial.elapsed", { seconds: elapsed })}</p>
+            </div>
+          </Notice>
+        ))}
+      {trialElsewhere && !prepare.isPending && (
+        <Notice testId="authority-trial-elsewhere">
+          <NoticeTitle>{t("authority.trial.title")}</NoticeTitle>
+          <div className="flex flex-col gap-1">{t("authority.trial.alreadyRunning")}</div>
+        </Notice>
+      )}
+      {sample && !prepare.isPending && (
+        <Notice testId="authority-sample">
+          <NoticeTitle>{t("authority.sample.title", { slug: sample.slug })}</NoticeTitle>
+          <div className="flex flex-col gap-3">
+            <p>{t("authority.sample.what", { slug: sample.slug })}</p>
+            <Field>
+              <FieldLabel htmlFor="authority-sample-input">
+                {t("authority.sample.label")}
+              </FieldLabel>
+              <Textarea
+                id="authority-sample-input"
+                data-testid="authority-sample-input"
+                className="min-h-40 font-mono text-xs"
+                value={sampleText}
+                disabled={busy}
+                aria-invalid={sampleInvalid || sampleRefused !== null}
+                onChange={(event) => {
+                  setSampleText(event.target.value);
+                  setSampleInvalid(false);
+                }}
+              />
+              {sampleInvalid && <FieldError>{t("authority.sample.invalid")}</FieldError>}
+              {sampleRefused !== null && (
+                <FieldError data-testid="authority-sample-refused">
+                  {t("authority.sample.schema", { detail: sampleRefused })}
+                </FieldError>
+              )}
+            </Field>
+            <Button
+              type="button"
+              className="w-fit"
+              disabled={busy}
+              data-testid="authority-sample-prepare"
+              onClick={() => {
+                let parsed: unknown;
+                try {
+                  parsed = JSON.parse(sampleText);
+                } catch {
+                  setSampleInvalid(true);
+                  return;
+                }
+                startReview(environment, sample.versionId, parsed);
+              }}
+            >
+              {t("authority.sample.prepare")}
+            </Button>
+          </div>
+        </Notice>
+      )}
+      {prepare.error && sampleRefused === null && (
+        <Notice tone="error">
+          <NoticeTitle>{t("authority.loadFailed")}</NoticeTitle>
+          <div className="flex flex-col gap-1">{t("authority.retryDescription")}</div>
+        </Notice>
+      )}
+      {review && (
+        <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
+          {/* The version, where the caller can name it. The environment
+              stands in the select above, and nowhere a second time. */}
+          {versionLabel ? (
+            <div className="flex flex-wrap gap-2">
+              <span
+                className="rounded-md border px-2 py-0.5 text-xs font-medium"
+                data-testid="authority-version-label"
+              >
+                {versionLabel}
+              </span>
+            </div>
+          ) : null}
+          {carriesOver ? (
+            <p className="text-sm font-medium" data-testid="authority-carry-over">
+              {t("authority.carryOver.hint")}
+            </p>
+          ) : null}
+          {review && growthLine(t, review.boundary_growth) ? (
+            // Why the earlier approval did not carry over to this version.
+            <p className="text-sm font-medium" data-testid="authority-growth">
+              {growthLine(t, review.boundary_growth)}
+            </p>
+          ) : null}
+          {input && (
+            <p className="text-sm">
+              {t("authority.window")}
+              {": "}
+              {dateTime(input.valid_from)}
+              {" — "}
+              {input.valid_until === null
+                ? t("authority.headline.untilRevoked")
+                : dateTime(input.valid_until)}
+            </p>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          {hasEffectDetails ? (
+            <details
+              open={!unsupported && !recurringReport && !recurringContent}
+              data-testid="authority-effect-details"
+            >
+              <summary className="cursor-pointer text-sm font-medium">
+                {t("authority.effects")}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("authority.runNotRequestDescription")}
+                </p>
+                {review.manifest.effects.map((effect) => (
+                  <div key={effect.step_id} className="min-w-0 text-sm">
+                    {/* What happens and where it happens lead; the authored
+                        step id follows as provenance. It used to lead, and a
+                        reader deciding whether to approve was met with
+                        `fetch_route` — an identifier that answers a different
+                        question than the one they are being asked. Nothing is
+                        hidden and nothing is invented: every part of this was
+                        already on screen, in the wrong order. */}
+                    <p className="font-medium">
+                      {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
+                      {" · "}
+                      {effect.connector_id
+                        ? (connectorNames.get(effect.connector_id) ??
+                          t("authority.configuredConnector"))
+                        : t("authority.directRequest")}
+                    </p>
+                    <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                    {effect.read_path && <p>{t("authority.readPath")}</p>}
+                    <p className="text-muted-foreground text-xs">
+                      {t("authority.issueStep", { step: effect.step_id })}
+                      {" · "}
+                      {effect.operation}
+                    </p>
+                  </div>
+                ))}
+                {review.execution_shape.requests.map((request) => (
+                  <details key={request.step_id}>
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {t("authority.requestReview", { step: request.step_id })}
+                    </summary>
+                    <p className="my-2 text-sm">
+                      {t("authority.attempts", {
+                        count: request.retry_policy_max_attempts ?? t("common.unknown"),
+                      })}
+                    </p>
+                    <CodeBlock code={request.redacted_request_json} lang="json" />
+                  </details>
+                ))}
+                {review.execution_shape.iterations.map((iteration) => (
+                  <p key={`${iteration.step_id}:${iteration.kind}`} className="break-words text-sm">
+                    {t("authority.iteration", {
+                      step: iteration.step_id,
+                      children: iteration.body_step_ids.join(", "),
+                    })}
+                  </p>
+                ))}
+                <p className="text-sm text-muted-foreground">{t("authority.maskedDescription")}</p>
+              </div>
+            </details>
+          ) : null}
+          {!input && boundsVisible && !invalidRuns && !invalidHours && (
+            <Notice>
+              <NoticeTitle>{t("authority.reviewExpired")}</NoticeTitle>
+              <div className="flex flex-col gap-1">{t("authority.reviewExpiredHint")}</div>
+            </Notice>
+          )}
+        </div>
+      )}
+    </FormDialog>
   );
+}
+
+/** One block of the review: a title and what it says. */
+function Notice({
+  testId,
+  tone,
+  children,
+}: {
+  testId?: string;
+  tone?: "error";
+  children: ReactNode;
+}) {
+  return (
+    <section
+      role={tone === "error" ? "alert" : undefined}
+      className={
+        tone === "error"
+          ? "flex flex-col gap-1 rounded-lg border border-destructive/40 p-3 text-sm text-destructive"
+          : "flex flex-col gap-1 rounded-lg border bg-accent/10 p-3 text-sm"
+      }
+      data-testid={testId}
+    >
+      {children}
+    </section>
+  );
+}
+
+function NoticeTitle({ children }: { children: ReactNode }) {
+  return <p className="font-medium">{children}</p>;
 }

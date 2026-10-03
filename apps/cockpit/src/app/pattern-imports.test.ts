@@ -71,17 +71,15 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/fenced-block.tsx": ["pre"],
   "components/cockpit/grant-boundary-panels.tsx": ["ui-import"],
   "components/cockpit/grant-notices.tsx": ["ui-import"],
-  "components/cockpit/grant-workflow-authority.tsx": ["ui-import", "pre", "max-w"],
   "components/cockpit/icon-button.tsx": ["ui-import"],
   "components/cockpit/inbound-hook-review-card.tsx": ["ui-import", "heading"],
-  "components/cockpit/metadata-dialog.tsx": ["ui-import"],
   "components/cockpit/run-workflow-dialog.tsx": ["ui-import"],
   "components/cockpit/schedule-review-card.tsx": ["ui-import", "heading"],
   "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
-const CEILING = 18;
+const CEILING = 16;
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {

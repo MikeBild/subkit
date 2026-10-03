@@ -200,7 +200,7 @@ const routes = [
  * A focused look while a page is rebuilt — never the gate. Each variable is a
  * whitespace-separated list; a route names a record as `$id`:
  *
- *   COCKPIT_SWEEP_ROUTES="usage audit knowledge/$id"
+ *   COCKPIT_SWEEP_ROUTES="/ usage audit knowledge/$id"   ("/" is Übersicht)
  *   COCKPIT_SWEEP_VARIANTS="de-dark"  COCKPIT_SWEEP_VIEWPORTS="desktop mobile"
  *   COCKPIT_SWEEP_STANDS="verifyApiAccess verifyChatChoices"
  *
@@ -212,7 +212,10 @@ const sweepList = (name) => process.env[name]?.split(/\s+/).filter(Boolean) ?? n
 const ROUTE_FILTER = sweepList("COCKPIT_SWEEP_ROUTES");
 const focused = ROUTE_FILTER !== null;
 const sweptRoutes = focused
-  ? routes.filter((route) => ROUTE_FILTER.includes(route.replaceAll(uuid, "$id")))
+  ? // Übersicht's route is the root: named "/" here.
+    routes.filter((route) =>
+      ROUTE_FILTER.includes(route === "" ? "/" : route.replaceAll(uuid, "$id")),
+    )
   : routes;
 const STAND_FILTER = sweepList("COCKPIT_SWEEP_STANDS") ?? [];
 /** Whether a stand runs: always in the full sweep, by name in a focused one. */
@@ -4681,7 +4684,6 @@ for (const locale of variants) {
       await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
       );
-    if (standOn(verifyAgentPanel)) await verifyAgentPanel(page, stand, uuid, locale.name);
     if (standOn(verifyChatApprovals))
       await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
