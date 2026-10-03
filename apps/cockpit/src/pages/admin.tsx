@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { RowData } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { type PeopleSection, peopleHref, peopleSectionFromUrl } from "@/app/links";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { useDirtyGuard } from "@/app/version-notice";
 import {
   ActionMenu,
   Button,
@@ -21,6 +22,7 @@ import {
   Field,
   FieldDescription,
   FieldLabel,
+  FilterBar,
   FormDialog,
   Input,
   Page,
@@ -35,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
   StatusBadge,
+  SummaryLine,
   Textarea,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -126,16 +129,20 @@ const fetchGroups = () => apiRequest<Envelope<GroupItem>>("/v1/rbac/groups");
 const fetchGrants = () => apiRequest<Envelope<GrantItem>>("/v1/rbac/grants");
 
 function usePeople(enabled = true) {
-  return useQuery({ queryKey: ["admin", "people"], queryFn: fetchPeople, enabled });
+  const live = useLiveQueryOptions();
+  return useQuery({ queryKey: ["admin", "people"], queryFn: fetchPeople, enabled, ...live });
 }
 function useRoles(enabled = true) {
-  return useQuery({ queryKey: ["admin", "roles"], queryFn: fetchRoles, enabled });
+  const live = useLiveQueryOptions();
+  return useQuery({ queryKey: ["admin", "roles"], queryFn: fetchRoles, enabled, ...live });
 }
 function useGroups(enabled = true) {
-  return useQuery({ queryKey: ["admin", "groups"], queryFn: fetchGroups, enabled });
+  const live = useLiveQueryOptions();
+  return useQuery({ queryKey: ["admin", "groups"], queryFn: fetchGroups, enabled, ...live });
 }
 function useGrants(enabled = true) {
-  return useQuery({ queryKey: ["admin", "grants"], queryFn: fetchGrants, enabled });
+  const live = useLiveQueryOptions();
+  return useQuery({ queryKey: ["admin", "grants"], queryFn: fetchGrants, enabled, ...live });
 }
 function useRoleDetail(role: RoleItem | null) {
   return useQuery({
@@ -174,6 +181,7 @@ function SectionList<T>({
   query,
   emptyLine,
   emptyAction,
+  summary,
   children,
 }: {
   /** `people` → `people-loading`, `people-load-failed`, `people-empty`. */
@@ -182,6 +190,8 @@ function SectionList<T>({
   query: Parameters<typeof queryView<Envelope<T>>>[0] & { refetch(): unknown };
   emptyLine: string;
   emptyAction?: ReactNode;
+  /** The count the list opens with; an empty list has none (it says so instead). */
+  summary?: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -200,7 +210,13 @@ function SectionList<T>({
     return (
       <DataState state="empty" line={emptyLine} action={emptyAction} testId={`${name}-empty`} />
     );
-  return children;
+  if (!summary) return children;
+  return (
+    <div className="flex flex-col gap-3">
+      <SummaryLine text={summary} testId={`${name}-summary`} />
+      {children}
+    </div>
+  );
 }
 
 /** The section's table: every row opens its record in a sheet. */
@@ -209,11 +225,18 @@ function AdminTable<T extends RowData>({
   columns,
   data,
   onOpen,
+  toolbar,
+  filtered = false,
+  onReset,
 }: {
   collectionId: string;
   columns: CockpitColumn<T>[];
   data: T[];
   onOpen(row: T): void;
+  toolbar?: ReactNode;
+  /** True while the toolbar narrows the rows. */
+  filtered?: boolean;
+  onReset?(): void;
 }) {
   const { t } = useI18n();
   return (
@@ -223,22 +246,21 @@ function AdminTable<T extends RowData>({
       columns={columns}
       data={data}
       onOpen={onOpen}
+      toolbar={toolbar}
       emptyState={{
         zero: { title: "" },
-        filtered: { title: "", description: "", resetLabel: "", onReset: () => {} },
+        filtered: {
+          title: t("resource.noMatches"),
+          description: t("resource.broaderSearch"),
+          resetLabel: t("catalog.clearFilters"),
+          onReset: onReset ?? (() => {}),
+        },
       }}
-      hasActiveFilters={false}
+      hasActiveFilters={filtered}
       sorting={[]}
       onSortingChange={() => {}}
-      page={0}
-      pageSize={Math.max(data.length, 1)}
-      total={data.length}
-      onPageChange={() => {}}
-      previousLabel={t("catalog.previous")}
-      nextLabel={t("catalog.next")}
       columnsLabel={t("catalog.columns")}
       recordsLabel={t("catalog.records")}
-      loadedLabel={t("catalog.loaded", { count: data.length })}
       actionsLabel={t("common.actions")}
     />
   );
@@ -516,6 +538,8 @@ function PersonSheet({
     ? builtinRoleDescription(user.effective_role, role?.description ?? null, t)
     : null;
   const changed = user && picked && picked !== user.effective_role ? picked : null;
+  // An unsaved role choice is kept from a reload the new-version notice offers.
+  useDirtyGuard(Boolean(changed));
   const drifted = Boolean(user && !user.role_consistent && isPersonRole(user.effective_role));
   const menu = canWrite
     ? [
@@ -550,17 +574,6 @@ function PersonSheet({
         onOpenChange={(open) => !open && close()}
         title={<span className="break-all">{user?.email}</span>}
         badge={user ? <StatusBadge state={user.status} /> : null}
-        action={
-          changed && user ? (
-            <Button
-              disabled={update.isPending}
-              onClick={() => update.mutate({ target: user, to: changed })}
-              data-testid="people-role-save"
-            >
-              {t("common.save")}
-            </Button>
-          ) : null
-        }
         menu={menu.length > 0 ? <ActionMenu items={menu} testId="people-sheet-menu" /> : null}
         testId="people-sheet"
         closeTestId="people-sheet-close"
@@ -642,6 +655,31 @@ function PersonSheet({
             )}
           </p>
         </Section>
+        {user && changed ? (
+          // The save bar stands only while there is something to save (R13).
+          <div
+            className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-2 border-t bg-background px-4 py-3 text-sm"
+            data-slot="save-bar"
+            data-testid="people-save-bar"
+          >
+            <span className="min-w-0 flex-1">{t("people.unsaved")}</span>
+            <Button
+              variant="ghost"
+              disabled={update.isPending}
+              onClick={() => setPicked(null)}
+              data-testid="people-role-discard"
+            >
+              {t("people.discard")}
+            </Button>
+            <Button
+              pending={update.isPending}
+              onClick={() => update.mutate({ target: user, to: changed })}
+              data-testid="people-role-save"
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        ) : null}
       </RecordSheet>
       <ConfirmDialog
         open={confirm === "deactivate"}
@@ -705,8 +743,18 @@ function PeopleTab({ action }: { action: ReactNode }) {
   const roles = useRoles(session.permissions.includes("rbac:read"));
   const roleItems = roles.data?.items;
   const [openedId, setOpenedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
   const items = query.data?.items ?? [];
   const opened = items.find((item) => item.id === openedId) ?? null;
+  const invited = items.filter((item) => item.status === "invited").length;
+  const needle = search.trim().toLowerCase();
+  const shown = items.filter(
+    (item) =>
+      (roleFilter === "all" || item.effective_role === roleFilter) &&
+      (!needle || item.email.toLowerCase().includes(needle)),
+  );
+  const roleOptions = [...new Set(items.map((item) => item.effective_role))];
   const columns = useMemo<CockpitColumn<UserItem>[]>(() => {
     const column = tableColumns<UserItem>({ t, dateTime });
     return [
@@ -758,12 +806,49 @@ function PeopleTab({ action }: { action: ReactNode }) {
         query={query}
         emptyLine={t("resource.people.empty")}
         emptyAction={action}
+        summary={
+          invited > 0
+            ? t("people.summaryInvited", { count: items.length, invited })
+            : t(items.length === 1 ? "people.summary.one" : "people.summary", {
+                count: items.length,
+              })
+        }
       >
         <AdminTable
           collectionId="people-list"
           columns={columns}
-          data={items}
+          data={shown}
           onOpen={(row) => setOpenedId(row.id)}
+          filtered={Boolean(needle) || roleFilter !== "all"}
+          onReset={() => {
+            setSearch("");
+            setRoleFilter("all");
+          }}
+          toolbar={
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: t("people.search"),
+                testId: "people-search",
+              }}
+              selects={[
+                {
+                  value: roleFilter,
+                  onChange: setRoleFilter,
+                  label: t("people.role"),
+                  testId: "people-role-filter",
+                  options: [
+                    { value: "all", label: t("people.allRoles") },
+                    ...roleOptions.map((name) => ({
+                      value: name,
+                      label: roleName(name, roleItems, t).text,
+                    })),
+                  ],
+                },
+              ]}
+            />
+          }
         />
       </SectionList>
       <PersonSheet user={opened} roles={roleItems} onClose={() => setOpenedId(null)} />
@@ -987,6 +1072,9 @@ function RolesTab({ action }: { action: ReactNode }) {
         query={query}
         emptyLine={t("access.noRoles")}
         emptyAction={action}
+        summary={t(items.length === 1 ? "access.rolesSummary.one" : "access.rolesSummary", {
+          count: items.length,
+        })}
       >
         <AdminTable
           collectionId="roles-list"
@@ -1167,6 +1255,9 @@ function GroupsTab({ action }: { action: ReactNode }) {
         query={query}
         emptyLine={t("access.noGroups")}
         emptyAction={action}
+        summary={t(items.length === 1 ? "access.groupsSummary.one" : "access.groupsSummary", {
+          count: items.length,
+        })}
       >
         <AdminTable
           collectionId="groups-list"
@@ -1377,6 +1468,9 @@ function GrantsTab({ action }: { action: ReactNode }) {
         query={query}
         emptyLine={t("access.noGrants")}
         emptyAction={action}
+        summary={t(items.length === 1 ? "access.grantsSummary.one" : "access.grantsSummary", {
+          count: items.length,
+        })}
       >
         <AdminTable
           collectionId="grants-list"
@@ -1634,7 +1728,6 @@ export function PeopleAndAccessPage() {
     if (!can(spec.permission)) return null;
     return (
       <Button onClick={() => setCreating(value)} data-testid={spec.testId}>
-        <Plus data-icon="inline-start" />
         {t(spec.label)}
       </Button>
     );
