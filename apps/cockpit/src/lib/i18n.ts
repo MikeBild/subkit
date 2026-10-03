@@ -665,13 +665,13 @@ const EN = {
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} is waiting for your answer",
   "overview.reason.execution_authority_required":
-    "{subject} is stopped: its schedule waits for an approval",
-  "overview.reason.execution_authority_unavailable":
     "{subject} is stopped: its schedule cannot be approved without a change to the workflow",
+  "overview.reason.execution_authority_unavailable":
+    "{subject} is stopped: its schedule waits for an approval",
   "overview.reason.execution_authority_requiredHook":
-    "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
-  "overview.reason.execution_authority_unavailableHook":
     "{subject} is stopped: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
   "overview.reason.version_awaiting_approval":
     "{subject} has a new version {version} waiting for approval — the next scheduled start will be refused otherwise",
   "overview.reason.version_awaiting_approvalHook":
@@ -2677,7 +2677,7 @@ const EN = {
   "audit.reason.circuitOpen": "Delivery suspended after repeated failures",
   "audit.reason.operatorRejected": "Declined by a person",
   "audit.reason.authorityRequired": "Needs an approval to run",
-  "audit.reason.authorityUnavailable": "Approval could not be checked",
+  "audit.reason.authorityUnavailable": "No approval with runs left",
   "audit.reason.refreshReplayed": "Refresh token used twice",
   "audit.reason.manualReissue": "Issued again by hand",
   "audit.reason.clientRetired": "Application retired for disuse",
@@ -3958,13 +3958,13 @@ const DE: Record<TranslationKey, string> = {
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} wartet auf deine Antwort",
   "overview.reason.execution_authority_required":
-    "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
-  "overview.reason.execution_authority_unavailable":
     "{subject} ist angehalten: sein Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.execution_authority_unavailable":
+    "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
   "overview.reason.execution_authority_requiredHook":
-    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
-  "overview.reason.execution_authority_unavailableHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
   "overview.reason.version_awaiting_approval":
     "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
   "overview.reason.version_awaiting_approvalHook":
@@ -6020,7 +6020,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.reason.circuitOpen": "Zustellung nach wiederholten Fehlern ausgesetzt",
   "audit.reason.operatorRejected": "Von einer Person abgelehnt",
   "audit.reason.authorityRequired": "Braucht eine Freigabe zum Ausführen",
-  "audit.reason.authorityUnavailable": "Freigabe war nicht prüfbar",
+  "audit.reason.authorityUnavailable": "Keine Freigabe mit verbleibenden Läufen",
   "audit.reason.refreshReplayed": "Aktualisierungs-Token doppelt verwendet",
   "audit.reason.manualReissue": "Von Hand neu ausgestellt",
   "audit.reason.clientRetired": "Anwendung wegen Nichtnutzung stillgelegt",

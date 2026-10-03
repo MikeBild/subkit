@@ -117,6 +117,26 @@ describe("the sentence", () => {
     }
   });
 
+  test("a hold says what lifts it: a missing approval, or a change to the workflow", () => {
+    // `unavailable` is the gate finding no approval with runs left: a grant
+    // lifts it. `required` is a version no approval may cover: only a change does.
+    const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
+      item({ reason, class: "stopped", severity: "critical", trigger });
+    for (const trigger of [
+      { kind: "inbound_hook" as const, name: "findings-inbox" },
+      { kind: "schedule" as const, name: null },
+    ]) {
+      const waits = attentionSentence(held("execution_authority_unavailable", trigger), de, NOW);
+      expect(waits.lead).toContain("Freigabe");
+      expect(waits.lead).not.toContain("ohne Änderung");
+      const blocked = attentionSentence(held("execution_authority_required", trigger), de, NOW);
+      expect(blocked.lead).toContain("ohne Änderung am Workflow nicht freigeben");
+      expect(
+        attentionSentence(held("execution_authority_unavailable", trigger), en, NOW).lead,
+      ).not.toContain("without a change");
+    }
+  });
+
   test("a version waiting for approval is said before anything is refused", () => {
     const waiting = (trigger: AttentionItem["trigger"]) =>
       item({
