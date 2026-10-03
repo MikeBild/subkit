@@ -1,50 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowUp,
-  CheckCircle2,
-  Copy,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, auditHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { Page, PageHeader, PageTabs } from "@/components/cockpit/patterns";
-import { PreparedChanges } from "@/components/cockpit/prepared-changes";
-import { LoadFailed, queryView } from "@/components/failure-state";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import {
+  Button,
+  ConfirmDialog,
+  ContextHelp,
+  DataState,
+  FilterBar,
+  Input,
+  Page,
+  PageHeader,
+  PageTabs,
+  Section,
+  SegmentedControl,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+  Spinner,
+  Switch,
+  useCopy,
+} from "@/components/cockpit/patterns";
+import { PreparedChanges } from "@/components/cockpit/prepared-changes";
+import { LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
@@ -167,6 +152,8 @@ function AuthProvidersEditor({
   onChange: (value: AuthProviderSetting[]) => void;
 }) {
   const { t } = useI18n();
+  const [removing, setRemoving] = useState<number | null>(null);
+  const removingProvider = removing === null ? null : value[removing];
   const callbackUrl = useMemo(() => {
     try {
       return new URL("/v1/identity/login/callback", publicBaseUrl).toString();
@@ -190,9 +177,16 @@ function AuthProvidersEditor({
   return (
     <div className="grid gap-3" data-testid="settings-auth-providers">
       <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
-        <p className="text-xs font-medium">{t("settings.auth.callbackUrl")}</p>
+        <p className="flex items-center gap-1 text-xs font-medium">
+          {t("settings.auth.callbackUrl")}
+          <ContextHelp
+            label={`${t("pattern.help")}: ${t("settings.auth.callbackUrl")}`}
+            testId="settings-auth-public-client"
+          >
+            {t("settings.auth.publicClientHint")}
+          </ContextHelp>
+        </p>
         <code className="mt-1 block break-all text-xs text-muted-foreground">{callbackUrl}</code>
-        <p className="mt-2 text-xs text-muted-foreground">{t("settings.auth.publicClientHint")}</p>
       </div>
       {value.map((provider, index) => (
         <div
@@ -228,32 +222,14 @@ function AuthProvidersEditor({
               >
                 <ArrowDown />
               </IconButton>
-              <ConfirmAction
-                title={t("settings.auth.removeTitle", {
-                  provider: provider.label || t("settings.auth.unnamedProvider"),
-                })}
-                consequence={
-                  <>
-                    <p>{t("settings.auth.removeConsequence")}</p>
-                    <p>{t("settings.auth.removeLockout")}</p>
-                  </>
-                }
-                confirmLabel={t("settings.auth.remove")}
-                tone="destructive"
-                onConfirm={() =>
-                  onChange(value.filter((_, currentIndex) => currentIndex !== index))
-                }
-                testId={`settings-auth-provider-${index}-remove-confirm`}
-                trigger={
-                  <IconButton
-                    label={t("settings.auth.remove")}
-                    data-testid={`settings-auth-provider-${index}-remove`}
-                    disabled={disabled || value.length === 1}
-                  >
-                    <Trash2 />
-                  </IconButton>
-                }
-              />
+              <IconButton
+                label={t("settings.auth.remove")}
+                data-testid={`settings-auth-provider-${index}-remove`}
+                disabled={disabled || value.length === 1}
+                onClick={() => setRemoving(index)}
+              >
+                <Trash2 />
+              </IconButton>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -332,6 +308,19 @@ function AuthProvidersEditor({
       >
         <Plus data-icon="inline-start" /> {t("settings.auth.addOidc")}
       </Button>
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        object={removingProvider?.label || t("settings.auth.unnamedProvider")}
+        verb={t("settings.auth.remove")}
+        consequence={t("settings.auth.removeConsequence")}
+        destructive
+        onConfirm={() => {
+          onChange(value.filter((_, currentIndex) => currentIndex !== removing));
+          setRemoving(null);
+        }}
+        testId="settings-auth-provider-remove-confirm"
+      />
     </div>
   );
 }
@@ -480,6 +469,7 @@ export function SettingsSectionNav({
  */
 export function SettingCopyKey({ item, index }: { item: SettingItem; index: number }) {
   const { t } = useI18n();
+  const copy = useCopy();
   return (
     <IconButton
       label={t("settings.copyKey")}
@@ -489,11 +479,7 @@ export function SettingCopyKey({ item, index }: { item: SettingItem; index: numb
       size="icon-xs"
       className="shrink-0"
       data-testid={`setting-copy-key-${index}`}
-      onClick={() => {
-        void navigator.clipboard
-          ?.writeText(item.path)
-          .then(() => toast.success(t("settings.keyCopied")));
-      }}
+      onClick={() => void copy(item.path)}
     >
       <Copy />
     </IconButton>
@@ -507,17 +493,9 @@ export function SettingCopyKey({ item, index }: { item: SettingItem; index: numb
 export function SettingsStorageNote() {
   const { t } = useI18n();
   return (
-    <details className="text-xs text-muted-foreground" data-testid="settings-storage">
-      <summary
-        className="w-fit cursor-pointer hover:text-foreground"
-        data-testid="settings-storage-toggle"
-      >
-        {t("settings.storage.title")}
-      </summary>
-      <p className="mt-2 max-w-3xl" data-testid="settings-storage-body">
-        {t("settings.storage.body")}
-      </p>
-    </details>
+    <ContextHelp label={t("settings.storage.title")} testId="settings-storage">
+      {t("settings.storage.body")}
+    </ContextHelp>
   );
 }
 
@@ -753,23 +731,22 @@ export function SettingsFilterToggle({
 }) {
   const { t } = useI18n();
   return (
-    <ToggleGroup
-      type="single"
-      variant="outline"
+    <SegmentedControl
       value={filter}
       onValueChange={(next) => {
         if (next === "all" || next === "changed") onChange(next);
       }}
-      aria-label={t("settings.filter.label")}
-      data-testid="settings-filter"
-    >
-      <ToggleGroupItem value="all" data-testid="settings-filter-all">
-        {t("settings.filter.all")}
-      </ToggleGroupItem>
-      <ToggleGroupItem value="changed" data-testid="settings-filter-changed">
-        {t("settings.filter.changed")}
-      </ToggleGroupItem>
-    </ToggleGroup>
+      label={t("settings.filter.label")}
+      testId="settings-filter"
+      options={[
+        { value: "all", label: t("settings.filter.all"), testId: "settings-filter-all" },
+        {
+          value: "changed",
+          label: t("settings.filter.changed"),
+          testId: "settings-filter-changed",
+        },
+      ]}
+    />
   );
 }
 
@@ -789,31 +766,38 @@ export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
 }
 
 /**
- * A section's heading, and — once, not on every secret row — the note on what
- * belongs in a secret field here.
+ * A section of settings: its name as the section label and — once, not on
+ * every secret row — what belongs in a secret field here, behind (?).
  */
-export function SettingsSectionHeading({
+export function SettingsSection({
   section,
   items,
+  testId,
+  children,
 }: {
   section: string;
   items: readonly SettingItem[];
+  testId: string;
+  children: ReactNode;
 }) {
   const { t } = useI18n();
   return (
-    <>
-      <h2 className="text-base font-semibold">
-        <LabelText label={settingSectionLabel(section, t)} />
-      </h2>
-      {items.some((item) => item.meta.sensitive) ? (
-        <p
-          className="mt-1 text-xs text-muted-foreground"
-          data-testid={`settings-secret-hint-${section}`}
-        >
-          {t("settings.secretExternalOnly")}
-        </p>
-      ) : null}
-    </>
+    <Section
+      label={settingSectionLabel(section, t).text}
+      testId={testId}
+      aside={
+        items.some((item) => item.meta.sensitive) ? (
+          <ContextHelp
+            label={`${t("pattern.help")}: ${settingSectionLabel(section, t).text}`}
+            testId={`settings-secret-hint-${section}`}
+          >
+            {t("settings.secretExternalOnly")}
+          </ContextHelp>
+        ) : null
+      }
+    >
+      <div>{children}</div>
+    </Section>
   );
 }
 
@@ -854,6 +838,7 @@ export function SettingRow({
   const appliesTo = settingAppliesToShown(item.meta);
   return (
     <div
+      data-action-scope="setting"
       className={cn(
         "-mx-2 grid scroll-mt-24 gap-3 rounded-lg border-t px-2 py-4 first:border-t-0",
         !wide && "@min-[560px]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]",
@@ -872,13 +857,16 @@ export function SettingRow({
               <LabelText label={label} />
             </label>
           )}
+          {help ? (
+            <ContextHelp
+              label={`${t("pattern.help")}: ${label.text}`}
+              testId={`setting-help-${index}`}
+            >
+              {t(help)}
+            </ContextHelp>
+          ) : null}
           {canCopyKey ? <SettingCopyKey item={item} index={index} /> : null}
         </div>
-        {help ? (
-          <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`setting-help-${index}`}>
-            {t(help)}
-          </p>
-        ) : null}
         <SettingDefaultLine
           item={item}
           index={index}
@@ -892,9 +880,9 @@ export function SettingRow({
               <span data-testid={`setting-restart-${index}`}>{t("settings.restart")}</span>
             ) : null}
             {notableSource ? (
-              <Badge variant="secondary" data-testid={`setting-source-${index}`}>
+              <span data-testid={`setting-source-${index}`}>
                 <LabelText label={settingMetaLabel(item.meta.source, t)} />
-              </Badge>
+              </span>
             ) : null}
             {appliesTo ? (
               <span data-testid={`setting-applies-to-${index}`}>
@@ -991,9 +979,6 @@ function SystemSettings() {
   const [activeSection, setActiveSection] = useState(
     linked.leaf ? settingSectionOf(linked.leaf) : (linked.section ?? ""),
   );
-  // On a narrow page the section list is the start view and a section opens
-  // its own; a linked leaf or section opens it straight away.
-  const [sectionOpen, setSectionOpen] = useState(Boolean(linked.leaf || linked.section));
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [leafMissing, setLeafMissing] = useState(false);
   const focused = useRef(false);
@@ -1049,7 +1034,6 @@ function SystemSettings() {
   const selectedSection = orderedSections.includes(activeSection)
     ? activeSection
     : (orderedSections[0] ?? "");
-  const showPanel = sectionOpen || listMode;
   const attention = settingsAttention(query.data);
   const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
   useEffect(() => {
@@ -1140,7 +1124,6 @@ function SystemSettings() {
     setHighlighted(null);
     setLeafMissing(false);
     setActiveSection(section);
-    setSectionOpen(true);
   }
 
   function openLeaf(path: string) {
@@ -1149,7 +1132,6 @@ function SystemSettings() {
     setFilter("all");
     setLeafMissing(false);
     setActiveSection(settingSectionOf(path));
-    setSectionOpen(true);
     setLeaf(path);
   }
 
@@ -1244,49 +1226,39 @@ function SystemSettings() {
     );
   }
 
+  const sectionItems = (section: string) =>
+    allItems.filter((item) => settingSectionOf(item.path) === section);
+
   return (
-    <div data-testid="settings-system">
+    <div data-testid="settings-system" className="flex flex-col gap-4">
       <PreparedChanges canDecide={canWrite} />
-      <div
-        className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end"
-        data-family-slot="configuration-content"
-      >
-        <Input
-          className="sm:max-w-sm"
-          value={search}
-          onChange={(event) => {
-            setLeaf(null);
-            setHighlighted(null);
-            setSearch(event.target.value);
-          }}
-          placeholder={t("settings.search")}
-          data-testid="settings-search"
-        />
-        <div className="flex items-center gap-2">
-          <SettingsFilterToggle
-            filter={filter}
-            onChange={(next) => {
+      <div className="flex items-center gap-2" data-family-slot="configuration-content">
+        <FilterBar
+          search={{
+            value: search,
+            onChange: (next) => {
               setLeaf(null);
               setHighlighted(null);
-              setFilter(next);
-            }}
-          />
-          <IconButton
-            variant="outline"
-            label={t("common.refresh")}
-            data-testid="settings-refresh"
-            onClick={() => query.refetch()}
-          >
-            <RefreshCw />
-          </IconButton>
-        </div>
+              setSearch(next);
+            },
+            placeholder: t("settings.search"),
+            testId: "settings-search",
+          }}
+          segmented={
+            <SettingsFilterToggle
+              filter={filter}
+              onChange={(next) => {
+                setLeaf(null);
+                setHighlighted(null);
+                setFilter(next);
+              }}
+            />
+          }
+        />
+        <SettingsStorageNote />
       </div>
       {settingsView === "loading" ? (
-        <div className="grid gap-3" data-testid="settings-loading">
-          {[0, 1, 2].map((index) => (
-            <Skeleton key={index} className="h-20 w-full" />
-          ))}
-        </div>
+        <DataState state="loading" testId="settings-loading" />
       ) : settingsView === "error" ? (
         // Rendering the list anyway showed an installation with nothing
         // configured — a failed read presented as a fact about the configuration.
@@ -1315,14 +1287,11 @@ function SystemSettings() {
           ) : null}
           {/* One column no wider than the page (`minmax(0, …)`): nothing in
               here may make the page scroll sideways. From 720px of content the
-              list stands left of the section; below, the list is the start
-              view and a section opens in its place. */}
+              list stands left of the form; below, a select of the sections
+              stands above it. */}
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[720px]/settings:grid-cols-[200px_minmax(0,1fr)]">
             <div
-              className={cn(
-                "min-w-0 self-start overflow-x-hidden @min-[720px]/settings:sticky @min-[720px]/settings:top-0 @min-[720px]/settings:max-h-[calc(100dvh-7rem)] @min-[720px]/settings:overflow-y-auto",
-                showPanel && "hidden @min-[720px]/settings:block",
-              )}
+              className="hidden min-w-0 self-start overflow-x-hidden @min-[720px]/settings:sticky @min-[720px]/settings:top-0 @min-[720px]/settings:block @min-[720px]/settings:max-h-[calc(100dvh-7rem)] @min-[720px]/settings:overflow-y-auto"
               data-testid="settings-section-list"
             >
               <SettingsSectionNav
@@ -1333,43 +1302,44 @@ function SystemSettings() {
                 onOpen={openSection}
               />
             </div>
-            <div
-              className={cn(
-                "@container/settings-panel min-w-0",
-                !showPanel && "hidden @min-[720px]/settings:block",
+            <div className="@container/settings-panel min-w-0" data-testid="settings-panel">
+              {listMode ? null : (
+                <div className="mb-3 @min-[720px]/settings:hidden">
+                  <Select value={selectedSection} onValueChange={openSection}>
+                    <SelectTrigger
+                      className="w-full"
+                      aria-label={t("settings.sections")}
+                      data-testid="settings-section-picker"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {nav.map((group) => (
+                        <SelectGroup key={group.id}>
+                          {group.sections.map((section) => (
+                            <SelectItem
+                              key={section}
+                              value={section}
+                              data-testid={`settings-section-option-${section}`}
+                            >
+                              {settingSectionLabel(section, t).text}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
-              data-testid="settings-panel"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mb-3 -ml-2 @min-[720px]/settings:hidden"
-                data-testid="settings-back"
-                onClick={() => {
-                  setSectionOpen(false);
-                  setSearch("");
-                  setFilter("all");
-                  setLeaf(null);
-                  setHighlighted(null);
-                }}
-              >
-                <ArrowLeft data-icon="inline-start" />
-                {t("settings.allSections")}
-              </Button>
               {listMode ? (
                 hits.length === 0 ? (
-                  <Empty
-                    className="min-h-52 border"
-                    data-testid={needle ? "settings-no-matches" : "settings-all-default"}
-                  >
-                    <EmptyHeader>
-                      <EmptyTitle>
-                        {needle ? t("settings.noMatches") : t("settings.allDefault")}
-                      </EmptyTitle>
-                    </EmptyHeader>
-                  </Empty>
+                  <DataState
+                    state="empty"
+                    line={needle ? t("settings.noMatches") : t("settings.allDefault")}
+                    testId={needle ? "settings-no-matches" : "settings-all-default"}
+                  />
                 ) : (
-                  <div className="grid gap-6" data-testid="settings-hits">
+                  <div className="grid gap-8" data-testid="settings-hits">
                     {orderedSections
                       .filter((section) => hitSections?.has(section))
                       .map((section) => {
@@ -1377,32 +1347,29 @@ function SystemSettings() {
                           (item) => settingSectionOf(item.path) === section,
                         );
                         return (
-                          <section key={section} data-testid={`settings-hits-${section}`}>
-                            <SettingsSectionHeading section={section} items={sectionHits} />
-                            <div className="mt-2">{sectionHits.map(renderRow)}</div>
-                          </section>
+                          <SettingsSection
+                            key={section}
+                            section={section}
+                            items={sectionHits}
+                            testId={`settings-hits-${section}`}
+                          >
+                            {sectionHits.map(renderRow)}
+                          </SettingsSection>
                         );
                       })}
                   </div>
                 )
               ) : (
-                <section data-testid={`settings-section-${selectedSection}`}>
-                  <SettingsSectionHeading
-                    section={selectedSection}
-                    items={allItems.filter(
-                      (item) => settingSectionOf(item.path) === selectedSection,
-                    )}
-                  />
-                  <div className="mt-2">
-                    {allItems
-                      .filter((item) => settingSectionOf(item.path) === selectedSection)
-                      .map(renderRow)}
-                  </div>
-                </section>
+                <SettingsSection
+                  section={selectedSection}
+                  items={sectionItems(selectedSection)}
+                  testId={`settings-section-${selectedSection}`}
+                >
+                  {sectionItems(selectedSection).map(renderRow)}
+                </SettingsSection>
               )}
             </div>
           </div>
-          <SettingsStorageNote />
         </div>
       )}
       {canWrite && (changedItems.length > 0 || conflict) && (
@@ -1419,44 +1386,16 @@ function SystemSettings() {
           onSave={() => (restartItems.length > 0 ? setRestartOpen(true) : save.mutate())}
         />
       )}
-      <AlertDialog open={restartOpen} onOpenChange={(open) => !open && setRestartOpen(false)}>
-        <AlertDialogContent data-testid="settings-restart-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("settings.restartTitle")}</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="grid gap-2" data-testid="settings-restart-description">
-                <p>{t("settings.restartDescription")}</p>
-                <ul className="grid gap-0.5 pl-4">
-                  {restartItems.map((item) => (
-                    <li key={item.path} className="list-disc">
-                      {settingLabel(item.path, t).text}{" "}
-                      <span className="font-mono text-xs">{item.path}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p>{t(restartSaveNote(saveOffer))}</p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="settings-restart-cancel">
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            {saveOffer === "restart" ? (
-              <AlertDialogAction
-                variant="outline"
-                onClick={() => save.mutate(undefined, { onSuccess: () => setRestartNowOpen(true) })}
-                data-testid="settings-restart-save-then-restart"
-              >
-                {t("settings.saveThenRestart")}
-              </AlertDialogAction>
-            ) : null}
-            <AlertDialogAction onClick={() => save.mutate()} data-testid="settings-restart-confirm">
-              {t("settings.saveAndRestart")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={restartOpen}
+        onOpenChange={(open) => !open && setRestartOpen(false)}
+        object={t("settings.restartSave.object")}
+        verb={t("common.save")}
+        consequence={t(restartSaveNote(saveOffer))}
+        pending={save.isPending}
+        onConfirm={() => save.mutate()}
+        testId="settings-restart-dialog"
+      />
       {restartNow.offer === "restart" ? (
         <SettingsRestartDialog
           open={restartNowOpen}

@@ -19,7 +19,7 @@ import {
   SettingsFilterToggle,
   SettingsReadOnlyNotice,
   SettingsSaveBar,
-  SettingsSectionHeading,
+  SettingsSection,
   SettingsSectionNav,
   SettingsStorageNote,
 } from "@/pages/settings";
@@ -255,14 +255,12 @@ describe("what a row says it applies to", () => {
 });
 
 describe("how a change is stored", () => {
-  test("is answered once, below the list, in the plan's words", () => {
+  test("is answered once, beside the search, in the plan's words", () => {
+    // Behind (?): the button is named for the question, the answer is its tooltip.
     const html = render(<SettingsStorageNote />);
     expect(html).toContain('data-testid="settings-storage"');
-    expect(html).toContain("Wie wird gespeichert?");
-    expect(html).toContain(
-      "Jede Änderung wird als neue, unveränderliche Version in der Datenbank gespeichert",
-    );
-    expect(html).toContain("bis dahin läuft die vorherige Version weiter");
+    expect(html).toContain('aria-label="Wie wird gespeichert?"');
+    expect(de("settings.storage.body")).toContain("bis dahin läuft die vorherige Version weiter");
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     expect(source.match(/<SettingsStorageNote \/>/g)?.length).toBe(1);
   });
@@ -381,19 +379,27 @@ describe("a secret", () => {
     expect(html).toContain('data-testid="setting-secret-cancel-4"');
   });
 
-  test("the hint stands once per section, not on each secret row", () => {
+  test("the hint stands once per section, behind (?), not on each secret row", () => {
     const items = [secret("***"), { ...secret(null), path: "llm.providers.openai.api_key" }];
-    const heading = render(<SettingsSectionHeading section="llm" items={items} />);
-    expect(heading.split(de("settings.secretExternalOnly")).length - 1).toBe(1);
+    const heading = render(
+      <SettingsSection section="llm" items={items} testId="settings-section-llm">
+        <span />
+      </SettingsSection>,
+    );
+    expect(heading.split('data-testid="settings-secret-hint-llm"').length - 1).toBe(1);
     const rowHtml = render(
       <SettingRow item={secret("***")} index={4} highlighted={false}>
         <span />
       </SettingRow>,
     );
     expect(rowHtml).not.toContain(de("settings.secretExternalOnly"));
-    expect(render(<SettingsSectionHeading section="log" items={[]} />)).not.toContain(
-      "settings-secret-hint",
-    );
+    expect(
+      render(
+        <SettingsSection section="log" items={[]} testId="settings-section-log">
+          <span />
+        </SettingsSection>,
+      ),
+    ).not.toContain("settings-secret-hint");
   });
 });
 
