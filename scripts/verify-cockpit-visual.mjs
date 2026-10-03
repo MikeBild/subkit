@@ -1714,6 +1714,7 @@ async function mockApi(route) {
       if (path === "/v1/knowledge-sources")
         return {
           name: `Betriebshandbuch ${index + 1}`,
+          slug: `betriebshandbuch-${index + 1}`,
           status: ["active", "processing", "error", "inactive"][rotate],
           scope: rotate === 1 ? "workflow" : "global",
           workflow_id: rotate === 1 ? uuid : null,
@@ -1725,6 +1726,8 @@ async function mockApi(route) {
       if (path === "/v1/skills")
         return {
           title: `Sichere Reports ${index + 1}`,
+          // A skill written by hand has no slug; the picker spells its title.
+          slug: rotate === 3 ? null : `sichere-reports-${index + 1}`,
           status: ["active", "draft", "archived", "active"][rotate],
           scope: ["global", "connector", "workflow", "global"][rotate],
           connector_id: rotate === 1 ? uuid : null,
@@ -5041,7 +5044,8 @@ for (const locale of variants) {
       await shoot(page, `${locale.artifact}-desktop-chat-interaction`, {
         fullPage: false,
       });
-      await stand.visit(page, "usage");
+      // Usage follows the live feed and has no refresh; the audit log keeps one.
+      await stand.visit(page, "audit");
       await page.locator('[data-testid="data-table-refresh"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
