@@ -81,6 +81,9 @@ export const ATTENTION_REASONS = [
   // Nothing was refused yet: the running version has no approval where its
   // schedule or hook starts it, or the approval it has is about to end.
   "version_awaiting_approval",
+  // The same, but no approval may cover that version until a step changes or a
+  // trial run supplies its evidence: offering "approve" would be refused.
+  "version_needs_repair",
   "approval_expiring",
   "scheduler_stale",
   "failing",
@@ -133,8 +136,19 @@ export interface AttentionItem {
    *  names the thing that waits. Null unless held or an approval item. */
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
   /** Which version an approval item is about, and where it runs. Only on
-   *  `version_awaiting_approval` and `approval_expiring`. */
+   *  `version_awaiting_approval`, `version_needs_repair` and `approval_expiring`. */
   approval?: { version: number; environment: "dev" | "prod" };
+  /** What keeps that version from being approved. Only on `version_needs_repair`:
+   *  the leading blocked step, its diagnosis code, the act that removes it,
+   *  how many steps are blocked, and the filed repair or run it rests on. */
+  repair?: {
+    step_id: string | null;
+    code: string | null;
+    remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+    steps: number;
+    candidate_id: string | null;
+    execution_id: string | null;
+  };
   /** The run classifier's class behind a failing workflow, else null. */
   cause_class: PreviewClassification | null;
   counts: { patches?: number; failures?: number; skills?: number };
