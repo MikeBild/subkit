@@ -48,7 +48,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
-import { NotificationSettings } from "@/pages/admin";
+import { NotificationSettings } from "@/pages/notification-settings";
 import {
   isUnset,
   type SettingItem,

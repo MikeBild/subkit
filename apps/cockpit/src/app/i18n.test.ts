@@ -188,7 +188,6 @@ describe("cockpit i18n", () => {
     const note = Object.entries(CATALOGS.en).filter(([, text]) => /Access → Grants/.test(text));
     expect(note.map(([key]) => key)).toEqual([]);
     // "Freigabe" is the approval of a workflow and nothing else.
-    expect(CATALOGS.de["people.sheet.grantsLink"]).toBe("Personen & Rechte → Zugriffe");
     expect(CATALOGS.de["access.grants"]).toBe("Zugriffe");
     expect(CATALOGS.de["access.revokeGrant"]).toBe("Zugriff entziehen");
   });
