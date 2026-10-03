@@ -1589,6 +1589,12 @@ async function mockApi(route) {
       size_bytes: 1840,
       created_at: "2026-08-10T09:00:00.000Z",
     });
+  if (path === `/v1/files/${uuid}/usage`)
+    return json(route, {
+      workflows: [{ id: uuid, name: "Monatsreport" }],
+      conversations: [{ id: uuid, title: "Monatsreport reparieren" }],
+      other: 1,
+    });
   if (path === `/v1/files/${uuid}/content`)
     return route.fulfill({
       status: 200,
@@ -2860,7 +2866,10 @@ function markerFor(route) {
   // which is the frame that proves nothing.
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   // A record of Wissen, once it has loaded: its facts stand under the document.
-  if (/^(knowledge|skills|files)\/.+/.test(path))
+  // A file opens as a sheet over the Dateien list, at its own address.
+  if (/^files\/.+/.test(path)) return '[data-testid="file-sheet"] [data-testid="file-facts"]';
+  if (path === "files") return '[data-testid="files-page"]';
+  if (/^(knowledge|skills)\/.+/.test(path))
     return `[data-testid="detail-${path.split("/")[0]}"] [data-testid="detail-overview"]`;
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
@@ -4556,7 +4565,8 @@ for (const locale of variants) {
         shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
       );
     if (viewport.name === "desktop" && !focused) {
-      for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
+      // A file has no page of its own: its sheet is swept as `files/<id>`.
+      for (const resource of ["workflows", "connectors", "knowledge", "skills"]) {
         await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
