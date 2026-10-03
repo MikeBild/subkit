@@ -2416,11 +2416,11 @@ export function ChatPage() {
           search box shares it, and a row's hover fills that same width (R18). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row" data-testid="chat-layout">
         <aside
-          className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0 md:px-2"
+          className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
           data-testid="chat-list-panel"
         >
-          <div className="md:-mx-2 md:h-18 md:border-b md:px-4">{chatHeader}</div>
-          {newConversation ? <div className="md:pt-2">{newConversation}</div> : null}
+          <div className="md:-mx-4 md:h-18 md:border-b md:px-4">{chatHeader}</div>
+          {newConversation ? <div className="md:-mx-2 md:pt-2">{newConversation}</div> : null}
           <section
             id="chat-conversation-list"
             aria-label={t("chat.conversations")}
