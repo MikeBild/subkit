@@ -275,6 +275,27 @@ export const FileListResponseSchema = z
   .openapi("FileList");
 
 // ---------------------------------------------------------------------------
+// Rename (PATCH /v1/files/{id}) and usage (GET /v1/files/{id}/usage)
+// ---------------------------------------------------------------------------
+
+/** A new name for a stored file. Its id — the `$file` reference workflows
+ *  and conversations hold — does not change. */
+export const RenameFileSchema = z
+  .object({ filename: z.string().trim().min(1).max(255) })
+  .openapi("RenameFile");
+
+/** Who uses a file: the workflows whose current version references it and
+ *  the conversations it is attached to. `other` counts the remaining links
+ *  (knowledge sources, skills, connectors, runs) without naming them. */
+export const FileUsageSchema = z
+  .object({
+    workflows: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
+    conversations: z.array(z.object({ id: z.string().uuid(), title: z.string().nullable() })),
+    other: z.number().int().nonnegative(),
+  })
+  .openapi("FileUsage");
+
+// ---------------------------------------------------------------------------
 // Caps
 // ---------------------------------------------------------------------------
 
@@ -296,4 +317,5 @@ export type FinalizeRequest = z.infer<typeof FinalizeRequestSchema>;
 export type LinkRequest = z.infer<typeof LinkRequestSchema>;
 export type FileLinkWire = z.infer<typeof FileLinkSchema>;
 export type FileStats = z.infer<typeof FileStatsSchema>;
+export type FileUsage = z.infer<typeof FileUsageSchema>;
 export type ListFilesQuery = z.infer<typeof ListFilesQuerySchema>;
