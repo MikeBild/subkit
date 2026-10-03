@@ -80,7 +80,6 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/icon-button.tsx": ["ui-import"],
   "components/cockpit/inbound-hook-review-card.tsx": ["ui-import", "heading"],
   "components/cockpit/metadata-dialog.tsx": ["ui-import"],
-  "components/cockpit/prepared-changes.tsx": ["ui-import", "heading"],
   "components/cockpit/run-workflow-dialog.tsx": ["ui-import"],
   "components/cockpit/schedule-review-card.tsx": ["ui-import", "heading"],
   "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
@@ -92,14 +91,10 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/workflow-runs.tsx": ["ui-import", "heading"],
   "components/cockpit/workflow-steps-list.tsx": ["ui-import", "heading", "pre", "dl"],
   "components/cockpit/workflow-technical-facts.tsx": ["ui-import", "dl"],
-  "pages/api-access.tsx": ["ui-import"],
   "pages/catalog-detail.tsx": ["ui-import"],
-  "pages/notification-settings.tsx": ["ui-import"],
   "pages/operations-bar.tsx": ["ui-import"],
   "pages/overview.tsx": ["ui-import", "heading", "sheet-content", "max-w"],
   "pages/runs.tsx": ["ui-import", "heading", "pre", "dl", "max-w"],
-  "pages/settings-restart.tsx": ["ui-import"],
-  "pages/settings.tsx": ["ui-import", "heading", "max-w"],
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
