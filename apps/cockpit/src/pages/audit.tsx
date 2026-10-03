@@ -1,32 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
-import { Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
-import { Page, PageHeader } from "@/components/cockpit/patterns";
-import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
+import {
+  Button,
+  type CockpitColumn,
+  CodeBlock,
+  CollapsibleSection,
+  DataState,
+  DataTable,
+  type Fact,
+  FactList,
+  FilterBar,
+  Page,
+  PageHeader,
+  RecordSheet,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -60,6 +54,13 @@ type AuditList = components["schemas"]["AuditLogListResponse"];
 
 const PAGE_SIZE = 50;
 const RESULTS = ["success", "denied", "error"] as const;
+const SCOPES = ["all", "operations", "decisions"] as const satisfies readonly AuditScope[];
+
+const SCOPE_KEYS: Record<(typeof SCOPES)[number], TranslationKey> = {
+  all: "audit.scope.all",
+  operations: "audit.scope.operations",
+  decisions: "audit.scope.decisions",
+};
 
 const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
   before: "audit.detail.before",
@@ -73,8 +74,11 @@ const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
  * The row that opened this sheet already holds everything the engine records,
  * so this fetch refreshes rather than fills — and an answer that is not an
  * audit record is therefore dropped instead of substituted. A failed refresh
- * is said out loud below rather than swallowed: the page would otherwise pass
- * off a stale copy as the log's current word.
+ * is said out loud rather than swallowed: the page would otherwise pass off a
+ * stale copy as the log's current word.
+ *
+ * Who, when and with what result lead; the identifiers an operator quotes into
+ * a ticket follow, collapsed.
  */
 function AuditDetail({
   entry,
@@ -87,74 +91,62 @@ function AuditDetail({
   const detail = useQuery({
     queryKey: ["audit-entry", entry.id],
     queryFn: () => apiRequest<unknown>(`/v1/audit-log/${encodeURIComponent(entry.id)}`),
-    // Asked once. The reader is already looking at the whole record, so three
-    // silent retries buy nothing visible and only delay the one thing the
-    // failure has to produce: the sentence saying this copy came from the list.
+    // Asked once: the reader already sees the whole record, so silent retries
+    // only delay the one sentence the failure has to produce.
     retry: false,
   });
   const current = isAuditEntry(detail.data) ? detail.data : entry;
   const facts = auditDetailFacts(current, t, dateTime, directory);
   const evidence = auditEvidenceBlocks(current);
+  const toFact = (fact: (typeof facts)[number]): Fact => ({
+    label: fact.label,
+    value:
+      fact.value === null ? (
+        MISSING
+      ) : fact.mono ? (
+        // An identifier is the content here, yet never printed whole: the
+        // prefix is shown, the whole value is in the title (`shortIdentifier`).
+        <span className="font-mono text-xs break-all" title={fact.value}>
+          {shortIdentifier(fact.value)}
+        </span>
+      ) : (
+        fact.value
+      ),
+  });
 
   return (
-    // One column that may shrink below its content: without it, a long
-    // unbroken token (a resolved URL in an error) sizes the track and the
-    // sheet clips everything at its edge.
-    <div className="grid grid-cols-1 gap-5 p-4">
-      <dl className="grid grid-cols-2 gap-3" data-testid="audit-detail-facts">
-        {facts.map((fact) => (
-          // `min-w-0`, or a 36-character id sets this column's minimum width
-          // and pushes the sheet wider than the phone it is read on.
-          <div
-            key={fact.label}
-            className="grid min-w-0 grid-cols-1 gap-1 border-b pb-2 break-words"
-          >
-            <dt className="text-xs font-medium text-muted-foreground">{fact.label}</dt>
-            <dd className="text-sm break-words">
-              {fact.value === null ? (
-                MISSING
-              ) : fact.mono ? (
-                // An identifier is the content here, not a label — it is what
-                // a reader copies into `sk audit show`, a ticket or a second
-                // surface. It is still not printed in full: `konvention:check`
-                // reads `body.innerText()` and refuses UUID-shaped text with
-                // no exemption for a fenced block (that exemption belongs to
-                // the visual sweep, and assuming it applied here failed the
-                // gate). The prefix is shown, the whole value is in the title.
-                <pre className="font-mono text-xs break-all whitespace-pre-wrap" title={fact.value}>
-                  {shortIdentifier(fact.value)}
-                </pre>
-              ) : (
-                fact.value
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
+    <>
+      <FactList
+        testId="audit-detail-facts"
+        items={facts.filter((fact) => !fact.mono).map(toFact)}
+      />
 
       {detail.error ? (
-        <p className="text-xs text-muted-foreground" data-testid="audit-detail-stale">
-          {t("audit.detail.refreshFailed")}
-        </p>
+        <DataState
+          state="error"
+          line={t("audit.detail.refreshFailed")}
+          onRetry={() => void detail.refetch()}
+          testId="audit-detail-stale"
+        />
       ) : null}
 
-      {/* Byte-exact, deliberately. The run sheet masks identifiers inside its
-          step previews because those are an account of a run that a person
-          reads; an audit snapshot IS the record. An id rewritten out of
-          `before` leaves a document that can no longer answer what changed —
-          the only question these blocks exist for. */}
+      {/* Byte-exact, deliberately: an audit snapshot IS the record. An id
+          rewritten out of `before` leaves a document that can no longer answer
+          what changed — the only question these blocks exist for. */}
       {evidence.map((block) => (
-        <section key={block.kind} className="grid gap-2">
-          <h3 className="text-sm font-medium">{t(EVIDENCE_KEYS[block.kind])}</h3>
-          <pre
-            className="rounded-lg border bg-muted/40 p-3 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap"
-            data-testid={`audit-detail-${block.kind}`}
-          >
-            {block.text}
-          </pre>
-        </section>
+        <CodeBlock
+          key={block.kind}
+          label={t(EVIDENCE_KEYS[block.kind])}
+          lang="json"
+          code={block.text}
+          testId={`audit-detail-${block.kind}`}
+        />
       ))}
-    </div>
+
+      <CollapsibleSection label={t("audit.detail.technical")} testId="audit-detail-technical">
+        <FactList items={facts.filter((fact) => fact.mono).map(toFact)} />
+      </CollapsibleSection>
+    </>
   );
 }
 
@@ -173,9 +165,6 @@ export function AuditPage() {
   const [result, setResult] = useState<string>(
     () => auditResultFromUrl(window.location.search) ?? "all",
   );
-  // The one link on the decisions page arrives here with the scope it means
-  // (§8.5). Read from the location the way the chat reads its opening prompt —
-  // this router validates no search schema, so the URL is the contract.
   // What a link narrowed the log to. A correlation key or a record arrives
   // from the surface that showed it — a run, a step, a workflow's page — and
   // is never typed from memory, so each part is a chip the reader can lift.
@@ -192,16 +181,13 @@ export function AuditPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
-  // The row a reader opened. The table shipped an "open" label for a button it
-  // never got, because the row had nowhere to go: ten of the sixteen fields the
-  // engine records — including the before/after snapshots that say what a
-  // change changed — reached the browser and were thrown away by the page.
+  // The row a reader opened: the sheet shows the fields the table leaves out,
+  // including the before/after snapshots that say what a change changed.
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const debouncedSearch = useDebouncedValue(search);
-  // Who each actor id is. The column used to say only WHAT kind of principal
-  // acted ("Person"), which answers nothing an audit is read for. Names come
-  // from the directory the reader may already see; without that right the
-  // kind is still said, and an id is never printed.
+  // Who each actor id is. Names come from the directory the reader may
+  // already see; without that right the kind is still said, and an id is
+  // never printed.
   const directoryReadable = canReadDirectory(session);
   const people = useQuery({
     queryKey: ["audit-directory", "people"],
@@ -249,16 +235,8 @@ export function AuditPage() {
   });
 
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
-  // The engine matches `action` exactly, so a free-text box cannot become a
-  // query parameter without lying about what it searched. It stays a narrowing
-  // of the rows already on screen, and the placeholder says so.
-  //
-  // What it matches had to change. It read the raw `action` while the cell
-  // renders the translated name, so a reader who saw "Freigabe erteilt" and
-  // typed it found nothing and had to know the engine spells it
-  // `approval.granted`. A search that does not match what it displays is a
-  // search the reader cannot use. Both are matched now: the words on screen,
-  // and the token for whoever is quoting one into a ticket.
+  // The engine matches `action` exactly, so the free-text box narrows the rows
+  // already on screen — by the words displayed and by the engine's token.
   const rows = useMemo(() => {
     const needle = debouncedSearch.trim().toLowerCase();
     if (!needle) return items;
@@ -311,13 +289,7 @@ export function AuditPage() {
         (entry) => entry.result,
         t("audit.column.result"),
         (entry) => (
-          <Badge
-            variant={
-              entry.result === "denied" || entry.result === "error" ? "destructive" : "outline"
-            }
-          >
-            <LabelText label={auditResultLabel(entry.result, t)} />
-          </Badge>
+          <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />
         ),
         { width: "w-[11%]" },
       ),
@@ -351,10 +323,12 @@ export function AuditPage() {
   }, [t, dateTime, directory]);
 
   // What the open record is ABOUT, in the same two shapes the cell uses: a
-  // named verb as prose, an unnamed one as the engine's token in a machine
-  // face. A heading that silently renamed the second kind would claim the log
-  // recorded something indistinct.
+  // named verb as prose, an unnamed one as the engine's token in a machine face.
   const selectedAction = selected ? auditActionLabel(selected.action) : null;
+  // Where the record leads: the run it names, or the record it changed.
+  const selectedHref = selected
+    ? auditResourceHref(selected.resource_type, selected.resource_id)
+    : null;
 
   const hasActiveFilters =
     Boolean(debouncedSearch.trim()) ||
@@ -390,9 +364,8 @@ export function AuditPage() {
     setSearch("");
     setResult("all");
     setScope("decisions");
-    // A narrowing that cannot be lifted is invisible state. This one arrives
-    // from a link, so without a way out a reader would be stuck on one request
-    // with no sign of why the log looks almost empty.
+    // A narrowing that arrives from a link must be liftable, or a reader is
+    // stuck on one request with no sign of why the log looks almost empty.
     setLinked(NO_AUDIT_LINK);
     forgetInAddress([
       ...AUDIT_LINK_KEYS.resource,
@@ -405,101 +378,77 @@ export function AuditPage() {
     setCursors([undefined]);
   }, [forgetInAddress]);
 
+  const header = <PageHeader title={title} />;
+
   if (!allowed)
     return (
-      <main className="p-6" data-testid="resource-audit">
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
+      <Page kind="list" surface="audit" testId="resource-audit" scroll="page" header={header}>
+        <DataState
+          state="empty"
+          line={t("resource.permission.description")}
+          testId="resource-permission-alert"
+        />
+      </Page>
     );
 
   return (
-    <Page
-      kind="list"
-      surface="audit"
-      testId="resource-audit"
-      scroll="content"
-      header={<PageHeader title={title} />}
-    >
+    <Page kind="list" surface="audit" testId="resource-audit" scroll="content" header={header}>
+      {/* What a complete-looking log does NOT hold: without it a short page
+          reads as "nothing happened" rather than "nothing of this kind was
+          recorded here". */}
+      <div className="shrink-0 pb-3">
+        <SummaryLine
+          testId="audit-summary"
+          text={<span data-testid="audit-scope-note">{t("audit.summary")}</span>}
+          help={t("audit.coverageNote")}
+        />
+      </div>
       <DataTable
         columns={columns}
         data={rows}
         toolbar={
           <>
-            <InputGroup className="w-full sm:max-w-xs">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("audit.search")}
-                aria-label={t("audit.search")}
-                data-testid="audit-search"
-              />
-            </InputGroup>
-            {/* §8.5: the decision history is reachable in the log by a filter,
-                not only by knowing the engine's four verbs by heart. */}
-            <Select
-              value={scope}
-              onValueChange={(next) => {
-                if (!isAuditScope(next)) return;
-                setScope(next);
-                setPage(0);
-                setCursors([undefined]);
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: t("audit.search"),
+                testId: "audit-search",
               }}
-            >
-              <SelectTrigger
-                className="w-52"
-                aria-label={t("audit.filterScope")}
-                data-testid="audit-scope-filter"
-              >
-                <SelectValue placeholder={t("audit.scope.all")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="audit-scope-all">
-                    {t("audit.scope.all")}
-                  </SelectItem>
-                  <SelectItem value="operations" data-testid="audit-scope-operations">
-                    {t("audit.scope.operations")}
-                  </SelectItem>
-                  <SelectItem value="decisions" data-testid="audit-scope-decisions">
-                    {t("audit.scope.decisions")}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select
-              value={result}
-              onValueChange={(next) => {
-                setResult(next);
-                setPage(0);
-                setCursors([undefined]);
-              }}
-            >
-              <SelectTrigger
-                className="w-44"
-                aria-label={t("audit.filterResult")}
-                data-testid="audit-result-filter"
-              >
-                <SelectValue placeholder={t("audit.allResults")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="audit-result-all">
-                    {t("audit.allResults")}
-                  </SelectItem>
-                  {RESULTS.map((value) => (
-                    <SelectItem key={value} value={value} data-testid={`audit-result-${value}`}>
-                      {auditResultLabel(value, t).text}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              selects={[
+                // §8.5: the decision history is reachable by a filter, not
+                // only by knowing the engine's verbs by heart.
+                {
+                  value: scope,
+                  label: t("audit.filterScope"),
+                  testId: "audit-scope-filter",
+                  onChange: (next) => {
+                    if (!isAuditScope(next)) return;
+                    setScope(next);
+                    setPage(0);
+                    setCursors([undefined]);
+                  },
+                  options: SCOPES.map((value) => ({ value, label: t(SCOPE_KEYS[value]) })),
+                },
+                {
+                  value: result,
+                  label: t("audit.filterResult"),
+                  testId: "audit-result-filter",
+                  onChange: (next) => {
+                    setResult(next);
+                    setPage(0);
+                    setCursors([undefined]);
+                  },
+                  options: [
+                    { value: "all", label: t("audit.allResults") },
+                    ...RESULTS.map((value) => ({
+                      value,
+                      label: auditResultLabel(value, t).text,
+                    })),
+                  ],
+                },
+              ]}
+            />
             {/* The narrowing a link brought, said out loud and removable. */}
             {linked.resourceType ? (
               <Button
@@ -620,44 +569,49 @@ export function AuditPage() {
         loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
       />
-      {/* What a complete-looking log does NOT hold. Without this line a short
-          page reads as "nothing happened" rather than "nothing of this kind was
-          recorded here", and the decisions page points at this surface as THE
-          history — so the boundary of that promise belongs on it. */}
-      <p
-        className="shrink-0 border-t px-4 py-3 text-xs text-muted-foreground sm:px-6 lg:px-8"
-        data-testid="audit-scope-note"
-      >
-        {t("audit.coverageNote")}
-      </p>
 
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent
-          className="w-full overflow-y-auto sm:max-w-xl"
-          closeLabel={t("common.close")}
-          closeTestId="audit-detail-close"
-          data-testid="audit-detail"
-        >
-          <SheetHeader>
-            {/* The operation, never an id. A heading that is a raw identifier
-                says nothing about what was recorded; the ids sit below it,
-                each behind its own label. */}
-            <SheetTitle data-testid="audit-detail-title">
-              {selectedAction === null ? (
-                title
-              ) : selectedAction.kind === "named" ? (
-                t(selectedAction.key)
-              ) : (
-                <span className="font-mono text-base" data-testid="audit-detail-action-raw">
-                  {selectedAction.value}
-                </span>
-              )}
-            </SheetTitle>
-            <SheetDescription>{t("audit.detail.description")}</SheetDescription>
-          </SheetHeader>
-          {selected && <AuditDetail entry={selected} directory={directory} />}
-        </SheetContent>
-      </Sheet>
+      <RecordSheet
+        open={Boolean(selected)}
+        onOpenChange={(open) => !open && setSelected(null)}
+        testId="audit-detail"
+        closeTestId="audit-detail-close"
+        titleTestId="audit-detail-title"
+        // The operation, never an id: the ids sit below it, each labelled.
+        title={
+          selectedAction === null ? (
+            title
+          ) : selectedAction.kind === "named" ? (
+            t(selectedAction.key)
+          ) : (
+            <span className="font-mono text-base" data-testid="audit-detail-action-raw">
+              {selectedAction.value}
+            </span>
+          )
+        }
+        badge={
+          selected ? (
+            <StatusBadge
+              state={selected.result}
+              label={auditResultLabel(selected.result, t).text}
+            />
+          ) : null
+        }
+        action={
+          selected && selectedHref ? (
+            <Button variant="outline" asChild>
+              <a href={selectedHref} data-testid="audit-detail-open">
+                {selected.resource_type === "execution"
+                  ? t("audit.detail.openRun")
+                  : t("audit.detail.openRecord", {
+                      resource: auditResourceLabel(selected.resource_type, t).text,
+                    })}
+              </a>
+            </Button>
+          ) : null
+        }
+      >
+        {selected ? <AuditDetail entry={selected} directory={directory} /> : null}
+      </RecordSheet>
     </Page>
   );
 }
