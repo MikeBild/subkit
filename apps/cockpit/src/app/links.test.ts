@@ -96,7 +96,15 @@ describe("router-relative, and absolute only on request", () => {
       hash: WORKFLOW_AUTOMATION_ANCHOR,
     });
     expect(routerTarget(`/cockpit/connectors/${ID}`)).toEqual({ to: `/connectors/${ID}` });
-    expect(routerTarget("/cockpit?review=skills")).toEqual({ to: "/?review=skills" });
+    expect(routerTarget("/cockpit?review=skills")).toEqual({
+      to: "/",
+      search: { review: "skills" },
+    });
+    // The run sheets live in the query; a query inside `to` would never open them.
+    expect(routerTarget(`/cockpit?runs=all&workflow_id=${ID}&status=failed`)).toEqual({
+      to: "/",
+      search: { runs: "all", workflow_id: ID, status: "failed" },
+    });
     const panel = routerTarget(`/cockpit/workflows/${ID}#workflow-automation`);
     expect(`${panel.to}#${panel.hash}`).toBe(workflowAutomationHref(ID));
     for (const href of ["/cockpit", "/cockpit?review=skills", `/cockpit/connectors/${ID}`])

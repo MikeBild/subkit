@@ -17,6 +17,7 @@ import { Page } from "./page";
 import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
+import { activeRouteTab } from "./route-tabs";
 import { CollapsibleSection, Section } from "./section";
 import { SegmentedControl } from "./segmented-control";
 import { StatusBadge, statusTone } from "./status-badge";
@@ -124,6 +125,16 @@ describe("P4 PageTabs", () => {
     expect(searchWithTab("?connected=1e5&tab=a", "tab", "b", "a")).toBe("?connected=1e5&tab=b");
     expect(searchWithTab("?connected=1e5&tab=b", "tab", "a", "a")).toBe("?connected=1e5");
     expect(searchWithTab("", "section", "a", "a")).toBe("");
+  });
+
+  test("a tab that is a page of its own is active on its list and on its records", () => {
+    const tabs = [
+      { to: "/knowledge", label: "Quellen" },
+      { to: "/skills", label: "Skills" },
+    ];
+    expect(activeRouteTab("/cockpit/skills", tabs)).toBe("/skills");
+    expect(activeRouteTab("/cockpit/knowledge/abc", tabs)).toBe("/knowledge");
+    expect(activeRouteTab("/cockpit/files", tabs)).toBeNull();
   });
 });
 

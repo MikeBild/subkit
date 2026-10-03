@@ -231,14 +231,14 @@ export function originLine(
 /**
  * The column every region of this page shares.
  *
- * `PageFrame` states the rule for the rest of the Cockpit: a body must be
+ * `Page` states the rule for the rest of the Cockpit: a body must be
  * centred in the SAME box as its own heading, and the horizontal padding must
  * sit OUTSIDE that box in both places — put the padding on the same element as
  * the cap and the content starts one padding-width right of the title naming
- * it. Chat builds its own three regions instead of using `PageFrame`, and it
+ * it. Chat builds its own three regions instead of using `Page`, and it
  * had drifted into three different left edges: the header at the page margin,
  * the transcript centred inside its own padding, the composer centred without
- * any. The width is the workbench width `PageFrame` gives its wide surfaces,
+ * any. The width is the workbench width `Page` gives its wide surfaces,
  * because a transcript carries tool cards, diffs and payloads, not prose alone.
  */
 const COLUMN = CHAT_COLUMN;

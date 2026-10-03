@@ -10,7 +10,7 @@ import {
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
-import { ContextHelp } from "@/components/cockpit/patterns/context-help";
+import { ContextHelp, PageHeader } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { FormerGrants } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
@@ -211,32 +211,30 @@ export function WorkflowPage({
       className="flex min-h-0 flex-1 flex-col overflow-auto"
       data-testid="detail-workflows"
     >
-      <header
-        data-family-slot="detail-header"
-        className="flex flex-wrap items-center justify-between gap-4 border-b p-6"
-      >
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{title}</h1>
-            <WorkflowHealthBadge state={text(record, "health_state")} />
-          </div>
-          {purpose ? <p className="mt-1 text-sm text-muted-foreground">{purpose}</p> : null}
-        </div>
-        <div data-family-slot="detail-actions" className="flex flex-wrap items-center gap-2">
-          {canRun && !legacy ? (
-            <RunWorkflowDialog
-              workflowId={id}
-              workflowName={title}
-              version={version === null ? null : String(version)}
-              versionId={versionId}
-            />
-          ) : null}
-          <FurtherActions entries={entries} />
-          <ContextHelp label={t("detail.editHelp.label")} testId="workflow-edit-help">
-            {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
-          </ContextHelp>
-        </div>
-      </header>
+      <div className="shrink-0 px-6">
+        <PageHeader
+          back={{ to: "/workflows", label: t("nav.workflows") }}
+          title={title}
+          badge={<WorkflowHealthBadge state={text(record, "health_state")} />}
+          purpose={purpose || undefined}
+          secondary={
+            <ContextHelp label={t("detail.editHelp.label")} testId="workflow-edit-help">
+              {t(canWrite ? "detail.canEdit" : "detail.readOnly")}
+            </ContextHelp>
+          }
+          menu={<FurtherActions entries={entries} />}
+          action={
+            canRun && !legacy ? (
+              <RunWorkflowDialog
+                workflowId={id}
+                workflowName={title}
+                version={version === null ? null : String(version)}
+                versionId={versionId}
+              />
+            ) : undefined
+          }
+        />
+      </div>
       <div
         data-family-slot="detail-main"
         className="flex min-h-0 flex-1 flex-col gap-5 p-6 [&>*]:shrink-0"

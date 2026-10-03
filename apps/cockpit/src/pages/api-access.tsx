@@ -15,7 +15,7 @@ import {
 import { useSession } from "@/app/session";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader } from "@/components/cockpit/patterns";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -189,12 +189,12 @@ export function ApiAccessPage() {
   };
 
   return (
-    <PageFrame
+    <Page
+      kind="list"
       testId="admin-api-access"
-      title={t("resource.apiAccess.title")}
-      description={t("apiAccess.intro")}
       scroll="page"
       surface="installation"
+      header={<PageHeader title={t("resource.apiAccess.title")} />}
     >
       {section === null ? (
         <Alert data-testid="resource-permission-alert">
@@ -261,7 +261,7 @@ export function ApiAccessPage() {
           </TabsContent>
         </Tabs>
       )}
-    </PageFrame>
+    </Page>
   );
 }
 
