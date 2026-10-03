@@ -1,47 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Bot, FolderTree, Search } from "lucide-react";
+import { Bot, FolderTree } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import {
-  absolute,
-  chatNewHref,
-  connectorHref,
-  recordHref,
-  runsHref,
-  workflowHref,
-  workflowsHref,
-} from "@/app/links";
-import { KNOWLEDGE_TABS } from "@/app/navigation";
+import { absolute, chatNewHref, recordHref, runsHref, workflowsHref } from "@/app/links";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { Page, PageHeader, RouteTabs } from "@/components/cockpit/patterns";
-import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/patterns/data-table";
-import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import {
+  Button,
+  type CockpitColumn,
+  DataState,
+  DataTable,
+  FilterBar,
+  type FilterSelect,
+  FormDialog,
+  Page,
+  PageHeader,
+  RowName,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
+} from "@/components/cockpit/patterns";
+import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -63,7 +49,8 @@ import {
 } from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
-type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
+/** The lists this page draws; Wissen's lists have pages of their own. */
+type CatalogResource = "workflows" | "connectors";
 type CatalogRow = Record<string, unknown>;
 type ConnectorListItem = components["schemas"]["ConnectorListItem"];
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
@@ -74,8 +61,6 @@ interface CatalogState {
   category: string;
   /** Workflows only: the connector slug whose users are being listed. */
   connector: string;
-  /** Files only: the resource a file is attached to. */
-  linkedTo: string;
   /**
    * Connectors only: the narrowing the health tile's link brings. Never typed,
    * so it has no control of its own — only the chip that says so and lifts it.
@@ -120,32 +105,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     defaultSort: "updated_at",
     statuses: ["enabled", "disabled", "ok", "degraded", "needs_reauth"],
   },
-  knowledge: {
-    endpoint: "/v1/knowledge-sources",
-    permission: "knowledge:read",
-    titleKey: "resource.knowledge.title",
-    emptyKey: "resource.knowledge.empty",
-    actionKey: "resource.knowledge.action",
-    defaultSort: "updated_at",
-    statuses: ["active", "inactive", "processing", "error"],
-  },
-  skills: {
-    endpoint: "/v1/skills",
-    permission: "skill:read",
-    titleKey: "resource.skills.title",
-    emptyKey: "resource.skills.empty",
-    actionKey: "resource.skills.action",
-    defaultSort: "updated_at",
-    statuses: ["draft", "active", "archived"],
-  },
-  files: {
-    endpoint: "/v1/files",
-    permission: "file:read",
-    titleKey: "resource.files.title",
-    emptyKey: "resource.files.empty",
-    defaultSort: "created_at",
-    statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
-  },
 };
 
 const PAGE_SIZE = 25;
@@ -160,7 +119,6 @@ function parseState(config: CatalogConfig): CatalogState {
     status: params.get("status") ?? "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
-    linkedTo: params.get("linked_to") ?? "",
     health:
       config.endpoint === "/v1/connectors"
         ? connectorHealthFilterFromUrl(window.location.search)
@@ -187,7 +145,6 @@ function useCatalogState(config: CatalogConfig) {
         if (next.status !== "all") params.set("status", next.status);
         if (next.category !== "all") params.set("category", next.category);
         if (next.connector) params.set("connector", next.connector);
-        if (next.linkedTo) params.set("linked_to", next.linkedTo);
         if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
@@ -372,202 +329,66 @@ function catalogColumns(
     ];
   }
 
-  if (resource === "connectors") {
-    const columns: CockpitColumn<CatalogRow>[] = [
-      // The name is text. It was a link to the very record the row click and
-      // the row's open button already open — three ways to one place, and the
-      // one styled as a link looked like it led somewhere else.
-      column.text("name", (row) => row.display_name, t("common.name"), {
-        sortable: true,
-        width: "w-[23%]",
-      }),
-      // One column for where the connector stands. A second one, "Zugangsdaten",
-      // read the same verdict and said it again in other words.
-      column.status("health", (row) => row.health_state, t("catalog.health"), {
-        width: "w-[18%]",
-      }),
-      column.custom(
-        "enabled",
-        (row) => row.enabled,
-        t("catalog.enabled"),
-        (row) => (
-          <Badge variant="outline">{row.enabled === true ? t("common.yes") : t("common.no")}</Badge>
-        ),
-        { sortable: true, width: "w-[10%]" },
-      ),
-      // The same words the connector's own page uses: "Produktion", not "prod";
-      // "MCP-Server", not "mcp". Sorting still reads the engine's value.
-      column.custom(
-        "environment",
-        (row) => row.environment,
-        t("catalog.environment"),
-        (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
-        { sortable: true, width: "w-[13%]" },
-      ),
-      column.custom(
-        "driver",
-        (row) => row.driver,
-        t("catalog.driver"),
-        (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
-        { sortable: true, width: "w-[13%]" },
-      ),
-    ];
-    // Without workflow:read the relation cannot be read at all. Dropping the
-    // column is honest; rendering "0" would claim a measured count.
-    if (relations.canReadWorkflows) {
-      columns.push(
-        column.link(
-          "used_by",
-          (row): Relation | null => {
-            const slug = stringField(row, "slug");
-            if (!slug) return null;
-            const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
-            if (users.length === 0) return null;
-            return {
-              href: absolute(workflowsHref({ connector: slug })),
-              label: t("connectors.usedByCount", { count: users.length }),
-            };
-          },
-          t("catalog.usedBy"),
-          { width: "w-[18%]" },
-        ),
-      );
-    }
-    return columns;
-  }
-
-  if (resource === "knowledge") {
-    return [
-      column.text("name", (row) => row.name, t("common.name"), {
-        sortable: true,
-        width: "w-[22%]",
-      }),
-      column.status("status", (row) => row.status, t("resource.field.status"), {
-        sortable: true,
-        width: "w-[12%]",
-      }),
-      column.link(
-        "scope",
-        (row): Relation | null => {
-          const scope = stringField(row, "scope");
-          if (!scope) return null;
-          const workflowId = stringField(row, "workflow_id");
-          const key = SCOPE_KEYS[scope];
-          return {
-            href: scope === "workflow" && workflowId ? absolute(workflowHref(workflowId)) : null,
-            label: key ? t(key) : scope,
-          };
-        },
-        t("resource.field.scope"),
-        { width: "w-[14%]" },
-      ),
-      column.text("source_type", (row) => row.source_type, t("catalog.sourceType"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-      column.text("chunk_count", (row) => row.chunk_count, t("catalog.chunks"), {
-        width: "w-[9%]",
-      }),
-      column.bytes("bytes_total", (row) => row.bytes_total, t("catalog.size"), {
-        sortable: true,
-        width: "w-[11%]",
-      }),
-      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-    ];
-  }
-
-  if (resource === "skills") {
-    return [
-      column.text("title", (row) => row.title, t("resource.field.title"), {
-        sortable: true,
-        width: "w-[22%]",
-      }),
-      column.status("status", (row) => row.status, t("resource.field.status"), {
-        sortable: true,
-        width: "w-[12%]",
-      }),
-      column.link(
-        "scope",
-        (row): Relation | null => {
-          const scope = stringField(row, "scope");
-          if (!scope) return null;
-          const connectorId = stringField(row, "connector_id");
-          const workflowId = stringField(row, "workflow_id");
-          const href =
-            scope === "connector" && connectorId
-              ? absolute(connectorHref(connectorId))
-              : scope === "workflow" && workflowId
-                ? absolute(workflowHref(workflowId))
-                : null;
-          const key = SCOPE_KEYS[scope];
-          return { href, label: key ? t(key) : scope };
-        },
-        t("resource.field.scope"),
-        { sortable: true, width: "w-[13%]" },
-      ),
-      column.custom(
-        "side_effects",
-        (row) => row.side_effects,
-        t("catalog.sideEffects"),
-        (row) => {
-          const value = stringField(row, "side_effects");
-          const key = value ? SIDE_EFFECT_KEYS[value] : undefined;
-          return key ? t(key) : (value ?? MISSING);
-        },
-        { width: "w-[13%]" },
-      ),
-      column.custom(
-        "maturity",
-        (row) => row.maturity,
-        t("catalog.maturity"),
-        // The engine's enum is two English words; rendering them raw is the
-        // same defect as an untranslated status.
-        (row) =>
-          row.maturity === "experimental"
-            ? t("catalog.maturity.experimental")
-            : t("catalog.maturity.stable"),
-        { width: "w-[12%]" },
-      ),
-      column.text("version", (row) => row.version, t("catalog.version"), {
-        sortable: true,
-        width: "w-[9%]",
-      }),
-      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-        sortable: true,
-        width: "w-[14%]",
-      }),
-    ];
-  }
-
-  return [
-    // Text, like the connector name: the row already opens this record.
-    column.text("filename", (row) => row.filename, t("catalog.filename"), {
+  const columns: CockpitColumn<CatalogRow>[] = [
+    // The name is text. It was a link to the very record the row click and
+    // the row's open button already open — three ways to one place, and the
+    // one styled as a link looked like it led somewhere else.
+    column.text("name", (row) => row.display_name, t("common.name"), {
       sortable: true,
-      width: "w-[27%]",
+      width: "w-[23%]",
     }),
-    column.status("status", (row) => row.status, t("resource.field.status"), {
-      sortable: true,
-      width: "w-[13%]",
-    }),
-    column.status("scan_result", (row) => row.scan_result, t("catalog.scanResult"), {
-      width: "w-[14%]",
-    }),
-    column.text("content_type", (row) => row.content_type, t("catalog.contentType"), {
-      sortable: true,
+    // One column for where the connector stands. A second one, "Zugangsdaten",
+    // read the same verdict and said it again in other words.
+    column.status("health", (row) => row.health_state, t("catalog.health"), {
       width: "w-[18%]",
     }),
-    column.bytes("size_bytes", (row) => row.size_bytes, t("catalog.size"), {
-      sortable: true,
-      width: "w-[12%]",
-    }),
-    column.date("created_at", (row) => row.created_at, t("resource.field.createdAt"), {
-      sortable: true,
-      width: "w-[16%]",
-    }),
+    column.custom(
+      "enabled",
+      (row) => row.enabled,
+      t("catalog.enabled"),
+      // A yes or no is plain text: a badge is for an engine state (P11).
+      (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
+      { sortable: true, width: "w-[10%]" },
+    ),
+    // The same words the connector's own page uses: "Produktion", not "prod";
+    // "MCP-Server", not "mcp". Sorting still reads the engine's value.
+    column.custom(
+      "environment",
+      (row) => row.environment,
+      t("catalog.environment"),
+      (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
+      { sortable: true, width: "w-[13%]" },
+    ),
+    column.custom(
+      "driver",
+      (row) => row.driver,
+      t("catalog.driver"),
+      (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
+      { sortable: true, width: "w-[13%]" },
+    ),
   ];
+  // Without workflow:read the relation cannot be read at all. Dropping the
+  // column is honest; rendering "0" would claim a measured count.
+  if (relations.canReadWorkflows) {
+    columns.push(
+      column.link(
+        "used_by",
+        (row): Relation | null => {
+          const slug = stringField(row, "slug");
+          if (!slug) return null;
+          const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
+          if (users.length === 0) return null;
+          return {
+            href: absolute(workflowsHref({ connector: slug })),
+            label: t("connectors.usedByCount", { count: users.length }),
+          };
+        },
+        t("catalog.usedBy"),
+        { width: "w-[18%]" },
+      ),
+    );
+  }
+  return columns;
 }
 
 export function CatalogPage({
@@ -665,20 +486,12 @@ export function CatalogPage({
     [categories],
   );
   const title = t(config.titleKey);
-  const knowledgeTabs = KNOWLEDGE_TABS.some((tab) => tab.path === `/${resource}`)
-    ? KNOWLEDGE_TABS.filter((tab) => permissions.includes(tab.permission)).map((tab) => ({
-        to: tab.path,
-        label: t(tab.labelKey),
-        testId: `knowledge-tab-${tab.path.slice(1)}`,
-      }))
-    : [];
   const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    Boolean(state.linkedTo) ||
     state.health !== null;
 
   const showsZeroStateAction =
@@ -695,7 +508,6 @@ export function CatalogPage({
       status: "all",
       category: "all",
       connector: "",
-      linkedTo: "",
       health: null,
       page: 0,
     });
@@ -703,14 +515,48 @@ export function CatalogPage({
 
   if (!permissions.includes(config.permission)) {
     return (
-      <main className="p-6" data-testid={`catalog-${resource}`}>
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
+      <Page
+        kind="list"
+        surface="collection"
+        testId={`catalog-${resource}`}
+        scroll="page"
+        header={<PageHeader title={title} />}
+      >
+        <DataState
+          state="empty"
+          line={t("resource.permission.description")}
+          testId="resource-permission-alert"
+        />
+      </Page>
     );
   }
+
+  const selects: FilterSelect[] = [
+    {
+      value: state.status,
+      onChange: (status) => setState({ status, page: 0 }),
+      label: t("catalog.filterStatus"),
+      testId: "catalog-status-filter",
+      options: [
+        { value: "all", label: t("catalog.allStatuses") },
+        ...config.statuses.map((status) => ({ value: status, label: statusLabel(t, status) })),
+      ],
+    },
+  ];
+  if (categories.length > 0)
+    selects.push({
+      value: state.category,
+      onChange: (category) => setState({ category, page: 0 }),
+      label: t("catalog.block"),
+      testId: "catalog-category-filter",
+      options: [
+        { value: "all", label: t("catalog.allCategories") },
+        ...categories.map((entry) => ({
+          value: entry.category,
+          label: `${categoryLabel(entry.category, t)} (${entry.count})`,
+        })),
+      ],
+    });
 
   // One action, one place. With rows it heads the page; with none it stands in
   // the empty state, where the reader is looking — it used to stand in both,
@@ -741,21 +587,15 @@ export function CatalogPage({
       testId={`catalog-${resource}`}
       scroll="content"
       header={
-        <>
-          <PageHeader
-            // Sources, skills and files are the tabs of one page, Wissen.
-            title={knowledgeTabs.length > 0 ? t("nav.knowledge") : title}
-            // The header yields its action only to the one state that shows
-            // the same action itself: a loaded, unfiltered, empty list. While
-            // loading, after a failed read, or when a search matches nothing,
-            // the empty state offers no "create" — hiding the header's there
-            // left no way to start one until the reader cleared the filters.
-            action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
-          />
-          {knowledgeTabs.length > 1 ? (
-            <RouteTabs tabs={knowledgeTabs} label={t("nav.knowledge")} testId="knowledge-tabs" />
-          ) : null}
-        </>
+        <PageHeader
+          title={title}
+          // The header yields its action only to the one state that shows
+          // the same action itself: a loaded, unfiltered, empty list. While
+          // loading, after a failed read, or when a search matches nothing,
+          // the empty state offers no "create" — hiding the header's there
+          // left no way to start one until the reader cleared the filters.
+          action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
+        />
       }
     >
       <DataTable
@@ -763,73 +603,15 @@ export function CatalogPage({
         data={rows}
         toolbar={
           <>
-            <InputGroup className="w-full sm:max-w-xs">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("resource.search", { resource: title })}
-                aria-label={t("resource.search", { resource: title })}
-                data-testid="catalog-search"
-              />
-            </InputGroup>
-            <Select value={state.status} onValueChange={(status) => setState({ status, page: 0 })}>
-              <SelectTrigger
-                className="w-44"
-                aria-label={t("catalog.filterStatus")}
-                data-testid="catalog-status-filter"
-              >
-                <SelectValue placeholder={t("catalog.allStatuses")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="catalog-status-all">
-                    {t("catalog.allStatuses")}
-                  </SelectItem>
-                  {config.statuses.map((status) => (
-                    <SelectItem
-                      key={status}
-                      value={status}
-                      data-testid={`catalog-status-${status}`}
-                    >
-                      {statusLabel(t, status)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {categories.length > 0 && (
-              <Select
-                value={state.category}
-                onValueChange={(category) => setState({ category, page: 0 })}
-              >
-                <SelectTrigger
-                  className="w-44"
-                  aria-label={t("catalog.block")}
-                  data-testid="catalog-category-filter"
-                >
-                  <SelectValue placeholder={t("catalog.allCategories")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all" data-testid="catalog-category-all">
-                      {t("catalog.allCategories")}
-                    </SelectItem>
-                    {categories.map((entry, index) => (
-                      <SelectItem
-                        key={entry.category}
-                        value={entry.category}
-                        data-testid={`catalog-category-${index}`}
-                      >
-                        {`${categoryLabel(entry.category, t)} (${entry.count})`}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: t("resource.search", { resource: title }),
+                testId: "catalog-search",
+              }}
+              selects={selects}
+            />
             {/* The narrowing a link brought, said out loud and removable. */}
             {resource === "connectors" && state.health === "not_ok" ? (
               <Button
@@ -991,58 +773,51 @@ function RecategorizeDialog({
   });
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent data-testid="catalog-recategorize-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("catalog.changeCategory")}</DialogTitle>
-          <DialogDescription>{t("catalog.changeCategoryDescription")}</DialogDescription>
-        </DialogHeader>
-        <Select value={target} onValueChange={setTarget}>
-          <SelectTrigger
-            aria-label={t("catalog.changeCategory")}
-            data-testid="catalog-recategorize-select"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {options.map((category, index) => (
-                <SelectItem
-                  key={category}
-                  value={category}
-                  data-testid={`catalog-recategorize-option-${index}`}
-                >
-                  {categoryLabel(category, t)}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <p className="text-sm" data-testid="catalog-recategorize-slug">
-          {t("catalog.resultingSlug", { slug: nextSlug })}
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("catalog.changeCategory")}
+      submit={{
+        label: t("catalog.moveWorkflow"),
+        pending: move.isPending,
+        disabled: nextSlug === slug,
+      }}
+      onSubmit={() => move.mutate()}
+      testId="catalog-recategorize-dialog"
+    >
+      <Select value={target} onValueChange={setTarget}>
+        <SelectTrigger
+          aria-label={t("catalog.changeCategory")}
+          data-testid="catalog-recategorize-select"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {options.map((category, index) => (
+              <SelectItem
+                key={category}
+                value={category}
+                data-testid={`catalog-recategorize-option-${index}`}
+              >
+                {categoryLabel(category, t)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <p className="text-sm" data-testid="catalog-recategorize-slug">
+        {t("catalog.resultingSlug", { slug: nextSlug })}
+      </p>
+      <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
+      {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
+        <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
+          {t("catalog.categoryTooSmall", {
+            count: String(MIN_CATEGORY_SIZE),
+          })}
         </p>
-        <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
-        {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
-          <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
-            {t("catalog.categoryTooSmall", {
-              count: String(MIN_CATEGORY_SIZE),
-            })}
-          </p>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} data-testid="catalog-recategorize-cancel">
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={move.isPending || nextSlug === slug}
-            data-testid="catalog-recategorize-confirm"
-            onClick={() => move.mutate()}
-          >
-            {t("catalog.moveWorkflow")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      )}
+    </FormDialog>
   );
 }
 

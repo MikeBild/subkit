@@ -17,7 +17,13 @@ import {
   UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
 import { log } from "../../logging/index.ts";
-import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  PayloadTooLargeError,
+  UnprocessableEntityError,
+} from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -413,9 +419,88 @@ const searchRoute = createRoute({
   },
 });
 
+// A source read from an address: the engine fetches the page (through the
+// egress guard), stores its text and keeps the address, so it can be read
+// again on request.
+const CreateKnowledgeSourceFromUrlBody = CreateKnowledgeSourceSchema.extend({
+  name: z.string().min(1).max(200).optional(),
+  url: z.string().url().max(2048),
+}).openapi("CreateKnowledgeSourceFromUrlBody");
+
+const urlFailure = {
+  413: {
+    description: "The page exceeds the maximum size",
+    content: { "application/json": { schema: ErrorSchema } },
+  },
+  422: {
+    description: "The address could not be read, or is not allowed",
+    content: { "application/json": { schema: ErrorSchema } },
+  },
+} as const;
+
+const createFromUrlRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources/url",
+  tags: ["knowledge"],
+  summary: "Create a knowledge source by reading an address",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { content: { "application/json": { schema: CreateKnowledgeSourceFromUrlBody } } },
+  },
+  responses: {
+    201: {
+      description: "Created",
+      content: { "application/json": { schema: KnowledgeSourceSchema } },
+    },
+    ...urlFailure,
+  },
+});
+
+const refreshRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources/{id}/refresh",
+  tags: ["knowledge"],
+  summary: "Read an address source again now",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "Read again",
+      content: { "application/json": { schema: KnowledgeSourceSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "The source has no address to read again",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    ...urlFailure,
+  },
+});
+
+/** The address-reading failures, as the HTTP errors a client can act on. */
+function urlError(error: unknown): never {
+  if (error instanceof svc.KnowledgeUrlFetchError)
+    throw new UnprocessableEntityError(error.message, { reason: error.code });
+  if (error instanceof KnowledgeBudgetExceededError)
+    throw new PayloadTooLargeError(error.message, { bytes_limit: error.bytes_limit });
+  if (error instanceof svc.KnowledgeSourceNotRefreshableError)
+    throw new ConflictError(error.message, { reason: error.code, source_type: error.source_type });
+  throw error;
+}
+
 export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/knowledge-sources", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
+    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/url", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/:id/refresh", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
     return next();
   });
@@ -571,6 +656,45 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
         throw new BadRequestError(error.message);
       }
       throw error;
+    }
+  });
+
+  // Registered before the bare :id route (same collision discipline as /search).
+  app.openapi(createFromUrlRoute, async (c) => {
+    const principal = requireAuth(c);
+    const { url, ...input } = c.req.valid("json");
+    try {
+      const source = await svc.createKnowledgeSourceFromUrl(
+        {
+          tenant_id: principal.tenant_id,
+          actor_id: principal.id,
+          url,
+          input,
+        },
+        c.get("db"),
+      );
+      return c.json(source, 201);
+    } catch (error) {
+      return urlError(error);
+    }
+  });
+
+  app.openapi(refreshRoute, async (c) => {
+    const principal = requireAuth(c);
+    const { id } = c.req.valid("param");
+    try {
+      const source = await svc.refreshKnowledgeSource(
+        {
+          tenant_id: principal.tenant_id,
+          actor_id: principal.id,
+          id,
+        },
+        c.get("db"),
+      );
+      if (!source) throw new NotFoundError("knowledge_source");
+      return c.json(source, 200);
+    } catch (error) {
+      return urlError(error);
     }
   });
 

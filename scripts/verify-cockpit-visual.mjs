@@ -30,6 +30,7 @@ import {
   isSheetView,
   patternMigratedView,
   patternViewRoot,
+  TRANSCRIPT,
 } from "./lib/cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
@@ -166,6 +167,11 @@ const routes = [
   "knowledge",
   "skills",
   "files",
+  // A record of each Wissen tab: one document, its back link to Wissen and
+  // its facts collapsed below it.
+  `knowledge/${uuid}`,
+  `skills/${uuid}`,
+  `files/${uuid}`,
   "audit",
   // The repair rate's drilldown: the decided repairs, by the engine's verbs.
   "audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
@@ -180,7 +186,6 @@ const routes = [
   // API-Zugang, at each of its tabs: the bare address opens the apps.
   "api-access",
   "api-access?section=keys",
-  "api-access?section=grants",
   // Benachrichtigungen, a tab of Einstellungen: the seeded rule's event list
   // and a hostile long one, each entry named, beside channels in every
   // delivery state.
@@ -190,6 +195,28 @@ const routes = [
   // the first one.
   "settings?section=auth",
 ];
+
+/**
+ * A focused look while a page is rebuilt — never the gate. Each variable is a
+ * whitespace-separated list; a route names a record as `$id`:
+ *
+ *   COCKPIT_SWEEP_ROUTES="usage audit knowledge/$id"
+ *   COCKPIT_SWEEP_VARIANTS="de-dark"  COCKPIT_SWEEP_VIEWPORTS="desktop mobile"
+ *   COCKPIT_SWEEP_STANDS="verifyApiAccess verifyChatChoices"
+ *
+ * With a route list the sweep checks and photographs only those routes and
+ * runs only the stands it names; the cross-page checks (one title edge across
+ * all pages, the contact sheets) need every page and are left out.
+ */
+const sweepList = (name) => process.env[name]?.split(/\s+/).filter(Boolean) ?? null;
+const ROUTE_FILTER = sweepList("COCKPIT_SWEEP_ROUTES");
+const focused = ROUTE_FILTER !== null;
+const sweptRoutes = focused
+  ? routes.filter((route) => ROUTE_FILTER.includes(route.replaceAll(uuid, "$id")))
+  : routes;
+const STAND_FILTER = sweepList("COCKPIT_SWEEP_STANDS") ?? [];
+/** Whether a stand runs: always in the full sweep, by name in a focused one. */
+const standOn = (stand) => !focused || STAND_FILTER.includes(stand.name);
 
 /**
  * The audit rows this sweep photographs — and the promise that they are REAL.
@@ -1261,6 +1288,7 @@ async function mockApi(route) {
         "file:read",
         "file:write",
         "notification:read",
+        "notification:write",
         "audit:read",
         "stats:read",
         "stats:read:all",
@@ -1521,14 +1549,56 @@ async function mockApi(route) {
       health_state: "ok",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
+  // An address source: read from a page, so it can be read again ("Jetzt
+  // einlesen"), with three pages a reader can open.
   if (path === `/v1/knowledge-sources/${uuid}`)
     return json(route, {
       id: uuid,
+      tenant_id: uuid,
       name: "Betriebshandbuch",
+      slug: "betriebshandbuch",
+      description: null,
+      tags: [],
+      scope: "global",
+      workflow_id: null,
       status: "active",
-      source_type: "file_upload",
+      last_error: null,
+      source_type: "url",
+      source_uri: "https://docs.example.com/betrieb",
+      mime_type: "text/markdown",
       version: "knowledge-v4",
+      bytes_total: 18400,
+      chunk_count: 3,
+      refresh_strategy: "manual",
+      refresh_cron: null,
+      last_refreshed_at: "2026-08-10T09:00:00.000Z",
+      created_at: "2026-07-01T09:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/knowledge-sources/${uuid}/chunks`)
+    return json(route, {
+      knowledge_source_id: uuid,
+      name: "Betriebshandbuch",
+      chunk_count: 3,
+      items: [
+        ["/betrieb/einleitung", "Einleitung", "# Einleitung\n\nWie wir den Betrieb führen."],
+        [
+          "/betrieb/pruefungen",
+          "Prüfungen",
+          "| Prüfung | Intervall |\n|---|---|\n| Konnektor-Zustand | täglich |",
+        ],
+        [
+          "/betrieb/eskalation",
+          "Eskalation",
+          "1. Bereitschaft anrufen\n2. Ursache im Audit prüfen",
+        ],
+      ].map(([chunkPath, title, content], ordinal) => ({
+        ordinal,
+        title,
+        path: chunkPath,
+        content,
+        byte_size: content.length,
+      })),
     });
   if (path === `/v1/knowledge-sources/${uuid}/content`)
     return json(route, {
@@ -1547,11 +1617,14 @@ async function mockApi(route) {
     return json(route, {
       id: uuid,
       title: "Sichere Reports",
+      slug: "sichere-reports",
       body: "# Sichere Reports\n\nVor externen Schreibzugriffen immer eine Freigabe einholen.",
       scope: "global",
       status: "active",
+      source: "manual",
       maturity: "stable",
       version: 3,
+      created_at: "2026-07-01T09:00:00.000Z",
       updated_at: "2026-08-10T09:00:00.000Z",
     });
   if (path === `/v1/files/${uuid}`)
@@ -1562,6 +1635,12 @@ async function mockApi(route) {
       content_type: "text/markdown",
       size_bytes: 1840,
       created_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/files/${uuid}/usage`)
+    return json(route, {
+      workflows: [{ id: uuid, name: "Monatsreport" }],
+      conversations: [{ id: uuid, title: "Monatsreport reparieren" }],
+      other: 1,
     });
   if (path === `/v1/files/${uuid}/content`)
     return route.fulfill({
@@ -1868,6 +1947,9 @@ async function mockApi(route) {
       ? AUDIT_FIXTURE_ENTRIES.filter((entry) => wanted.includes(entry.action))
       : AUDIT_FIXTURE_ENTRIES;
     const items = actorType ? byAction.filter((entry) => entry.actor_type === actorType) : byAction;
+    // Two pages: the log is endless, so the second answers the cursor with the
+    // end of the log rather than the first page again.
+    if (url.searchParams.get("cursor")) return json(route, { items: [], next_cursor: null });
     return json(route, { items, next_cursor: "audit-cursor-2" });
   }
   // The one entry the detail sheet asks for, answered from the same array the
@@ -2035,6 +2117,13 @@ async function mockApi(route) {
           tokens: { prompt: total, completion: 0, cache_read: 0, cache_creation: 0, total },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
         },
+        // One dimension: each group carries its own money, as the engine
+        // sends it — here the window's amount split by tokens.
+        cost: {
+          amount: Math.round(((412.87 * total) / rows.reduce((n, r) => n + r[2], 0)) * 100) / 100,
+          currency: "EUR",
+          unpriced_calls: 0,
+        },
       })),
       totals: {
         calls: { total: rows.reduce((n, r) => n + r[1], 0), by_result: {} },
@@ -2136,6 +2225,29 @@ async function mockApi(route) {
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
+    // Runs per workflow, for the usage page's "Läufe" column.
+    if (url.searchParams.get("group_by") === "workflow_id")
+      return json(route, {
+        bucket: "day",
+        tz: "UTC",
+        from: "2026-07-11T00:00:00.000Z",
+        to: "2026-08-10T00:00:00.000Z",
+        groups: [
+          [uuid, 30],
+          ["catalog-record-1", 10],
+        ].map(([workflow_id, executions]) => ({
+          key: { workflow_id },
+          buckets: [],
+          totals: {
+            executions,
+            duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+          },
+        })),
+        totals: {
+          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
+          duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      });
     return json(route, {
       bucket: "day",
       tz: "UTC",
@@ -2834,6 +2946,12 @@ function markerFor(route) {
   // which is the frame that proves nothing.
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-invocation"]';
   if (/^connectors\/.+/.test(path)) return '[data-testid="connector-strip-state"]';
+  // A record of Wissen, once it has loaded: its facts stand under the document.
+  // A file opens as a sheet over the Dateien list, at its own address.
+  if (/^files\/.+/.test(path)) return '[data-testid="file-sheet"] [data-testid="file-facts"]';
+  if (path === "files") return '[data-testid="files-page"]';
+  if (/^(knowledge|skills)\/.+/.test(path))
+    return `[data-testid="detail-${path.split("/")[0]}"] [data-testid="detail-overview"]`;
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
@@ -3706,19 +3824,20 @@ async function assertChat(page, label) {
       composer: rect("chat-composer"),
       composerSubmit: rect("chat-composer-submit"),
       main: rect("chat-main"),
-      // The chat's header is the shell's top bar now, filled through a slot:
-      // its row holds the sidebar toggle and the header, in the same column
-      // as the transcript and the composer.
+      // The open conversation's head stands in the same reading column as
+      // the transcript and the composer.
       headerColumn: document
-        .querySelector('[data-testid="cockpit-header"][data-cockpit-header="chat"] > div')
+        .querySelector('[data-testid="chat-header-column"] > div')
         ?.getBoundingClientRect()
         .toJSON(),
+      tools: rect("chat-composer-tools"),
+      attach: rect("chat-attach"),
       transcriptColumn: document
         .querySelector('[data-slot="message-scroller-content"]')
         ?.getBoundingClientRect()
         .toJSON(),
       scrollbars: {
-        header: scrollbar('[data-testid="cockpit-header"]'),
+        header: scrollbar('[data-testid="chat-header-column"]'),
         transcript: scrollbar('[data-slot="message-scroller-viewport"]'),
         composer: scrollbar('[data-testid="chat-composer-area"]'),
       },
@@ -3743,8 +3862,10 @@ async function assertChat(page, label) {
   // permanent list is the state this check exists to catch.
   if (layout.transcript.width < layout.main.width - 4)
     throw new Error(`${label} transcript does not span the conversation column`);
-  if (Math.abs(layout.composer.height - 48) > 1)
-    throw new Error(`${label} one-line composer is ${layout.composer.height}px, expected 48px`);
+  // One box (R15): the field, and under it the toolbar — attach on the
+  // left, send on the right, both inside the box's 8px padding.
+  if (layout.tools.top < layout.composer.top + 40)
+    throw new Error(`${label} the composer's toolbar does not stand under its field`);
   if (
     Math.abs(layout.composerSubmit.width - 32) > 1 ||
     Math.abs(layout.composerSubmit.height - 32) > 1
@@ -3754,12 +3875,13 @@ async function assertChat(page, label) {
   const submitBottomInset = layout.composer.bottom - layout.composerSubmit.bottom;
   if (Math.abs(submitRightInset - 8) > 1 || Math.abs(submitBottomInset - 8) > 1)
     throw new Error(`${label} composer submit control is not inset by 8px`);
+  if (Math.abs(layout.attach.left - layout.composer.left - 8) > 1)
+    throw new Error(`${label} the attach control does not open the toolbar on the left`);
   if (
-    Math.abs(layout.inputStyle.paddingLeft - 16) > 1 ||
-    Math.abs(layout.inputStyle.paddingTop - 11) > 1 ||
+    Math.abs(layout.inputStyle.paddingLeft - 8) > 1 ||
     Math.abs(layout.inputStyle.lineHeight - 24) > 1
   )
-    throw new Error(`${label} composer input spacing is not 16px/11px with 24px leading`);
+    throw new Error(`${label} composer input spacing is not 8px with 24px leading`);
   if (!layout.headerColumn || !layout.transcriptColumn)
     throw new Error(`${label} shared chat columns are missing`);
   for (const [area, scrollbar] of Object.entries(layout.scrollbars)) {
@@ -3779,7 +3901,9 @@ async function assertChat(page, label) {
       );
   }
   const composerInput = page.locator('[data-testid="chat-composer-input"]');
-  await composerInput.fill("first line\nsecond line");
+  const oneLine = (await page.locator('[data-testid="chat-composer"]').boundingBox())?.height ?? 0;
+  // More lines than the placeholder wraps to on a phone.
+  await composerInput.fill("first line\nsecond line\nthird line\nfourth line");
   const multiline = await page.evaluate(() => {
     const rect = (testId) => {
       const element = document.querySelector(`[data-testid="${testId}"]`);
@@ -3788,10 +3912,33 @@ async function assertChat(page, label) {
     };
     return { composer: rect("chat-composer"), submit: rect("chat-composer-submit") };
   });
-  if (multiline.composer.height <= 48) throw new Error(`${label} multiline composer did not grow`);
+  if (multiline.composer.height <= oneLine)
+    throw new Error(`${label} multiline composer did not grow`);
   if (Math.abs(multiline.composer.bottom - multiline.submit.bottom - 8) > 1)
     throw new Error(`${label} multiline submit control is not bottom-aligned`);
   await composerInput.fill("");
+  // A file joins the message as a chip on top of the box (R15); the chip
+  // opens its preview and comes out again with its own control.
+  await page.locator('[data-testid="chat-attach-input"]').setInputFiles({
+    name: "notizen.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Notizen\n\nZwei Punkte für den Wochenbericht."),
+  });
+  const chip = page.locator('[data-testid="chat-attachment-0"]');
+  await chip.waitFor({ state: "visible" });
+  const chipBox = await chip.boundingBox();
+  const fieldBox = await composerInput.boundingBox();
+  if (!chipBox || !fieldBox || chipBox.y >= fieldBox.y)
+    throw new Error(`${label} the attached file does not stand above the field`);
+  await page.locator('[data-testid="chat-attachment-0-open"]').click();
+  const preview = page.locator('[data-testid="chat-attachment-preview-body"]');
+  await preview.waitFor({ state: "visible" });
+  if (!(await preview.innerText()).includes("Zwei Punkte"))
+    throw new Error(`${label} the attachment preview does not show the file`);
+  await page.locator('[data-testid="chat-attachment-preview-close"]').click();
+  await preview.waitFor({ state: "hidden" });
+  await page.locator('[data-testid="chat-attachment-0-remove"]').click();
+  await chip.waitFor({ state: "detached" });
   const assistantMetadata = await page
     .locator('[data-testid="chat-message-1-metadata"]')
     .textContent();
@@ -3829,8 +3976,9 @@ async function assertChat(page, label) {
 }
 
 /**
- * The conversation list opens on demand. Every check that reads a row has to
- * open it first — a closed panel yields an empty, green screenshot, which is
+ * The conversation list stands beside the conversation on a wide screen and
+ * folds under the page title on a phone. Every check that reads a row has to
+ * see it first — a folded list yields an empty, green screenshot, which is
  * exactly the false pass these fixtures exist to prevent.
  */
 async function openConversationList(page) {
@@ -3839,14 +3987,14 @@ async function openConversationList(page) {
     await page.locator('[data-testid="conversation-list-trigger"]').click();
     await list.waitFor({ state: "visible" });
   }
-  // Visibility starts at the beginning of the 200 ms sheet transition. Wait
-  // for its documented duration before clicking a moving row or close button.
-  await page.waitForTimeout(250);
 }
 
+/** Fold the list again where it folds (a phone); beside the conversation it stays. */
 async function closeConversationList(page) {
-  if (!(await page.locator('[data-testid="conversation-list"]').isVisible())) return;
-  await page.locator('[data-testid="conversation-list-close"]').click();
+  const trigger = page.locator('[data-testid="conversation-list-trigger"]');
+  if (!(await trigger.isVisible())) return;
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") return;
+  await trigger.click();
   await page.locator('[data-testid="conversation-list"]').waitFor({ state: "hidden" });
 }
 
@@ -4255,30 +4403,6 @@ const stand = standAt({
 // pointed at a fiction must cost milliseconds, not 296 screenshots.
 assertAuditFixtureActionsAreReal();
 
-/**
- * A narrowed run, for looking at a few views while they change — never the
- * gate. `COCKPIT_SWEEP_ONLY` names the routes ("/" for Übersicht) and stands to
- * walk, comma-separated; `COCKPIT_SWEEP_VARIANTS` ("de-dark") and
- * `COCKPIT_SWEEP_VIEWPORTS` ("desktop,mobile") narrow the rest. Unset, the
- * sweep walks everything.
- */
-function listEnv(name) {
-  const raw = process.env[name];
-  if (!raw) return null;
-  return new Set(
-    raw
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-  );
-}
-const sweepOnly = listEnv("COCKPIT_SWEEP_ONLY");
-const sweepVariants = listEnv("COCKPIT_SWEEP_VARIANTS");
-const sweepViewports = listEnv("COCKPIT_SWEEP_VIEWPORTS");
-const narrowed = sweepOnly !== null || sweepVariants !== null || sweepViewports !== null;
-const wants = (name) => sweepOnly === null || sweepOnly.has(name);
-const sweptRoutes = routes.filter((route) => wants(route === "" ? "/" : route));
-
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 const locales = [
@@ -4293,12 +4417,12 @@ const variants = locales
       artifact: `${locale.name}-${theme}`,
     })),
   )
-  .filter((variant) => sweepVariants === null || sweepVariants.has(variant.artifact));
+  .filter((variant) => sweepList("COCKPIT_SWEEP_VARIANTS")?.includes(variant.artifact) ?? true);
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "wide", width: 1990, height: 1090 },
   { name: "mobile", width: 390, height: 844 },
-].filter((viewport) => sweepViewports === null || sweepViewports.has(viewport.name));
+].filter((viewport) => sweepList("COCKPIT_SWEEP_VIEWPORTS")?.includes(viewport.name) ?? true);
 
 for (const locale of variants) {
   for (const viewport of viewports) {
@@ -4405,6 +4529,8 @@ for (const locale of variants) {
       if (migrated !== null)
         await assertSingleTriggers(page, `${locale.artifact}/${viewport.name}/${route}`, {
           root: patternViewRoot(migrated),
+          // A link a message itself carries is the conversation's content.
+          ...(migrated === "chat" ? { content: TRANSCRIPT.content } : {}),
         });
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -4498,40 +4624,41 @@ for (const locale of variants) {
       if (route === "")
         await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
     }
-    if (headingLeft.size > 0 && new Set(headingLeft.values()).size !== 1)
+    if (!focused && new Set(headingLeft.values()).size !== 1)
       throw new Error(
         `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
       );
-    if (wants("overview-calm"))
+    if (standOn(verifyOverviewCalm))
       await verifyOverviewCalm(
         page,
         `${locale.artifact}/${viewport.name}/overview-calm`,
         locale.name,
         () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
       );
-    if (wants("installation") && viewport.name === "desktop")
-      await verifyInstallationPages(
-        page,
-        stand,
-        locale.name,
-        (state) =>
-          shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
-            fullPage: false,
-          }),
-        {
-          settingsSections: SETTINGS_SECTION_COUNT,
-          viewport,
-          // What each row must and must not say: its scope decides "Gilt für",
-          // and the engine's English never shows.
-          settingRows: ENGINE_SETTINGS.map((item) => ({
-            path: item.path,
-            scope: item.meta.scope,
-            source: item.meta.source,
-            description: item.meta.description ?? null,
-          })),
-        },
-      );
-    if (wants("api-access-stand"))
+    if (viewport.name === "desktop")
+      if (standOn(verifyInstallationPages))
+        await verifyInstallationPages(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
+              fullPage: false,
+            }),
+          {
+            settingsSections: SETTINGS_SECTION_COUNT,
+            viewport,
+            // What each row must and must not say: its scope decides "Gilt für",
+            // and the engine's English never shows.
+            settingRows: ENGINE_SETTINGS.map((item) => ({
+              path: item.path,
+              scope: item.meta.scope,
+              source: item.meta.source,
+              description: item.meta.description ?? null,
+            })),
+          },
+        );
+    if (standOn(verifyApiAccess))
       await verifyApiAccess(page, stand, locale.name, {
         realClients: REAL_OAUTH_CLIENTS,
         deadClients: OAUTH_CLIENTS.filter(
@@ -4544,98 +4671,101 @@ for (const locale of variants) {
           ["expiring", "expired", "unreadable"].includes(item.state),
         ).length,
       });
-    if (wants("schedule-holds"))
+    if (standOn(verifyScheduleHolds))
       await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("hook-holds"))
+    if (standOn(verifyHookHolds))
       await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
       );
-    if (wants("chat-approvals"))
+    if (standOn(verifyAgentPanel)) await verifyAgentPanel(page, stand, uuid, locale.name);
+    if (standOn(verifyChatApprovals))
       await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("chat-choices"))
+    if (standOn(verifyChatChoices))
       await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("chat-replies"))
+    if (standOn(verifyChatReplies))
       await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
       );
-    if (wants("chat-reauth")) await verifyChatReauth(page, stand, conversation);
+    if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
     // Once per locale and theme, on desktop: the assertion is about which
     // state a page renders, not about layout, and each refused read waits out
     // a retry — repeating it at every width would spend the sweep's headroom.
-    if (wants("load-failures") && viewport.name === "desktop")
-      await verifyLoadFailures(page, stand, conversation, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (wants("chat-oauth")) await verifyChatOAuth(page, stand, conversation, locale.name);
-    if (wants("chat-activation"))
+    if (viewport.name === "desktop")
+      if (standOn(verifyLoadFailures))
+        await verifyLoadFailures(page, stand, conversation, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+            fullPage: false,
+          }),
+        );
+    if (standOn(verifyChatOAuth)) await verifyChatOAuth(page, stand, conversation, locale.name);
+    if (standOn(verifyChatActivation))
       await verifyChatActivation(page, stand, conversation, locale.name);
-    if (wants("chat-activity"))
+    if (standOn(verifyChatActivity))
       await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("connector-detail"))
+    if (standOn(verifyConnectorDetail))
       await verifyConnectorDetail(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
       );
-    if (wants("run-dialog"))
+    if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
-    if (wants("detail-action"))
+    if (standOn(verifyDetailAction))
       await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
-    if (wants("workflow-preview")) await verifyWorkflowPreview(page, stand, uuid, locale.name);
-    if (wants("workflow-page"))
+    if (standOn(verifyWorkflowPreview)) await verifyWorkflowPreview(page, stand, uuid, locale.name);
+    if (standOn(verifyWorkflowPage))
       await verifyWorkflowPage(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
-    if (wants("workflow-authorities"))
+    if (standOn(verifyWorkflowAuthorities))
       await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("grant-dialog"))
+    if (standOn(verifyGrantDialog))
       await verifyGrantDialog(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("chat-review-card"))
+    if (standOn(verifyChatReviewCard))
       await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("gate-diagnosis"))
+    if (standOn(verifyGateDiagnosis))
       await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
           fullPage: false,
         }),
       );
-    if (wants("decisions"))
+    if (standOn(verifyDecisionLifecycle))
       await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
       );
-    if (wants("extras") && viewport.name === "desktop") {
-      for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
+    if (viewport.name === "desktop" && !focused) {
+      // A file has no page of its own: its sheet is swept as `files/<id>`.
+      for (const resource of ["workflows", "connectors", "knowledge", "skills"]) {
         await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
@@ -4767,7 +4897,10 @@ for (const locale of variants) {
         throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
       if ((await gatesFor()) === autoGates)
         throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
-      await page.locator('[data-testid="conversation-new"]').click();
+      // A new conversation offers no "New" (it would only throw the draft
+      // away): opening the new chat again is the reset.
+      await stand.visit(page, "chat/new");
+      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
       if ((await pillText()) !== autoName)
         throw new Error(`${locale.artifact}: new chat retains an unintended override`);
       await page.waitForTimeout(300);
@@ -4924,8 +5057,7 @@ for (const locale of variants) {
   }
 }
 
-// A narrowed run photographs too little for a contact sheet.
-for (const locale of narrowed ? [] : variants) {
+for (const locale of focused ? [] : variants) {
   for (const viewport of ["desktop", "mobile"]) {
     const contact = await browser.newPage({
       viewport: { width: 1600, height: 1000 },
@@ -4989,7 +5121,7 @@ for (const width of RESPONSIVE_WIDTHS) {
   await context.close();
 }
 
-if (wants("first-send")) await assertFirstSendIsNeverLost(browser);
+if (standOn(assertFirstSendIsNeverLost)) await assertFirstSendIsNeverLost(browser);
 await browser.close();
 spawnedPreview?.stop();
 if (errors.length) throw new Error(errors.join("; "));
@@ -5006,7 +5138,7 @@ if (errors.length) throw new Error(errors.join("; "));
 // next to a DIRECTORY called x.png — it answered 3, missing the two below and
 // counting the directory. Both errors point the same way, towards a number that
 // looks fine.
-// A narrowed run may walk only stands that photograph nothing.
+// A focused run may walk only stands that photograph nothing.
 if (framesWritten === 0) await prepareOutput();
 const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
   (entry) => entry.isFile() && entry.name.endsWith(".png"),

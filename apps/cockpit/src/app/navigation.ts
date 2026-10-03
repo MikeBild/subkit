@@ -1,14 +1,16 @@
 import {
+  BookOpen,
   Boxes,
   Cable,
+  FileText,
   Gauge,
   History,
   KeyRound,
-  Library,
   ListChecks,
   type LucideIcon,
   MessageSquare,
   Settings,
+  Sparkles,
   Users,
   Workflow,
 } from "lucide-react";
@@ -17,8 +19,6 @@ import type { TranslationKey } from "@/lib/i18n";
 export interface NavigationItem {
   labelKey: TranslationKey;
   path: string;
-  /** Further addresses the entry stands for — the tabs of its page. */
-  paths?: readonly string[];
   permission: string;
   /** Alternatives to `permission`: the entry shows when any one of them is granted. */
   anyPermissions?: readonly string[];
@@ -27,7 +27,7 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  id: "home" | "build" | "admin";
+  id: "home" | "build" | "knowledge" | "admin";
   /** Absent where there must be no heading: Übersicht and Chat stand
    *  ungrouped, and a heading above them is a group whatever the table calls it. */
   labelKey?: TranslationKey;
@@ -49,16 +49,6 @@ export const ATTENTION_READ_PERMISSIONS = [
   "settings:read",
   "skill:read",
 ] as const;
-
-/**
- * The tabs of Wissen. Each is its own address, so a link and a reload land on
- * the same tab, and each sits behind its own read permission.
- */
-export const KNOWLEDGE_TABS = [
-  { path: "/knowledge", labelKey: "nav.knowledgeSources", permission: "knowledge:read" },
-  { path: "/skills", labelKey: "nav.skills", permission: "skill:read" },
-  { path: "/files", labelKey: "nav.files", permission: "file:read" },
-] as const satisfies readonly { path: string; labelKey: TranslationKey; permission: string }[];
 
 export const NAVIGATION: readonly NavigationGroup[] = [
   {
@@ -111,16 +101,35 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         // The workflow read is inverted into the "used by" relation.
         api: ["GET /v1/connectors", "GET /v1/workflows"],
       },
+    ],
+  },
+  {
+    // Wissen: what SubKit reads (sources), follows (skills) and is handed
+    // (files) — three pages under one heading, each with its own entry.
+    id: "knowledge",
+    labelKey: "nav.group.knowledge",
+    items: [
       {
-        // One entry for sources, skills and files: they are the tabs of one
-        // page, each its own address, and the entry is active on all three.
-        labelKey: "nav.knowledge",
+        labelKey: "nav.knowledgeSources",
         path: "/knowledge",
-        paths: KNOWLEDGE_TABS.map((tab) => tab.path),
         permission: "knowledge:read",
-        anyPermissions: KNOWLEDGE_TABS.map((tab) => tab.permission),
-        icon: Library,
-        api: ["GET /v1/knowledge-sources", "GET /v1/skills", "GET /v1/files"],
+        icon: BookOpen,
+        api: ["GET /v1/knowledge-sources"],
+      },
+      {
+        labelKey: "nav.skills",
+        // Proposals are reviewed on the same page.
+        path: "/skills",
+        permission: "skill:read",
+        icon: Sparkles,
+        api: ["GET /v1/skills", "GET /v1/skill-candidates"],
+      },
+      {
+        labelKey: "nav.files",
+        path: "/files",
+        permission: "file:read",
+        icon: FileText,
+        api: ["GET /v1/files"],
       },
     ],
   },
@@ -195,16 +204,6 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
 export function navigationItem(pathname: string): NavigationItem | undefined {
   const under = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
   return NAVIGATION.flatMap((group) => group.items).find((item) =>
-    item.path === "/" ? pathname === "/" : [item.path, ...(item.paths ?? [])].some(under),
+    item.path === "/" ? pathname === "/" : under(item.path),
   );
-}
-
-/**
- * Where an entry links: its own path, or — for Wissen — the first tab the
- * reader may open.
- */
-export function navigationTarget(item: NavigationItem, permissions: readonly string[]): string {
-  if (item.path !== "/knowledge") return item.path;
-  const allowed = new Set(permissions);
-  return KNOWLEDGE_TABS.find((tab) => allowed.has(tab.permission))?.path ?? item.path;
 }

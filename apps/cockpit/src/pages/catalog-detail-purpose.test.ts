@@ -12,7 +12,7 @@
 // question confidently is worse than saying less.
 
 import { expect, test } from "bun:test";
-import { recordPurpose } from "./catalog-detail";
+import { recordPurpose } from "./catalog-model";
 
 test("a record's own description is what it is for", () => {
   expect(

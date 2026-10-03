@@ -33,6 +33,15 @@ export interface NotificationChannelLike {
 
 /** The reserved target the engine seeds for its local inbox (`_cli` / `_inbox`). */
 const INBOX_WORKSPACE = "_cli";
+/** The inbox as a rule's target: needs no channel row of its own. */
+export const INBOX_TARGET = { workspace: INBOX_WORKSPACE, channel: "_inbox" } as const;
+
+/** The platforms a channel can be added for, in the order they are offered. */
+export const CHANNEL_PLATFORMS = ["slack", "google_chat", "webhook"] as const;
+
+/** The urgencies the engine knows, lowest first. */
+export const SEVERITIES = ["debug", "info", "warn", "error", "critical"] as const;
+export type Severity = (typeof SEVERITIES)[number];
 /** The seeded rule's name, as `db/seed.ts` writes it. */
 const SEEDED_INBOX_RULE = "sk CLI inbox (default)";
 
@@ -60,7 +69,7 @@ const EVENT_AREA_KEYS: Readonly<Record<string, TranslationKey>> = {
 };
 
 /** The engine's event catalogue (`webhooks/events/catalog.ts`), each by name. */
-const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
+export const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
   "execution.succeeded": "notifications.event.execution.succeeded",
   "execution.failed": "notifications.event.execution.failed",
   "execution.refused": "notifications.event.execution.refused",

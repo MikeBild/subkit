@@ -22,10 +22,9 @@
 // - a connector whose sign-in expired                   → "Neu anmelden" in
 //   its sign-in card, once; nothing beside the title jumps to it;
 // - a healthy connector                                 → "Verbindung testen";
-// - a skill, a knowledge source, a file                 → the record's own
-//   actions, each once; the row under the title says only what is a state of
-//   the record — no "Steuerung" label, no sentence about steps, no "v" in
-//   front of a version that is not a number; renaming is called "Umbenennen".
+// - a skill, a knowledge source                         → the record's own
+//   actions, each once; its state in one status strip under the title — no
+//   badge beside it, no "Steuerung" label, no sentence about steps;
 
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
@@ -258,38 +257,33 @@ async function expectWorkflowTitle(page, where) {
 }
 
 /**
- * The row under a record's title says what is a state of the record, and
- * nothing else. It used to be headed "Steuerung" with a shield, told every
- * reader "Den Namen änderst du hier, die Schritte im Chat." — on a file, which
- * has neither — and put a "v" in front of a knowledge source's content marker.
+ * A record's state stands once, in the status strip under its title — never a
+ * badge beside the title as well. Its header holds "Im Chat ändern" and the
+ * menu, each once. The page used to carry a row headed "Steuerung" that told
+ * every reader "Den Namen änderst du hier, die Schritte im Chat." — on a file,
+ * which has neither.
  */
-async function assertRecordBar(page, where, de, renamable) {
-  const found = await page.evaluate(() => {
-    const read = (selector) => {
-      const element = document.querySelector(selector);
-      return element instanceof HTMLElement ? element.innerText.trim() : null;
-    };
-    return {
-      bar: read('[data-family-slot="detail-context"]'),
-      version: read('[data-testid="detail-record-version"]'),
-      readOnly: read('[data-testid="detail-read-only"]'),
-      rename: read('[data-testid="detail-edit-metadata"]'),
-      body: document.body.innerText,
-    };
-  });
+async function assertRecordHeader(page, where, de) {
+  const found = await page.evaluate(() => ({
+    strips: document.querySelectorAll('[data-slot="status-strip"]').length,
+    titleBadges: document.querySelectorAll('[data-slot="page-title-row"] [data-slot="badge"]')
+      .length,
+    actions: [...document.querySelectorAll('[data-slot="page-actions"] [data-testid]')].map(
+      (node) => node.getAttribute("data-testid"),
+    ),
+    body: document.body.innerText,
+  }));
   for (const gone of de
-    ? ["Steuerung", "Schritte im Chat", "Metadaten bearbeiten"]
-    : ["Governance", "steps in the chat", "Edit metadata"])
+    ? ["Steuerung", "Schritte im Chat", "Metadaten bearbeiten", "Nur lesend"]
+    : ["Governance", "steps in the chat", "Edit metadata", "Read-only"])
     if (found.body.includes(gone)) throw new Error(`${where}: the page still says "${gone}"`);
-  if (found.version !== null && !/^v\d+$/.test(found.version))
-    throw new Error(`${where}: "${found.version}" is shown as a version`);
-  // The sweep's reader may change every record: nothing says "read-only".
-  if (found.readOnly !== null)
-    throw new Error(`${where}: "${found.readOnly}" for a reader who may change the record`);
-  // A row with nothing in it is not rendered.
-  if (found.bar !== null && found.bar === "") throw new Error(`${where}: an empty state row`);
-  if (renamable && found.rename !== (de ? "Umbenennen" : "Rename"))
-    throw new Error(`${where}: renaming is called "${found.rename}"`);
+  if (found.strips !== 1) throw new Error(`${where}: ${found.strips} status strips, not one`);
+  if (found.titleBadges !== 0) throw new Error(`${where}: the state stands beside the title too`);
+  // "Im Chat ändern" once; whatever else the reader's rights allow, once each.
+  if (!found.actions.includes("detail-action"))
+    throw new Error(`${where}: the header lacks "Im Chat ändern" — ${JSON.stringify(found.actions)}`);
+  if (new Set(found.actions).size !== found.actions.length)
+    throw new Error(`${where}: an action stands twice beside the title — ${found.actions}`);
 }
 
 export async function verifyDetailAction(page, stand, uuid, localeName, capture) {
@@ -416,14 +410,15 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await page.unroute(isDetailApi, handler);
   }
 
-  // ── The records that are one document: a skill, a knowledge source, a file ─
-  // Served by the sweep's own fixtures; each action of the page once.
-  for (const resource of ["skills", "knowledge", "files"]) {
+  // ── The records that are one document: a skill, a knowledge source ─
+  // Served by the sweep's own fixtures; each action of the page once. A file
+  // is a sheet over its list and is swept as `files/$id`.
+  for (const resource of ["skills", "knowledge"]) {
     const where = `/${resource}/<record> (${localeName})`;
     await stand.visit(page, `${resource}/${uuid}`);
     await page.getByTestId(`detail-${resource}`).waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, where);
-    await assertRecordBar(page, where, de, resource !== "files");
+    await assertRecordHeader(page, where, de);
   }
 }

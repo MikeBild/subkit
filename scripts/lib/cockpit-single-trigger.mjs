@@ -168,11 +168,14 @@ export const TRANSCRIPT = {
 export const PATTERN_MIGRATED_VIEWS = [
   // The overview: its route is the cockpit's root.
   "",
+  "chat",
   "workflows",
   "connectors",
   "knowledge",
   "skills",
   "files",
+  "knowledge/$id",
+  "skills/$id",
   "audit",
   "usage",
   "people",
@@ -184,6 +187,8 @@ export const PATTERN_MIGRATED_VIEWS = [
   // The run sheets: all runs (wide) and one run (default width).
   "?runs=all",
   "?run=$id",
+  // One file: a sheet over the Dateien list, at the file's own address.
+  "files/$id",
 ];
 
 /** The migrated view a visited route is, or null. Record ids read as `$id`. */
@@ -196,7 +201,7 @@ export function patternMigratedView(route) {
 
 /** A migrated view that is an overlay: its rules run on the open sheet, not the page. */
 export function isSheetView(view) {
-  return view === "?runs=all" || view === "?run=$id";
+  return view === "?runs=all" || view === "?run=$id" || view === "files/$id";
 }
 
 /**

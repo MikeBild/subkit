@@ -74,32 +74,14 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/grant-workflow-authority.tsx": ["ui-import", "pre", "max-w"],
   "components/cockpit/icon-button.tsx": ["ui-import"],
   "components/cockpit/inbound-hook-review-card.tsx": ["ui-import", "heading"],
-  "components/cockpit/markdown-workspace.tsx": ["ui-import"],
-  "components/cockpit/mention-picker.tsx": ["ui-import"],
   "components/cockpit/metadata-dialog.tsx": ["ui-import"],
-  "components/cockpit/prepared-changes.tsx": ["ui-import", "heading"],
   "components/cockpit/run-workflow-dialog.tsx": ["ui-import"],
   "components/cockpit/schedule-review-card.tsx": ["ui-import", "heading"],
   "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
-  "pages/admin.tsx": ["ui-import", "heading", "sheet-content", "max-w"],
-  "pages/api-access.tsx": ["ui-import"],
-  "pages/audit.tsx": ["ui-import", "heading", "pre", "dl", "sheet-content", "max-w"],
-  "pages/catalog-detail.tsx": ["ui-import", "dl"],
-  "pages/catalog.tsx": ["ui-import", "max-w"],
-  "pages/chat-approval-card.tsx": ["ui-import"],
-  "pages/chat-choice-card.tsx": ["ui-import"],
-  "pages/chat-conversation-list.tsx": ["ui-import"],
-  "pages/chat-form-card.tsx": ["ui-import"],
-  "pages/chat-reauth-card.tsx": ["ui-import"],
-  "pages/chat-text-card.tsx": ["ui-import"],
-  "pages/chat.tsx": ["ui-import", "heading", "pre", "dl", "sheet-content", "max-w"],
-  "pages/settings-restart.tsx": ["ui-import"],
-  "pages/settings.tsx": ["ui-import", "heading", "max-w"],
-  "pages/usage.tsx": ["ui-import", "heading"],
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
-const CEILING = 36;
+const CEILING = 18;
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {

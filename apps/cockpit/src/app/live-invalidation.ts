@@ -22,7 +22,6 @@ const RUN_LISTS: QueryKey[] = [
   ["usage"],
   ["usage-status"],
   ["usage-workflow"],
-  ["usage-people"],
   ["usage-llm"],
   ["workflow-recent-runs"],
   ["workflow-latest-failed-run"],

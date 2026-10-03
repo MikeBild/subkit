@@ -91,7 +91,7 @@ const FileIdParam = z.object({
 // or storage-URI composition lands once.
 
 /** Wire-shape projection — converts DB ids to `fid_<uuid>` and dates to ISO. */
-function toFileWire(row: typeof files.$inferSelect): FileWire {
+export function toFileWire(row: typeof files.$inferSelect): FileWire {
   return {
     id: toFileId(row.id),
     status: row.status,
@@ -311,6 +311,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id", async (c, next) => {
     if (c.req.method === "DELETE") {
       return requireAnyPermission(["file:delete"])(c, next);
+    }
+    // Renaming changes the record; reading it does not.
+    if (c.req.method === "PATCH") {
+      return requireAnyPermission(["file:write"])(c, next);
     }
     return requireAnyPermission(["file:read"])(c, next);
   });

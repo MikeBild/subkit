@@ -93,12 +93,13 @@ const MOUNT_MARKERS = {
   connectors: '[data-testid="catalog-connectors"]',
   knowledge: '[data-testid="catalog-knowledge"]',
   skills: '[data-testid="catalog-skills"]',
-  files: '[data-testid="catalog-files"]',
+  files: '[data-testid="files-page"]',
   "workflows/$resourceId": '[data-testid="detail-workflows"]',
   "connectors/$resourceId": '[data-testid="detail-connectors"]',
   "knowledge/$resourceId": '[data-testid="detail-knowledge"]',
   "skills/$resourceId": '[data-testid="detail-skills"]',
-  "files/$resourceId": '[data-testid="detail-files"]',
+  // A file opens as a sheet over the Dateien list.
+  "files/$resourceId": '[data-testid="file-sheet"]',
 };
 
 const NOW = Date.now();
@@ -1978,16 +1979,11 @@ async function checkOverviewNavEntry(page) {
     return {
       groupHeading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
       first: links[0]?.getAttribute("data-testid") ?? null,
-      // Runs are a sheet over Übersicht, skills and files tabs of Wissen,
-      // notifications a tab of Einstellungen: none has an entry of its own.
-      gone: [
-        "nav-decisions",
-        "nav-operations",
-        "nav-runs",
-        "nav-skills",
-        "nav-files",
-        "nav-notifications",
-      ].filter((id) => document.querySelector(`[data-testid="${id}"]`)),
+      // Runs are a sheet over Übersicht, notifications a tab of Einstellungen:
+      // neither has an entry of its own.
+      gone: ["nav-decisions", "nav-operations", "nav-runs", "nav-notifications"].filter((id) =>
+        document.querySelector(`[data-testid="${id}"]`),
+      ),
     };
   });
   if (placement?.groupHeading)
@@ -3137,7 +3133,7 @@ async function checkRightsPage(page) {
   // Anwendungen") said how the machinery works, not when one needs it.
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid^="api-access-tab-"][role="tab"]')].map(
-      (tab) => tab.querySelector("[data-tab-label]")?.textContent?.trim() ?? "",
+      (tab) => tab.firstChild?.textContent?.trim() ?? "",
     ),
   );
   if (tabs.join("|") !== RIGHTS_TABS.join("|"))
@@ -3148,15 +3144,14 @@ async function checkRightsPage(page) {
   // page is for, and a sentence above them only pushed the list down.
   const intro = await page.evaluate(() => document.body.innerText);
   if (intro.includes(RIGHTS_INTRO)) breach("§5", where, "the page description is back");
-  // A tab carries only a count someone acts on, in words — the fixture holds
-  // two keys that need a decision and three grants that ask for "Erneuern";
-  // the apps have none.
+  // A tab carries only a count someone acts on — the fixture holds two keys
+  // that need a decision; the apps have none.
   const badges = await page.evaluate(() =>
     Object.fromEntries(
-      ["clients", "keys", "grants"].map((section) => [
+      ["clients", "keys"].map((section) => [
         section,
         document
-          .querySelector(`[data-testid="api-access-tab-badge-${section}"]`)
+          .querySelector(`[data-testid="api-access-tab-${section}"] span`)
           ?.textContent?.trim() ?? null,
       ]),
     ),
@@ -3170,12 +3165,10 @@ async function checkRightsPage(page) {
       );
 
   // Each tab on its own address. No command line and no token endpoint on any
-  // of them: how a script swaps a key is a developer's question, answered by
-  // one link to the guide. No task list, no retired word.
+  // of them. No task list, no retired word.
   for (const [section, ready] of [
-    ["clients", '[data-testid="connected-clients-list"]'],
-    ["keys", '[data-testid="api-keys-list"]'],
-    ["grants", '[data-testid^="connection-renew-"]'],
+    ["clients", '[data-testid="connected-clients"]'],
+    ["keys", '[data-testid="api-keys"]'],
   ]) {
     await stand.visit(page, `api-access?section=${section}`);
     await page
@@ -3211,19 +3204,14 @@ async function checkRightsPage(page) {
       if (shown.inner.includes(retired))
         breach("§5", `${where}?section=${section}`, `the retired name "${retired}" is on the page`);
     if (section === "keys") await checkRightsKeys(page, where);
-    if (section === "grants") await checkRightsGrants(page, where);
   }
 }
 
 // The product's name comes from PRODUCT_NAME, as everywhere in this check:
 // the one literal is the one place a copy in a sibling repo changes.
-const RIGHTS_TABS = [
-  `Apps mit Zugriff auf ${PRODUCT_NAME}`,
-  "Schlüssel für Skripte",
-  "Zugriff in deinem Namen",
-];
+const RIGHTS_TABS = ["Schlüssel", "Apps"];
 const RIGHTS_INTRO = `Wer darf auf ${PRODUCT_NAME} zugreifen — und worauf greift ${PRODUCT_NAME} in deinem Namen zu.`;
-const RIGHTS_BADGES = { clients: null, keys: "2 laufen ab", grants: "3 erneuern" };
+const RIGHTS_BADGES = { clients: null, keys: "2" };
 
 async function checkRightsKeys(page, where) {
   const scopeText = await page.evaluate(() =>
@@ -3240,7 +3228,7 @@ async function checkRightsKeys(page, where) {
     breach("§11", where, 'a managing right is not marked "verwaltet"');
   const shape = await page.evaluate(() => {
     const keyRow = (name) =>
-      [...document.querySelectorAll('[data-testid^="api-key-item-"]')].find(
+      [...document.querySelectorAll('[data-testid^="api-keys-row-"]')].find(
         (row) => row instanceof HTMLElement && row.innerText.includes(name),
       );
     const chip = (name) =>
@@ -3249,9 +3237,6 @@ async function checkRightsKeys(page, where) {
       taskList: document.querySelectorAll(
         '[data-testid="api-access-attention"], [data-testid="attention-list"]',
       ).length,
-      guide: document
-        .querySelector('[data-testid="api-access-token-exchange-link"]')
-        ?.getAttribute("href"),
       expiredChip: chip("Altes Skript"),
       expiringChip: chip("Nachtlauf"),
       workingChip: chip("Reporting-Abruf"),
@@ -3259,73 +3244,12 @@ async function checkRightsKeys(page, where) {
   });
   if (shape.taskList > 0)
     breach("§1", where, "a second task list stands on API-Zugang — tasks live on Übersicht");
-  if (shape.guide !== "/llms/developers/token-exchange.md")
-    breach("§5", `${where} · Schlüssel`, `the developer link leads to "${shape.guide}"`);
   if (shape.expiredChip !== "abgelaufen")
     breach("§11", `${where} · Altes Skript`, `the expired key says "${shape.expiredChip}"`);
   if (shape.expiringChip !== "läuft ab in 3 Tagen")
     breach("§11", `${where} · Nachtlauf`, `the key about to lapse says "${shape.expiringChip}"`);
   if (shape.workingChip !== null)
     breach("§11", `${where} · Reporting-Abruf`, `a working key carries "${shape.workingChip}"`);
-}
-
-/**
- * Zugriff in deinem Namen: a lost grant says its cause on its own row, and
- * the rights SubKit holds on the other system are counted — "2 Rechte" — with
- * the other system's own strings behind "Details anzeigen". No risk word: the
- * words "liest", "schreibt", "verwaltet" come from SubKit's own catalogue,
- * which cannot judge a foreign scope.
- */
-async function checkRightsGrants(page, where) {
-  const shape = await page.evaluate(() => {
-    const text = (selector) => {
-      const element = document.querySelector(selector);
-      return element instanceof HTMLElement ? element.innerText : null;
-    };
-    return {
-      grants: text('[data-testid="api-access-section-grants"]'),
-      rows: [...document.querySelectorAll('[data-testid^="connection-item-"]')].map((row) =>
-        row instanceof HTMLElement ? row.innerText : "",
-      ),
-      counts: [...document.querySelectorAll('[data-testid^="connection-rights-count-"]')].map(
-        (count) => count.textContent?.trim() ?? "",
-      ),
-      openScopes: document.querySelectorAll('[data-testid^="connection-scopes-"]').length,
-      // Each lost grant's reason, as its row states it (the sentence, not
-      // the engine's wording below it).
-      reasons: [...document.querySelectorAll('[data-testid^="connection-why-"]')].map(
-        (why) => why.querySelector("p")?.textContent?.trim() ?? "",
-      ),
-    };
-  });
-  if (!shape.counts.includes("2 Rechte") || !shape.counts.includes("1 Recht"))
-    breach("§11", `${where} · Zugriff`, `the rights are not counted: ${shape.counts.join(", ")}`);
-  if (shape.openScopes > 0)
-    breach("§11", `${where} · Zugriff`, "the other system's raw rights stand open on the row");
-  for (const row of shape.rows)
-    if (/\b(liest|schreibt|verwaltet)\b/.test(row))
-      breach(
-        "§11",
-        `${where} · Zugriff`,
-        "a foreign right carries a risk word this product cannot judge",
-      );
-  if (shape.grants === null) {
-    breach("§1", where, "no Zugriff-in-deinem-Namen section");
-  } else {
-    // §2 — a reason is a sentence, never a dash: both expiry causes the
-    // fixture holds are named in full on their own rows. A grant that ended
-    // with no refresh token used to render its reason as "—".
-    for (const expected of [
-      "Der Zugriff ist abgelaufen und kann sich nicht selbst erneuern. \u201eErneuern\u201c wiederholt die Freigabe.",
-      "Die andere Seite hat die Erneuerung abgelehnt. \u201eErneuern\u201c wiederholt die Freigabe.",
-    ]) {
-      if (!shape.reasons.includes(expected))
-        breach("§1", `${where} · Zugriff`, `no lost grant's row says "${expected}"`);
-    }
-    for (const reason of shape.reasons)
-      if (!reason || /^[—–-]$/.test(reason))
-        breach("§2", `${where} · Zugriff`, `a reason is "${reason || "empty"}"`);
-  }
 }
 
 /**
@@ -3514,9 +3438,9 @@ async function checkResumeLine(page) {
 /**
  * §4 / §5 — a broken answer meets a designed German state, not a catch-all.
  *
- * The knowledge page read `content.data?.documents[index]`: the optional chain
- * stopped after `.data?`, so a body without a `documents` array did not render
- * a failure — it threw, and the router's own default replaced the entire
+ * The knowledge page once read `content.data?.documents[index]`: the optional
+ * chain stopped after `.data?`, so a body without the array it expected did not
+ * render a failure — it threw, and the router's own default replaced the entire
  * cockpit with "Something went wrong! / Show Error". No sidebar, no product,
  * no way back, and not a German word on it.
  *
@@ -4283,7 +4207,8 @@ try {
   const busyMock = apiMock(true);
   await broken.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, { items: [], total: 0 });
+    // The source's sections, answered without the `items` array they come in.
+    if (path === `/v1/knowledge-sources/${ID}/chunks`) return json(route, { documents: [] });
     return busyMock(route);
   });
   const brokenPage = await broken.newPage();
