@@ -164,18 +164,18 @@ describe("the settings view a link opens", () => {
     expect(settingSectionOf("llm")).toBe("llm");
   });
 
-  test("the address carries leaf, section and search, and drops junk", () => {
+  test("the address carries leaf, section and filter, and drops junk", () => {
     expect(settingsViewFromUrl(query(settingsHref("tokens.monthly_budget")))).toEqual({
       leaf: "tokens.monthly_budget",
       section: null,
-      q: "",
       filter: "all",
     });
-    expect(settingsViewFromUrl(query(settingsHref(null, { section: "llm", q: "model" })))).toEqual({
+    expect(
+      settingsViewFromUrl(query(settingsHref(null, { section: "llm", filter: "changed" }))),
+    ).toEqual({
       leaf: null,
       section: "llm",
-      q: "model",
-      filter: "all",
+      filter: "changed",
     });
     expect(settingsViewFromUrl("?section=a%2Fb").section).toBeNull();
   });
