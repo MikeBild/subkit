@@ -31,7 +31,7 @@ export function FilterBar({
   segmented?: ReactNode;
 }) {
   return (
-    <div data-slot="filter-bar" className="flex w-full flex-wrap items-center gap-2">
+    <div data-slot="filter-bar" className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       {search ? (
         <InputGroup className="w-full sm:max-w-xs">
           <InputGroupAddon>

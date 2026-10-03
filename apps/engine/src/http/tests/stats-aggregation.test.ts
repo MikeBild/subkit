@@ -410,6 +410,16 @@ describe("LLM aggregation", () => {
     expect(groupSum).toBeCloseTo(body.cost.amount, 6);
   });
 
+  test("group_by=model: each known model carries the name people know it by", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=model`);
+    const body = (await res.json()) as {
+      groups: Array<{ key: { model?: string }; model_name?: string }>;
+    };
+    const names = Object.fromEntries(body.groups.map((g) => [g.key.model, g.model_name]));
+    expect(names["claude-haiku-4-5"]).toBe("Claude Haiku 4.5");
+    expect(names["claude-sonnet-4-6"]).toBe("Claude Sonnet 4.6");
+  });
+
   test("two dimensions carry no per-group cost", async () => {
     const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=model,flow`);
     const body = (await res.json()) as { groups: Array<{ cost?: unknown }> };

@@ -67,6 +67,7 @@ import {
 } from "../observability/instrumentation.ts";
 import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../observability/tracing.ts";
+import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
@@ -328,6 +329,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       db: p.db,
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
+      ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
     ingestedUserMessage = rewrite.text;
     // The MCP async-Tasks worker path persists the user row before
@@ -599,6 +601,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       p.conversation_id,
       null,
     );
+    const audience = skillAudienceForAuthoringMode(draft.summary?.mode);
     const reaffirmed = reaffirmLoadedForTurn(
       {
         mode: "user_turn",
@@ -606,6 +609,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         connector_drivers: scope.connector_drivers,
         connector_templates: scope.connector_templates,
         surface: p.surface,
+        audience,
       },
       skillCatalog,
       loadedSlugs,
@@ -621,6 +625,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         connector_templates: scope.connector_templates,
         first_turn: currentTurn === 1,
         surface: p.surface,
+        audience,
       },
       skillCatalog,
       loadedSlugs,

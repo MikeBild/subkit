@@ -3,6 +3,7 @@
 
 import { z } from "@hono/zod-openapi";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
+import { skillAudienceForAuthoringMode } from "../../skills/types.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z.object({}).openapi("ListSkillsToolInput");
@@ -21,6 +22,7 @@ export const listSkillsTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         ...(ctx.connector_id ? { connector_ids: [ctx.connector_id] } : {}),
         ...(ctx.workflow_id ? { workflow_ids: [ctx.workflow_id] } : {}),
+        audience: skillAudienceForAuthoringMode(ctx.getDraft().summary?.mode),
       },
       ctx.db,
     );

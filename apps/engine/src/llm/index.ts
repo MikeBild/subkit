@@ -28,6 +28,7 @@ export type { PatchProposal } from "./flows/repair.ts";
 export { PatchProposalSchema, runRepairFlow } from "./flows/repair.ts";
 export { runSummarizeFlow } from "./flows/summarize.ts";
 export { getMockProvider, resetMockProvider } from "./mock-provider.ts";
+export { modelDisplayName } from "./model-names.ts";
 // Read-time money. Routes reach pricing through this entry point, never the
 // module: the layering invariant exists so a subsystem can move its files
 // without breaking every caller, and a route that imports an internal is the

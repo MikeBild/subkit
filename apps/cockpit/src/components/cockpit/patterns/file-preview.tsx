@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
 import { formatBytes, parseCsv, previewKind } from "./file-kinds";
 import { Skeleton } from "./skeleton";
@@ -20,6 +21,43 @@ import { Skeleton } from "./skeleton";
 export const CSV_PREVIEW_ROWS = 20;
 /** The characters a text preview shows. */
 const TEXT_PREVIEW_CHARS = 20_000;
+
+type HeadingTag = "h3" | "h4" | "h5" | "h6";
+
+/**
+ * A previewed document sits under the page's h1 and a section's h2, so its own
+ * headings move two levels down: its `#` renders as an h3, and no document ever
+ * adds an h1 or h2 to the page's outline.
+ */
+function loweredHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
+  const Tag = `h${Math.min(level + 2, 6)}` as HeadingTag;
+  return function LoweredHeading({
+    node: _node,
+    className,
+    ...props
+  }: ComponentProps<"h1"> & { node?: unknown }) {
+    return (
+      <Tag
+        data-document-level={level}
+        className={cn(
+          "mt-4 mb-2 font-semibold first:mt-0",
+          level === 1 ? "text-base" : "text-sm",
+          className,
+        )}
+        {...props}
+      />
+    );
+  };
+}
+
+const PREVIEW_COMPONENTS = {
+  h1: loweredHeading(1),
+  h2: loweredHeading(2),
+  h3: loweredHeading(3),
+  h4: loweredHeading(4),
+  h5: loweredHeading(5),
+  h6: loweredHeading(6),
+};
 
 /**
  * The one file preview (P21), for a picked file before upload and a stored
@@ -84,7 +122,9 @@ export function FilePreview({
   if (kind === "markdown" && content !== null)
     return frame(
       <div className="max-h-96 overflow-auto rounded-lg border p-4 text-sm">
-        <Streamdown>{content.slice(0, TEXT_PREVIEW_CHARS)}</Streamdown>
+        <Streamdown components={PREVIEW_COMPONENTS}>
+          {content.slice(0, TEXT_PREVIEW_CHARS)}
+        </Streamdown>
       </div>,
     );
   if (kind === "text" && content !== null)

@@ -6,12 +6,14 @@
 // successful ingest clears both fields again.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createServer, type Server } from "node:http";
 import { and, eq } from "drizzle-orm";
 import type { Job } from "pg-boss";
 import { auditLog } from "../../db/schema/audit.ts";
-import { knowledgeSources } from "../../db/schema/index.ts";
+import { knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "../../knowledge/tests/setup.ts";
+import { createKnowledgeSourceFromUrl } from "../../knowledge/url-source.ts";
 import { type IngestKnowledgeJob, processIngestKnowledgeJob } from "./ingest-knowledge.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
@@ -92,3 +94,73 @@ describe.skipIf(skip)("queue/handlers/ingest-knowledge — failure surfacing", (
     expect(rows[0]?.last_error).toBeNull();
   });
 });
+
+describe.skipIf(skip)(
+  "queue/handlers/ingest-knowledge — scheduled refresh reads the address",
+  () => {
+    let page: Server;
+    let pageBody = "<html><body><p>Erste Fassung.</p></body></html>";
+    let pageUrl = "";
+
+    beforeAll(async () => {
+      page = createServer((_req, res) => {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(pageBody);
+      });
+      await new Promise<void>((resolve) => page.listen(0, "127.0.0.1", resolve));
+      const address = page.address();
+      if (address === null || typeof address === "string") throw new Error("no page server port");
+      pageUrl = `http://127.0.0.1:${address.port}/handbuch`;
+    });
+
+    afterAll(async () => {
+      page.closeAllConnections?.();
+      await new Promise<void>((resolve) => page.close(() => resolve()));
+    });
+
+    async function chunkText(id: string): Promise<string> {
+      const rows = await ctx.testDb.db
+        .select({ content: knowledgeChunks.content })
+        .from(knowledgeChunks)
+        .where(eq(knowledgeChunks.knowledge_source_id, id));
+      return rows.map((r) => r.content).join("\n");
+    }
+
+    test("the job fetches the page again instead of ingesting empty content", async () => {
+      const source = await createKnowledgeSourceFromUrl(
+        { tenant_id: ctx.tenantId, actor_id: null, url: pageUrl, input: { scope: "global" } },
+        ctx.testDb.db,
+      );
+      expect(await chunkText(source.id)).toContain("Erste Fassung");
+      pageBody = "<html><body><p>Zweite Fassung.</p></body></html>";
+      await processIngestKnowledgeJob(
+        jobFor({
+          tenant_id: ctx.tenantId,
+          knowledge_source_id: source.id,
+          filename: pageUrl,
+          content: "",
+          read_address_again: true,
+        }),
+        ctx.testDb.db,
+      );
+      const text = await chunkText(source.id);
+      expect(text).toContain("Zweite Fassung");
+      expect(text).not.toContain("Erste Fassung");
+    });
+
+    test("a source without an address is refused, not emptied", async () => {
+      await expect(
+        processIngestKnowledgeJob(
+          jobFor({
+            tenant_id: ctx.tenantId,
+            knowledge_source_id: sourceId,
+            filename: "fixed.md",
+            content: "",
+            read_address_again: true,
+          }),
+          ctx.testDb.db,
+        ),
+      ).rejects.toThrow();
+      expect(await chunkText(sourceId)).toContain("all good again");
+    });
+  },
+);

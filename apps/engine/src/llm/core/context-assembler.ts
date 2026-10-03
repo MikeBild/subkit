@@ -41,7 +41,7 @@ import {
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
-import type { Skill } from "../../skills/types.ts";
+import { type Skill, skillOfferedTo } from "../../skills/types.ts";
 import { buildNamingGroundingBlock } from "../../workflows/catalog-view.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
@@ -89,6 +89,7 @@ import {
   trimCandidatesToBudget,
   trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
+import { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 import { recordConversationBudgetReport } from "./conversation-budget-report.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
@@ -151,6 +152,8 @@ export interface AssembledContext {
  * LlmContextTooLarge only when *even* the base system prompt does not fit
  * — i.e. all optional context has been dropped.
  */
+export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
+
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
   exec?: Executor,
@@ -182,11 +185,16 @@ export async function assembleEnhancedPrompt(
   const baseVolatile = basePrompt.volatile
     ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
     : null;
+  // Skills enter the prompt only where they apply: the one-shot drafting
+  // flows and a converse turn working on a workflow draft are "authoring",
+  // every other turn is "chat".
+  const audience = promptSkillAudience(p.flow, p.authoring_hint?.mode);
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,
       ...(p.connector_id ? { connector_ids: [p.connector_id] } : {}),
       ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
+      audience,
     },
     db,
   );
@@ -211,8 +219,9 @@ export async function assembleEnhancedPrompt(
     skillsApplicable,
     db,
   );
-  const loadedSkills = resolvedLoaded.fullBody;
-  const loadedIndexSkills = resolvedLoaded.index;
+  const offered = (s: Skill) => skillOfferedTo(s.applies_to, audience);
+  const loadedSkills = resolvedLoaded.fullBody.filter(offered);
+  const loadedIndexSkills = resolvedLoaded.index.filter(offered);
 
   const query = buildQuery(p.user_turns);
 

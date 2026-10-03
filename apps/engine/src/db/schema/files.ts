@@ -20,6 +20,7 @@
 // human-friendly name. The `tenant_id` column is denormalised onto every
 // link row so every query path can scope by tenant without a join.
 
+import { sql } from "drizzle-orm";
 import {
   bigint,
   index,
@@ -73,12 +74,19 @@ export const files = pgTable(
     }),
     scan_result: text("scan_result"),
     created_by: uuid("created_by"),
+    // Tenant-unique human-readable reference: `@attachment:<slug>` resolves
+    // to this file wherever a `fid_` id is accepted. Kept across rename
+    // and content replacement.
+    slug: text("slug"),
     ...timestamps,
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     index("files_tenant_status_idx").on(t.tenant_id, t.status),
     uniqueIndex("files_tenant_sha256_uq").on(t.tenant_id, t.sha256),
+    uniqueIndex("files_tenant_slug_uq")
+      .on(t.tenant_id, t.slug)
+      .where(sql`${t.slug} IS NOT NULL AND ${t.deleted_at} IS NULL`),
   ],
 );
 

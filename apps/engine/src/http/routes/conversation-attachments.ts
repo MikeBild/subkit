@@ -63,6 +63,7 @@ import { conversations, fileLinks, files } from "../../db/schema/index.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
+import { fileReference, slugifyFilename } from "../../files/slug.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -93,10 +94,11 @@ const ListResponse = z
   .object({ attachments: z.array(AttachmentSchema) })
   .openapi("ConversationAttachmentList");
 
-function slugify(filename: string): string {
-  const stem = filename.replace(/\.[^.]+$/, "").toLowerCase();
-  const sanitised = stem.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return sanitised.length === 0 ? `file-${Date.now().toString(36)}` : sanitised.slice(0, 48);
+/** The slug a file is linked into a conversation under: its tenant-wide
+ *  reference, so `@attachment:<slug>` reads the same on the files page and
+ *  in the chat. */
+function linkSlug(row: typeof files.$inferSelect): string {
+  return row.slug ?? slugifyFilename(row.filename);
 }
 
 /** Wire-shape projection — extends the canonical `FileSchema` with the
@@ -114,6 +116,7 @@ function toAttachmentWire(row: typeof files.$inferSelect, slug: string): Attachm
     updated_at: row.updated_at.toISOString(),
     deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
     slug,
+    reference: fileReference(slug),
   };
 }
 
@@ -177,7 +180,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       } catch {
         return c.json({ code: "not_found", message: "file not found" }, 404);
       }
-      const slug = slugify(fileRow.filename);
+      const slug = linkSlug(fileRow);
       await db
         .insert(fileLinks)
         .values({
@@ -245,7 +248,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       // entry point landed the bytes.
       await recordFilesDedupSeen(db, tenant_id);
     }
-    const slug = slugify(filename);
+    const slug = linkSlug(row);
     await db
       .insert(fileLinks)
       .values({
@@ -368,9 +371,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       .orderBy(desc(fileLinks.created_at));
     return c.json(
       {
-        attachments: rows.map((r) =>
-          toAttachmentWire(r.file, r.link.slug ?? slugify(r.file.filename)),
-        ),
+        attachments: rows.map((r) => toAttachmentWire(r.file, r.link.slug ?? linkSlug(r.file))),
       },
       200,
     );
