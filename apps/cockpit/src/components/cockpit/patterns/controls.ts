@@ -5,7 +5,7 @@
 // (card, alert, dialog, sheet, tabs, empty, skeleton, badge, dropdown) are not
 // here on purpose: each has its pattern.
 
-export { Button, buttonVariants } from "@/components/ui/button";
+export { buttonVariants } from "@/components/ui/button";
 export { Checkbox } from "@/components/ui/checkbox";
 export {
   Field,
@@ -37,3 +37,4 @@ export {
 export { Spinner } from "@/components/ui/spinner";
 export { Switch } from "@/components/ui/switch";
 export { Textarea } from "@/components/ui/textarea";
+export { Button } from "./button";
