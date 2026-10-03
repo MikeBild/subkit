@@ -91,6 +91,13 @@ describe("P2 PageHeader", () => {
     // Once as text (the h1); its `title` attribute is the tooltip of a truncated name.
     expect(count(html, />upraft-auth-notify</g)).toBe(1);
   });
+
+  test("an eyebrow names the area above the h1 and is no heading itself", async () => {
+    const html = await renderInRouter(<PageHeader eyebrow="Wissen" title="Quellen" />);
+    expect(html).toContain('data-slot="page-eyebrow"');
+    expect(html.indexOf("Wissen")).toBeLessThan(html.indexOf("<h1"));
+    expect(count(html, /<h[1-6]/g)).toBe(1);
+  });
 });
 
 describe("P3 StatusStrip", () => {
