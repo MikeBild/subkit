@@ -13,9 +13,9 @@ import {
   ActionMenu,
   Button,
   type CockpitColumn,
-  CodeBlock,
   ConfirmDialog,
   ContextHelp,
+  CopyField,
   DataState,
   DataTable,
   FactList,
@@ -39,6 +39,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 
 type StoredFile = components["schemas"]["File"];
+type ListedFile = components["schemas"]["FileListItem"];
 type FileUsage = components["schemas"]["FileUsage"];
 
 /**
@@ -51,9 +52,32 @@ export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 const LIST_PATH = "/v1/files";
 const LIST_PARAMS = { sort: "created_at", order: "desc" } as const;
 
-/** The reference a workflow or the chat holds to a stored file. */
-export function fileReference(id: string): string {
-  return JSON.stringify({ $file: id });
+/** The reference a workflow or the chat holds to a stored file: its
+ *  `@attachment:<slug>`, or the `$file` id where the engine gave no slug. */
+export function fileReference(file: Pick<StoredFile, "id" | "reference">): string {
+  return file.reference ?? JSON.stringify({ $file: file.id });
+}
+
+/** "4 workflows · 2 conversations" — the parts that are not zero, or null
+ *  when nothing uses the file. */
+export function fileUsageLine(
+  t: ReturnType<typeof useI18n>["t"],
+  usage: ListedFile["usage"] | undefined,
+): string | null {
+  if (!usage) return null;
+  const parts = [
+    usage.workflows > 0
+      ? usage.workflows === 1
+        ? t("files.usage.workflow")
+        : t("files.usage.workflows", { count: usage.workflows })
+      : null,
+    usage.conversations > 0
+      ? usage.conversations === 1
+        ? t("files.usage.conversation")
+        : t("files.usage.conversations", { count: usage.conversations })
+      : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? t("files.usage.line", { uses: parts.join(" · ") }) : null;
 }
 
 const KIND_KEYS = {
@@ -141,7 +165,7 @@ export function FilesPage() {
   const canDelete = session.permissions.includes("file:delete");
   const [search, setSearch] = useState("");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
-  const list = useInfiniteList<StoredFile>(LIST_PATH, {
+  const list = useInfiniteList<ListedFile>(LIST_PATH, {
     ...LIST_PARAMS,
     q: search.trim() || undefined,
   });
@@ -153,12 +177,31 @@ export function FilesPage() {
   const dropOnPage = useMemo(() => (files: File[]) => setUpload({ files, replace: null }), []);
   const dragging = usePageDrop(canWrite && upload === null && openId === null, dropOnPage);
 
-  const columns = useMemo<CockpitColumn<StoredFile>[]>(() => {
-    const column = tableColumns<StoredFile>({ t, dateTime });
+  const columns = useMemo<CockpitColumn<ListedFile>[]>(() => {
+    const column = tableColumns<ListedFile>({ t, dateTime });
     return [
-      column.text("filename", (row) => row.filename, t("files.column.name"), {
-        width: "w-[50%]",
-      }),
+      column.custom(
+        "filename",
+        (row) => row.filename,
+        t("files.column.name"),
+        (row) => {
+          const used = fileUsageLine(t, row.usage);
+          return (
+            <span className="block min-w-0">
+              <span className="block truncate">{row.filename}</span>
+              {used ? (
+                <span
+                  className="block truncate text-xs text-muted-foreground"
+                  data-testid="file-row-usage"
+                >
+                  {used}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
+        { width: "w-[50%]" },
+      ),
       column.custom(
         "kind",
         (row) => row.content_type,
@@ -615,7 +658,11 @@ function FileSheet({
                   {t("files.referenceHelp")}
                 </ContextHelp>
               </span>
-              <CodeBlock code={fileReference(file.id)} lang="json" testId="file-reference-code" />
+              <CopyField
+                value={fileReference(file)}
+                label={t("files.reference")}
+                testId="file-reference-value"
+              />
             </div>
             <FactList
               testId="file-facts"
@@ -695,7 +742,11 @@ function RenameDialog({ file, onClose }: { file: StoredFile; onClose(): void }) 
           data-testid="file-rename-name"
         />
       </Field>
-      <p className="text-sm text-muted-foreground">{t("files.replaceLine")}</p>
+      <p className="text-sm text-muted-foreground">
+        {file.reference
+          ? t("files.renameKeeps", { reference: file.reference })
+          : t("files.replaceLine")}
+      </p>
     </FormDialog>
   );
 }
