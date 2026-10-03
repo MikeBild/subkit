@@ -5,10 +5,12 @@
 //
 //   1. Chat-text rewriter — `@attachment:<slug>` tokens that operators
 //      type into conversation prose are converted into canonical
-//      `{ "$file": "fid_<uuid>" }` JSON refs at message ingest. Slug
-//      lookup is scoped to the conversation's `file_links` rows. This
-//      is the ONLY surface that still accepts the legacy slug token;
-//      everywhere else uses `$file` envelopes directly.
+//      `{ "$file": "fid_<uuid>" }` JSON refs at message ingest. A slug
+//      first names a file linked to the conversation; failing that, the
+//      tenant's file carrying that slug (`files.slug`, the reference the
+//      files page shows), which is then linked to the conversation.
+//      `{ "$file": "@attachment:<slug>" }` leaves resolve through
+//      `requireFileForTenant`.
 //
 //   2. JSON-tree resolver — re-exports `walkAndResolve` from
 //      `files/resolver.ts` so existing callers (sdk-wrap invoke,
@@ -22,7 +24,7 @@
 // `conversation_attachments` table. Both are gone — see migration 0019
 // for the drop + the unified files routes for the replacement.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { toFileId } from "../api/files-schemas.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks, files } from "../db/schema/index.ts";
@@ -161,6 +163,36 @@ export async function resolveAttachmentSlugsInText(
   }
   const distinctSlugs = [...new Set(matches.map((m) => m.slug))];
   const map = await lookupSlugsToFileIds(distinctSlugs, ctx);
+  // The conversation's own links win; a slug they do not hold names the
+  // tenant's file under that slug, which the conversation then holds too.
+  const tenantSlugs = distinctSlugs.filter((slug) => !map.has(slug));
+  if (tenantSlugs.length > 0) {
+    const tenantFiles = await ctx.db
+      .select({ id: files.id, slug: files.slug })
+      .from(files)
+      .where(
+        and(
+          eq(files.tenant_id, ctx.tenant_id),
+          inArray(files.slug, tenantSlugs),
+          isNull(files.deleted_at),
+        ),
+      );
+    for (const file of tenantFiles) {
+      if (!file.slug) continue;
+      await ctx.db
+        .insert(fileLinks)
+        .values({
+          tenant_id: ctx.tenant_id,
+          file_id: file.id,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          slug: file.slug,
+          role: "attachment",
+        })
+        .onConflictDoNothing();
+      map.set(file.slug, toFileId(file.id));
+    }
+  }
   const unresolved: string[] = [];
   const resolved: Array<{ slug: string; file_id: string }> = [];
   // Walk back-to-front so splice offsets stay valid.
