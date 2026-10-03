@@ -81,7 +81,9 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
   await page.route(detailPattern, detail);
   await page.route(answerPattern, answer);
   try {
-    for (const surface of ["inline", "context"]) {
+    // The card stands once, in the transcript: the working context holds no
+    // copy, so there is one place to decide and one selection.
+    for (const surface of ["inline", "inline-decline"]) {
       waiting = true;
       expected = surface === "inline";
       await stand.visit(page, `chat/${conversation.id}`);
@@ -89,10 +91,22 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
       await inline.waitFor();
       if ((await inline.innerText()).includes("commit_intent"))
         throw new Error("Raw tool JSON replaced the decision UI");
-      if (surface === "context") await page.getByTestId("chat-context-toggle").click();
-      const card = surface === "context" ? page.getByTestId("chat-context-approval") : inline;
+      if (surface === "inline") {
+        await page.getByTestId("chat-context-toggle").click();
+        await page.getByTestId("chat-context").waitFor();
+        if (
+          await page
+            .getByTestId("chat-context")
+            .getByTestId(/-approval-approve$/)
+            .count()
+        )
+          throw new Error("The working context repeats the approval card");
+        await page.keyboard.press("Escape");
+        await page.getByTestId("chat-context").waitFor({ state: "hidden" });
+      }
+      const card = inline;
       const action = card.getByTestId(
-        `${surface === "context" ? "chat-context" : "chat-message-0"}-approval-${expected ? "approve" : "decline"}`,
+        `chat-message-0-approval-${expected ? "approve" : "decline"}`,
       );
       await capture(`${surface}-ready`);
       const before = requests;
@@ -111,7 +125,6 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
       await capture(`${surface}-busy`);
       release();
       await card.waitFor({ state: "hidden" });
-      if (surface === "context") await page.keyboard.press("Escape");
       await stand.visit(page, `chat/${conversation.id}`);
       if ((await page.getByTestId("chat-transcript").innerText()).includes("commit_intent"))
         throw new Error("Completed decision exposes technical parameters by default");

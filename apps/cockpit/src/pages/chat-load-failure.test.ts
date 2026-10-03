@@ -31,10 +31,8 @@ describe("a conversation that cannot be opened", () => {
     expect(translate("de", "chat.notFound")).toBe(
       "Diese Unterhaltung gibt es nicht oder du hast keinen Zugriff",
     );
-    for (const locale of ["de", "en"] as const) {
-      const description = translate(locale, "chat.notFoundDescription");
-      expect(description).not.toBe(translate(locale, "resource.loadFailedDescription"));
-    }
-    expect(translate("de", "chat.notFoundDescription")).not.toMatch(/Lad die Seite neu/);
+    // One line, no second paragraph: the way on (list, new conversation)
+    // stands in the page header, and no retry is offered.
+    expect(translate("de", "chat.notFound")).not.toMatch(/Lad die Seite neu|erneut/i);
   });
 });

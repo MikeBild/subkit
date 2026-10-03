@@ -77,12 +77,14 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
       "chat-empty",
       "chat-composer-area",
     ]);
-    if (!(await page.getByTestId("chat-load-failed-new").isVisible()))
+    // The ways on stand once, in the page header — not a second time in the
+    // failure line.
+    if (!(await page.getByTestId("conversation-new").isVisible()))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way on");
-    if (!(await page.getByTestId("chat-load-failed-list").isVisible()))
+    if (!(await page.getByTestId("conversation-list-trigger").isVisible()))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way to the list");
     // The header must not call a failed conversation a new one.
-    const title = (await page.getByTestId("chat-title").innerText()).trim();
+    const title = (await page.locator('[data-testid="chat-header"] h1').innerText()).trim();
     if (title === "Neue Unterhaltung" || title === "New conversation")
       throw new Error("/chat/<id>: the header titles a failed conversation as a new one");
     await capture("chat");
@@ -122,7 +124,7 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
         .catch(() => false)
     )
       throw new Error("/chat/<unknown>: offers a retry that cannot help");
-    for (const way of ["chat-load-failed-list", "chat-load-failed-new"])
+    for (const way of ["conversation-list-trigger", "conversation-new"])
       if (!(await page.getByTestId(way).isVisible()))
         throw new Error(`/chat/<unknown>: the way on "${way}" is missing`);
     await capture("chat-missing");
