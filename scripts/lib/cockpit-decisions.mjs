@@ -166,10 +166,12 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
           !authority ||
           authority.workflow_version_id !== id ||
           authority.expected_manifest_digest !== "b".repeat(64) ||
-          authority.max_runs !== 1 ||
+          // The dialog's default: no run limit and no end date, until revoked.
+          authority.max_runs !== null ||
+          authority.valid_until !== null ||
           authority.execution_environment !== "dev"
         )
-          throw new Error("Combined review lost its exact finite boundary");
+          throw new Error("Combined review lost its exact boundary or its until-revoked default");
       }
       applied = true;
       return reply(route, { applied: true, workflow_version_id: id });

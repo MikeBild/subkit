@@ -44,6 +44,9 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     created_by: id,
     revoked_at: null,
     revoked_by: null,
+    open_ended: false,
+    inherited_from: null,
+    superseded_by: null,
     target_constraints: { targets: ["https://reports.example.test/monthly"] },
     effect_manifest: {
       schema_version: 1,
@@ -1088,6 +1091,10 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     await stand.visit(page, `workflows/${workflowId}`);
     await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
+    // The dialog starts at "until revoked"; the limits below are a choice.
+    if (await page.getByTestId("authority-runs").count())
+      throw new Error("The grant dialog does not start at 'until revoked'");
+    await page.getByTestId("authority-limit-limited").click();
     if (
       (await page.getByTestId("authority-runs").inputValue()) !== "1" ||
       (await page.getByTestId("authority-hours").inputValue()) !== "24"

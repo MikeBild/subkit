@@ -1394,6 +1394,9 @@ async function mockApi(route) {
           created_by: hostileAuthority.created_by,
           revoked_at: null,
           revoked_by: null,
+          open_ended: false,
+          inherited_from: null,
+          superseded_by: null,
           target_constraints: { targets: ["https://reports.example.test/monthly"] },
           effect_manifest: {
             schema_version: 1,
