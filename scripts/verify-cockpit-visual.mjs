@@ -184,7 +184,6 @@ const routes = [
   // API-Zugang, at each of its tabs: the bare address opens the apps.
   "api-access",
   "api-access?section=keys",
-  "api-access?section=grants",
   // Benachrichtigungen, a tab of Einstellungen: the seeded rule's event list
   // and a hostile long one, each entry named, beside channels in every
   // delivery state.
@@ -1287,6 +1286,7 @@ async function mockApi(route) {
         "file:read",
         "file:write",
         "notification:read",
+        "notification:write",
         "audit:read",
         "stats:read",
         "stats:read:all",
