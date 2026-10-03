@@ -1,33 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useRouterState } from "@tanstack/react-router";
-import type { SortingState } from "@tanstack/react-table";
-import { ChevronRight, RotateCcw, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, runHref, workflowHref, workflowsHref } from "@/app/links";
+import { absolute, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { CauseFix } from "@/components/cockpit/cause-fix";
-import { ConfirmAction } from "@/components/cockpit/confirm-action";
-import { DataState, RecordSheet, StatusBadge } from "@/components/cockpit/patterns";
-import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
+import {
+  ActionButton,
+  ActionMenu,
+  type CockpitColumn,
+  CodeBlock,
+  CollapsibleSection,
+  ConfirmDialog,
+  DataState,
+  DataTable,
+  type Fact,
+  FactList,
+  FilterBar,
+  RecordSheet,
+  RowsSkeleton,
+  Section,
+  StatusBadge,
+  StatusStrip,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -37,9 +37,9 @@ import { remedyFor } from "@/lib/remedy";
 import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 import { windowFilterLabel } from "@/lib/window-filter";
 import {
-  executionsQuery,
   filterFromUrl,
   formatRunDuration,
   isExecutionRecord,
@@ -74,42 +74,21 @@ export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, run
 type Execution = components["schemas"]["Execution"];
 type ExecutionDetail = components["schemas"]["ExecutionDetail"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
-type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionStep = components["schemas"]["ExecutionStep"];
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
 const PAGE_SIZE = 25;
 
-function EvidenceBlock({
-  title,
-  text,
-  tone,
-  testId,
-}: {
-  title: string;
-  text: string;
-  tone: "error" | "result";
-  testId: string;
-}) {
-  const { t } = useI18n();
+/** One copy action per block: the same "Kopieren" beside two blocks is two acts. */
+function Copyable({ children }: { children: ReactNode }) {
   return (
-    <section className="grid gap-2">
-      <h3 className="text-sm font-medium">{title}</h3>
-      <pre
-        className={`rounded-lg border p-3 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap ${
-          tone === "error" ? "border-destructive/40 bg-destructive/5" : "bg-muted/40"
-        }`}
-        data-testid={testId}
-      >
-        {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
-      </pre>
-    </section>
+    <div className="min-w-0" data-action-scope="copy">
+      {children}
+    </div>
   );
 }
 
-/**
- * The words of an outcome, with an unmapped cause set as a machine value.
- */
+/** The words of an outcome, with an unmapped cause set as a machine value. */
 function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
   return (
     <>
@@ -121,15 +100,13 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
 }
 
 /**
- * Run the same thing again — same version, same input, real effects.
- *
- * Offered only where the engine accepts it: a saved workflow's run that still
- * names its version. The dialog states the consequence before anything runs,
- * and the new run opens in this sheet once it exists.
+ * "Erneut ausführen" (O2): the same version and input, with real effects. The
+ * confirmation says so before anything runs; the new run opens in this sheet.
  */
 function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const rerun = useMutation({
     mutationFn: () =>
       apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
@@ -138,35 +115,44 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
       }),
     onSuccess: async (result) => {
       toast.success(t("runs.rerun.started"));
+      setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["runs"] });
       onStarted(result.execution_id);
     },
+    onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
   });
+  const running = run.status === "running" || run.status === "queued";
   return (
-    <ConfirmAction
-      triggerLabel={
-        <>
-          <RotateCcw data-icon="inline-start" />
-          {t("runs.rerun.open")}
-        </>
-      }
-      title={t("runs.rerun.title")}
-      consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
-      confirmLabel={t("runs.rerun.confirm")}
-      onConfirm={() => rerun.mutateAsync()}
-      error={
-        rerun.error
-          ? rerunFailureText(rerun.error instanceof ApiError ? rerun.error : null, t)
-          : null
-      }
-      testId="run-rerun"
-    />
+    <>
+      <ActionButton
+        variant="primary"
+        disabled={running}
+        onClick={() => setOpen(true)}
+        testId="run-rerun-open"
+      >
+        {t("runs.rerun.open")}
+      </ActionButton>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={(next) => !rerun.isPending && setOpen(next)}
+        object={runName(run, t)}
+        verb={t("runs.rerun.open")}
+        consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
+        pending={rerun.isPending}
+        onConfirm={async () => {
+          await rerun.mutateAsync().catch(() => undefined);
+        }}
+        testId="run-rerun"
+      />
+    </>
   );
 }
 
-function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): void }) {
+/** One run (O2): its state in the strip, when and how it ran, its steps, its evidence. */
+function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
+  const [openStep, setOpenStep] = useState<number | null>(null);
   const detail = useQuery({
     queryKey: ["run", run.id],
     queryFn: () => apiRequest<ExecutionDetail>(`/v1/executions/${encodeURIComponent(run.id)}`),
@@ -176,16 +162,12 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
     queryFn: () =>
       apiRequest<ExecutionStepList>(`/v1/executions/${encodeURIComponent(run.id)}/steps`),
   });
-  // What this run consumed. The endpoint has existed since the August cost
-  // investigation and no cockpit screen had ever called it, so "what did that
-  // run cost" was answerable only from the terminal.
   const cost = useQuery({
     queryKey: ["run-cost", run.id],
     queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
   });
   // The list row is the floor: a refresh that did not return an execution
-  // leaves the record the reader already had, instead of replacing it with
-  // whatever answered 200.
+  // leaves the record the reader already had.
   const current: Execution = isExecutionRecord(detail.data) ? detail.data : run;
   const outcome =
     isExecutionRecord(detail.data) && (detail.data as ExecutionDetail).outcome
@@ -198,8 +180,6 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
   const statusWord = (status: string) => statusLabel(t, status);
   const verdict = runVerdict(current.status, outcome, t, statusWord);
   const failed = verdict.tone !== null;
-  // Without the engine's outcome a failed run still gets its block: what is
-  // known is how it ended, and the way to the fix does not depend on more.
   const sentence = outcome
     ? runOutcomeSentence(outcome, t)
     : failed
@@ -207,8 +187,7 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
       : null;
 
   const canReadWorkflows = session.permissions.includes("workflow:read");
-  // An open repair proposal for this workflow is the first remedy: the engine
-  // already has a fix waiting, and a chat about it would rediscover it.
+  // An open repair proposal for this workflow is the first remedy.
   const patch = useQuery({
     queryKey: ["run-open-repair", current.workflow_id],
     enabled: failed && canReadWorkflows && Boolean(current.workflow_id),
@@ -218,17 +197,12 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
       ),
   });
   const connectorId = outcome?.cause_class === "auth_failed" ? stepConnectorId(failing) : null;
-  // Where the connector's sign-in really stands — read from the connector,
-  // not assumed from the run: a rejected request may be a missing scope.
   const connector = useQuery({
     queryKey: ["connector", connectorId ?? ""],
     enabled: connectorId !== null && session.permissions.includes("connector:read"),
     queryFn: () =>
       apiRequest<ConnectorAuthInput>(`/v1/connectors/${encodeURIComponent(connectorId ?? "")}`),
   });
-  // A run refused for its connector ran no step to read a connector from:
-  // the refusal itself names the connector and why, as resolved in the run's
-  // environment.
   const authState = connectorId
     ? {
         connectorId,
@@ -257,180 +231,180 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
     : payload?.stepKey
       ? t("runs.detail.outputOfStep", { step: payload.stepKey })
       : t("tool.result");
-  // Offered for a partly failed run as well as a failed one: the dialog says
-  // the rerun repeats every step with real effects, including the ones that
-  // already ran — the reader decides with that sentence in front of them.
-  const canRerun =
-    session.permissions.includes("workflow:run") &&
-    current.source_kind === "saved" &&
-    Boolean(current.workflow_id) &&
-    Boolean(current.workflow_version_id);
+  const duration =
+    runDurationMs(current) === null ? null : formatRunDuration(locale, runDurationMs(current) ?? 0);
 
-  const facts: RunFact[] = [
-    [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
-    [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
+  const facts: Fact[] = (
     [
-      t("runs.column.duration"),
-      runDurationMs(current) === null
-        ? MISSING
-        : formatRunDuration(locale, runDurationMs(current) ?? 0),
-    ],
-    [t("runs.column.source"), <LabelText label={requestSourceLabel(current.request_source, t)} />],
-    [t("resource.field.kind"), t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved")],
-    ...runAuthorityFacts(current, t),
-    ...runCostFacts(cost.data, t, locale),
-  ];
+      [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
+      [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
+      [t("runs.column.duration"), duration ?? MISSING],
+      [
+        t("runs.column.source"),
+        <LabelText label={requestSourceLabel(current.request_source, t)} />,
+      ],
+      [
+        t("resource.field.kind"),
+        t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved"),
+      ],
+      ...runAuthorityFacts(current, t),
+      ...runCostFacts(cost.data, t, locale),
+    ] as RunFact[]
+  ).map(([label, value, full]) => ({
+    label,
+    value: full ? <span title={full}>{value}</span> : value,
+  }));
+  const step = openStep === null ? null : (stepItems[openStep] ?? null);
+  const stepColumns: CockpitColumn<ExecutionStep>[] = useMemo(() => {
+    const column = tableColumns<ExecutionStep>({ t, dateTime });
+    return [
+      column.custom(
+        "step",
+        (item) => item.step_key,
+        t("workflowSteps.column.step"),
+        (item, index) => (
+          <span className="font-mono text-xs" data-testid={`run-detail-step-${index}`}>
+            {index + 1} {item.step_key}
+          </span>
+        ),
+        { width: "w-[45%]" },
+      ),
+      column.custom(
+        "status",
+        (item) => item.status,
+        t("resource.field.status"),
+        (item) => <StatusBadge state={item.status} />,
+        { width: "w-[30%]" },
+      ),
+      column.custom(
+        "duration",
+        (item) => item.duration_ms,
+        t("runs.column.duration"),
+        (item) =>
+          item.duration_ms === null ? MISSING : formatRunDuration(locale, item.duration_ms),
+        { width: "w-[25%]" },
+      ),
+    ];
+  }, [t, dateTime, locale]);
+  const stepError = step && step !== failing ? previewText(step.error) : null;
+  const stepOutput = step ? previewText(step.output_preview ?? step.result_preview) : null;
 
   return (
-    // One column that may shrink below its content: without it, a long
-    // unbroken token (a resolved URL in an error) sizes the track and the
-    // sheet clips everything at its edge.
-    <div className="grid grid-cols-1 gap-5 p-4">
-      <dl className="grid grid-cols-2 gap-3" data-testid="run-detail-facts">
-        {facts.map(([label, value, full]) => (
-          // `min-w-0`, or one long label or value sets this column's minimum
-          // width and the sheet clips it on a phone.
-          <div key={label} className="grid min-w-0 grid-cols-1 gap-1 border-b pb-2 break-words">
-            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-            {/* `title` only where the row shows a shortened identifier — the
-                whole value has to stay copyable, but a tooltip repeating text
-                that is already fully on screen is noise. */}
-            <dd className="text-sm break-words" title={full}>
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      {/* What happened, in one sentence — and for a failure, why and what to
-          do about it, in the same block. */}
-      {sentence && failed ? (
-        <CauseFix
-          testId="run-detail-cause"
-          status={{ tone: verdict.tone ?? "critical", label: verdict.label }}
-          cause={
-            <>
-              <span data-testid="run-detail-outcome">
-                <OutcomeText sentence={sentence} />
-              </span>
-              {/* Which rule the approval refused the step for — the cause
-                  class says only THAT it no longer fits. */}
-              <RefusalReasonLine
-                reason={outcome?.refusal_reason}
-                testId="run-detail-refusal-reason"
-                className="mt-1 block"
-              />
-            </>
-          }
-          guidance={stepGuidance(failing)}
-          remedy={remedy ? { label: t(remedy.labelKey), href: remedy.href } : null}
-          more={runCauseLinks(current.id, session.permissions, t)}
-          actions={
-            canRerun ? <RerunAction run={current} onStarted={(id) => onShowRun(id)} /> : null
+    <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
+      {failed && sentence ? (
+        <div data-testid="run-detail-cause">
+          <StatusStrip
+            tone={verdict.tone === "critical" ? "error" : "warn"}
+            line={
+              <>
+                <span className="font-medium">{verdict.label}</span>
+                {" · "}
+                <span data-testid="run-detail-outcome">
+                  <OutcomeText sentence={sentence} />
+                </span>
+                <RefusalReasonLine
+                  reason={outcome?.refusal_reason}
+                  testId="run-detail-refusal-reason"
+                  className="block text-xs text-muted-foreground"
+                />
+              </>
+            }
+            help={stepGuidance(failing) ?? undefined}
+            action={
+              remedy
+                ? {
+                    label: t(remedy.labelKey),
+                    href: absolute(remedy.href),
+                    testId: "run-detail-cause-remedy",
+                  }
+                : undefined
+            }
+          />
+        </div>
+      ) : sentence ? (
+        <StatusStrip
+          tone="ok"
+          line={
+            <span data-testid="run-detail-outcome">
+              <OutcomeText sentence={sentence} />
+            </span>
           }
         />
-      ) : sentence ? (
-        <p className="text-sm" data-testid="run-detail-outcome">
-          <OutcomeText sentence={sentence} />
-        </p>
       ) : null}
-
+      <SummaryLine
+        text={[
+          current.started_at ? dateTime(current.started_at) : null,
+          requestSourceLabel(current.request_source, t).text,
+          duration,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        testId="run-detail-summary"
+      />
       {detail.error || steps.error ? (
-        <Alert variant="destructive" data-testid="run-detail-error-state">
-          <AlertTitle>{t("runs.detail.loadFailed")}</AlertTitle>
-          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            data-testid="run-detail-retry"
-            onClick={() => {
-              void detail.refetch();
-              void steps.refetch();
-            }}
-          >
-            {t("session.retry")}
-          </Button>
-        </Alert>
+        <DataState
+          state="error"
+          line={t("runs.detail.loadFailed")}
+          onRetry={() => {
+            void detail.refetch();
+            void steps.refetch();
+          }}
+          testId="run-detail-error-state"
+        />
       ) : steps.isPending ? (
-        <div className="grid gap-3" data-testid="run-detail-loading">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+        <RowsSkeleton count={2} testId="run-detail-loading" />
       ) : (
         <>
-          {/* The run's error, ONCE. It used to stand here and again inside the
-              step card below, so the reader read the same stack twice and
-              wondered whether two things had gone wrong. */}
-          {errorEvidence && failing && (
-            <EvidenceBlock
-              title={t("runs.detail.errorOfStep", { step: failing.step_key })}
-              text={errorEvidence}
-              tone="error"
-              testId="run-detail-error"
+          {/* The run's error, ONCE: above the steps, not again inside one. */}
+          {errorEvidence && failing ? (
+            <Copyable>
+              <CodeBlock
+                label={t("runs.detail.errorOfStep", { step: failing.step_key })}
+                code={hideTechnicalIdentifiers(errorEvidence, t("tool.referenceHiddenInline"))}
+                testId="run-detail-error"
+              />
+            </Copyable>
+          ) : null}
+          <Section label={t("runs.detail.steps")} testId="run-detail-steps">
+            <RecordTable
+              columns={stepColumns}
+              data={stepItems}
+              collectionId="run-detail-step-list"
+              emptyLine={t("runs.detail.noSteps")}
+              onOpen={(item) => setOpenStep(stepItems.indexOf(item))}
             />
-          )}
-          <section className="grid gap-2" data-testid="run-detail-steps">
-            <h3 className="text-sm font-medium">{t("runs.detail.steps")}</h3>
-            {stepItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid="run-detail-no-steps">
-                {t("runs.detail.noSteps")}
-              </p>
-            ) : (
-              stepItems.map((step, index) => {
-                // The stopping step's error is the block above; any other
-                // step's error (one that continued) is its own and stays here.
-                const stepError = step === failing ? null : previewText(step.error);
-                return (
-                  <div
-                    key={`${step.step_key}-${index}`}
-                    className="rounded-lg border p-3"
-                    data-testid={`run-detail-step-${index}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-medium">{step.step_key}</p>
-                      <Badge variant="outline">{statusLabel(t, step.status)}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {step.duration_ms === null
-                        ? MISSING
-                        : formatRunDuration(locale, step.duration_ms)}
-                    </p>
-                    {stepError && (
-                      <pre className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap">
-                        {hideTechnicalIdentifiers(stepError, t("tool.referenceHiddenInline"))}
-                      </pre>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </section>
-          {/* The payload last, closed: it is the evidence, not the headline.
-              A failed run's newest output belongs to a step, and says which. */}
-          {payload && (
-            <Collapsible data-testid="run-detail-payload">
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-2 w-fit"
-                  data-testid="run-detail-payload-toggle"
-                >
-                  <ChevronRight data-icon="inline-start" />
-                  {payloadLabel}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <EvidenceBlock
-                  title={payloadLabel}
-                  text={payload.text}
-                  tone="result"
-                  testId="run-detail-result"
+            {step && (stepError || stepOutput) ? (
+              <Copyable>
+                <CodeBlock
+                  label={step.step_key}
+                  code={hideTechnicalIdentifiers(
+                    stepError ?? stepOutput ?? "",
+                    t("tool.referenceHiddenInline"),
+                  )}
+                  testId="run-detail-step-evidence"
                 />
-              </CollapsibleContent>
-            </Collapsible>
-          )}
+              </Copyable>
+            ) : null}
+          </Section>
+          <div className="flex flex-col gap-2">
+            {/* The payload last, folded: it is the evidence, not the headline. */}
+            {payload ? (
+              <CollapsibleSection label={payloadLabel} testId="run-detail-payload">
+                <Copyable>
+                  <CodeBlock
+                    code={hideTechnicalIdentifiers(payload.text, t("tool.referenceHiddenInline"))}
+                    testId="run-detail-result"
+                  />
+                </Copyable>
+              </CollapsibleSection>
+            ) : null}
+            <CollapsibleSection
+              label={t("connectorDetail.technical.title")}
+              testId="run-detail-technical"
+            >
+              <FactList items={facts} testId="run-detail-facts" />
+            </CollapsibleSection>
+          </div>
         </>
       )}
     </div>
@@ -444,54 +418,43 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
  */
 function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
-  // Called with the search string explicitly. Handing the function itself to
-  // `useState` would invoke it with no argument, and a filter read from
-  // nothing is an empty filter — the link would arrive and change nothing,
-  // which is the exact failure this parameter exists to prevent.
+  // Called with the search string explicitly: handing the function itself to
+  // `useState` would read the filter from nothing.
   const [initial] = useState(() => filterFromUrl(window.location.search));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
-  // A link that knows the workflow narrows by its id. It arrives from a
-  // decision or a workflow page and is never typed, so it has no control of
+  // A link that knows the workflow narrows by its id; it has no control of
   // its own — only the chip below that says so and lifts it.
   const [workflowFilter, setWorkflowFilter] = useState<string | null>(initial.workflowId);
-  // The window a usage figure counted over. Like the workflow, it arrives with
-  // a link and is lifted by its chip.
   const [startedWindow, setStartedWindow] = useState<{ from: string | null; to: string | null }>({
     from: initial.startedFrom,
     to: initial.startedTo,
   });
-  const [page, setPage] = useState(0);
   const debouncedSearch = useDebouncedValue(search);
   const title = t("resource.runs.title");
-  const needle = debouncedSearch.trim();
-  const query = useQuery({
-    // The needle is part of the key: it is a filter the engine applies, so a
-    // changed needle is a different question and gets its own answer.
-    queryKey: ["runs", statusFilter, sourceFilter, workflowFilter, startedWindow, needle, page],
-    queryFn: () => {
-      const params = executionsQuery(
-        {
-          status: statusFilter,
-          source: sourceFilter,
-          workflowId: workflowFilter,
-          q: needle,
-          startedFrom: startedWindow.from,
-          startedTo: startedWindow.to,
-        },
-        { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-      );
-      return apiRequest<ExecutionList>(`/v1/executions?${params}`);
+  const list = useInfiniteList<ExecutionListItem>(
+    "/v1/executions",
+    {
+      status: statusFilter === "all" ? null : statusFilter,
+      request_source: sourceFilter === "all" ? null : sourceFilter,
+      workflow_id: workflowFilter,
+      q: debouncedSearch.trim() || null,
+      started_from: startedWindow.from,
+      started_to: startedWindow.to,
     },
-  });
-  const rows = useMemo(() => query.data?.items ?? [], [query.data]);
-  const total = query.data?.total ?? rows.length;
+    { limit: PAGE_SIZE },
+  );
+  const rows = useMemo(
+    () => list.items.filter(isExecutionRecord) as ExecutionListItem[],
+    [list.items],
+  );
+  const failedCount = rows.filter((run) =>
+    ["failed", "timed_out", "aborted"].includes(run.status),
+  ).length;
 
-  // A filter the reader removed must also leave the address. `showRun` copies
-  // the query string onto every run address, so a cleared narrowing that
-  // stayed in the URL came back on the next reload — after the reader had
-  // explicitly taken it away.
+  // A filter the reader removed must also leave the address, or a reload
+  // brings it back after the reader explicitly took it away.
   const forgetInAddress = useCallback((keys: readonly string[]) => {
     const params = new URLSearchParams(window.location.search);
     for (const key of keys) params.delete(key);
@@ -505,12 +468,9 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
 
   const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
     const column = tableColumns<ExecutionListItem>({ t, dateTime });
-    // `/v1/executions` accepts no `sort`, and `manualSorting` means a sort
-    // click that the engine cannot honour would silently do nothing. So the
-    // runs table declares no sortable column at all.
     return [
-      column.status("status", (run) => run.status, t("resource.field.status"), {
-        width: "w-[12%]",
+      column.date("started_at", (run) => run.started_at, t("runs.column.started"), {
+        width: "w-[18%]",
       }),
       column.link(
         "workflow",
@@ -519,71 +479,46 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
           label: runName(run, t),
         }),
         t("runs.column.workflow"),
-        { width: "w-[22%]" },
+        { width: "w-[26%]" },
       ),
-      column.date("started_at", (run) => run.started_at, t("runs.column.started"), {
-        width: "w-[15%]",
-      }),
-      // The cause group a failure belongs to (§3), in words. A run that did not
-      // fail has no cause, and its cell is EMPTY — a dash there would read as
-      // "cause unknown" about a run that has none.
       column.custom(
-        "cause",
+        "status",
+        (run) => run.status,
+        t("resource.field.status"),
+        (run) => <StatusBadge state={run.status} />,
+        { width: "w-[16%]" },
+      ),
+      // "Details": the cause a failure belongs to, else how it ran.
+      column.custom(
+        "details",
         (run) => run.failure?.cause_class ?? null,
-        t("runs.column.cause"),
+        t("runs.column.details"),
         (run) => {
           const cause = run.failure?.cause_class;
-          return cause && cause !== "ok" ? (
-            <span data-testid="runs-cause">
-              <LabelText label={causeClassLabel(cause, t)} />
-              <RefusalReasonLine
-                reason={run.failure?.refusal_reason}
-                testId="runs-refusal-reason"
-                className="block text-xs text-muted-foreground"
-              />
-            </span>
-          ) : null;
-        },
-        { width: "w-[14%]" },
-      ),
-      column.custom(
-        "duration",
-        (run) => runDurationMs(run),
-        t("runs.column.duration"),
-        (run) => {
+          if (cause && cause !== "ok")
+            return (
+              <span data-testid="runs-cause">
+                <LabelText label={causeClassLabel(cause, t)} />
+                <RefusalReasonLine
+                  reason={run.failure?.refusal_reason}
+                  testId="runs-refusal-reason"
+                  className="block text-xs text-muted-foreground"
+                />
+              </span>
+            );
           const ms = runDurationMs(run);
           return (
-            <span className="tabular-nums">
-              {ms === null ? MISSING : formatRunDuration(locale, ms)}
+            <span className="text-muted-foreground">
+              {[
+                requestSourceLabel(run.request_source, t).text,
+                ms === null ? null : formatRunDuration(locale, ms),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
           );
         },
-        { width: "w-[9%]" },
-      ),
-      column.custom(
-        "request_source",
-        (run) => run.request_source,
-        t("runs.column.source"),
-        (run) => <LabelText label={requestSourceLabel(run.request_source, t)} />,
-        { width: "w-[13%]" },
-      ),
-      column.custom(
-        "kind",
-        (run) => run.source_kind,
-        t("resource.field.kind"),
-        // A child run says so in a word. The line that stood here — "there is
-        // no run detail route" — was true until `/runs/$resourceId` existed
-        // and is not any more; a restraint justified by a fact that has since
-        // changed justifies nothing. The cell is still a word because this
-        // renderer returns a string: making the parent reachable is a change
-        // to the cell, not to the route, and it is not this one.
-        (run) =>
-          `${run.hold_writes ? `${t("runs.preparation")} · ` : ""}${
-            run.parent_execution_id
-              ? `${t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")} · ${t("runs.childRun")}`
-              : t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")
-          }`,
-        { width: "w-[15%]" },
+        { width: "w-[40%]" },
       ),
     ];
   }, [t, dateTime, locale]);
@@ -601,184 +536,128 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     setSourceFilter("all");
     setWorkflowFilter(null);
     setStartedWindow({ from: null, to: null });
-    setPage(0);
     forgetInAddress(["workflow_id", "status", "source", "q", "started_from", "started_to"]);
   }, [forgetInAddress]);
 
   return (
-    <div className="flex h-[calc(100svh-9rem)] min-h-80 flex-col">
-      <DataTable
-        columns={columns}
-        data={rows}
-        toolbar={
-          <>
-            <InputGroup className="w-full sm:max-w-xs">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  // A new question is asked from the first page: the answer to
-                  // it has its own length, and page three of the old one is
-                  // usually empty in the new one.
-                  setPage(0);
-                }}
-                placeholder={t("runs.search")}
-                aria-label={t("runs.search")}
-                data-testid="runs-search"
-              />
-            </InputGroup>
-            <Select
-              value={statusFilter}
-              onValueChange={(status) => {
-                setStatusFilter(status);
-                setPage(0);
+    <div className="flex flex-col gap-6">
+      {list.query.data ? (
+        <SummaryLine
+          text={t((list.total ?? rows.length) === 1 ? "runs.summary.one" : "runs.summary.other", {
+            count: list.total ?? rows.length,
+            failed: failedCount,
+          })}
+          testId="runs-summary"
+        />
+      ) : null}
+      <div className="flex h-[calc(100svh-14rem)] min-h-80 flex-col">
+        <DataTable
+          columns={columns}
+          data={rows}
+          toolbar={
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: t("runs.search"),
+                testId: "runs-search",
               }}
-            >
-              <SelectTrigger
-                className="w-44"
-                aria-label={t("catalog.filterStatus")}
-                data-testid="runs-status-filter"
-              >
-                <SelectValue placeholder={t("catalog.allStatuses")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="runs-status-all">
-                    {t("catalog.allStatuses")}
-                  </SelectItem>
-                  {RUN_STATUSES.map((status) => (
-                    <SelectItem key={status} value={status} data-testid={`runs-status-${status}`}>
-                      {statusLabel(t, status)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {/* A link may arrive here already narrowed to one source. Without
-                a control saying so, the reader sees a short list and no reason
-                for it — the filter would be invisible state, which is the
-                defect this page keeps being fixed for. */}
-            <Select
-              value={sourceFilter}
-              onValueChange={(source) => {
-                setSourceFilter(source);
-                setPage(0);
-              }}
-            >
-              <SelectTrigger
-                className="w-44"
-                aria-label={t("runs.filterSource")}
-                data-testid="runs-source-filter"
-              >
-                <SelectValue placeholder={t("runs.allSources")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="runs-source-all">
-                    {t("runs.allSources")}
-                  </SelectItem>
-                  {REQUEST_SOURCES.map((source) => (
-                    <SelectItem key={source} value={source} data-testid={`runs-source-${source}`}>
-                      <LabelText label={requestSourceLabel(source, t)} />
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {/* The narrowing a link brought, said out loud and removable. */}
-            {workflowFilter ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                data-testid="runs-workflow-filter"
-                onClick={() => {
-                  setWorkflowFilter(null);
-                  setPage(0);
-                  forgetInAddress(["workflow_id"]);
-                }}
-              >
-                {t("runs.workflowFilter")}
-              </Button>
-            ) : null}
-            {startedWindow.from || startedWindow.to ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                data-testid="runs-window-filter"
-                onClick={() => {
-                  setStartedWindow({ from: null, to: null });
-                  setPage(0);
-                  forgetInAddress(["started_from", "started_to"]);
-                }}
-              >
-                {windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}
-              </Button>
-            ) : null}
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="runs-clear-filters"
-                onClick={resetFilters}
-              >
-                {t("catalog.clearFilters")}
-              </Button>
-            )}
-          </>
-        }
-        onRefresh={() => void query.refetch()}
-        refreshing={query.isFetching}
-        refreshLabel={t("common.refresh")}
-        pending={query.isPending}
-        error={
-          query.error
-            ? {
-                title: t("resource.loadFailed", { resource: title }),
-                description: t("resource.loadFailedDescription"),
-                retryLabel: t("session.retry"),
-                onRetry: () => void query.refetch(),
+              selects={[
+                {
+                  value: statusFilter,
+                  onChange: setStatusFilter,
+                  label: t("catalog.filterStatus"),
+                  testId: "runs-status-filter",
+                  options: [
+                    { value: "all", label: t("catalog.allStatuses") },
+                    ...RUN_STATUSES.map((status) => ({
+                      value: status,
+                      label: statusLabel(t, status),
+                    })),
+                  ],
+                },
+                {
+                  value: sourceFilter,
+                  onChange: setSourceFilter,
+                  label: t("runs.filterSource"),
+                  testId: "runs-source-filter",
+                  options: [
+                    { value: "all", label: t("runs.allSources") },
+                    ...REQUEST_SOURCES.map((source) => ({
+                      value: source,
+                      label: requestSourceLabel(source, t).text,
+                    })),
+                  ],
+                },
+              ]}
+              segmented={
+                <>
+                  {/* The narrowing a link brought, said out loud and removable. */}
+                  {workflowFilter ? (
+                    <ActionButton
+                      size="sm"
+                      variant="ghost"
+                      testId="runs-workflow-filter"
+                      onClick={() => {
+                        setWorkflowFilter(null);
+                        forgetInAddress(["workflow_id"]);
+                      }}
+                    >
+                      {t("runs.workflowFilter")}
+                    </ActionButton>
+                  ) : null}
+                  {startedWindow.from || startedWindow.to ? (
+                    <ActionButton
+                      size="sm"
+                      variant="ghost"
+                      testId="runs-window-filter"
+                      onClick={() => {
+                        setStartedWindow({ from: null, to: null });
+                        forgetInAddress(["started_from", "started_to"]);
+                      }}
+                    >
+                      {windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}
+                    </ActionButton>
+                  ) : null}
+                </>
               }
-            : null
-        }
-        emptyState={{
-          zero: {
-            title: t("resource.runs.empty"),
-            // Never used: a run comes from a workflow, so the next step is one.
-            action: (
-              <Button asChild variant="outline" size="sm">
-                <Link to={workflowsHref()} data-testid="runs-empty-action">
-                  {t("runs.empty.action")}
-                </Link>
-              </Button>
-            ),
-          },
-          filtered: {
-            title: t("resource.noMatches"),
-            description: t("resource.broaderSearch"),
-            resetLabel: t("catalog.clearFilters"),
-            onReset: resetFilters,
-          },
-        }}
-        hasActiveFilters={hasActiveFilters}
-        sorting={[] as SortingState}
-        onSortingChange={() => {}}
-        onOpen={(run) => onShowRun(run.id)}
-        rowHref={(run) => runHref(run.id)}
-        linkColumn="started_at"
-        page={page}
-        pageSize={PAGE_SIZE}
-        total={total}
-        onPageChange={setPage}
-        previousLabel={t("catalog.previous")}
-        nextLabel={t("catalog.next")}
-        columnsLabel={t("catalog.columns")}
-        recordsLabel={t("catalog.records")}
-        loadedLabel={t("catalog.loaded", { count: rows.length })}
-        actionsLabel={t("common.actions")}
-      />
+            />
+          }
+          pending={list.query.isPending}
+          error={
+            list.query.error
+              ? {
+                  title: t("resource.loadFailed", { resource: title }),
+                  description: "",
+                  retryLabel: t("pattern.retry"),
+                  onRetry: () => void list.query.refetch(),
+                }
+              : null
+          }
+          emptyState={{
+            zero: { title: t("resource.runs.empty") },
+            filtered: {
+              title: t("resource.noMatches"),
+              description: t("resource.broaderSearch"),
+              resetLabel: t("catalog.clearFilters"),
+              onReset: resetFilters,
+            },
+          }}
+          hasActiveFilters={hasActiveFilters}
+          infinite={list.infinite}
+          total={list.total}
+          getRowId={(run) => run.id}
+          sorting={[]}
+          onSortingChange={() => {}}
+          onOpen={(run) => onShowRun(run.id)}
+          rowHref={(run) => runHref(run.id)}
+          linkColumn="started_at"
+          columnsLabel={t("catalog.columns")}
+          recordsLabel={t("catalog.records")}
+          actionsLabel={t("common.actions")}
+          collectionId="data-table"
+        />
+      </div>
     </div>
   );
 }
@@ -790,9 +669,7 @@ function useRun(id: string | null, enabled: boolean) {
     enabled: enabled && id !== null,
     queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(id ?? "")}`),
   });
-  // Never the answer to a question that is no longer being asked: the key
-  // changes with the id, and a stale record under the previous one would title
-  // the sheet after a run the reader had already closed.
+  // Never the answer to a question that is no longer being asked.
   const run = isExecutionRecord(addressed.data) && addressed.data.id === id ? addressed.data : null;
   return { run, failed: Boolean(addressed.error), retry: () => void addressed.refetch() };
 }
@@ -811,9 +688,8 @@ export function RunOverlays() {
   const allowed = session.permissions.includes("execution:read");
   const href = useRouterState({ select: (state) => state.location.href });
   const [overlay, setOverlay] = useState(() => runOverlayFromUrl(window.location.search));
-  // A router navigation (a link to `?run=…` on the same page) and a history
-  // step both change the address under the sheets; the sheets follow it.
   useEffect(() => {
+    void href;
     setOverlay(runOverlayFromUrl(window.location.search));
   }, [href]);
   useEffect(() => {
@@ -829,29 +705,37 @@ export function RunOverlays() {
   const { run, failed, retry } = useRun(overlay.runId, allowed);
   if (!allowed) return null;
   const open = overlay.list || overlay.runId !== null;
-  const title = !overlay.runId ? (
-    t("runs.all")
-  ) : run?.workflow_id ? (
-    // The title is the workflow, and leads there: the run is one answer about
-    // it, and the way to change it starts at the workflow.
-    <a
-      href={absolute(workflowHref(run.workflow_id))}
-      className="min-w-0 underline-offset-4 hover:underline"
-      data-testid="run-detail-workflow-link"
-    >
-      {runName(run, t)}
-    </a>
-  ) : run ? (
-    runName(run, t)
-  ) : (
-    t("resource.runs.title")
-  );
+  const canRerun =
+    run !== null &&
+    session.permissions.includes("workflow:run") &&
+    run.source_kind === "saved" &&
+    Boolean(run.workflow_id) &&
+    Boolean(run.workflow_version_id);
+  const auditLinks = run ? runCauseLinks(run.id, session.permissions, t) : [];
+  const title = !overlay.runId
+    ? t("runs.all")
+    : run
+      ? t("runs.sheetTitle", { name: runName(run, t) })
+      : t("resource.runs.title");
   return (
     <RecordSheet
       open={open}
       onOpenChange={(next) => !next && show({ list: false, runId: null })}
       size={overlay.list ? "wide" : "default"}
-      title={title}
+      title={
+        overlay.runId && run?.workflow_id ? (
+          // The title is the workflow, and leads there.
+          <a
+            href={absolute(workflowHref(run.workflow_id))}
+            className="min-w-0 underline-offset-4 hover:underline"
+            data-testid="run-detail-workflow-link"
+          >
+            {title}
+          </a>
+        ) : (
+          title
+        )
+      }
       titleTestId={overlay.runId ? "run-detail-title" : "runs-sheet-title"}
       badge={
         overlay.runId && run ? (
@@ -866,6 +750,22 @@ export function RunOverlays() {
           />
         ) : undefined
       }
+      action={
+        overlay.runId && run && canRerun ? (
+          <RerunAction run={run} onStarted={(id) => show({ list: overlay.list, runId: id })} />
+        ) : undefined
+      }
+      menu={
+        overlay.runId && auditLinks.length > 0 ? (
+          <ActionMenu
+            items={auditLinks.map((link) => ({
+              label: link.label,
+              href: absolute(link.href),
+              testId: "run-detail-audit",
+            }))}
+          />
+        ) : undefined
+      }
       back={
         overlay.list && overlay.runId
           ? { label: t("runs.all"), onClick: () => show({ list: true, runId: null }) }
@@ -874,15 +774,13 @@ export function RunOverlays() {
       testId={overlay.runId ? "run-detail" : "resource-runs"}
       closeTestId={overlay.runId ? "run-detail-close" : "runs-sheet-close"}
     >
-      {/* The list stays mounted under an open run, so its filters, its page
-          and its rows are exactly as the reader left them on the way back. */}
+      {/* The list stays mounted under an open run, so its filters and rows are
+          exactly as the reader left them on the way back. */}
       {overlay.list ? (
         <div hidden={overlay.runId !== null}>
           <RunsList onShowRun={(id) => show({ list: true, runId: id })} />
         </div>
       ) : null}
-      {/* Three different facts, told apart. The record is here; it is on its
-          way; or this address names no run this installation has. */}
       {overlay.runId === null ? null : run ? (
         <RunDetail run={run} onShowRun={(id) => show({ list: overlay.list, runId: id })} />
       ) : failed ? (

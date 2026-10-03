@@ -1,24 +1,27 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
+import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
+  ActionMenu,
+  type CockpitColumn,
+  CollapsibleSection,
+  ConfirmDialog,
+  DataState,
+  type Fact,
+  FactList,
+  RecordSheet,
+  Section,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
+import { tableColumns } from "@/components/cockpit/table-columns";
+import { automationQueryKeys } from "@/lib/automation-queries";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { type AuthorityPages, withAuthorityRevoked } from "@/lib/optimistic-authorities";
+import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   AUTHORITY_EFFECT_KEYS,
   AUTHORITY_STATE_KEYS,
@@ -28,312 +31,341 @@ import {
   type WorkflowAuthority,
 } from "@/lib/workflow-authorities";
 
-/** What an approval permits — the part a reader decides by. */
-function GrantEffects({ authority }: { authority: WorkflowAuthority }) {
-  const { t } = useI18n();
-  const connectorNames = useConnectorNames();
-  if (authority.effect_manifest.effects.length === 0)
-    return <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>;
-  return (
-    <ul className="flex flex-col gap-2 text-sm">
-      {authority.effect_manifest.effects.map((effect) => (
-        <li key={effect.step_id} className="min-w-0 break-words">
-          <span className="font-medium">{effect.step_id}</span>
-          {" · "}
-          {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-          {" · "}
-          {effect.driver}
-          {" / "}
-          {effect.operation}
-          <div className="break-all text-muted-foreground">
-            {t("authority.connector")}
-            {": "}
-            {/* The connector by its name, as the approval dialog names it —
-                never a fragment of its id. The id stays on the title, for
-                anyone who has to quote it. */}
-            {effect.connector_id ? (
-              <span title={effect.connector_id}>
-                {connectorNames.get(effect.connector_id) ?? t("authority.configuredConnector")}
-              </span>
-            ) : (
-              t("authority.directRequest")
-            )}
-          </div>
-          <div className="break-all text-muted-foreground">
-            {effect.target ?? t("authority.unboundTarget")}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
+/** The approval's engine state as the badge reads it: approved, or not any more. */
+function badgeState(state: WorkflowAuthority["state"]): string {
+  return state === "approved" ? "approved" : state === "not_yet_valid" ? "pending" : "inactive";
 }
 
-/**
- * The exact boundary, for the reader who has to quote or compare it: the
- * version, the window to the minute and the manifest's checksum. Evidence, not
- * reading matter — it stays behind "Details".
- */
-function GrantTechnicalDetails({
+/** What an approval permits — the part a reader decides by — as facts. */
+function useEffectFacts(authority: WorkflowAuthority): Fact[] {
+  const { t } = useI18n();
+  const connectorNames = useConnectorNames();
+  return authority.effect_manifest.effects.map((effect) => ({
+    label: effect.step_id,
+    value: [
+      t(AUTHORITY_EFFECT_KEYS[effect.effect]),
+      `${effect.driver} / ${effect.operation}`,
+      // The connector by its name, as the approval dialog names it — never a
+      // fragment of its id.
+      effect.connector_id
+        ? (connectorNames.get(effect.connector_id) ?? t("authority.configuredConnector"))
+        : t("authority.directRequest"),
+      effect.target ?? t("authority.unboundTarget"),
+    ].join(" · "),
+  }));
+}
+
+/** One approval (O6): what it permits, and its exact boundary for whoever has to quote it. */
+function ApprovalSheet({
   authority,
   versions,
-  testId,
+  now,
+  onClose,
 }: {
   authority: WorkflowAuthority;
   versions: ReadonlyMap<string, number>;
-  testId: string;
+  now: number;
+  onClose: () => void;
 }) {
   const { t, locale } = useI18n();
   const version = authorityVersionLabel(authority.workflow_version_id, versions);
+  const state = observedAuthorityState(authority, now);
+  const effects = useEffectFacts(authority);
+  const facts: Fact[] = [
+    {
+      label: t("authority.version"),
+      value: <span title={version.full ?? undefined}>{version.text}</span>,
+      testId: "authority-version",
+    },
+    {
+      label: t("authority.runs"),
+      value:
+        authority.max_runs === null || authority.remaining_runs === null
+          ? t("authority.runsUnlimited", { count: authority.reserved_runs })
+          : t("authority.remaining", {
+              remaining: authority.remaining_runs,
+              max: authority.max_runs,
+            }),
+    },
+    {
+      label: t("authority.window"),
+      value: `${formatDateTime(locale, authority.valid_from)} — ${
+        authority.valid_until === null
+          ? t("authority.headline.untilRevoked")
+          : formatDateTime(locale, authority.valid_until)
+      }`,
+    },
+    {
+      label: t("authority.digest"),
+      // A hash is evidence: its head identifies it, the whole stays on the title.
+      value: (
+        <span className="font-mono text-xs" title={authority.effect_manifest_digest}>
+          {`${authority.effect_manifest_digest.slice(0, 12)}…`}
+        </span>
+      ),
+    },
+  ];
   return (
-    <Collapsible>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="-ml-2 w-fit" data-testid={`${testId}-details`}>
-          <ChevronRight data-icon="inline-start" />
-          {t("common.details")}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <dl className="mt-2 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground">{t("authority.version")}</dt>
-            <dd data-testid="authority-version" title={version.full ?? undefined}>
-              {version.text}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t("authority.runs")}</dt>
-            <dd>
-              {authority.max_runs === null || authority.remaining_runs === null
-                ? t("authority.runsUnlimited", { count: authority.reserved_runs })
-                : t("authority.remaining", {
-                    remaining: authority.remaining_runs,
-                    max: authority.max_runs,
-                  })}
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-muted-foreground">{t("authority.window")}</dt>
-            <dd>
-              <time dateTime={authority.valid_from}>
-                {formatDateTime(locale, authority.valid_from)}
-              </time>
-              {" — "}
-              {authority.valid_until === null ? (
-                t("authority.headline.untilRevoked")
-              ) : (
-                <time dateTime={authority.valid_until}>
-                  {formatDateTime(locale, authority.valid_until)}
-                </time>
-              )}
-            </dd>
-          </div>
-          <div className="min-w-0 sm:col-span-2">
-            <dt className="text-muted-foreground">{t("authority.digest")}</dt>
-            {/* A hash is evidence: its head identifies it, the whole stays on
-                the title for anyone comparing it. */}
-            <dd className="font-mono text-xs" title={authority.effect_manifest_digest}>
-              {`${authority.effect_manifest_digest.slice(0, 12)}…`}
-            </dd>
-          </div>
-        </dl>
-      </CollapsibleContent>
-    </Collapsible>
+    <RecordSheet
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={<span title={authority.id}>{authorityHeadline(authority, t, locale)}</span>}
+      titleTestId="authority-headline"
+      badge={<StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />}
+      testId="authority-sheet"
+      closeTestId="authority-sheet-close"
+    >
+      {/* An approval can be valid and still cover nothing that runs. */}
+      {authority.active_version ? null : (
+        <p className="text-sm text-muted-foreground" data-testid="authority-inactive-version">
+          {t("authority.inactiveVersion")}
+        </p>
+      )}
+      <FactList items={facts} testId="authority-facts" />
+      <Section label={t("workflowApprovals.permits")}>
+        {effects.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
+        ) : (
+          <FactList items={effects} testId="authority-effects" />
+        )}
+      </Section>
+    </RecordSheet>
   );
 }
 
-function RevokeGrant({ authority, testId }: { authority: WorkflowAuthority; testId: string }) {
-  const { t, locale } = useI18n();
+/** "Widerrufen" on one approval (O5), with the one line of what it stops. */
+function RevokeApproval({
+  authority,
+  versionText,
+  testId,
+}: {
+  authority: WorkflowAuthority;
+  versionText: string;
+  testId: string;
+}) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const client = useQueryClient();
-  const revoke = useMutation({
+  // Revoked at once on screen; put back if the engine refuses. A revoked
+  // approval changes the verdict, the diagnosis and what the call promises —
+  // and the attention list, once a start is refused.
+  const revoke = useOptimisticAction({
+    queryKey: ["workflow-authorities", authority.workflow_id],
     mutationFn: () =>
       apiRequest<WorkflowAuthority>(
         `/v1/workflows/${encodeURIComponent(authority.workflow_id)}/execution-authorities/${encodeURIComponent(authority.id)}/revoke`,
         { method: "POST" },
       ),
-    onSuccess: async () => {
-      // A revoked approval changes the verdict, the diagnosis and what the
-      // call block promises — and the attention list, once a start is refused.
-      await invalidateWorkflowAutomation(client, authority.workflow_id);
-      await client.invalidateQueries({ queryKey: ["attention"] });
-      setOpen(false);
-    },
+    apply: (current: AuthorityPages | undefined) =>
+      withAuthorityRevoked(current, authority.id, new Date().toISOString()),
+    invalidate: [
+      ...automationQueryKeys(authority.workflow_id).filter(
+        (key) => key[0] !== "workflow-authorities" || key.length > 2,
+      ),
+      ["attention"],
+    ],
+    errorMessage: () => t("authority.revokeFailed"),
+    onSuccess: () => setOpen(false),
   });
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        if (!revoke.isPending) {
-          setOpen(value);
-          revoke.reset();
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-testid={`${testId}-revoke`}>
-          {t("authority.revoke")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent closeLabel={t("common.close")} className="max-h-[85svh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t("authority.revokeTitle")}</DialogTitle>
-          <DialogDescription>{t("authority.revokeDescription")}</DialogDescription>
-        </DialogHeader>
-        {/* The exact approval this revokes, named by what it permits; its id
-            stays on the title for anyone who needs to quote it. */}
-        <p
-          className="text-sm font-medium"
-          title={authority.id}
-          data-testid="authority-revoke-target"
-        >
-          {authorityHeadline(authority, t, locale)}
-        </p>
-        <GrantEffects authority={authority} />
-        {revoke.error && (
-          <Alert variant="destructive">
-            <AlertTitle>{t("authority.revokeFailed")}</AlertTitle>
-            <AlertDescription>{t("authority.retryDescription")}</AlertDescription>
-          </Alert>
-        )}
-        <DialogFooter>
-          <Button
-            variant="outline"
-            disabled={revoke.isPending}
-            onClick={() => setOpen(false)}
-            data-testid="authority-revoke-cancel"
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={revoke.isPending}
-            onClick={() => revoke.mutate()}
-            data-testid="authority-revoke-confirm"
-          >
-            {t(revoke.isPending ? "authority.revoking" : "authority.revoke")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <>
+      <ActionMenu
+        items={[
+          {
+            label: t("workflowApprovals.revoke"),
+            onSelect: () => setOpen(true),
+            testId: `${testId}-revoke`,
+          },
+        ]}
+      />
+      <ConfirmDialog
+        open={open}
+        onOpenChange={(next) => !revoke.isPending && setOpen(next)}
+        object={t("workflowApprovals.object", { version: versionText })}
+        verb={t("workflowApprovals.revoke")}
+        consequence={t("workflowApprovals.revokeConsequence")}
+        destructive
+        pending={revoke.isPending}
+        onConfirm={async () => {
+          await revoke.mutateAsync(undefined).catch(() => undefined);
+        }}
+        testId="authority-revoke"
+      />
+    </>
   );
 }
 
-/**
- * One approval: headed by what a reader decides by, then what it permits; the
- * exact boundary one disclosure deeper. Positional test ids — an approval's
- * id never becomes a selector.
- */
-export function GrantCard({
-  authority,
-  versions,
-  now,
-  canWrite,
-  testId,
-}: {
-  authority: WorkflowAuthority;
-  versions: ReadonlyMap<string, number>;
-  now: number;
-  canWrite: boolean;
-  testId: string;
-}) {
-  const { t, locale } = useI18n();
-  const state = observedAuthorityState(authority, now);
-  return (
-    <div
-      className="grid min-w-0 gap-3 rounded-lg border p-3"
-      data-testid={testId}
-      // "Details" and "Widerrufen" act on this approval; the next card's on its own.
-      data-action-scope="approval"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        {/* The id is on the title, for quoting, and nowhere on the page. */}
-        <h3 className="text-sm font-semibold" title={authority.id} data-testid="authority-headline">
-          {authorityHeadline(authority, t, locale)}
-        </h3>
-        <Badge variant={state === "approved" && authority.active_version ? "secondary" : "outline"}>
-          {t(AUTHORITY_STATE_KEYS[state])}
-        </Badge>
-      </div>
-      {/* An approval can be valid and still cover nothing that runs. */}
-      {authority.active_version ? null : (
-        <p className="text-sm text-muted-foreground" data-testid={`${testId}-inactive-version`}>
-          {t("authority.inactiveVersion")}
-        </p>
-      )}
-      <GrantEffects authority={authority} />
-      <div className="flex flex-wrap items-center gap-2">
-        <GrantTechnicalDetails authority={authority} versions={versions} testId={testId} />
-        {canWrite && !authority.revoked_at ? (
-          <RevokeGrant authority={authority} testId={testId} />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Approvals that no longer admit a run — expired, revoked, used up or for a
- * version that is not running — folded. History is evidence; it does not
- * compete with the one current state above it.
- */
-export function FormerGrants({
+function ApprovalTable({
   items,
-  versions,
-  now,
-  canWrite,
-  hasMore,
-  loadingMore,
-  onMore,
+  automation,
+  collectionId,
+  rowTestId,
+  emptyLine,
 }: {
   items: readonly WorkflowAuthority[];
-  versions: ReadonlyMap<string, number>;
-  now: number;
-  canWrite: boolean;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onMore: () => void;
+  automation: WorkflowAutomation;
+  collectionId: string;
+  /** The positional test id of row `index` — an approval's id never becomes a selector. */
+  rowTestId: (index: number) => string;
+  emptyLine: string;
+}) {
+  const { t, locale, dateTime } = useI18n();
+  const [open, setOpen] = useState<WorkflowAuthority | null>(null);
+  const { versions, now } = automation;
+  const columns = useMemo<CockpitColumn<WorkflowAuthority>[]>(() => {
+    const column = tableColumns<WorkflowAuthority>({ t, dateTime });
+    return [
+      column.custom(
+        "version",
+        (authority) => authority.workflow_version_id,
+        t("authority.version"),
+        (authority) => authorityVersionLabel(authority.workflow_version_id, versions).text,
+        { width: "w-[14%]" },
+      ),
+      column.custom(
+        "boundary",
+        (authority) => authority.valid_until,
+        t("workflowApprovals.column.boundary"),
+        (authority) => authorityHeadline(authority, t, locale),
+        { width: "w-[52%]" },
+      ),
+      column.custom(
+        "state",
+        (authority) => authority.state,
+        t("resource.field.status"),
+        (authority) => {
+          const state = observedAuthorityState(authority, now);
+          return <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />;
+        },
+        { width: "w-[34%]" },
+      ),
+    ];
+  }, [t, dateTime, locale, versions, now]);
+  return (
+    <>
+      <RecordTable
+        columns={columns}
+        data={[...items]}
+        collectionId={collectionId}
+        emptyLine={emptyLine}
+        onOpen={(authority) => setOpen(authority)}
+        rowLabel={(authority) => authorityHeadline(authority, t, locale)}
+        rowActions={
+          automation.canWrite
+            ? (authority, index) =>
+                authority.revoked_at ? null : (
+                  <span data-action-scope="approval" data-testid={rowTestId(index)}>
+                    <RevokeApproval
+                      authority={authority}
+                      versionText={
+                        authorityVersionLabel(authority.workflow_version_id, versions).text
+                      }
+                      testId={rowTestId(index)}
+                    />
+                  </span>
+                )
+            : undefined
+        }
+      />
+      {open ? (
+        <ApprovalSheet
+          authority={open}
+          versions={versions}
+          now={now}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * "Freigaben" (V4d): the approvals a run can use now, each revocable, and the
+ * former ones folded. Approving lives in the strip only.
+ */
+export function WorkflowApprovals({ automation }: { automation: WorkflowAutomation }) {
+  const { t } = useI18n();
+  const { state } = automation;
+  const current: WorkflowAuthority[] = state
+    ? state.grant
+      ? [state.grant, ...state.alsoValid]
+      : state.alsoValid
+    : [];
+  const history = state?.history ?? [];
+  // A count, never a repeat of one row (R9); approving lives in the strip.
+  const total = current.length + history.length;
+  const summary =
+    total === 0
+      ? null
+      : t(total === 1 ? "workflowApprovals.count.one" : "workflowApprovals.count.other", {
+          count: total,
+          active: current.length,
+        });
+  return (
+    <>
+      {summary ? (
+        <SummaryLine
+          text={summary}
+          help={t("workflowApprovals.summaryHelp")}
+          testId="workflow-approvals-summary"
+        />
+      ) : null}
+      {state ? (
+        <ApprovalsBody automation={automation} current={current} history={history} />
+      ) : (
+        <DataState state="loading" testId="workflow-approvals-loading" />
+      )}
+    </>
+  );
+}
+
+function ApprovalsBody({
+  automation,
+  current,
+  history,
+}: {
+  automation: WorkflowAutomation;
+  current: WorkflowAuthority[];
+  history: WorkflowAuthority[];
 }) {
   const { t } = useI18n();
-  if (items.length === 0 && !hasMore) return null;
   return (
-    <Collapsible data-testid="workflow-former-grants">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 w-fit"
-          data-testid="workflow-former-grants-toggle"
+    <>
+      <ApprovalTable
+        items={current}
+        automation={automation}
+        collectionId="workflow-approvals"
+        rowTestId={(index) =>
+          index === 0 && automation.state?.grant ? "authority-current" : `authority-valid-${index}`
+        }
+        emptyLine={t("workflowApprovals.none")}
+      />
+      {history.length > 0 || automation.history.hasMore ? (
+        <CollapsibleSection
+          label={t("automation.formerGrants")}
+          count={history.length}
+          testId="workflow-former-grants"
         >
-          <ChevronRight data-icon="inline-start" />
-          {t("automation.formerGrants")}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 grid gap-3">
-          {items.map((authority, index) => (
-            <GrantCard
-              key={authority.id}
-              authority={authority}
-              versions={versions}
-              now={now}
-              canWrite={canWrite}
-              testId={`authority-history-${index}`}
+          <ApprovalTable
+            items={history}
+            automation={automation}
+            collectionId="workflow-former-approvals"
+            rowTestId={(index) => `authority-history-${index}`}
+            emptyLine={t("workflowApprovals.none")}
+          />
+          {automation.history.hasMore ? (
+            <ActionMenu
+              items={[
+                {
+                  label: t("authority.more"),
+                  disabled: automation.history.loading,
+                  onSelect: automation.history.more,
+                  testId: "authority-more",
+                },
+              ]}
             />
-          ))}
-          {hasMore && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-fit"
-              disabled={loadingMore}
-              onClick={onMore}
-              data-testid="authority-more"
-            >
-              {t("authority.more")}
-            </Button>
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+          ) : null}
+        </CollapsibleSection>
+      ) : null}
+    </>
   );
 }

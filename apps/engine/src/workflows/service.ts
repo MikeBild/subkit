@@ -588,6 +588,32 @@ export async function updateWorkflowMetadata(
         await inboundService.unbindFromWorkflow(input.tenant_id, wf.id, input.actor_id ?? null, tx);
         await scheduleRepo.unbindFromWorkflow(tx, input.tenant_id, wf.id, input.actor_id ?? null);
       }
+      // Reactivating binds the running version's own trigger again, so
+      // switching a workflow off and on is reversible for what its
+      // definition declares. A schedule set apart from the definition is
+      // gone with the archive and stays gone.
+      if (patch.lifecycle === "active" && wf.lifecycle === "archived" && wf.current_version_id) {
+        const [version] = await tx
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, input.tenant_id),
+              eq(workflowVersions.id, wf.current_version_id),
+            ),
+          )
+          .limit(1);
+        const stored = version ? readStoredDefinition(version.dag) : null;
+        if (stored && !stored.legacy)
+          await applyTriggerBindings(
+            tx,
+            input.tenant_id,
+            wf.id,
+            patch.slug ?? wf.slug,
+            stored.definition,
+            input.actor_id ?? null,
+          );
+      }
       await auditAwait(
         {
           tenant_id: input.tenant_id,

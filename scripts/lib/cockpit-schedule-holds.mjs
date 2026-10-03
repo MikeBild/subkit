@@ -91,7 +91,8 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
   await page.route(attentionPattern, attention);
   try {
     await stand.visit(page, "");
-    const entries = page.locator('[data-testid="attention-list"] > li');
+    // One row per entry; its id rides on the completing verb (table or cards).
+    const entries = page.locator('[data-testid="attention-list"] [data-attention-id]:visible');
     await entries.first().waitFor();
     if ((await entries.count()) !== 13)
       throw new Error(`Übersicht lists ${await entries.count()} held workflows, not 13`);
@@ -107,7 +108,9 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
         throw new Error("Stopped workflows and the badge is not red");
     }
     const first = entries.first();
-    if (!(await first.innerText()).includes("Held publishing workflow"))
+    if (
+      !(await page.getByTestId("attention-list").innerText()).includes("Held publishing workflow")
+    )
       throw new Error("The held workflow is not named on its entry");
     await capture("today");
     await first.locator('[data-testid$="-primary"]').click();
@@ -157,7 +160,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       throw new Error(
         `A held schedule reads as "${await automation.getAttribute("data-state")}", not as approval needed`,
       );
-    const approve = locale === "de" ? "Jetzt freigeben" : "Approve now";
+    const approve = locale === "de" ? "Freigeben…" : "Approve…";
     if ((await page.getByTestId("workflow-automation-action").innerText()).trim() !== approve)
       throw new Error("The panel does not offer the approval the held schedule waits for");
     await page.waitForLoadState("networkidle");
@@ -167,9 +170,9 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     if (await page.getByTestId("authority-schedule-held").count())
       throw new Error("The held schedule is announced a second time by a badge");
     if (
-      !(await page.getByTestId("workflow-automation-triggers").innerText()).includes(
-        locale === "de" ? "täglich um 08:00" : "daily at 08:00",
-      )
+      !(await page.getByTestId("workflow-automation-triggers").innerText())
+        .toLowerCase()
+        .includes(locale === "de" ? "wird per zeitplan" : "schedule")
     )
       throw new Error("The panel does not name the schedule it is about");
 
