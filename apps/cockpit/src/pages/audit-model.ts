@@ -287,6 +287,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "approval.dispatch_denied": "audit.action.approvalDispatchDenied",
   "workflow.authority_granted": "audit.action.authorityGranted",
   "workflow.authority_revoked": "audit.action.authorityRevoked",
+  "workflow.authority_inherited": "audit.action.authorityInherited",
   "policy.denied": "audit.action.policyDenied",
   "execution.boundary_refused": "audit.action.boundaryRefused",
   "rbac.role_created": "audit.action.roleCreated",
