@@ -217,6 +217,110 @@ describe("GET /v1/connectors/{id}/runtime", () => {
   });
 });
 
+describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older rejected sign-in", () => {
+  const minute = 60_000;
+  let seq = 0;
+
+  async function connector(): Promise<string> {
+    const slug = `runtime-renewed-${++seq}`;
+    const created = await createConnector(
+      {
+        tenant_id: srv.tenantId,
+        actor_id: null,
+        input: {
+          name: slug,
+          slug,
+          driver: "http",
+          environment: "prod",
+          auth_type: "header",
+          base_url: "https://runtime-renewed.example.com",
+          config: {},
+        },
+      },
+      srv.db,
+    );
+    return created.id;
+  }
+
+  async function failedCall(id: string, at: number, status: number): Promise<void> {
+    await srv.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(at),
+      tenant_id: srv.tenantId,
+      actor_type: "system",
+      action: "connector.invoked",
+      resource_type: "connector",
+      resource_id: id,
+      result: "error",
+      metadata: { connector_id: id, driver: "http", status_code: status },
+    });
+  }
+
+  /** The row a stored credential writes: `resource_id` is the credential. */
+  async function credentialStored(
+    id: string,
+    at: number,
+    action: "credential.created" | "credential.updated" | "credential.rotated",
+  ): Promise<void> {
+    await srv.db.insert(auditLog).values({
+      id: uuid(),
+      ts: new Date(at),
+      tenant_id: srv.tenantId,
+      actor_type: "system",
+      action,
+      resource_type: "credential",
+      resource_id: uuid(),
+      result: "success",
+      metadata: { connector_id: id, environment: "prod", mode: "oauth2", source: "oauth_callback" },
+    });
+  }
+
+  async function runtime(id: string): Promise<Record<string, unknown>> {
+    const res = await call(`/v1/connectors/${id}/runtime`);
+    expect(res.status).toBe(200);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  test("a rejected sign-in before the newest sign-in is not the last failure", async () => {
+    const id = await connector();
+    await failedCall(id, getTestNow() - 60 * minute, 401);
+    await credentialStored(id, getTestNow() - 10 * minute, "credential.updated");
+    const body = await runtime(id);
+    expect(body.last_failure).toBeNull();
+    // A sign-in is not a call.
+    expect(body.last_success_at).toBeNull();
+  });
+
+  test("a rejected sign-in after the newest sign-in is still the last failure", async () => {
+    const id = await connector();
+    await credentialStored(id, getTestNow() - 60 * minute, "credential.created");
+    await failedCall(id, getTestNow() - 10 * minute, 403);
+    expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
+  });
+
+  test("a failure that is not about the credential stays after a sign-in", async () => {
+    const id = await connector();
+    await failedCall(id, getTestNow() - 60 * minute, 503);
+    await credentialStored(id, getTestNow() - 10 * minute, "credential.updated");
+    expect((await runtime(id)).last_failure).toMatchObject({ code: "5xx" });
+  });
+
+  test("a background token refresh resolves no rejected sign-in", async () => {
+    const id = await connector();
+    await failedCall(id, getTestNow() - 60 * minute, 401);
+    await credentialStored(id, getTestNow() - 10 * minute, "credential.rotated");
+    expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
+  });
+
+  test("another connector's sign-in resolves nothing here", async () => {
+    const id = await connector();
+    const other = await connector();
+    await failedCall(id, getTestNow() - 60 * minute, 401);
+    await credentialStored(other, getTestNow() - 10 * minute, "credential.updated");
+    expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
+  });
+});
+
 describe("POST /v1/connectors/{id}/test is the newest call on record", () => {
   async function probeRows(connectorId: string) {
     const rows = await srv.db

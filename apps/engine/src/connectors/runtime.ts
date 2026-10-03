@@ -11,8 +11,15 @@
 // The failure is reported as a class, never as text. The audit `reason` of an
 // egress failure is the driver's error message, which can quote the remote;
 // the class is the engine's own reading of it.
+//
+// A rejected sign-in is about the credential it was made with. Once a new
+// credential is stored — a sign-in or a replaced key, `credential.created` /
+// `credential.updated`; a background token refresh is `credential.rotated` and
+// renews nothing — an older auth failure is resolved and is not the newest
+// failure any more. Any other failure stays: a new credential does not answer
+// a timeout. A sign-in is not a call, so it never counts as a success.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { auditLog, connectorMcpSessions } from "../db/schema/index.ts";
@@ -79,6 +86,30 @@ export function classifyConnectorFailure(
   return "driver_error";
 }
 
+/** When this connector's credential was last stored anew — a sign-in or a
+ *  replaced key. The credential audit row names the connector in its
+ *  metadata; its `resource_id` is the credential. */
+async function newestCredentialRenewal(
+  db: Executor,
+  tenant_id: string,
+  connector_id: string,
+): Promise<Date | null> {
+  const [row] = await db
+    .select({ ts: auditLog.ts })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenant_id),
+        inArray(auditLog.action, [AuditAction.CREDENTIAL_CREATED, AuditAction.CREDENTIAL_UPDATED]),
+        eq(auditLog.result, "success"),
+        sql`${auditLog.metadata}->>'connector_id' = ${connector_id}`,
+      ),
+    )
+    .orderBy(desc(auditLog.ts))
+    .limit(1);
+  return row?.ts ?? null;
+}
+
 export async function readConnectorRuntime(
   db: Executor,
   tenant_id: string,
@@ -102,7 +133,11 @@ export async function readConnectorRuntime(
         .orderBy(desc(auditLog.ts))
         .limit(1)
     )[0] ?? null;
-  const [success, failure] = await Promise.all([newest("success"), newest("error")]);
+  const [success, failure, renewal] = await Promise.all([
+    newest("success"),
+    newest("error"),
+    newestCredentialRenewal(db, tenant_id, connector.id),
+  ]);
 
   let mcp_session: ConnectorRuntime["mcp_session"] = null;
   if (mcp) {
@@ -130,15 +165,22 @@ export async function readConnectorRuntime(
   }
 
   const status = failure ? statusOf(failure.metadata) : null;
+  const causeClass = failure ? classifyConnectorFailure(status, failure.reason ?? null) : null;
+  const resolvedBySignIn =
+    failure !== null &&
+    causeClass === "auth_failed" &&
+    renewal !== null &&
+    failure.ts.getTime() < renewal.getTime();
   return {
     last_success_at: success ? success.ts.toISOString() : null,
-    last_failure: failure
-      ? {
-          at: failure.ts.toISOString(),
-          code: failureCode(status, mcp),
-          cause_class: classifyConnectorFailure(status, failure.reason ?? null),
-        }
-      : null,
+    last_failure:
+      failure && causeClass && !resolvedBySignIn
+        ? {
+            at: failure.ts.toISOString(),
+            code: failureCode(status, mcp),
+            cause_class: causeClass,
+          }
+        : null,
     recorded: RECORDED_DRIVERS.has(connector.driver),
     mcp_session,
   };

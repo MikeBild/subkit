@@ -20596,6 +20596,7 @@ export interface components {
              * @description When the newest successful call was recorded.
              */
             last_success_at: string | null;
+            /** @description The newest failed call. Null when that call was rejected for its credential before the newest stored credential (a sign-in or a replaced key): the new credential resolved it. A token refresh resolves nothing. */
             last_failure: {
                 /** Format: date-time */
                 at: string;
