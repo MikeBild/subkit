@@ -191,6 +191,28 @@ const routes = [
 ];
 
 /**
+ * A focused look while a page is rebuilt — never the gate. Each variable is a
+ * whitespace-separated list; a route names a record as `$id`:
+ *
+ *   COCKPIT_SWEEP_ROUTES="usage audit knowledge/$id"
+ *   COCKPIT_SWEEP_VARIANTS="de-dark"  COCKPIT_SWEEP_VIEWPORTS="desktop mobile"
+ *   COCKPIT_SWEEP_STANDS="verifyApiAccess verifyChatChoices"
+ *
+ * With a route list the sweep checks and photographs only those routes and
+ * runs only the stands it names; the cross-page checks (one title edge across
+ * all pages, the contact sheets) need every page and are left out.
+ */
+const sweepList = (name) => process.env[name]?.split(/\s+/).filter(Boolean) ?? null;
+const ROUTE_FILTER = sweepList("COCKPIT_SWEEP_ROUTES");
+const focused = ROUTE_FILTER !== null;
+const sweptRoutes = focused
+  ? routes.filter((route) => ROUTE_FILTER.includes(route.replaceAll(uuid, "$id")))
+  : routes;
+const STAND_FILTER = sweepList("COCKPIT_SWEEP_STANDS") ?? [];
+/** Whether a stand runs: always in the full sweep, by name in a focused one. */
+const standOn = (stand) => !focused || STAND_FILTER.includes(stand.name);
+
+/**
  * The audit rows this sweep photographs — and the promise that they are REAL.
  *
  * A fixture that invents a verb photographs a world that does not exist: the
@@ -4173,18 +4195,20 @@ const locales = [
   { name: "de", browser: "de-DE" },
   { name: "en", browser: "en-US" },
 ];
-const variants = locales.flatMap((locale) =>
-  ["light", "dark"].map((theme) => ({
-    ...locale,
-    theme,
-    artifact: `${locale.name}-${theme}`,
-  })),
-);
+const variants = locales
+  .flatMap((locale) =>
+    ["light", "dark"].map((theme) => ({
+      ...locale,
+      theme,
+      artifact: `${locale.name}-${theme}`,
+    })),
+  )
+  .filter((variant) => sweepList("COCKPIT_SWEEP_VARIANTS")?.includes(variant.artifact) ?? true);
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "wide", width: 1990, height: 1090 },
   { name: "mobile", width: 390, height: 844 },
-];
+].filter((viewport) => sweepList("COCKPIT_SWEEP_VIEWPORTS")?.includes(viewport.name) ?? true);
 
 for (const locale of variants) {
   for (const viewport of viewports) {
@@ -4225,7 +4249,7 @@ for (const locale of variants) {
     // title sits at the same x on all of them — the start page once used a
     // narrow centred column and moved its title away from every other page's.
     const headingLeft = new Map();
-    for (const route of routes) {
+    for (const route of sweptRoutes) {
       // A bucket route writes its own frame: `decisions-bucket-failing`, not a
       // second file called `decisions` that silently overwrites the first.
       const artifactRoute = artifactRouteName(route);
@@ -4384,123 +4408,146 @@ for (const locale of variants) {
       if (route === "")
         await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
     }
-    if (new Set(headingLeft.values()).size !== 1)
+    if (!focused && new Set(headingLeft.values()).size !== 1)
       throw new Error(
         `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
       );
-    await verifyOverviewCalm(
-      page,
-      `${locale.artifact}/${viewport.name}/overview-calm`,
-      locale.name,
-      () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
-    );
-    if (viewport.name === "desktop")
-      await verifyInstallationPages(
+    if (standOn(verifyOverviewCalm))
+      await verifyOverviewCalm(
         page,
-        stand,
+        `${locale.artifact}/${viewport.name}/overview-calm`,
         locale.name,
-        (state) =>
-          shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
-            fullPage: false,
-          }),
-        {
-          settingsSections: SETTINGS_SECTION_COUNT,
-          viewport,
-          // What each row must and must not say: its scope decides "Gilt für",
-          // and the engine's English never shows.
-          settingRows: ENGINE_SETTINGS.map((item) => ({
-            path: item.path,
-            scope: item.meta.scope,
-            source: item.meta.source,
-            description: item.meta.description ?? null,
-          })),
-        },
+        () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
       );
-    await verifyApiAccess(page, stand, locale.name, {
-      realClients: REAL_OAUTH_CLIENTS,
-      deadClients: OAUTH_CLIENTS.filter((item) => !item.disabled_at && item.live_connections === 0)
-        .length,
-      disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
-      activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
-      revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
-      grantsToRenew: CONNECTIONS.filter((item) =>
-        ["expiring", "expired", "unreadable"].includes(item.state),
-      ).length,
-    });
-    await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
-    );
-    await verifyAgentPanel(page, stand, uuid, locale.name);
-    await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, { fullPage: false }),
-    );
-    await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
-    );
-    await verifyChatReauth(page, stand, conversation);
+    if (viewport.name === "desktop")
+      if (standOn(verifyInstallationPages))
+        await verifyInstallationPages(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
+              fullPage: false,
+            }),
+          {
+            settingsSections: SETTINGS_SECTION_COUNT,
+            viewport,
+            // What each row must and must not say: its scope decides "Gilt für",
+            // and the engine's English never shows.
+            settingRows: ENGINE_SETTINGS.map((item) => ({
+              path: item.path,
+              scope: item.meta.scope,
+              source: item.meta.source,
+              description: item.meta.description ?? null,
+            })),
+          },
+        );
+    if (standOn(verifyApiAccess))
+      await verifyApiAccess(page, stand, locale.name, {
+        realClients: REAL_OAUTH_CLIENTS,
+        deadClients: OAUTH_CLIENTS.filter(
+          (item) => !item.disabled_at && item.live_connections === 0,
+        ).length,
+        disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
+        activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
+        revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
+        grantsToRenew: CONNECTIONS.filter((item) =>
+          ["expiring", "expired", "unreadable"].includes(item.state),
+        ).length,
+      });
+    if (standOn(verifyScheduleHolds))
+      await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyHookHolds))
+      await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyAgentPanel)) await verifyAgentPanel(page, stand, uuid, locale.name);
+    if (standOn(verifyChatApprovals))
+      await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyChatChoices))
+      await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyChatReplies))
+      await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
     // Once per locale and theme, on desktop: the assertion is about which
     // state a page renders, not about layout, and each refused read waits out
     // a retry — repeating it at every width would spend the sweep's headroom.
     if (viewport.name === "desktop")
-      await verifyLoadFailures(page, stand, conversation, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+      if (standOn(verifyLoadFailures))
+        await verifyLoadFailures(page, stand, conversation, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+            fullPage: false,
+          }),
+        );
+    if (standOn(verifyChatOAuth)) await verifyChatOAuth(page, stand, conversation, locale.name);
+    if (standOn(verifyChatActivation))
+      await verifyChatActivation(page, stand, conversation, locale.name);
+    if (standOn(verifyChatActivity))
+      await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
           fullPage: false,
         }),
       );
-    await verifyChatOAuth(page, stand, conversation, locale.name);
-    await verifyChatActivation(page, stand, conversation, locale.name);
-    await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyConnectorDetail(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
-    );
-    await verifyRunDialog(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyWorkflowPreview(page, stand, uuid, locale.name);
-    await verifyWorkflowPage(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyGrantDialog(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
-    );
-    if (viewport.name === "desktop") {
+    if (standOn(verifyConnectorDetail))
+      await verifyConnectorDetail(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
+      );
+    if (standOn(verifyRunDialog))
+      await verifyRunDialog(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyDetailAction))
+      await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyWorkflowPreview)) await verifyWorkflowPreview(page, stand, uuid, locale.name);
+    if (standOn(verifyWorkflowPage))
+      await verifyWorkflowPage(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyWorkflowAuthorities))
+      await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyGrantDialog))
+      await verifyGrantDialog(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyChatReviewCard))
+      await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyGateDiagnosis))
+      await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyDecisionLifecycle))
+      await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
+      );
+    if (viewport.name === "desktop" && !focused) {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
         await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
@@ -4790,7 +4837,7 @@ for (const locale of variants) {
   }
 }
 
-for (const locale of variants) {
+for (const locale of focused ? [] : variants) {
   for (const viewport of ["desktop", "mobile"]) {
     const contact = await browser.newPage({
       viewport: { width: 1600, height: 1000 },
@@ -4832,7 +4879,7 @@ for (const locale of variants) {
 // frames — the migrated views must fit from a phone to a wide monitor with no
 // horizontal page scroll and nothing poking past the right edge.
 const RESPONSIVE_WIDTHS = [390, 768, 1024, 1440, 1920];
-const migratedRoutes = routes.filter((route) => patternMigratedView(route) !== null);
+const migratedRoutes = sweptRoutes.filter((route) => patternMigratedView(route) !== null);
 for (const width of RESPONSIVE_WIDTHS) {
   const context = await browser.newContext({
     viewport: { width, height: 900 },
@@ -4854,7 +4901,7 @@ for (const width of RESPONSIVE_WIDTHS) {
   await context.close();
 }
 
-await assertFirstSendIsNeverLost(browser);
+if (standOn(assertFirstSendIsNeverLost)) await assertFirstSendIsNeverLost(browser);
 await browser.close();
 spawnedPreview?.stop();
 if (errors.length) throw new Error(errors.join("; "));
