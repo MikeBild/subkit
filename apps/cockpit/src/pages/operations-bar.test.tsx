@@ -223,6 +223,6 @@ describe("Nutzung", () => {
   test("reads the window its address names, so the cost figure's link lands on its window", () => {
     const source = readFileSync(new URL("./usage.tsx", import.meta.url), "utf8");
     expect(source).toContain("usageWindowFromUrl(window.location.search)");
-    expect(source).toContain("llmStatsEndpoint(bounds, axis)");
+    expect(source).toContain(`llmStatsEndpoint(bounds, "workflow")`);
   });
 });
