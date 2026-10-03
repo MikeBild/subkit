@@ -13,7 +13,7 @@
 
 import type { components } from "@/api/schema";
 import { causeClassKey } from "@/lib/cause-class";
-import type { TranslationKey } from "@/lib/i18n";
+import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 
 export type Attention = components["schemas"]["AttentionV1"];
 export type AttentionItem = components["schemas"]["AttentionItem"];
@@ -186,6 +186,7 @@ const REASON_KEYS = {
   execution_authority_required: "overview.reason.execution_authority_required",
   execution_authority_unavailable: "overview.reason.execution_authority_unavailable",
   version_awaiting_approval: "overview.reason.version_awaiting_approval",
+  version_needs_repair: "overview.reason.version_needs_repair",
   approval_expiring: "overview.reason.approval_expiring",
   scheduler_stale: "overview.reason.scheduler_stale",
   failing: "overview.reason.failing",
@@ -334,6 +335,8 @@ export function attentionSentence(
         since,
       };
     }
+    case "version_needs_repair":
+      return { lead: repairSentence(item, subject, t), machine: null, since };
     case "failing": {
       const cause = item.cause_class ? causeClassKey(item.cause_class) : undefined;
       let lead = t(
@@ -392,6 +395,35 @@ export function attentionSentence(
   }
 }
 
+/**
+ * Why a version cannot be approved, in one line: the leading blocked step and
+ * what is wrong with it, in words — the code's own when this build has them,
+ * else what removes the block — and how many other steps wait with it.
+ */
+function repairSentence(item: AttentionItem, subject: string, t: Translate): string {
+  const version = item.approval ? `v${item.approval.version}` : "";
+  const repair = item.repair;
+  if (!repair?.step_id) return t("overview.reason.version_needs_repairBare", { subject, version });
+  const own = `overview.repair.cause.${repair.code ?? ""}`;
+  const cause = t(
+    Object.hasOwn(CATALOGS.en, own)
+      ? (own as TranslationKey)
+      : (`overview.repair.remedy.${repair.remedy_kind}` as TranslationKey),
+  );
+  const sentence = t("overview.reason.version_needs_repair", {
+    subject,
+    version,
+    step: repair.step_id,
+    cause,
+  });
+  const more = repair.steps - 1;
+  if (more <= 0) return sentence;
+  return t(more === 1 ? "overview.repair.more.one" : "overview.repair.more.many", {
+    sentence,
+    count: more,
+  });
+}
+
 /** The sentence as plain text — for tests and for accessible names. */
 export function sentenceText(sentence: AttentionSentence): string {
   const machine = sentence.machine ? ` (${sentence.machine})` : "";
@@ -420,6 +452,13 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
       // The workflow page's panel is where the step is taken; the entry names
       // the step, never "open".
       if (item.reason === "version_awaiting_approval") return "overview.action.approve";
+      // A version no approval may cover: the act its diagnosis offers, never "approve".
+      if (item.reason === "version_needs_repair")
+        return item.repair?.remedy_kind === "prepare"
+          ? "overview.action.prepare"
+          : item.repair?.remedy_kind === "patch"
+            ? "diagnosis.repair"
+            : "overview.action.fix";
       if (item.reason === "approval_expiring") return "overview.action.extend";
       if (item.reason === "secret_prepared") return "overview.action.openSettings";
       if (item.reason === "budget_critical") return "overview.action.openUsage";
@@ -434,7 +473,7 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "open_runs":
       return "overview.action.openRuns";
     case "chat":
-      return "overview.action.chat";
+      return item.reason === "version_needs_repair" ? "remedy.chat" : "overview.action.chat";
     default:
       return "overview.action.openOperations";
   }
