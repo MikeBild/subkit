@@ -17485,6 +17485,11 @@ export interface components {
                     tokens: components["schemas"]["StatsTokenAgg"];
                     latency_ms: components["schemas"]["StatsLatencyAgg"];
                 };
+                cost?: {
+                    amount: number;
+                    currency: string;
+                    unpriced_calls: number;
+                };
             }[];
             totals: {
                 calls: {

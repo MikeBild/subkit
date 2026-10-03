@@ -1365,6 +1365,25 @@
                     "tokens",
                     "latency_ms"
                   ]
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "unpriced_calls": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency",
+                    "unpriced_calls"
+                  ]
                 }
               },
               "required": [
