@@ -253,6 +253,8 @@ export function ConnectorPage({
       }),
     apply: (current: RecordValue | undefined) =>
       current ? { ...current, enabled: true } : current,
+    // The engine answers with the connector as it now stands.
+    fromResult: (result) => result,
     errorMessage: () => t("connectorState.enableFailed"),
     onSuccess: () => toast.success(t("connectorState.enabled")),
   });
