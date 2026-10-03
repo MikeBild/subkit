@@ -5442,12 +5442,13 @@ export interface paths {
         };
         /**
          * Why the approval gate holds this workflow, and what removes it
-         * @description Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.
+         * @description Diagnoses the saved version (the draft when there is one, or `version_id` when given — such as the running version a refused start is about) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.
          */
         get: {
             parameters: {
                 query?: {
                     environment?: "dev" | "prod";
+                    version_id?: string;
                 };
                 header?: never;
                 path: {
@@ -22115,7 +22116,7 @@ export interface components {
                 name: string | null;
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "budget_critical" | "risk_critical";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -22123,11 +22124,23 @@ export interface components {
                 /** @description The webhook's slug; null for a schedule. */
                 name: string | null;
             } | null;
-            /** @description The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring. */
+            /** @description The running version an approval item is about and where it runs. Only on version_awaiting_approval, version_needs_repair and approval_expiring. */
             approval?: {
                 version: number;
                 /** @enum {string} */
                 environment: "dev" | "prod";
+            };
+            /** @description Why no approval may cover that version yet. Only on version_needs_repair: the leading blocked step and its diagnosis code (GET /v1/workflows/{id}/diagnosis), the act that removes it, how many steps are blocked, and the filed repair or the run the diagnosis rests on. */
+            repair?: {
+                step_id: string | null;
+                code: string | null;
+                /** @enum {string} */
+                remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+                steps: number;
+                /** Format: uuid */
+                candidate_id: string | null;
+                /** Format: uuid */
+                execution_id: string | null;
             };
             /** @enum {string|null} */
             cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;

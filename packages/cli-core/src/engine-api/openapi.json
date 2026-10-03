@@ -20089,6 +20089,7 @@
               "execution_authority_required",
               "execution_authority_unavailable",
               "version_awaiting_approval",
+              "version_needs_repair",
               "approval_expiring",
               "scheduler_stale",
               "failing",
@@ -20152,7 +20153,60 @@
               "version",
               "environment"
             ],
-            "description": "The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring."
+            "description": "The running version an approval item is about and where it runs. Only on version_awaiting_approval, version_needs_repair and approval_expiring."
+          },
+          "repair": {
+            "type": "object",
+            "properties": {
+              "step_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remedy_kind": {
+                "type": "string",
+                "enum": [
+                  "patch",
+                  "prepare",
+                  "declare",
+                  "reconnect",
+                  "author"
+                ]
+              },
+              "steps": {
+                "type": "integer"
+              },
+              "candidate_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "execution_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "step_id",
+              "code",
+              "remedy_kind",
+              "steps",
+              "candidate_id",
+              "execution_id"
+            ],
+            "description": "Why no approval may cover that version yet. Only on version_needs_repair: the leading blocked step and its diagnosis code (GET /v1/workflows/{id}/diagnosis), the act that removes it, how many steps are blocked, and the filed repair or the run the diagnosis rests on."
           },
           "cause_class": {
             "type": [
@@ -31648,7 +31702,7 @@
           "workflows"
         ],
         "summary": "Why the approval gate holds this workflow, and what removes it",
-        "description": "Diagnoses the saved version (the draft when there is one) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.",
+        "description": "Diagnoses the saved version (the draft when there is one, or `version_id` when given — such as the running version a refused start is about) in one environment: manifest issues, request and storage refusals, unavailable connectors and the newest refused step of a granted run. Each diagnosis names its remedy kind; a `fixer` is present when a deterministic repair exists, and `candidate_id` when one was already proposed. A repair can be proposed (POST /v1/workflows/{id}/repairs) only when `is_current` is true: on a draft the `fixer` names the change to make in the draft, or the draft has to be applied and diagnosed again. Read-only.",
         "security": [
           {
             "bearerAuth": []
@@ -31675,6 +31729,15 @@
             },
             "required": false,
             "name": "environment",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "version_id",
             "in": "query"
           }
         ],
