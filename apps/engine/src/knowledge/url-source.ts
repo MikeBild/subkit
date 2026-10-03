@@ -6,7 +6,7 @@
 
 import { htmlToMarkdown, looksLikeHtml } from "../connectors/discovery/html-to-markdown.ts";
 import { getDriverFetch } from "../connectors/drivers/fetch-seam.ts";
-import { assertEgressAllowedResolved } from "../connectors/egress-guard.ts";
+import { assertEgressAllowedResolved, EgressBlockedError } from "../connectors/egress-guard.ts";
 import type { Executor } from "../db/client.ts";
 import { KNOWLEDGE_SOURCE_MAX_BYTES, KnowledgeBudgetExceededError } from "./budgets.ts";
 import { createKnowledgeSource, getKnowledgeSource, ingestKnowledgeSource } from "./service.ts";
@@ -45,7 +45,14 @@ export async function fetchUrlDocument(url: string, tenant_id: string): Promise<
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
     throw new KnowledgeUrlFetchError("only http and https addresses can be read", null);
-  await assertEgressAllowedResolved(parsed, { tenant_id });
+  try {
+    await assertEgressAllowedResolved(parsed, { tenant_id });
+  } catch (error) {
+    // The same refusal a connector call meets, said as what it means here.
+    if (error instanceof EgressBlockedError)
+      throw new KnowledgeUrlFetchError(`the address may not be read: ${error.reason}`, null);
+    throw error;
+  }
   let response: Response;
   try {
     response = await getDriverFetch()(parsed, {

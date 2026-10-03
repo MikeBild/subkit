@@ -5,7 +5,6 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
   CreateKnowledgeSourceBundleSchema,
@@ -480,7 +479,7 @@ const refreshRoute = createRoute({
 
 /** The address-reading failures, as the HTTP errors a client can act on. */
 function urlError(error: unknown): never {
-  if (error instanceof svc.KnowledgeUrlFetchError || error instanceof EgressBlockedError)
+  if (error instanceof svc.KnowledgeUrlFetchError)
     throw new UnprocessableEntityError(error.message, { reason: error.code });
   if (error instanceof KnowledgeBudgetExceededError)
     throw new PayloadTooLargeError(error.message, { bytes_limit: error.bytes_limit });
