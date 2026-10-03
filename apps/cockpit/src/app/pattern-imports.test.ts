@@ -93,8 +93,6 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "pages/chat-reauth-card.tsx": ["ui-import"],
   "pages/chat-text-card.tsx": ["ui-import"],
   "pages/chat.tsx": ["ui-import", "heading", "pre", "dl", "sheet-content", "max-w"],
-  "pages/operations-bar.tsx": ["ui-import"],
-  "pages/overview.tsx": ["ui-import", "heading", "sheet-content", "max-w"],
   "pages/runs.tsx": ["ui-import", "heading", "pre", "dl", "max-w"],
   "pages/settings-restart.tsx": ["ui-import"],
   "pages/settings.tsx": ["ui-import", "heading", "max-w"],
@@ -102,7 +100,7 @@ const ALLOWED: Record<string, readonly Rule[]> = {
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
-const CEILING = 39;
+const CEILING = 37;
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {

@@ -1,81 +1,379 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { CircleCheck } from "lucide-react";
-import type { MouseEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError } from "@/api/client";
+import { ApiError, apiRequest } from "@/api/client";
 import {
   approvePatchCandidate,
   approveSkillCandidate,
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
+import type { components } from "@/api/schema";
 import {
   absolute,
   attentionHref,
   auditHref,
+  connectorHref,
+  conversationHref,
   reviewFromUrl,
-  routerPath,
   routerTarget,
+  runHref,
+  workflowHref,
 } from "@/app/links";
 import { visibleNavigation } from "@/app/navigation";
 import { useSession } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
 import { useReviewDecisions } from "@/app/use-decisions";
+import { AutomationGrant } from "@/components/cockpit/automation-grant";
 import { DecisionCard } from "@/components/cockpit/decision-card";
 import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-card";
-import { Page, PageHeader } from "@/components/cockpit/patterns";
+import {
+  ActionButton,
+  ActionMenu,
+  type CockpitColumn,
+  DataState,
+  Page,
+  PageHeader,
+  RecordSheet,
+  RowsSkeleton,
+  Section,
+  SegmentedControl,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
+import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
-import { LoadFailed } from "@/components/failure-state";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+import { tableColumns } from "@/components/cockpit/table-columns";
+import { causeClassLabel } from "@/lib/cause-class";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
-import { cn } from "@/lib/utils";
 import type { DecisionItem } from "./decisions-model";
-import { OperationsBar, useOperationsFigures, WindowSwitch } from "./operations-bar";
-import { type WindowBounds, windowBounds } from "./operations-figures";
+import { OperationsBar, useOperationsFigures } from "./operations-bar";
+import { type StatsWindow, type WindowBounds, windowBounds } from "./operations-figures";
 import {
   type AttentionAction,
   type AttentionItem,
-  type AttentionSentence,
   actionLabelKey,
+  attentionRow,
   attentionSentence,
   entryActions,
-  overviewSections,
   overviewView,
   reviewNavigation,
   reviewTarget,
+  sinceLabel,
   sourceLabel,
-  statusLine,
 } from "./overview-model";
+import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
 
-/** A plain left click stays in the page; anything else is the browser's. */
-function isPlainClick(event: MouseEvent): boolean {
-  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+type ExecutionList = components["schemas"]["ExecutionListResponse"];
+type ExecutionListItem = components["schemas"]["ExecutionListItem"];
+
+/** The four figures the Übersicht leads with (R1); the rest are Nutzung's. */
+const KPI_IDS = ["runs", "successRate", "connectorHealth", "budget"] as const;
+const WINDOWS: readonly StatsWindow[] = ["24h", "7d"];
+
+/** Where an entry's name leads: its object's own page, else its review. */
+function subjectHref(item: AttentionItem): string | null {
+  if (!item.subject) return null;
+  if (item.subject.kind === "workflow") return workflowHref(item.subject.id);
+  if (item.subject.kind === "connector") return connectorHref(item.subject.id);
+  if (item.subject.kind === "conversation") return conversationHref(item.subject.id);
+  return null;
 }
 
-const CLASS_WEIGHT: Record<AttentionItem["class"], string> = {
-  stopped: "border-l-4 border-l-destructive",
-  failing: "border-l-4 border-l-amber-500",
-  decide: "border-l-2 border-l-border",
-};
+/**
+ * The verb that completes an entry (D12): "Freigeben…" opens the approval
+ * dialog right here, "Neu anmelden" starts the sign-in, "Ursache ansehen"
+ * opens the newest failed run, "Prüfen" opens the review sheet. Every other
+ * entry leads where it is acted on.
+ */
+function CompletingVerb({
+  item,
+  index,
+  permissions,
+  onReview,
+}: {
+  item: AttentionItem;
+  index: number;
+  permissions: readonly string[];
+  onReview: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const sheets = useOpenRunSheet();
+  const { primary } = entryActions(item);
+  const testId = `attention-item-${index}-primary`;
+  const signIn = useMutation({
+    mutationFn: async () => {
+      const subject = item.subject;
+      if (subject?.kind === "connection")
+        return apiRequest<{ authorization_url: string }>(
+          `/v1/connections/${encodeURIComponent(subject.id)}/renew`,
+          { method: "POST" },
+        );
+      return apiRequest<{ authorization_url: string }>(
+        `/v1/connectors/${encodeURIComponent(subject?.id ?? "")}/oauth/start`,
+        { method: "POST" },
+      );
+    },
+    onSuccess: (result) => window.location.assign(result.authorization_url),
+    // Not every sign-in starts at a provider: the connector's page knows the way.
+    onError: () => primary && void navigate(routerTarget(primary.href)),
+  });
+  const cause = useMutation({
+    mutationFn: () =>
+      apiRequest<ExecutionList>(
+        `/v1/executions?workflow_id=${encodeURIComponent(item.subject?.id ?? "")}&limit=20`,
+      ),
+    onSuccess: (list) => {
+      const failed = latestFailedRun((list.items ?? []).filter(isExecutionRecord));
+      if (failed) sheets.run(failed.id);
+      else if (primary) void navigate(routerTarget(primary.href));
+    },
+    onError: () => primary && void navigate(routerTarget(primary.href)),
+  });
+  if (!primary) return null;
+  const allowed = permissions.includes(primary.permission);
+  const data = { "data-attention-verb": primary.verb } as const;
+  if (!allowed)
+    return (
+      <ActionButton size="sm" disabled testId={testId} data={data}>
+        {t(actionLabelKey(primary, item))}
+      </ActionButton>
+    );
+  if (item.reason === "version_awaiting_approval" && item.subject?.kind === "workflow")
+    return (
+      <AutomationGrant
+        workflowId={item.subject.id}
+        environment={item.approval?.environment ?? "prod"}
+        testId={testId}
+        triggerLabel={t("overview.action.approveDialog")}
+        triggerVariant="outline"
+      />
+    );
+  if (primary.verb === "review")
+    return (
+      <ActionButton size="sm" onClick={() => onReview(item.id)} testId={testId} data={data}>
+        {t("overview.action.check")}
+      </ActionButton>
+    );
+  if ((primary.verb === "reauth" || primary.verb === "renew") && item.subject)
+    return (
+      <ActionButton
+        size="sm"
+        pending={signIn.isPending}
+        onClick={() => signIn.mutate()}
+        testId={testId}
+        data={data}
+      >
+        {t("connectorCredentials.renew")}
+      </ActionButton>
+    );
+  if (item.reason === "failing" && item.subject?.kind === "workflow")
+    return (
+      <ActionButton
+        size="sm"
+        pending={cause.isPending}
+        onClick={() => cause.mutate()}
+        testId={testId}
+        data={data}
+      >
+        {t("overview.action.cause")}
+      </ActionButton>
+    );
+  return (
+    <ActionButton
+      size="sm"
+      onClick={() => void navigate(routerTarget(primary.href))}
+      testId={testId}
+      data={data}
+    >
+      {t(actionLabelKey(primary, item))}
+    </ActionButton>
+  );
+}
+
+/** "Braucht dich": one row per subject, its name the object alone, its action the verb that completes it. */
+function NeedsYou({
+  items,
+  pending,
+  error,
+  permissions,
+  onReview,
+}: {
+  items: AttentionItem[];
+  pending: boolean;
+  error: { line: string; onRetry(): void } | null;
+  permissions: readonly string[];
+  onReview: (id: string) => void;
+}) {
+  const { t, dateTime } = useI18n();
+  const navigate = useNavigate();
+  const now = useMemo(() => Date.now(), []);
+  const columns = useMemo<CockpitColumn<AttentionItem>[]>(() => {
+    const column = tableColumns<AttentionItem>({ t, dateTime });
+    return [
+      column.custom(
+        "name",
+        (item) => attentionRow(item, t).name,
+        t("overview.column.entry"),
+        (item) => <span className="font-medium">{attentionRow(item, t).name}</span>,
+        { width: "w-[30%]" },
+      ),
+      column.custom(
+        "reason",
+        (item) => item.reason,
+        t("overview.column.reason"),
+        (item, index) => {
+          const row = attentionRow(item, t);
+          return (
+            <span className="text-muted-foreground" data-testid={`attention-item-${index}-text`}>
+              {row.reason}
+              {row.machine ? (
+                <code className="ml-1 font-mono text-xs" data-machine-value="true">
+                  {row.machine}
+                </code>
+              ) : null}
+            </span>
+          );
+        },
+        { width: "w-[34%]" },
+      ),
+      column.custom(
+        "state",
+        (item) => item.reason,
+        t("resource.field.status"),
+        (item) => {
+          const { badge } = attentionRow(item, t);
+          return <StatusBadge state={badge.state} label={t(badge.label)} />;
+        },
+        { width: "w-[20%]" },
+      ),
+      column.custom(
+        "since",
+        (item) => item.since,
+        t("overview.column.when"),
+        (item) => sinceLabel(item.since, now, t) ?? "—",
+        { width: "w-[16%]" },
+      ),
+    ];
+  }, [t, dateTime, now]);
+  return (
+    <div data-testid="attention-list" data-family-slot="attention-list">
+      <RecordTable
+        columns={columns}
+        data={items}
+        collectionId="attention"
+        emptyLine={t("overview.count.none")}
+        pending={pending}
+        error={error}
+        getRowId={(item) => item.id}
+        onOpen={(item) => {
+          const href = subjectHref(item);
+          if (href) void navigate({ to: href });
+          else onReview(item.id);
+        }}
+        rowHref={(item) => subjectHref(item)}
+        rowLabel={(item) => sentenceLabel(item, t, now)}
+        rowActions={(item, index) => (
+          <span data-action-scope="attention" data-attention-id={item.id}>
+            <CompletingVerb
+              item={item}
+              index={index}
+              permissions={permissions}
+              onReview={onReview}
+            />
+          </span>
+        )}
+      />
+    </div>
+  );
+}
+
+function sentenceLabel(
+  item: AttentionItem,
+  t: ReturnType<typeof useI18n>["t"],
+  now: number,
+): string {
+  return attentionSentence(item, t, now).lead;
+}
+
+/** "Letzte Fehlschläge": the newest three failed runs, each opening its sheet here. */
+function LastFailures() {
+  const { t, dateTime } = useI18n();
+  const sheets = useOpenRunSheet();
+  const query = useQuery({
+    queryKey: ["runs", "overview-failures"],
+    queryFn: () => apiRequest<ExecutionList>("/v1/executions?status=failed&limit=3"),
+  });
+  const rows = (query.data?.items ?? []).filter((item): item is ExecutionListItem =>
+    isExecutionRecord(item),
+  );
+  const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
+    const column = tableColumns<ExecutionListItem>({ t, dateTime });
+    return [
+      column.custom(
+        "run",
+        (run) => run.id,
+        t("overview.column.run"),
+        (run) => <span className="font-medium">{runName(run, t)}</span>,
+        { width: "w-[40%]" },
+      ),
+      column.custom(
+        "cause",
+        (run) => run.failure?.cause_class ?? null,
+        t("overview.column.cause"),
+        (run) =>
+          run.failure?.cause_class && run.failure.cause_class !== "ok"
+            ? causeClassLabel(run.failure.cause_class, t).text
+            : "—",
+        { width: "w-[35%]" },
+      ),
+      column.date(
+        "started_at",
+        (run) => run.started_at ?? run.created_at,
+        t("runs.column.started"),
+        {
+          width: "w-[25%]",
+        },
+      ),
+    ];
+  }, [t, dateTime]);
+  return (
+    <div data-testid="overview-failures">
+      <RecordTable
+        columns={columns}
+        data={rows}
+        collectionId="overview-failures"
+        emptyLine={t("overview.noFailures")}
+        pending={query.isPending}
+        error={
+          query.error
+            ? { line: t("runs.detail.loadFailed"), onRetry: () => void query.refetch() }
+            : null
+        }
+        getRowId={(run) => run.id}
+        onOpen={(run) => sheets.run(run.id)}
+        rowHref={(run) => runHref(run.id)}
+      />
+    </div>
+  );
+}
 
 /**
- * Übersicht: the installation's four operating figures over one window, then
- * what needs the reader now, one entry per subject, each with one way to act
- * on it. Tasks live here and nowhere else — the object pages show their state
- * and at most link here. The figures stay in the calm state too: they are
- * numbers to read, never tasks, and each opens the list it counts.
+ * Übersicht (V1): one count of what needs the reader, the four figures over
+ * one window (R1), "Braucht dich" with the verb that completes each entry, and
+ * the newest failures. Tasks live here and nowhere else — the object pages
+ * show their state and at most link here.
  */
 export function OverviewPage() {
-  const { t, dateTime } = useI18n();
+  const { t } = useI18n();
   const session = useSession();
   const attention = useAttention(session.permissions);
+  const sheets = useOpenRunSheet();
   // The window as two fixed instants, set when it is chosen: the figures and
   // the lists they link to count over the very same bounds.
   const [bounds, setBounds] = useState<WindowBounds>(() => windowBounds("24h"));
@@ -112,8 +410,8 @@ export function OverviewPage() {
     setReview(null);
   }, [navigation]);
 
-  // Nobody reads the Übersicht who may read none of its sources: they land on the
-  // first page they can see, not on a page that can only ever be empty.
+  // Nobody reads the Übersicht who may read none of its sources: they land on
+  // the first page they can see, not on a page that can only ever be empty.
   const fallback = attention.enabled
     ? null
     : (visibleNavigation(session.permissions)
@@ -124,46 +422,37 @@ export function OverviewPage() {
   }, [fallback]);
 
   const title = t("overview.title");
-  if (!attention.enabled) {
+  if (!attention.enabled)
     return fallback ? (
       <main className="p-6" aria-busy="true" data-testid="attention-redirect" />
     ) : (
-      <main className="p-6" data-testid="resource-permission-denied">
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
+      <Page
+        kind="list"
+        scroll="page"
+        testId="resource-permission-denied"
+        header={<PageHeader title={title} />}
+      >
+        <DataState
+          state="empty"
+          line={t("resource.permission.description")}
+          testId="resource-permission-alert"
+        />
+      </Page>
     );
-  }
 
   const data = attention.query.data;
   const view = data ? overviewView(data, attention.hidden) : null;
-  const now = Date.now();
+  const items = view?.kind === "items" ? view.items : [];
+  const unread = view && (view.kind === "items" || view.kind === "unread") ? view.unread : [];
   const reviewed = review ? (data?.items.find((item) => item.id === review) ?? null) : null;
   const canHistory = session.permissions.includes("audit:read");
-  const sections = view
-    ? overviewSections(view, { operations: operations.allowed, history: canHistory })
-    : null;
-
-  const bar = (
-    <OperationsBar
-      figures={operations.figures}
-      pending={operations.pending}
-      onRetry={operations.retry}
-    />
-  );
-  const history = (
-    <p className="text-sm text-muted-foreground" data-testid="attention-history">
-      <Link
-        to={auditHref({ scope: "decisions" })}
-        className="underline underline-offset-2"
-        data-testid="attention-history-link"
-      >
-        {t("overview.history.link")}
-      </Link>
-    </p>
-  );
+  const canRuns = session.permissions.includes("execution:read");
+  const count = items.length;
+  const summary = attention.query.isPending
+    ? null
+    : count === 0
+      ? t("overview.count.none")
+      : t(count === 1 ? "overview.count.one" : "overview.count.other", { count });
 
   return (
     <Page
@@ -174,297 +463,104 @@ export function OverviewPage() {
       header={
         <PageHeader
           title={title}
-          action={
-            operations.allowed ? (
-              <WindowSwitch
-                value={bounds.window}
-                onChange={(next) => setBounds(windowBounds(next))}
+          secondary={
+            canRuns ? (
+              <ActionButton onClick={sheets.all} testId="overview-all-runs">
+                {t("overview.allRuns")}
+              </ActionButton>
+            ) : undefined
+          }
+          menu={
+            canHistory ? (
+              <ActionMenu
+                items={[
+                  {
+                    label: t("overview.decided"),
+                    href: absolute(auditHref({ scope: "decisions" })),
+                    testId: "attention-history-link",
+                  },
+                ]}
               />
             ) : undefined
           }
         />
       }
     >
-      <div className="grid gap-6">
-        {attention.query.isPending ? (
-          <>
-            {operations.allowed ? bar : null}
-            <div
-              className="grid gap-2"
-              role="status"
-              aria-label={t("common.loading")}
-              aria-busy="true"
-              data-family-slot="data-state"
-              data-family-state="loading"
-            >
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            {canHistory ? history : null}
-          </>
-        ) : attention.query.isError || !view || !sections ? (
-          <>
-            {operations.allowed ? bar : null}
-            <LoadFailed
-              title={t("overview.loadFailed")}
-              onRetry={() => void attention.query.refetch()}
-              testId="attention-error"
-            />
-            {canHistory ? history : null}
-          </>
-        ) : view.kind === "nothing_readable" ? (
-          <>
-            {operations.allowed ? bar : null}
-            <Alert data-testid="resource-permission-alert">
-              <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-              <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-            </Alert>
-            {canHistory ? history : null}
-          </>
-        ) : (
-          sections.map((section) => {
-            if (section === "operations") return <div key={section}>{bar}</div>;
-            if (section === "history") return <div key={section}>{history}</div>;
-            if (section === "calm")
-              return (
-                <CalmState
-                  key={section}
-                  line={view.kind === "calm" ? statusLine(view.status, t, dateTime) : null}
+      <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-3">
+          <SummaryLine
+            text={summary ?? ""}
+            help={operations.allowed ? t("overview.countHelp") : undefined}
+            testId="overview-summary"
+            aside={
+              operations.allowed ? (
+                <SegmentedControl
+                  label={t("overview.window")}
+                  value={bounds.window}
+                  onValueChange={(next) => setBounds(windowBounds(next as StatsWindow))}
+                  testId="operations-window"
+                  options={WINDOWS.map((window) => ({
+                    value: window,
+                    label: t(`overview.operations.windowOption.${window}` as TranslationKey),
+                    testId: `operations-window-${window}`,
+                  }))}
                 />
-              );
-            if (section === "unread")
-              return (
-                <UnreadSources
-                  key={section}
-                  sources={view.kind === "items" || view.kind === "unread" ? view.unread : []}
-                  onRetry={() => void attention.query.refetch()}
-                />
-              );
-            return view.kind === "items" ? (
-              <section
-                key={section}
-                className="grid gap-2"
-                aria-labelledby="attention-heading"
-                data-testid="attention-section"
-              >
-                <h2 id="attention-heading" className="text-sm font-medium">
-                  {t("overview.attention.title")}
-                </h2>
-                <ol
-                  className="grid gap-2"
-                  data-testid="attention-list"
-                  data-family-slot="attention-list"
-                >
-                  {view.items.map((item, index) => (
-                    <AttentionEntry
-                      key={item.id}
-                      item={item}
-                      index={index}
-                      sentence={attentionSentence(item, t, now)}
-                      permissions={session.permissions}
-                      onReview={openReview}
-                    />
-                  ))}
-                </ol>
-              </section>
-            ) : null;
-          })
-        )}
-      </div>
-      <ReviewSheet id={review} item={reviewed} now={now} onClose={closeReview} />
-    </Page>
-  );
-}
-
-function CalmState({ line }: { line: string | null }) {
-  const { t } = useI18n();
-  return (
-    <div
-      className="flex flex-col items-start gap-1 py-6"
-      data-testid="attention-calm"
-      data-family-slot="data-state"
-      data-family-state="empty"
-    >
-      <p className="flex items-center gap-2 text-base font-medium">
-        <CircleCheck aria-hidden="true" className="size-5 text-emerald-600 dark:text-emerald-400" />
-        {t("overview.calm")}
-      </p>
-      {line ? (
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid="attention-status"
-          data-family-slot="status-line"
-        >
-          {line}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function UnreadSources({
-  sources,
-  onRetry,
-}: {
-  sources: readonly Parameters<typeof sourceLabel>[0][];
-  onRetry: () => void;
-}) {
-  const { t } = useI18n();
-  if (sources.length === 0) return null;
-  return (
-    <LoadFailed
-      title={t("overview.unread.title")}
-      description={t("overview.unread.description", {
-        sources: sources.map((source) => sourceLabel(source, t)).join(", "),
-      })}
-      onRetry={onRetry}
-      testId="attention-unread"
-    />
-  );
-}
-
-function SentenceText({ sentence }: { sentence: AttentionSentence }) {
-  return (
-    <>
-      {sentence.lead}
-      {sentence.machine ? (
-        <>
-          {" ("}
-          <code className="font-mono text-xs" data-machine-value="true">
-            {sentence.machine}
-          </code>
-          {")"}
-        </>
-      ) : null}
-      {sentence.since ? ` — ${sentence.since}` : null}.
-    </>
-  );
-}
-
-function AttentionEntry({
-  item,
-  index,
-  sentence,
-  permissions,
-  onReview,
-}: {
-  item: AttentionItem;
-  index: number;
-  sentence: AttentionSentence;
-  permissions: readonly string[];
-  onReview: (id: string) => void;
-}) {
-  const { t } = useI18n();
-  const { primary, secondary } = entryActions(item);
-  const testId = `attention-item-${index}`;
-  return (
-    <li
-      data-testid={testId}
-      data-attention-id={item.id}
-      data-attention-class={item.class}
-      data-family-slot="decision-row"
-    >
-      {/* The entry is a card of its own: its edge — not the sentence padded
-          inside it — lines up under the page heading. */}
-      <article
-        className={cn(
-          "flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between",
-          CLASS_WEIGHT[item.class],
-        )}
-      >
-        <p className="min-w-0 break-words text-sm" data-testid={`${testId}-text`}>
-          <SentenceText sentence={sentence} />
-        </p>
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
-          {secondary ? (
-            <ActionLink
-              action={secondary}
-              item={item}
-              permissions={permissions}
-              testId={`${testId}-secondary`}
-              onReview={onReview}
-              variant="link"
-              label={t(actionLabelKey(secondary, item))}
-            />
-          ) : null}
-          {primary ? (
-            <ActionLink
-              action={primary}
-              item={item}
-              permissions={permissions}
-              testId={`${testId}-primary`}
-              onReview={onReview}
-              variant="primary"
-              label={t(actionLabelKey(primary, item))}
+              ) : undefined
+            }
+          />
+          {operations.allowed ? (
+            <OperationsBar
+              figures={operations.figures.filter((figure) =>
+                (KPI_IDS as readonly string[]).includes(figure.id),
+              )}
+              ids={KPI_IDS}
+              pending={operations.pending}
+              onRetry={operations.retry}
             />
           ) : null}
         </div>
-      </article>
-    </li>
-  );
-}
-
-function ActionLink({
-  action,
-  item,
-  permissions,
-  testId,
-  onReview,
-  variant,
-  label,
-}: {
-  action: AttentionAction;
-  item: AttentionItem;
-  permissions: readonly string[];
-  testId: string;
-  onReview: (id: string) => void;
-  variant: "primary" | "link";
-  label: string;
-}) {
-  const { t } = useI18n();
-  // The engine names the permission acting here needs. A reader without it
-  // sees the step, disabled — hiding it would say there is nothing to do.
-  const allowed = permissions.includes(action.permission);
-  if (!allowed) {
-    return (
-      <Button
-        size="sm"
-        variant={variant === "primary" ? "default" : "link"}
-        disabled
-        title={t("overview.notPermitted")}
-        data-testid={testId}
-        data-attention-verb={action.verb}
-      >
-        {label}
-      </Button>
-    );
-  }
-  const path = routerPath(action.href);
-  if (action.verb === "review") {
-    return (
-      <Button size="sm" variant={variant === "primary" ? "default" : "link"} asChild>
-        <a
-          href={absolute(path)}
-          data-testid={testId}
-          data-attention-verb={action.verb}
-          onClick={(event) => {
-            if (!isPlainClick(event)) return;
-            event.preventDefault();
-            onReview(item.id);
-          }}
-        >
-          {label}
-        </a>
-      </Button>
-    );
-  }
-  // An address may name a place ON a page — a workflow's automation panel.
-  return (
-    <Button size="sm" variant={variant === "primary" ? "default" : "link"} asChild>
-      <Link {...routerTarget(action.href)} data-testid={testId} data-attention-verb={action.verb}>
-        {label}
-      </Link>
-    </Button>
+        {unread.length > 0 ? (
+          <DataState
+            state="error"
+            line={t("overview.unread.description", {
+              sources: unread.map((source) => sourceLabel(source, t)).join(", "),
+            })}
+            onRetry={() => void attention.query.refetch()}
+            testId="attention-unread"
+          />
+        ) : null}
+        <Section label={t("overview.needsYou")} testId="attention-section">
+          {view?.kind === "nothing_readable" ? (
+            <DataState
+              state="empty"
+              line={t("resource.permission.description")}
+              testId="resource-permission-alert"
+            />
+          ) : (
+            <NeedsYou
+              items={items}
+              pending={attention.query.isPending}
+              error={
+                attention.query.isError
+                  ? {
+                      line: t("overview.loadFailed"),
+                      onRetry: () => void attention.query.refetch(),
+                    }
+                  : null
+              }
+              permissions={session.permissions}
+              onReview={openReview}
+            />
+          )}
+        </Section>
+        {canRuns ? (
+          <Section label={t("overview.lastFailures")} testId="overview-failures-section">
+            <LastFailures />
+          </Section>
+        ) : null}
+      </div>
+      <ReviewSheet id={review} item={reviewed} onClose={closeReview} />
+    </Page>
   );
 }
 
@@ -488,51 +584,36 @@ function decisionFailureKey(error: unknown): TranslationKey {
 }
 
 /**
- * One entry's decisions, in a sheet over the Übersicht.
- *
- * The cards are the ones the decisions queue always used — the same diff, dry
- * run, approve and reject — narrowed to this entry's subject: a workflow's
- * proposed fixes and its held schedule, or the open skill proposals. The
- * engine's own wording about the entry is shown here, and only here, marked as
- * the engine's.
+ * One entry's decisions (O1), in a sheet over the Übersicht: the cards the
+ * decisions queue always used — the same diff, dry run, approve and reject —
+ * narrowed to this entry's subject. The engine's own wording about the entry
+ * is shown here, and only here, marked as the engine's.
  */
 function ReviewSheet({
   id,
   item,
-  now,
   onClose,
 }: {
   id: string | null;
   item: AttentionItem | null;
-  now: number;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   return (
-    <Sheet open={Boolean(id)} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        className="w-full overflow-y-auto sm:max-w-2xl"
-        closeLabel={t("common.close")}
-        closeTestId="attention-review-close"
-        data-testid="attention-review"
-        data-family-slot="review-sheet"
-        aria-describedby={undefined}
-      >
-        <SheetHeader>
-          <SheetTitle data-testid="attention-review-title" className="pr-8">
-            {item ? (
-              <SentenceText sentence={attentionSentence(item, t, now)} />
-            ) : (
-              t("overview.sheet.title")
-            )}
-          </SheetTitle>
-          {item?.detail ? (
-            <EngineWording text={item.detail} testId="attention-review-detail" />
-          ) : null}
-        </SheetHeader>
-        {id ? <ReviewBody id={id} item={item} onClose={onClose} /> : null}
-      </SheetContent>
-    </Sheet>
+    <RecordSheet
+      open={Boolean(id)}
+      onOpenChange={(open) => !open && onClose()}
+      title={item ? attentionRow(item, t).name : t("overview.sheet.title")}
+      titleTestId="attention-review-title"
+      testId="attention-review"
+      closeTestId="attention-review-close"
+    >
+      {item ? (
+        <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
+      ) : null}
+      {item?.detail ? <EngineWording text={item.detail} testId="attention-review-detail" /> : null}
+      {id ? <ReviewBody id={id} item={item} onClose={onClose} /> : null}
+    </RecordSheet>
   );
 }
 
@@ -547,6 +628,7 @@ function ReviewBody({
 }) {
   const { t } = useI18n();
   const session = useSession();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const target = reviewTarget(id);
   const review = useReviewDecisions(target, session.permissions);
@@ -615,74 +697,51 @@ function ReviewBody({
     onSettled: () => setBusyId(null),
   });
 
-  const { primary } = item ? entryActions(item) : { primary: null };
-  const back = (
-    <Button
-      variant="outline"
-      className="justify-self-start"
-      onClick={onClose}
-      data-testid="attention-review-back"
-    >
-      {t("overview.sheet.close")}
-    </Button>
-  );
+  const { primary } = item ? entryActions(item) : { primary: null as AttentionAction | null };
   // Where the entry is acted on, when not in this sheet.
   const elsewhere =
     item && primary && primary.verb !== "review" ? (
-      <Button asChild className="justify-self-start">
-        <Link {...routerTarget(primary.href)} data-testid="attention-review-action">
-          {t(actionLabelKey(primary, item))}
-        </Link>
-      </Button>
+      <ActionButton
+        onClick={() => void navigate(routerTarget(primary.href))}
+        testId="attention-review-action"
+      >
+        {t(actionLabelKey(primary, item))}
+      </ActionButton>
     ) : null;
 
   if (review.access !== "readable")
     return (
-      <div className="grid gap-3 px-4 pb-6" data-testid="attention-review-body">
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid={
-            review.access === "not_permitted"
-              ? "attention-review-not-permitted"
-              : "attention-review-nothing"
-          }
-        >
-          {t(
+      <div className="flex flex-col items-start gap-3" data-testid="attention-review-body">
+        <DataState
+          state="empty"
+          line={t(
             review.access === "not_permitted"
               ? "overview.sheet.notPermitted"
               : "overview.sheet.nothingToReview",
           )}
-        </p>
-        {elsewhere}
-        {back}
-      </div>
-    );
-  if (review.isPending && !review.failed)
-    return (
-      <div
-        className="grid gap-2 px-4"
-        role="status"
-        aria-label={t("common.loading")}
-        aria-busy="true"
-      >
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-24 w-full" />
-      </div>
-    );
-  if (review.failed)
-    return (
-      <div className="px-4">
-        <LoadFailed
-          title={t("overview.loadFailed")}
-          onRetry={() => review.refetch()}
-          testId="attention-review-error"
+          testId={
+            review.access === "not_permitted"
+              ? "attention-review-not-permitted"
+              : "attention-review-nothing"
+          }
+          action={elsewhere}
         />
       </div>
+    );
+  if (review.isPending && !review.failed) return <RowsSkeleton count={2} />;
+  if (review.failed)
+    return (
+      <DataState
+        state="error"
+        line={t("overview.loadFailed")}
+        onRetry={() => review.refetch()}
+        testId="attention-review-error"
+      />
     );
 
   return (
     <div
-      className="grid gap-4 px-4 pb-6"
+      className="flex flex-col gap-4"
       data-testid="attention-review-body"
       data-family-slot="queue"
     >
@@ -710,12 +769,12 @@ function ReviewBody({
         />
       ))}
       {decisions.length === 0 && held.length === 0 && heldHooks.length === 0 ? (
-        <div className="grid gap-3" data-testid="attention-review-empty">
-          {elsewhere ?? (
-            <p className="text-sm text-muted-foreground">{t("overview.sheet.nothingOpen")}</p>
-          )}
-          {back}
-        </div>
+        <DataState
+          state="empty"
+          line={t("overview.sheet.nothingOpen")}
+          testId="attention-review-empty"
+          action={elsewhere}
+        />
       ) : null}
     </div>
   );
