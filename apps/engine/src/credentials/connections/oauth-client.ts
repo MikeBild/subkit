@@ -122,5 +122,5 @@ export function expiryOf(token: TokenResponse): Date | null {
  */
 export function grantedScopes(token: TokenResponse): string[] | null {
   if (typeof token.scope !== "string") return null;
-  return permissionScopes(token.scope.split(/\s+/));
+  return permissionScopes([token.scope]);
 }

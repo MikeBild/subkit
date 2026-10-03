@@ -9,14 +9,17 @@
 // So the engine requests it on its own whenever the server advertises it, and
 // it never reaches the person as something to choose or as something granted.
 
+import { parseScopeList } from "../authority-scopes.ts";
 import type { AuthorizationServerMetadata } from "./types.ts";
 
 /** The OIDC scope that asks for a refresh token. */
 export const OFFLINE_ACCESS_SCOPE = "offline_access";
 
-/** The scopes a person grants — protocol scopes removed, blanks and duplicates dropped. */
+/** The scopes a person grants — protocol scopes removed, blanks and duplicates
+ *  dropped. An entry holding a whole scope string (space- or comma-separated)
+ *  is read as the list it is. */
 export function permissionScopes(scopes: readonly string[]): string[] {
-  return [...new Set(scopes.map((s) => s.trim()).filter((s) => s && s !== OFFLINE_ACCESS_SCOPE))];
+  return [...new Set(scopes.flatMap(parseScopeList).filter((s) => s !== OFFLINE_ACCESS_SCOPE))];
 }
 
 /**
