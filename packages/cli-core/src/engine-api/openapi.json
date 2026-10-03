@@ -17654,6 +17654,25 @@
           }
         }
       },
+      "DeleteConversationResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deleted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ]
+      },
       "ContextSnapshot": {
         "type": "object",
         "properties": {
@@ -39247,6 +39266,71 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Delete a conversation for everyone",
+        "description": "Removes the conversation with its messages, tool calls and file links; the files themselves stay. Only the owner or an administrator may delete. Refused with 409 while a turn is running. Hiding (`/hide`) only takes it out of the caller's own list.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteConversationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — neither the owner nor an administrator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A turn is still running",
             "content": {
               "application/json": {
                 "schema": {

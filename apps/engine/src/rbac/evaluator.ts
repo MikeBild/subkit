@@ -289,7 +289,7 @@ function matchesPortalTokenAllowlist(check: PermissionCheck): boolean {
   return false;
 }
 
-function hasBuiltinAdminRole(principal: ResolvedPrincipal): boolean {
+export function hasBuiltinAdminRole(principal: ResolvedPrincipal): boolean {
   return principal.roles?.includes("admin") === true;
 }
 
