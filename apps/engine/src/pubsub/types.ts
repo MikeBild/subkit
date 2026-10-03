@@ -197,6 +197,7 @@ export const LISTENER_CHANNELS = [
   "conversation.stream",
   "event.emitted",
   "notification.emitted",
+  "resource.lifecycle",
 ] as const satisfies readonly OutboxChannel[];
 
 /** Full event envelope delivered to local subscribers. */

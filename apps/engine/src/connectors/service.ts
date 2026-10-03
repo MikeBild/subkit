@@ -12,6 +12,7 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { connectors, credentials } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
+import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import {
   validateConnectorAuthType,
   validateConnectorConfigOrThrow,
@@ -267,6 +268,11 @@ export async function createConnector(
         },
         tx,
       );
+      await emitResourceChange(tx, {
+        tenant_id: p.tenant_id,
+        type: "connector.updated",
+        ids: { connector_id: row.id },
+      });
       return toView(row);
     }
     const inserted = await tx
@@ -315,6 +321,11 @@ export async function createConnector(
       },
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id: p.tenant_id,
+      type: "connector.created",
+      ids: { connector_id: row.id },
+    });
     return toView(row);
   });
 }
@@ -717,6 +728,11 @@ export async function updateConnector(
       },
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id,
+      type: "connector.updated",
+      ids: { connector_id: id },
+    });
     return toView(row);
   });
   return updated;
@@ -775,6 +791,11 @@ export async function setConnectorEnabled(
     },
     db,
   );
+  await emitResourceChange(db, {
+    tenant_id,
+    type: "connector.updated",
+    ids: { connector_id: id },
+  });
   if (row.driver === "mcp") evictMcpServer(tenant_id, id);
   const view = toView(row);
   if (row.driver === "postgres") await closePoolForConnector(view);
@@ -848,6 +869,11 @@ export async function deleteConnector(
       },
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id,
+      type: "connector.deleted",
+      ids: { connector_id: id },
+    });
     return { ok: true, evict, evict_mcp };
   });
   const ok = result.ok;

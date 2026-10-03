@@ -19,6 +19,7 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
+import { emitCredentialChange } from "../pubsub/resource-changes.ts";
 import {
   hasCredentialAuthorityRevisionColumn,
   hasCredentialConnectionColumn,
@@ -472,6 +473,7 @@ export async function upsertCredential(
       },
       tx,
     );
+    await emitCredentialChange(tx, input.tenant_id, input.connector_id);
 
     return {
       id,
@@ -971,14 +973,14 @@ export async function deleteCredential(
   exec?: Executor,
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  const result = await db
+  const deleted = await db
     .delete(credentials)
-    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)));
-  const ok = (result as { rowCount?: number }).rowCount
-    ? (result as { rowCount?: number }).rowCount! > 0
-    : true;
+    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)))
+    .returning({ connector_id: credentials.connector_id });
+  const ok = deleted.length > 0;
   if (ok) {
     invalidateTenantState(tenant_id);
+    await emitCredentialChange(db, tenant_id, deleted[0]?.connector_id);
     await auditAwait(
       {
         tenant_id,

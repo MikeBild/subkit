@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { webhooksInbound } from "../../db/schema/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
+import { emitResourceChange } from "../../pubsub/resource-changes.ts";
 import { inspectInboundHookAutomation } from "../../scheduler/automation-status.ts";
 
 export type InboundHoldReason = "execution_authority_required" | "execution_authority_unavailable";
@@ -57,8 +58,14 @@ export async function recordInboundAdmission(
           sql`(${webhooksInbound.admission_hold}->>'reason_code') IS DISTINCT FROM ${reason}::text`,
         ),
       )
-      .returning({ id: webhooksInbound.id });
-    return rows.length > 0;
+      .returning({ id: webhooksInbound.id, workflow_id: webhooksInbound.workflow_id });
+    if (rows.length === 0) return false;
+    await emitResourceChange(tx, {
+      tenant_id: context.tenant_id,
+      type: "workflow.automation_changed",
+      ids: { workflow_id: rows[0]?.workflow_id ?? null, hook_id: context.inbound_id },
+    });
+    return true;
   });
   if (changed) invalidateTenantState(context.tenant_id);
   return changed;
