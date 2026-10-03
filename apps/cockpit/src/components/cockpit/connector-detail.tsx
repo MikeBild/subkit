@@ -555,7 +555,6 @@ export function ConnectorMcpTools({
         pending={inspect.pending}
         onOpen={(row) => setOpen(rows.indexOf(row))}
         rowLabel={(row) => row.name}
-        pageSize={25}
       />
       {selected && open !== null ? (
         <ToolSheet

@@ -278,7 +278,7 @@ function ApprovalTable({
  * former ones folded. Approving lives in the strip only.
  */
 export function WorkflowApprovals({ automation }: { automation: WorkflowAutomation }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { state } = automation;
   const current: WorkflowAuthority[] = state
     ? state.grant
@@ -286,14 +286,24 @@ export function WorkflowApprovals({ automation }: { automation: WorkflowAutomati
       : state.alsoValid
     : [];
   const history = state?.history ?? [];
-  const summary = state?.grant
-    ? t("workflowApprovals.current", { boundary: authorityHeadline(state.grant, t, locale) })
-    : current.length > 0
-      ? t("workflowApprovals.elsewhere", { count: current.length })
-      : t("workflowApprovals.none");
+  // A count, never a repeat of one row (R9); approving lives in the strip.
+  const total = current.length + history.length;
+  const summary =
+    total === 0
+      ? null
+      : t(total === 1 ? "workflowApprovals.count.one" : "workflowApprovals.count.other", {
+          count: total,
+          active: current.length,
+        });
   return (
     <>
-      <SummaryLine text={summary} testId="workflow-approvals-summary" />
+      {summary ? (
+        <SummaryLine
+          text={summary}
+          help={t("workflowApprovals.summaryHelp")}
+          testId="workflow-approvals-summary"
+        />
+      ) : null}
       {state ? (
         <ApprovalsBody automation={automation} current={current} history={history} />
       ) : (
