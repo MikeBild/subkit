@@ -14,7 +14,8 @@ export type OutboxChannel =
   | "connector.oauth"
   | "conversation.stream"
   | "event.emitted"
-  | "notification.emitted";
+  | "notification.emitted"
+  | "resource.lifecycle";
 
 /**
  * Insert a row into `events` and issue `pg_notify` with the new id.

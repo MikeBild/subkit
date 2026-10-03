@@ -4,6 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflowsSchedules } from "../db/schema/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
+import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
 
 /** Preserve the last refused admission across restarts, without creating a
@@ -49,7 +50,7 @@ export async function recordScheduleAdmission(
           sql`(${workflowsSchedules.admission_hold}->>'reason_code') IS DISTINCT FROM ${reason}::text`,
         ),
       )
-      .returning({ id: workflowsSchedules.id });
+      .returning({ id: workflowsSchedules.id, workflow_id: workflowsSchedules.workflow_id });
     if (!changed.length) return false;
     await auditAwait(
       {
@@ -74,6 +75,11 @@ export async function recordScheduleAdmission(
       },
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id: context.tenant_id,
+      type: "workflow.automation_changed",
+      ids: { workflow_id: changed[0]?.workflow_id ?? null, schedule_id: context.schedule_id },
+    });
     return true;
   });
   invalidateTenantState(context.tenant_id);

@@ -9,6 +9,7 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   auditLog,
+  events,
   sessions,
   tenants,
   users,
@@ -139,6 +140,33 @@ test("a human grants a boundary until revoked; a lost response does not grant tw
   await expect(grantWorkflowAuthority(f.workflow.id, openEnded, f.context)).rejects.toMatchObject({
     code: "authority_revoked",
   });
+  // The live Cockpit hears the grant once (the retry wrote nothing) and the
+  // revocation once — ids only, on the internal channel.
+  const changes = await ctx.db
+    .select({ type: events.type, payload: events.payload })
+    .from(events)
+    .where(
+      and(
+        eq(events.tenant_id, f.workflow.tenant_id),
+        eq(events.channel, "resource.lifecycle"),
+        sql`${events.payload}->>'workflow_id' = ${f.workflow.id}`,
+      ),
+    )
+    .orderBy(events.id);
+  expect(changes).toEqual([
+    {
+      type: "workflow.authority_granted",
+      payload: {
+        workflow_id: f.workflow.id,
+        workflow_version_id: authority.workflow_version_id,
+        authority_id: authority.id,
+      },
+    },
+    {
+      type: "workflow.authority_revoked",
+      payload: { workflow_id: f.workflow.id, authority_id: authority.id },
+    },
+  ]);
 });
 
 test("a human grants a finite exact boundary without activating or running its draft", async () => {

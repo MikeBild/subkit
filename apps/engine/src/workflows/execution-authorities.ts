@@ -22,6 +22,7 @@ import {
 } from "../execution/steps/request.ts";
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
 import { invalidateTenantState } from "../operator/index.ts";
+import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { can } from "../rbac/evaluator.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
@@ -473,6 +474,11 @@ export async function grantWorkflowAuthority(
       workflow.lifecycle === "active" ? workflow.current_version_id : null,
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id: principal.tenant_id,
+      type: "workflow.authority_granted",
+      ids: { workflow_id, workflow_version_id: version.id, authority_id: authority.id },
+    });
     return authority;
   });
   invalidateTenantState(principal.tenant_id);
@@ -529,6 +535,11 @@ export async function revokeWorkflowAuthority(
       },
       tx,
     );
+    await emitResourceChange(tx, {
+      tenant_id: principal.tenant_id,
+      type: "workflow.authority_revoked",
+      ids: { workflow_id, authority_id },
+    });
     return revoked;
   });
 }
