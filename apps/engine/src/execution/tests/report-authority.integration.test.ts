@@ -19,6 +19,7 @@ import {
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import { carryApprovalsForward } from "../../workflows/authority-inheritance.ts";
 import {
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -259,6 +260,60 @@ test("preview -> human recurring grant -> schedule resolved -> two changing repo
     expect((await f.run(next)).status).toBe("succeeded");
     expect(sends).toBe(2);
     await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  });
+});
+
+test("a report approval follows an activated version that reaches nothing new, and sends", async () => {
+  const f = await fixture();
+  let sends = 0;
+  const remote = Object.assign(
+    async () => {
+      sends++;
+      return Response.json({ id: `sent-${sends}` });
+    },
+    { preconnect: () => {} },
+  ) as typeof fetch;
+  await withDriverFetchForTests(remote, async () => {
+    await f.automaticPrepare();
+    const granted = await f.grant();
+    const db = ctx.testDb.db;
+    // v2: a changed description; the same mail step. It has no approval and
+    // no preparation run of its own — the mail boundary comes from the parent.
+    const [current] = await db
+      .select({ dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, f.wf.version_id));
+    const [next] = await db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id: f.wf.workflow_id,
+        version: 2,
+        dag: { ...(current?.dag as Record<string, unknown>), description: "Daily report, v2" },
+      })
+      .returning();
+    if (!next) throw new Error("missing v2");
+    const outcome = await db.transaction(async (tx) => {
+      await tx
+        .update(workflows)
+        .set({ current_version_id: next.id })
+        .where(eq(workflows.id, f.wf.workflow_id));
+      return carryApprovalsForward(tx, {
+        tenant_id: ctx.tenantId,
+        workflow_id: f.wf.workflow_id,
+        from_version_id: f.wf.version_id,
+        to_version_id: next.id,
+        actor_id: f.principal.id,
+      });
+    });
+    expect(outcome.inherited).toHaveLength(1);
+    const [child] = await db
+      .select()
+      .from(workflowExecutionAuthorities)
+      .where(eq(workflowExecutionAuthorities.inherited_from, granted.id));
+    expect(child?.workflow_version_id).toBe(next.id);
+    expect((await f.run()).status).toBe("succeeded");
+    expect(sends).toBe(1);
   });
 });
 
