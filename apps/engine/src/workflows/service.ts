@@ -14,6 +14,7 @@ import { log } from "../logging/logger.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
+import { carryApprovalsForward } from "./authority-inheritance.ts";
 import {
   buildWorkflowListConds,
   countWorkflows,
@@ -375,6 +376,13 @@ export async function updateWorkflow(
         updated_at: new Date(),
       })
       .where(eq(workflows.id, wf.id));
+    await carryApprovalsForward(tx, {
+      tenant_id: input.tenant_id,
+      workflow_id: wf.id,
+      from_version_id: wf.current_version_id,
+      to_version_id: v.id,
+      actor_id: input.actor_id ?? null,
+    });
     await auditAwait(
       {
         tenant_id: input.tenant_id,

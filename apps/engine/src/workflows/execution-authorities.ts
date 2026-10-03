@@ -24,6 +24,7 @@ import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
+import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import type { ContentPublicationBoundaries } from "./content-publication-proposal.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
@@ -292,6 +293,7 @@ export async function activateWorkflowDraft(
     );
     if (preview.digest !== input.expected_manifest_digest)
       fail("authority_manifest_changed", "the reviewed boundary changed; review again");
+    const previous = workflow.current_version_id;
     await activateReviewedDraft(
       tx,
       workflow,
@@ -300,6 +302,15 @@ export async function activateWorkflowDraft(
       principal.id,
       true,
     );
+    // Activating without a new grant: an approval of the replaced version
+    // follows when the new boundary is no wider.
+    await carryApprovalsForward(tx, {
+      tenant_id: principal.tenant_id,
+      workflow_id,
+      from_version_id: previous,
+      to_version_id: input.workflow_version_id,
+      actor_id: principal.id,
+    });
   });
   invalidateTenantState(principal.tenant_id);
   return {

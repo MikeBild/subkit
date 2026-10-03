@@ -135,6 +135,9 @@ export const AuditAction = {
   WORKFLOW_VERSION_RESTORED: "workflow.version_restored",
   WORKFLOW_AUTHORITY_GRANTED: "workflow.authority_granted",
   WORKFLOW_AUTHORITY_REVOKED: "workflow.authority_revoked",
+  // A newer active version took over an approval whose effect boundary it does
+  // not exceed; the old approval ended in the same transaction.
+  WORKFLOW_AUTHORITY_INHERITED: "workflow.authority_inherited",
   // Committed via save_workflow_draft with `force=true` — no successful preview
   // was recorded. Metadata captures the classification of the most recent
   // preview attempt (if any) so operators can audit why the override was
