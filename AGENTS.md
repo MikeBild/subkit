@@ -17,7 +17,11 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
 - Do not record concrete production hosts, credentials, deployment identifiers,
   or private infrastructure in source comments or general docs. Deployment
   examples belong only in an end-user/operator guide and use placeholder values.
-- Preserve human approval semantics and deterministic execution.
+- Preserve human approval semantics and deterministic execution. A person
+  approves an effect boundary (connectors, addresses, read vs. write) for an
+  environment. The approval follows a newly activated version whose boundary
+  does not grow and is asked for again when it grows. It may stand until
+  revoked or be limited by runs and time; revoking it is always possible.
 
 ## Sources and workflow
 

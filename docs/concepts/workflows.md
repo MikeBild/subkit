@@ -70,11 +70,32 @@ endpoints are activation-capable and are not equivalent to saving an inert draft
 
 ### Execution authority persistence boundary
 
-`workflow_execution_authorities` stores a separate, finite boundary for a tenant,
+`workflow_execution_authorities` stores a separate boundary for a tenant,
 workflow, exact version, effect-manifest digest and snapshot, execution environment,
-static target constraints, validity window and maximum run count. Existing active
-workflows receive no authority rows during migration. A stored mode or activation
-is not an implicit grant.
+static target constraints, validity window and maximum run count. The end of the
+window and the run count are optional: without them the approval stands until it
+is revoked, and runs are still counted. Existing active workflows receive no
+authority rows during migration. A stored mode or activation is not an implicit
+grant.
+
+A person approves an effect boundary for an environment — the connectors a
+workflow reaches, at which addresses, and whether it only reads or also writes.
+When a newer version becomes active (draft activation, update, restore, an
+applied repair), each live approval of the version it replaces is compared with
+the new version's boundary, computed by the same preview the grant dialog shows:
+
+- **Equal or narrower** — a new approval for the new version takes over what is
+  left (environment, remaining runs, end date), records the approval it came
+  from (`inherited_from`) and the boundary a person approved, and the old
+  approval ends (`superseded_by`) in the same transaction. The allowance is
+  never doubled, and concurrent activations carry an approval exactly once.
+  The audit log records `workflow.authority_inherited`.
+- **Wider** — a new connector, a new address, a read that now writes, or a
+  changed connection: nothing is carried. The version waits for a person, and
+  the attention item and the grant review say in one line what is new.
+
+Saving a draft carries nothing; only activation does. Revocation is always
+available and ends an approval at once, whatever its bounds.
 
 Database constraints bind both the tenant-owned workflow and its exact version.
 Once created, the authority's identity and approved boundary cannot change.
@@ -126,9 +147,11 @@ for hashing and execution. `request_review_truncated` and
 clients must not present such a projection as a complete payload review.
 
 In the cockpit, open a workflow and choose **Review execution authority**.
-The dialog starts in development and inherits the preview's finite suggestions
-(one run, 24 hours). Review the targets, connector IDs, request content and
-iteration/retry explanation, then confirm the exact count and window. Changing
+The dialog starts in development and offers two choices: **until revoked**
+(the default — no run limit, no end date) or **limit**, which shows the run
+count and window fields with the preview's suggestions (one run, 24 hours).
+Review the targets, connector IDs, request content and iteration/retry
+explanation, then confirm. Changing
 the environment or preparing a fresh review replaces the entire displayed
 snapshot. A conflict never retries the grant automatically. Shortened or opaque
 payload projections cannot be granted through this dialog.
@@ -150,12 +173,16 @@ are labelled as having no stored binding, not retroactively approved or denied.
 Preparation reads the stored exact version and the connector selected for the
 requested environment. It does not decrypt credentials, refresh OAuth, probe
 the destination, or execute a workflow. The response includes an effect manifest,
-its digest, eligibility and unavailable-step reasons. The suggested bounds are
-one run during the next 24 hours, requiring no operator configuration. The
-human may choose a different finite count and interval: at most 10,000 runs and
-31 days. The grant request sends the displayed `valid_from`, `valid_until`,
-`max_runs`, `execution_environment`, `workflow_version_id` and
-`expected_manifest_digest` explicitly.
+its digest, eligibility and unavailable-step reasons, and — when the workflow
+has an earlier approval in that environment — `boundary_growth`: what this
+version reaches beyond it (empty when nothing). The suggested bounds are one run
+during the next 24 hours, requiring no operator configuration. The human may
+grant until revoked (`valid_until` and `max_runs` null or omitted) or choose a
+finite count and interval: at most 10,000 runs and 31 days. The grant request
+sends `valid_from`, `valid_until`, `max_runs`, `execution_environment`,
+`workflow_version_id` and `expected_manifest_digest` explicitly. A read
+authority reports `open_ended`, a null `remaining_runs` when there is no run
+limit, and the state `superseded` once a newer version took it over.
 
 Only a signed browser session matching the authenticated principal can grant or
 revoke. Its database session must still be live, and a matching CSRF proof is

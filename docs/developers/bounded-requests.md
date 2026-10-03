@@ -1,10 +1,11 @@
 # Bounded requests
 
 A scheduled workflow runs without a person present, so a person approves its
-effects once, for a finite number of runs. That only works for a request whose
-target a reviewer can read. A request step whose path or body is filled in at run
-time is reported as `dynamic_request` and blocks repeated runs — unless the
-author declares a boundary on the step and a human approves it.
+effects once, until revoked or for a limited number of runs. That only works
+for a request whose target a reviewer can read. A request step whose path or
+body is filled in at run time is reported as `dynamic_request` and blocks
+repeated runs — unless the author declares a boundary on the step and a human
+approves it.
 
 ```json
 {
