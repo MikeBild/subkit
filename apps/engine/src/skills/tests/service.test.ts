@@ -157,6 +157,33 @@ describe("skills/service", () => {
     expect(gone).toBeNull();
   });
 
+  test("applies_to round-trips and narrows the applicable set per audience", async () => {
+    const tenant_id = await seedTenant();
+    const plain = await createSkill(
+      { tenant_id, input: { scope: "global", title: "plain", body: "Both places." } },
+      ctx.db,
+    );
+    expect(plain.applies_to).toBe("both");
+    const chat = await createSkill(
+      {
+        tenant_id,
+        input: { scope: "global", title: "chat", body: "Chat only.", applies_to: "chat" },
+      },
+      ctx.db,
+    );
+    expect(chat.applies_to).toBe("chat");
+    const moved = await updateSkill(tenant_id, chat.id, { applies_to: "authoring" }, null, ctx.db);
+    expect(moved?.applies_to).toBe("authoring");
+
+    const forChat = await retrieveApplicableSkills({ tenant_id, audience: "chat" }, ctx.db);
+    expect(forChat.map((s) => s.id)).toEqual([plain.id]);
+    const forDrafting = await retrieveApplicableSkills(
+      { tenant_id, audience: "authoring" },
+      ctx.db,
+    );
+    expect(forDrafting.map((s) => s.id).sort()).toEqual([plain.id, chat.id].sort());
+  });
+
   test("getSkill rejects non-UUID input without throwing", async () => {
     const tenant_id = await seedTenant();
     // The skills.id column is uuid-typed. Earlier callers passed slugs
