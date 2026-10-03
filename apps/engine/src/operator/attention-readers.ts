@@ -25,6 +25,8 @@ import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts"
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import { scheduleBindingState } from "../scheduler/trigger-bindings.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
+import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { diagnoseWorkflow, type GateDiagnosis } from "../workflows/gate-diagnosis.ts";
 import { type ApprovalFact, readApprovalFacts } from "./approval-readers.ts";
 import type {
   AttentionAction,
@@ -56,8 +58,10 @@ export const attentionHref = {
   automation: (workflowId: string) =>
     `/cockpit/workflows/${encodeURIComponent(workflowId)}#workflow-automation`,
   conversation: (id: string) => `/cockpit/chat/${encodeURIComponent(id)}`,
-  newChat: (workflowId: string, executionId: string) =>
-    `/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}&execution_id=${encodeURIComponent(executionId)}`,
+  newChat: (workflowId: string, executionId: string | null) =>
+    `/cockpit/chat/new?workflow_id=${encodeURIComponent(workflowId)}${
+      executionId ? `&execution_id=${encodeURIComponent(executionId)}` : ""
+    }`,
   connector: (id: string) => `/cockpit/connectors/${encodeURIComponent(id)}`,
   connections: "/cockpit/api-access?section=grants",
   failedRuns: (workflowId: string) =>
@@ -103,6 +107,88 @@ interface WorkflowFacts {
   patches: { count: number; oldest: Date } | null;
   /** Nothing refused yet: the running version is unapproved, or its approval is ending. */
   approval: ApprovalFact | null;
+  /** Set beside an awaiting approval the gate would refuse to grant: what blocks it. */
+  repair: NonNullable<AttentionItem["repair"]> | null;
+}
+
+/**
+ * Which block speaks for a version no approval may cover. A step only a
+ * change to the workflow unblocks comes first — a trial run or a computed
+ * repair elsewhere still leaves it blocked — then a reconnect, then a
+ * computed repair, then the trial run.
+ */
+const REMEDY_ORDER: Record<GateDiagnosis["remedy_kind"], number> = {
+  author: 0,
+  declare: 1,
+  reconnect: 2,
+  patch: 3,
+  prepare: 4,
+};
+
+/**
+ * An unapproved running version is only "awaiting approval" when an approval
+ * could be given. The gate refuses to grant one whose effects are not bounded
+ * (`eligible_for_repeated_runs`) — the automation panel's `repair_required` —
+ * and the list said "approve" for weeks on versions nobody could approve.
+ * Reads the same predicate the panel and the gate read, and the diagnosis of
+ * the RUNNING version (never the draft) for what blocks it.
+ */
+async function readRepairFacts(
+  db: Db,
+  tenantId: string,
+  approvals: ReadonlyArray<ApprovalFact>,
+): Promise<Map<string, NonNullable<AttentionItem["repair"]>>> {
+  const awaiting = approvals.filter((fact) => fact.kind === "awaiting");
+  const repairs = new Map<string, NonNullable<AttentionItem["repair"]>>();
+  if (awaiting.length === 0) return repairs;
+  const rows = await db
+    .select({ id: workflows.id, version: workflows.current_version_id })
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.tenant_id, tenantId),
+        inArray(
+          workflows.id,
+          awaiting.map((fact) => fact.workflow_id),
+        ),
+      ),
+    );
+  const versions = new Map(rows.map((row) => [row.id, row.version]));
+  await Promise.all(
+    awaiting.map(async (fact) => {
+      const version_id = versions.get(fact.workflow_id);
+      if (!version_id) return;
+      const input = {
+        tenant_id: tenantId,
+        workflow_id: fact.workflow_id,
+        workflow_version_id: version_id,
+        execution_environment: fact.environment,
+      };
+      // A definition that cannot be resolved is no evidence either way; the
+      // panel says so itself (`verification_unavailable`).
+      const preview = await previewWorkflowAuthority(input, db).catch(() => null);
+      if (!preview || preview.eligible_for_repeated_runs) return;
+      // Without the diagnosis the manifest still names the blocked step.
+      const diagnosis = await diagnoseWorkflow(db, tenantId, fact.workflow_id, fact.environment, {
+        version_id,
+        preview,
+      }).catch(() => null);
+      const entries = diagnosis?.diagnoses ?? [];
+      const lead = [...entries].sort(
+        (a, b) => REMEDY_ORDER[a.remedy_kind] - REMEDY_ORDER[b.remedy_kind],
+      )[0];
+      const issue = preview.manifest.issues[0];
+      repairs.set(fact.workflow_id, {
+        step_id: lead?.subject.step_id ?? issue?.step_id ?? null,
+        code: lead?.code ?? issue?.code ?? null,
+        remedy_kind: lead?.remedy_kind ?? "author",
+        steps: Math.max(1, new Set(entries.map((entry) => entry.subject.step_id)).size),
+        candidate_id: lead?.candidate_id ?? null,
+        execution_id: lead?.evidence.execution_id ?? null,
+      });
+    }),
+  );
+  return repairs;
 }
 
 /**
@@ -135,6 +221,7 @@ async function readWorkflowFacts(
       groups: [],
       patches: null,
       approval: null,
+      repair: null,
     };
     facts.set(id, created);
     return created;
@@ -207,6 +294,8 @@ async function readWorkflowFacts(
     sources.schedules = "answered";
     for (const fact of approvals.value.values())
       factFor(fact.workflow_id, fact.name).approval = fact;
+    const repairs = await readRepairFacts(db, tenantId, [...approvals.value.values()]);
+    for (const [id, repair] of repairs) factFor(id, null).repair = repair;
     const holds = [
       ...held.value.map((row) => ({ ...row, trigger: { kind: "schedule" as const, name: null } })),
       ...heldHooks.value.map((row) => ({
@@ -277,6 +366,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   // same thing already refused, a failure or an open fix is acted on first —
   // and applying a fix makes a new version, which then waits here itself.
   const approval = !fact.held && failures === 0 && patches === 0 ? fact.approval : null;
+  const repair = approval?.kind === "awaiting" ? fact.repair : null;
   const reason: AttentionReason = fact.held
     ? fact.held.reason_code === "execution_authority_unavailable"
       ? "execution_authority_unavailable"
@@ -284,9 +374,11 @@ function workflowItem(fact: WorkflowFacts): Candidate {
     : failures > 0
       ? "failing"
       : approval
-        ? approval.kind === "awaiting"
-          ? "version_awaiting_approval"
-          : "approval_expiring"
+        ? repair
+          ? "version_needs_repair"
+          : approval.kind === "awaiting"
+            ? "version_awaiting_approval"
+            : "approval_expiring"
         : "patch_proposed";
   const id = `workflow:${fact.id}`;
 
@@ -315,6 +407,31 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       primary: true,
       permission: "conversation:write",
     });
+  } else if (repair) {
+    // Never "approve": the gate would refuse it. The act the diagnosis offers —
+    // a filed repair is reviewed, a step only an author can change is talked
+    // through, and a computed repair or a trial run start in the panel.
+    if (repair.remedy_kind === "patch" && repair.candidate_id)
+      actions.push({
+        verb: "review",
+        href: attentionHref.review(id),
+        primary: true,
+        permission: "workflow:write",
+      });
+    else if (repair.remedy_kind === "author" || repair.remedy_kind === "declare")
+      actions.push({
+        verb: "chat",
+        href: attentionHref.newChat(fact.id, repair.execution_id),
+        primary: true,
+        permission: "conversation:write",
+      });
+    else
+      actions.push({
+        verb: "open",
+        href: attentionHref.automation(fact.id),
+        primary: true,
+        permission: repair.remedy_kind === "prepare" ? "workflow:run" : "workflow:write",
+      });
   } else if (approval) {
     // Approving happens on the workflow's page, in its automation panel: the
     // panel says whether the next step is the approval itself or a repair.
@@ -353,6 +470,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       ...(approval
         ? { approval: { version: approval.version, environment: approval.environment } }
         : {}),
+      ...(repair ? { repair } : {}),
       cause_class: lead?.cause_class ?? null,
       counts,
       since: approval

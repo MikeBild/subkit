@@ -580,6 +580,12 @@ export function attentionLine(item: AttentionItem): string {
     // Which version waits, and where it runs.
     item.approval ? `v${item.approval.version}` : null,
     item.approval ? item.approval.environment : null,
+    // What blocks the approval, and the act that removes it.
+    item.repair?.step_id
+      ? `step "${item.repair.step_id}"${item.repair.code ? ` ${item.repair.code.replace(/_/g, " ")}` : ""}`
+      : null,
+    item.repair && item.repair.steps > 1 ? `${item.repair.steps} steps blocked` : null,
+    item.repair ? `remedy: ${item.repair.remedy_kind}` : null,
   ].filter((part): part is string => part !== null);
   const tail = counts.length > 0 ? ` (${counts.join(", ")})` : "";
   const detail = item.detail ? ` — ${item.detail}` : "";
