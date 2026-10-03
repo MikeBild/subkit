@@ -1619,6 +1619,7 @@ async function mockApi(route) {
       slug: "sichere-reports",
       body: "# Sichere Reports\n\nVor externen Schreibzugriffen immer eine Freigabe einholen.",
       scope: "global",
+      applies_to: "chat",
       status: "active",
       source: "manual",
       maturity: "stable",
@@ -1630,6 +1631,8 @@ async function mockApi(route) {
     return json(route, {
       id: uuid,
       filename: "report-notes.md",
+      slug: "report-notes",
+      reference: "@attachment:report-notes",
       status: "ready",
       content_type: "text/markdown",
       size_bytes: 1840,
@@ -1723,12 +1726,21 @@ async function mockApi(route) {
           connector_id: rotate === 1 ? uuid : null,
           workflow_id: rotate === 2 ? uuid : null,
           side_effects: ["read", "write", "destructive", "none"][rotate],
+          applies_to: ["both", "chat", "authoring", "both"][rotate],
           maturity: rotate === 1 ? "experimental" : "stable",
           version: 3,
           updated_at: conversation.updated_at,
         };
       return {
         filename: `report-notes-${index + 1}.md`,
+        slug: `report-notes-${index + 1}`,
+        reference: `@attachment:report-notes-${index + 1}`,
+        // Used by several workflows and one conversation, by one of each,
+        // by conversations alone, and by nothing — every shape of the line.
+        usage: {
+          workflows: [2, 1, 0, 0][rotate],
+          conversations: [1, 1, 3, 0][rotate],
+        },
         status: ["ready", "scanning", "failed", "expired"][rotate],
         scan_result: ["clean", "noop", "infected", "timeout"][rotate],
         content_type: "text/markdown",
