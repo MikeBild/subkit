@@ -8,8 +8,9 @@ import {
   runAuthorityFacts,
   runCostFacts,
   runDurationMs,
-  runIdFromPath,
   runName,
+  runOverlayFromUrl,
+  runOverlaySearch,
 } from "@/pages/runs-model";
 
 const t = (key: Parameters<typeof translate>[1]) => translate("en", key);
@@ -227,28 +228,37 @@ describe("what a run consumed", () => {
   });
 });
 
-describe("the run an address names", () => {
-  test("reads the id out of a run's own path", () => {
-    // The sheet used to open from local state alone, so a run had no address
-    // and nothing could link to one. This is the reading half of the fix.
-    expect(runIdFromPath("/cockpit/runs/018f4b4a-6d33-7b3a-9c2d-123456789abc")).toBe(
-      "018f4b4a-6d33-7b3a-9c2d-123456789abc",
+describe("the run sheets an address opens", () => {
+  const ID = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+
+  test("reads one run and the list of all runs out of the query", () => {
+    expect(runOverlayFromUrl(`?run=${ID}`)).toEqual({ list: false, runId: ID });
+    expect(runOverlayFromUrl("?runs=all&status=failed")).toEqual({ list: true, runId: null });
+    expect(runOverlayFromUrl(`?runs=all&run=${ID}`)).toEqual({ list: true, runId: ID });
+  });
+
+  test("an address without them opens nothing", () => {
+    expect(runOverlayFromUrl("")).toEqual({ list: false, runId: null });
+    expect(runOverlayFromUrl("?runs=some")).toEqual({ list: false, runId: null });
+    // Not an id: a sheet would only ever say "not found".
+    expect(runOverlayFromUrl("?run=a%20b").runId).toBeNull();
+  });
+
+  test("opening and closing keeps the page's own parameters", () => {
+    expect(runOverlaySearch("?review=x", { list: false, runId: ID })).toBe(`?review=x&run=${ID}`);
+    expect(runOverlaySearch(`?review=x&run=${ID}`, { list: false, runId: null })).toBe("?review=x");
+    expect(runOverlaySearch("?runs=all&status=failed", { list: true, runId: ID })).toBe(
+      `?runs=all&status=failed&run=${ID}`,
     );
   });
 
-  test("the list itself names no run", () => {
-    // Opening a sheet here would show a record the address never asked for.
-    expect(runIdFromPath("/cockpit/runs")).toBeNull();
-    expect(runIdFromPath("/cockpit/runs/")).toBeNull();
-    expect(runIdFromPath("/cockpit/workflows/abc")).toBeNull();
-    expect(runIdFromPath("/cockpit/runs/abc/steps")).toBeNull();
-  });
-
-  test("an id that had to be escaped survives the round trip", () => {
-    // The page writes the path with `encodeURIComponent`; reading it back has
-    // to undo exactly that, or the sheet asks the engine for a different run.
-    expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("run/42")}`)).toBe("run/42");
-    expect(runIdFromPath(`/cockpit/runs/${encodeURIComponent("a b")}`)).toBe("a b");
+  test("closing the list drops the narrowing it read", () => {
+    expect(
+      runOverlaySearch("?runs=all&status=failed&workflow_id=w&tab=x", {
+        list: false,
+        runId: null,
+      }),
+    ).toBe("?tab=x");
   });
 });
 

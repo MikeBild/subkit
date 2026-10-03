@@ -123,22 +123,53 @@ export function executionsQuery(
   return params;
 }
 
+/** The query keys the run list reads its narrowing from. */
+export const RUNS_FILTER_KEYS = [
+  "workflow_id",
+  "status",
+  "source",
+  "q",
+  "started_from",
+  "started_to",
+] as const;
+
 /**
- * The run an address names, or nothing.
+ * Which run sheets an address opens, on whichever page it is: the list of all
+ * runs (`?runs=all`) and one run (`?run=<id>`). Both live in the query, so the
+ * page underneath stays what it was and a run has an address on every page
+ * that can open one.
  *
- * `/runs` had a list and no per-record path, so the sheet was reachable only
- * by clicking a row: an audit entry, a decision or a metric that named one run
- * could point at the list and no further. The id now lives in the path
- * (`app/route-table.ts`), and it is read here rather than in the page so the
- * reading can be proven without a DOM.
- *
- * Only the exact `/runs/<id>` shape is a run. The bare list, a trailing slash
- * and anything deeper are not, and guessing one out of them would open a sheet
- * on a record the address never named.
+ * An id that could not be one is no run: a sheet asking the engine for a
+ * free-text value would only ever say "not found".
  */
-export function runIdFromPath(pathname: string): string | null {
-  const id = /\/runs\/([^/]+)$/.exec(pathname)?.[1];
-  return id ? decodeURIComponent(id) : null;
+export function runOverlayFromUrl(search: string): { list: boolean; runId: string | null } {
+  const params = new URLSearchParams(search);
+  const raw = params.get("run")?.trim() ?? "";
+  return {
+    list: params.get("runs") === "all",
+    runId: raw && raw.length <= 128 && /^[\w.:-]+$/.test(raw) ? raw : null,
+  };
+}
+
+/**
+ * The query after opening or closing a run sheet. Every other parameter stays
+ * as it was; closing the list also drops the narrowing it read, so a reload
+ * does not bring back a filter the reader took away with the sheet.
+ */
+export function runOverlaySearch(
+  search: string,
+  next: { list: boolean; runId: string | null },
+): string {
+  const params = new URLSearchParams(search);
+  if (next.list) params.set("runs", "all");
+  else {
+    params.delete("runs");
+    for (const key of RUNS_FILTER_KEYS) params.delete(key);
+  }
+  if (next.runId) params.set("run", next.runId);
+  else params.delete("run");
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 /**

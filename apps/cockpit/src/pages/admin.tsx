@@ -1780,7 +1780,8 @@ const SEVERITY_LABEL: Readonly<Record<string, TranslationKey>> = {
  * label: a circuit phase the engine can store must never resolve to
  * "unknown" (§2), and the shared helper is allowed to fall through to it.
  */
-export function NotificationsPage() {
+/** The notification rules and channels — the Benachrichtigungen tab of Einstellungen. */
+export function NotificationSettings() {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
@@ -1821,11 +1822,7 @@ export function NotificationsPage() {
   };
 
   return (
-    <AdminFrame
-      testId="admin-notifications"
-      titleKey="resource.notifications.title"
-      descriptionKey="resource.notifications.description"
-    >
+    <div data-testid="admin-notifications" className="flex flex-col gap-6">
       {rulesView === "loading" || channelsView === "loading" ? (
         <LoadingCards testId="notifications-loading" />
       ) : rulesView === "error" || channelsView === "error" ? (
@@ -2014,6 +2011,6 @@ export function NotificationsPage() {
           </Card>
         </div>
       )}
-    </AdminFrame>
+    </div>
   );
 }

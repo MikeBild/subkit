@@ -13,7 +13,7 @@ import { openApiAccessSection, readableSections } from "@/pages/api-access-model
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
 import { usageWindowFromUrl } from "@/pages/operations-figures";
-import { filterFromUrl } from "@/pages/runs-model";
+import { filterFromUrl, runOverlayFromUrl } from "@/pages/runs-model";
 import { settingsLeafFromUrl } from "@/pages/settings-model";
 import {
   API_ACCESS_SECTIONS,
@@ -137,8 +137,15 @@ describe("runs", () => {
     );
   });
 
-  test("the page's word for no narrowing is left out of the address", () => {
-    expect(runsHref({ status: "all", source: "all" })).toBe("/runs");
+  test("all runs and one run open as sheets over Übersicht", () => {
+    expect(runsHref()).toBe("/?runs=all");
+    expect(runHref(ID)).toBe(`/?run=${ID}`);
+    expect(runOverlayFromUrl(query(runsHref()))).toEqual({ list: true, runId: null });
+    expect(runOverlayFromUrl(query(runHref(ID)))).toEqual({ list: false, runId: ID });
+  });
+
+  test("the list's word for no narrowing is left out of the address", () => {
+    expect(runsHref({ status: "all", source: "all" })).toBe("/?runs=all");
     expect(filterFromUrl(query(runsHref()))).toEqual({
       workflowId: null,
       status: "all",
