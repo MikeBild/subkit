@@ -1,4 +1,4 @@
-// Outbound connections — the Cockpit's "Kontoverbindungen" (a section of Zugangsdaten).
+// Outbound connections — the account sign-ins a connector's credential points at.
 //
 //   POST   /v1/connections/discover      what is at this address? (name, scopes, connectable?)
 //   POST   /v1/connections/start         register there, mint PKCE, return the authorization URL
@@ -10,8 +10,7 @@
 //   DELETE /v1/connections/{id}          "Trennen"
 //
 // The callback never renders a page of its own: success and failure both
-// land on the grants section of /cockpit/api-access with a query the page
-// turns into a sentence.
+// land on /cockpit/connectors with a query the list turns into a sentence.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -220,10 +219,9 @@ function rethrow(error: unknown): never {
   throw error;
 }
 
-/** Kontoverbindungen are a section of Zugangsdaten; the callback lands on it. */
+/** A sign-in belongs to the connector it serves; the callback lands on the connector list. */
 function cockpitReturn(origin: string, params: Record<string, string | null>): Response {
-  const url = new URL("/cockpit/api-access", origin);
-  url.searchParams.set("section", "grants");
+  const url = new URL("/cockpit/connectors", origin);
   for (const [key, value] of Object.entries(params)) if (value) url.searchParams.set(key, value);
   return new Response(null, {
     status: 302,
