@@ -9,6 +9,7 @@ import {
   apiKeys,
   auditLog,
   conversations,
+  executions,
   fileLinks,
   roles,
   users,
@@ -22,6 +23,7 @@ const nextHex = createDeterministicHexFactory(0xf11e3a);
 
 let srv: HttpTestServer;
 let portalKey: string;
+let portalUserId: string;
 
 function request(method: string, path: string, bearer: string, body?: unknown) {
   return fetch(`${srv.baseUrl}${path}`, {
@@ -63,6 +65,7 @@ beforeAll(async () => {
     })
     .returning();
   if (!portalUser) throw new Error("seed portal user");
+  portalUserId = portalUser.id;
   const token = `wf_live_${Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32)}`;
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
@@ -274,10 +277,18 @@ describe("the @attachment:<slug> reference", () => {
       .values({ tenant_id: srv.tenantId, status: "active", title: "Slug chat" })
       .returning();
     if (!conversation) throw new Error("seed conversation");
+    const admin = {
+      provider: "test",
+      kind: "user" as const,
+      id: "00000000-0000-4000-8000-00000000a11c",
+      tenant_id: srv.tenantId,
+      roles: ["admin"],
+    };
     const rewrite = await resolveAttachmentSlugsInText("lies @attachment:chat-slug bitte", {
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id: conversation.id,
+      principal: admin,
     });
     expect(rewrite.text).toBe(`lies [file:${file.id}] bitte`);
     const links = await srv.db
@@ -290,6 +301,64 @@ describe("the @attachment:<slug> reference", () => {
         ),
       );
     expect(links).toEqual([{ slug: "chat-slug" }]);
+  });
+
+  test("a run's input names one file for good: references are pinned to ids on admission", async () => {
+    const { createExecution } = await import("../../execution/state.ts");
+    const file = (await upload("pinned content", "pinned.txt")) as Wire;
+    const id = await createExecution(srv.db, {
+      tenant_id: srv.tenantId,
+      workflow_id: null,
+      workflow_version_id: null,
+      source_kind: "draft",
+      source_ref: null,
+      request_source: "api",
+      input: {
+        report: { $file: "@attachment:pinned" },
+        list: [{ $file: "@attachment:pinned" }, { $file: "@attachment:none-such" }],
+        note: "@attachment:pinned",
+      },
+    });
+    const [row] = await srv.db
+      .select({ input: executions.input })
+      .from(executions)
+      .where(eq(executions.id, id));
+    expect(row?.input).toEqual({
+      report: { $file: file.id },
+      list: [{ $file: file.id }, { $file: "@attachment:none-such" }],
+      note: "@attachment:pinned",
+    });
+  });
+
+  test("a writer without file:read cannot reach a tenant file by guessing its slug", async () => {
+    const { resolveAttachmentSlugsInText } = await import("../../conversations/attachments.ts");
+    await upload("salaries", "gehalt.txt");
+    const [conversation] = await srv.db
+      .insert(conversations)
+      .values({ tenant_id: srv.tenantId, status: "active", title: "Guessing" })
+      .returning();
+    if (!conversation) throw new Error("seed conversation");
+    const ctx = { db: srv.db, tenant_id: srv.tenantId, conversation_id: conversation.id };
+    const portal = {
+      provider: "test",
+      kind: "user" as const,
+      id: portalUserId,
+      tenant_id: srv.tenantId,
+      roles: ["portal_token_user"],
+    };
+    for (const principal of [portal, undefined]) {
+      const rewrite = await resolveAttachmentSlugsInText("zeig @attachment:gehalt", {
+        ...ctx,
+        ...(principal ? { principal } : {}),
+      });
+      expect(rewrite.text).toBe("zeig @attachment:gehalt");
+      expect(rewrite.unresolved).toEqual(["gehalt"]);
+    }
+    const links = await srv.db
+      .select({ slug: fileLinks.slug })
+      .from(fileLinks)
+      .where(eq(fileLinks.resource_id, conversation.id));
+    expect(links).toEqual([]);
   });
 
   test("the list counts workflows naming the file by id or reference, and conversations", async () => {
