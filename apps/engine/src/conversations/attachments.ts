@@ -26,8 +26,10 @@
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { toFileId } from "../api/files-schemas.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks, files } from "../db/schema/index.ts";
+import { can } from "../rbac/index.ts";
 
 export type { FileRow, ResolvedFile, ResolverContext } from "../files/resolver.ts";
 export { FileNotFoundError, requireFileForTenant, walkAndResolve } from "../files/resolver.ts";
@@ -67,6 +69,25 @@ export interface SlugLookupCtx {
   db: Db;
   tenant_id: string;
   conversation_id: string;
+  /**
+   * Who wrote the text. A slug the conversation does not hold names a tenant
+   * file only for someone who may read files (`file:read`): a slug is a
+   * readable name anyone can guess, unlike a `fid_` id. `null` is a system
+   * actor (trusted work); left out, the tenant is not searched at all.
+   */
+  principal?: ResolvedPrincipal | null;
+}
+
+/** Whether a slug the conversation does not hold may name a tenant file. */
+async function mayReadTenantFiles(ctx: SlugLookupCtx): Promise<boolean> {
+  if (ctx.principal === undefined) return false;
+  if (ctx.principal === null) return true;
+  const decision = await can(ctx.db as never, {
+    tenant_id: ctx.tenant_id,
+    principal: ctx.principal,
+    permission: "file:read",
+  });
+  return decision.allow;
 }
 
 /** Map every slug referenced in the conversation to the corresponding
@@ -166,7 +187,7 @@ export async function resolveAttachmentSlugsInText(
   // The conversation's own links win; a slug they do not hold names the
   // tenant's file under that slug, which the conversation then holds too.
   const tenantSlugs = distinctSlugs.filter((slug) => !map.has(slug));
-  if (tenantSlugs.length > 0) {
+  if (tenantSlugs.length > 0 && (await mayReadTenantFiles(ctx))) {
     const tenantFiles = await ctx.db
       .select({ id: files.id, slug: files.slug })
       .from(files)

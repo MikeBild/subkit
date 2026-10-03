@@ -329,6 +329,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       db: p.db,
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
+      ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
     ingestedUserMessage = rewrite.text;
     // The MCP async-Tasks worker path persists the user row before

@@ -161,6 +161,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const createParams = {
       tenant_id: principal.tenant_id,
       actor_id: principal.id,
+      principal,
       ...(body.connector_id ? { connector_id: body.connector_id } : {}),
       ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
       ...(body.initial_message ? { initial_message: body.initial_message } : {}),
