@@ -44,7 +44,6 @@ export { type DialogSize, dialogWidthClass, FormDialog } from "./form-dialog";
 export { Page, type PageKind, type PageSurface, pageColumn, READING_COLUMN } from "./page";
 export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
-export { PendingButton } from "./pending-button";
 export { RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { CollapsibleSection, SECTION_LABEL, Section } from "./section";
