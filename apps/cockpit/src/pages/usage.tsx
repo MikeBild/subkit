@@ -374,7 +374,8 @@ export function UsagePage() {
             hasActiveFilters={false}
             sorting={[] as SortingState}
             onSortingChange={() => {}}
-            columnsLabel={t("catalog.columns")}
+            // Two tables, two column pickers: each names the table it shapes.
+            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byWorkflow")}`}
             recordsLabel={t("catalog.records")}
             actionsLabel={t("common.actions")}
           />
@@ -392,7 +393,7 @@ export function UsagePage() {
             hasActiveFilters={false}
             sorting={[] as SortingState}
             onSortingChange={() => {}}
-            columnsLabel={t("catalog.columns")}
+            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byModel")}`}
             recordsLabel={t("catalog.records")}
             actionsLabel={t("common.actions")}
           />

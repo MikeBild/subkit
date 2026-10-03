@@ -1894,6 +1894,9 @@ async function mockApi(route) {
       ? AUDIT_FIXTURE_ENTRIES.filter((entry) => wanted.includes(entry.action))
       : AUDIT_FIXTURE_ENTRIES;
     const items = actorType ? byAction.filter((entry) => entry.actor_type === actorType) : byAction;
+    // Two pages: the log is endless, so the second answers the cursor with the
+    // end of the log rather than the first page again.
+    if (url.searchParams.get("cursor")) return json(route, { items: [], next_cursor: null });
     return json(route, { items, next_cursor: "audit-cursor-2" });
   }
   // The one entry the detail sheet asks for, answered from the same array the
