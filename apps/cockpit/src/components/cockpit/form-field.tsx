@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { ContextHelp } from "./patterns";
+import { ContextHelp, SegmentedControl } from "./patterns";
 
 /**
  * The fields of a FormDialog (P14): a label, the control, one line of help
@@ -145,12 +145,30 @@ export function SelectField({
   );
 }
 
-/** The one error line a form shows, under its fields. */
-export function FormError({ message, testId }: { message: string | null; testId: string }) {
-  if (!message) return null;
+/** A labelled segmented choice: two to five options, all visible at once. */
+export function ChoiceField<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  testId,
+}: {
+  label: string;
+  value: T;
+  onChange(value: T): void;
+  options: { value: T; label: string }[];
+  testId: string;
+}) {
   return (
-    <p role="alert" className="text-sm text-destructive" data-testid={testId}>
-      {message}
-    </p>
+    <div className="flex min-w-0 flex-col gap-1.5" data-slot="form-field">
+      <span className="text-sm font-medium">{label}</span>
+      <SegmentedControl
+        label={label}
+        value={value}
+        onValueChange={(next) => onChange(next as T)}
+        testId={testId}
+        options={options.map((option) => ({ ...option, testId: `${testId}-${option.value}` }))}
+      />
+    </div>
   );
 }

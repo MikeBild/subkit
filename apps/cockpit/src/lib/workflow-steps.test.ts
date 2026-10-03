@@ -279,7 +279,7 @@ describe("control-flow steps", () => {
 
   test("a wait says how long", () => {
     expect(essence({ id: "pause", kind: "wait", duration_ms: 90_000 })).toBe("wartet 90 s");
-    expect(essence({ id: "pause", kind: "wait" })).toBe("Wartezeit");
+    expect(essence({ id: "pause", kind: "wait" })).toBe("Warten");
   });
 
   test("a wait for an event names the event and its limit", () => {

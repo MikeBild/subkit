@@ -15,9 +15,10 @@ import {
   ConnectorRuntimeSection,
   ConnectorTechnicalFacts,
   ConnectorWorkflows,
+  useConnectorWorkflows,
 } from "@/components/cockpit/connector-detail";
+import { ConnectorDeleteDialog, ConnectorEditDialog } from "@/components/cockpit/connector-edit";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
-import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
   ActionMenu,
   type ActionMenuItem,
@@ -35,7 +36,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { connectorAuthState, connectorHealthLabel } from "@/lib/connector-auth-state";
+import { connectorAuthState } from "@/lib/connector-auth-state";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripAction,
@@ -197,13 +198,18 @@ export function ConnectorPage({
   const { t } = useI18n();
   const router = useRouter();
   const client = useQueryClient();
-  const [renaming, setRenaming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const canWrite = permissions.includes("connector:write");
   const canTest = permissions.includes("connector:test");
   const canChat = permissions.includes("conversation:write");
   const isMcp = record.driver === "mcp";
   const authType = text(record, "auth_type");
+  const slug = text(record, "slug");
+  const users = useConnectorWorkflows(slug && permissions.includes("workflow:read") ? slug : null);
+  const userNames = (users.data?.items ?? []).flatMap((item) => (item.name ? [item.name] : []));
+  const userCount = users.data?.total ?? userNames.length;
 
   // A test is a real call: a passed one clears a refused sign-in and closes
   // the breaker, and either way it is the newest call on record. The page is
@@ -292,9 +298,6 @@ export function ConnectorPage({
     canWrite,
   });
   const enabled = record.enabled !== false;
-  // The engine's health verdict, beside the name.
-  const health = text(record, "health_state");
-  const healthKey = health ? connectorHealthLabel(health) : null;
   const notice = connectorNotice({ enabled, authState: auth, returned });
   const strip = connectorStrip({
     auth,
@@ -333,7 +336,16 @@ export function ConnectorPage({
       ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
       : strip.kind === "unreachable" && probe.data && !probe.data.ok
         ? (probe.data.detail ?? t("connectors.probeFailed"))
-        : null;
+        : strip.kind === "expired" && users.data
+          ? t(
+              userCount === 1
+                ? "connectorStrip.line.expired.one"
+                : "connectorStrip.line.expired.other",
+              { count: userCount },
+            )
+          : strip.kind === "notSignedIn"
+            ? t("connectorStrip.line.notSignedIn")
+            : null;
 
   const menu: ActionMenuItem[] = [
     ...(canTest
@@ -349,9 +361,15 @@ export function ConnectorPage({
     ...(canWrite
       ? [
           {
-            label: t("detail.editMetadata"),
-            onSelect: () => setRenaming(true),
-            testId: "connector-menu-rename",
+            label: t("connectorEdit.edit"),
+            onSelect: () => setEditing(true),
+            testId: "connector-menu-edit",
+          },
+          {
+            label: t("workflowPage.delete"),
+            destructive: true,
+            onSelect: () => setDeleting(true),
+            testId: "connector-menu-delete",
           },
         ]
       : []),
@@ -457,11 +475,6 @@ export function ConnectorPage({
         <PageHeader
           back={{ to: "/connectors", label: t("nav.connectors") }}
           title={title}
-          badge={
-            health && healthKey ? (
-              <StatusBadge state={health} label={t(healthKey)} testId="connector-health-badge" />
-            ) : undefined
-          }
           purpose={purpose || undefined}
           secondary={
             canChat ? (
@@ -519,36 +532,42 @@ export function ConnectorPage({
                 : undefined
             }
             action={
-              strip.action ? (
-                <ActionMenu
-                  items={[
-                    {
-                      label: t(connectorStripActionKey(strip.action)),
-                      disabled: busy,
-                      onSelect: () => strip.action && act(strip.action),
-                      testId:
-                        strip.action.kind === "enable"
-                          ? "connector-enable"
-                          : strip.action.kind === "recheck"
-                            ? "connector-recheck"
-                            : "connector-renew-signin",
-                    },
-                  ]}
-                />
-              ) : undefined
+              strip.action
+                ? {
+                    label: t(connectorStripActionKey(strip.action)),
+                    variant: strip.tone === "ok" ? "outline" : "primary",
+                    pending: busy,
+                    onClick: () => strip.action && act(strip.action),
+                    testId:
+                      strip.action.kind === "enable"
+                        ? "connector-enable"
+                        : strip.action.kind === "recheck"
+                          ? "connector-recheck"
+                          : "connector-renew-signin",
+                  }
+                : undefined
             }
           />
         </div>
         <PageTabs tabs={tabs} param="tab" testId="connector-tabs" />
       </div>
       {canWrite ? (
-        <MetadataDialog
-          resource="connectors"
-          id={id}
-          title={title}
-          open={renaming}
-          onOpenChange={setRenaming}
-        />
+        <>
+          <ConnectorEditDialog
+            open={editing}
+            onOpenChange={setEditing}
+            id={id}
+            record={record}
+            headerName={credential.data?.header_names?.[0] ?? ""}
+          />
+          <ConnectorDeleteDialog
+            open={deleting}
+            onOpenChange={setDeleting}
+            id={id}
+            name={title}
+            users={userNames}
+          />
+        </>
       ) : null}
     </Page>
   );
