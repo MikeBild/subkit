@@ -2866,6 +2866,50 @@ function documentThemeMatches(classes, theme) {
   return theme === "dark" ? dark : !dark;
 }
 
+/**
+ * No horizontal page scroll, measured where it can happen. The body never
+ * scrolls (the shell is an app frame), so `document.scrollWidth` would pass
+ * any layout: instead every page scroll container must not scroll sideways,
+ * and no visible element may reach past the window's right edge unless it
+ * sits inside a container built to scroll sideways (a wide table, a tab bar).
+ */
+async function assertNoHorizontalScroll(page, label) {
+  const found = await page.evaluate(() => {
+    const width = window.innerWidth;
+    const sideways = (node) => {
+      for (let up = node.parentElement; up; up = up.parentElement) {
+        const x = window.getComputedStyle(up).overflowX;
+        if (x === "auto" || x === "scroll" || x === "hidden" || x === "clip") return up;
+      }
+      return null;
+    };
+    const containers = [
+      ...document.querySelectorAll(
+        '[data-testid="page-content"], [data-family-slot="scroll-region"], main[data-page-kind]',
+      ),
+    ]
+      .filter((node) => node.scrollWidth > node.clientWidth + 1)
+      .filter((node) => window.getComputedStyle(node).overflowX !== "hidden")
+      .map((node) => `${node.getAttribute("data-testid") ?? node.tagName} scrolls sideways`);
+    const poking = [...document.querySelectorAll("body *")]
+      .filter((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0 || rect.right <= width + 1) return false;
+        const style = window.getComputedStyle(node);
+        if (style.visibility === "hidden" || style.position === "fixed") return false;
+        const clip = sideways(node);
+        return clip === null || clip.getBoundingClientRect().right > width + 1;
+      })
+      .slice(0, 3)
+      .map(
+        (node) =>
+          `${node.getAttribute("data-testid") ?? node.tagName} reaches ${Math.round(node.getBoundingClientRect().right)}px`,
+      );
+    return [...containers, ...poking];
+  });
+  if (found.length) throw new Error(`${label} scrolls sideways: ${found.join(", ")}`);
+}
+
 async function assertViewport(page, label) {
   const geometry = await page.evaluate(() => {
     const content = document.querySelector('[data-testid="page-content"]');
@@ -4784,6 +4828,32 @@ for (const locale of variants) {
     await contact.close();
   }
 }
+// Every screen size, cheaply: one context per width, one locale and theme, no
+// frames — the migrated views must fit from a phone to a wide monitor with no
+// horizontal page scroll and nothing poking past the right edge.
+const RESPONSIVE_WIDTHS = [390, 768, 1024, 1440, 1920];
+const migratedRoutes = routes.filter((route) => patternMigratedView(route) !== null);
+for (const width of RESPONSIVE_WIDTHS) {
+  const context = await browser.newContext({
+    viewport: { width, height: 900 },
+    locale: "de-DE",
+    reducedMotion: "reduce",
+  });
+  await context.addInitScript(() => {
+    localStorage.setItem("sk-cockpit-locale", "de");
+    localStorage.setItem("sk-cockpit-theme", "light");
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (error) => errors.push(`responsive/${width}: ${error.message}`));
+  await page.route("**/v1/**", mockApi);
+  for (const route of migratedRoutes) {
+    await stand.visit(page, route);
+    await page.locator(markerFor(route)).waitFor({ state: "visible" });
+    await assertNoHorizontalScroll(page, `responsive/${width}/${route}`);
+  }
+  await context.close();
+}
+
 await assertFirstSendIsNeverLost(browser);
 await browser.close();
 spawnedPreview?.stop();
