@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, List, MessageSquarePlus, PanelRight } from "lucide-react";
-import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
+import { Fragment, type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   apiRequest,
@@ -27,12 +27,15 @@ import {
   chatSeedFromUrl,
   connectorHref,
   conversationHref,
+  recordHref,
   runHref,
   usageHref,
   workflowHref,
 } from "@/app/links";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { useHeldSchedules } from "@/app/use-decisions";
+import { useDirtyGuard } from "@/app/version-notice";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
   Confirmation,
@@ -45,6 +48,8 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
+  PromptInputFooter,
+  PromptInputHeader,
   PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -73,9 +78,10 @@ import {
   FactList,
   Field,
   FieldLabel,
+  FilePreview,
   FormDialog,
+  formatBytes,
   Input,
-  InputGroupAddon,
   Message,
   MessageContent,
   MessageFooter,
@@ -92,6 +98,7 @@ import {
   PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
+  previewKind,
   READING_COLUMN,
   RecordSheet,
   Select,
@@ -105,7 +112,7 @@ import {
   useMessageScroller,
 } from "@/components/cockpit/patterns";
 import { queryView } from "@/components/failure-state";
-import { formatDateTime, formatRelativeTime, type TranslationKey } from "@/lib/i18n";
+import { formatDateTime, formatRelativeTime, LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
@@ -127,6 +134,21 @@ import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
+import {
+  addAttachments,
+  attachmentName,
+  attachmentSize,
+  type ConversationAttachment,
+  createEmptyConversation,
+  fileContentHref,
+  linkAttachment,
+  listConversationAttachments,
+  messageWithAttachments,
+  type PendingAttachment,
+  pendingKey,
+  splitFileSentinels,
+  takeAttachmentFiles,
+} from "./chat-attachments";
 import { liveAutomationReviews } from "./chat-automation-tool";
 import { type ChatChoice, chatChoice } from "./chat-choice";
 import { ChatChoiceCard } from "./chat-choice-card";
@@ -267,6 +289,8 @@ function catalogHref(kind: string, id: string): string {
   // thing that went stale, and a reader following a run out of a transcript
   // would still have arrived at a list of eleven thousand.
   if (kind === "execution") return absolute(runHref(id));
+  if (kind === "skill") return absolute(recordHref("skills", id));
+  if (kind === "knowledge_source") return absolute(recordHref("knowledge", id));
   return absolute(kind === "workflow" ? workflowHref(id) : connectorHref(id));
 }
 
@@ -454,13 +478,67 @@ function backgroundLabel(t: Translate, toolName: string, running: boolean): stri
   return actionLabel(t, toolName);
 }
 
+/**
+ * One file in the composer or in a sent message: its name and size, opening
+ * its preview; in the composer it can be taken out again.
+ */
+function AttachmentChip({
+  name,
+  size,
+  icon: Icon,
+  onOpen,
+  onRemove,
+  testId,
+}: {
+  name: string;
+  size?: number;
+  icon: typeof FileText;
+  onOpen: () => void;
+  onRemove?: () => void;
+  testId: string;
+}) {
+  const { t, locale } = useI18n();
+  return (
+    <span
+      className="inline-flex min-w-0 items-center overflow-hidden rounded-md border bg-muted/40 text-xs"
+      data-testid={testId}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid={`${testId}-open`}
+      >
+        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate">
+          {name}
+          {size !== undefined ? ` · ${formatBytes(size, LOCALE_TAGS[locale])}` : ""}
+        </span>
+      </button>
+      {onRemove ? (
+        <IconButton
+          label={t("chat.attachment.remove", { name })}
+          size="icon-xs"
+          onClick={onRemove}
+          data-testid={`${testId}-remove`}
+        >
+          <X />
+        </IconButton>
+      ) : null}
+    </span>
+  );
+}
+
 type RestoreComposer = (text: string, references: ConversationReference[]) => void;
 
 /**
- * The composer with `@`-mentions. Lives inside `PromptInputProvider` so it
- * can read and write the shared text state; the references travel beside
- * the text and are reconciled against it on send (a token deleted by hand
- * drops its reference).
+ * The composer: one box (R15). The files that go with the message stand on
+ * top, the field below them has no border of its own, and the toolbar under
+ * it holds "attach" on the left and "send" on the right. `@` picks a
+ * workflow, a connector, a source or a skill as a reference, or a stored file
+ * as an attachment. Lives inside `PromptInputProvider` so it can read and
+ * write the shared text state; the references travel beside the text and are
+ * reconciled against it on send (a token deleted by hand drops its reference).
  */
 function ChatComposer({
   disabled,
@@ -468,6 +546,10 @@ function ChatComposer({
   status,
   placeholder,
   describedBy,
+  attachments,
+  onAttach,
+  onRemoveAttachment,
+  onOpenAttachment,
   onSend,
   onStop,
   restoreRef,
@@ -480,6 +562,10 @@ function ChatComposer({
   placeholder: string;
   /** The id of a hint that says where the answer goes, when one is shown. */
   describedBy?: string;
+  attachments: readonly PendingAttachment[];
+  onAttach: (attachments: PendingAttachment[]) => void;
+  onRemoveAttachment: (key: string) => void;
+  onOpenAttachment: (attachment: PendingAttachment) => void;
   /** Resolves true when the request was sent, false when it was handed back. */
   onSend: (message: string, references: ConversationReference[]) => Promise<boolean>;
   /** Sending and stopping are one affordance: the button swaps its glyph. */
@@ -491,6 +577,7 @@ function ChatComposer({
   const session = useSession();
   const controller = usePromptInputController();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [references, setReferences] = useState<ConversationReference[]>([]);
   const setInput = controller.textInput.setInput;
   useEffect(() => {
@@ -512,7 +599,25 @@ function ChatComposer({
     setReferences,
     candidates,
     onQueryChange: setQuery,
+    onPickFile: (candidate) =>
+      onAttach([
+        {
+          key: pendingKey(),
+          kind: "file",
+          id: candidate.id,
+          name: candidate.title,
+          size: candidate.size,
+          contentType: candidate.contentType,
+        },
+      ]),
   });
+  const take = (files: readonly File[]) => {
+    const taken = takeAttachmentFiles(files, t);
+    if (taken.length > 0) onAttach(taken);
+  };
+  const streaming = status === "streaming";
+  // An unsent message is unsaved input: a reload for a new version asks first.
+  useDirtyGuard(controller.textInput.value.trim().length > 0 || attachments.length > 0);
   return (
     <Popover open={mentions.open} onOpenChange={(open) => !open && mentions.close()}>
       <PopoverAnchor asChild>
@@ -527,10 +632,10 @@ function ChatComposer({
           />
           <PromptInput
             data-testid="chat-composer"
-            inputGroupClassName="h-auto min-h-12 items-stretch rounded-xl has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
+            inputGroupClassName="h-auto gap-1.5 rounded-xl p-2 has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
             onSubmit={async ({ text }) => {
               const trimmed = text.trim();
-              if (!trimmed) return;
+              if (!trimmed && attachments.length === 0) return;
               // The request leaves the field the moment it is sent: it stands in
               // the transcript now, and a second copy in the field reads as unsent.
               const sent = reconcileReferences(trimmed, references);
@@ -542,12 +647,28 @@ function ChatComposer({
               if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
             }}
           >
+            {attachments.length > 0 ? (
+              <PromptInputHeader className="p-0" data-testid="chat-attachments">
+                {attachments.map((attachment, index) => (
+                  <AttachmentChip
+                    key={attachment.key}
+                    name={attachmentName(attachment)}
+                    size={attachmentSize(attachment)}
+                    icon={FileText}
+                    onOpen={() => onOpenAttachment(attachment)}
+                    onRemove={() => onRemoveAttachment(attachment.key)}
+                    testId={`chat-attachment-${index}`}
+                  />
+                ))}
+              </PromptInputHeader>
+            ) : null}
             <PromptInputBody>
               <PromptInputTextarea
                 ref={textareaRef}
                 name="message"
-                className="min-h-[46px] px-4 py-[11px] leading-6"
+                className="min-h-10 px-2 py-1 leading-6"
                 placeholder={placeholder}
+                aria-label={t("chat.composer.label")}
                 aria-describedby={describedBy}
                 disabled={disabled}
                 onKeyDown={(event) => {
@@ -561,27 +682,54 @@ function ChatComposer({
                   if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
                     mentions.onCaretMove(event.currentTarget.selectionStart);
                 }}
+                onPaste={(event) => {
+                  const files = [...(event.clipboardData?.files ?? [])];
+                  if (files.length === 0) return;
+                  event.preventDefault();
+                  take(files);
+                }}
                 onBlur={mentions.close}
                 data-testid="chat-composer-input"
               />
             </PromptInputBody>
-            {/* The send control sits beside the field, not on a row of its own:
-            once the approval-mode caption was gone that row held one button
-            and a band of empty space taller than the field itself. */}
-            <InputGroupAddon align="inline-end" className="self-end p-[7px] has-[>button]:mr-0">
+            <PromptInputFooter className="p-0" data-testid="chat-composer-tools">
+              <IconButton
+                label={t("chat.attach")}
+                disabled={disabled || locked}
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="chat-attach"
+              >
+                <Paperclip />
+              </IconButton>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(event) => {
+                  take([...(event.currentTarget.files ?? [])]);
+                  // The same file picked twice is a second pick.
+                  event.currentTarget.value = "";
+                }}
+                data-testid="chat-attach-input"
+              />
               {/* While a turn streams the same button stops it: pressable, and
                   named for what it does then. The page's one filled button is
-                  its action; the send control stays secondary. */}
+                  its action; send stays an outline. */}
               <PromptInputSubmit
-                variant="secondary"
+                variant="outline"
                 status={status}
                 onStop={onStop}
-                disabled={status === "streaming" ? false : disabled || locked}
-                aria-label={t(status === "streaming" ? "chat.stop" : "chat.submit")}
-                tooltip={t(status === "streaming" ? "chat.stop" : "chat.submit")}
+                disabled={streaming ? false : disabled || locked}
+                aria-label={t(streaming ? "chat.stop" : "chat.submit")}
+                tooltip={t(streaming ? "chat.stop" : "chat.submit")}
                 data-testid="chat-composer-submit"
-              />
-            </InputGroupAddon>
+              >
+                {streaming ? undefined : <SendHorizontal className="size-4" />}
+              </PromptInputSubmit>
+            </PromptInputFooter>
           </PromptInput>
         </div>
       </PopoverAnchor>
@@ -804,6 +952,8 @@ function ChatMessage({
   liveReviews,
   nameFor,
   workflowNameFor,
+  attachmentFor = () => null,
+  onOpenFile = () => {},
 }: {
   message: UiMessage;
   messageIndex: number;
@@ -833,6 +983,9 @@ function ChatMessage({
    *  slug. Resolving what this conversation actually ran is a lookup, not the
    *  guessing the comment above rules out. */
   workflowNameFor: (slug: string) => string | null;
+  /** The conversation's linked file a stored message names, or null. */
+  attachmentFor?: (fileId: string) => ConversationAttachment | null;
+  onOpenFile?: (fileId: string) => void;
 }) {
   const { t, locale } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
@@ -876,31 +1029,60 @@ function ChatMessage({
             );
           }
           if (group.kind === "part") {
-            const text = textFromPart(group.part);
-            if (!text) return null;
+            const raw = textFromPart(group.part);
+            if (!raw) return null;
+            // The files a person sent stand as chips; their sentinels leave the prose.
+            const split = from === "user" ? splitFileSentinels(raw) : { text: raw, fileIds: [] };
+            const text = split.text;
             const mentions = from === "user" ? referencesFromPart(group.part) : null;
+            const files =
+              split.fileIds.length > 0 ? (
+                <div
+                  key={`${message.id}-files-${group.index}`}
+                  className="flex flex-wrap gap-1.5"
+                  data-testid={`chat-message-${messageIndex}-files`}
+                >
+                  {split.fileIds.map((fileId, index) => {
+                    const linked = attachmentFor(fileId);
+                    return (
+                      <AttachmentChip
+                        key={fileId}
+                        name={linked?.filename ?? t("chat.attachment.file")}
+                        size={linked?.size_bytes}
+                        icon={FileText}
+                        onOpen={() => onOpenFile(fileId)}
+                        testId={`chat-message-${messageIndex}-file-${index}`}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null;
+            if (!text) return files;
             return (
-              <Bubble
-                key={`${message.id}-text-${group.index}`}
-                variant={from === "user" ? "question" : "ghost"}
-                align="start"
-              >
-                <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
-                  {mentions && mentions.references.length > 0 ? (
-                    <MentionChips
-                      text={text}
-                      references={mentions.references}
-                      unresolved={mentions.unresolved}
-                      hiddenLabel={t("tool.referenceHiddenInline")}
-                      testIdPrefix={`chat-message-${messageIndex}-text-${group.index}`}
-                    />
-                  ) : (
-                    <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
-                      {nameIdentifiers(text, nameFor, t("tool.referenceHiddenInline"))}
-                    </MessageResponse>
-                  )}
-                </BubbleContent>
-              </Bubble>
+              <Fragment key={`${message.id}-text-${group.index}`}>
+                {files}
+                <Bubble
+                  key={`${message.id}-text-${group.index}`}
+                  variant={from === "user" ? "question" : "ghost"}
+                  align="start"
+                >
+                  <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
+                    {mentions && mentions.references.length > 0 ? (
+                      <MentionChips
+                        text={text}
+                        references={mentions.references}
+                        unresolved={mentions.unresolved}
+                        hiddenLabel={t("tool.referenceHiddenInline")}
+                        testIdPrefix={`chat-message-${messageIndex}-text-${group.index}`}
+                      />
+                    ) : (
+                      <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
+                        {nameIdentifiers(text, nameFor, t("tool.referenceHiddenInline"))}
+                      </MessageResponse>
+                    )}
+                  </BubbleContent>
+                </Bubble>
+              </Fragment>
             );
           }
           const tool = group.tool;
@@ -1141,6 +1323,61 @@ function setChatPath(id: string | null, replace = false): void {
   window.history[replace ? "replaceState" : "pushState"]({}, "", path);
 }
 
+/** The file a chip opened: picked here (not sent yet) or stored with the conversation. */
+interface AttachmentPreview {
+  name: string;
+  size?: number;
+  contentType?: string | null;
+  file?: File;
+  fileId?: string;
+}
+
+/**
+ * A file's preview in a sheet: a picked file is read in the browser, a stored
+ * one from the engine — text kinds as text, an image or a PDF by address.
+ */
+function AttachmentPreviewSheet({
+  preview,
+  onClose,
+}: {
+  preview: AttachmentPreview | null;
+  onClose: () => void;
+}) {
+  const kind = preview ? previewKind(preview.name, preview.contentType) : "other";
+  const textual = kind === "markdown" || kind === "text" || kind === "csv";
+  const stored = preview?.fileId ?? null;
+  const content = useQuery({
+    queryKey: ["file-content", stored],
+    enabled: Boolean(stored && textual),
+    queryFn: async () => {
+      const response = await fetch(fileContentHref(stored ?? ""), { credentials: "same-origin" });
+      if (!response.ok) throw new Error(`file content ${response.status}`);
+      return response.text();
+    },
+  });
+  return (
+    <RecordSheet
+      open={preview !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title={preview?.name ?? ""}
+      testId="chat-attachment-preview"
+      closeTestId="chat-attachment-preview-close"
+    >
+      {preview ? (
+        <FilePreview
+          name={preview.name}
+          mimeType={preview.contentType}
+          size={preview.size}
+          file={preview.file}
+          url={stored ? fileContentHref(stored) : undefined}
+          text={stored && textual ? content.data : undefined}
+          testId="chat-attachment-preview-body"
+        />
+      ) : null}
+    </RecordSheet>
+  );
+}
+
 export function ChatPage() {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
@@ -1150,8 +1387,6 @@ export function ChatPage() {
   );
   const [showHidden, setShowHidden] = useState(false);
   const [newPermissionMode, setNewPermissionMode] = useState<AuthoringMode>(DEFAULT_AUTHORING_MODE);
-  const [conversationSearch, setConversationSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
   const [streamedDiffs, setStreamedDiffs] = useState<StreamedDiff[]>([]);
   // The engine has always streamed `tool_call_start`, `tool_log` and
@@ -1166,6 +1401,10 @@ export function ChatPage() {
     const timer = setInterval(() => setLiveTick((tick) => tick + 1), 250);
     return () => clearInterval(timer);
   }, [anyLive]);
+  // The files waiting to go with the next message, and the one being previewed.
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [preview, setPreview] = useState<AttachmentPreview | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -1202,13 +1441,9 @@ export function ChatPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(conversationSearch.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [conversationSearch]);
   const conversations = useQuery({
-    queryKey: ["conversations", debouncedSearch, showHidden ? "hidden" : "visible"],
-    queryFn: () => listConversations(debouncedSearch, showHidden ? { hidden: "only" } : {}),
+    queryKey: ["conversations", "", showHidden ? "hidden" : "visible"],
+    queryFn: () => listConversations("", showHidden ? { hidden: "only" } : {}),
   });
   const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
   useEffect(() => {
@@ -1240,34 +1475,59 @@ export function ChatPage() {
       message,
       references,
       conversationId,
+      attachments = [],
     }: {
       message: string;
       references?: ConversationReference[];
       /** The target fixed when the request was sent; null creates a conversation. */
       conversationId: string | null;
+      /** Files that go with the message; each becomes one `@attachment:` token. */
+      attachments?: readonly PendingAttachment[];
     }) => {
       setStreamedText("");
       setStreamedDiffs([]);
       setLiveCalls([]);
 
       const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
+      const target = {
+        ...(workflowId ? { workflow_id: workflowId } : {}),
+        ...(connectorId ? { connector_id: connectorId } : {}),
+      };
       startedConversationId.current = null;
+      // Files belong to a conversation before a message can name them: a new
+      // one is opened without a turn, the files are linked, then the message
+      // goes as its first turn.
+      let targetId = conversationId;
+      let text = message;
+      if (attachments.length > 0) {
+        if (!targetId) {
+          const opened = await createEmptyConversation({
+            target,
+            permissionMode: newPermissionMode,
+          });
+          targetId = opened.id;
+          startedConversationId.current = opened.id;
+        }
+        const slugs: string[] = [];
+        for (const attachment of attachments)
+          slugs.push(await linkAttachment(targetId, attachment));
+        text = messageWithAttachments(message, slugs);
+      }
       return sendConversationTurn(
-        conversationId
+        targetId
           ? {
-              conversationId,
-              message,
+              conversationId: targetId,
+              message: text,
               references,
-              pendingElicitation: detail.data?.resume_summary?.pending_approval,
+              pendingElicitation: conversationId
+                ? detail.data?.resume_summary?.pending_approval
+                : null,
             }
           : {
-              message,
+              message: text,
               references,
               permissionMode: newPermissionMode,
-              target: {
-                ...(workflowId ? { workflow_id: workflowId } : {}),
-                ...(connectorId ? { connector_id: connectorId } : {}),
-              },
+              target,
             },
         (event) => {
           if (event.type === "conversation_started") {
@@ -1374,6 +1634,9 @@ export function ChatPage() {
     };
     setOptimistic(pending);
     if (!targetId) setSentMode(newPermissionMode);
+    // The files go with this message; the composer is empty of them at once.
+    const sentAttachments = attachments;
+    setAttachments([]);
     // What existed before a creation, read in full — not whatever the list on
     // screen holds, which is empty until it loads and filtered while a search
     // is typed. Null when it cannot be read in time: the recovery then names
@@ -1392,7 +1655,12 @@ export function ChatPage() {
           new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3_000)),
         ]);
     try {
-      await send.mutateAsync({ message, references, conversationId: targetId });
+      await send.mutateAsync({
+        message,
+        references,
+        conversationId: targetId,
+        attachments: sentAttachments,
+      });
       return true;
     } catch {
       // A failed first send may still have opened the conversation and stored
@@ -1443,6 +1711,7 @@ export function ChatPage() {
       }
       setOptimistic(null);
       restoreComposer.current?.(message, references);
+      setAttachments((current) => addAttachments(sentAttachments, current));
       return false;
     }
   };
@@ -1614,6 +1883,29 @@ export function ChatPage() {
     return (id: string) => known.get(id) ?? null;
   }, [createdResources, referencedResources, resume?.active_target]);
   const session = useSession();
+  const live = useLiveQueryOptions();
+  // The files this conversation holds, so a sent message names them.
+  const conversationFiles = useQuery({
+    queryKey: ["conversation-attachments", activeId],
+    enabled: Boolean(activeId),
+    queryFn: () => listConversationAttachments(activeId ?? ""),
+    ...live,
+  });
+  const attachmentFor = useMemo(() => {
+    const byId = new Map(
+      (conversationFiles.data?.attachments ?? []).map((file) => [file.id, file] as const),
+    );
+    return (fileId: string) => byId.get(fileId) ?? null;
+  }, [conversationFiles.data]);
+  const openStoredFile = (fileId: string) => {
+    const linked = attachmentFor(fileId);
+    setPreview({
+      name: linked?.filename ?? t("chat.attachment.file"),
+      size: linked?.size_bytes,
+      contentType: linked?.content_type,
+      fileId,
+    });
+  };
   const workflowCatalogue = useQuery({
     queryKey: ["chat", "workflow-names"],
     enabled: session.permissions.includes("workflow:read"),
@@ -1662,7 +1954,7 @@ export function ChatPage() {
         schedules: { ready: boolean; next_run_at: string | null; timezone: string }[];
         inbound_hooks?: { ready: boolean }[];
       }>(`/v1/workflows/${encodeURIComponent(targetWorkflowId!)}/automation-status`),
-    refetchInterval: 15000,
+    ...live,
   });
   const readySchedules =
     automationStatus.data?.schedules?.filter((schedule) => schedule.ready) ?? [];
@@ -1832,14 +2124,21 @@ export function ChatPage() {
               setRenameTitle(current.title || t("chat.untitled"));
             },
           },
-          {
-            label: t("chat.hide"),
-            testId: "chat-hide",
-            onSelect: () => {
-              hide.mutate({ id: current.id, hidden: true });
-              startNew();
-            },
-          },
+          // Out of the list, never deleted — and back again from the hidden view.
+          current.hidden
+            ? {
+                label: t("chat.unhide"),
+                testId: "chat-unhide",
+                onSelect: () => hide.mutate({ id: current.id, hidden: false }),
+              }
+            : {
+                label: t("chat.hide"),
+                testId: "chat-hide",
+                onSelect: () => {
+                  hide.mutate({ id: current.id, hidden: true });
+                  startNew();
+                },
+              },
         ]
       : [];
   const headerText =
@@ -1854,56 +2153,64 @@ export function ChatPage() {
                 ? "chat.untitled"
                 : "chat.new",
           );
-  // Title and state on the left; the list, the working context and the action
-  // on the right. The mode and what the conversation consumed stand with the
-  // composer: they describe what the next message is sent under.
-  const chatHeader = (
-    <PageHeader
-      testId="chat-header"
-      title={headerText}
-      badge={
-        current && badge ? (
-          // "Wartet auf dich" is amber (§2) — the same tone the list gives it.
-          <StatusBadge state={badge.state} label={badge.label} testId="chat-status" />
-        ) : null
-      }
-      // §5: the state line of a conversation that has one. A new
-      // conversation has no state yet, and says nothing.
-      purpose={summaryLine ? <span data-testid="chat-summary">{summaryLine}</span> : undefined}
-      secondary={
-        <span className="flex items-center gap-1">
-          <IconButton
-            label={t("chat.conversations.open")}
-            data-testid="conversation-list-trigger"
-            onClick={() => setListOpen(true)}
-          >
-            <List />
-          </IconButton>
-          <IconButton
-            label={t("chat.toggleContext")}
-            data-testid="chat-context-toggle"
-            onClick={() => setContextOpen((value) => !value)}
-          >
-            <PanelRight />
-          </IconButton>
+  // The page's own header stands over the conversation list: "Chat", in a
+  // 72px head with its divider (R18). The page action stands under it.
+  const chatHeader = <PageHeader testId="chat-header" title={t("nav.chat")} />;
+  // "New" is a reset to the empty state, not a form. On a new conversation it
+  // would only throw the draft away, so it is not there.
+  const newConversation =
+    selection.kind === "new" && !activeId ? null : (
+      <Button
+        variant={cardActs ? "outline" : "default"}
+        onClick={startNew}
+        className="md:w-full"
+        data-testid="conversation-new"
+      >
+        {t("chat.new")}
+      </Button>
+    );
+  // The open conversation's own head, on the line of the page title (R18):
+  // its name and state on the left; the list (on a phone), the working
+  // context and the menu on the right. The mode and what the conversation
+  // consumed stand with the composer: they describe what the next message is
+  // sent under.
+  const conversationHead = (
+    <div className="py-3 md:pt-6 md:pb-0" data-testid="chat-conversation-head">
+      <div className="flex min-h-8 items-center gap-2">
+        <span
+          className="min-w-0 flex-1 truncate text-sm font-semibold"
+          data-testid="chat-title"
+          title={headerText}
+        >
+          {headerText}
         </span>
-      }
-      menu={menuItems.length > 0 ? <ActionMenu items={menuItems} testId="chat-menu" /> : null}
-      // "New" is a reset to the empty state, not a form. On a new
-      // conversation it would only throw the draft away, so it is not there.
-      action={
-        selection.kind === "new" && !activeId ? null : (
-          <Button
-            variant={cardActs ? "outline" : "default"}
-            onClick={startNew}
-            data-testid="conversation-new"
-          >
-            <MessageSquarePlus data-icon="inline-start" />
-            {t("chat.new")}
-          </Button>
-        )
-      }
-    />
+        {current && badge ? (
+          // "Wartet auf dich" is amber (§2) — the same tone the list gives it.
+          // On a phone the title needs the room; the list row marks it there.
+          <span className="hidden sm:inline-flex">
+            <StatusBadge state={badge.state} label={badge.label} testId="chat-status" />
+          </span>
+        ) : null}
+        <Button
+          variant="ghost"
+          className="md:hidden"
+          aria-expanded={listOpen}
+          aria-controls="chat-conversation-list"
+          onClick={() => setListOpen((value) => !value)}
+          data-testid="conversation-list-trigger"
+        >
+          {t("chat.conversations")}
+        </Button>
+        <IconButton
+          label={t("chat.toggleContext")}
+          data-testid="chat-context-toggle"
+          onClick={() => setContextOpen((value) => !value)}
+        >
+          <PanelRight />
+        </IconButton>
+        {menuItems.length > 0 ? <ActionMenu items={menuItems} testId="chat-menu" /> : null}
+      </div>
+    </div>
   );
   const list = (
     <ConversationList
@@ -1916,18 +2223,11 @@ export function ChatPage() {
       activeId={activeId}
       showHidden={showHidden}
       onToggleHidden={() => setShowHidden((value) => !value)}
-      onHide={(conversation, hidden) => hide.mutate({ id: conversation.id, hidden })}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
         navigate("select", false);
         setChatPath(id);
         setListOpen(false);
-      }}
-      search={conversationSearch}
-      onSearchChange={setConversationSearch}
-      onRename={(conversation) => {
-        setRenameTarget(conversation);
-        setRenameTitle(conversation.title || t("chat.untitled"));
       }}
       labelsFor={(conversation) => ({
         untitled: t("chat.untitled"),
@@ -2089,459 +2389,534 @@ export function ChatPage() {
       ),
     });
 
+  // Files dragged onto the conversation join the next message (R4).
+  const dropFiles = {
+    onDragOver: (event: React.DragEvent<HTMLElement>) => {
+      if (conversationFailed || !event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: (event: React.DragEvent<HTMLElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+    },
+    onDrop: (event: React.DragEvent<HTMLElement>) => {
+      if (conversationFailed || !event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault();
+      setDragging(false);
+      const taken = takeAttachmentFiles([...event.dataTransfer.files], t);
+      if (taken.length > 0) setAttachments((current) => addAttachments(current, taken));
+    },
+  };
+
   return (
-    <Page
-      kind="list"
-      scroll="content"
-      testId="chat-workspace"
-      header={<ReadingColumn testId="chat-header-column">{chatHeader}</ReadingColumn>}
-    >
-      {/* The list is a way back in, not a permanent neighbour: it opens on
-          demand at every width, and the conversation keeps the whole page. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="chat-main">
-        {/* The turn that just died, and the one that died before a reload. A
+    <Page kind="workspace" scroll="content" testId="chat-workspace" header={null}>
+      {/* The conversations beside the conversation on a wide screen; on a
+          phone the page title stands on top and the list folds under it. The
+          title starts on the edge every page title starts on; the list's
+          search box shares it, and a row's hover fills that same width (R18). */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row" data-testid="chat-layout">
+        <aside
+          className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0 md:px-2"
+          data-testid="chat-list-panel"
+        >
+          <div className="md:-mx-2 md:h-18 md:border-b md:px-4">{chatHeader}</div>
+          {newConversation ? <div className="md:pt-2">{newConversation}</div> : null}
+          <section
+            id="chat-conversation-list"
+            aria-label={t("chat.conversations")}
+            className={cn(
+              "col-span-2 min-h-0 flex-1 flex-col pt-2 pb-4",
+              listOpen ? "flex max-h-[40vh] md:max-h-none" : "hidden md:flex",
+            )}
+          >
+            {list}
+          </section>
+        </aside>
+        <div
+          className={cn(
+            "relative flex min-h-0 min-w-0 flex-1 flex-col",
+            dragging && "bg-accent/5 outline-2 -outline-offset-2 outline-dashed outline-accent",
+          )}
+          data-testid="chat-main"
+          data-dragging={dragging ? "true" : undefined}
+          {...dropFiles}
+        >
+          {/* The open conversation's head: as high as the list's head, its
+            divider across the whole conversation side (R18). */}
+          <ReadingColumn testId="chat-header-column" className="shrink-0 border-b md:h-18">
+            {conversationHead}
+          </ReadingColumn>
+          {/* §5: the state line of a conversation that has one. A new
+            conversation has no state yet, and says nothing. */}
+          {summaryLine ? (
+            <ReadingColumn className="pt-2">
+              <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
+                {summaryLine}
+              </p>
+            </ReadingColumn>
+          ) : null}
+          {/* The turn that just died, and the one that died before a reload. A
             known cause is the line; the engine's own sentence stays one (?)
             deep — it tells the reader what to do, and is kept verbatim. */}
-        {(send.error || turnFailure) && (
-          <ReadingColumn className="pb-3">
-            <StatusStrip
-              tone="error"
-              testId="chat-error"
-              line={
-                blocked ? (
-                  t(
-                    (send.error instanceof ApiError
-                      ? (send.error.details?.pending_elicitation as
-                          | { tool_name?: unknown }
-                          | undefined)
-                      : undefined
-                    )?.tool_name === "ask_user_text"
-                      ? "chat.text.blocked"
-                      : "chat.pendingQuestionRequired",
+          {(send.error || turnFailure) && (
+            <ReadingColumn className="pb-3">
+              <StatusStrip
+                tone="error"
+                testId="chat-error"
+                line={
+                  blocked ? (
+                    t(
+                      (send.error instanceof ApiError
+                        ? (send.error.details?.pending_elicitation as
+                            | { tool_name?: unknown }
+                            | undefined)
+                        : undefined
+                      )?.tool_name === "ask_user_text"
+                        ? "chat.text.blocked"
+                        : "chat.pendingQuestionRequired",
+                    )
+                  ) : (
+                    <span data-testid={failureCauseText ? "chat-error-cause" : undefined}>
+                      {failureCauseText ?? t("chat.failed")}
+                    </span>
                   )
-                ) : (
-                  <span data-testid={failureCauseText ? "chat-error-cause" : undefined}>
-                    {failureCauseText ?? t("chat.failed")}
-                  </span>
-                )
-              }
-              help={
-                blocked
-                  ? undefined
-                  : [
-                      t(failureCauseText ? "chat.failedKept" : "chat.failedDescription"),
-                      failureCauseText ? null : t("chat.retryManual"),
-                      turnFailureMessage,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")
-              }
-              action={
-                blocked ? undefined : (
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void retryTurn()}
-                    data-testid="chat-error-retry"
-                  >
-                    {t("chat.retryCheck")}
-                  </Button>
-                )
-              }
-            />
-          </ReadingColumn>
-        )}
+                }
+                help={
+                  blocked
+                    ? undefined
+                    : [
+                        t(failureCauseText ? "chat.failedKept" : "chat.failedDescription"),
+                        failureCauseText ? null : t("chat.retryManual"),
+                        turnFailureMessage,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
+                }
+                action={
+                  blocked ? undefined : (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void retryTurn()}
+                      data-testid="chat-error-retry"
+                    >
+                      {t("chat.retryCheck")}
+                    </Button>
+                  )
+                }
+              />
+            </ReadingColumn>
+          )}
 
-        {decide.isError && !pendingDecision && !pendingChoice && !pendingForm && (
-          <ReadingColumn className="pb-3">
-            <StatusStrip
-              tone="error"
-              testId="chat-decision-error"
-              line={t("chat.decision.failed")}
-            />
-          </ReadingColumn>
-        )}
-        <MessageScrollerProvider key={sessionKey} autoScroll>
-          <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
-          <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
-            {/* `both-edges` is the operative part: the primitive's default
+          {decide.isError && !pendingDecision && !pendingChoice && !pendingForm && (
+            <ReadingColumn className="pb-3">
+              <StatusStrip
+                tone="error"
+                testId="chat-decision-error"
+                line={t("chat.decision.failed")}
+              />
+            </ReadingColumn>
+          )}
+          <MessageScrollerProvider key={sessionKey} autoScroll>
+            <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
+            <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
+              {/* `both-edges` is the operative part: the primitive's default
                 utility sets plain `stable`, so this override must win in
                 computed style. The header and the composer reserve the same
                 gutter, so the three columns share their edges. */}
-            <MessageScrollerViewport
-              className="px-4 py-6"
-              style={{ scrollbarGutter: "stable both-edges" }}
-            >
-              <MessageScrollerContent className={READING_COLUMN}>
-                {conversationFailed ? (
-                  // Unknown or not the reader's: retrying cannot help, and the
-                  // way on — the list, a new conversation — is in the header.
-                  <DataState
-                    state="error"
-                    line={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
-                    onRetry={conversationMissing ? undefined : () => void detail.refetch()}
-                    testId="chat-load-failed"
-                  />
-                ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
-                  // `m-auto` centres while keeping the whole block below the
-                  // scroller's top edge; `place-items-center` clipped its top.
-                  <div className="flex flex-1 py-10 text-center" data-testid="chat-empty">
-                    <div className="m-auto">
-                      <span className="mx-auto grid size-10 place-items-center rounded-full bg-muted">
-                        <MessageSquarePlus />
-                      </span>
-                      <p className="mt-4 font-semibold">{t("chat.empty.title")}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {t("chat.empty.description")}
-                      </p>
-                      <StarterCards
-                        onPick={(prompt) => void submitTurn(prompt)}
-                        disabled={send.isPending}
-                      />
+              <MessageScrollerViewport
+                className="px-4 py-6"
+                style={{ scrollbarGutter: "stable both-edges" }}
+              >
+                <MessageScrollerContent className={READING_COLUMN}>
+                  {conversationFailed ? (
+                    // Unknown or not the reader's: retrying cannot help, and the
+                    // way on — the list, a new conversation — is in the header.
+                    <DataState
+                      state="error"
+                      line={t(conversationMissing ? "chat.notFound" : "chat.loadFailed")}
+                      onRetry={conversationMissing ? undefined : () => void detail.refetch()}
+                      testId="chat-load-failed"
+                    />
+                  ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
+                    // `m-auto` centres while keeping the whole block below the
+                    // scroller's top edge; `place-items-center` clipped its top.
+                    <div className="flex flex-1 py-6" data-testid="chat-empty">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{t("chat.empty.title")}</p>
+                        <StarterCards
+                          onPick={(prompt) => void submitTurn(prompt)}
+                          disabled={send.isPending}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  messages.map((message, index) => (
-                    <MessageScrollerItem key={message.id}>
-                      <ChatMessage
-                        message={message}
-                        messageIndex={index}
-                        pendingApprovalId={
-                          pendingDecision?.toolCallId ??
-                          pendingChoice?.toolCallId ??
-                          pendingForm?.toolCallId ??
-                          pendingText?.toolCallId ??
-                          null
-                        }
-                        approval={pendingDecision}
-                        choice={pendingChoice}
-                        form={pendingForm}
-                        text={pendingText}
-                        onForm={submitForm}
-                        onChoice={submitChoice}
-                        onText={submitText}
-                        answersQuestion={answerMessageIds.has(message.id)}
-                        approvalBusy={busy}
-                        approvalError={decisionErrorFor(
-                          pendingDecision?.id ??
-                            pendingChoice?.id ??
-                            pendingForm?.id ??
-                            pendingText?.id,
-                        )}
-                        onApproval={submitApproval}
-                        nameFor={nameFor}
-                        workflowNameFor={workflowNameFor}
-                        liveReviews={liveReviewCalls}
-                        onAutomationAdjust={(workflowId) =>
-                          void submitTurn(t("authority.adjustPrompt"), [
-                            {
-                              type: "workflow",
-                              id: workflowId,
-                              label: t("chat.singleRun.thisWorkflow"),
-                            },
-                          ])
-                        }
-                        onAutomationSingleRun={(workflowId) =>
-                          void submitTurn(t("chat.activation.singlePrompt"), [
-                            {
-                              type: "workflow",
-                              id: workflowId,
-                              label: t("chat.singleRun.thisWorkflow"),
-                            },
-                          ])
-                        }
-                        // While a question waits the card offers no button;
-                        // answering the question is the way on.
-                        onReauth={(action) =>
-                          void submitTurn(t("chat.reauth.prompt"), [
-                            {
-                              type: "connector",
-                              id: action.connectorId,
-                              label: action.label || t("chat.reauth.title"),
-                            },
-                          ])
-                        }
-                        onDecision={(toolCallId, approved) =>
-                          decide.mutate({ toolCallId, approved })
-                        }
-                      />
-                    </MessageScrollerItem>
-                  ))
-                )}
-                {/* The request just sent, where and as the saved one will stand:
+                  ) : (
+                    messages.map((message, index) => (
+                      <MessageScrollerItem key={message.id}>
+                        <ChatMessage
+                          message={message}
+                          messageIndex={index}
+                          pendingApprovalId={
+                            pendingDecision?.toolCallId ??
+                            pendingChoice?.toolCallId ??
+                            pendingForm?.toolCallId ??
+                            pendingText?.toolCallId ??
+                            null
+                          }
+                          approval={pendingDecision}
+                          choice={pendingChoice}
+                          form={pendingForm}
+                          text={pendingText}
+                          onForm={submitForm}
+                          onChoice={submitChoice}
+                          onText={submitText}
+                          answersQuestion={answerMessageIds.has(message.id)}
+                          approvalBusy={busy}
+                          approvalError={decisionErrorFor(
+                            pendingDecision?.id ??
+                              pendingChoice?.id ??
+                              pendingForm?.id ??
+                              pendingText?.id,
+                          )}
+                          onApproval={submitApproval}
+                          nameFor={nameFor}
+                          workflowNameFor={workflowNameFor}
+                          attachmentFor={attachmentFor}
+                          onOpenFile={openStoredFile}
+                          liveReviews={liveReviewCalls}
+                          onAutomationAdjust={(workflowId) =>
+                            void submitTurn(t("authority.adjustPrompt"), [
+                              {
+                                type: "workflow",
+                                id: workflowId,
+                                label: t("chat.singleRun.thisWorkflow"),
+                              },
+                            ])
+                          }
+                          onAutomationSingleRun={(workflowId) =>
+                            void submitTurn(t("chat.activation.singlePrompt"), [
+                              {
+                                type: "workflow",
+                                id: workflowId,
+                                label: t("chat.singleRun.thisWorkflow"),
+                              },
+                            ])
+                          }
+                          // While a question waits the card offers no button;
+                          // answering the question is the way on.
+                          onReauth={(action) =>
+                            void submitTurn(t("chat.reauth.prompt"), [
+                              {
+                                type: "connector",
+                                id: action.connectorId,
+                                label: action.label || t("chat.reauth.title"),
+                              },
+                            ])
+                          }
+                          onDecision={(toolCallId, approved) =>
+                            decide.mutate({ toolCallId, approved })
+                          }
+                        />
+                      </MessageScrollerItem>
+                    ))
+                  )}
+                  {/* The request just sent, where and as the saved one will stand:
                     left, under "Du", in the question tone. It stays until the
                     saved request is in the transcript, so there is no gap. */}
-                {showOptimistic && optimistic ? (
-                  <MessageScrollerItem key="optimistic" data-testid="chat-pending-message">
-                    <ChatMessage
-                      message={optimisticUiMessage(optimistic)}
-                      messageIndex={messages.length}
-                      pendingApprovalId={null}
-                      approval={null}
-                      choice={null}
-                      form={null}
-                      onForm={() => {}}
-                      onChoice={() => {}}
-                      approvalBusy
-                      approvalError={false}
-                      onApproval={() => {}}
-                      onDecision={() => {}}
-                      onReauth={() => {}}
-                      onAutomationAdjust={() => {}}
-                      onAutomationSingleRun={() => {}}
-                      liveReviews={NO_LIVE_REVIEWS}
-                      nameFor={nameFor}
-                      workflowNameFor={workflowNameFor}
-                    />
-                  </MessageScrollerItem>
-                ) : null}
-                {liveCalls.length > 0 && (
-                  <MessageScrollerItem>
-                    {/* `liveTick` is the render trigger: the interval bumps it so
+                  {showOptimistic && optimistic ? (
+                    <MessageScrollerItem key="optimistic" data-testid="chat-pending-message">
+                      <ChatMessage
+                        message={optimisticUiMessage(optimistic)}
+                        messageIndex={messages.length}
+                        pendingApprovalId={null}
+                        approval={null}
+                        choice={null}
+                        form={null}
+                        onForm={() => {}}
+                        onChoice={() => {}}
+                        approvalBusy
+                        approvalError={false}
+                        onApproval={() => {}}
+                        onDecision={() => {}}
+                        onReauth={() => {}}
+                        onAutomationAdjust={() => {}}
+                        onAutomationSingleRun={() => {}}
+                        liveReviews={NO_LIVE_REVIEWS}
+                        nameFor={nameFor}
+                        workflowNameFor={workflowNameFor}
+                      />
+                    </MessageScrollerItem>
+                  ) : null}
+                  {liveCalls.length > 0 && (
+                    <MessageScrollerItem>
+                      {/* `liveTick` is the render trigger: the interval bumps it so
                         the ages below re-read the clock. */}
-                    <div className="grid gap-1" data-testid="chat-live-calls" data-tick={liveTick}>
-                      {liveCalls.map((call, index) => {
-                        const running = elapsedMs(call, Date.now());
-                        return (
-                          <div
-                            key={call.callId}
-                            className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground"
-                            data-action-scope="live-call"
-                            data-testid={`chat-live-call-${index}`}
-                          >
-                            <span className="font-medium">
-                              {call.toolName ? actionLabel(t, call.toolName) : t("tool.action")}
-                            </span>
-                            {call.logTail && (
-                              <details className="min-w-0 w-full">
-                                <summary>{t("chat.activity.details")}</summary>
-                                <CodeBlock code={call.logTail} />
-                              </details>
-                            )}
-                            {running !== null && (
-                              <span className="tabular-nums">
-                                {t("overview.recent.duration", {
-                                  seconds: String(Math.round(running / 1000)),
-                                })}
+                      <div
+                        className="grid gap-1"
+                        data-testid="chat-live-calls"
+                        data-tick={liveTick}
+                      >
+                        {liveCalls.map((call, index) => {
+                          const running = elapsedMs(call, Date.now());
+                          return (
+                            <div
+                              key={call.callId}
+                              className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground"
+                              data-action-scope="live-call"
+                              data-testid={`chat-live-call-${index}`}
+                            >
+                              <span className="font-medium">
+                                {call.toolName ? actionLabel(t, call.toolName) : t("tool.action")}
                               </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </MessageScrollerItem>
-                )}
-                {streamedDiffs.length > 0 && (
-                  <MessageScrollerItem>
-                    <div className="grid gap-3" data-testid="chat-streamed-diffs">
-                      {streamedDiffs.map((diff, index) => (
-                        <DiffCard
-                          key={`${diff.title}-${index}`}
-                          testId={`chat-streamed-diff-${index}`}
-                          targetLabel={diff.title}
-                          before={null}
-                          after={null}
-                          lines={diff.lines}
-                        />
-                      ))}
-                    </div>
-                  </MessageScrollerItem>
-                )}
-                {streamedText && (
-                  <MessageScrollerItem>
-                    <Message align="start">
-                      <MessageContent>
-                        <Bubble variant="ghost">
-                          <BubbleContent>
-                            <MessageResponse>{streamedText}</MessageResponse>
-                          </BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </Message>
-                  </MessageScrollerItem>
-                )}
-                <MessageScrollerItem data-testid="chat-next-action">
-                  {/* A question the transcript drew no row for stands here,
+                              {call.logTail && (
+                                <details className="min-w-0 w-full">
+                                  <summary>{t("chat.activity.details")}</summary>
+                                  <CodeBlock code={call.logTail} />
+                                </details>
+                              )}
+                              {running !== null && (
+                                <span className="tabular-nums">
+                                  {t("overview.recent.duration", {
+                                    seconds: String(Math.round(running / 1000)),
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </MessageScrollerItem>
+                  )}
+                  {streamedDiffs.length > 0 && (
+                    <MessageScrollerItem>
+                      <div className="grid gap-3" data-testid="chat-streamed-diffs">
+                        {streamedDiffs.map((diff, index) => (
+                          <DiffCard
+                            key={`${diff.title}-${index}`}
+                            testId={`chat-streamed-diff-${index}`}
+                            targetLabel={diff.title}
+                            before={null}
+                            after={null}
+                            lines={diff.lines}
+                          />
+                        ))}
+                      </div>
+                    </MessageScrollerItem>
+                  )}
+                  {streamedText && (
+                    <MessageScrollerItem>
+                      <Message align="start">
+                        <MessageContent>
+                          <Bubble variant="ghost">
+                            <BubbleContent>
+                              <MessageResponse>{streamedText}</MessageResponse>
+                            </BubbleContent>
+                          </Bubble>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  )}
+                  <MessageScrollerItem data-testid="chat-next-action">
+                    {/* A question the transcript drew no row for stands here,
                       once — it is never also a copy in the working context. */}
-                  {unanchoredDecision && (
-                    <ChatApprovalCard
-                      approval={unanchoredDecision}
-                      busy={busy}
-                      error={decisionErrorFor(unanchoredDecision.id)}
-                      onDecision={submitApproval}
-                      testId="chat-approval"
-                    />
-                  )}
-                  {unanchoredChoice && (
-                    <ChatChoiceCard
-                      choice={unanchoredChoice}
-                      busy={busy}
-                      error={decisionErrorFor(unanchoredChoice.id)}
-                      onAnswer={submitChoice}
-                      testId="chat-choice"
-                    />
-                  )}
-                  {unanchoredForm && (
-                    <ChatFormCard
-                      form={unanchoredForm}
-                      busy={busy}
-                      error={decisionErrorFor(unanchoredForm.id)}
-                      onAnswer={submitForm}
-                      testId="chat-form"
-                    />
-                  )}
-                  {pendingText && !pendingTextInline && (
-                    <ChatTextCard
-                      text={pendingText}
-                      busy={busy}
-                      error={decisionErrorFor(pendingText.id)}
-                      onAnswer={submitText}
-                      testId="chat-text-question"
-                    />
-                  )}
-                  {showPreparation && (
-                    <ChatCard
-                      testId="chat-preparation-next-step"
-                      title={t("chat.preparation.title")}
-                      line={t("chat.preparation.effect")}
-                      action={
-                        <Button
-                          onClick={() => void submitTurn(t("chat.preparation.prompt"))}
-                          data-testid="chat-continue-preparation"
-                        >
-                          {t("chat.preparation.continue")}
-                        </Button>
-                      }
-                    />
-                  )}
-
-                  {/* The way into the approval, once: where the transcript
-                      already shows this workflow's review card, that card is it. */}
-                  {showScheduleStep && heldTarget && targetWorkflowId && (
-                    <ChatCard
-                      testId="chat-schedule-next-step"
-                      title={t("chat.schedule.pending")}
-                      line={t("chat.schedule.effect")}
-                      action={
-                        <AutomationGrant
-                          workflowId={targetWorkflowId}
-                          environment={heldTarget.execution_mode}
-                          testId="chat-review-schedule"
-                          onPrepareSingleRun={() =>
-                            void submitTurn(t("chat.activation.singlePrompt"))
-                          }
-                          onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
-                        />
-                      }
-                    />
-                  )}
-
-                  {!heldTarget &&
-                    !resume?.unsaved &&
-                    readyAutomations > 0 &&
-                    status === "ready" && (
-                      <StatusStrip
-                        tone="ok"
-                        testId="chat-automation-ready"
-                        line={t("chat.automation.ready")}
-                        help={t("chat.automation.readyHint")}
-                        more={readySchedules
-                          .filter((schedule) => schedule.next_run_at)
-                          .map((schedule) =>
-                            t("authority.report.next", {
-                              time: new Intl.DateTimeFormat(locale, {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                                timeZone: schedule.timezone,
-                              }).format(new Date(schedule.next_run_at as string)),
-                              zone: schedule.timezone,
-                            }),
-                          )
-                          .join(" · ")}
+                    {unanchoredDecision && (
+                      <ChatApprovalCard
+                        approval={unanchoredDecision}
+                        busy={busy}
+                        error={decisionErrorFor(unanchoredDecision.id)}
+                        onDecision={submitApproval}
+                        testId="chat-approval"
                       />
                     )}
-                </MessageScrollerItem>
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            {/* One name, not two: the caption below IS the accessible name. */}
-            <MessageScrollerButton
-              direction="end"
-              label={t("chat.scrollBottom")}
-              data-testid="chat-scroll-bottom"
-            />
-          </MessageScroller>
-        </MessageScrollerProvider>
+                    {unanchoredChoice && (
+                      <ChatChoiceCard
+                        choice={unanchoredChoice}
+                        busy={busy}
+                        error={decisionErrorFor(unanchoredChoice.id)}
+                        onAnswer={submitChoice}
+                        testId="chat-choice"
+                      />
+                    )}
+                    {unanchoredForm && (
+                      <ChatFormCard
+                        form={unanchoredForm}
+                        busy={busy}
+                        error={decisionErrorFor(unanchoredForm.id)}
+                        onAnswer={submitForm}
+                        testId="chat-form"
+                      />
+                    )}
+                    {pendingText && !pendingTextInline && (
+                      <ChatTextCard
+                        text={pendingText}
+                        busy={busy}
+                        error={decisionErrorFor(pendingText.id)}
+                        onAnswer={submitText}
+                        testId="chat-text-question"
+                      />
+                    )}
+                    {showPreparation && (
+                      <ChatCard
+                        testId="chat-preparation-next-step"
+                        title={t("chat.preparation.title")}
+                        line={t("chat.preparation.effect")}
+                        action={
+                          <Button
+                            onClick={() => void submitTurn(t("chat.preparation.prompt"))}
+                            data-testid="chat-continue-preparation"
+                          >
+                            {t("chat.preparation.continue")}
+                          </Button>
+                        }
+                      />
+                    )}
 
-        <div
-          className="scrollbar-thin shrink-0 overflow-y-auto border-t px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
-          data-testid="chat-composer-area"
-          // No composer aimed at a conversation that could not be opened.
-          hidden={conversationFailed}
-        >
-          <div className={READING_COLUMN}>
-            {busy && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"
-                data-testid="chat-activity"
-              >
-                <Spinner aria-hidden="true" aria-label={undefined} />
-                <span>
-                  {t(
-                    anyLive
-                      ? "chat.activity.working"
-                      : streamedText
-                        ? "chat.activity.responding"
-                        : "chat.activity.thinking",
-                  )}
-                </span>
-              </div>
-            )}
-            {/* Where the answer goes, shown above the field. A text question
-                names itself here; an open choice points at its card. */}
-            <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="chat-pills">
-              {conversationFailed || !pillLabel ? null : (
-                <ModePill
-                  mode={pillMode}
-                  label={pillLabel}
-                  editable={!activeId}
-                  disabled={send.isPending}
-                  onChange={setNewPermissionMode}
-                />
-              )}
-              <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
-            </div>
-            {composerHint ? (
-              <p
-                id="chat-composer-hint"
-                className={composerHint.visible ? "mb-2 text-sm text-muted-foreground" : "sr-only"}
-                data-testid="chat-composer-hint"
-              >
-                {composerHint.text}
-              </p>
-            ) : null}
-            <PromptInputProvider
-              key={sessionKey}
-              initialInput={selection.kind === "new" ? initialPrompt : ""}
-            >
-              <ChatComposer
-                disabled={busy || choiceOpen || formOpen}
-                locked={choiceOpen || formOpen}
-                status={status}
-                // While a text question waits, the field takes its answer.
-                placeholder={
-                  pendingText ? t("chat.text.placeholder") : t("chat.composer.placeholder")
-                }
-                describedBy={composerHint ? "chat-composer-hint" : undefined}
-                onStop={() => cancel.mutate()}
-                onSend={submitTurn}
-                restoreRef={restoreComposer}
+                    {/* The way into the approval, once: where the transcript
+                      already shows this workflow's review card, that card is it. */}
+                    {showScheduleStep && heldTarget && targetWorkflowId && (
+                      <ChatCard
+                        testId="chat-schedule-next-step"
+                        title={t("chat.schedule.pending")}
+                        line={t("chat.schedule.effect")}
+                        action={
+                          <AutomationGrant
+                            workflowId={targetWorkflowId}
+                            environment={heldTarget.execution_mode}
+                            testId="chat-review-schedule"
+                            onPrepareSingleRun={() =>
+                              void submitTurn(t("chat.activation.singlePrompt"))
+                            }
+                            onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
+                          />
+                        }
+                      />
+                    )}
+
+                    {!heldTarget &&
+                      !resume?.unsaved &&
+                      readyAutomations > 0 &&
+                      status === "ready" && (
+                        <StatusStrip
+                          tone="ok"
+                          testId="chat-automation-ready"
+                          line={t("chat.automation.ready")}
+                          help={t("chat.automation.readyHint")}
+                          more={readySchedules
+                            .filter((schedule) => schedule.next_run_at)
+                            .map((schedule) =>
+                              t("authority.report.next", {
+                                time: new Intl.DateTimeFormat(locale, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                  timeZone: schedule.timezone,
+                                }).format(new Date(schedule.next_run_at as string)),
+                                zone: schedule.timezone,
+                              }),
+                            )
+                            .join(" · ")}
+                        />
+                      )}
+                  </MessageScrollerItem>
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              {/* One name, not two: the caption below IS the accessible name. */}
+              <MessageScrollerButton
+                direction="end"
+                label={t("chat.scrollBottom")}
+                data-testid="chat-scroll-bottom"
               />
-            </PromptInputProvider>
+            </MessageScroller>
+          </MessageScrollerProvider>
+
+          <div
+            className="scrollbar-thin shrink-0 overflow-y-auto px-4 bg-background/95 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable_both-edges]"
+            data-testid="chat-composer-area"
+            // No composer aimed at a conversation that could not be opened.
+            hidden={conversationFailed}
+          >
+            <div className={READING_COLUMN}>
+              {busy && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"
+                  data-testid="chat-activity"
+                >
+                  <Spinner aria-hidden="true" aria-label={undefined} />
+                  <span>
+                    {t(
+                      anyLive
+                        ? "chat.activity.working"
+                        : streamedText
+                          ? "chat.activity.responding"
+                          : "chat.activity.thinking",
+                    )}
+                  </span>
+                </div>
+              )}
+              {/* Where the answer goes, shown above the field. A text question
+                names itself here; an open choice points at its card. */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="chat-pills">
+                {conversationFailed || !pillLabel ? null : (
+                  <ModePill
+                    mode={pillMode}
+                    label={pillLabel}
+                    editable={!activeId}
+                    disabled={send.isPending}
+                    onChange={setNewPermissionMode}
+                  />
+                )}
+                <UsagePills usage={activeId ? detail.data?.usage : null} budget={budget} />
+              </div>
+              {composerHint ? (
+                <p
+                  id="chat-composer-hint"
+                  className={
+                    composerHint.visible ? "mb-2 text-sm text-muted-foreground" : "sr-only"
+                  }
+                  data-testid="chat-composer-hint"
+                >
+                  {composerHint.text}
+                </p>
+              ) : null}
+              <PromptInputProvider
+                key={sessionKey}
+                initialInput={selection.kind === "new" ? initialPrompt : ""}
+              >
+                <ChatComposer
+                  disabled={busy || choiceOpen || formOpen}
+                  locked={choiceOpen || formOpen}
+                  status={status}
+                  // While a text question waits, the field takes its answer.
+                  placeholder={
+                    pendingText ? t("chat.text.placeholder") : t("chat.composer.placeholder")
+                  }
+                  describedBy={composerHint ? "chat-composer-hint" : undefined}
+                  attachments={attachments}
+                  onAttach={(next) => setAttachments((current) => addAttachments(current, next))}
+                  onRemoveAttachment={(key) =>
+                    setAttachments((current) => current.filter((item) => item.key !== key))
+                  }
+                  onOpenAttachment={(attachment) =>
+                    setPreview({
+                      name: attachmentName(attachment),
+                      size: attachmentSize(attachment),
+                      ...(attachment.kind === "upload"
+                        ? { file: attachment.file, contentType: attachment.file.type }
+                        : { fileId: attachment.id, contentType: attachment.contentType }),
+                    })
+                  }
+                  onStop={() => cancel.mutate()}
+                  onSend={submitTurn}
+                  restoreRef={restoreComposer}
+                />
+              </PromptInputProvider>
+            </div>
           </div>
         </div>
       </div>
+
+      <AttachmentPreviewSheet preview={preview} onClose={() => setPreview(null)} />
 
       <RecordSheet
         open={contextOpen}
@@ -2555,16 +2930,6 @@ export function ChatPage() {
         ) : (
           <DataState state="empty" line={t("chat.context.empty")} testId="chat-context-empty" />
         )}
-      </RecordSheet>
-
-      <RecordSheet
-        open={listOpen}
-        onOpenChange={setListOpen}
-        title={t("chat.conversations")}
-        testId="conversation-list-panel"
-        closeTestId="conversation-list-close"
-      >
-        {list}
       </RecordSheet>
 
       <FormDialog

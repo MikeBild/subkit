@@ -21675,7 +21675,7 @@ export interface components {
         };
         ConversationReference: {
             /** @enum {string} */
-            type: "workflow" | "connector";
+            type: "workflow" | "connector" | "skill" | "knowledge_source";
             /** Format: uuid */
             id: string;
             label: string;
