@@ -7,6 +7,7 @@
 // here so the rewrite cannot regress against the historical contract.
 
 import { describe, expect, test } from "bun:test";
+import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import {
   type ActivationRecord,
   autoloadForToolCall,
@@ -542,5 +543,78 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
     expect(
       autoloadForUserTurn({ user_text: "wait for something" }, STEP_KIND_CATALOG, []),
     ).not.toContain("wait-step-skill");
+  });
+});
+
+describe("applies_to — chat skills stay out of drafting, drafting skills out of chat", () => {
+  const AUDIENCE_CATALOG: ActivationRecord[] = [
+    {
+      slug: "chat-only",
+      activates_when: [{ kind: "baseline" }, { kind: "intent_keyword", word: "report" }],
+      maturity: "stable",
+      side_effects: "read",
+      tags: [],
+      applies_to: "chat",
+    },
+    {
+      slug: "drafting-only",
+      activates_when: [
+        { kind: "intent_keyword", word: "report" },
+        { kind: "tool", tool: "author_workflow" },
+      ],
+      maturity: "stable",
+      side_effects: "read",
+      tags: [],
+      applies_to: "authoring",
+    },
+    {
+      slug: "everywhere",
+      activates_when: [{ kind: "intent_keyword", word: "report" }],
+      maturity: "stable",
+      side_effects: "read",
+      tags: [],
+    },
+  ];
+
+  test("a chat turn never autoloads a drafting-only skill", () => {
+    const out = autoloadForUserTurn(
+      { user_text: "a report please", audience: "chat" },
+      AUDIENCE_CATALOG,
+      [],
+    );
+    expect(out).toContain("chat-only");
+    expect(out).toContain("everywhere");
+    expect(out).not.toContain("drafting-only");
+  });
+
+  test("a drafting turn never autoloads or re-affirms a chat-only skill", () => {
+    const out = autoloadForUserTurn(
+      { user_text: "a report please", audience: "authoring" },
+      AUDIENCE_CATALOG,
+      [],
+    );
+    expect(out).toContain("drafting-only");
+    expect(out).not.toContain("chat-only");
+    expect(
+      autoloadForToolCall(
+        { tool: "author_workflow", input: {}, audience: "authoring" },
+        AUDIENCE_CATALOG,
+        [],
+      ),
+    ).toEqual(["drafting-only"]);
+    // Even a baseline chat skill ages out once the turn drafts.
+    expect(
+      reaffirmLoadedForTurn(
+        { mode: "user_turn", user_text: "a report", audience: "authoring" },
+        AUDIENCE_CATALOG,
+        ["chat-only"],
+      ),
+    ).toEqual([]);
+  });
+
+  test("the draft's authoring mode decides the audience", () => {
+    expect(skillAudienceForAuthoringMode("workflow")).toBe("authoring");
+    expect(skillAudienceForAuthoringMode("execution")).toBe("chat");
+    expect(skillAudienceForAuthoringMode(undefined)).toBe("chat");
   });
 });

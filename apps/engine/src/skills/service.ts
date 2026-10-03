@@ -15,11 +15,13 @@ import { log } from "../logging/logger.ts";
 import {
   type CreateSkillInput,
   type Skill,
+  type SkillAudience,
   type SkillExamplesBlob,
   type SkillLifecycle,
   SkillSchema,
   type SkillScope,
   type SkillSource,
+  skillOfferedTo,
   type UpdateSkillInput,
 } from "./types.ts";
 
@@ -62,6 +64,7 @@ function rowToSkill(row: SkillRow): Skill {
     idempotency: row.idempotency as Skill["idempotency"],
     maturity: row.maturity as Skill["maturity"],
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+    applies_to: row.applies_to,
     status: row.lifecycle as SkillLifecycle,
     source: row.source as SkillSource,
     version: row.version,
@@ -126,6 +129,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         idempotency: p.input.idempotency ?? "none",
         maturity: p.input.maturity ?? "stable",
         tags: p.input.tags ?? [],
+        applies_to: p.input.applies_to ?? "both",
       })
       .returning();
     const row = inserted[0];
@@ -324,6 +328,7 @@ export async function updateSkill(
     if (patch.idempotency !== undefined) set.idempotency = patch.idempotency;
     if (patch.maturity !== undefined) set.maturity = patch.maturity;
     if (patch.tags !== undefined) set.tags = patch.tags;
+    if (patch.applies_to !== undefined) set.applies_to = patch.applies_to;
     const [row] = await tx.update(skills).set(set).where(eq(skills.id, id)).returning();
     if (!row) return null;
     const retired =
@@ -700,6 +705,7 @@ export async function restoreSkill(
       idempotency: snapshot.idempotency,
       maturity: snapshot.maturity,
       tags: snapshot.tags,
+      applies_to: snapshot.applies_to,
       status: snapshot.status,
     },
     actor_id,
@@ -713,6 +719,8 @@ export interface RetrieveApplicableParams {
   tenant_id: string;
   connector_ids?: string[];
   workflow_ids?: string[];
+  /** When set, skills not offered to this audience are left out. */
+  audience?: SkillAudience;
 }
 
 /**
@@ -767,7 +775,9 @@ export async function retrieveApplicableSkills(
       .orderBy(desc(skills.version), desc(skills.created_at));
   }
 
-  return [...globalRows, ...connectorRows, ...workflowRows].map(rowToSkill);
+  const all = [...globalRows, ...connectorRows, ...workflowRows].map(rowToSkill);
+  const audience = p.audience;
+  return audience ? all.filter((s) => skillOfferedTo(s.applies_to, audience)) : all;
 }
 
 /**

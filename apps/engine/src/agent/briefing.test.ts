@@ -26,6 +26,7 @@ function makeSkill(n: number, bodyWords = 200): Skill {
     idempotency: "none",
     maturity: "stable",
     tags: ["domain:blog-de"],
+    applies_to: "both",
     status: "active",
     source: "manual",
     version: 1,

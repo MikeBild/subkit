@@ -29,6 +29,7 @@ import {
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
 import { readMemoryUsage } from "../../../observability/runtime-telemetry.ts";
+import { skillAudienceForAuthoringMode } from "../../../skills/types.ts";
 import { requestApproval } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
@@ -164,6 +165,7 @@ async function autoloadForResultDiagnoses(
       await loadActivationCatalog(ctx.tenant_id, db),
       entries.map((e) => e.slug),
       ctx.surface,
+      skillAudienceForAuthoringMode(ctx.getDraft().summary?.mode),
     );
     if (additions.length === 0) return;
     const turn = row?.turn_count ?? 0;
@@ -1341,8 +1343,9 @@ export function wrapOne(
           ]);
           // New slugs this tool unlocks (skip already-loaded — that path is
           // re-affirmed below).
+          const audience = skillAudienceForAuthoringMode(ctx.getDraft().summary?.mode);
           const additions = autoloadForToolCall(
-            { tool: inner.name, input: rawArgs, ...scope },
+            { tool: inner.name, input: rawArgs, ...scope, audience },
             catalog,
             membership,
           );
@@ -1351,7 +1354,7 @@ export function wrapOne(
           // keeps the body alive.
           const reaffirmed = new Set(
             reaffirmLoadedForTurn(
-              { mode: "tool_call", tool: inner.name, input: rawArgs, ...scope },
+              { mode: "tool_call", tool: inner.name, input: rawArgs, ...scope, audience },
               catalog,
               membership,
             ),
