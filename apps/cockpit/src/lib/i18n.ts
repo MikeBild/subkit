@@ -870,7 +870,8 @@ const EN = {
   "resource.usage.title": "Usage",
   "resource.usage.empty": "No execution statistics yet.",
   "resource.usage.breakdownWindow":
-    "Breakdown covers the chosen window ({window}) — a different period from the calendar month above, so the totals differ.",
+    "The breakdown covers the chosen window, the figures above the calendar month — so the totals differ.",
+  "resource.usage.axisPicker": "Break down",
   "resource.usage.consumption": "Consumption",
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
@@ -2729,7 +2730,7 @@ const EN = {
   "resource.usage.setCap": "Set a cap",
   "resource.usage.raiseCap": "adjust the cap",
   "resource.usage.capReached":
-    "When the cap is used up, the engine refuses further model calls until the month ends (llm_quota_exhausted): chat, authoring and repairs stop; workflow steps without a model call keep running.",
+    "When the cap is used up, chat, authoring and repairs stop until the month ends.",
   "resource.usage.unknownWorkflow": "A workflow this workspace no longer has",
   "resource.usage.workflowUnreadable": "Name not readable",
   "audit.column.operation": "Operation",
@@ -4235,7 +4236,8 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.title": "Nutzung",
   "resource.usage.empty": "Noch keine Ausführungsstatistiken.",
   "resource.usage.breakdownWindow":
-    "Der Aufriss umfasst den gewählten Zeitraum ({window}) — ein anderer als der Kalendermonat darüber, deshalb weichen die Summen ab.",
+    "Der Aufriss umfasst den gewählten Zeitraum, die Zahlen darüber den Kalendermonat — deshalb weichen die Summen ab.",
+  "resource.usage.axisPicker": "Aufschlüsseln",
   "resource.usage.consumption": "Verbrauch",
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
@@ -6139,7 +6141,7 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.setCap": "Kontingent setzen",
   "resource.usage.raiseCap": "Kontingent anpassen",
   "resource.usage.capReached":
-    "Ist das Kontingent aufgebraucht, lehnt die Engine weitere Modellaufrufe bis zum Monatsende ab (llm_quota_exhausted): Chat, Erstellen und Reparaturen stehen still; Workflow-Schritte ohne Modellaufruf laufen weiter.",
+    "Ist das Kontingent aufgebraucht, stehen Chat, Erstellen und Reparaturen bis Monatsende still.",
   "resource.usage.unknownWorkflow": "Ein Workflow, den dieser Arbeitsbereich nicht mehr führt",
   "resource.usage.workflowUnreadable": "Name nicht lesbar",
   "audit.column.operation": "Vorgang",

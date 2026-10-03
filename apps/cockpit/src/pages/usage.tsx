@@ -1,17 +1,23 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { Page, PageHeader } from "@/components/cockpit/patterns";
-import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
+import {
+  type CockpitColumn,
+  CollapsibleSection,
+  ContextHelp,
+  DataState,
+  DataTable,
+  Page,
+  PageHeader,
+  Section,
+  SegmentedControl,
+  StatusBadge,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { canReadDirectory } from "@/pages/audit-model";
@@ -77,6 +83,25 @@ const PRESSURE_LABEL = {
   critical: "resource.usage.pressure.critical",
 } as const satisfies Record<string, TranslationKey>;
 
+/** The state word each pressure reads as: a dot that says well, tight or nearly gone. */
+const PRESSURE_STATE = { ample: "ok", tightening: "warn", critical: "critical" } as const;
+
+/** The summary line's one sentence about the cap, by what is known of it. */
+const CAP_LINE: Record<"unreadable" | "uncapped" | "set", { key: TranslationKey; testId: string }> =
+  {
+    unreadable: { key: "resource.usage.budgetUnreadable", testId: "usage-budget-unreadable" },
+    uncapped: { key: "resource.usage.noCapHint", testId: "usage-budget-uncapped" },
+    set: { key: "resource.usage.capReached", testId: "usage-cap-consequence" },
+  };
+
+function isWindow(value: string): value is StatsWindow {
+  return (STATS_WINDOWS as readonly string[]).includes(value);
+}
+
+function isAxis(value: string): value is ConsumptionAxis {
+  return (CONSUMPTION_AXES as readonly string[]).includes(value);
+}
+
 /**
  * One page for two questions in the order a reader asks them: what did this
  * workspace SPEND, and then how long did its runs take.
@@ -84,11 +109,9 @@ const PRESSURE_LABEL = {
  * The operating figures — runs, success rate, connector health, repairs — are
  * not here: they are the Übersicht's operations bar, their one place (§0.1).
  *
- * It used to answer only the second. The page was called "Usage", showed
- * executions, duration, p95 and success rate, and read `/v1/stats/executions`
- * — so the one screen named after consumption contained no consumption. The
- * engine had been measuring tokens per model, per purpose, per person and per
- * workflow the whole time.
+ * The window is a filter, not a page action (D14): it stands at the right of
+ * the summary line and governs every figure below it. The page leads with one
+ * table — what the spend went on — and keeps the runtime table collapsed.
  */
 export function UsagePage() {
   const { t, dateTime, locale } = useI18n();
@@ -103,7 +126,8 @@ export function UsagePage() {
     windowBounds(usageWindowFromUrl(window.location.search)),
   );
   const span = bounds.window;
-  const chooseWindow = (next: StatsWindow) => {
+  const chooseWindow = (next: string) => {
+    if (!isWindow(next)) return;
     setBounds(windowBounds(next));
     const params = new URLSearchParams(window.location.search);
     if (next === "30d") params.delete("window");
@@ -141,10 +165,8 @@ export function UsagePage() {
   const money = useMemo(() => windowCost(consumption.data), [consumption.data]);
   const missingPrices = useMemo(() => unpricedModels(consumption.data), [consumption.data]);
   // Names for the person axis. `llm_usage` stores a user id and nothing else,
-  // so without this the page prints raw UUIDs at a reader — which UI-UX.md
-  // forbids outright and which nobody can act on: an operator cannot tell
-  // whose spend they are looking at, which is the only reason to group by
-  // person at all. Fetched only when that axis is open.
+  // so without this the page prints raw UUIDs at a reader. Fetched only when
+  // that axis is open.
   const people = useQuery({
     queryKey: ["usage-people"],
     // Only asked when the engine would answer: a refused read is an audit row.
@@ -162,11 +184,8 @@ export function UsagePage() {
     }
     return byId;
   }, [people.data]);
-  // Names for the workflow axis. `llm_usage` is attributed through the run,
-  // so the key is the workflow's id. Each id on screen is looked up by itself:
-  // a list capped at 200 called every workflow past the cap "no longer
-  // kept". Only a 404 says a workflow is gone; any other failure is a name
-  // this page could not read.
+  // Names for the workflow axis, each id looked up by itself: only a 404 says
+  // a workflow is gone; any other failure is a name this page could not read.
   const workflowIds = useMemo(
     () =>
       axis === "workflow" ? spend.filter((row) => !row.unattributed).map((row) => row.key) : [],
@@ -225,9 +244,7 @@ export function UsagePage() {
               </span>
             );
           // A purpose is a fixed vocabulary, so it gets a word. A person gets
-          // their name. An id that resolves to neither is shown as a person
-          // this build cannot name — never as a bare UUID, which says nothing
-          // a reader can act on.
+          // their name. An id that resolves to neither is never a bare UUID.
           if (axis === "flow") {
             const key = `usage.flow.${row.key}` as TranslationKey;
             const named = t(key);
@@ -236,11 +253,8 @@ export function UsagePage() {
           if (axis === "user") {
             const name = personName.get(row.key);
             if (name) return <span className="truncate">{name}</span>;
-            // Two reasons a name is missing, and they are not the same claim.
-            // If the directory could not be read — no permission, a failed
-            // request, or a spender beyond the page limit — this build cannot
-            // name the person; it must not assert the workspace has dropped
-            // them. Either way no raw id reaches the screen.
+            // An unreadable directory cannot name the person; it must not
+            // assert the workspace has dropped them.
             const unreadable = Boolean(people.error) || personName.size === 0;
             return (
               <span className="truncate text-muted-foreground">
@@ -254,7 +268,7 @@ export function UsagePage() {
             if (name)
               return (
                 <a
-                  className="truncate underline-offset-2 hover:underline"
+                  className="truncate font-medium underline-offset-4 hover:underline"
                   href={absolute(workflowHref(row.key))}
                   data-testid="usage-workflow-link"
                 >
@@ -287,8 +301,7 @@ export function UsagePage() {
         "share",
         (row) => row.share,
         t("resource.field.share"),
-        // A share of nothing is not nought per cent — there was nothing to
-        // take a share of, and the dash says so.
+        // A share of nothing is not nought per cent — the dash says so.
         (row) => (
           <span className="tabular-nums">
             {row.share === null ? MISSING : percent.format(row.share)}
@@ -334,129 +347,111 @@ export function UsagePage() {
     ];
   }, [t, dateTime]);
 
+  const header = <PageHeader title={title} />;
+
   if (!allowed)
     return (
-      <main className="p-6" data-testid="resource-usage">
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
+      <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
+        <DataState
+          state="empty"
+          line={t("resource.permission.description")}
+          testId="resource-permission-alert"
+        />
+      </Page>
     );
 
+  const currency = (amount: number, code: string) =>
+    new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
+      style: "currency",
+      currency: code,
+    }).format(amount);
+
+  // What the summary line says about the cap: whether one is set, and what
+  // happens when it runs out. A failed read is not a configuration fact — it
+  // says nothing about whether a cap is set.
+  const capState = status.error ? "unreadable" : budget.budgetTokens === null ? "uncapped" : "set";
+  const capLine = CAP_LINE[capState];
+
   return (
-    <Page
-      kind="list"
-      surface="collection"
-      testId="resource-usage"
-      scroll="page"
-      header={
-        <PageHeader
-          title={title}
-          action={
-            // One window for the whole page, in its header like the Übersicht's.
-            <fieldset
-              className="flex flex-wrap gap-2"
-              aria-label={t("resource.usage.windowPicker")}
-              data-testid="usage-window"
-            >
-              {STATS_WINDOWS.map((candidate) => (
-                <Button
-                  key={candidate}
-                  size="sm"
-                  variant={candidate === span ? "default" : "outline"}
-                  aria-pressed={candidate === span}
-                  onClick={() => chooseWindow(candidate)}
-                  data-testid={`usage-window-${candidate}`}
-                >
-                  {t(WINDOW_OPTION[candidate])}
-                </Button>
-              ))}
-            </fieldset>
-          }
-        />
-      }
-    >
-      <div className="grid gap-8">
-        <section className="grid gap-3" data-testid="usage-consumption">
-          <header className="grid gap-1">
-            <h2 className="font-medium text-base">{t("resource.usage.consumption")}</h2>
-            <p className="text-muted-foreground text-sm">
-              {t("resource.usage.consumptionDescription")}
-            </p>
-          </header>
+    <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
+      <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-3" data-testid="usage-consumption">
+          <SummaryLine
+            testId="usage-summary-line"
+            text={<span data-testid={capLine.testId}>{t(capLine.key)}</span>}
+            help={t("resource.usage.consumptionDescription")}
+            aside={
+              <SegmentedControl
+                label={t("resource.usage.windowPicker")}
+                testId="usage-window"
+                value={span}
+                onValueChange={chooseWindow}
+                options={STATS_WINDOWS.map((candidate) => ({
+                  value: candidate,
+                  label: t(WINDOW_OPTION[candidate]),
+                  testId: `usage-window-${candidate}`,
+                }))}
+              />
+            }
+          />
 
           {status.isPending ? (
-            <Skeleton className="h-28 w-full" />
+            <DataState state="loading" />
           ) : (
-            <Card size="sm" data-testid="usage-budget">
-              <CardHeader>
-                {/* Money leads when it can be computed; tokens stay as the
-                    evidence beside it. When no model used had a price the
-                    amount is absent rather than zero — a nought here would
-                    tell an operator the month was free — and the unpriced
-                    models are named, since SubKit ships list prices and the
-                    gap is those models, not pricing as a whole. */}
-                <CardDescription>
-                  {money ? t("resource.usage.spend") : t("resource.usage.monthTokens")}
-                </CardDescription>
-                <CardTitle className="text-2xl tabular-nums">
-                  {money
-                    ? new Intl.NumberFormat(locale === "de" ? "de-DE" : "en-US", {
-                        style: "currency",
-                        currency: money.currency,
-                      }).format(money.amount)
-                    : tokens(budget.usedTokens)}
-                </CardTitle>
-                {money ? (
-                  // The amount covers the chosen window; `usedTokens` is
-                  // the CALENDAR month, from a different endpoint. Printing
-                  // them on one line joined by a dot stated two measurements
-                  // over two windows as one — on the first of a month it read
-                  // "€412.87 · 0 Tokens". The page's own comment above the
-                  // status query says these must not be silently merged, and
-                  // this line was the merge. The window is now named.
-                  <p className="text-muted-foreground text-xs" data-testid="usage-spend-basis">
-                    {t(WINDOW_HEADING[span])} · {t("resource.usage.spendBasis")}
-                  </p>
-                ) : consumption.error ? (
-                  <p className="text-muted-foreground text-xs" data-testid="usage-spend-unreadable">
-                    {t("resource.usage.spendUnreadable")}
-                  </p>
-                ) : (
-                  <p className="text-muted-foreground text-xs" data-testid="usage-no-prices">
-                    {missingPrices.length > 0
-                      ? t("resource.usage.noPrices", { models: missingPrices.join(", ") })
-                      : t("resource.usage.noPricesUnnamed")}
-                  </p>
-                )}
-                {/* What the amount does NOT cover, said out loud. An amount
-                    that silently omits calls looks complete. */}
-                {money && money.unpricedCalls > 0 ? (
-                  <p className="text-muted-foreground text-xs" data-testid="usage-unpriced">
-                    {t("resource.usage.unpriced", {
-                      calls: money.unpricedCalls,
-                      models: money.unpricedModels.join(", "),
-                    })}
-                  </p>
-                ) : null}
-              </CardHeader>
-              <CardFooter className="flex flex-wrap items-center gap-x-6 gap-y-1 text-muted-foreground text-xs">
-                {/* No cap is stated as no cap. A dash here, or a zero, would
-                    read as a measurement and tell an operator their workspace
-                    is bounded when nothing bounds it. */}
-                {/* A failed request is not a configuration fact. React Query
-                    clears `isPending` once a query errors, so without this the
-                    page told an operator "nothing limits this workspace" —
-                    and to go and set a cap — when all that happened was a
-                    failed HTTP call. */}
-                {status.error ? (
-                  <span data-testid="usage-budget-unreadable">
-                    {t("resource.usage.budgetUnreadable")}
-                  </span>
-                ) : budget.budgetTokens === null ? (
-                  <span data-testid="usage-budget-uncapped">
-                    {t("resource.usage.noCapHint")}{" "}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="usage-budget">
+              {/* Money leads when it can be computed; tokens stay as the
+                  evidence beside it. With no price for any model used the
+                  amount is absent rather than zero — a nought would say the
+                  window was free. */}
+              <UsageTile
+                label={money ? t("resource.usage.spend") : t("resource.usage.monthTokens")}
+                value={money ? currency(money.amount, money.currency) : tokens(budget.usedTokens)}
+                note={
+                  money ? (
+                    <span data-testid="usage-spend-basis">
+                      {t("resource.usage.spendBasis")}
+                      {money.unpricedCalls > 0 ? (
+                        <span data-testid="usage-unpriced">
+                          {" · "}
+                          {t("resource.usage.unpriced", {
+                            calls: money.unpricedCalls,
+                            models: money.unpricedModels.join(", "),
+                          })}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : consumption.error ? (
+                    <span data-testid="usage-spend-unreadable">
+                      {t("resource.usage.spendUnreadable")}
+                    </span>
+                  ) : (
+                    <span data-testid="usage-no-prices">
+                      {missingPrices.length > 0
+                        ? t("resource.usage.noPrices", { models: missingPrices.join(", ") })
+                        : t("resource.usage.noPricesUnnamed")}
+                    </span>
+                  )
+                }
+              />
+              {/* The calendar month, only when the first tile is an amount —
+                  otherwise that tile already shows this very number. */}
+              {money ? (
+                <UsageTile
+                  label={t("resource.usage.monthTokens")}
+                  value={tokens(budget.usedTokens)}
+                />
+              ) : null}
+              <UsageTile
+                label={t("resource.usage.cap")}
+                value={
+                  capState === "unreadable"
+                    ? MISSING
+                    : capState === "uncapped"
+                      ? t("resource.usage.noCap")
+                      : tokens(budget.budgetTokens)
+                }
+                note={
+                  capState === "uncapped" ? (
                     <a
                       className="font-medium text-foreground underline underline-offset-2"
                       href={absolute(settingsHref(BUDGET_LEAF))}
@@ -464,148 +459,116 @@ export function UsagePage() {
                     >
                       {t("resource.usage.setCap")}
                     </a>
-                  </span>
-                ) : (
-                  <>
-                    {/* Only when the title is an AMOUNT. With no rates the
-                        title already shows this very number, and repeating it
-                        here was the duplicate display this cockpit keeps
-                        removing — introduced by the same change that split the
-                        two windows apart. */}
-                    {money ? (
-                      <span>
-                        {t("resource.usage.monthTokens")}: {tokens(budget.usedTokens)}
-                      </span>
-                    ) : null}
-                    <span>
-                      {t("resource.usage.cap")}: {tokens(budget.budgetTokens)}
-                    </span>
-                    <span>
-                      {t("resource.usage.remaining")}: {tokens(budget.remainingTokens)}
-                    </span>
-                    {pressure ? (
-                      // Red with its way to the cause (§1): the cap is a
-                      // setting, and the badge opens it.
-                      <a
-                        href={absolute(settingsHref(BUDGET_LEAF))}
-                        data-testid={`usage-pressure-${pressure}`}
-                        aria-label={`${t(PRESSURE_LABEL[pressure])} — ${t("resource.usage.raiseCap")}`}
-                      >
-                        <Badge variant={pressure === "critical" ? "destructive" : "secondary"}>
-                          {t(PRESSURE_LABEL[pressure])}
-                        </Badge>
-                      </a>
-                    ) : null}
-                  </>
-                )}
-              </CardFooter>
-              {!status.error && budget.budgetTokens !== null ? (
-                <p
-                  className="px-4 pb-3 text-muted-foreground text-xs"
-                  data-testid="usage-cap-consequence"
-                >
-                  {t("resource.usage.capReached")}
-                </p>
+                  ) : capState === "set" && pressure ? (
+                    // The cap is a setting; the pressure word opens it.
+                    <a
+                      href={absolute(settingsHref(BUDGET_LEAF))}
+                      data-testid={`usage-pressure-${pressure}`}
+                      aria-label={`${t(PRESSURE_LABEL[pressure])} — ${t("resource.usage.raiseCap")}`}
+                    >
+                      <StatusBadge
+                        state={PRESSURE_STATE[pressure]}
+                        label={t(PRESSURE_LABEL[pressure])}
+                      />
+                    </a>
+                  ) : null
+                }
+              />
+              {capState === "set" ? (
+                <UsageTile
+                  label={t("resource.usage.remaining")}
+                  value={tokens(budget.remainingTokens)}
+                />
               ) : null}
-            </Card>
+            </div>
           )}
+        </div>
 
-          {/* One axis at a time. Four tables side by side would be four
-              answers to one question; the chips make the reader say which
-              question they are asking. */}
-          <div className="flex flex-wrap gap-2" data-testid="usage-axis">
-            {CONSUMPTION_AXES.map((candidate) => (
-              <Button
-                key={candidate}
-                size="sm"
-                variant={candidate === axis ? "default" : "outline"}
-                onClick={() => setAxis(candidate)}
-                data-testid={`usage-axis-${candidate}`}
-              >
-                {t(AXIS_LABEL[candidate])}
-              </Button>
-            ))}
-          </div>
+        <Section
+          label={t("resource.usage.consumption")}
+          testId="usage-breakdown"
+          aside={
+            <>
+              {/* The breakdown covers the window, the tiles the calendar
+                  month: two periods, said where the table is read. */}
+              <ContextHelp label={t("resource.usage.consumption")} testId="usage-breakdown-window">
+                {t("resource.usage.breakdownWindow")}
+              </ContextHelp>
+              <SegmentedControl
+                label={t("resource.usage.axisPicker")}
+                testId="usage-axis"
+                value={axis}
+                onValueChange={(next) => {
+                  if (isAxis(next)) setAxis(next);
+                }}
+                options={CONSUMPTION_AXES.map((candidate) => ({
+                  value: candidate,
+                  label: t(AXIS_LABEL[candidate]),
+                  testId: `usage-axis-${candidate}`,
+                }))}
+              />
+            </>
+          }
+        >
+          <DataTable
+            // Every `data-testid` the table emits derives from `collectionId`,
+            // so the two tables on this page each need their own.
+            collectionId="usage-consumption-table"
+            collectionTier="embedded"
+            columns={spendColumns}
+            data={spend}
+            onRefresh={() => void consumption.refetch()}
+            refreshing={consumption.isFetching}
+            refreshLabel={t("common.refresh")}
+            pending={consumption.isPending}
+            error={
+              consumption.error
+                ? {
+                    title: t("resource.loadFailed", { resource: title }),
+                    description: t("resource.loadFailedDescription"),
+                    retryLabel: t("session.retry"),
+                    onRetry: () => void consumption.refetch(),
+                  }
+                : null
+            }
+            emptyState={{
+              zero: { title: t("resource.usage.consumptionEmpty") },
+              filtered: {
+                title: t("resource.noMatches"),
+                description: t("resource.broaderSearch"),
+                resetLabel: t("catalog.clearFilters"),
+                onReset: () => void consumption.refetch(),
+              },
+            }}
+            hasActiveFilters={false}
+            sorting={[] as SortingState}
+            onSortingChange={() => {}}
+            page={0}
+            pageSize={Math.max(spend.length, 1)}
+            total={spend.length}
+            onPageChange={() => {}}
+            previousLabel={t("catalog.previous")}
+            nextLabel={t("catalog.next")}
+            columnsLabel={t("catalog.columns")}
+            recordsLabel={t("catalog.records")}
+            loadedLabel={t("catalog.loaded", { count: spend.length })}
+            actionsLabel={t("common.actions")}
+          />
+        </Section>
 
-          {/* The breakdown's window, said where the breakdown is read.
-              Production showed "Diesen Monat verbraucht 39.847.696" and,
-              immediately below, one row totalling 40.626.498 at "100 %" — both
-              figures correct, over two different periods, with nothing on
-              screen saying so. A reader takes the table for a decomposition of
-              the number above it and finds it does not add up. Naming the
-              window is cheaper than making the two agree, and truer: the
-              calendar month is what a cap is spent against, the window is
-              what a trend is read from. */}
-          <p className="text-muted-foreground text-xs" data-testid="usage-breakdown-window">
-            {t("resource.usage.breakdownWindow", { window: t(WINDOW_HEADING[span]) })}
-          </p>
-
-          <div className="overflow-hidden rounded-xl border">
-            <DataTable
-              // A second table on one page needs its own identity. Every
-              // `data-testid` this component emits derives from
-              // `collectionId`, so two tables sharing the default would give
-              // one page two elements called `data-table-refresh` — which is
-              // exactly how the visual sweep found this.
-              collectionId="usage-consumption-table"
-              collectionTier="embedded"
-              columns={spendColumns}
-              data={spend}
-              onRefresh={() => void consumption.refetch()}
-              refreshing={consumption.isFetching}
-              refreshLabel={t("common.refresh")}
-              pending={consumption.isPending}
-              error={
-                consumption.error
-                  ? {
-                      title: t("resource.loadFailed", { resource: title }),
-                      description: t("resource.loadFailedDescription"),
-                      retryLabel: t("session.retry"),
-                      onRetry: () => void consumption.refetch(),
-                    }
-                  : null
-              }
-              emptyState={{
-                zero: {
-                  title: t("resource.usage.consumptionEmpty"),
-                },
-                filtered: {
-                  title: t("resource.noMatches"),
-                  description: t("resource.broaderSearch"),
-                  resetLabel: t("catalog.clearFilters"),
-                  onReset: () => void consumption.refetch(),
-                },
-              }}
-              hasActiveFilters={false}
-              sorting={[] as SortingState}
-              onSortingChange={() => {}}
-              page={0}
-              pageSize={Math.max(spend.length, 1)}
-              total={spend.length}
-              onPageChange={() => {}}
-              previousLabel={t("catalog.previous")}
-              nextLabel={t("catalog.next")}
-              columnsLabel={t("catalog.columns")}
-              recordsLabel={t("catalog.records")}
-              loadedLabel={t("catalog.loaded", { count: spend.length })}
-              actionsLabel={t("common.actions")}
-            />
-          </div>
-        </section>
-
-        <section className="grid gap-3" data-testid="usage-runtime">
-          <header className="grid gap-1">
-            {/* The window, said once for the whole block. */}
-            <h2 className="font-medium text-base" data-testid="usage-runtime-heading">
-              {t("resource.usage.runtime")}{" "}
-              <span className="font-normal text-muted-foreground">· {t(WINDOW_HEADING[span])}</span>
-            </h2>
+        {/* How often and how long: the second question, collapsed so the page
+            leads with one table. */}
+        <CollapsibleSection
+          label={`${t("resource.usage.runtime")} · ${t(WINDOW_HEADING[span])}`}
+          testId="usage-runtime"
+        >
+          <div className="flex flex-col gap-3">
             <p className="text-muted-foreground text-sm">
               {t(RUNTIME_DESCRIPTION[windowBucket(span)])}
             </p>
-          </header>
-          <div className="overflow-hidden rounded-xl border">
             <DataTable
+              collectionId="usage-runtime-table"
+              collectionTier="embedded"
               columns={columns}
               data={rows}
               onRefresh={() => void runtime.refetch()}
@@ -623,9 +586,7 @@ export function UsagePage() {
                   : null
               }
               emptyState={{
-                zero: {
-                  title: t("resource.usage.empty"),
-                },
+                zero: { title: t("resource.usage.empty") },
                 filtered: {
                   title: t("resource.noMatches"),
                   description: t("resource.broaderSearch"),
@@ -648,8 +609,19 @@ export function UsagePage() {
               actionsLabel={t("common.actions")}
             />
           </div>
-        </section>
+        </CollapsibleSection>
       </div>
     </Page>
+  );
+}
+
+/** One figure: its label, the value large, and at most one muted line under it. */
+function UsageTile({ label, value, note }: { label: string; value: string; note?: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border p-3" data-slot="usage-tile">
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <span className="truncate font-semibold text-xl tabular-nums">{value}</span>
+      {note ? <span className="text-muted-foreground text-xs">{note}</span> : null}
+    </div>
   );
 }

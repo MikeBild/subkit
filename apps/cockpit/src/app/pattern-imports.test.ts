@@ -111,7 +111,6 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "pages/runs.tsx": ["ui-import", "heading", "pre", "dl", "max-w"],
   "pages/settings-restart.tsx": ["ui-import"],
   "pages/settings.tsx": ["ui-import", "heading", "max-w"],
-  "pages/usage.tsx": ["ui-import", "heading"],
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
