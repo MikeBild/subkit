@@ -12,6 +12,7 @@ import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
+import { carryApprovalsForward } from "../workflows/authority-inheritance.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import {
@@ -152,6 +153,15 @@ export async function autoApplyPatch(
     .update(workflows)
     .set({ current_version_id: inserted.id, updated_at: new Date() })
     .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)));
+  // A repair that reaches nothing new keeps running on the approval it had; one
+  // that does waits for a person like any other wider change.
+  await carryApprovalsForward(tx, {
+    tenant_id: params.tenant_id,
+    workflow_id: params.workflow_id,
+    from_version_id: wf.current_version_id,
+    to_version_id: inserted.id,
+    actor_id: null,
+  });
 
   await tx
     .update(patchCandidates)

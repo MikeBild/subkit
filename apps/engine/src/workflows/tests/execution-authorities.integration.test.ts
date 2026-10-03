@@ -756,6 +756,77 @@ test("chat review atomically activates its exact draft, clears one hold, and ret
   expect(granted.reserved_runs).toBe(0);
 });
 
+test("activating a saved change keeps the approval when its boundary does not grow", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ draft_version_id: f.version.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const { valid_until: _until, max_runs: _runs, ...openEnded } = f.input;
+  const granted = await grantWorkflowAuthority(
+    f.workflow.id,
+    { ...openEnded, activation: { expected_current_version_id: null } },
+    f.context,
+  );
+  // The saved change: another recipient, same address, same effect.
+  const [draft] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: {
+        name: f.workflow.slug,
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            method: "POST",
+            url: "https://example.test/messages",
+            body: { recipient: "another@example.test" },
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!draft) throw new Error("missing draft fixture");
+  await ctx.db
+    .update(workflows)
+    .set({ draft_version_id: draft.id })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  const reviewed = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: draft.id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  await activateWorkflowDraft(
+    f.workflow.id,
+    {
+      workflow_version_id: draft.id,
+      expected_current_version_id: f.version.id,
+      expected_manifest_digest: reviewed.digest,
+      execution_environment: "dev",
+    },
+    f.context,
+  );
+  const rows = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id));
+  const child = rows.find((row) => row.inherited_from === granted.id);
+  expect(child).toMatchObject({
+    workflow_version_id: draft.id,
+    effect_manifest_digest: reviewed.digest,
+    max_runs: null,
+    valid_until: null,
+  });
+  expect(rows.find((row) => row.id === granted.id)?.superseded_by).toBe(child?.id ?? "missing");
+});
+
 test("changed draft or reviewed base cannot be activated or granted", async () => {
   const f = await fixture();
   await ctx.db

@@ -9,6 +9,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
 import { triggerOf } from "./trigger-bindings.ts";
@@ -125,6 +126,13 @@ export async function rotateWorkflowVersionInternal(
     .update(workflows)
     .set({ current_version_id: v.id, updated_at: new Date() })
     .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
+  await carryApprovalsForward(exec, {
+    tenant_id: input.tenant_id,
+    workflow_id: wf.id,
+    from_version_id: wf.current_version_id,
+    to_version_id: v.id,
+    actor_id: null,
+  });
   await auditAwait(
     {
       tenant_id: input.tenant_id,
