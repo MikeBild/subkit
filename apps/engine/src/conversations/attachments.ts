@@ -29,6 +29,7 @@ import { toFileId } from "../api/files-schemas.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { fileLinks, files } from "../db/schema/index.ts";
+import { parseFileReference } from "../files/slug.ts";
 import { can } from "../rbac/index.ts";
 
 export type { FileRow, ResolvedFile, ResolverContext } from "../files/resolver.ts";
@@ -162,31 +163,13 @@ export interface ChatTextRewriteResult {
   resolved: Array<{ slug: string; file_id: string }>;
 }
 
-/**
- * Rewrite every `@attachment:<slug>` token in chat-text to the
- * canonical `{"$file":"fid_<uuid>"}` JSON-ref shape — encoded as the
- * literal sentinel `[file:fid_<uuid>]` inline so the surrounding text
- * stays human-readable. The chat-text pipeline (message ingest /
- * `buildUserContentParts`) consumes the sentinel to assemble
- * multimodal content parts.
- *
- * Unknown slugs are left in place so the LLM can see what the user
- * typed and ask a clarifying question on the next turn. The
- * `unresolved` array surfaces the same information to the caller.
- */
-export async function resolveAttachmentSlugsInText(
-  text: string,
-  ctx: SlugLookupCtx,
-): Promise<ChatTextRewriteResult> {
-  const matches = parseAttachmentSlugs(text);
-  if (matches.length === 0) {
-    return { text, unresolved: [], resolved: [] };
-  }
-  const distinctSlugs = [...new Set(matches.map((m) => m.slug))];
-  const map = await lookupSlugsToFileIds(distinctSlugs, ctx);
-  // The conversation's own links win; a slug they do not hold names the
-  // tenant's file under that slug, which the conversation then holds too.
-  const tenantSlugs = distinctSlugs.filter((slug) => !map.has(slug));
+/** The file id each slug names for this conversation and writer. The
+ *  conversation's own links win; a slug they do not hold names the tenant's
+ *  file under that slug — for a writer who may read files — which the
+ *  conversation then holds too. Unknown slugs are absent. */
+async function slugsToFileIds(slugs: string[], ctx: SlugLookupCtx): Promise<Map<string, string>> {
+  const map = await lookupSlugsToFileIds(slugs, ctx);
+  const tenantSlugs = slugs.filter((slug) => !map.has(slug));
   if (tenantSlugs.length > 0 && (await mayReadTenantFiles(ctx))) {
     const tenantFiles = await ctx.db
       .select({ id: files.id, slug: files.slug })
@@ -214,6 +197,68 @@ export async function resolveAttachmentSlugsInText(
       map.set(file.slug, toFileId(file.id));
     }
   }
+  return map;
+}
+
+/**
+ * A tool's arguments with every `{ "$file": "@attachment:<slug>" }` leaf
+ * replaced by the `fid_` id it names, under the same rule chat text follows.
+ * A slug the writer may not reach stays as written, and the resolver then
+ * reports that file as not found.
+ */
+export async function resolveAttachmentSlugsInArgs<T>(value: T, ctx: SlugLookupCtx): Promise<T> {
+  const slugs = new Set<string>();
+  const collect = (v: unknown): void => {
+    if (Array.isArray(v)) {
+      for (const item of v) collect(item);
+      return;
+    }
+    if (v === null || typeof v !== "object") return;
+    const ref = (v as Record<string, unknown>).$file;
+    const slug = typeof ref === "string" ? parseFileReference(ref) : null;
+    if (slug) slugs.add(slug);
+    else for (const inner of Object.values(v)) collect(inner);
+  };
+  collect(value);
+  if (slugs.size === 0) return value;
+  const map = await slugsToFileIds([...slugs], ctx);
+  const replace = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(replace);
+    if (v === null || typeof v !== "object") return v;
+    const record = v as Record<string, unknown>;
+    const ref = record.$file;
+    const slug = typeof ref === "string" ? parseFileReference(ref) : null;
+    if (slug) {
+      const fid = map.get(slug);
+      return fid ? { ...record, $file: fid } : v;
+    }
+    return Object.fromEntries(Object.entries(record).map(([k, inner]) => [k, replace(inner)]));
+  };
+  return replace(value) as T;
+}
+
+/**
+ * Rewrite every `@attachment:<slug>` token in chat-text to the
+ * canonical `{"$file":"fid_<uuid>"}` JSON-ref shape — encoded as the
+ * literal sentinel `[file:fid_<uuid>]` inline so the surrounding text
+ * stays human-readable. The chat-text pipeline (message ingest /
+ * `buildUserContentParts`) consumes the sentinel to assemble
+ * multimodal content parts.
+ *
+ * Unknown slugs are left in place so the LLM can see what the user
+ * typed and ask a clarifying question on the next turn. The
+ * `unresolved` array surfaces the same information to the caller.
+ */
+export async function resolveAttachmentSlugsInText(
+  text: string,
+  ctx: SlugLookupCtx,
+): Promise<ChatTextRewriteResult> {
+  const matches = parseAttachmentSlugs(text);
+  if (matches.length === 0) {
+    return { text, unresolved: [], resolved: [] };
+  }
+  const distinctSlugs = [...new Set(matches.map((m) => m.slug))];
+  const map = await slugsToFileIds(distinctSlugs, ctx);
   const unresolved: string[] = [];
   const resolved: Array<{ slug: string; file_id: string }> = [];
   // Walk back-to-front so splice offsets stay valid.

@@ -65,14 +65,7 @@ export async function requireFileForTenant(
 ): Promise<FileRow> {
   // Wire format is `fid_<uuid>`; the DB column is `uuid`. Strip the
   // `fid_` prefix before the SELECT so a wire-format ref doesn't
-  // miss against the typed column. An `@attachment:<slug>` reference names
-  // the tenant's live file under that slug.
-  if (fid.startsWith(ATTACHMENT_REFERENCE_PREFIX)) {
-    const slug = parseFileReference(fid);
-    const bySlug = slug ? await findFileBySlug(db, tenant_id, slug) : null;
-    if (!bySlug) throw new FileNotFoundError(fid);
-    return bySlug;
-  }
+  // miss against the typed column.
   const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
   const rows = await db
     .select()
@@ -126,6 +119,13 @@ export function resolvedFromRow(row: FileRow): ResolvedFile {
 export interface ResolverContext {
   db: Db;
   tenant_id: string;
+  /**
+   * Whether an `@attachment:<slug>` leaf may name the tenant's live file of
+   * that slug. A slug is a readable name anyone can guess, unlike a `fid_`
+   * id, so only a reference a workflow author wrote into the definition is
+   * trusted to name a file this way. Left out, a slug leaf is not found.
+   */
+  resolve_references?: boolean;
 }
 
 interface FileRefLeaf {
@@ -176,6 +176,13 @@ export async function resolveSingleFid(
  * decides how to surface it (HTTP 404 for the routes, run failure for
  * the step runner).
  */
+async function requireFileByReference(ctx: ResolverContext, ref: string): Promise<FileRow> {
+  const slug = ctx.resolve_references ? parseFileReference(ref) : null;
+  const row = slug ? await findFileBySlug(ctx.db, ctx.tenant_id, slug) : null;
+  if (!row) throw new FileNotFoundError(ref);
+  return row;
+}
+
 export async function walkAndResolve<T>(
   value: T,
   ctx: ResolverContext,
@@ -185,7 +192,9 @@ export async function walkAndResolve<T>(
     const fid = value.$file;
     const cached = cache.get(fid);
     if (cached) return cached as unknown as T;
-    const row = await requireFileForTenant(ctx.db, ctx.tenant_id, fid);
+    const row = fid.startsWith(ATTACHMENT_REFERENCE_PREFIX)
+      ? await requireFileByReference(ctx, fid)
+      : await requireFileForTenant(ctx.db, ctx.tenant_id, fid);
     const resolved = resolvedFromRow(row);
     cache.set(fid, resolved);
     return resolved as unknown as T;
