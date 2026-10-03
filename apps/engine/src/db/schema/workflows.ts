@@ -105,6 +105,10 @@ export const workflowVersions = pgTable(
     author_user_id: uuid("author_user_id"),
     author_system_account_id: uuid("author_system_account_id"),
     note: text("note"),
+    // Why the running version's approval did not follow this version, per
+    // environment: what its effect boundary adds. Written when this version
+    // became active and an approval could not continue; NULL otherwise.
+    authority_growth: jsonb("authority_growth").$type<Record<string, unknown>>(),
     // Compact `step_id → scope_at_step` map captured from the most
     // recent dry_run / run before this version was committed. Lets
     // a follow-up authoring session populate `inspect_workflow` and
@@ -141,13 +145,26 @@ export const workflowExecutionAuthorities = pgTable(
     execution_environment: executionModeEnum("execution_environment").notNull(),
     target_constraints: jsonb("target_constraints").$type<{ targets: string[] }>().notNull(),
     valid_from: timestamp("valid_from", { withTimezone: true }).defaultNow().notNull(),
-    valid_until: timestamp("valid_until", { withTimezone: true }).notNull(),
-    max_runs: integer("max_runs").notNull().default(1),
+    // NULL: no end date — the grant stands until it is revoked.
+    valid_until: timestamp("valid_until", { withTimezone: true }),
+    // NULL: no run limit. Runs are still counted in `reserved_runs`.
+    max_runs: integer("max_runs"),
     reserved_runs: integer("reserved_runs").notNull().default(0),
     created_by: uuid("created_by").notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
     revoked_by: uuid("revoked_by"),
+    // The grant this one continues for a newer version whose effect boundary
+    // did not grow. NULL for a grant a person gave directly.
+    inherited_from: uuid("inherited_from"),
+    // The grant that continued this one. Set together with `revoked_at` when a
+    // newer version took the remaining allowance over, so it is never doubled.
+    superseded_by: uuid("superseded_by"),
+    // The effect manifest a person approved. An inherited grant carries its
+    // parent's, so a chain of versions is always measured against what a
+    // person looked at. NULL on a grant given before inheritance existed: its
+    // own `effect_manifest` is that boundary.
+    approved_manifest: jsonb("approved_manifest").$type<Record<string, unknown>>(),
   },
   (t) => [
     uniqueIndex("workflow_authorities_tenant_id_key").on(t.tenant_id, t.id),
@@ -158,6 +175,16 @@ export const workflowExecutionAuthorities = pgTable(
       t.workflow_version_id,
       t.execution_environment,
     ),
+    // A grant is continued at most once: two activations racing for the same
+    // parent cannot both take its remaining allowance.
+    uniqueIndex("workflow_authorities_inherited_from_key")
+      .on(t.tenant_id, t.inherited_from)
+      .where(sql`${t.inherited_from} IS NOT NULL`),
+    foreignKey({
+      name: "workflow_authorities_inherited_from_fk",
+      columns: [t.tenant_id, t.inherited_from],
+      foreignColumns: [t.tenant_id, t.id],
+    }).onDelete("restrict"),
     index("workflow_authorities_boundary_idx")
       .on(t.tenant_id, t.workflow_id, t.workflow_version_id, t.execution_environment)
       .where(sql`${t.revoked_at} IS NULL`),
@@ -176,10 +203,13 @@ export const workflowExecutionAuthorities = pgTable(
       ],
     }).onDelete("restrict"),
     check("workflow_authorities_digest_check", sql`${t.effect_manifest_digest} ~ '^[0-9a-f]{64}$'`),
-    check("workflow_authorities_window_check", sql`${t.valid_until} > ${t.valid_from}`),
+    check(
+      "workflow_authorities_window_check",
+      sql`${t.valid_until} IS NULL OR ${t.valid_until} > ${t.valid_from}`,
+    ),
     check(
       "workflow_authorities_run_limit_check",
-      sql`${t.max_runs} > 0 AND ${t.reserved_runs} >= 0 AND ${t.reserved_runs} <= ${t.max_runs}`,
+      sql`${t.reserved_runs} >= 0 AND (${t.max_runs} IS NULL OR (${t.max_runs} > 0 AND ${t.reserved_runs} <= ${t.max_runs}))`,
     ),
     check(
       "workflow_authorities_manifest_check",
@@ -191,7 +221,7 @@ export const workflowExecutionAuthorities = pgTable(
     ),
     check(
       "workflow_authorities_revocation_check",
-      sql`(${t.revoked_at} IS NULL) = (${t.revoked_by} IS NULL)`,
+      sql`(${t.revoked_at} IS NULL AND ${t.revoked_by} IS NULL AND ${t.superseded_by} IS NULL) OR (${t.revoked_at} IS NOT NULL AND (${t.revoked_by} IS NOT NULL OR ${t.superseded_by} IS NOT NULL))`,
     ),
   ],
 );

@@ -317,6 +317,30 @@ describe("an approval that is about to end", () => {
     expect(await itemsOf(wf.workflow_id)).toEqual([]);
   });
 
+  test("is never listed for an approval that stands until revoked", async () => {
+    const wf = await workflow("open-ended");
+    await schedule(wf.workflow_id);
+    // No end date and no run limit, with many runs already counted.
+    await approve(wf.workflow_id, wf.version_id, {
+      valid_until: null,
+      max_runs: null,
+      reserved_runs: 5_000,
+    });
+    expect(await itemsOf(wf.workflow_id)).toEqual([]);
+  });
+
+  test("still warns about runs running out when only the end date is open", async () => {
+    const wf = await workflow("open-date-limited-runs");
+    await schedule(wf.workflow_id);
+    await approve(wf.workflow_id, wf.version_id, {
+      valid_until: null,
+      max_runs: 20,
+      reserved_runs: 19,
+    });
+    const [item] = await itemsOf(wf.workflow_id);
+    expect(item).toMatchObject({ reason: "approval_expiring", deadline: null });
+  });
+
   test("is not listed with room on both counts, nor without a trigger", async () => {
     const calm = await workflow("calm");
     await schedule(calm.workflow_id);

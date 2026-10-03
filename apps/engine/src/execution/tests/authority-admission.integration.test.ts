@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { secretNames } from "../../credentials/connections/service.ts";
@@ -27,6 +27,7 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMockServer, jsonResponse } from "../../test-helpers/mock-http.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
+import { authorityLive } from "../../workflows/authority-live.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import {
@@ -48,9 +49,9 @@ afterAll(async () => {
 });
 
 async function fixture(
-  max_runs = 2,
+  max_runs: number | null = 2,
   input_schema?: object,
-  valid_until?: Date,
+  valid_until?: Date | null,
   request?: { base_url: string; driver: "http" | "graphql"; credential?: boolean | "connection" },
 ) {
   const slug = `authority-admission-${++counter}`;
@@ -177,7 +178,7 @@ async function fixture(
       },
       execution_environment: "dev",
       valid_from: new Date(now.getTime() - 60_000),
-      valid_until: valid_until ?? new Date(now.getTime() + 60 * 60_000),
+      valid_until: valid_until === undefined ? new Date(now.getTime() + 60 * 60_000) : valid_until,
       max_runs,
       created_by: actor,
     })
@@ -221,6 +222,38 @@ test("successive runs automatically use the matching authority without another g
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
     code: "execution_authority_unavailable",
   });
+});
+
+test("an approval without run limit or end date admits every run and still counts them", async () => {
+  const f = await fixture(null, undefined, null);
+  const runs = [];
+  for (let i = 0; i < 12; i++) runs.push(await admitAuthorizedWorkflowExecution(f.params, ctx.db));
+  expect(new Set(runs.map((run) => run.execution_id)).size).toBe(12);
+  expect(runs.every((run) => run.execution_authority_id === f.authority.id)).toBe(true);
+  expect(await reservations(f.authority.id)).toBe(12);
+  for (const run of runs)
+    await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id);
+  // A database clock far in the future does not end it either.
+  const [later] = await ctx.db
+    .select({ live: sql<boolean>`${authorityLive(sql`clock_timestamp() + interval '50 years'`)}` })
+    .from(workflowExecutionAuthorities)
+    .where(eq(workflowExecutionAuthorities.id, f.authority.id));
+  expect(later?.live).toBe(true);
+});
+
+test("revoking an approval that stands until revoked ends it", async () => {
+  const f = await fixture(null, undefined, null);
+  const queued = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
+  await ctx.db
+    .update(workflowExecutionAuthorities)
+    .set({ revoked_at: sql`clock_timestamp()`, revoked_by: actor })
+    .where(eq(workflowExecutionAuthorities.id, f.authority.id));
+  await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
+    code: "execution_authority_unavailable",
+  });
+  await expect(
+    assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, queued.execution_id),
+  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
 });
 
 test("cron queue retries reuse one authorized reservation and stop at its run limit", async () => {
