@@ -157,7 +157,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       throw new Error(
         `A held schedule reads as "${await automation.getAttribute("data-state")}", not as approval needed`,
       );
-    const approve = locale === "de" ? "Jetzt freigeben" : "Approve now";
+    const approve = locale === "de" ? "Freigeben…" : "Approve…";
     if ((await page.getByTestId("workflow-automation-action").innerText()).trim() !== approve)
       throw new Error("The panel does not offer the approval the held schedule waits for");
     await page.waitForLoadState("networkidle");

@@ -23,7 +23,7 @@
 
 import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
-import { api, isPageApi, open, WORKFLOW } from "./cockpit-workflow-page.mjs";
+import { api, isPageApi, open, openTab, WORKFLOW } from "./cockpit-workflow-page.mjs";
 
 const WORDS = {
   de: {
@@ -113,7 +113,8 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     let where = at("already approved");
     state.expiring = true;
     await open(page, stand, state, "approved");
-    await page.getByTestId("workflow-automation-secondary").click();
+    // Running out is the strip's top state: extending is its one action.
+    await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
     const title = await text(page.getByTestId("authority-dialog-title"));
     if (!title.startsWith(words.already) || !title.endsWith(words.oneLeft))
@@ -188,13 +189,14 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     const standingLine = await text(page.getByTestId("workflow-automation-headline"));
     if (!standingLine.includes(words.untilRevoked) || !standingLine.includes(words.soFar))
       throw new Error(`${where}: the headline reads "${standingLine}"`);
-    // Nothing runs out: no extension is offered beside the approval.
-    if (await page.getByTestId("workflow-automation-secondary").count())
+    // Nothing runs out: the strip offers nothing at all.
+    if (await page.getByTestId("workflow-automation-action").count())
       throw new Error(`${where}: an approval until revoked is offered for extension`);
-    await page.getByTestId("workflow-automation-action").click();
-    await page.getByTestId("authority-current").waitFor();
+    await openTab(page, "freigaben");
     // Revoking is the one way it ends — offered once, on the approval itself.
-    if ((await page.getByTestId("authority-current-revoke").count()) !== 1)
+    const revoke = page.getByTestId("authority-current-revoke").filter({ visible: true });
+    await revoke.first().waitFor();
+    if ((await revoke.count()) !== 1)
       throw new Error(`${where}: the approval cannot be revoked exactly once`);
     await assertSingleTriggers(page, where);
     await capture("approved-until-revoked");
@@ -210,8 +212,6 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     const mixedLine = await text(page.getByTestId("workflow-automation-headline"));
     if (!mixedLine.includes(words.development) || mixedLine.includes(words.production))
       throw new Error(`${where}: the headline names the wrong environment: "${mixedLine}"`);
-    // Production's approval stays in reach while development is pending.
-    await page.getByTestId("workflow-automation-secondary").waitFor();
     await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
     if (!(await text(page.getByTestId("authority-environment"))).includes(words.development))
@@ -221,8 +221,9 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     await assertSingleTriggers(page, where, DIALOG);
     await capture("mixed-environments");
     await closeDialog(page);
-    await page.getByTestId("workflow-automation-secondary").click();
-    await page.getByTestId("authority-valid-0").waitFor();
+    // Production's approval stays in reach while development is pending.
+    await openTab(page, "freigaben");
+    await page.getByTestId("authority-valid-0").filter({ visible: true }).first().waitFor();
     if (!(await page.getByTestId("authority-valid-0-revoke").count()))
       throw new Error(`${where}: production's approval cannot be revoked from here`);
     state.devSchedule = false;

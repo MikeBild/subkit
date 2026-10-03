@@ -66,9 +66,8 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
   try {
     await stand.visit(page, `workflows/${workflowId}`);
     const whole = page.getByTestId("workflow-test-run");
-    await whole.waitFor({ state: "visible" });
-    // The schedule's home is the automation panel: what starts the workflow,
-    // in words. A paused schedule is marked as one, a foreign one is absent.
+    // What starts the workflow, in words, heads "Verwenden". A paused schedule
+    // is marked as one, a foreign one is absent.
     const triggers = page.getByTestId("workflow-automation-triggers");
     await triggers
       .filter({ hasText: locale === "de" ? "täglich um 06:00" : "daily at 06:00" })
@@ -82,7 +81,10 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       )
     )
       throw new Error(`Cockpit presents a paused schedule as active: ${triggerText}`);
-    await page.getByTestId("workflow-step-0-never-ran").waitFor();
+    // The previews stand with the steps, in "Aufbau".
+    await page.getByTestId("workflow-tabs-tab-aufbau").click();
+    await whole.waitFor({ state: "visible" });
+    await page.getByTestId("workflow-step-0-never-ran").filter({ visible: true }).waitFor();
     const expected = locale === "de" ? "Als Vorschau ausführen" : "Run as preview";
     if ((await whole.innerText()) !== expected) throw new Error("Preview label is not localized");
     // What the preview does is one sentence behind the help icon, not a
@@ -93,8 +95,13 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     await whole.press("Enter");
     await page.getByTestId("workflow-test-result").filter({ hasText: '"held": true' }).waitFor();
     if (requests[0]?.source !== "draft") throw new Error("Whole preview lost its definition");
-    // A step's own preview is offered where its configuration is: in its row.
-    const toggle = page.getByTestId("workflow-step-0-toggle");
+    // A step's own preview is offered where its configuration is: its sheet.
+    const toggle = page
+      .locator(
+        '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',
+      )
+      .filter({ visible: true })
+      .first();
     await toggle.focus();
     await toggle.press("Enter");
     const step = page.getByTestId("workflow-step-0-test");

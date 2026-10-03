@@ -6,7 +6,6 @@ import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { leafSchemaMeta, listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
-import { verifyAgentPanel } from "./lib/cockpit-agent-panel.mjs";
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
@@ -159,6 +158,8 @@ const routes = [
   // authority stand, which checked none of it for identifiers.
   `workflows/${uuid}`,
   "connectors",
+  // A connector's own page: its status strip and its tabs.
+  `connectors/${uuid}`,
   // The connector-health component's own drilldown. Photographed narrowed,
   // because the fixture's healthy connectors are exactly what it must hide.
   "connectors?health=not_ok",
@@ -2831,7 +2832,8 @@ function markerFor(route) {
   // A run's own address renders the list AND the sheet for that run. Waiting
   // on the list marker would photograph the page before the record arrived,
   // which is the frame that proves nothing.
-  if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
+  if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-invocation"]';
+  if (/^connectors\/.+/.test(path)) return '[data-testid="connector-strip-state"]';
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
@@ -3392,69 +3394,101 @@ async function assertRunDetail(page, label, language) {
 async function assertWorkflowDetail(page, label, language) {
   const badge = page.locator('[data-testid="workflow-health-badge"]');
   await badge.waitFor();
-  const cause = page.locator('[data-testid="workflow-cause"]');
-  await cause.waitFor();
-  const causeText = await page.locator('[data-testid="workflow-cause-cause"]').innerText();
+  // The strip: the state in one line and at most one action (D15).
+  const strip = page.locator('[data-testid="workflow-automation"]');
+  await strip.waitFor();
+  await page.locator('[data-testid="workflow-automation-state"]').waitFor();
+  const stripActions = await strip
+    .locator(
+      '[data-testid="workflow-automation-action"], [data-testid="workflow-automation-recheck"], [data-testid="workflow-automation-failed-retry"]',
+    )
+    .count();
+  if (stripActions > 1)
+    throw new Error(`${label}: the status strip offers ${stripActions} actions, not one`);
   // The newest failed run in the fixture stopped at `write_products` because
   // a sign-in was rejected; the engine's English reason is NOT the cause.
-  const expected = language === "de" ? "Ursache: Anmeldung abgelehnt" : "cause: Sign-in rejected";
-  if (!causeText.includes(expected) || causeText.includes("consecutive"))
-    throw new Error(`${label} states the workflow's cause as ${JSON.stringify(causeText)}`);
-  const guidance = await page.locator('[data-testid="workflow-cause-guidance"]').innerText();
-  if (!guidance.includes("3 consecutive scheduled runs failed"))
-    throw new Error(`${label} drops the engine's own wording of the health reason`);
-  if (!(await page.locator('[data-testid="workflow-cause-remedy"]').isVisible()))
-    throw new Error(`${label} shows red with no way to the fix`);
-  const runs = page.locator('[data-testid^="workflow-recent-run-"]');
-  const count = await runs.count();
-  if (count < 1 || count > 5)
-    throw new Error(`${label} lists ${count} latest runs, not up to five`);
-  const first = await runs.first().getAttribute("href");
-  if (!first?.startsWith("/cockpit?run="))
-    throw new Error(`${label} latest run leads to ${first}, not to its sheet`);
-  const all = await page.locator('[data-testid="workflow-all-runs"]').getAttribute("href");
-  if (all !== `/cockpit?runs=all&workflow_id=${uuid}`)
-    throw new Error(`${label} "all runs" leads to ${all}`);
-  // The page's order: whether it may run, how it is called, what it takes,
-  // what it does — and nothing of the old tabs or the "Steuerung" row.
-  for (const section of [
-    "workflow-automation",
-    "workflow-invocation",
-    "workflow-io",
-    "workflow-steps",
-    "workflow-technical",
-  ])
-    if (!(await page.locator(`[data-testid="${section}"]`).count()))
-      throw new Error(`${label} lacks its "${section}" section`);
-  await page.locator('[data-testid="workflow-automation-state"]').waitFor();
+  const stripText = await strip.innerText();
+  if (stripText.includes("consecutive"))
+    throw new Error(`${label}: the strip passes the engine's wording off as its own`);
+  const failing = (await strip.getAttribute("data-strip")) === "failing";
+  if (failing) {
+    const expected = language === "de" ? "Ursache: Anmeldung abgelehnt" : "cause: Sign-in rejected";
+    if (!stripText.includes(expected))
+      throw new Error(`${label} states the workflow's cause as ${JSON.stringify(stripText)}`);
+    if (!(await page.locator('[data-testid="workflow-automation-action"]').isVisible()))
+      throw new Error(`${label} shows red with no way to the cause`);
+  }
+  // The tabs, in the order a reader asks, and the first one open.
+  const tabs = await page
+    .locator('[data-testid="workflow-tabs-list"] [role="tab"]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+  const expectedTabs = ["verwenden", "verlauf", "aufbau", "freigaben"].map(
+    (tab) => `workflow-tabs-tab-${tab}`,
+  );
+  if (JSON.stringify(tabs) !== JSON.stringify(expectedTabs))
+    throw new Error(`${label}: the tabs are ${JSON.stringify(tabs)}`);
+  if (!(await page.locator('[data-testid="workflow-invocation"]').isVisible()))
+    throw new Error(`${label}: "Verwenden" does not open on the call`);
+  if (await page.locator('[data-testid="workflow-io"]').isVisible())
+    throw new Error(`${label}: input and output stand open instead of folded`);
   if (
     await page
-      .locator('[data-testid="workflow-tab-dag"], [data-family-slot="detail-context"]')
+      .locator(
+        '[data-testid="workflow-tab-dag"], [data-family-slot="detail-context"], [data-testid="agent-panel"]',
+      )
       .count()
   )
-    throw new Error(`${label} still carries the old tabs or the governance row`);
-  // An approval for a version that is not running is history: folded, and
-  // headed by what the reader decides by once it is opened.
-  const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
+    throw new Error(`${label} still carries the old tabs, the governance row or the agent panel`);
+  const opened = async (tab, marker) => {
+    await page.locator(`[data-testid="workflow-tabs-tab-${tab}"]`).click();
+    await page.locator(marker).filter({ visible: true }).first().waitFor({ state: "visible" });
+    if (new URL(page.url()).searchParams.get("tab") !== tab)
+      throw new Error(`${label}: the tab "${tab}" is not in the address`);
+  };
+  // Verlauf: the runs, each opening its sheet on this page.
+  await opened(
+    "verlauf",
+    '[data-testid="workflow-runs-row-0"], [data-testid="workflow-runs-mobile-row-0"]',
+  );
+  let runLink = page.locator('[data-testid="workflow-runs-row-link-0"]');
+  if (!(await runLink.isVisible().catch(() => false)))
+    runLink = page.locator('[data-testid="workflow-runs-mobile-row-link-0"]');
+  const runHref = await runLink.getAttribute("href");
+  if (!runHref?.startsWith(`/cockpit/workflows/${uuid}?`) || !runHref.includes("run="))
+    throw new Error(`${label}: a run leads to ${runHref}, not to its sheet on this page`);
+  // Aufbau: the steps as one table, the technical facts folded.
+  await opened("aufbau", '[data-testid="workflow-steps"]');
+  if (!(await page.locator('[data-testid="workflow-technical"]').isVisible()))
+    throw new Error(`${label}: "Technische Angaben" is missing from "Aufbau"`);
+  // Freigaben: an approval for a version that is not running is history:
+  // folded, and headed by what the reader decides by once it is opened.
+  await opened("freigaben", '[data-testid="workflow-approvals-summary"]');
   if (await page.locator('[data-testid="authority-headline"]').count())
     throw new Error(`${label} shows an earlier approval before anyone asked for it`);
+  const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
   await history.click();
-  const headline = await page.locator('[data-testid="authority-headline"]').first().innerText();
+  let first = page.locator('[data-testid="workflow-former-approvals-row-link-0"]');
+  if (!(await first.isVisible().catch(() => false)))
+    first = page.locator('[data-testid="workflow-former-approvals-mobile-row-link-0"]');
+  await first.click();
+  const headline = page.locator('[data-testid="authority-headline"]');
+  await headline.waitFor();
+  const headlineText = await headline.innerText();
   for (const expectedPart of language === "de"
     ? ["Produktion", "gültig bis", "bis zu 24 Läufe"]
     : ["Production", "valid until", "up to 24 runs"])
-    if (!headline.includes(expectedPart))
+    if (!headlineText.includes(expectedPart))
       throw new Error(
-        `${label} authority headline ${JSON.stringify(headline)} lacks ${expectedPart}`,
+        `${label} authority headline ${JSON.stringify(headlineText)} lacks ${expectedPart}`,
       );
-  const headlineTitle = await page
-    .locator('[data-testid="authority-headline"]')
-    .first()
-    .getAttribute("title");
+  const headlineTitle = await headline.locator("[title]").first().getAttribute("title");
   if (headlineTitle !== hostileAuthority.id)
     throw new Error(`${label} authority id is not kept on the headline's title`);
-  // Folded again: the frame photographs the page as a reader finds it.
-  await history.click();
+  await page.locator('[data-testid="authority-sheet-close"]').click();
+  await page.locator('[data-testid="authority-sheet"]').waitFor({ state: "hidden" });
+  // Back to the first tab: the frame photographs the page as a reader finds it.
+  await page.locator('[data-testid="workflow-tabs-tab-verwenden"]').click();
+  await page.locator('[data-testid="workflow-invocation"]').waitFor({ state: "visible" });
 }
 
 /**
@@ -4038,6 +4072,8 @@ async function assertInteractiveSelectors(page, label) {
           rect.width > 0 &&
           rect.height > 0;
         if (!visible || element.hasAttribute("data-testid")) return [];
+        // A copy field's read-only value is addressed by the field's own id.
+        if (element.closest('[data-slot="copy-field"][data-testid]')) return [];
         return [
           `${element.tagName.toLowerCase()}[${element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 32) || "unlabelled"}] ${element.outerHTML.slice(0, 180)}`,
         ];
@@ -4167,24 +4203,50 @@ const stand = standAt({
 // pointed at a fiction must cost milliseconds, not 296 screenshots.
 assertAuditFixtureActionsAreReal();
 
+/**
+ * A narrowed run, for looking at a few views while they change — never the
+ * gate. `COCKPIT_SWEEP_ONLY` names the routes ("/" for Übersicht) and stands to
+ * walk, comma-separated; `COCKPIT_SWEEP_VARIANTS` ("de-dark") and
+ * `COCKPIT_SWEEP_VIEWPORTS` ("desktop,mobile") narrow the rest. Unset, the
+ * sweep walks everything.
+ */
+function listEnv(name) {
+  const raw = process.env[name];
+  if (!raw) return null;
+  return new Set(
+    raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
+const sweepOnly = listEnv("COCKPIT_SWEEP_ONLY");
+const sweepVariants = listEnv("COCKPIT_SWEEP_VARIANTS");
+const sweepViewports = listEnv("COCKPIT_SWEEP_VIEWPORTS");
+const narrowed = sweepOnly !== null || sweepVariants !== null || sweepViewports !== null;
+const wants = (name) => sweepOnly === null || sweepOnly.has(name);
+const sweptRoutes = routes.filter((route) => wants(route === "" ? "/" : route));
+
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 const locales = [
   { name: "de", browser: "de-DE" },
   { name: "en", browser: "en-US" },
 ];
-const variants = locales.flatMap((locale) =>
-  ["light", "dark"].map((theme) => ({
-    ...locale,
-    theme,
-    artifact: `${locale.name}-${theme}`,
-  })),
-);
+const variants = locales
+  .flatMap((locale) =>
+    ["light", "dark"].map((theme) => ({
+      ...locale,
+      theme,
+      artifact: `${locale.name}-${theme}`,
+    })),
+  )
+  .filter((variant) => sweepVariants === null || sweepVariants.has(variant.artifact));
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "wide", width: 1990, height: 1090 },
   { name: "mobile", width: 390, height: 844 },
-];
+].filter((viewport) => sweepViewports === null || sweepViewports.has(viewport.name));
 
 for (const locale of variants) {
   for (const viewport of viewports) {
@@ -4225,7 +4287,7 @@ for (const locale of variants) {
     // title sits at the same x on all of them — the start page once used a
     // narrow centred column and moved its title away from every other page's.
     const headingLeft = new Map();
-    for (const route of routes) {
+    for (const route of sweptRoutes) {
       // A bucket route writes its own frame: `decisions-bucket-failing`, not a
       // second file called `decisions` that silently overwrites the first.
       const artifactRoute = artifactRouteName(route);
@@ -4384,17 +4446,18 @@ for (const locale of variants) {
       if (route === "")
         await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
     }
-    if (new Set(headingLeft.values()).size !== 1)
+    if (headingLeft.size > 0 && new Set(headingLeft.values()).size !== 1)
       throw new Error(
         `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
       );
-    await verifyOverviewCalm(
-      page,
-      `${locale.artifact}/${viewport.name}/overview-calm`,
-      locale.name,
-      () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
-    );
-    if (viewport.name === "desktop")
+    if (wants("overview-calm"))
+      await verifyOverviewCalm(
+        page,
+        `${locale.artifact}/${viewport.name}/overview-calm`,
+        locale.name,
+        () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
+      );
+    if (wants("installation") && viewport.name === "desktop")
       await verifyInstallationPages(
         page,
         stand,
@@ -4416,91 +4479,110 @@ for (const locale of variants) {
           })),
         },
       );
-    await verifyApiAccess(page, stand, locale.name, {
-      realClients: REAL_OAUTH_CLIENTS,
-      deadClients: OAUTH_CLIENTS.filter((item) => !item.disabled_at && item.live_connections === 0)
-        .length,
-      disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
-      activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
-      revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
-      grantsToRenew: CONNECTIONS.filter((item) =>
-        ["expiring", "expired", "unreadable"].includes(item.state),
-      ).length,
-    });
-    await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
-    );
-    await verifyAgentPanel(page, stand, uuid, locale.name);
-    await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, { fullPage: false }),
-    );
-    await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
-    );
-    await verifyChatReauth(page, stand, conversation);
+    if (wants("api-access-stand"))
+      await verifyApiAccess(page, stand, locale.name, {
+        realClients: REAL_OAUTH_CLIENTS,
+        deadClients: OAUTH_CLIENTS.filter(
+          (item) => !item.disabled_at && item.live_connections === 0,
+        ).length,
+        disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
+        activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
+        revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
+        grantsToRenew: CONNECTIONS.filter((item) =>
+          ["expiring", "expired", "unreadable"].includes(item.state),
+        ).length,
+      });
+    if (wants("schedule-holds"))
+      await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("hook-holds"))
+      await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
+      );
+    if (wants("chat-approvals"))
+      await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("chat-choices"))
+      await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("chat-replies"))
+      await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
+      );
+    if (wants("chat-reauth")) await verifyChatReauth(page, stand, conversation);
     // Once per locale and theme, on desktop: the assertion is about which
     // state a page renders, not about layout, and each refused read waits out
     // a retry — repeating it at every width would spend the sweep's headroom.
-    if (viewport.name === "desktop")
+    if (wants("load-failures") && viewport.name === "desktop")
       await verifyLoadFailures(page, stand, conversation, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
           fullPage: false,
         }),
       );
-    await verifyChatOAuth(page, stand, conversation, locale.name);
-    await verifyChatActivation(page, stand, conversation, locale.name);
-    await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyConnectorDetail(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
-    );
-    await verifyRunDialog(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyWorkflowPreview(page, stand, uuid, locale.name);
-    await verifyWorkflowPage(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-    );
-    await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyGrantDialog(page, stand, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
-        fullPage: false,
-      }),
-    );
-    await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
-      shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
-    );
-    if (viewport.name === "desktop") {
+    if (wants("chat-oauth")) await verifyChatOAuth(page, stand, conversation, locale.name);
+    if (wants("chat-activation"))
+      await verifyChatActivation(page, stand, conversation, locale.name);
+    if (wants("chat-activity"))
+      await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("connector-detail"))
+      await verifyConnectorDetail(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
+      );
+    if (wants("run-dialog"))
+      await verifyRunDialog(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (wants("detail-action"))
+      await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (wants("workflow-preview")) await verifyWorkflowPreview(page, stand, uuid, locale.name);
+    if (wants("workflow-page"))
+      await verifyWorkflowPage(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (wants("workflow-authorities"))
+      await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("grant-dialog"))
+      await verifyGrantDialog(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("chat-review-card"))
+      await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("gate-diagnosis"))
+      await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (wants("decisions"))
+      await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
+      );
+    if (wants("extras") && viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
         await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
@@ -4790,13 +4872,14 @@ for (const locale of variants) {
   }
 }
 
-for (const locale of variants) {
+// A narrowed run photographs too little for a contact sheet.
+for (const locale of narrowed ? [] : variants) {
   for (const viewport of ["desktop", "mobile"]) {
     const contact = await browser.newPage({
       viewport: { width: 1600, height: 1000 },
     });
     const cards = await Promise.all(
-      routes.map(async (route) => {
+      sweptRoutes.map(async (route) => {
         // Read back by the label the frame was WRITTEN under, not by a name
         // rebuilt here. A second place that knows how a frame is called is a
         // second place that can be wrong about it.
@@ -4832,7 +4915,7 @@ for (const locale of variants) {
 // frames — the migrated views must fit from a phone to a wide monitor with no
 // horizontal page scroll and nothing poking past the right edge.
 const RESPONSIVE_WIDTHS = [390, 768, 1024, 1440, 1920];
-const migratedRoutes = routes.filter((route) => patternMigratedView(route) !== null);
+const migratedRoutes = sweptRoutes.filter((route) => patternMigratedView(route) !== null);
 for (const width of RESPONSIVE_WIDTHS) {
   const context = await browser.newContext({
     viewport: { width, height: 900 },
@@ -4854,7 +4937,7 @@ for (const width of RESPONSIVE_WIDTHS) {
   await context.close();
 }
 
-await assertFirstSendIsNeverLost(browser);
+if (wants("first-send")) await assertFirstSendIsNeverLost(browser);
 await browser.close();
 spawnedPreview?.stop();
 if (errors.length) throw new Error(errors.join("; "));
@@ -4871,6 +4954,8 @@ if (errors.length) throw new Error(errors.join("; "));
 // next to a DIRECTORY called x.png — it answered 3, missing the two below and
 // counting the directory. Both errors point the same way, towards a number that
 // looks fine.
+// A narrowed run may walk only stands that photograph nothing.
+if (framesWritten === 0) await prepareOutput();
 const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
   (entry) => entry.isFile() && entry.name.endsWith(".png"),
 ).length;

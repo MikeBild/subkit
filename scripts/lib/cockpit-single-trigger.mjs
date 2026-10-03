@@ -178,6 +178,7 @@ export const PATTERN_MIGRATED_VIEWS = [
   "settings",
   "settings?tab=benachrichtigungen",
   "workflows/$id",
+  "connectors/$id",
   // The run sheets: all runs (wide) and one run (default width).
   "?runs=all",
   "?run=$id",
