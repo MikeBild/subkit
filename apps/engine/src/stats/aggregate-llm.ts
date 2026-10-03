@@ -70,7 +70,7 @@ export interface LlmStatsResult {
 
 const LATENCY = sql`llm_usage.latency_ms::float8`;
 
-function dimColumn(dim: LlmGroupDim): SQL {
+export function dimColumn(dim: LlmGroupDim): SQL {
   if (dim === "model") return sql`llm_usage.model`;
   if (dim === "user") return sql`llm_usage.user_id`;
   // The id, not the name: a workflow can be renamed, and a report that
@@ -157,7 +157,12 @@ export function buildWhere(
  * empty key rather than dropped.
  */
 function fromClause(p: LlmStatsParams): SQL {
-  return p.groupBy.includes("workflow")
+  return llmFromClause(p.groupBy);
+}
+
+/** The FROM clause a grouping needs (see `fromClause`). */
+export function llmFromClause(groupBy: readonly LlmGroupDim[]): SQL {
+  return groupBy.includes("workflow")
     ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id`
     : sql`llm_usage`;
 }
