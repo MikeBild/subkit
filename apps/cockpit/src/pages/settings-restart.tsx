@@ -15,8 +15,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, auditHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { ConfirmAction } from "@/components/cockpit/confirm-action";
-import { Button } from "@/components/ui/button";
+import { Button, ConfirmDialog } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   isStillRestarting,
@@ -113,16 +112,17 @@ export function SettingsRestartDialog({
   const { t } = useI18n();
   const client = useQueryClient();
   const [restarting, setRestarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A refusal or a restart that could not be confirmed is said once, as a
+  // toast: the confirmation holds one line, and that line is the consequence.
+  const setError = (message: string) => toast.error(message);
 
   async function restart(): Promise<void> {
-    setError(null);
     let accepted: RestartAccepted;
     try {
       accepted = await apiRequest<RestartAccepted>(RESTART_PATH, { method: "POST" });
     } catch (refusal) {
       setError(t(restartRefusalKey(refusal instanceof ApiError ? refusal.code : null)));
-      throw refusal;
+      return;
     }
     setRestarting(true);
     const auditLink = absolute(
@@ -153,46 +153,36 @@ export function SettingsRestartDialog({
         return;
       }
       setError(t("settings.restartNow.notConfirmed"));
-      throw new Error("restart not confirmed");
     } catch (failure) {
       // A poll that fails for another reason than "still away" must say so —
       // a 401 after a restart that changed the session secret included.
-      if (failure instanceof ApiError)
-        setError(
-          t(
-            failure.status === 401
-              ? "settings.restartNow.signInAgain"
-              : "settings.restartNow.notConfirmed",
-          ),
-        );
-      throw failure;
+      setError(
+        t(
+          failure instanceof ApiError && failure.status === 401
+            ? "settings.restartNow.signInAgain"
+            : "settings.restartNow.notConfirmed",
+        ),
+      );
     } finally {
       setRestarting(false);
     }
   }
 
   return (
-    <ConfirmAction
+    <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("settings.restartNow.title")}
+      object={t("settings.restartNow.object")}
+      verb={t("settings.restartNow.verb")}
       consequence={
-        restarting ? (
-          <p role="status" data-testid="settings-restart-progress">
-            {t("settings.restartNow.progress")}
-          </p>
-        ) : (
-          <>
-            <p>{t("settings.restartNow.consequence")}</p>
-            {restartSignsEveryoneOut(pendingFields) ? (
-              <p>{t("settings.restartNow.signsOut")}</p>
-            ) : null}
-          </>
-        )
+        restarting
+          ? t("settings.restartNow.progress")
+          : restartSignsEveryoneOut(pendingFields)
+            ? t("settings.restartNow.signsOut")
+            : t("settings.restartNow.consequence")
       }
-      confirmLabel={t("settings.restartNow.button")}
+      pending={restarting}
       onConfirm={restart}
-      error={error}
       testId="settings-restart-now-dialog"
     />
   );
