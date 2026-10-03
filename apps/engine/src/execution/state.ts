@@ -7,7 +7,6 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
-import { pinFileReferences } from "../files/slug.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import {
@@ -99,12 +98,6 @@ export async function createExecution(
   db: Executor,
   params: CreateExecutionParams,
 ): Promise<string> {
-  // A run's file references are pinned to ids as it is admitted, so a rerun
-  // reads the same files however the names move later.
-  const input =
-    params.input === undefined || params.input === null
-      ? params.input
-      : await pinFileReferences(db, params.tenant_id, params.input);
   const id = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(executions)
@@ -123,7 +116,7 @@ export async function createExecution(
         parent_execution_id: params.parent_execution_id ?? null,
         authority_root_execution_id: params.authority_link?.root_execution_id ?? null,
         authority_call_path: params.authority_link?.call_path ?? null,
-        input: (input ?? null) as typeof params.input | null,
+        input: params.input ?? null,
         idempotency_key: params.idempotency_key ?? null,
       })
       .returning({ id: executions.id });

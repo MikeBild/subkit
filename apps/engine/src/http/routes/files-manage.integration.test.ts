@@ -251,18 +251,23 @@ describe("the @attachment:<slug> reference", () => {
     expect(revived.slug).toBe("revive-2");
   });
 
-  test("a $file leaf resolves by reference", async () => {
+  test("a $file leaf resolves by reference only where an author wrote it", async () => {
     const { walkAndResolve } = await import("../../files/resolver.ts");
     const file = (await upload("by reference", "by-ref.txt")) as Wire;
+    const authored = { db: srv.db, tenant_id: srv.tenantId, resolve_references: true };
     const resolved: unknown = await walkAndResolve(
       { sheet: { $file: "@attachment:by-ref" } },
-      { db: srv.db, tenant_id: srv.tenantId },
+      authored,
       new Map(),
     );
     expect((resolved as { sheet: { id: string } }).sheet.id).toBe(parseFileIdOrThrow(file.id));
     await expect(
+      walkAndResolve({ $file: "@attachment:no-such-file" }, authored, new Map()),
+    ).rejects.toThrow();
+    // Anywhere else a guessable name is not a key to the file.
+    await expect(
       walkAndResolve(
-        { $file: "@attachment:no-such-file" },
+        { $file: "@attachment:by-ref" },
         { db: srv.db, tenant_id: srv.tenantId },
         new Map(),
       ),
@@ -303,9 +308,10 @@ describe("the @attachment:<slug> reference", () => {
     expect(links).toEqual([{ slug: "chat-slug" }]);
   });
 
-  test("a run's input names one file for good: references are pinned to ids on admission", async () => {
+  test("a run's input keeps a reference as written: admission resolves no name", async () => {
     const { createExecution } = await import("../../execution/state.ts");
-    const file = (await upload("pinned content", "pinned.txt")) as Wire;
+    await upload("pinned content", "pinned.txt");
+    const input = { report: { $file: "@attachment:pinned" } };
     const id = await createExecution(srv.db, {
       tenant_id: srv.tenantId,
       workflow_id: null,
@@ -313,21 +319,13 @@ describe("the @attachment:<slug> reference", () => {
       source_kind: "draft",
       source_ref: null,
       request_source: "api",
-      input: {
-        report: { $file: "@attachment:pinned" },
-        list: [{ $file: "@attachment:pinned" }, { $file: "@attachment:none-such" }],
-        note: "@attachment:pinned",
-      },
+      input,
     });
     const [row] = await srv.db
       .select({ input: executions.input })
       .from(executions)
       .where(eq(executions.id, id));
-    expect(row?.input).toEqual({
-      report: { $file: file.id },
-      list: [{ $file: file.id }, { $file: "@attachment:none-such" }],
-      note: "@attachment:pinned",
-    });
+    expect(row?.input).toEqual(input);
   });
 
   test("a writer without file:read cannot reach a tenant file by guessing its slug", async () => {
@@ -354,11 +352,18 @@ describe("the @attachment:<slug> reference", () => {
       expect(rewrite.text).toBe("zeig @attachment:gehalt");
       expect(rewrite.unresolved).toEqual(["gehalt"]);
     }
+    // A tool's `$file` arguments follow the same rule as the text.
+    const { resolveAttachmentSlugsInArgs } = await import("../../conversations/attachments.ts");
+    const args = { doc: { $file: "@attachment:gehalt" } };
+    expect(await resolveAttachmentSlugsInArgs(args, { ...ctx, principal: portal })).toEqual(args);
     const links = await srv.db
       .select({ slug: fileLinks.slug })
       .from(fileLinks)
       .where(eq(fileLinks.resource_id, conversation.id));
     expect(links).toEqual([]);
+    const admin = { ...portal, roles: ["admin"] };
+    const pinned = await resolveAttachmentSlugsInArgs(args, { ...ctx, principal: admin });
+    expect(pinned.doc.$file).toStartWith("fid_");
   });
 
   test("the list counts workflows naming the file by id or reference, and conversations", async () => {
