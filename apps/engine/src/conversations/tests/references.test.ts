@@ -8,8 +8,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { connectors, conversationMessages, workflows } from "../../db/schema/index.ts";
+import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
+import { createSkill } from "../../skills/service.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { toMessageParts } from "../parts.ts";
@@ -99,6 +101,48 @@ describe("resolveReferences", () => {
     expect(out.block).not.toContain(`"config"`);
     expect(out.block).not.toContain(`"dsn"`);
     expect(out.outcomes.map((o) => o.outcome)).toEqual(["ok", "ok"]);
+  });
+
+  test("a skill and a knowledge source resolve to their own projections", async () => {
+    const skill = await createSkill(
+      {
+        tenant_id: ctx.tenant_id,
+        input: { scope: "global", title: "Rechnungen ablegen", body: "Lege jede Rechnung ab." },
+      },
+      ctx.testDb.db,
+    );
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenant_id,
+        input: { name: "Vertriebshandbuch", slug: "vertrieb-handbuch" },
+        upload: {
+          buffer: Buffer.from("# Vertrieb\n\nRabatte bis zehn Prozent."),
+          filename: "v.md",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const out = await resolveReferences(
+      [
+        { type: "skill", id: skill.id, label: "Rechnungen ablegen" },
+        { type: "knowledge_source", id: source.id, label: "vertrieb-handbuch" },
+      ],
+      resolverCtx(admin()),
+    );
+    expect(out.unresolved).toEqual([]);
+    expect(out.block).toContain(`SKILL @Rechnungen ablegen (id: ${skill.id})`);
+    expect(out.block).toContain("Lege jede Rechnung ab.");
+    expect(out.block).toContain(`KNOWLEDGE SOURCE @vertrieb-handbuch (id: ${source.id})`);
+    expect(out.block).toContain(`"name": "Vertriebshandbuch"`);
+    expect(referencesTrimRef(out.resolved)).toContain("reload with load_skill");
+    expect(referencesTrimRef(out.resolved)).toContain("reload with search_knowledge");
+    const denied = await resolveReferences(
+      [{ type: "skill", id: skill.id, label: "Rechnungen ablegen" }],
+      resolverCtx(powerless()),
+    );
+    expect(denied.outcomes[0]?.outcome).toBe("missing_or_forbidden");
+    expect(denied.block).not.toContain("Lege jede Rechnung ab.");
   });
 
   test("an unknown id is reported as gone-or-forbidden with a no-guessing instruction", async () => {
