@@ -9,8 +9,8 @@ import {
   SegmentedControl,
   StatusBadge,
 } from "@/components/cockpit/patterns";
-import { cronWords } from "@/lib/cron-words";
-import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
+import { WorkflowScheduleSection } from "@/components/cockpit/workflow-schedule";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   callVerdict,
@@ -18,14 +18,13 @@ import {
   hasFixedInput,
   hiddenInvocationKey,
   hiddenInvocationLists,
+  INVOCATION_MODES,
   type WorkflowInvocation as Invocation,
   type InvocationHook,
   type InvocationMode,
-  type InvocationSchedule,
   initialInvocationMode,
   invocationModes,
   isWorkflowInvocation,
-  SCHEDULE_STATE_KEYS,
   SNIPPET_LANGUAGES,
   type SnippetLanguage,
   scheduleRowKey,
@@ -104,7 +103,7 @@ function HttpMode({
       <Copyable>
         <CopyField
           value={http.url ?? http.path}
-          label={`${http.method} ${t("invocation.copyAddress")}`}
+          label={t("invocation.httpAddress")}
           testId="workflow-invocation-http-url"
         />
       </Copyable>
@@ -219,7 +218,7 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
               <Copyable>
                 <CopyField
                   value={hook.url ?? hook.path}
-                  label={`POST ${t("invocation.copyAddress")}`}
+                  label={t("invocation.webhookAddress")}
                   testId={`workflow-invocation-hook-${index}-url`}
                 />
               </Copyable>
@@ -255,6 +254,15 @@ function McpMode({ invocation }: { invocation: Invocation }) {
   const { mcp } = invocation;
   return (
     <div className="flex flex-col gap-3">
+      {invocation.base_url ? (
+        <Copyable>
+          <CopyField
+            value={`${invocation.base_url.replace(/\/$/, "")}/mcp`}
+            label={t("invocation.mcpAddress")}
+            testId="workflow-invocation-mcp-url"
+          />
+        </Copyable>
+      ) : null}
       <Copyable>
         <CopyField
           value={mcp.tool_name}
@@ -276,51 +284,6 @@ function McpMode({ invocation }: { invocation: Invocation }) {
           workflow: mcp.fallback.arguments.workflow,
         })}
       </p>
-    </div>
-  );
-}
-
-function ScheduleRow({ schedule, index }: { schedule: InvocationSchedule; index: number }) {
-  const { t, locale, dateTime } = useI18n();
-  const words = cronWords(schedule.cron, t, LOCALE_TAGS[locale]);
-  const facts = [
-    t("invocation.schedule.when", { when: words, timezone: schedule.timezone }),
-    t(schedule.environment === "prod" ? "run.environment.prod" : "run.environment.dev"),
-    schedule.next_fire_at
-      ? t("invocation.schedule.next", { when: dateTime(schedule.next_fire_at) })
-      : null,
-    // The expression itself, for the reader who thinks in it — only where the
-    // words are not already the expression.
-    words === schedule.cron ? null : schedule.cron,
-  ].filter(Boolean);
-  return (
-    <div className="flex flex-col gap-2" data-testid={`workflow-invocation-schedule-${index}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm">{facts.join(" · ")}</p>
-        <StatusBadge
-          state={
-            schedule.state === "active"
-              ? "active"
-              : schedule.state === "paused"
-                ? "paused"
-                : "pending"
-          }
-          label={t(SCHEDULE_STATE_KEYS[schedule.state])}
-          testId={`workflow-invocation-schedule-${index}-state`}
-        />
-      </div>
-      {hasFixedInput(schedule.input) ? (
-        <Copyable>
-          <CodeBlock
-            label={t("invocation.schedule.input")}
-            code={JSON.stringify(schedule.input, null, 2)}
-            lang="json"
-            testId={`workflow-invocation-schedule-${index}-input`}
-          />
-        </Copyable>
-      ) : (
-        <p className={line}>{t("invocation.schedule.noInput")}</p>
-      )}
     </div>
   );
 }
@@ -357,10 +320,17 @@ function CliMode({ invocation }: { invocation: Invocation }) {
  */
 export function WorkflowInvocation({
   workflowId,
+  workflowName,
   effectiveTrigger,
   approvedEnvironment,
+  canWrite,
+  canChat,
 }: {
   workflowId: string;
+  workflowName: string;
+  /** A schedule is created, changed and removed here (R11). */
+  canWrite: boolean;
+  canChat: boolean;
   /** What really starts the workflow — decides the kind a reader lands on. */
   effectiveTrigger: string | null;
   /**
@@ -384,7 +354,11 @@ export function WorkflowInvocation({
         testId="workflow-invocation-failed"
       />
     );
-  const modes = invocationModes(invocation);
+  // A schedule can always be set up here, so its kind is always offered.
+  const found = invocationModes(invocation);
+  const modes = INVOCATION_MODES.filter(
+    (value) => found.includes(value) || (value === "schedule" && canWrite),
+  );
   const mode =
     chosen && modes.includes(chosen) ? chosen : initialInvocationMode(modes, effectiveTrigger);
   const hiddenKey = hiddenInvocationKey(hiddenInvocationLists(invocation));
@@ -413,9 +387,25 @@ export function WorkflowInvocation({
         <McpMode invocation={invocation} />
       ) : mode === "schedule" ? (
         <div className="flex flex-col gap-4">
-          {(invocation.schedules ?? []).map((schedule, index) => (
-            <ScheduleRow key={scheduleRowKey(schedule, index)} schedule={schedule} index={index} />
-          ))}
+          <WorkflowScheduleSection
+            workflowId={workflowId}
+            workflowName={workflowName}
+            nextFireAt={invocation.schedules?.[0]?.next_fire_at ?? null}
+            canWrite={canWrite}
+            canChat={canChat}
+          />
+          {(invocation.schedules ?? []).map((schedule, index) =>
+            hasFixedInput(schedule.input) ? (
+              <Copyable key={scheduleRowKey(schedule, index)}>
+                <CodeBlock
+                  label={t("invocation.schedule.input")}
+                  code={JSON.stringify(schedule.input, null, 2)}
+                  lang="json"
+                  testId={`workflow-invocation-schedule-${index}-input`}
+                />
+              </Copyable>
+            ) : null,
+          )}
         </div>
       ) : (
         <CliMode invocation={invocation} />

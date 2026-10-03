@@ -16,6 +16,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { type StepDraft, StepEditDialog } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type WorkflowPreviewSource,
@@ -160,10 +161,20 @@ export function WorkflowTestResult({ steps }: { steps: WorkflowSteps }) {
  * it last ended. A row opens the step's sheet with its whole configuration,
  * its last result and its own preview.
  */
-export function WorkflowStepsList({ steps, canRun }: { steps: WorkflowSteps; canRun: boolean }) {
+export function WorkflowStepsList({
+  steps,
+  canRun,
+  editor,
+}: {
+  steps: WorkflowSteps;
+  canRun: boolean;
+  /** The step editor (R16), for a reader who may change the workflow. */
+  editor?: StepDraft;
+}) {
   const { t, dateTime } = useI18n();
   const connectorNames = useConnectorNames();
   const [open, setOpen] = useState<number | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const rows = steps.views.map((view, index) => ({ view, index }));
   const columns = useMemo<CockpitColumn<{ view: WorkflowStepView; index: number }>[]>(() => {
     const column = tableColumns<{ view: WorkflowStepView; index: number }>({ t, dateTime });
@@ -237,7 +248,6 @@ export function WorkflowStepsList({ steps, canRun }: { steps: WorkflowSteps; can
         pending={steps.pending && steps.views.length === 0}
         onOpen={(row) => setOpen(row.index)}
         rowLabel={(row) => t("workflow.step", { count: row.index + 1 })}
-        pageSize={25}
       />
       {selected && open !== null ? (
         <StepSheet
@@ -247,6 +257,39 @@ export function WorkflowStepsList({ steps, canRun }: { steps: WorkflowSteps; can
           canRun={canRun}
           steps={steps}
           onClose={() => setOpen(null)}
+          {...(editor
+            ? {
+                editing: {
+                  edit: () => setEditing(open),
+                  up:
+                    open > 0
+                      ? () => {
+                          editor.move(open, -1);
+                          setOpen(open - 1);
+                        }
+                      : undefined,
+                  down:
+                    open < steps.views.length - 1
+                      ? () => {
+                          editor.move(open, 1);
+                          setOpen(open + 1);
+                        }
+                      : undefined,
+                  remove: () => {
+                    editor.remove(open);
+                    setOpen(null);
+                  },
+                },
+              }
+            : {})}
+        />
+      ) : null}
+      {editor && editing !== null ? (
+        <StepEditDialog
+          open
+          onOpenChange={(next) => !next && setEditing(null)}
+          step={editor.steps[editing]}
+          onApply={(step) => editor.replace(editing, step)}
         />
       ) : null}
     </div>
@@ -261,6 +304,7 @@ function StepSheet({
   canRun,
   steps,
   onClose,
+  editing,
 }: {
   view: WorkflowStepView;
   index: number;
@@ -268,6 +312,8 @@ function StepSheet({
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
+  /** The editor's acts on this step: change, move, remove. */
+  editing?: { edit(): void; up?: () => void; down?: () => void; remove(): void };
 }) {
   const { t } = useI18n();
   const testId = `workflow-step-${index}`;
@@ -316,6 +362,34 @@ function StepSheet({
                 onSelect: () =>
                   void steps.runOne(definition.id, { source: "step", step: definition.raw }),
                 testId: `${testId}-test`,
+              },
+            ]}
+          />
+        ) : undefined
+      }
+      menu={
+        editing ? (
+          <ActionMenu
+            testId={`${testId}-menu`}
+            items={[
+              { label: t("stepEditor.edit"), onSelect: editing.edit, testId: `${testId}-edit` },
+              ...(editing.up
+                ? [{ label: t("stepEditor.up"), onSelect: editing.up, testId: `${testId}-up` }]
+                : []),
+              ...(editing.down
+                ? [
+                    {
+                      label: t("stepEditor.down"),
+                      onSelect: editing.down,
+                      testId: `${testId}-down`,
+                    },
+                  ]
+                : []),
+              {
+                label: t("stepEditor.remove"),
+                onSelect: editing.remove,
+                destructive: true,
+                testId: `${testId}-remove`,
               },
             ]}
           />
