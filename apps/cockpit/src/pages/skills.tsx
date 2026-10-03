@@ -185,7 +185,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         surface="collection"
         scroll="page"
         testId="catalog-skills"
-        header={<PageHeader title={title} />}
+        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
         <DataState
           state="empty"
@@ -219,6 +219,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
       testId="catalog-skills"
       header={
         <PageHeader
+          eyebrow={t("nav.group.knowledge")}
           title={title}
           action={empty ? undefined : newButton("skills-new")}
           secondary={
