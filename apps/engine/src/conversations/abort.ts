@@ -74,6 +74,11 @@ export function registerConversationAbort(
   return ctrl;
 }
 
+/** True while this process runs a turn for the conversation. */
+export function hasConversationAbort(tenantId: string, conversationId: string): boolean {
+  return REGISTRY.has(key(tenantId, conversationId));
+}
+
 export function unregisterConversationAbort(
   tenantId: string,
   conversationId: string,

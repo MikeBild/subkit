@@ -1,7 +1,8 @@
 // Maintenance / lifecycle endpoints — none drive the LLM, so no SSE
 // branch needed.
 //
-//   POST /v1/conversations/{id}/cancel
+//   POST   /v1/conversations/{id}/cancel
+//   DELETE /v1/conversations/{id}
 //   GET  /v1/conversations/{id}/context-snapshot
 //   POST /v1/conversations/{id}/compact
 //   POST /v1/conversations/{id}/fork-from-message/{message_id}
@@ -10,7 +11,8 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
 import * as svc from "../../../conversations/index.ts";
-import { NotFoundError } from "../../errors.ts";
+import { hasBuiltinAdminRole } from "../../../rbac/evaluator.ts";
+import { ConflictError, ForbiddenError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
@@ -54,6 +56,42 @@ const cancelRoute = createRoute({
       content: { "application/json": { schema: ConversationSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const DeleteConversationResponse = z
+  .object({
+    id: z.string().uuid(),
+    deleted: z.literal(true),
+  })
+  .openapi("DeleteConversationResponse");
+
+const deleteRoute = createRoute({
+  method: "delete",
+  path: "/v1/conversations/{id}",
+  tags: ["conversations"],
+  summary: "Delete a conversation for everyone",
+  description:
+    "Removes the conversation with its messages, tool calls and file links; the " +
+    "files themselves stay. Only the owner or an administrator may delete. Refused " +
+    "with 409 while a turn is running. Hiding (`/hide`) only takes it out of the " +
+    "caller's own list.",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "Deleted",
+      content: { "application/json": { schema: DeleteConversationResponse } },
+    },
+    403: {
+      description: "Forbidden — neither the owner nor an administrator",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "A turn is still running",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -174,6 +212,31 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = await svc.cancelConversation(principal.tenant_id, id, principal.id, db);
     if (!row) throw new NotFoundError("conversation");
     return c.json(row, 200);
+  });
+
+  app.openapi(deleteRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const result = await svc.deleteConversation(
+      {
+        tenant_id: principal.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        actor_type: actorType(principal),
+        actor_is_admin: hasBuiltinAdminRole(principal),
+        request_source: "api",
+      },
+      db,
+    );
+    if (result.kind === "not_found") throw new NotFoundError("conversation");
+    if (result.kind === "forbidden") throw new ForbiddenError("not_conversation_owner");
+    if (result.kind === "turn_running") {
+      throw new ConflictError("A turn is still running in this conversation; stop it first.", {
+        reason: "turn_running",
+      });
+    }
+    return c.json({ id: result.id, deleted: true as const }, 200);
   });
 
   for (const [route, hidden] of [
