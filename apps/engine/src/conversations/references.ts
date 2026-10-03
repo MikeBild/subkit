@@ -21,13 +21,18 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConnector } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";
 import { conversationMessages } from "../db/schema/index.ts";
+import { getKnowledgeSource } from "../knowledge/catalog.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { can } from "../rbac/evaluator.ts";
+import { getSkill } from "../skills/service.ts";
 import { getWorkflow } from "../workflows/service.ts";
 import { summarize } from "./tools/find-workflow.ts";
 
-export const REFERENCE_TYPES = ["workflow", "connector"] as const;
+// A skill and a knowledge source are referenced like a workflow: the
+// person picks one, the turn gets its id and a short projection. A file
+// is not here — it travels as a conversation attachment (`@attachment:`).
+export const REFERENCE_TYPES = ["workflow", "connector", "skill", "knowledge_source"] as const;
 export type ConversationReferenceType = (typeof REFERENCE_TYPES)[number];
 
 export interface ConversationReference {
@@ -64,6 +69,16 @@ export interface ResolvedReferences {
 const PERMISSION: Record<ConversationReferenceType, string> = {
   workflow: "workflow:read",
   connector: "connector:read",
+  skill: "skill:read",
+  knowledge_source: "knowledge:read",
+};
+
+/** The tool that reloads a referenced object after the budget trimmer cut its block. */
+const RELOAD_TOOL: Record<ConversationReferenceType, string> = {
+  workflow: "inspect_workflow",
+  connector: "get_connector",
+  skill: "load_skill",
+  knowledge_source: "search_knowledge",
 };
 
 /** The prose token for a reference, e.g. `@customer-sync`. */
@@ -125,6 +140,34 @@ function projectConnector(c: NonNullable<Awaited<ReturnType<typeof getConnector>
   };
 }
 
+/** Skill projection: what it is for and its body — the instructions the person pointed at. */
+function projectSkill(skill: NonNullable<Awaited<ReturnType<typeof getSkill>>>) {
+  return {
+    id: skill.id,
+    slug: skill.slug,
+    title: skill.title,
+    scope: skill.scope,
+    status: skill.status,
+    body: skill.body,
+  };
+}
+
+/** Knowledge source projection: identity and size — the content is reached by search. */
+function projectKnowledgeSource(
+  source: NonNullable<Awaited<ReturnType<typeof getKnowledgeSource>>>,
+) {
+  return {
+    id: source.id,
+    slug: source.slug,
+    name: source.name,
+    description: source.description,
+    status: source.status,
+    source_type: source.source_type,
+    chunk_count: source.chunk_count,
+    last_refreshed_at: source.last_refreshed_at,
+  };
+}
+
 export interface ResolveReferencesCtx {
   db: Executor;
   tenant_id: string;
@@ -160,6 +203,22 @@ async function resolveOne(
         outcome: "ok",
       };
     }
+    if (ref.type === "skill") {
+      const skill = await getSkill(ctx.tenant_id, ref.id, ctx.db);
+      if (!skill) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
+      return {
+        line: `SKILL ${referenceToken(ref)} (id: ${skill.id})\n\`\`\`json\n${JSON.stringify(projectSkill(skill), null, 2)}\n\`\`\``,
+        outcome: "ok",
+      };
+    }
+    if (ref.type === "knowledge_source") {
+      const source = await getKnowledgeSource(ctx.tenant_id, ref.id, ctx.db);
+      if (!source) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
+      return {
+        line: `KNOWLEDGE SOURCE ${referenceToken(ref)} (id: ${source.id})\n\`\`\`json\n${JSON.stringify(projectKnowledgeSource(source), null, 2)}\n\`\`\``,
+        outcome: "ok",
+      };
+    }
     const c = await getConnector(ctx.tenant_id, ref.id, ctx.db);
     if (!c) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
     return {
@@ -176,7 +235,7 @@ async function resolveOne(
 export function referencesTrimRef(refs: readonly ConversationReference[]): string {
   const lines = refs.map(
     (ref) =>
-      `- ${ref.type} ${referenceToken(ref)} (id: ${ref.id}) — reload with ${ref.type === "workflow" ? "inspect_workflow" : "get_connector"}`,
+      `- ${ref.type} ${referenceToken(ref)} (id: ${ref.id}) — reload with ${RELOAD_TOOL[ref.type]}`,
   );
   return `${REFERENCED_ENTITIES_MARKER}\n[trimmed to fit the context budget — the user @-mentioned these objects; use the ids directly, do not search by name]\n${lines.join("\n")}`;
 }

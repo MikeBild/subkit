@@ -16784,7 +16784,9 @@
             "type": "string",
             "enum": [
               "workflow",
-              "connector"
+              "connector",
+              "skill",
+              "knowledge_source"
             ]
           },
           "id": {
