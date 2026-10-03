@@ -66,7 +66,7 @@ describe("remedyFor", () => {
     [
       "on the connector's own surfaces a lost sign-in lands on its sign-in card",
       { ...base, authState: { connectorId: CONNECTOR, state: "expired", section: "credentials" } },
-      { kind: "reauth", href: `${connectorHref(CONNECTOR)}#connector-credentials` },
+      { kind: "reauth", href: `${connectorHref(CONNECTOR)}?tab=verbindung` },
     ],
     ["no chat permission and nothing else: no dead link", { ...base, canChat: false }, null],
     [
