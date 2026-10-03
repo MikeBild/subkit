@@ -409,6 +409,7 @@ export function ConnectorPage({
               canWrite={canWrite}
               showKey={showKey}
               onShowKey={setShowKey}
+              stateInStrip={strip.kind === "connected"}
               providerUrl={
                 probe.data && !probe.data.ok ? (probe.data.provider_action_url ?? null) : null
               }

@@ -74,6 +74,7 @@ export function ConnectorCredentials({
   showKey,
   onShowKey,
   providerUrl = null,
+  stateInStrip = false,
 }: {
   connectorId: string;
   authType: string | null;
@@ -84,6 +85,8 @@ export function ConnectorCredentials({
   onShowKey: (open: boolean) => void;
   /** Where the provider renews access, when a failed test named such a page. */
   providerUrl?: string | null;
+  /** The status strip already says the sign-in's state ("Verbunden"): no badge repeats it. */
+  stateInStrip?: boolean;
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
@@ -135,11 +138,13 @@ export function ConnectorCredentials({
       <Section
         label={t("connectorCredentials.title")}
         aside={
-          <StatusBadge
-            state={BADGE_STATE[state]}
-            label={t(authStateLabel(state))}
-            testId="connector-auth-state"
-          />
+          stateInStrip ? undefined : (
+            <StatusBadge
+              state={BADGE_STATE[state]}
+              label={t(authStateLabel(state))}
+              testId="connector-auth-state"
+            />
+          )
         }
       >
         {/* One line: what is the case. A working sign-in needs none. */}
