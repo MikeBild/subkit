@@ -60,16 +60,11 @@ function violations(): Record<string, Rule[]> {
  * breaks) here.
  */
 const ALLOWED: Record<string, readonly Rule[]> = {
-  "components/cockpit/agent-panel.tsx": ["ui-import", "sheet-content", "max-w"],
   "components/cockpit/attention-list.tsx": ["ui-import", "heading"],
   "components/cockpit/automation-grant.tsx": ["ui-import"],
-  "components/cockpit/automation-panel.tsx": ["ui-import", "heading"],
   "components/cockpit/cause-fix.tsx": ["ui-import"],
   "components/cockpit/confirm-action.tsx": ["ui-import"],
-  "components/cockpit/connector-credentials.tsx": ["ui-import", "max-w"],
-  "components/cockpit/connector-detail.tsx": ["ui-import", "heading", "dl"],
-  "components/cockpit/connector-state.tsx": ["ui-import"],
-  "components/cockpit/conversations-about.tsx": ["ui-import", "heading"],
+  "components/cockpit/connector-credentials.tsx": ["ui-import"],
   "components/cockpit/decision-card.tsx": ["ui-import", "heading", "pre", "max-w"],
   "components/cockpit/detail-action.tsx": ["ui-import"],
   "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
@@ -86,14 +81,6 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/run-workflow-dialog.tsx": ["ui-import"],
   "components/cockpit/schedule-review-card.tsx": ["ui-import", "heading"],
   "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
-  "components/cockpit/workflow-diagnosis.tsx": ["ui-import", "heading"],
-  "components/cockpit/workflow-grants.tsx": ["ui-import", "heading", "dl"],
-  "components/cockpit/workflow-invocation.tsx": ["ui-import", "heading", "max-w"],
-  "components/cockpit/workflow-io.tsx": ["ui-import", "heading"],
-  "components/cockpit/workflow-page.tsx": ["ui-import"],
-  "components/cockpit/workflow-runs.tsx": ["ui-import", "heading"],
-  "components/cockpit/workflow-steps-list.tsx": ["ui-import", "heading", "pre", "dl"],
-  "components/cockpit/workflow-technical-facts.tsx": ["ui-import", "dl"],
   "pages/admin.tsx": ["ui-import", "heading", "sheet-content", "max-w"],
   "pages/api-access.tsx": ["ui-import"],
   "pages/audit.tsx": ["ui-import", "heading", "pre", "dl", "sheet-content", "max-w"],
@@ -115,7 +102,7 @@ const ALLOWED: Record<string, readonly Rule[]> = {
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
-const CEILING = 52;
+const CEILING = 39;
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {

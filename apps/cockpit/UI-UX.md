@@ -393,16 +393,20 @@ The strip shows the topmost state only — Gestoppt › Wartet auf Freigabe › 
 läuft ab › Reparatur vorbereitet › ok — with its one action; lower states are a "+1 weiteres"
 behind (?). Approving lives in the strip only.
 
-An unhealthy workflow keeps its cause block between the header and the panel. Its next step is an
-outline action there and only there — the page's one filled action stays "Ausführen". Where the
-cause is an approval that no longer fits, the block says the cause and offers nothing: the panel
-directly below says the state and carries the act. The same holds where the panel already offers
-the block's remedy for a reason of its own — reviewing a filed repair, or the conversation with
-an author: it stands once, in the panel. A failed run in "Letzte Läufe" names its cause as text;
-its row leads to the run and nowhere else.
+The strip's order is decided once, in `src/lib/workflow-strip.ts`, on top of the automation state
+below: the automation states lead (an earlier format, stopped, a change or a version waiting for
+approval, a refused step, not verified), then failing runs ("Ursache ansehen" opens the newest
+failed run's sheet on this page), then an approval running out ("Verlängern…"), then a filed
+repair ("Reparatur prüfen"). A workflow nothing starts is calm and still offers "Freigeben…". While
+the gate refuses a step, its diagnosis stands right under the strip and carries the acts per step;
+the strip then offers none. The strip's action is always outline — the page's one filled action
+stays "Ausführen" — and the approval dialog's own trigger is that action wherever approving is the
+top state, so exactly one element opens it. A run in "Verlauf" opens its sheet over this page
+(`?run=`), with the tab kept. "Im Chat fragen" in the menu replaces the former side panel for
+questions: the conversation is the one place to ask.
 
-There are no tabs and no "Steuerung" row on this page, and no fact stands twice: the version is in
-the panel and the technical facts, the schedule in the panel and the call block's own tab.
+There is no "Steuerung" row on this page, and no fact stands twice: the version is in the strip and
+the technical facts, the schedule in the "Verwenden" summary and the call's own kind.
 
 **The call block is the one place a command line stands on a page.** The rule above ("no command
 line stands on the page") was written for a page about credentials, where a command is a detour.
