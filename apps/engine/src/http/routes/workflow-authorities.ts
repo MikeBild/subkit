@@ -18,14 +18,18 @@ import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
+  BoundaryGrowthSchema,
+  boundaryGrowth,
   contentBoundariesFromManifest,
   contentPublicationLabels,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   isOpenEnded,
   JsonValueSchema,
+  nameGrowth,
   prepareReportAuthority,
   previewWorkflowAuthority,
+  referenceApprovedManifest,
   remainingRuns,
   reportBoundariesFromManifest,
   revokeWorkflowAuthority,
@@ -148,6 +152,10 @@ const previewSchema = z
       )
       .optional(),
     execution_shape: AuthorityExecutionShapeSchema,
+    // What this version reaches beyond the newest approval a person gave this
+    // workflow in this environment, by the rule approval inheritance applies.
+    // Empty: the boundary did not grow. Absent: there is no earlier approval.
+    boundary_growth: z.array(BoundaryGrowthSchema).optional(),
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
     ),
@@ -751,9 +759,24 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
           ? await inboundHookDeliveryRate(principal.tenant_id, id, c.get("db"), new Date(now))
           : null,
       );
+      const reviewed = {
+        tenant_id: principal.tenant_id,
+        workflow_id: id,
+        workflow_version_id: version_id,
+        execution_environment: c.req.valid("query").environment,
+      };
+      const reference = await referenceApprovedManifest(c.get("db"), reviewed);
+      const boundary_growth = reference
+        ? await nameGrowth(
+            c.get("db"),
+            principal.tenant_id,
+            boundaryGrowth(reference, result.manifest),
+          )
+        : null;
       return c.json(
         {
           ...result,
+          ...(boundary_growth ? { boundary_growth } : {}),
           execution_shape: result.execution_shape,
           content_items: contentPublicationLabels(
             result.manifest,

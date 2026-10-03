@@ -248,6 +248,7 @@ describe("an approval does not follow a version that reaches more", () => {
       {
         kind: "new_connector",
         connector_id: f.ids.other,
+        connector_name: expect.stringContaining("-other"),
         target: "https://other.example.test/api/status",
         effect: "read",
       },

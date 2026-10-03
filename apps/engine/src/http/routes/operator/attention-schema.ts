@@ -8,6 +8,7 @@ import {
   ATTENTION_SOURCES,
   ATTENTION_SUBJECT_KINDS,
 } from "../../../operator/attention.ts";
+import { BoundaryGrowthSchema } from "../../../workflows/authority-growth.ts";
 
 const SourceState = z.enum(["answered", "failed", "not_permitted"]);
 
@@ -48,7 +49,16 @@ const AttentionItem = z
         "What starts the workflow. Null unless it is held or the item is about its approval.",
       ),
     approval: z
-      .object({ version: z.number().int(), environment: z.enum(["dev", "prod"]) })
+      .object({
+        version: z.number().int(),
+        environment: z.enum(["dev", "prod"]),
+        growth: z
+          .array(BoundaryGrowthSchema)
+          .optional()
+          .describe(
+            "Only on version_awaiting_approval: what this version reaches beyond the approval of the version before it, which is why that approval did not follow.",
+          ),
+      })
       .optional()
       .describe(
         "The running version an approval item is about and where it runs. Only on version_awaiting_approval, version_needs_repair and approval_expiring.",

@@ -179,6 +179,49 @@ test("browser grant, reload and revoke preserve the exact boundary", async () =>
   });
 });
 
+test("an approval until revoked reads as open-ended; the next preview names no growth", async () => {
+  const f = await fixture();
+  const { valid_until: _until, max_runs: _runs, ...openEnded } = f.body;
+  const granted = await app.request(`${f.base}/execution-authorities`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({ ...openEnded, valid_until: null, max_runs: null }),
+  });
+  expect(granted.status).toBe(201);
+  expect(await granted.json()).toMatchObject({
+    state: "approved",
+    open_ended: true,
+    valid_until: null,
+    max_runs: null,
+    remaining_runs: null,
+    inherited_from: null,
+    superseded_by: null,
+  });
+  // A second version with the same boundary: compared with that approval,
+  // nothing is new. The approved version itself has no other to compare with.
+  const [next] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      version: 2,
+      dag: (
+        await ctx.db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(eq(workflowVersions.id, f.version.id))
+      )[0]?.dag as Record<string, unknown>,
+    })
+    .returning();
+  if (!next) throw new Error("missing second version");
+  const own = await app.request(f.previewPath, { headers: browserHeaders });
+  expect(((await own.json()) as { boundary_growth?: unknown }).boundary_growth).toBeUndefined();
+  const preview = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
+    headers: browserHeaders,
+  });
+  expect(((await preview.json()) as { boundary_growth?: unknown }).boundary_growth).toEqual([]);
+});
+
 test("missing CSRF and a changed reviewed connector are rejected", async () => {
   const f = await fixture();
   const noCsrf = await app.request(`${f.base}/execution-authorities`, {
