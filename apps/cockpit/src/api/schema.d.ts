@@ -22035,7 +22035,7 @@ export interface components {
             source: "right-arrow" | "tab" | "typed-over" | "dismissed";
         };
         ConversationAttachment: components["schemas"]["File"] & {
-            slug: string;
+            slug?: string;
         };
         /** @enum {string} */
         FileStatus: "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
@@ -22050,6 +22050,8 @@ export interface components {
             created_at: string;
             updated_at: string;
             deleted_at: string | null;
+            slug: string | null;
+            reference: string | null;
         };
         ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
             filename: string;
@@ -22091,9 +22093,15 @@ export interface components {
             sha256: string;
         };
         FileList: {
-            items: components["schemas"]["File"][];
+            items: components["schemas"]["FileListItem"][];
             total: number;
             next_cursor?: string | null;
+        };
+        FileListItem: components["schemas"]["File"] & {
+            usage: {
+                workflows: number;
+                conversations: number;
+            };
         };
         FileStats: {
             total: number;
