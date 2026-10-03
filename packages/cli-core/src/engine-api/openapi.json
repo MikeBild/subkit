@@ -5695,6 +5695,9 @@
               "$ref": "#/components/schemas/AuthorityBoundaryGrowth"
             }
           },
+          "approval_carries_over": {
+            "type": "boolean"
+          },
           "schedules": {
             "type": "array",
             "items": {
@@ -5814,6 +5817,7 @@
           "eligible_for_repeated_runs",
           "unavailable_steps",
           "execution_shape",
+          "approval_carries_over",
           "schedules",
           "suggested_bounds",
           "suggested_bounds_basis"

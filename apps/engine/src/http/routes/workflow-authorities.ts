@@ -18,6 +18,7 @@ import {
   ActivateWorkflowDraftSchema,
   AuthorityExecutionShapeSchema,
   activateWorkflowDraft,
+  approvalWouldCarry,
   BoundaryGrowthSchema,
   boundaryGrowth,
   contentBoundariesFromManifest,
@@ -156,6 +157,10 @@ const previewSchema = z
     // workflow in this environment, by the rule approval inheritance applies.
     // Empty: the boundary did not grow. Absent: there is no earlier approval.
     boundary_growth: z.array(BoundaryGrowthSchema).optional(),
+    // True when this version is not the active one and activating it would
+    // carry a live approval of the active version over (its boundary does not
+    // grow): putting it into service needs no new approval.
+    approval_carries_over: z.boolean(),
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
     ),
@@ -773,10 +778,17 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
             boundaryGrowth(reference, result.manifest),
           )
         : null;
+      const approval_carries_over = await approvalWouldCarry(c.get("db"), {
+        tenant_id: principal.tenant_id,
+        workflow_id: id,
+        version_id,
+        execution_environment: reviewed.execution_environment,
+      });
       return c.json(
         {
           ...result,
           ...(boundary_growth ? { boundary_growth } : {}),
+          approval_carries_over,
           execution_shape: result.execution_shape,
           content_items: contentPublicationLabels(
             result.manifest,

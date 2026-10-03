@@ -63,6 +63,7 @@ const preview: WorkflowAuthorityPreview = {
     max_runs: 1,
   },
   suggested_bounds_basis: { kind: "manual" },
+  approval_carries_over: false,
   execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
 };
 const expected = {
