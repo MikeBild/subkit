@@ -5,11 +5,16 @@ import {
   AUTHORITY_STATE_KEYS,
   acceptReview,
   authorityGrantInput,
+  DEFAULT_GRANT_LIMIT,
+  type GrantLimit,
+  grantConfirmKey,
+  grantLimitBounds,
   observedAuthorityState,
   type WorkflowAuthority,
   type WorkflowAuthorityPreview,
 } from "./workflow-authorities";
 
+const UNTIL = "2026-01-02T00:00:00.000Z";
 const authority: WorkflowAuthority = {
   id: "00000000-0000-4000-8000-000000000001",
   workflow_id: "00000000-0000-4000-8000-000000000002",
@@ -29,7 +34,7 @@ const authority: WorkflowAuthority = {
   execution_environment: "dev",
   target_constraints: { targets: [] },
   valid_from: "2026-01-01T00:00:00.000Z",
-  valid_until: "2026-01-02T00:00:00.000Z",
+  valid_until: UNTIL,
   max_runs: 2,
   reserved_runs: 1,
   remaining_runs: 1,
@@ -37,6 +42,9 @@ const authority: WorkflowAuthority = {
   created_at: "2026-01-01T00:00:00.000Z",
   revoked_at: null,
   revoked_by: null,
+  open_ended: false,
+  inherited_from: null,
+  superseded_by: null,
   active_version: true,
   ready_for_new_run: true,
   state: "approved",
@@ -51,7 +59,7 @@ const preview: WorkflowAuthorityPreview = {
   unavailable_steps: [],
   suggested_bounds: {
     valid_from: authority.valid_from,
-    valid_until: authority.valid_until,
+    valid_until: UNTIL,
     max_runs: 1,
   },
   suggested_bounds_basis: { kind: "manual" },
@@ -89,18 +97,40 @@ describe("exact grant input", () => {
       execution_environment: "dev",
       expected_manifest_digest: preview.digest,
       valid_from: authority.valid_from,
-      valid_until: authority.valid_until,
+      valid_until: UNTIL,
       max_runs: 2,
     });
+  });
+  test("an approval until revoked sends no run limit and no end date", () => {
+    expect(authorityGrantInput(preview, expected, null, null, during)).toEqual({
+      workflow_version_id: authority.workflow_version_id,
+      execution_environment: "dev",
+      expected_manifest_digest: preview.digest,
+      valid_from: authority.valid_from,
+      valid_until: null,
+      max_runs: null,
+    });
+    // Without an end date the review never expires by the local clock.
+    expect(
+      authorityGrantInput(preview, expected, null, null, Date.parse(UNTIL) + 1),
+    ).not.toBeNull();
+  });
+  test("the dialog starts at 'until revoked', and its button follows the choice", () => {
+    expect(DEFAULT_GRANT_LIMIT).toBe("until_revoked");
+    expect(grantLimitBounds("until_revoked", "5", "24")).toEqual({ runs: null, hours: null });
+    expect(grantLimitBounds("limited", "5", "24")).toEqual({ runs: "5", hours: "24" });
+    const label = (limit: GrantLimit, runs: string) =>
+      translate("de", grantConfirmKey(limit, runs), { count: runs });
+    expect(label("until_revoked", "5")).toBe("Freigeben");
+    expect(label("limited", "5")).toBe("5 Läufe erlauben");
+    expect(label("limited", "1")).toBe("1 Lauf erlauben");
   });
   test("rejects invalid counts, windows and an expired review", () => {
     for (const runs of ["", "0", "1.5", "10001", "NaN"])
       expect(authorityGrantInput(preview, expected, runs, "24", during)).toBeNull();
     for (const hours of ["", "0", "1.5", "745", "Infinity"])
       expect(authorityGrantInput(preview, expected, "1", hours, during)).toBeNull();
-    expect(
-      authorityGrantInput(preview, expected, "1", "24", Date.parse(authority.valid_until)),
-    ).toBeNull();
+    expect(authorityGrantInput(preview, expected, "1", "24", Date.parse(UNTIL))).toBeNull();
   });
   test("does not reuse a review across workflow, version or environment changes", () => {
     expect(
@@ -148,9 +178,20 @@ describe("exact grant input", () => {
 });
 
 describe("authority display boundaries", () => {
+  test("an approval until revoked is neither expired nor used up by the local clock", () => {
+    const open = {
+      ...authority,
+      valid_until: null,
+      max_runs: null,
+      remaining_runs: null,
+      reserved_runs: 5_000,
+      open_ended: true,
+    };
+    expect(observedAuthorityState(open, Date.parse(UNTIL) + 365 * 86_400_000)).toBe("approved");
+  });
   test("expires at the exact deadline without waiting for a server refresh", () => {
     expect(observedAuthorityState(authority, during)).toBe("approved");
-    expect(observedAuthorityState(authority, Date.parse(authority.valid_until))).toBe("expired");
+    expect(observedAuthorityState(authority, Date.parse(UNTIL))).toBe("expired");
     expect(observedAuthorityState(authority, Date.parse(authority.valid_from) - 1)).toBe(
       "not_yet_valid",
     );

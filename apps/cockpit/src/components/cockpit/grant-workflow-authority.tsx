@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
 import { authorityIssues } from "@/lib/authority-issues";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
@@ -47,6 +48,10 @@ import {
   AUTHORITY_EFFECT_KEYS,
   acceptReview,
   authorityGrantInput,
+  DEFAULT_GRANT_LIMIT,
+  type GrantLimit,
+  grantConfirmKey,
+  grantLimitBounds,
   type WorkflowAuthority,
   type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
@@ -99,6 +104,10 @@ export function GrantWorkflowAuthority({
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
+  // An approval stands until it is revoked unless the reader chooses limits:
+  // a run count and a validity window are the exception, not the default.
+  const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
+  const limited = limit === "limited";
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
   // When the trial run started, or null while nothing is running. A timestamp
   // rather than a boolean, so the counter below survives a re-render without
@@ -300,11 +309,14 @@ export function GrantWorkflowAuthority({
     );
   }
   const expected = { workflowId, versionId: reviewVersionId, environment };
-  const input = review ? authorityGrantInput(review, expected, runs, hours, Date.now()) : null;
+  const { runs: grantRuns, hours: grantHours } = grantLimitBounds(limit, runs, hours);
+  const input = review
+    ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
+    : null;
   const grant = useMutation({
     mutationFn: () => {
       const checked = review
-        ? authorityGrantInput(review, expected, runs, hours, Date.now())
+        ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
         : null;
       if (!checked) throw new Error("authority_review_incomplete");
       if (onGrant) return onGrant(checked);
@@ -448,8 +460,10 @@ export function GrantWorkflowAuthority({
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
-  const invalidRuns = !Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000;
-  const invalidHours = !Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744;
+  const invalidRuns =
+    limited && (!Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000);
+  const invalidHours =
+    limited && (!Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744);
   const boundsVisible = review && !unsupported && !incomplete;
   const context = useGrantContext(workflowId, open);
   // An approval that already covers exactly this — the same version, the same
@@ -490,6 +504,7 @@ export function GrantWorkflowAuthority({
     setSample(null);
     if (value) {
       corrected.current = false;
+      setLimit(DEFAULT_GRANT_LIMIT);
       setEnvironment(initialEnvironment);
       startReview(initialEnvironment);
     } else {
@@ -529,15 +544,20 @@ export function GrantWorkflowAuthority({
         <DialogHeader className="-mx-4 -mt-4 shrink-0 bg-accent/10 px-4 py-4 pr-12">
           <DialogTitle data-testid="authority-dialog-title">
             {existing
-              ? t(
-                  existing.remaining_runs === 1
-                    ? "authority.existing.titleOne"
-                    : "authority.existing.title",
-                  {
-                    until: dateTime(existing.valid_until),
-                    runs: existing.remaining_runs,
-                  },
-                )
+              ? existing.open_ended
+                ? t("authority.existing.titleUntilRevoked")
+                : t(
+                    existing.remaining_runs === 1
+                      ? "authority.existing.titleOne"
+                      : "authority.existing.title",
+                    {
+                      until:
+                        existing.valid_until === null
+                          ? t("authority.headline.untilRevoked")
+                          : dateTime(existing.valid_until),
+                      runs: existing.remaining_runs ?? t("authority.headline.runs.unlimited"),
+                    },
+                  )
               : t(
                   recurringContent
                     ? "authority.content.title"
@@ -804,6 +824,35 @@ export function GrantWorkflowAuthority({
               </Select>
             </Field>
             {boundsVisible && (
+              <Field>
+                <FieldLabel id="authority-limit-label">{t("authority.limit.label")}</FieldLabel>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  value={limit}
+                  disabled={busy}
+                  onValueChange={(next) => {
+                    if (next === "until_revoked" || next === "limited") setLimit(next);
+                  }}
+                  aria-labelledby="authority-limit-label"
+                  data-testid="authority-limit"
+                >
+                  <ToggleGroupItem
+                    value="until_revoked"
+                    data-testid="authority-limit-until-revoked"
+                  >
+                    {t("authority.limit.untilRevoked")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="limited" data-testid="authority-limit-limited">
+                    {t("authority.limit.limited")}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <p className="text-sm text-muted-foreground" data-testid="authority-limit-hint">
+                  {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
+                </p>
+              </Field>
+            )}
+            {boundsVisible && limited && (
               <>
                 <Field data-invalid={invalidRuns}>
                   <FieldLabel htmlFor="authority-runs">{t("authority.runs")}</FieldLabel>
@@ -934,7 +983,9 @@ export function GrantWorkflowAuthority({
                   {": "}
                   {dateTime(input.valid_from)}
                   {" — "}
-                  {dateTime(input.valid_until)}
+                  {input.valid_until === null
+                    ? t("authority.headline.untilRevoked")
+                    : dateTime(input.valid_until)}
                 </p>
               )}
               {hasEffectDetails ? (
@@ -1160,9 +1211,7 @@ export function GrantWorkflowAuthority({
                           ? "chat.activation.confirm"
                           : onGrant
                             ? "decisions.applyAndAuthorize"
-                            : Number(runs) === 1
-                              ? "authority.grantConfirmOne"
-                              : "authority.grantConfirm",
+                            : grantConfirmKey(limit, runs),
                 { count: runs },
               )}
             </Button>
