@@ -3,7 +3,7 @@
 // It is a way back in, not a place to live: beside the conversation on a wide
 // screen, folded under the page title on a phone. A row is one line, 32px
 // high, 4px apart, its text 8px inside its hover box (R18). The open
-// conversation's own menu renames and hides it, so a row carries no actions.
+// conversation's own menu renames, hides and deletes it, so a row carries no actions.
 //
 // The row never shows a status word. What a conversation came to is either
 // "it wants you" (a dot, named for a screen reader) or not worth a mark; the
