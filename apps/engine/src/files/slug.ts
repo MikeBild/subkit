@@ -10,7 +10,8 @@
 // have chosen for it.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import { toFileId } from "../api/files-schemas.ts";
+import type { Db, Executor } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
 
 /** The reference prefix chat text and `$file` leaves use for a slug. */
@@ -162,4 +163,44 @@ export async function findFileBySlug(
     .where(and(eq(files.tenant_id, tenant_id), eq(files.slug, slug), isNull(files.deleted_at)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * A run's input, with every `{ "$file": "@attachment:<slug>" }` leaf pinned to
+ * the `fid_` id the slug names right now.
+ *
+ * A slug is a name, and a name moves: delete a file and the next upload with
+ * the same name takes its slug. A stored input that kept the slug would make
+ * a later rerun read a different file than the run it repeats. Pinned when
+ * the run is admitted, the input names one file for good. A slug that names
+ * no live file is left as written; the step that reads it fails as before.
+ * (A workflow definition keeps its references: resolving them anew is what
+ * a reference is for.)
+ */
+export async function pinFileReferences(
+  db: Executor,
+  tenant_id: string,
+  input: unknown,
+): Promise<unknown> {
+  const cache = new Map<string, string | null>();
+  const walk = async (value: unknown): Promise<unknown> => {
+    if (Array.isArray(value)) return Promise.all(value.map(walk));
+    if (value === null || typeof value !== "object") return value;
+    const record = value as Record<string, unknown>;
+    const ref = record.$file;
+    if (typeof ref === "string" && Object.keys(record).length === 1) {
+      const slug = parseFileReference(ref);
+      if (!slug) return value;
+      if (!cache.has(slug)) {
+        const row = await findFileBySlug(db as Db, tenant_id, slug);
+        cache.set(slug, row ? toFileId(row.id) : null);
+      }
+      const fid = cache.get(slug);
+      return fid ? { $file: fid } : value;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(record)) out[key] = await walk(child);
+    return out;
+  };
+  return walk(input);
 }
