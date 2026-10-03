@@ -1,43 +1,52 @@
-import { ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
-/**
- * One way to go, as a full-width card (P14): icon, title, one line. Choosing
- * it proceeds — the dialog that offers two ways has no submit of its own,
- * only "Abbrechen".
- */
-export function ChoiceCard({
-  icon,
-  title,
-  line,
-  onSelect,
-  testId,
-}: {
+export interface ChoiceCardItem {
   icon: ReactNode;
   title: string;
+  /** One line. */
   line: string;
   onSelect(): void;
   testId: string;
-}) {
+}
+
+/**
+ * Equal ways to go, as full-width cards (P22): icon, title, one line. Choosing
+ * one proceeds — the dialog that offers them has no submit of its own, only
+ * "Abbrechen". Side by side from 640px, stacked with the icon at the left on a
+ * phone.
+ */
+export function ChoiceCards({ items }: { items: readonly ChoiceCardItem[] }) {
+  const id = useId();
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex min-h-16 w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      data-slot="choice-card"
-      data-testid={testId}
-    >
-      <span
-        className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg]:size-4"
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-sm font-medium">{title}</span>
-        <span className="text-sm text-muted-foreground">{line}</span>
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-    </button>
+    <div className="grid gap-3 sm:grid-cols-2" data-slot="choices">
+      {items.map((item, index) => (
+        <button
+          key={item.testId}
+          type="button"
+          onClick={item.onSelect}
+          aria-labelledby={`${id}-${index}-t`}
+          aria-describedby={`${id}-${index}-d`}
+          className="grid w-full min-w-0 grid-cols-[36px_minmax(0,1fr)] content-start items-start gap-x-3 gap-y-0.5 rounded-lg border bg-background px-4 py-3.5 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)] sm:gap-y-1 sm:p-4"
+          data-slot="choice-card"
+          data-testid={item.testId}
+        >
+          <span
+            className="row-span-2 grid size-9 place-items-center rounded-md bg-muted text-foreground sm:row-span-1 sm:mb-2 [&_svg]:size-[18px]"
+            aria-hidden="true"
+          >
+            {item.icon}
+          </span>
+          <span id={`${id}-${index}-t`} className="text-sm leading-5 font-medium">
+            {item.title}
+          </span>
+          <span
+            id={`${id}-${index}-d`}
+            className="text-[13px] leading-[18px] text-muted-foreground"
+          >
+            {item.line}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
