@@ -65,7 +65,11 @@ describe("P2 PageHeader", () => {
         title="Workflows"
         badge={<span data-x="badge" />}
         purpose="Wozu"
-        action={<button type="button">Ausführen</button>}
+        action={
+          <button type="button" data-testid="x">
+            Ausführen
+          </button>
+        }
         menu={<span data-x="menu" />}
       />,
     );
@@ -93,7 +97,11 @@ describe("P3 StatusStrip", () => {
       <StatusStrip
         tone="warn"
         line="Wartet auf Freigabe"
-        action={<button type="button">Freigeben…</button>}
+        action={
+          <button type="button" data-testid="x">
+            Freigeben…
+          </button>
+        }
         testId="strip"
       />,
     );
@@ -220,7 +228,11 @@ describe("P12 DataState", () => {
       <DataState
         state="empty"
         line="Noch keine Workflows."
-        action={<button type="button">Workflow erstellen</button>}
+        action={
+          <button type="button" data-testid="x">
+            Workflow erstellen
+          </button>
+        }
       />,
     );
     expect(html).toContain("Noch keine Workflows.");
@@ -244,8 +256,10 @@ describe("P13 ConfirmDialog", () => {
       translate(locale, key, values);
 
   test("the title is the object and the verb, the verb lower-cased in German", () => {
-    expect(confirmTitle(t("de"), "Freigabe v4", "Widerrufen")).toBe("Freigabe v4 widerrufen?");
-    expect(confirmTitle(t("en"), "approval v4", "Revoke")).toBe("Revoke approval v4?");
+    expect(confirmTitle(t("de"), "de", "Freigabe v4", "Widerrufen")).toBe(
+      "Freigabe v4 widerrufen?",
+    );
+    expect(confirmTitle(t("en"), "en", "approval v4", "Revoke")).toBe("Revoke approval v4?");
   });
 });
 
@@ -324,7 +338,11 @@ describe("P19 ChatCard", () => {
         title="Änderung an upraft-auth-notify"
         line="v6 gespeichert"
         facts={[{ label: "Umgebung", value: "Produktion" }]}
-        action={<button type="button">Übernehmen</button>}
+        action={
+          <button type="button" data-testid="x">
+            Übernehmen
+          </button>
+        }
       />,
     );
     expect(html).toContain('data-slot="chat-card"');
