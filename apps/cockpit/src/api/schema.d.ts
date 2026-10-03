@@ -21130,6 +21130,11 @@ export interface components {
             maturity: "experimental" | "stable";
             /** @default [] */
             tags: string[];
+            /**
+             * @default both
+             * @enum {string}
+             */
+            applies_to: "chat" | "authoring" | "both";
             /** @enum {string} */
             status: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -21245,6 +21250,8 @@ export interface components {
             maturity?: "experimental" | "stable";
             tags?: string[];
             /** @enum {string} */
+            applies_to?: "chat" | "authoring" | "both";
+            /** @enum {string} */
             status?: "draft" | "active" | "archived";
             /** @enum {string} */
             source?: "manual" | "candidate" | "template" | "memory";
@@ -21272,6 +21279,8 @@ export interface components {
             /** @enum {string} */
             maturity?: "experimental" | "stable";
             tags?: string[];
+            /** @enum {string} */
+            applies_to?: "chat" | "authoring" | "both";
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
         };
