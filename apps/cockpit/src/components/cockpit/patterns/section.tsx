@@ -60,13 +60,15 @@ export function CollapsibleSection({
         >
           <ChevronRight
             aria-hidden="true"
-            className="size-3.5 transition-transform group-data-[state=open]/section:rotate-90"
+            className="size-3.5 transition-transform duration-(--sk-dur-base) ease-(--sk-ease-standard) group-data-[state=open]/section:rotate-90"
           />
           {label}
           {count !== undefined ? <span className="tabular-nums">({count})</span> : null}
         </CollapsibleTrigger>
       </h2>
-      <CollapsibleContent className="pt-3">{children}</CollapsibleContent>
+      <CollapsibleContent className="sk-collapsible overflow-hidden">
+        <div className="pt-3">{children}</div>
+      </CollapsibleContent>
     </Collapsible>
   );
 }
