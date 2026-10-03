@@ -84,6 +84,11 @@ export const FileSchema = z
     created_at: z.string(),
     updated_at: z.string(),
     deleted_at: z.string().nullable(),
+    /** Tenant-unique name of the file, kept across rename and replace. */
+    slug: z.string().nullable(),
+    /** `@attachment:<slug>` — accepted wherever a `fid_` reference is
+     *  (chat text, `{ "$file": … }` leaves in workflow inputs). */
+    reference: z.string().nullable(),
   })
   .openapi("File");
 
@@ -266,9 +271,18 @@ export const ListFilesQuerySchema = z
   })
   .openapi("ListFilesQuery");
 
+/** A listed file with how many workflows and conversations use it — the
+ *  same counting as `GET /v1/files/{id}/usage`. */
+export const FileListItemSchema = FileSchema.extend({
+  usage: z.object({
+    workflows: z.number().int().nonnegative(),
+    conversations: z.number().int().nonnegative(),
+  }),
+}).openapi("FileListItem");
+
 export const FileListResponseSchema = z
   .object({
-    items: z.array(FileSchema),
+    items: z.array(FileListItemSchema),
     total: z.number().int().nonnegative(),
     next_cursor: z.string().nullable().optional(),
   })

@@ -29,6 +29,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/files.ts";
 import { getObjectStore } from "../storage/object-store.ts";
+import { ATTACHMENT_REFERENCE_PREFIX, findFileBySlug, parseFileReference } from "./slug.ts";
 
 export type FileRow = typeof files.$inferSelect;
 
@@ -64,7 +65,14 @@ export async function requireFileForTenant(
 ): Promise<FileRow> {
   // Wire format is `fid_<uuid>`; the DB column is `uuid`. Strip the
   // `fid_` prefix before the SELECT so a wire-format ref doesn't
-  // miss against the typed column.
+  // miss against the typed column. An `@attachment:<slug>` reference names
+  // the tenant's live file under that slug.
+  if (fid.startsWith(ATTACHMENT_REFERENCE_PREFIX)) {
+    const slug = parseFileReference(fid);
+    const bySlug = slug ? await findFileBySlug(db, tenant_id, slug) : null;
+    if (!bySlug) throw new FileNotFoundError(fid);
+    return bySlug;
+  }
   const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
   const rows = await db
     .select()

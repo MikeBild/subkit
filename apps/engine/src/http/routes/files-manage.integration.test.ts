@@ -207,3 +207,136 @@ describe("GET /v1/files/{id}/usage", () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe("the @attachment:<slug> reference", () => {
+  type Wire = { id: string; slug: string | null; reference: string | null };
+
+  test("a new file gets a tenant-unique slug from its name", async () => {
+    const first = (await upload("q3 one", "Übersicht Q3.pdf")) as Wire;
+    const second = (await upload("q3 two", "Übersicht Q3.pdf")) as Wire;
+    expect(first.slug).toBe("uebersicht-q3");
+    expect(first.reference).toBe("@attachment:uebersicht-q3");
+    expect(second.slug).toBe("uebersicht-q3-2");
+  });
+
+  test("rename and replace keep the slug", async () => {
+    const file = (await upload("keep me", "keep.txt")) as Wire;
+    const renamed = await request("PATCH", `/v1/files/${file.id}`, srv.apiKey, {
+      filename: "anders.txt",
+    });
+    expect(((await renamed.json()) as Wire).slug).toBe(file.slug);
+    const replaced = await request("POST", `/v1/files/${file.id}/replace`, srv.apiKey, {
+      filename: "noch-anders.txt",
+      content_base64: Buffer.from("kept, new bytes").toString("base64"),
+    });
+    expect(((await replaced.json()) as Wire).slug).toBe(file.slug);
+  });
+
+  test("a revived file takes the next free slug when its own was taken", async () => {
+    const original = (await upload("revive content", "revive.txt")) as Wire;
+    expect(original.slug).toBe("revive");
+    const removed = await request("DELETE", `/v1/files/${original.id}`, srv.apiKey);
+    expect(removed.status).toBeLessThan(300);
+    const newcomer = (await upload("other revive content", "revive.txt")) as Wire;
+    expect(newcomer.slug).toBe("revive");
+    const again = await request("POST", "/v1/files/inline", srv.apiKey, {
+      filename: "revive.txt",
+      content_base64: Buffer.from("revive content").toString("base64"),
+    });
+    const revived = (await again.json()) as Wire;
+    expect(revived.id).toBe(original.id);
+    expect(revived.slug).toBe("revive-2");
+  });
+
+  test("a $file leaf resolves by reference", async () => {
+    const { walkAndResolve } = await import("../../files/resolver.ts");
+    const file = (await upload("by reference", "by-ref.txt")) as Wire;
+    const resolved: unknown = await walkAndResolve(
+      { sheet: { $file: "@attachment:by-ref" } },
+      { db: srv.db, tenant_id: srv.tenantId },
+      new Map(),
+    );
+    expect((resolved as { sheet: { id: string } }).sheet.id).toBe(parseFileIdOrThrow(file.id));
+    await expect(
+      walkAndResolve(
+        { $file: "@attachment:no-such-file" },
+        { db: srv.db, tenant_id: srv.tenantId },
+        new Map(),
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("chat text naming a tenant slug links the file into the conversation", async () => {
+    const { resolveAttachmentSlugsInText } = await import("../../conversations/attachments.ts");
+    const file = (await upload("chat by slug", "chat-slug.txt")) as Wire;
+    const [conversation] = await srv.db
+      .insert(conversations)
+      .values({ tenant_id: srv.tenantId, status: "active", title: "Slug chat" })
+      .returning();
+    if (!conversation) throw new Error("seed conversation");
+    const rewrite = await resolveAttachmentSlugsInText("lies @attachment:chat-slug bitte", {
+      db: srv.db,
+      tenant_id: srv.tenantId,
+      conversation_id: conversation.id,
+    });
+    expect(rewrite.text).toBe(`lies [file:${file.id}] bitte`);
+    const links = await srv.db
+      .select({ slug: fileLinks.slug })
+      .from(fileLinks)
+      .where(
+        and(
+          eq(fileLinks.resource_type, "conversation"),
+          eq(fileLinks.resource_id, conversation.id),
+        ),
+      );
+    expect(links).toEqual([{ slug: "chat-slug" }]);
+  });
+
+  test("the list counts workflows naming the file by id or reference, and conversations", async () => {
+    const file = (await upload("counted content", "counted.txt")) as Wire;
+    await upload("neighbour content", "counted-2-neighbour.txt");
+    const seed = async (slug: string, dag: Record<string, unknown>) => {
+      const [workflow] = await srv.db
+        .insert(workflows)
+        .values({ tenant_id: srv.tenantId, slug, name: slug, lifecycle: "active" })
+        .returning();
+      if (!workflow) throw new Error("seed workflow");
+      const [version] = await srv.db
+        .insert(workflowVersions)
+        .values({ tenant_id: srv.tenantId, workflow_id: workflow.id, version: 1, dag })
+        .returning();
+      if (!version) throw new Error("seed version");
+      await srv.db
+        .update(workflows)
+        .set({ current_version_id: version.id })
+        .where(eq(workflows.id, workflow.id));
+    };
+    await seed("counts-by-ref", { steps: [{ id: "a", input: { $file: "@attachment:counted" } }] });
+    await seed("counts-by-id", { steps: [{ id: "a", input: { $file: file.id } }] });
+    await seed("counts-not", {
+      steps: [{ id: "a", input: { $file: "@attachment:counted-2-neighbour" } }],
+    });
+    const [conversation] = await srv.db
+      .insert(conversations)
+      .values({ tenant_id: srv.tenantId, status: "active", title: "Counted" })
+      .returning();
+    if (!conversation) throw new Error("seed conversation");
+    await srv.db.insert(fileLinks).values({
+      tenant_id: srv.tenantId,
+      file_id: parseFileIdOrThrow(file.id),
+      resource_type: "conversation",
+      resource_id: conversation.id,
+      slug: "counted",
+    });
+    const response = await request("GET", "/v1/files?q=counted&limit=100", srv.apiKey);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      items: Array<Wire & { usage: { workflows: number; conversations: number } }>;
+    };
+    const listed = body.items.find((item) => item.id === file.id);
+    expect(listed?.usage).toEqual({ workflows: 2, conversations: 1 });
+    const usage = await request("GET", `/v1/files/${file.id}/usage`, srv.apiKey);
+    const named = (await usage.json()) as { workflows: Array<{ name: string }> };
+    expect(named.workflows.map((w) => w.name).sort()).toEqual(["counts-by-id", "counts-by-ref"]);
+  });
+});

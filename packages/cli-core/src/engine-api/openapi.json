@@ -18510,10 +18510,7 @@
               "slug": {
                 "type": "string"
               }
-            },
-            "required": [
-              "slug"
-            ]
+            }
           }
         ]
       },
@@ -18573,6 +18570,18 @@
               "string",
               "null"
             ]
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -18585,7 +18594,9 @@
           "scan_result",
           "created_at",
           "updated_at",
-          "deleted_at"
+          "deleted_at",
+          "slug",
+          "reference"
         ]
       },
       "ConversationAttachmentUpload": {
@@ -18761,7 +18772,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/File"
+              "$ref": "#/components/schemas/FileListItem"
             }
           },
           "total": {
@@ -18778,6 +18789,38 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "FileListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/File"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "usage": {
+                "type": "object",
+                "properties": {
+                  "workflows": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "conversations": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "workflows",
+                  "conversations"
+                ]
+              }
+            },
+            "required": [
+              "usage"
+            ]
+          }
         ]
       },
       "FileStats": {

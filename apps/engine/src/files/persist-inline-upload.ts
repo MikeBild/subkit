@@ -26,6 +26,7 @@ import { files } from "../db/schema/files.ts";
 import { getObjectStore } from "../storage/object-store.ts";
 import { buildObjectKey, composeStorageUri, streamFromBytes } from "./object-key.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS, type ScanResult } from "./scanner.ts";
+import { insertFileRow } from "./slug.ts";
 
 /** Scanner output the caller mirrors into a `FILE_SCAN_COMPLETED`
  *  audit row. `null` is returned on the dedup branch — no fresh scan
@@ -118,22 +119,18 @@ export async function persistInlineUpload(
   };
 
   try {
-    const inserted = await db
-      .insert(files)
-      .values({
-        id: file_uuid,
-        tenant_id: params.tenant_id,
-        status,
-        filename: params.filename,
-        content_type: params.content_type,
-        size_bytes: params.bytes.byteLength,
-        storage_uri,
-        sha256,
-        scan_result: scan.verdict,
-        created_by: params.actor_id,
-      })
-      .returning();
-    const row = inserted[0];
+    const row = await insertFileRow(db, {
+      id: file_uuid,
+      tenant_id: params.tenant_id,
+      status,
+      filename: params.filename,
+      content_type: params.content_type,
+      size_bytes: params.bytes.byteLength,
+      storage_uri,
+      sha256,
+      scan_result: scan.verdict,
+      created_by: params.actor_id,
+    });
     if (row) {
       return {
         row,

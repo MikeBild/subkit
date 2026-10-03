@@ -19,7 +19,7 @@
 //
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, count, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -64,6 +64,8 @@ import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
+import { fileReference, insertFileRow, reviveFileRow } from "../../files/slug.ts";
+import { dagNamesFile } from "../../files/usage.ts";
 import { logger } from "../../logging/index.ts";
 import {
   observeFileUploadDuration,
@@ -103,6 +105,8 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
+    slug: row.slug,
+    reference: fileReference(row.slug),
   };
 }
 
@@ -409,12 +413,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       // tombstone that lists/links silently ignore.
       let canonical = existing[0];
       if (canonical.deleted_at) {
-        const [revived] = await db
-          .update(files)
-          .set({ deleted_at: null, updated_at: new Date() })
-          .where(eq(files.id, canonical.id))
-          .returning();
-        if (revived) canonical = revived;
+        canonical = await reviveFileRow(db, canonical);
       }
       recordFileDedupHit();
       // Per-tenant persisted counter — decouples the stats endpoint
@@ -473,23 +472,19 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     let row: typeof files.$inferSelect | undefined;
     try {
-      const inserted = await db
-        .insert(files)
-        .values({
-          id: file_uuid,
-          tenant_id,
-          status,
-          filename: body.filename,
-          content_type: body.content_type ?? null,
-          size_bytes: bytes.byteLength,
-          storage_uri,
-          sha256,
-          scan_result: scan.verdict,
-          created_by:
-            principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
-        })
-        .returning();
-      row = inserted[0];
+      row = await insertFileRow(db, {
+        id: file_uuid,
+        tenant_id,
+        status,
+        filename: body.filename,
+        content_type: body.content_type ?? null,
+        size_bytes: bytes.byteLength,
+        storage_uri,
+        sha256,
+        scan_result: scan.verdict,
+        created_by:
+          principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
+      });
     } catch (err) {
       // Concurrent dedup race: catch the unique violation, re-SELECT.
       // Drizzle wraps PG errors as DrizzleQueryError whose `.message` is
@@ -519,12 +514,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           }
           let canonical = again[0];
           if (canonical.deleted_at) {
-            const [revived] = await db
-              .update(files)
-              .set({ deleted_at: null, updated_at: new Date() })
-              .where(eq(files.id, canonical.id))
-              .returning();
-            if (revived) canonical = revived;
+            canonical = await reviveFileRow(db, canonical);
           }
           recordFileDedupHit();
           // Persisted per-tenant counter — keeps the stats endpoint
@@ -673,12 +663,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           // being handed to the caller as a phantom dedup hit.
           let canonical = existing[0];
           if (canonical.deleted_at) {
-            const [revived] = await db
-              .update(files)
-              .set({ deleted_at: null, updated_at: new Date() })
-              .where(eq(files.id, canonical.id))
-              .returning();
-            if (revived) canonical = revived;
+            canonical = await reviveFileRow(db, canonical);
           }
           dedup_hits++;
           recordFileDedupHit();
@@ -702,7 +687,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       const ttlSec = 3600;
       const expires_at = new Date(Date.now() + ttlSec * 1000);
 
-      await db.insert(files).values({
+      await insertFileRow(db, {
         id: file_uuid,
         tenant_id,
         status: "pending",
@@ -1157,7 +1142,45 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .offset(q.offset ?? 0);
 
     const hasMore = rows.length > limit;
-    const items = (hasMore ? rows.slice(0, limit) : rows).map(toFileWire);
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    // Usage counts for the whole page in one query, counted as
+    // `GET /v1/files/{id}/usage` counts them.
+    const usageRows =
+      page.length > 0
+        ? await db
+            .select({
+              id: files.id,
+              workflows: sql<number>`(
+                select count(*)::int from workflows w
+                join workflow_versions v on v.id = w.current_version_id
+                where w.tenant_id = "files"."tenant_id" and w.deleted_at is null
+                  and ${dagNamesFile(sql`v.dag`, sql`'fid_' || "files"."id"::text`, sql`"files"."slug"`)}
+              )`,
+              conversations: sql<number>`(
+                select count(distinct fl.resource_id)::int from file_links fl
+                where fl.tenant_id = "files"."tenant_id" and fl.file_id = "files"."id"
+                  and fl.resource_type = 'conversation'
+              )`,
+            })
+            .from(files)
+            .where(
+              and(
+                eq(files.tenant_id, tenant_id),
+                inArray(
+                  files.id,
+                  page.map((r) => r.id),
+                ),
+              ),
+            )
+        : [];
+    const usageById = new Map(usageRows.map((u) => [u.id, u]));
+    const items = page.map((row) => ({
+      ...toFileWire(row),
+      usage: {
+        workflows: Number(usageById.get(row.id)?.workflows ?? 0),
+        conversations: Number(usageById.get(row.id)?.conversations ?? 0),
+      },
+    }));
     const lastVisible = hasMore ? rows[limit - 1] : undefined;
     const next_cursor = lastVisible ? lastVisible.created_at.toISOString() : null;
     return c.json({ items, total: Number(totalRow?.total ?? 0), next_cursor }, 200);
