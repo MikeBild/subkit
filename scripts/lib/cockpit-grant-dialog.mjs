@@ -29,6 +29,8 @@ const WORDS = {
   de: {
     already: "Bereits freigegeben bis",
     oneLeft: "1 Lauf übrig",
+    untilRevoked: "bis auf Widerruf",
+    soFar: "41 Läufe bisher",
     extend: "Verlängern / Grenzen ändern",
     production: "Produktion",
     development: "Entwicklung",
@@ -53,6 +55,8 @@ const WORDS = {
   en: {
     already: "Already approved until",
     oneLeft: "1 run left",
+    untilRevoked: "until revoked",
+    soFar: "41 runs so far",
     extend: "Extend / change limits",
     production: "Production",
     development: "Development",
@@ -117,6 +121,19 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     const confirm = await text(page.getByTestId("authority-grant-confirm"));
     if (confirm !== words.extend)
       throw new Error(`${where}: a second approval is offered as "${confirm}"`);
+    // An approval stands until it is revoked unless the reader chooses limits:
+    // no run or hour field, and no suggestion for numbers nobody is asked for.
+    if (
+      (await page.getByTestId("authority-limit-until-revoked").getAttribute("data-state")) !== "on"
+    )
+      throw new Error(`${where}: the dialog does not start at "until revoked"`);
+    for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
+      if (await page.getByTestId(field).count())
+        throw new Error(`${where}: "until revoked" shows ${field}`);
+    await assertSingleTriggers(page, `${where}, until revoked`, DIALOG);
+    await capture("until-revoked");
+    await page.getByTestId("authority-limit-limited").click();
+    await page.getByTestId("authority-runs").waitFor();
     // Thirty days, sized from the schedule and the hook's calls — and said so.
     if (
       (await page.getByTestId("authority-runs").inputValue()) !== "210" ||
@@ -149,6 +166,8 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     if (!scopeText.includes(words.development) || !scopeText.includes(words.production))
       throw new Error(`${where}: the scope warning reads "${scopeText}"`);
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
+    // The choice stays while the reader moves between environments.
+    await page.getByTestId("authority-runs").waitFor();
     // Nothing runs in development: the one-run default, with no line to explain.
     if ((await page.getByTestId("authority-runs").inputValue()) !== "1")
       throw new Error(`${where}: a development review inherited production's suggestion`);
@@ -159,6 +178,27 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     await closeDialog(page);
     if (state.grants.length) throw new Error(`${where}: looking at the dialog granted something`);
     state.expiring = false;
+
+    // ── Approved until revoked: no date, no limit, the runs so far ───────────
+    where = at("until revoked");
+    state.untilRevoked = true;
+    const standing = await open(page, stand, state, "approved");
+    if ((await standing.getAttribute("data-state")) !== "approved")
+      throw new Error(`${where}: the panel is in "${await standing.getAttribute("data-state")}"`);
+    const standingLine = await text(page.getByTestId("workflow-automation-headline"));
+    if (!standingLine.includes(words.untilRevoked) || !standingLine.includes(words.soFar))
+      throw new Error(`${where}: the headline reads "${standingLine}"`);
+    // Nothing runs out: no extension is offered beside the approval.
+    if (await page.getByTestId("workflow-automation-secondary").count())
+      throw new Error(`${where}: an approval until revoked is offered for extension`);
+    await page.getByTestId("workflow-automation-action").click();
+    await page.getByTestId("authority-current").waitFor();
+    // Revoking is the one way it ends — offered once, on the approval itself.
+    if ((await page.getByTestId("authority-current-revoke").count()) !== 1)
+      throw new Error(`${where}: the approval cannot be revoked exactly once`);
+    await assertSingleTriggers(page, where);
+    await capture("approved-until-revoked");
+    state.untilRevoked = false;
 
     // ── Production approved, development waiting: the state names development ─
     where = at("mixed environments");

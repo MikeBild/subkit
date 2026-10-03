@@ -244,8 +244,16 @@ status, while lifecycle metadata explicitly says “Version active”. Authority
 automatically; a retry action appears only after a load failure. The grant dialog opens in the
 held schedule's environment and separates unsupported workflow effects from invalid numeric input.
 Unsupported effects lead to a contextual preparation task, not an impossible grant form. Valid
-fields never inherit an unrelated review failure. Granting retains finite server defaults and
-never starts a run. Names and version labels replace internal identifiers in the grant review.
+fields never inherit an unrelated review failure. Granting never starts a run. Names and version
+labels replace internal identifiers in the grant review.
+
+An approval stands until it is revoked unless the reader chooses limits. The dialog offers one
+choice, "Bis auf Widerruf" (the default) or "Begrenzen"; runs and hours — with the server's
+suggestion and the one line that explains it — appear only under "Begrenzen", and the button
+follows the choice: "Freigeben" or "N Läufe erlauben". The panel says such an approval as
+"Freigegeben · Produktion · bis auf Widerruf · N Läufe bisher", never offers to extend it, and
+keeps "Freigabe widerrufen" on the approval itself, once. An approval a newer version took over
+reads "Von neuer Fassung übernommen" in the history.
 
 ### One fact, one home
 

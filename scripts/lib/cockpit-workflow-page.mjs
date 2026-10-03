@@ -286,6 +286,9 @@ function authority(overrides = {}) {
     created_by: CREATOR,
     revoked_at: null,
     revoked_by: null,
+    open_ended: false,
+    inherited_from: null,
+    superseded_by: null,
     target_constraints: { targets: [] },
     effect_manifest: {
       schema_version: 1,
@@ -330,7 +333,20 @@ function authorities(state) {
   if (state.devPending) return [authority(), revoked];
   if (state.scenario === "approved" || state.scenario === "repair")
     return [
-      authority(state.expiring ? { remaining_runs: 1, reserved_runs: 29 } : {}),
+      authority(
+        state.untilRevoked
+          ? // No end date and no run limit: it stands until it is revoked.
+            {
+              valid_until: null,
+              max_runs: null,
+              remaining_runs: null,
+              reserved_runs: 41,
+              open_ended: true,
+            }
+          : state.expiring
+            ? { remaining_runs: 1, reserved_runs: 29 }
+            : {},
+      ),
       dev,
       revoked,
     ];
