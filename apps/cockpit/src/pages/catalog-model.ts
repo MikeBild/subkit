@@ -12,7 +12,6 @@ export interface CatalogQueryState {
   status: string;
   category: string;
   connector: string;
-  linkedTo: string;
   health: "not_ok" | null;
   sort: string;
   order: "asc" | "desc";
@@ -33,7 +32,6 @@ export function catalogListParams(
   if (state.q) params.set("q", state.q);
   if (state.category !== "all") params.set("category", state.category);
   if (resource === "workflows" && state.connector) params.set("connector", state.connector);
-  if (resource === "files" && state.linkedTo) params.set("linked_to", state.linkedTo);
   if (resource === "connectors" && state.health === "not_ok") params.set("health", "not_ok");
   if (state.status !== "all") {
     if (resource === "connectors") {
