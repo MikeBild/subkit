@@ -218,6 +218,10 @@ export const LlmStatsResponse = z
     groups: z.array(
       z.object({
         key: GroupKey,
+        // The name people know the group's model by ("Claude Haiku 4.5"),
+        // from the engine's model catalog. Present when the group has a
+        // model the catalog knows; otherwise show `key.model`.
+        model_name: z.string().optional(),
         buckets: z.array(LlmBucket),
         totals: z.object({
           calls: z.number(),

@@ -17769,6 +17769,7 @@ export interface components {
                 key: {
                     [key: string]: string;
                 };
+                model_name?: string;
                 buckets: {
                     ts: string;
                     calls: number;

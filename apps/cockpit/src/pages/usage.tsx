@@ -251,11 +251,11 @@ export function UsagePage() {
     return [
       column.custom(
         "key",
-        (row) => row.key,
+        (row) => row.name ?? row.key,
         t("resource.usage.axis.model"),
         (row) => (
-          <span className="block break-words font-medium">
-            {row.unattributed ? t("resource.usage.unattributed") : row.key}
+          <span className="block break-words font-medium" title={row.name ? row.key : undefined}>
+            {row.unattributed ? t("resource.usage.unattributed") : (row.name ?? row.key)}
           </span>
         ),
         { width: "w-[70%]" },
