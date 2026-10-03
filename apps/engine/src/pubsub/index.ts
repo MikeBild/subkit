@@ -9,6 +9,13 @@ export {
   stopListener,
 } from "./listener.ts";
 export {
+  emitCredentialChange,
+  emitResourceChange,
+  RESOURCE_CHANGE_TYPES,
+  type ResourceChangeIds,
+  type ResourceChangeType,
+} from "./resource-changes.ts";
+export {
   type ConnectorAuthFailedPayload,
   ConnectorAuthFailedPayloadSchema,
   type ConnectorHealthChangedPayload,

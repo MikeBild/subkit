@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors, credentials, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectors, credentials, events, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -148,5 +148,30 @@ describe("credentials/service", () => {
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, created.id)));
     expect(audits.map((a) => a.action)).toContain("credential.deleted");
+  });
+
+  test("storing and deleting a credential reach the live feed as the connector id only", async () => {
+    const { tenant_id, connector_id } = await seedTenantAndConnector();
+    const created = await upsertCredential(
+      {
+        tenant_id,
+        connector_id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "never-in-an-event" },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await deleteCredential(tenant_id, created.id, null, ctx.db);
+    const rows = await ctx.db
+      .select({ type: events.type, payload: events.payload })
+      .from(events)
+      .where(and(eq(events.tenant_id, tenant_id), eq(events.channel, "resource.lifecycle")))
+      .orderBy(events.id);
+    expect(rows).toEqual([
+      { type: "connector.credential_changed", payload: { connector_id } },
+      { type: "connector.credential_changed", payload: { connector_id } },
+    ]);
   });
 });

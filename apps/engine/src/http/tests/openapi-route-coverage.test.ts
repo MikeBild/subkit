@@ -67,6 +67,7 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /v1/executions/{param}/stream",
   "GET /v1/diagnostics/logs/stream",
   "GET /v1/events/stream",
+  "GET /v1/cockpit/events/stream",
   "GET /v1/audit-log/export.ndjson",
   // Content-type-polymorphic raw-byte body (json/csv/yaml/xml/plaintext +
   // binary pdf/docx/xlsx/pptx dispatched in the handler) — an OpenAPI body

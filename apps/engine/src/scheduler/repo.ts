@@ -9,6 +9,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules } from "../db/schema/index.ts";
+import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { parseCronExpression } from "./cron.ts";
 
@@ -122,6 +123,7 @@ export async function createSchedule(
       })
       .where(eq(workflowsSchedules.id, prior.id))
       .returning();
+    await scheduleChanged(db, updated[0] as ScheduleRow | undefined);
     return { status: "updated", row: updated[0] as ScheduleRow };
   }
   const rows = await db
@@ -136,7 +138,21 @@ export async function createSchedule(
       input: (input.input ?? null) as never,
     })
     .returning();
+  await scheduleChanged(db, rows[0] as ScheduleRow | undefined);
   return { status: "created", row: rows[0] as ScheduleRow };
+}
+
+/** A schedule's create/update/pause/delete is a change the live Cockpit hears. */
+async function scheduleChanged(
+  db: Executor,
+  row: { id: string; tenant_id: string; workflow_id: string } | undefined,
+): Promise<void> {
+  if (!row) return;
+  await emitResourceChange(db, {
+    tenant_id: row.tenant_id,
+    type: "workflow.automation_changed",
+    ids: { workflow_id: row.workflow_id, schedule_id: row.id },
+  });
 }
 
 /**
@@ -208,6 +224,7 @@ export async function updateSchedule(
     .set(set)
     .where(and(eq(workflowsSchedules.tenant_id, tenant_id), eq(workflowsSchedules.id, id)))
     .returning();
+  await scheduleChanged(db, rows[0] as ScheduleRow | undefined);
   return (rows[0] as ScheduleRow | undefined) ?? null;
 }
 
@@ -215,7 +232,12 @@ export async function deleteSchedule(db: Db, tenant_id: string, id: string): Pro
   const rows = await db
     .delete(workflowsSchedules)
     .where(and(eq(workflowsSchedules.tenant_id, tenant_id), eq(workflowsSchedules.id, id)))
-    .returning({ id: workflowsSchedules.id });
+    .returning({
+      id: workflowsSchedules.id,
+      tenant_id: workflowsSchedules.tenant_id,
+      workflow_id: workflowsSchedules.workflow_id,
+    });
+  await scheduleChanged(db, rows[0]);
   return rows.length > 0;
 }
 

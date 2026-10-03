@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { events, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   createConnector,
   deleteConnector,
   getConnector,
   listConnectors,
+  setConnectorEnabled,
   updateConnector,
 } from "../service.ts";
 
@@ -98,6 +100,38 @@ describe("connectors/service", () => {
     expect(ok).toBe(true);
     const gone = await getConnector(tenant_id, created.id, ctx.db);
     expect(gone).toBeNull();
+  });
+
+  test("every connector change reaches the live feed as ids only", async () => {
+    const tenant_id = await seedTenant();
+    const input = {
+      name: "Live One",
+      driver: "http" as const,
+      environment: "dev" as const,
+      base_url: "https://live.example.test",
+      auth_type: "bearer" as const,
+      config: {},
+    };
+    const created = await createConnector({ tenant_id, input, actor_id: null }, ctx.db);
+    // The same slug again is an upsert, and says so.
+    await createConnector({ tenant_id, input, actor_id: null }, ctx.db);
+    await updateConnector(tenant_id, created.id, { name: "Live Two" }, null, ctx.db);
+    await setConnectorEnabled(tenant_id, created.id, false, null, ctx.db);
+    await deleteConnector(tenant_id, created.id, null, ctx.db);
+    const rows = await ctx.db
+      .select({ type: events.type, payload: events.payload })
+      .from(events)
+      .where(and(eq(events.tenant_id, tenant_id), eq(events.channel, "resource.lifecycle")))
+      .orderBy(events.id);
+    expect(rows).toEqual(
+      [
+        "connector.created",
+        "connector.updated",
+        "connector.updated",
+        "connector.updated",
+        "connector.deleted",
+      ].map((type) => ({ type, payload: { connector_id: created.id } })),
+    );
   });
 
   test("operator_quirks round-trip through create + patch + clear", async () => {
