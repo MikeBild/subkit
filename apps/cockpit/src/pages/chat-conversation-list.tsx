@@ -41,7 +41,7 @@ export function ConversationList({
     <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <nav
         aria-label={t("chat.conversations")}
-        className="scrollbar-thin grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"
+        className="scrollbar-thin relative -mx-2 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"
       >
         {/* A list that did not load is not a list with nothing in it. */}
         {failed ? (
