@@ -41,12 +41,7 @@ import {
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
-import {
-  type Skill,
-  type SkillAudience,
-  skillAudienceForAuthoringMode,
-  skillOfferedTo,
-} from "../../skills/types.ts";
+import { type Skill, skillOfferedTo } from "../../skills/types.ts";
 import { buildNamingGroundingBlock } from "../../workflows/catalog-view.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
@@ -57,7 +52,6 @@ import type {
   EnhancedPrompt,
   IncludedChunk,
   IncludedKnowledgeChunk,
-  LlmFlow,
   UserTurn,
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
@@ -95,6 +89,7 @@ import {
   trimCandidatesToBudget,
   trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
+import { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 import { recordConversationBudgetReport } from "./conversation-budget-report.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
@@ -157,22 +152,7 @@ export interface AssembledContext {
  * LlmContextTooLarge only when *even* the base system prompt does not fit
  * — i.e. all optional context has been dropped.
  */
-/** Flows that draft or repair a workflow definition in one shot. */
-const AUTHORING_FLOWS: ReadonlySet<LlmFlow> = new Set<LlmFlow>([
-  "generate",
-  "repair",
-  "critic_authoring",
-]);
-
-/** The skill audience of one prompt: a drafting flow, or a converse turn whose
- *  authoring state is in workflow mode, is "authoring"; anything else "chat". */
-export function promptSkillAudience(
-  flow: LlmFlow,
-  authoringMode: string | null | undefined,
-): SkillAudience {
-  if (AUTHORING_FLOWS.has(flow)) return "authoring";
-  return skillAudienceForAuthoringMode(authoringMode);
-}
+export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
