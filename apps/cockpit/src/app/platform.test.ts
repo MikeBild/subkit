@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSseParser } from "@/lib/sse-stream";
-import { listPagePath, listQueryKey } from "@/lib/use-infinite-list";
+import { listPagePath, listQueryKey, nextPageParam } from "@/lib/use-infinite-list";
 import { loadingPhase, SKELETON_MIN_MS } from "@/lib/use-loading-phase";
 import { backoffDelay } from "./live-events";
 import { keyId, keysForEvent, LIVE_RULES } from "./live-invalidation";
@@ -118,6 +118,21 @@ describe("endless lists", () => {
     expect(listPagePath("/v1/audit-log", {}, 25, "2026-01-01T00:00:00.000Z|abc")).toBe(
       "/v1/audit-log?limit=25&cursor=2026-01-01T00%3A00%3A00.000Z%7Cabc",
     );
+  });
+
+  test("the next page follows the paging the endpoint answered with", () => {
+    expect(nextPageParam([{ items: [1], next_cursor: "c1" }])).toBe("c1");
+    expect(nextPageParam([{ items: [1], next_cursor: null, total: 9 }])).toBeNull();
+    // Offset-paged catalogues: the loaded count is the next offset until the total.
+    expect(nextPageParam([{ items: [1, 2], total: 3 }])).toBe(2);
+    expect(
+      nextPageParam([
+        { items: [1, 2], total: 3 },
+        { items: [3], total: 3 },
+      ]),
+    ).toBeNull();
+    expect(nextPageParam([{ items: [], total: 5 }])).toBeNull();
+    expect(listPagePath("/v1/workflows", {}, 25, 50)).toBe("/v1/workflows?limit=25&offset=50");
   });
 
   test("lists live under the key family the live table refreshes", () => {
