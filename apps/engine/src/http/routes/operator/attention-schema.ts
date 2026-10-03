@@ -51,7 +51,20 @@ const AttentionItem = z
       .object({ version: z.number().int(), environment: z.enum(["dev", "prod"]) })
       .optional()
       .describe(
-        "The running version an approval item is about and where it runs. Only on version_awaiting_approval and approval_expiring.",
+        "The running version an approval item is about and where it runs. Only on version_awaiting_approval, version_needs_repair and approval_expiring.",
+      ),
+    repair: z
+      .object({
+        step_id: z.string().nullable(),
+        code: z.string().nullable(),
+        remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+        steps: z.number().int(),
+        candidate_id: z.string().uuid().nullable(),
+        execution_id: z.string().uuid().nullable(),
+      })
+      .optional()
+      .describe(
+        "Why no approval may cover that version yet. Only on version_needs_repair: the leading blocked step and its diagnosis code (GET /v1/workflows/{id}/diagnosis), the act that removes it, how many steps are blocked, and the filed repair or the run the diagnosis rests on.",
       ),
     // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
     // `allOf` and the generated client loses the null.

@@ -179,15 +179,16 @@ written for them:
 | Item | When | Class |
 |---|---|---|
 | A new version waits for approval | An unpaused schedule or an active webhook would start the active version, and no live authority covers that version in that environment | *decide*, due at the next scheduled start |
+| A new version cannot be approved yet | The same, but the gate would refuse any approval for it (the automation panel's `repair_required`): a step's effects are not bounded, or a report mail has not been observed | *decide*; names the leading blocked step and offers the act its diagnosis offers — a repair, a preparation run, or a conversation — never the approval |
 | An approval is about to end | Every live authority for it ends within 3 days or has less than a tenth of its runs left | *decide*, lower severity (`notice`) |
 
-Both lead to the workflow's page, where the automation panel offers the approval,
-the extension, or the repair that has to come first. One workflow is one item: the
+The approval items lead to the workflow's page, where the automation panel offers
+the approval or the extension; the blocked one leads to its repair. One workflow is one item: the
 first refused start turns the same item into the held one, never a second. Saving
 a new active version appears within the list's ten-second cache; a saved draft is
 not listed — it starts nothing until a person applies it. The same items reach
 `GET /v1/attention`, the health digest and the MCP attention tool
-(`version_awaiting_approval`, `approval_expiring`).
+(`version_awaiting_approval`, `version_needs_repair`, `approval_expiring`).
 
 The driver is `handleInbound()` in `apps/engine/src/webhooks/inbound/service.ts`; the
 individual verifiers live under `apps/engine/src/webhooks/inbound/verifiers/`.

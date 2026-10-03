@@ -665,13 +665,13 @@ const EN = {
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} is waiting for your answer",
   "overview.reason.execution_authority_required":
-    "{subject} is stopped: its schedule waits for an approval",
-  "overview.reason.execution_authority_unavailable":
     "{subject} is stopped: its schedule cannot be approved without a change to the workflow",
+  "overview.reason.execution_authority_unavailable":
+    "{subject} is stopped: its schedule waits for an approval",
   "overview.reason.execution_authority_requiredHook":
-    "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
-  "overview.reason.execution_authority_unavailableHook":
     "{subject} is stopped: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} is stopped: it refuses calls from the webhook “{hook}” until an approval is granted",
   "overview.reason.version_awaiting_approval":
     "{subject} has a new version {version} waiting for approval — the next scheduled start will be refused otherwise",
   "overview.reason.version_awaiting_approvalHook":
@@ -680,6 +680,22 @@ const EN = {
     "{subject} has a new version {version} waiting for approval — the next automatic start will be refused otherwise",
   "overview.reason.approval_expiring":
     "{subject} is approved for a short while only: its approval is about to end or is nearly used up",
+  "overview.reason.version_needs_repair":
+    "{subject} cannot be approved in version {version} — step “{step}”: {cause}",
+  "overview.reason.version_needs_repairBare":
+    "{subject} cannot be approved in version {version} until the workflow is changed",
+  "overview.repair.more.one": "{sentence} (and 1 more step)",
+  "overview.repair.more.many": "{sentence} (and {count} more steps)",
+  "overview.repair.cause.no_boundary": "where it sends requests is not bounded",
+  "overview.repair.cause.dynamic_request": "where it sends requests is not bounded",
+  "overview.repair.cause.no_scope": "which storage it reads or writes is not bounded",
+  "overview.repair.cause.report_delivery_unprepared": "nobody has seen yet who receives its e-mail",
+  "overview.repair.cause.connector_unavailable": "its connector cannot serve it",
+  "overview.repair.remedy.author": "only a change to the workflow unblocks it",
+  "overview.repair.remedy.declare": "only a change to the workflow unblocks it",
+  "overview.repair.remedy.patch": "a computed repair unblocks it",
+  "overview.repair.remedy.prepare": "a trial run has to show what it sends first",
+  "overview.repair.remedy.reconnect": "its connector has to be reconnected",
   "overview.reason.scheduler_stale": "{heartbeat} has stopped running",
   "overview.reason.scheduler_staleOther": "A scheduler heartbeat has stopped",
   "overview.reason.failing": "{subject} is failing",
@@ -732,6 +748,8 @@ const EN = {
   "overview.action.renew": "Renew",
   "overview.action.approve": "Approve",
   "overview.action.extend": "Extend",
+  "overview.action.prepare": "Run the preparation",
+  "overview.action.fix": "Fix",
   "overview.action.openRuns": "Failed runs",
   "overview.action.chat": "Resolve in chat",
   "overview.action.openSettings": "Open settings",
@@ -2677,7 +2695,7 @@ const EN = {
   "audit.reason.circuitOpen": "Delivery suspended after repeated failures",
   "audit.reason.operatorRejected": "Declined by a person",
   "audit.reason.authorityRequired": "Needs an approval to run",
-  "audit.reason.authorityUnavailable": "Approval could not be checked",
+  "audit.reason.authorityUnavailable": "No approval with runs left",
   "audit.reason.refreshReplayed": "Refresh token used twice",
   "audit.reason.manualReissue": "Issued again by hand",
   "audit.reason.clientRetired": "Application retired for disuse",
@@ -3958,13 +3976,13 @@ const DE: Record<TranslationKey, string> = {
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} wartet auf deine Antwort",
   "overview.reason.execution_authority_required":
-    "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
-  "overview.reason.execution_authority_unavailable":
     "{subject} ist angehalten: sein Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.execution_authority_unavailable":
+    "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
   "overview.reason.execution_authority_requiredHook":
-    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
-  "overview.reason.execution_authority_unavailableHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
+  "overview.reason.execution_authority_unavailableHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
   "overview.reason.version_awaiting_approval":
     "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
   "overview.reason.version_awaiting_approvalHook":
@@ -3973,6 +3991,23 @@ const DE: Record<TranslationKey, string> = {
     "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste automatische Start wird sonst abgelehnt",
   "overview.reason.approval_expiring":
     "{subject} ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht",
+  "overview.reason.version_needs_repair":
+    "{subject} lässt sich in Fassung {version} nicht freigeben – Schritt „{step}“: {cause}",
+  "overview.reason.version_needs_repairBare":
+    "{subject} lässt sich in Fassung {version} nicht freigeben, bevor der Workflow geändert ist",
+  "overview.repair.more.one": "{sentence} (und 1 weiterer Schritt)",
+  "overview.repair.more.many": "{sentence} (und {count} weitere Schritte)",
+  "overview.repair.cause.no_boundary": "wohin er Anfragen schickt, ist nicht begrenzt",
+  "overview.repair.cause.dynamic_request": "wohin er Anfragen schickt, ist nicht begrenzt",
+  "overview.repair.cause.no_scope": "welche Ablage er liest oder schreibt, ist nicht begrenzt",
+  "overview.repair.cause.report_delivery_unprepared":
+    "wer seine E-Mail bekommt, hat noch niemand gesehen",
+  "overview.repair.cause.connector_unavailable": "sein Konnektor kann ihn nicht bedienen",
+  "overview.repair.remedy.author": "nur eine Änderung am Workflow löst das",
+  "overview.repair.remedy.declare": "nur eine Änderung am Workflow löst das",
+  "overview.repair.remedy.patch": "eine festgelegte Reparatur löst das",
+  "overview.repair.remedy.prepare": "ein Probelauf muss erst zeigen, was er sendet",
+  "overview.repair.remedy.reconnect": "sein Konnektor muss neu verbunden werden",
   "overview.reason.scheduler_stale": "{heartbeat} läuft nicht mehr",
   "overview.reason.scheduler_staleOther": "Ein Herzschlag des Zeitplaners ist ausgeblieben",
   "overview.reason.failing": "{subject} scheitert",
@@ -4026,6 +4061,8 @@ const DE: Record<TranslationKey, string> = {
   "overview.action.renew": "Erneuern",
   "overview.action.approve": "Freigeben",
   "overview.action.extend": "Verlängern",
+  "overview.action.prepare": "Vorbereitung ausführen",
+  "overview.action.fix": "Beheben",
   "overview.action.openRuns": "Fehlgeschlagene Läufe",
   "overview.action.chat": "Im Chat klären",
   "overview.action.openSettings": "Zu den Einstellungen",
@@ -6020,7 +6057,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.reason.circuitOpen": "Zustellung nach wiederholten Fehlern ausgesetzt",
   "audit.reason.operatorRejected": "Von einer Person abgelehnt",
   "audit.reason.authorityRequired": "Braucht eine Freigabe zum Ausführen",
-  "audit.reason.authorityUnavailable": "Freigabe war nicht prüfbar",
+  "audit.reason.authorityUnavailable": "Keine Freigabe mit verbleibenden Läufen",
   "audit.reason.refreshReplayed": "Aktualisierungs-Token doppelt verwendet",
   "audit.reason.manualReissue": "Von Hand neu ausgestellt",
   "audit.reason.clientRetired": "Anwendung wegen Nichtnutzung stillgelegt",
