@@ -11,7 +11,7 @@ import {
   type SkillCandidate,
 } from "@/api/decisions";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, recordHref } from "@/app/links";
+import { absolute, attentionHref, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import {
@@ -83,6 +83,13 @@ type SkillRow = { kind: "skill"; skill: Skill } | { kind: "proposal"; candidate:
 
 function rowTitle(row: SkillRow): string {
   return row.kind === "skill" ? row.skill.title : row.candidate.title;
+}
+
+/** Where a row's name leads: the skill's page, or the proposals' review sheet. */
+function rowAddress(row: SkillRow): string {
+  return row.kind === "skill"
+    ? recordHref("skills", row.skill.id)
+    : attentionHref({ review: "skills" });
 }
 
 function rowScope(row: SkillRow): string {
@@ -325,10 +332,10 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             hasActiveFilters={Boolean(q)}
             sorting={sorting}
             onSortingChange={setSorting}
-            onOpen={(row) => {
-              if (row.kind === "skill") void navigate({ to: recordHref("skills", row.skill.id) });
-            }}
-            rowHref={(row) => (row.kind === "skill" ? recordHref("skills", row.skill.id) : null)}
+            // A proposal has no page of its own: its name opens the review of
+            // the proposals on the Übersicht, where it is decided.
+            onOpen={(row) => void navigate(routerTarget(rowAddress(row)))}
+            rowHref={rowAddress}
             rowLabel={(row) => rowTitle(row)}
             columnsLabel={t("catalog.columns")}
             actionsLabel={t("common.actions")}
