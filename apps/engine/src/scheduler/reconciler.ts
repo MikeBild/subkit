@@ -1585,8 +1585,10 @@ export class SchedulerReconciler {
    * `refresh_strategy = 'scheduled'` and enqueues a re-ingest job
    * when the cron expression fires.
    *
-   * Note: Only URL-based sources can be auto-refreshed (the content
-   * is re-fetched). File-upload sources require a manual re-upload.
+   * Only address (url) sources are refreshed: the job reads the address
+   * again. A file or pasted text only changes when someone edits it. A
+   * source whose last read failed stays on its rhythm, so it heals itself
+   * once the address answers again.
    */
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
     await instrument({
@@ -1604,7 +1606,8 @@ export class SchedulerReconciler {
       .where(
         and(
           eq(knowledgeSources.refresh_strategy, "scheduled"),
-          eq(knowledgeSources.status, "active"),
+          eq(knowledgeSources.source_type, "url"),
+          inArray(knowledgeSources.status, ["active", "error"]),
           isNull(knowledgeSources.deleted_at),
           isNotNull(knowledgeSources.refresh_cron),
         ),
@@ -1619,8 +1622,9 @@ export class SchedulerReconciler {
           tenant_id: row.tenant_id,
           knowledge_source_id: row.id,
           filename: row.source_uri,
-          content: "", // file-upload sources cannot be auto-refreshed
+          content: "",
           actor_id: null,
+          read_address_again: true,
         });
         await this.opts.db
           .update(knowledgeSources)
