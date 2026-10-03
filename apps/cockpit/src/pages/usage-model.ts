@@ -1,10 +1,3 @@
-export interface UsageRow {
-  date: string;
-  executions: number;
-  average_duration_ms: number | null;
-  p95_duration_ms: number | null;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -14,34 +7,20 @@ function numberOrNull(value: unknown): number | null {
 }
 
 /**
- * Flattens the grouped bucket envelope into one row per day.
- *
- * A bucket that carries no duration keeps `null`, not `0` — a day nobody
- * measured and a day that measured zero are different facts (CUI-SEV-2).
+ * Runs per workflow over the window, from `/v1/stats/executions` grouped by
+ * `workflow_id`. A workflow with no run in the window is absent, not zero —
+ * the caller says what an absent count means.
  */
-export function usageRows(envelope: unknown): UsageRow[] {
+export function runsByWorkflow(envelope: unknown): Map<string, number> {
   const groups = isRecord(envelope) && Array.isArray(envelope.groups) ? envelope.groups : [];
-  return groups.flatMap((group) => {
-    if (!isRecord(group) || !Array.isArray(group.buckets)) return [];
-    return group.buckets.flatMap((bucket): UsageRow[] => {
-      if (!isRecord(bucket) || typeof bucket.ts !== "string") return [];
-      const duration = isRecord(bucket.duration_ms) ? bucket.duration_ms : {};
-      return [
-        {
-          date: bucket.ts,
-          executions: typeof bucket.executions === "number" ? bucket.executions : 0,
-          average_duration_ms: numberOrNull(duration.avg),
-          p95_duration_ms: numberOrNull(duration.p95),
-        },
-      ];
-    });
-  });
-}
-
-export function formatDurationMs(value: number | null): string {
-  if (value === null) return "—";
-  if (value < 1_000) return `${Math.round(value)} ms`;
-  return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)} s`;
+  const runs = new Map<string, number>();
+  for (const group of groups) {
+    if (!isRecord(group) || !isRecord(group.key) || !isRecord(group.totals)) continue;
+    const id = group.key.workflow_id;
+    const count = numberOrNull(group.totals.executions);
+    if (typeof id === "string" && id && count !== null) runs.set(id, count);
+  }
+  return runs;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +46,12 @@ export interface ConsumptionRow {
   tokens: number;
   /** This row's share of the window, 0–1. `null` when the total is zero. */
   share: number | null;
+  /**
+   * What this group cost, priced by the engine from its own rows. `null`
+   * when the engine sent no amount or none of the group's calls had a price:
+   * a nought would say the group was free.
+   */
+  cost: number | null;
 }
 
 /**
@@ -101,6 +86,9 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
     // Read from `stats/schemas.ts`, not from memory: this is the third time
     // this function assumed a shape the contract does not have.
     const callsValue = numberOrNull(totals.calls) ?? 0;
+    const priced = isRecord(group.cost) ? group.cost : null;
+    const amount = priced ? numberOrNull(priced.amount) : null;
+    const unpriced = priced ? (numberOrNull(priced.unpriced_calls) ?? 0) : 0;
     return [
       {
         key: keyed,
@@ -118,13 +106,18 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
         calls: callsValue,
         tokens: typeof tokens.total === "number" ? tokens.total : 0,
         share: null,
+        cost: amount === null || (amount === 0 && unpriced > 0) ? null : amount,
       },
     ];
   });
-  const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+  // The share is of the money where every row has an amount, and of the
+  // tokens otherwise — one measure for the whole column, never a mix.
+  const priced = rows.length > 0 && rows.every((row) => row.cost !== null);
+  const measure = (row: ConsumptionRow): number => (priced ? (row.cost ?? 0) : row.tokens);
+  const total = rows.reduce((sum, row) => sum + measure(row), 0);
   return rows
-    .map((row) => ({ ...row, share: total > 0 ? row.tokens / total : null }))
-    .sort((a, b) => b.tokens - a.tokens || (a.key < b.key ? -1 : 1));
+    .map((row) => ({ ...row, share: total > 0 ? measure(row) / total : null }))
+    .sort((a, b) => measure(b) - measure(a) || (a.key < b.key ? -1 : 1));
 }
 
 export interface BudgetSummary {

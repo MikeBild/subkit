@@ -6,8 +6,8 @@
 // system account and the engine. Each of those used to reach the screen as
 // "Unbekannt", as `*` or `sk_cli`, or as an act that happened on one click.
 // This asserts the words, the J5 journey from the red budget badge to the
-// focused budget field, and that a confirmation stands between the click and
-// a role change or a revoked grant.
+// focused budget field, that a role change shows its consequence before it is
+// saved, and that a confirmation stands between the click and a revoked grant.
 
 // Personen & Rechte is one page; its sections are tabs whose content is the
 // section's own list.
@@ -43,25 +43,36 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     }
   }
 
-  // A custom role is named by its name, and a role change asks first.
+  // A custom role is named by its name, and a role change shows what it does
+  // before it is saved: the person's sheet names the person and the change,
+  // and "Speichern" appears only once another role is picked.
   await stand.visit(page, "people");
   await page.getByTestId("people-list").waitFor({ state: "visible" });
-  if ((await page.getByTestId("people-role-badge-1").innerText()).trim() !== "Revision")
+  // The table draws a row and, for narrow screens, a card; the row is the one shown here.
+  const roleCell = page.getByTestId("people-list-row-1").getByTestId("people-role-badge-1");
+  if ((await roleCell.innerText()).trim() !== "Revision")
     throw new Error("/people: a custom role is not named by its own name");
-  await page.getByTestId("people-role-1").click();
-  await page.getByTestId("people-role-1-member").click();
-  const roleConfirm = page.getByTestId("people-role-confirm");
-  await roleConfirm.waitFor({ state: "visible" });
-  if (!(await roleConfirm.innerText()).includes("reviewer@example.com"))
-    throw new Error("/people: the role-change confirmation does not name the person");
+  await page.getByTestId("people-list-row-link-1").click();
+  const sheet = page.getByTestId("people-sheet");
+  await sheet.waitFor({ state: "visible" });
+  if (await page.getByTestId("people-role-save").isVisible())
+    throw new Error("/people: the person's sheet offers to save before anything changed");
+  await page.getByTestId("people-role").click();
+  await page.getByTestId("people-role-member").click();
+  const roleChange = page.getByTestId("people-role-change");
+  await roleChange.waitFor({ state: "visible" });
+  if (!(await roleChange.innerText()).includes("reviewer@example.com"))
+    throw new Error("/people: the role change does not name the person");
+  await page.getByTestId("people-role-save").waitFor({ state: "visible" });
   await capture("role-change");
-  await page.getByTestId("people-role-confirm-cancel").click();
-  await roleConfirm.waitFor({ state: "hidden" });
+  await page.getByTestId("people-sheet-close").click();
+  await sheet.waitFor({ state: "hidden" });
 
   // A grant is revoked only after its consequence was read.
   await stand.visit(page, "people?section=grants");
   await page.getByTestId("grants-list").waitFor({ state: "visible" });
-  await page.getByTestId("grant-revoke-0").click();
+  await page.getByTestId("grants-list-row-link-0").click();
+  await page.getByTestId("grant-revoke").click();
   const revokeConfirm = page.getByTestId("grant-revoke-confirm");
   await revokeConfirm.waitFor({ state: "visible" });
   await capture("grant-revoke");
@@ -152,8 +163,8 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
 // since a closed <details> keeps its content in the markup and out of
 // innerText — no engine English anywhere in the page's text, "Gilt für" exactly
 // on the rows that can differ per workspace, a copy icon for the key (the
-// fixture reader may change settings), and one answer below the list on how a
-// change is stored.
+// fixture reader may change settings), and one answer — behind the summary
+// line's (?) — on how a change is stored.
 async function verifySettingRows(page, rows, section, where) {
   const shape = await page.evaluate(() => {
     const main = document.querySelector('[data-testid="admin-settings"]');
@@ -170,7 +181,7 @@ async function verifySettingRows(page, rows, section, where) {
         appliesTo: Boolean(item.querySelector('[data-testid^="setting-applies-to-"]')),
         copy: Boolean(item.querySelector('[data-testid^="setting-copy-key-"]')),
       })),
-      storage: main?.querySelectorAll('[data-testid="settings-storage"]').length ?? 0,
+      storage: main?.querySelectorAll('[data-testid="settings-summary-help"]').length ?? 0,
     };
   });
   if (shape.disclosures > 0)
@@ -194,9 +205,10 @@ async function verifySettingRows(page, rows, section, where) {
 
 // The settings sections were a tab strip of twenty, twice as wide as the page
 // and scrolled sideways to find one. Every section is now a link in a grouped
-// list, and at each of these widths every one of them stands fully inside the
-// list and the viewport — none behind a horizontal scroll. The fixture carries
-// every section the engine has, so the count is the real installation's.
+// list beside the form, and at each wide width every one of them stands fully
+// inside the list and the viewport — none behind a horizontal scroll. A narrow
+// page puts a select of the sections above the form instead. The fixture
+// carries every section the engine has, so the count is the real installation's.
 const SETTINGS_WIDTHS = [
   { width: 1280, height: 800 },
   { width: 1024, height: 768 },
@@ -209,7 +221,19 @@ async function verifySettingsSections(page, stand, { settingsSections, viewport 
       const where = `/settings at ${size.width}px`;
       await page.setViewportSize(size);
       await stand.visit(page, "settings");
-      await page.getByTestId("settings-section-list").waitFor({ state: "visible" });
+      await page.getByTestId("settings-panel").waitFor({ state: "visible" });
+      if (!(await page.getByTestId("settings-section-list").isVisible())) {
+        // Narrow: the sections are a select above the form, never a strip.
+        if (!(await page.getByTestId("settings-section-picker").isVisible()))
+          throw new Error(`${where}: neither the section list nor its select is shown`);
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        );
+        if (overflow > 0)
+          throw new Error(`${where}: the page is ${overflow}px wider than the viewport`);
+        await capture(`settings-sections-${size.width}`);
+        continue;
+      }
       const shape = await page.evaluate(() => {
         const main = document.querySelector('[data-testid="admin-settings"]');
         const list = main?.querySelector('[data-testid="settings-section-list"]');
@@ -230,7 +254,7 @@ async function verifySettingsSections(page, stand, { settingsSections, viewport 
         });
         return {
           missing: false,
-          tablists: main.querySelectorAll('[role="tablist"], [role="tab"]').length,
+          tablists: list.querySelectorAll('[role="tablist"], [role="tab"]').length,
           listOverflow: list.scrollWidth - list.clientWidth,
           documentOverflow:
             document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -253,16 +277,6 @@ async function verifySettingsSections(page, stand, { settingsSections, viewport 
           `${where}: ${shape.inside} of ${settingsSections} sections stand fully inside the list (${shape.links} links)`,
         );
       await capture(`settings-sections-${size.width}`);
-      // Narrow: the list is the start view, a section opens in its place and
-      // "Alle Bereiche" leads back to the whole list.
-      if (size.width < 720) {
-        await page.getByTestId("settings-section-link-tokens").click();
-        await page.getByTestId("settings-section-tokens").waitFor({ state: "visible" });
-        if (await page.getByTestId("settings-section-list").isVisible())
-          throw new Error(`${where}: an opened section shares the screen with the list`);
-        await page.getByTestId("settings-back").click();
-        await page.getByTestId("settings-section-list").waitFor({ state: "visible" });
-      }
     }
   } finally {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });

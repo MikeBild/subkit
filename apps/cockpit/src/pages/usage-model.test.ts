@@ -16,6 +16,7 @@ import {
   budgetPressure,
   budgetSummary,
   consumptionRows,
+  runsByWorkflow,
   unpricedModels,
   windowCost,
   workflowNameLookup,
@@ -310,5 +311,58 @@ describe("a workflow id on the usage page", () => {
     expect(workflowNameLookup(undefined, 403)).toEqual({ kind: "unreadable" });
     expect(workflowNameLookup(undefined, 0)).toEqual({ kind: "unreadable" });
     expect(workflowNameLookup(undefined, null)).toEqual({ kind: "pending" });
+  });
+});
+
+describe("money per group", () => {
+  const group = (workflow: string, tokens: number, cost?: unknown) => ({
+    key: { workflow },
+    totals: { calls: 1, tokens: { total: tokens } },
+    ...(cost === undefined ? {} : { cost }),
+  });
+
+  test("a priced breakdown is ordered and shared by money, not by tokens", () => {
+    const rows = consumptionRows(
+      {
+        groups: [
+          group("cheap", 900, { amount: 1, currency: "EUR", unpriced_calls: 0 }),
+          group("dear", 100, { amount: 3, currency: "EUR", unpriced_calls: 0 }),
+        ],
+      },
+      "workflow",
+    );
+    expect(rows.map((row) => row.key)).toEqual(["dear", "cheap"]);
+    expect(rows[0]?.cost).toBe(3);
+    expect(rows[0]?.share).toBeCloseTo(0.75, 6);
+  });
+
+  test("an unpriced group has no amount, and the column falls back to tokens", () => {
+    const rows = consumptionRows(
+      {
+        groups: [
+          group("a", 900, { amount: 0, currency: "EUR", unpriced_calls: 4 }),
+          group("b", 100, { amount: 3, currency: "EUR", unpriced_calls: 0 }),
+        ],
+      },
+      "workflow",
+    );
+    expect(rows.find((row) => row.key === "a")?.cost).toBeNull();
+    expect(rows[0]?.key).toBe("a");
+    expect(rows[0]?.share).toBeCloseTo(0.9, 6);
+  });
+});
+
+describe("runs per workflow", () => {
+  test("reads each workflow's run count and skips what it cannot read", () => {
+    const runs = runsByWorkflow({
+      groups: [
+        { key: { workflow_id: "w1" }, totals: { executions: 7 } },
+        { key: { workflow_id: "" }, totals: { executions: 2 } },
+        { key: {}, totals: { executions: 1 } },
+        "junk",
+      ],
+    });
+    expect([...runs]).toEqual([["w1", 7]]);
+    expect(runsByWorkflow(null).size).toBe(0);
   });
 });

@@ -1,23 +1,18 @@
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Button, ChatCard, Spinner } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { cn } from "@/lib/utils";
 import type { ChatChoice } from "./chat-choice";
 import { chatChoicePresentation } from "./chat-choice-presentation";
 
+/**
+ * A question with fixed answers: the question as the card's line, each option
+ * with its effect, nothing chosen until the reader chooses, one button that
+ * sends the choice. The card exists once — in the transcript — so there is
+ * one selection, not one per copy.
+ */
 export function ChatChoiceCard({
   choice,
   busy,
@@ -47,65 +42,65 @@ export function ChatChoiceCard({
   const selected = presentation.options.find((option) => option.value === value);
   const readable = (text: string) =>
     hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
+  const disabled = busy || expired;
   return (
-    <Card size="sm" tone="question" data-testid={testId}>
-      <CardHeader>
-        <CardTitle>{t("chat.choice.title")}</CardTitle>
-        <CardDescription>{readable(presentation.question)}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup>
-          <Field>
-            <FieldLabel id={`${testId}-label`}>{t("chat.choice.select")}</FieldLabel>
-            <ToggleGroup
-              type="single"
-              orientation="vertical"
-              variant="outline"
-              className="w-full"
-              value={value}
-              onValueChange={setValue}
-              disabled={busy || expired}
-              aria-labelledby={`${testId}-label`}
-              data-testid={`${testId}-select`}
-            >
-              {presentation.options.map((option) => (
-                <ToggleGroupItem
-                  key={option.value}
-                  value={option.value}
-                  className="h-auto w-full justify-start whitespace-normal px-3 py-3 text-left"
-                  data-testid={`${testId}-option-${option.value}`}
-                >
-                  <span className="flex flex-1 flex-col gap-1">
-                    <span>{readable(option.label)}</span>
-                    {option.description && (
-                      <span className="text-xs text-muted-foreground">
-                        {readable(option.description)}
-                      </span>
-                    )}
-                  </span>
-                  {value === option.value && <Check aria-hidden="true" />}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </Field>
-        </FieldGroup>
-        {expired && <p>{t("chat.decision.expired")}</p>}
-        {error && (
-          <Alert variant="destructive" role="alert">
-            <AlertDescription>{t("chat.decision.failed")}</AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-      <CardFooter>
+    <ChatCard
+      testId={testId}
+      title={t("chat.choice.title")}
+      line={readable(presentation.question)}
+      action={
         <Button
-          disabled={busy || expired || !selected}
+          disabled={disabled || !selected}
           onClick={() => onAnswer(choice.id, value)}
           data-testid={`${testId}-submit`}
         >
           {busy && <Spinner aria-hidden="true" aria-label={undefined} />}
           {t(busy ? "chat.decision.processing" : "chat.choice.submit")}
         </Button>
-      </CardFooter>
-    </Card>
+      }
+    >
+      <div
+        role="radiogroup"
+        aria-label={t("chat.choice.select")}
+        className="flex flex-col gap-2"
+        data-testid={`${testId}-select`}
+      >
+        {presentation.options.map((option) => {
+          const checked = value === option.value;
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: a radio that carries a two-line label and its effect
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              disabled={disabled}
+              onClick={() => setValue(option.value)}
+              data-testid={`${testId}-option-${option.value}`}
+              className={cn(
+                "flex min-h-10 w-full items-start gap-2 rounded-md border px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                checked && "border-foreground/40 bg-muted",
+              )}
+            >
+              <span className="flex flex-1 flex-col gap-1">
+                <span>{readable(option.label)}</span>
+                {option.description && (
+                  <span className="text-xs text-muted-foreground">
+                    {readable(option.description)}
+                  </span>
+                )}
+              </span>
+              {checked && <Check aria-hidden="true" className="size-4 shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+      {expired && <p className="text-sm text-muted-foreground">{t("chat.decision.expired")}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {t("chat.decision.failed")}
+        </p>
+      )}
+    </ChatCard>
   );
 }

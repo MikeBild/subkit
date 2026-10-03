@@ -132,7 +132,12 @@ function InfiniteSentinel({
           {t("platform.loadingMore")}
         </span>
       ) : (
-        <Button variant="ghost" size="sm" onClick={() => void fetchNextPage()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void fetchNextPage()}
+          data-testid={`${testId ?? "data-table"}-load-more`}
+        >
           {t("platform.loadMore")}
         </Button>
       )}

@@ -1,6 +1,6 @@
 // Candidates for the composer's `@`-picker.
 //
-// The engine already searches workflows and connectors server-side (`?q=`),
+// The engine already searches every catalog server-side (`?q=`),
 // so the picker asks for a short ranked page per keystroke instead of
 // holding the whole catalogue in the browser. Only objects the session may
 // read are offered — the server is the authority, this merely avoids asking
@@ -24,7 +24,13 @@ const PAGE = 50;
 export const MENTION_SOURCE_KEYS = {
   workflows: (q: string) => ["catalog-workflow-index", "mention-source", q] as const,
   connectors: (q: string) => ["catalog-connector-index", "mention-source", q] as const,
+  sources: (q: string) => ["knowledge", "mention-source", q] as const,
+  skills: (q: string) => ["skills", "mention-source", q] as const,
+  files: (q: string) => ["files", "mention-source", q] as const,
 };
+
+/** Few per kind: the picker narrows as the person types. */
+const KNOWLEDGE_PAGE = 8;
 
 interface WorkflowItem {
   id: string;
@@ -35,6 +41,27 @@ interface ConnectorItem {
   id: string;
   slug: string;
   display_name: string;
+}
+interface SourceItem {
+  id: string;
+  slug: string;
+  name: string;
+}
+interface SkillItem {
+  id: string;
+  slug: string | null;
+  title: string;
+}
+interface FileItem {
+  id: string;
+  filename: string;
+  size_bytes: number;
+  content_type: string | null;
+}
+
+/** A skill's token: its slug, or — for one written by hand — its title as one word. */
+export function skillLabel(skill: SkillItem): string {
+  return skill.slug ?? skill.title.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 export interface WorkflowCategory {
@@ -72,6 +99,9 @@ export function useMentionCandidates(
   const q = useDebouncedValue((query ?? "").trim(), 200);
   const canWorkflows = permissions.includes("workflow:read");
   const canConnectors = permissions.includes("connector:read");
+  const canSources = permissions.includes("knowledge:read");
+  const canSkills = permissions.includes("skill:read");
+  const canFiles = permissions.includes("file:read");
   const categories = useWorkflowCategories(active && canWorkflows);
 
   const workflows = useQuery({
@@ -90,6 +120,35 @@ export function useMentionCandidates(
       apiRequest<{ items: ConnectorItem[] }>(`/v1/connectors?limit=${PAGE}${encode(q)}`),
   });
 
+  const sources = useQuery({
+    queryKey: MENTION_SOURCE_KEYS.sources(q),
+    enabled: active && canSources,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiRequest<{ items: SourceItem[] }>(
+        `/v1/knowledge-sources?limit=${KNOWLEDGE_PAGE}${encode(q)}`,
+      ),
+  });
+  const skills = useQuery({
+    queryKey: MENTION_SOURCE_KEYS.skills(q),
+    enabled: active && canSkills,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiRequest<{ items: SkillItem[] }>(
+        `/v1/skills?status=active&limit=${KNOWLEDGE_PAGE}${encode(q)}`,
+      ),
+  });
+  const files = useQuery({
+    queryKey: MENTION_SOURCE_KEYS.files(q),
+    enabled: active && canFiles,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      apiRequest<{ items: FileItem[] }>(`/v1/files?limit=${KNOWLEDGE_PAGE}${encode(q)}`),
+  });
+
   const candidates = useMemo(() => {
     const all: MentionCandidate[] = [
       ...(workflows.data?.items ?? [])
@@ -103,6 +162,30 @@ export function useMentionCandidates(
           label: c.slug,
           title: c.display_name,
         })),
+      ...(sources.data?.items ?? [])
+        .filter((source) => isMentionableLabel(source.slug))
+        .map((source) => ({
+          type: "knowledge_source" as const,
+          id: source.id,
+          label: source.slug,
+          title: source.name,
+        })),
+      ...(skills.data?.items ?? [])
+        .filter((skill) => isMentionableLabel(skillLabel(skill)))
+        .map((skill) => ({
+          type: "skill" as const,
+          id: skill.id,
+          label: skillLabel(skill),
+          title: skill.title,
+        })),
+      ...(files.data?.items ?? []).map((file) => ({
+        type: "file" as const,
+        id: file.id,
+        label: file.filename,
+        title: file.filename,
+        size: file.size_bytes,
+        contentType: file.content_type,
+      })),
     ];
     // Categories lead: "show me the notion block" is the broadest way in.
     // The server ranked the objects by its own relevance; the local pass only
@@ -111,10 +194,25 @@ export function useMentionCandidates(
       ...categoryCandidates(categories.categories, query ?? ""),
       ...rankCandidates(all, query ?? ""),
     ];
-  }, [workflows.data, connectors.data, categories.categories, query]);
+  }, [
+    workflows.data,
+    connectors.data,
+    sources.data,
+    skills.data,
+    files.data,
+    categories.categories,
+    query,
+  ]);
 
   return {
     candidates,
-    isLoading: active && (workflows.isLoading || connectors.isLoading || categories.isLoading),
+    isLoading:
+      active &&
+      (workflows.isLoading ||
+        connectors.isLoading ||
+        sources.isLoading ||
+        skills.isLoading ||
+        files.isLoading ||
+        categories.isLoading),
   };
 }

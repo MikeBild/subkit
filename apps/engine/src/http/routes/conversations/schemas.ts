@@ -257,7 +257,7 @@ const REFERENCE_LABEL = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 export const ConversationReferenceSchema = z
   .object({
-    type: z.enum(["workflow", "connector"]),
+    type: z.enum(["workflow", "connector", "skill", "knowledge_source"]),
     id: z.string().uuid(),
     // A refine, not `.regex()`: a Unicode-flagged pattern does not survive
     // the OpenAPI export as a valid JSON-schema `pattern`.

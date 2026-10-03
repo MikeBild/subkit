@@ -221,8 +221,12 @@ export function isMentionableLabel(label: string): boolean {
   return LABEL_RE.test(label) && !/\s/.test(label);
 }
 
-/** What the picker offers: an object that becomes a reference, or a category. */
-export type MentionCandidateType = ConversationReferenceType | "category";
+/**
+ * What the picker offers: an object that becomes a reference, a category
+ * (a phrase in the text), or a stored file (it joins the message as an
+ * attachment, not as a token).
+ */
+export type MentionCandidateType = ConversationReferenceType | "category" | "file";
 
 /** Candidate entries the picker shows, before one becomes a reference. */
 export interface MentionCandidate {
@@ -234,6 +238,9 @@ export interface MentionCandidate {
   title: string;
   /** A category's size, as the catalog counts it. */
   count?: number;
+  /** A file's size and type, for its chip and preview. */
+  size?: number;
+  contentType?: string | null;
 }
 
 /**
@@ -282,7 +289,7 @@ export function rankCandidates(
   });
 }
 
-/** A category never becomes a reference; only catalog objects do. */
+/** A category or a file never becomes a reference; only catalog objects do. */
 export function candidateToReference(
   candidate: MentionCandidate & { type: ConversationReferenceType },
 ): ConversationReference {
@@ -292,5 +299,5 @@ export function candidateToReference(
 export function isReferenceCandidate(
   candidate: MentionCandidate,
 ): candidate is MentionCandidate & { type: ConversationReferenceType } {
-  return candidate.type !== "category";
+  return candidate.type !== "category" && candidate.type !== "file";
 }

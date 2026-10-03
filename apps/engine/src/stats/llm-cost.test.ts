@@ -10,12 +10,16 @@
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
+import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { effectiveModelPrices, longContextThresholds, priceCalls } from "../llm/index.ts";
-import { readPricedTokens } from "./llm-cost.ts";
+import { readLlmCostByGroup, readLlmWindowCost, readPricedTokens } from "./llm-cost.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -102,5 +106,72 @@ describe.skipIf(skip)("long-context split in the cost query", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.calls).toBe(2);
     expect(await cost()).toBeCloseTo(0.7 * 1, 6);
+  });
+});
+
+describe.skipIf(skip)("cost per group", () => {
+  // The per-group reader prices at the tenant's configured rates.
+  let configDir = "";
+  beforeAll(async () => {
+    configDir = mkdtempSync(join(tmpdir(), "subkit-llm-cost-test-"));
+    _resetConfigForTests();
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://placeholder/llm-cost", NODE_ENV: "test" },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+  });
+  afterAll(() => {
+    _resetConfigForTests();
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  test("each group is priced from its own rows and the groups add up to the window", async () => {
+    await seed("claude-haiku-4-5", [100_000]);
+    await testDb.db.insert(llmUsage).values({
+      tenant_id: tenantId,
+      flow: "self_healing",
+      model: "claude-haiku-4-5",
+      prompt_tokens: 50_000,
+      completion_tokens: 0,
+      total_tokens: 50_000,
+      cache_read_tokens: 0,
+      cache_creation_tokens: 0,
+      latency_ms: 10,
+      result: "success",
+      created_at: TS,
+      month_bucket: 202401,
+    });
+    const window = {
+      tenantId,
+      bucket: "day" as const,
+      from: new Date("2024-01-01T00:00:00.000Z"),
+      to: new Date("2024-01-02T00:00:00.000Z"),
+      tz: "UTC",
+    };
+    const byFlow = await readLlmCostByGroup(testDb.db, window, "flow");
+    const whole = await readLlmWindowCost(testDb.db, window);
+    expect([...byFlow.keys()].sort()).toEqual(["converse", "self_healing"]);
+    const converse = byFlow.get("converse")?.amount ?? 0;
+    const healing = byFlow.get("self_healing")?.amount ?? 0;
+    expect(converse).toBeGreaterThan(0);
+    expect(converse).toBeCloseTo(healing * 2, 6);
+    expect(converse + healing).toBeCloseTo(whole.amount, 6);
+  });
+
+  test("a workflow grouping joins the run and files calls without one under an empty key", async () => {
+    await seed("claude-haiku-4-5", [100_000]);
+    const byWorkflow = await readLlmCostByGroup(
+      testDb.db,
+      {
+        tenantId,
+        bucket: "day",
+        from: new Date("2024-01-01T00:00:00.000Z"),
+        to: new Date("2024-01-02T00:00:00.000Z"),
+        tz: "UTC",
+      },
+      "workflow",
+    );
+    expect([...byWorkflow.keys()]).toEqual([""]);
+    expect(byWorkflow.get("")?.amount ?? 0).toBeGreaterThan(0);
   });
 });

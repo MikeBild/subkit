@@ -5,13 +5,13 @@ import { describe, expect, test } from "bun:test";
 import type { SortingState } from "@tanstack/react-table";
 import { renderAction } from "./action-button";
 import { ActionMenu } from "./action-menu";
+import { Button } from "./button";
 import { type CockpitColumn, DataTable, priorityClass } from "./data-table";
 import { FactList } from "./fact-list";
 import { FileDrop } from "./file-drop";
 import { fileRefusal, formatBytes, parseCsv, previewKind } from "./file-kinds";
 import { FilePreview } from "./file-preview";
 import { PageHeader } from "./page-header";
-import { PendingButton } from "./pending-button";
 import { rowChange, withLeaving } from "./row-motion";
 import { StatusStrip } from "./status-strip";
 import { SummaryLine } from "./summary-line";
@@ -135,8 +135,12 @@ describe("loading shapes", () => {
     expect(render(<FactList items={[{ label: "a", value: "b" }]} />)).toContain("<dl");
   });
 
-  test("PendingButton keeps its label in place and shows a spinner", () => {
-    const html = render(<PendingButton pending>Freigeben</PendingButton>);
+  test("Button keeps its label in place and shows a spinner", () => {
+    const html = render(
+      <Button pending data-testid="pending-button">
+        Freigeben
+      </Button>,
+    );
     expect(html).toContain("invisible");
     expect(html).toContain("Freigeben");
     expect(html).toContain('aria-busy="true"');

@@ -399,6 +399,24 @@ describe("LLM aggregation", () => {
     expect(groupSum).toBe(body.totals.calls.total);
   });
 
+  test("group_by=model: each group carries its own cost, adding up to the window's", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=model`);
+    const body = (await res.json()) as {
+      groups: Array<{ cost?: { amount: number; currency: string } }>;
+      cost: { amount: number; currency: string };
+    };
+    expect(body.groups.every((g) => g.cost?.currency === body.cost.currency)).toBe(true);
+    const groupSum = body.groups.reduce((s, g) => s + (g.cost?.amount ?? 0), 0);
+    expect(groupSum).toBeCloseTo(body.cost.amount, 6);
+  });
+
+  test("two dimensions carry no per-group cost", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=model,flow`);
+    const body = (await res.json()) as { groups: Array<{ cost?: unknown }> };
+    expect(body.groups.length).toBeGreaterThan(0);
+    expect(body.groups.every((g) => g.cost === undefined)).toBe(true);
+  });
+
   test("group_by=flow: haiku=2 calls, sonnet=1 call", async () => {
     const res = await authedFetch(`/v1/stats/llm?${WIN}&group_by=flow`);
     const body = (await res.json()) as {

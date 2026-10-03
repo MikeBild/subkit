@@ -11,4 +11,5 @@ export * from "./errors.ts";
 export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";
+export * from "./url-source.ts";
 export * from "./view.ts";

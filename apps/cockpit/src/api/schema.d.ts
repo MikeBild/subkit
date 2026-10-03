@@ -10162,6 +10162,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/knowledge-sources/url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a knowledge source by reading an address */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateKnowledgeSourceFromUrlBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSource"];
+                    };
+                };
+                /** @description The page exceeds the maximum size */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The address could not be read, or is not allowed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read an address source again now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Read again */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSource"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The source has no address to read again */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The page exceeds the maximum size */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The address could not be read, or is not allowed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge-sources/{id}": {
         parameters: {
             query?: never;
@@ -12987,7 +13119,41 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        patch?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RenameFile"];
+                };
+            };
+            responses: {
+                /** @description Renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["File"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/v1/files/{id}/content": {
@@ -13103,6 +13269,138 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["InlineUpload"];
+                };
+            };
+            responses: {
+                /** @description Replaced; the id and every reference to it are unchanged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["File"];
+                    };
+                };
+                /** @description bad_input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description duplicate_content */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description too_large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description scan_rejected */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["schemas"]["FileId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileUsage"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17485,6 +17783,11 @@ export interface components {
                     tokens: components["schemas"]["StatsTokenAgg"];
                     latency_ms: components["schemas"]["StatsLatencyAgg"];
                 };
+                cost?: {
+                    amount: number;
+                    currency: string;
+                    unpriced_calls: number;
+                };
             }[];
             totals: {
                 calls: {
@@ -21060,6 +21363,23 @@ export interface components {
             path: string;
             content: string;
         };
+        CreateKnowledgeSourceFromUrlBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
+            /** Format: uri */
+            url: string;
+        };
+        CreateKnowledgeSourceBody: {
+            name: string;
+            slug?: string;
+            description?: string;
+            tags?: string[];
+            /** @enum {string} */
+            scope?: "global" | "workflow";
+            /** Format: uuid */
+            workflow_id?: string;
+            /** @enum {string} */
+            refresh_strategy?: "manual" | "scheduled";
+            refresh_cron?: string;
+        };
         UpdateKnowledgeSourceBody: {
             name?: string;
             description?: string;
@@ -21087,19 +21407,6 @@ export interface components {
             mime_type: string;
             /** Format: uri */
             source_uri?: string;
-        };
-        CreateKnowledgeSourceBody: {
-            name: string;
-            slug?: string;
-            description?: string;
-            tags?: string[];
-            /** @enum {string} */
-            scope?: "global" | "workflow";
-            /** Format: uuid */
-            workflow_id?: string;
-            /** @enum {string} */
-            refresh_strategy?: "manual" | "scheduled";
-            refresh_cron?: string;
         };
         KnowledgeBundleUpsertResponse: {
             knowledge_source: components["schemas"]["KnowledgeSource"];
@@ -21368,7 +21675,7 @@ export interface components {
         };
         ConversationReference: {
             /** @enum {string} */
-            type: "workflow" | "connector";
+            type: "workflow" | "connector" | "skill" | "knowledge_source";
             /** Format: uuid */
             id: string;
             label: string;
@@ -21821,6 +22128,22 @@ export interface components {
         };
         /** @enum {string} */
         FileLinkResourceType: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
+        RenameFile: {
+            filename: string;
+        };
+        FileUsage: {
+            workflows: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[];
+            conversations: {
+                /** Format: uuid */
+                id: string;
+                title: string | null;
+            }[];
+            other: number;
+        };
         McpPromptsResponse: {
             items: components["schemas"]["McpPrompt"][];
             next_cursor?: string | null;

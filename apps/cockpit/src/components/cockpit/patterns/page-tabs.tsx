@@ -93,11 +93,7 @@ export function PageTabs({
 
   return (
     <Tabs value={active} onValueChange={choose} data-slot="page-tabs" data-testid={testId}>
-      <div
-        ref={scroller}
-        style={edgeFade}
-        className="scrollbar-none -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0"
-      >
+      <div ref={scroller} style={edgeFade} className="scrollbar-none overflow-x-auto">
         <TabsList
           ref={list}
           variant="line"

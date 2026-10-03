@@ -101,16 +101,18 @@ export async function verifyChatOAuth(page, stand, conversation, locale) {
     await stand.visit(page, `chat/${conversation.id}`);
     const card = page.getByTestId("chat-message-0-approval");
     await card.waitFor();
-    await page
-      .getByRole("button", {
-        name: locale === "de" ? "Anmeldung fortsetzen" : "Continue sign-in",
-        exact: true,
-      })
-      .click();
-    await page.getByTestId("chat-context-approval").waitFor();
-    if (replies || visits)
-      throw new Error("Returning to an existing dialog must not submit anything");
-    await page.keyboard.press("Escape");
+    // While the sign-in question waits, the reconnect card offers no button of
+    // its own: answering the question in its card is the one way on.
+    if (
+      await page
+        .getByRole("button", {
+          name: locale === "de" ? "Anmeldung fortsetzen" : "Continue sign-in",
+          exact: true,
+        })
+        .count()
+    )
+      throw new Error("A second way into the waiting sign-in question is offered");
+    if (replies || visits) throw new Error("Showing an existing dialog must not submit anything");
 
     if ((await card.innerText()).includes("Technical policy"))
       throw new Error("Technical prompt leaked into sign-in dialog");

@@ -3,7 +3,6 @@ import {
   ATTENTION_READ_PERMISSIONS,
   NAVIGATION,
   navigationItem,
-  navigationTarget,
   visibleNavigation,
 } from "./navigation";
 
@@ -39,12 +38,14 @@ describe("cockpit navigation contract", () => {
   test("the groups are the decided information architecture, in order", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
       ["/", "/chat"],
-      ["/workflows", "/connectors", "/knowledge"],
+      ["/workflows", "/connectors"],
+      ["/knowledge", "/skills", "/files"],
       ["/usage", "/audit", "/people", "/api-access", "/settings"],
     ]);
     expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
       undefined,
       "nav.group.automation",
+      "nav.group.knowledge",
       "nav.group.admin",
     ]);
   });
@@ -57,23 +58,19 @@ describe("cockpit navigation contract", () => {
       "/connections",
       "/access",
       "/runs",
-      "/skills",
-      "/files",
       "/notifications",
     ])
       expect(all).not.toContain(gone);
   });
 
-  test("Wissen is one entry, active on its three tabs, linking the first one the reader may open", () => {
-    for (const path of ["/knowledge", "/skills/abc", "/files"])
-      expect(navigationItem(path)?.labelKey).toBe("nav.knowledge");
-    for (const permission of ["knowledge:read", "skill:read", "file:read"])
-      expect(paths([permission])).toContain("/knowledge");
-    const knowledge = navigationItem("/knowledge");
-    if (!knowledge) throw new Error("no Wissen entry");
-    expect(navigationTarget(knowledge, ["knowledge:read", "skill:read"])).toBe("/knowledge");
-    expect(navigationTarget(knowledge, ["skill:read", "file:read"])).toBe("/skills");
-    expect(navigationTarget(knowledge, ["file:read"])).toBe("/files");
+  test("Wissen is a heading over three entries, each behind its own read and active on its records", () => {
+    expect(navigationItem("/knowledge/abc")?.labelKey).toBe("nav.knowledgeSources");
+    expect(navigationItem("/skills/abc")?.labelKey).toBe("nav.skills");
+    expect(navigationItem("/files")?.labelKey).toBe("nav.files");
+    expect(paths(["skill:read"])).toEqual(["/", "/skills"]);
+    expect(paths(["file:read"])).toEqual(["/files"]);
+    const icons = NAVIGATION.flatMap((group) => group.items).map((item) => item.icon);
+    expect(new Set(icons).size).toBe(icons.length);
   });
 
   test("Einstellungen shows for the settings or the notifications alone", () => {
