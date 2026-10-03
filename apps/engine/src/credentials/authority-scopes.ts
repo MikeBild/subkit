@@ -9,9 +9,12 @@ export function parseScopeList(value: string): string[] {
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
 }
 
-/** The stored form: the scope tokens joined by single spaces (RFC 6749 §3.3).
+/** The stored form of a scope string: its tokens joined by single spaces
+ *  (RFC 6749 §3.3), so every reader of a credential row sees the same list.
  *  Null stays null — missing scope information is not an empty grant. */
-export function normalizeScopeString(value: string | null): string | null {
+export function storedScopes(value: string): string;
+export function storedScopes(value: string | null): string | null;
+export function storedScopes(value: string | null): string | null {
   return value === null ? null : parseScopeList(value).join(" ");
 }
 

@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { diffOauthScopes } from "../../connectors/oauth-scope-diff.ts";
-import { normalizeScopeString, parseScopeList } from "../authority-scopes.ts";
+import { parseScopeList, storedScopes } from "../authority-scopes.ts";
 import { grantedScopes } from "../connections/oauth-client.ts";
 import { permissionScopes } from "../connections/scopes.ts";
 
@@ -46,15 +46,15 @@ describe("parseScopeList", () => {
   });
 });
 
-describe("normalizeScopeString — the stored form", () => {
+describe("storedScopes — the stored form", () => {
   test("joins the tokens with single spaces", () => {
-    expect(normalizeScopeString("email,openid,profile")).toBe("email openid profile");
-    expect(normalizeScopeString("read,  write read")).toBe("read write");
+    expect(storedScopes("email,openid,profile")).toBe("email openid profile");
+    expect(storedScopes("read,  write read")).toBe("read write");
   });
   test("unknown stays unknown; an empty grant stays empty", () => {
-    expect(normalizeScopeString(null)).toBeNull();
-    expect(normalizeScopeString("")).toBe("");
-    expect(normalizeScopeString(" , ")).toBe("");
+    expect(storedScopes(null)).toBeNull();
+    expect(storedScopes("")).toBe("");
+    expect(storedScopes(" , ")).toBe("");
   });
 });
 
