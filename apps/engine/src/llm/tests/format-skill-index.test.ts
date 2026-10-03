@@ -28,6 +28,7 @@ function fakeSkill(overrides: Partial<Skill> & { id: string; title: string }): S
     idempotency: "none",
     maturity: "stable",
     tags: [],
+    applies_to: "both",
     status: "active",
     source: "manual",
     version: 1,

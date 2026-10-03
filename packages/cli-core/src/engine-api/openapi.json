@@ -14562,6 +14562,15 @@
             },
             "default": []
           },
+          "applies_to": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "authoring",
+              "both"
+            ],
+            "default": "both"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -14982,6 +14991,14 @@
               "minLength": 1
             }
           },
+          "applies_to": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "authoring",
+              "both"
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -15102,6 +15119,14 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "applies_to": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "authoring",
+              "both"
+            ]
           },
           "status": {
             "type": "string",
