@@ -2061,6 +2061,13 @@ async function mockApi(route) {
           tokens: { prompt: total, completion: 0, cache_read: 0, cache_creation: 0, total },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
         },
+        // One dimension: each group carries its own money, as the engine
+        // sends it — here the window's amount split by tokens.
+        cost: {
+          amount: Math.round(((412.87 * total) / rows.reduce((n, r) => n + r[2], 0)) * 100) / 100,
+          currency: "EUR",
+          unpriced_calls: 0,
+        },
       })),
       totals: {
         calls: { total: rows.reduce((n, r) => n + r[1], 0), by_result: {} },
@@ -2162,6 +2169,29 @@ async function mockApi(route) {
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
+    // Runs per workflow, for the usage page's "Läufe" column.
+    if (url.searchParams.get("group_by") === "workflow_id")
+      return json(route, {
+        bucket: "day",
+        tz: "UTC",
+        from: "2026-07-11T00:00:00.000Z",
+        to: "2026-08-10T00:00:00.000Z",
+        groups: [
+          [uuid, 30],
+          ["catalog-record-1", 10],
+        ].map(([workflow_id, executions]) => ({
+          key: { workflow_id },
+          buckets: [],
+          totals: {
+            executions,
+            duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+          },
+        })),
+        totals: {
+          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
+          duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      });
     return json(route, {
       bucket: "day",
       tz: "UTC",
