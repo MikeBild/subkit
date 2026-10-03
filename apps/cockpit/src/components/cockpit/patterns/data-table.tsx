@@ -495,6 +495,7 @@ export function DataTable<TData extends RowData>({
     <DataState
       state="error"
       line={error.title}
+      testId={`${collectionId}-error`}
       action={
         <Button
           variant="outline"

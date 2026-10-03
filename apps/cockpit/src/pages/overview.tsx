@@ -199,12 +199,15 @@ function CompletingVerb({
 /** "Braucht dich": one row per subject, its name the object alone, its action the verb that completes it. */
 function NeedsYou({
   items,
+  emptyLine,
   pending,
   error,
   permissions,
   onReview,
 }: {
   items: AttentionItem[];
+  /** "Nothing needs you" — scoped to the sources that answered when one did not. */
+  emptyLine: string;
   pending: boolean;
   error: { line: string; onRetry(): void } | null;
   permissions: readonly string[];
@@ -267,7 +270,7 @@ function NeedsYou({
         columns={columns}
         data={items}
         collectionId="attention"
-        emptyLine={t("overview.count.none")}
+        emptyLine={emptyLine}
         pending={pending}
         error={error}
         getRowId={(item) => item.id}
@@ -293,12 +296,18 @@ function NeedsYou({
   );
 }
 
+/**
+ * The entry as one sentence — the subject, the reason, "seit …" — for the
+ * row's link: the table splits it into columns for the eye, the accessible
+ * name keeps it whole.
+ */
 function sentenceLabel(
   item: AttentionItem,
   t: ReturnType<typeof useI18n>["t"],
   now: number,
 ): string {
-  return attentionSentence(item, t, now).lead;
+  const { lead, since } = attentionSentence(item, t, now);
+  return `${lead}${since ? ` — ${since}` : ""}.`;
 }
 
 /** "Letzte Fehlschläge": the newest three failed runs, each opening its sheet here. */
@@ -448,9 +457,13 @@ export function OverviewPage() {
   const canHistory = session.permissions.includes("audit:read");
   const canRuns = session.permissions.includes("execution:read");
   const count = items.length;
-  const summary = attention.query.isPending
-    ? null
-    : t(count === 1 ? "overview.count.one" : "overview.count.other", { count });
+  // A count is a claim about every source. Before the answer, after a failed
+  // read, or with a source that did not answer, there is none to make: the
+  // gap is named below instead, never counted over.
+  const summary =
+    attention.query.isPending || attention.query.isError || unread.length > 0
+      ? null
+      : t(count === 1 ? "overview.count.one" : "overview.count.other", { count });
 
   return (
     <Page
@@ -473,9 +486,9 @@ export function OverviewPage() {
               <ActionMenu
                 items={[
                   {
-                    label: t("overview.decided"),
+                    label: t("overview.history.link"),
                     href: absolute(auditHref({ scope: "decisions" })),
-                    testId: "attention-history-link",
+                    testId: "attention-history",
                   },
                 ]}
               />
@@ -488,7 +501,7 @@ export function OverviewPage() {
         <div className="flex flex-col gap-3">
           <SummaryLine
             text={summary ?? ""}
-            help={operations.allowed ? t("overview.countHelp") : undefined}
+            help={summary && operations.allowed ? t("overview.countHelp") : undefined}
             testId="overview-summary"
             aside={
               operations.allowed ? (
@@ -539,6 +552,7 @@ export function OverviewPage() {
             ) : (
               <NeedsYou
                 items={items}
+                emptyLine={t(unread.length > 0 ? "overview.count.noneRead" : "overview.count.none")}
                 pending={attention.query.isPending}
                 error={
                   attention.query.isError

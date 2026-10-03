@@ -969,6 +969,15 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
     if (path === `/v1/workflows/${ID}/execution-authorities`)
       return json(route, { items: [], next_cursor: null });
     if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, KNOWLEDGE_CONTENT);
+    // Who holds the file, in the engine's shape: left to the catch-all list,
+    // the sheet would read a list where it expects its users and never mount.
+    // Each kind of holder once, an untitled conversation among them.
+    if (path === `/v1/files/${ID}/usage`)
+      return json(route, {
+        workflows: [{ id: ID, name: "Monatsreport" }],
+        conversations: [{ id: ID, title: null }],
+        other: 1,
+      });
     if (path === `/v1/files/${ID}/content`)
       return route.fulfill({
         status: 200,
@@ -2048,17 +2057,29 @@ async function checkOverviewGateOpen(page, badge) {
     return;
   }
   const shape = await page.evaluate(() => {
+    // One row per entry — the table on a desktop, its card on a phone, only
+    // the one that is shown. The entry's id rides on its completing verb; the
+    // row around it is the entry, and its link carries the entry's sentence
+    // whole while the columns split it for the eye.
     const list = document.querySelector('[data-testid="attention-list"]');
-    const entries = list ? [...list.querySelectorAll(":scope > li")] : [];
+    const entries = list
+      ? [...list.querySelectorAll("[data-attention-id]")]
+          .filter((marker) => marker.getClientRects().length > 0)
+          .map((marker) => ({
+            marker,
+            row: marker.closest('[data-family-collection-row="true"]') ?? marker,
+          }))
+      : [];
     const surface = document.querySelector('[data-testid="attention-page"]');
     return {
-      entries: entries.map((entry) => ({
-        id: entry.getAttribute("data-attention-id"),
-        klass: entry.getAttribute("data-attention-class"),
-        primary: entry.querySelectorAll('[data-testid$="-primary"]').length,
-        secondary: entry.querySelectorAll('[data-testid$="-secondary"]').length,
-        controls: entry.querySelectorAll("a, button").length,
-        text: (entry.querySelector('[data-testid$="-text"]')?.textContent ?? "").trim(),
+      entries: entries.map(({ marker, row }) => ({
+        id: marker.getAttribute("data-attention-id"),
+        primary: row.querySelectorAll('[data-testid$="-primary"]').length,
+        secondary: row.querySelectorAll('[data-testid$="-secondary"]').length,
+        controls: row.querySelectorAll("a, button").length,
+        text: (
+          row.querySelector('[data-testid*="row-link-"]')?.getAttribute("aria-label") ?? ""
+        ).trim(),
       })),
       headings: surface
         ? [...surface.querySelectorAll("h1, h2, h3, h4")].map((element) =>
@@ -3345,7 +3366,7 @@ async function checkConnectorCallback(context) {
  * say "Aktiv" for every connector, in a bar of its own.
  */
 async function checkConnectorSignIn(page) {
-  const where = `/connectors/${ID}`;
+  const where = `/connectors/${ID}?tab=verbindung`;
   const state = await page.evaluate(() => {
     const read = (id) => {
       const element = document.querySelector(`[data-testid="${id}"]`);
@@ -3558,11 +3579,23 @@ async function checkOverviewUnreadable(browser) {
   );
   const page = await openPage(context, "");
   try {
+    // The table draws its state twice — rows on a desktop, cards on a phone —
+    // and shows one: the one that is shown is the claim.
     await page
-      .locator('[data-testid="attention-error"]')
+      .locator('[data-testid="attention-error"]:visible')
       .waitFor({ state: "visible", timeout: 15_000 });
-    if ((await page.locator("body").innerText()).includes(german("overview.calm")))
-      breach("§1, §12", "/ (attention unreadable)", '"Alles erledigt" although nothing was read');
+    const body = await page.locator("body").innerText();
+    // An all-clear in any wording is a claim nobody checked — and so is a
+    // count: "0 Einträge brauchen dich" over a failed read says the same.
+    for (const key of ["overview.calm", "overview.count.none"])
+      if (body.includes(german(key)))
+        breach("§1, §12", "/ (attention unreadable)", `"${german(key)}" although nothing was read`);
+    const summary = await page
+      .locator('[data-testid="overview-summary"] [data-slot="summary-line-text"]')
+      .innerText()
+      .catch(() => "");
+    if (/\d/.test(summary))
+      breach("§1, §12", "/ (attention unreadable)", `counts what it could not read: "${summary}"`);
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;
     breach(
@@ -4127,7 +4160,13 @@ try {
   await checkConnectorCallback(context);
   await checkAccessRedirect(context);
 
-  const connector = await openPage(context, "connectors/$resourceId");
+  // The sign-in has its home on the tab "Verbindung"; the page opens on
+  // "Verwendung", so the card is measured where it stands.
+  const connector = await context.newPage();
+  await stand.visit(connector, `connectors/${ID}?tab=verbindung`);
+  await connector
+    .locator('[data-testid="connector-credentials"]')
+    .waitFor({ state: "visible", timeout: 15_000 });
   await checkConnectorSignIn(connector);
   await connector.close();
 

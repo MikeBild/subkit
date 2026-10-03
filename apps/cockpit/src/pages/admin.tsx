@@ -226,6 +226,7 @@ function AdminTable<T extends RowData>({
   columns,
   data,
   onOpen,
+  rowLabel,
   toolbar,
   filtered = false,
   onReset,
@@ -234,6 +235,8 @@ function AdminTable<T extends RowData>({
   columns: CockpitColumn<T>[];
   data: T[];
   onOpen(row: T): void;
+  /** What the row's open button says to a screen reader: its cell text alone names no record. */
+  rowLabel(row: T): string;
   toolbar?: ReactNode;
   /** True while the toolbar narrows the rows. */
   filtered?: boolean;
@@ -247,6 +250,7 @@ function AdminTable<T extends RowData>({
       columns={columns}
       data={data}
       onOpen={onOpen}
+      rowLabel={rowLabel}
       toolbar={toolbar}
       emptyState={{
         zero: { title: "" },
@@ -808,6 +812,12 @@ function PeopleTab({ action }: { action: ReactNode }) {
           columns={columns}
           data={shown}
           onOpen={(row) => setOpenedId(row.id)}
+          rowLabel={(row) =>
+            t("people.openRow", {
+              email: row.email,
+              role: roleName(row.effective_role, roleItems, t).text,
+            })
+          }
           filtered={Boolean(needle) || roleFilter !== "all"}
           onReset={() => {
             setSearch("");
@@ -1070,6 +1080,7 @@ function RolesTab({ action }: { action: ReactNode }) {
           columns={columns}
           data={items}
           onOpen={(row) => setOpenedId(row.id)}
+          rowLabel={(row) => t("roles.openRow", { name: roleName(row.name, items, t).text })}
         />
       </SectionList>
       <RoleSheet
@@ -1253,6 +1264,7 @@ function GroupsTab({ action }: { action: ReactNode }) {
           columns={columns}
           data={items}
           onOpen={(row) => setOpenedId(row.id)}
+          rowLabel={(row) => t("groups.openRow", { name: row.name })}
         />
       </SectionList>
       <GroupSheet
@@ -1466,6 +1478,12 @@ function GrantsTab({ action }: { action: ReactNode }) {
           columns={columns}
           data={items}
           onOpen={(row) => setOpenedId(row.id)}
+          rowLabel={(row) =>
+            t("grants.openRow", {
+              permission: permissionLabel(row.permission, t).text,
+              subject: names.subjectName(row),
+            })
+          }
         />
       </SectionList>
       <GrantSheet
