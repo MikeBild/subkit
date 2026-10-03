@@ -495,6 +495,7 @@ export async function handleConversationTool(
             tenant_id: principal.tenant_id,
             conversation_id: resumable.conversation_id,
             actor_id: principal.id,
+            principal,
             message: parsed.data.message,
             ...(permission_mode ? { permission_mode } : {}),
           },
@@ -515,6 +516,7 @@ export async function handleConversationTool(
         {
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
+          principal,
           ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
           ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
           initial_message: parsed.data.message,
@@ -551,6 +553,7 @@ export async function handleConversationTool(
           tenant_id: principal.tenant_id,
           conversation_id: parsed.data.conversation_id,
           actor_id: principal.id,
+          principal,
           message: parsed.data.message,
           ...(permission_mode ? { permission_mode } : {}),
         },

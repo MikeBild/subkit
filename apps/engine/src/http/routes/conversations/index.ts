@@ -9,6 +9,7 @@
 //   GET    /v1/conversations                               — list
 //   GET    /v1/conversations/:id                           — fetch detail
 //   PATCH  /v1/conversations/:id                           — patch metadata
+//   DELETE /v1/conversations/:id                           — delete for everyone (owner or admin)
 //   POST   /v1/conversations/:id/messages                  — append user message + drive turn
 //   POST   /v1/conversations/:id/messages/upload           — multipart with file attachments
 //   POST   /v1/conversations/:id/elicitations/:eid/respond — resolve a pending ask_user_*
@@ -56,7 +57,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (c.req.method === "GET") {
       return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
     }
-    if (c.req.method === "PATCH") {
+    if (c.req.method === "PATCH" || c.req.method === "DELETE") {
       return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
     }
     return next();

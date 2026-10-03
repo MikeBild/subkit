@@ -17,6 +17,9 @@ import { tenants } from "./identity.ts";
 
 export const skillScopeEnum = pgEnum("skill_scope", ["global", "connector", "workflow"]);
 export const skillLifecycleEnum = pgEnum("skill_lifecycle", ["draft", "active", "archived"]);
+// Where a skill is offered: the chat assistant, workflow drafting, or both.
+export const SKILL_APPLIES_TO = ["chat", "authoring", "both"] as const;
+export type SkillAppliesTo = (typeof SKILL_APPLIES_TO)[number];
 // Provenance of a Skill row. Operators use this to distinguish
 // handwritten ("manual") from pattern-promoted ("candidate") from
 // connector-template-seeded ("template") from memory-ingested ("memory").
@@ -74,6 +77,9 @@ export const skills = pgTable(
     idempotency: text("idempotency").notNull().default("none"),
     maturity: text("maturity").notNull().default("stable"),
     tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    // Which surface the skill is offered on: "chat" (the assistant),
+    // "authoring" (workflow drafting) or "both".
+    applies_to: text("applies_to").$type<SkillAppliesTo>().notNull().default("both"),
     ...timestamps,
   },
   (t) => [
@@ -82,6 +88,7 @@ export const skills = pgTable(
     uniqueIndex("skills_tenant_slug_uq").on(t.tenant_id, t.slug).where(sql`${t.slug} IS NOT NULL`),
     check("skills_idempotency_chk", sql`${t.idempotency} IN ('none','naturally','key_required')`),
     check("skills_maturity_chk", sql`${t.maturity} IN ('experimental','stable')`),
+    check("skills_applies_to_chk", sql`${t.applies_to} IN ('chat','authoring','both')`),
     check(
       "skills_side_effects_chk",
       sql`${t.side_effects} IN ('none','read','write','destructive')`,

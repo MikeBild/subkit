@@ -18,6 +18,10 @@ export const SkillSourceSchema = z.enum(["manual", "candidate", "template", "mem
 export const SkillSideEffectsSchema = z.enum(["none", "read", "write", "destructive"]);
 export const SkillIdempotencySchema = z.enum(["none", "naturally", "key_required"]);
 export const SkillMaturitySchema = z.enum(["experimental", "stable"]);
+// Where a skill is offered: the chat assistant ("chat"), workflow drafting
+// ("authoring" — a turn working on a workflow draft, and the one-shot
+// generate/repair flows) or both. Enforced where skills enter a prompt.
+export const SkillAppliesToSchema = z.enum(["chat", "authoring", "both"]);
 
 // Activation rules. A single discriminated union replaces the legacy
 // front-matter trio (`gates_tools`, `auto_load`, `trigger_keywords`) plus
@@ -153,6 +157,9 @@ export const SkillSchema = z
     idempotency: SkillIdempotencySchema.default("none"),
     maturity: SkillMaturitySchema.default("stable"),
     tags: z.array(z.string().min(1)).default([]),
+    /** Where the skill is offered: the chat assistant, workflow drafting,
+     *  or both. */
+    applies_to: SkillAppliesToSchema.default("both"),
     status: SkillLifecycleSchema,
     source: SkillSourceSchema,
     version: z.number().int().min(1),
@@ -180,6 +187,7 @@ export const CreateSkillSchema = z
     idempotency: SkillIdempotencySchema.optional(),
     maturity: SkillMaturitySchema.optional(),
     tags: z.array(z.string().min(1)).optional(),
+    applies_to: SkillAppliesToSchema.optional(),
     status: SkillLifecycleSchema.optional(),
     source: SkillSourceSchema.optional(),
   })
@@ -202,6 +210,7 @@ export const UpdateSkillSchema = z
     idempotency: SkillIdempotencySchema.optional(),
     maturity: SkillMaturitySchema.optional(),
     tags: z.array(z.string().min(1)).optional(),
+    applies_to: SkillAppliesToSchema.optional(),
     status: SkillLifecycleSchema.optional(),
   })
   .openapi("UpdateSkillBody");
@@ -214,6 +223,24 @@ export type SkillSideEffects = z.infer<typeof SkillSideEffectsSchema>;
 export type SkillIdempotency = z.infer<typeof SkillIdempotencySchema>;
 export type SkillMaturity = z.infer<typeof SkillMaturitySchema>;
 export type SkillActivation = z.infer<typeof SkillActivationSchema>;
+export type SkillAppliesTo = z.infer<typeof SkillAppliesToSchema>;
+/** The two places a skill can be offered. */
+export type SkillAudience = "chat" | "authoring";
+
+/**
+ * The audience of a conversation turn. A turn drafts a workflow when the
+ * conversation's authoring state is in workflow mode (the draft summary's
+ * `mode`, which the loop also hands the prompt as `authoring_hint.mode`);
+ * every other turn — reading, running, diagnosing, connector work — is chat.
+ */
+export function skillAudienceForAuthoringMode(mode: string | null | undefined): SkillAudience {
+  return mode === "workflow" ? "authoring" : "chat";
+}
+
+/** True when a skill with `applies_to` may be offered to `audience`. */
+export function skillOfferedTo(applies_to: SkillAppliesTo, audience: SkillAudience): boolean {
+  return applies_to === "both" || applies_to === audience;
+}
 export type CreateSkillInput = z.infer<typeof CreateSkillSchema>;
 export type UpdateSkillInput = z.infer<typeof UpdateSkillSchema>;
 

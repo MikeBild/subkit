@@ -10,6 +10,7 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
@@ -31,6 +32,8 @@ export interface AppendMessageParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  /** The writer, for `@attachment:` slugs that name a tenant file (see `SlugLookupCtx`). */
+  principal?: ResolvedPrincipal | null;
   message: string;
   /** Objects the person @-mentioned in this message (see `references.ts`). */
   references?: ConversationReference[] | null;
@@ -146,6 +149,7 @@ export async function appendUserMessage(
     db: exec,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
+    ...(p.principal !== undefined ? { principal: p.principal } : {}),
   });
 
   // Secret scrub + capture chokepoint (user decision): a pasted

@@ -3,6 +3,7 @@
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { modelDisplayName } from "../../../llm/index.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
 import { readLlmCostByGroup, readLlmWindowCost } from "../../../stats/llm-cost.ts";
@@ -126,7 +127,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
     const [only] = groupBy;
     const groupCost =
       groupBy.length === 1 && only ? await readLlmCostByGroup(db, window, only) : null;
-    const groups = groupCost
+    const priced = groupCost
       ? result.groups.map((group) => {
           const priced = groupCost.get(group.key[only as string] ?? "");
           return priced
@@ -141,6 +142,10 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
             : group;
         })
       : result.groups;
+    const groups = priced.map((group) => {
+      const name = group.key.model ? modelDisplayName(group.key.model) : null;
+      return name ? { ...group, model_name: name } : group;
+    });
 
     return c.json(
       {

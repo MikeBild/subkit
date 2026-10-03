@@ -10,6 +10,7 @@
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
@@ -28,6 +29,8 @@ import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 export interface CreateConversationParams {
   tenant_id: string;
   actor_id: string | null;
+  /** The writer, for `@attachment:` slugs that name a tenant file (see `SlugLookupCtx`). */
+  principal?: ResolvedPrincipal | null;
   connector_id?: string | null;
   workflow_id?: string | null;
   initial_message?: string;
@@ -266,6 +269,7 @@ export async function createConversation(
       db: exec,
       tenant_id: p.tenant_id,
       conversation_id: row.id,
+      ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
     initialMessage = rewrite.text;
     const references = p.references && p.references.length > 0 ? p.references : null;

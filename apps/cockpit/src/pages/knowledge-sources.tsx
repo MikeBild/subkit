@@ -18,6 +18,7 @@ import {
   type Fact,
   FactList,
   Field,
+  FieldDescription,
   FieldError,
   FieldLabel,
   FileDrop,
@@ -44,6 +45,9 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   documentUnderTitle,
+  type RefreshRhythm,
+  refreshFields,
+  refreshRhythm,
   type SourceKind,
   type SourceSection,
   sourceKind,
@@ -62,6 +66,55 @@ const KIND_KEYS = {
 } as const satisfies Record<SourceKind, string>;
 
 type Translate = ReturnType<typeof useI18n>["t"];
+
+type OfferedRhythm = Exclude<RefreshRhythm, "custom">;
+
+const RHYTHM_KEYS = {
+  never: "knowledge.rhythm.never",
+  daily: "knowledge.rhythm.daily",
+  weekly: "knowledge.rhythm.weekly",
+  custom: "knowledge.rhythm.custom",
+} as const satisfies Record<RefreshRhythm, string>;
+
+/** How often an address is read again, as the fact a reader sees. */
+function rhythmLabel(t: Translate, source: KnowledgeSource): string {
+  const rhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
+  return rhythm === "custom" && source.refresh_cron
+    ? `${t(RHYTHM_KEYS.custom)} (${source.refresh_cron})`
+    : t(RHYTHM_KEYS[rhythm]);
+}
+
+/** "Aktualisierung": Nie / Täglich / Wöchentlich for a source read from an address. */
+function RefreshField({
+  value,
+  onChange,
+  current,
+}: {
+  value: OfferedRhythm | null;
+  onChange(next: OfferedRhythm): void;
+  current?: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <Field>
+      <FieldLabel>{t("knowledge.field.refresh")}</FieldLabel>
+      <SegmentedControl
+        label={t("knowledge.field.refresh")}
+        value={value ?? ""}
+        onValueChange={(next) => onChange(next as OfferedRhythm)}
+        options={(["never", "daily", "weekly"] as const).map((rhythm) => ({
+          value: rhythm,
+          label: t(RHYTHM_KEYS[rhythm]),
+          testId: `knowledge-refresh-${rhythm}`,
+        }))}
+        testId="knowledge-refresh-rhythm"
+      />
+      <FieldDescription>
+        {current ? t("knowledge.rhythm.current", { rhythm: current }) : t("knowledge.rhythm.help")}
+      </FieldDescription>
+    </Field>
+  );
+}
 
 function countLine(t: Translate, count: number): string {
   return t(count === 1 ? "knowledge.summary.one" : "knowledge.summary.other", { count });
@@ -144,7 +197,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         surface="collection"
         scroll="page"
         testId="catalog-knowledge"
-        header={<PageHeader title={title} />}
+        header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
         <DataState
           state="empty"
@@ -173,6 +226,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       testId="catalog-knowledge"
       header={
         <PageHeader
+          eyebrow={t("nav.group.knowledge")}
           title={title}
           // An empty list carries the action itself, so it never stands twice.
           action={empty ? undefined : addButton("knowledge-add")}
@@ -262,6 +316,7 @@ function AddSourceDialog({
   const client = useQueryClient();
   const [mode, setMode] = useState<AddMode>("url");
   const [url, setUrl] = useState("");
+  const [rhythm, setRhythm] = useState<OfferedRhythm>("weekly");
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -269,6 +324,7 @@ function AddSourceDialog({
   useEffect(() => {
     if (!open) {
       setUrl("");
+      setRhythm("weekly");
       setName("");
       setText("");
       setFile(null);
@@ -281,7 +337,7 @@ function AddSourceDialog({
       if (mode === "url")
         return apiRequest(`${ENDPOINT}/url`, {
           method: "POST",
-          body: JSON.stringify({ url: url.trim() }),
+          body: JSON.stringify({ url: url.trim(), ...refreshFields(rhythm) }),
         });
       if (mode === "text")
         return apiRequest(`${ENDPOINT}/inline`, {
@@ -356,6 +412,7 @@ function AddSourceDialog({
           />
         </Field>
       ) : null}
+      {mode === "url" ? <RefreshField value={rhythm} onChange={setRhythm} /> : null}
       {mode === "file" ? (
         <>
           <FileDrop
@@ -565,6 +622,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
             label: t("knowledge.field.url"),
             value: <span className="font-mono text-xs">{source.source_uri}</span>,
           },
+          { label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) },
         ]
       : []),
     {
@@ -830,23 +888,31 @@ function EditSourceDialog({
     content.data?.editable && content.data.documents.length === 1
       ? content.data.documents[0]
       : undefined;
+  const isAddress = sourceKind(source.source_type) === "url";
+  const savedRhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
   const [name, setName] = useState(source.name);
+  const [rhythm, setRhythm] = useState<OfferedRhythm | null>(null);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setName(source.name);
+      setRhythm(savedRhythm === "custom" ? null : savedRhythm);
       setProblem(null);
     }
-  }, [open, source.name]);
+  }, [open, source.name, savedRhythm]);
   useEffect(() => setText(document?.content ?? ""), [document?.content]);
 
   const save = useMutation({
     mutationFn: async () => {
-      if (name.trim() !== source.name)
+      const rhythmChanged = isAddress && rhythm !== null && rhythm !== savedRhythm;
+      if (name.trim() !== source.name || rhythmChanged)
         await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}`, {
           method: "PATCH",
-          body: JSON.stringify({ name: name.trim() }),
+          body: JSON.stringify({
+            ...(name.trim() !== source.name ? { name: name.trim() } : {}),
+            ...(rhythmChanged && rhythm ? refreshFields(rhythm) : {}),
+          }),
         });
       if (document && content.data && text !== document.content)
         await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}/content`, {
@@ -889,6 +955,13 @@ function EditSourceDialog({
           data-testid="knowledge-edit-name"
         />
       </Field>
+      {isAddress ? (
+        <RefreshField
+          value={rhythm}
+          onChange={setRhythm}
+          current={savedRhythm === "custom" ? rhythmLabel(t, source) : undefined}
+        />
+      ) : null}
       {document ? (
         <Field>
           <FieldLabel htmlFor="knowledge-edit-text">{t("knowledge.field.text")}</FieldLabel>

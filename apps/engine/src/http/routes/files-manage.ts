@@ -12,7 +12,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   FileIdSchema,
@@ -45,6 +45,7 @@ import { buildObjectKey, composeStorageUri, streamFromBytes } from "../../files/
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
+import { dagNamesFile } from "../../files/usage.ts";
 import { logger } from "../../logging/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -326,8 +327,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json(notFound, 404);
     }
-    // A workflow uses a file when its current version holds the reference.
-    const reference = `%${toFileId(row.id)}%`;
+    // A workflow uses a file when its current version holds its id or its
+    // `@attachment:` reference.
     const usedBy = await db
       .select({ id: workflows.id, name: workflows.name })
       .from(workflows)
@@ -336,7 +337,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
         and(
           eq(workflows.tenant_id, tenant_id),
           isNull(workflows.deleted_at),
-          sql`${workflowVersions.dag}::text LIKE ${reference}`,
+          dagNamesFile(workflowVersions.dag, toFileId(row.id), row.slug),
         ),
       )
       .orderBy(workflows.name);
