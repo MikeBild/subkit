@@ -327,9 +327,9 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
 }
 
 /** The record or its editor: `/skills/new` and `?mode=edit` open the editor. */
-export function SkillPage({ permissions }: { permissions: readonly string[] }) {
+export function SkillPage({ permissions }: { permissions: readonly string[] }): ReactNode {
   const { resourceId: id = "" } = useParams({ strict: false }) as { resourceId?: string };
-  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const searchStr: string = useRouterState({ select: (state) => state.location.searchStr });
   const editing = id === "new" || new URLSearchParams(searchStr).get("mode") === "edit";
   return editing ? (
     <SkillEditor id={id} permissions={permissions} />

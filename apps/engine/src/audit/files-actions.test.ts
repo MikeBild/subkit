@@ -43,7 +43,7 @@ describe("FILE_* audit actions", () => {
     expect(AuditAction.FILE_UPLOAD_RECEIVED).toBe("file.upload_received");
   });
 
-  test("all nine FILE_* actions are present in AuditAction", () => {
+  test("all eleven FILE_* actions are present in AuditAction", () => {
     const fileActions = Object.entries(AuditAction)
       .filter(([, v]) => String(v).startsWith("file."))
       .map(([, v]) => v);
@@ -64,6 +64,8 @@ describe("FILE_* audit actions", () => {
         "file.link_removed",
         "file.scan_completed",
         "file.upload_received",
+        "file.replaced",
+        "file.renamed",
       ]),
     );
   });

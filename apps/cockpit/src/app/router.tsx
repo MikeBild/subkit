@@ -6,6 +6,7 @@ import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { FilesPage } from "@/pages/files";
 import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
 import { OverviewPage } from "@/pages/overview";
 import { SettingsPage } from "@/pages/settings";
@@ -13,7 +14,6 @@ import { SkillPage, SkillsPage } from "@/pages/skills";
 import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
-  CATALOG_RESOURCES,
   CHAT_ROUTES,
   legacyTarget,
   PAGE_ROUTES,
@@ -79,34 +79,50 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   }),
 );
 
-/** Sources and skills have pages of their own; the other records share the catalogue. */
-const OWN_PAGES: Partial<
-  Record<
-    (typeof CATALOG_RESOURCES)[number],
-    {
-      list: (props: { permissions: readonly string[] }) => React.ReactElement;
-      record: (props: { permissions: readonly string[] }) => React.ReactElement;
-    }
-  >
-> = {
-  knowledge: { list: KnowledgeSourcesPage, record: KnowledgeSourcePage },
-  skills: { list: SkillsPage, record: SkillPage },
-};
+// Wissen's three pages are their own modules: sources and skills open a
+// record page, a file opens as a sheet over its list at the file's address.
+const knowledgeRoutes = [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/knowledge",
+    component: () => <KnowledgeSourcesPage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/knowledge/$resourceId",
+    component: () => <KnowledgeSourcePage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/skills",
+    component: () => <SkillsPage permissions={useSession().permissions} />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/skills/$resourceId",
+    component: () => <SkillPage permissions={useSession().permissions} />,
+  }),
+];
 
-const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
+const filesRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/files/$resourceId",
+    component: FilesPage,
+  }),
+];
+
+/** The catalogue renders the lists that share it: workflows and connectors. */
+const CATALOG_PAGES = ["workflows", "connectors"] as const satisfies readonly DetailResource[];
+
+const catalogRoutes = CATALOG_PAGES.flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
     component: () => {
       const session = useSession();
-      const Own = OWN_PAGES[resource]?.list;
-      if (Own) return <Own permissions={session.permissions} />;
-      return (
-        <CatalogPage
-          resource={resource as "workflows" | "connectors" | "files"}
-          permissions={session.permissions}
-        />
-      );
+      return <CatalogPage resource={resource} permissions={session.permissions} />;
     },
   }),
   createRoute({
@@ -114,14 +130,7 @@ const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
     path: `/${resource}/$resourceId`,
     component: () => {
       const session = useSession();
-      const Own = OWN_PAGES[resource]?.record;
-      if (Own) return <Own permissions={session.permissions} />;
-      return (
-        <CatalogDetailPage
-          resource={resource as DetailResource}
-          permissions={session.permissions}
-        />
-      );
+      return <CatalogDetailPage resource={resource} permissions={session.permissions} />;
     },
   }),
 ]);
@@ -131,6 +140,8 @@ const routeTree = rootRoute.addChildren([
   ...dedicatedRoutes,
   ...redirectRoutes,
   ...catalogRoutes,
+  ...knowledgeRoutes,
+  ...filesRoutes,
 ]);
 
 // One catch-all for every route: a render fault keeps the shell, the language

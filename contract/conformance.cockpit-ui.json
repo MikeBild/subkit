@@ -36,7 +36,7 @@
     "CUI-SEV-2": {
       "enforced_by": [
         "apps/cockpit/src/components/cockpit/table-columns.test.ts",
-        "apps/cockpit/src/app/resource-presentation.test.ts"
+        "apps/cockpit/src/pages/usage-model.test.ts"
       ]
     },
     "CUI-LOAD-1": { "enforced_by": ["scripts/verify-cockpit-visual.mjs"] },

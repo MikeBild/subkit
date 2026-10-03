@@ -379,6 +379,12 @@ export const AuditAction = {
   // shape, so audit-readers can chart attach/detach pairs by joining on
   // `(file_id, resource_id)`.
   FILE_LINK_REMOVED: "file.link_removed",
+  // `FILE_REPLACED` — `POST /v1/files/{id}/replace` stored new content
+  // under the same file id, so every `$file` reference keeps pointing at
+  // it. Metadata carries the new size bucket and digest prefix.
+  FILE_REPLACED: "file.replaced",
+  // `FILE_RENAMED` — `PATCH /v1/files/{id}` changed the display name.
+  FILE_RENAMED: "file.renamed",
   // `FILE_SCAN_COMPLETED` — the scanner (clamd / Noop) returned a
   // verdict for an upload. Metadata: `verdict` (clean / infected),
   // `engine` (scanner identifier), optional `signature`. Audited
@@ -780,6 +786,8 @@ export const FILE_AUDIT_ACTIONS: ReadonlySet<AuditActionValue> = new Set([
   AuditAction.FILE_LINK_ADDED,
   AuditAction.FILE_LINK_REMOVED,
   AuditAction.FILE_SCAN_COMPLETED,
+  AuditAction.FILE_REPLACED,
+  AuditAction.FILE_RENAMED,
 ]);
 
 export type AuditActorType = "user" | "system_account" | "system";
@@ -1062,6 +1070,24 @@ export const FileDeletedMetadataSchema = z.object({
   request_source: RequestSourceSchema.optional(),
 });
 export type FileDeletedMetadata = z.infer<typeof FileDeletedMetadataSchema>;
+
+/** `file.replaced` metadata. The file id is unchanged; the content is new. */
+export const FileReplacedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  content_type: z.string().nullable().optional(),
+  size_bytes_bucket: SizeBucketSchema,
+  sha256_prefix: z.string().regex(/^[0-9a-f]{16}$/),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileReplacedMetadata = z.infer<typeof FileReplacedMetadataSchema>;
+
+/** `file.renamed` metadata. Names are user content and stay out of the
+ *  ledger, like on `file.downloaded`. */
+export const FileRenamedMetadataSchema = z.object({
+  file_id: z.string().uuid(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type FileRenamedMetadata = z.infer<typeof FileRenamedMetadataSchema>;
 
 /** `file.scan_completed` metadata. Optional `signature` carries the
  *  scanner's match identifier when the verdict is `infected`. */
