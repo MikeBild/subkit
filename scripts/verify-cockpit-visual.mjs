@@ -2867,38 +2867,38 @@ function documentThemeMatches(classes, theme) {
 }
 
 /**
- * No horizontal page scroll, measured where it can happen. The body never
- * scrolls (the shell is an app frame), so `document.scrollWidth` would pass
- * any layout: instead every page scroll container must not scroll sideways,
- * and no visible element may reach past the window's right edge unless it
- * sits inside a container built to scroll sideways (a wide table, a tab bar).
+ * No horizontal page scroll, measured where it can happen. The body and the
+ * page frame are `overflow: hidden`, so a layout too wide for the window does
+ * not scroll — it is cut off, and `document.scrollWidth` passes it. Instead:
+ * no page container may be wider inside than out (scrolling or clipped alike),
+ * and no visible element may reach past the window's right edge unless it sits
+ * in a container built to scroll sideways (a wide table, a tab bar).
  */
 async function assertNoHorizontalScroll(page, label) {
   const found = await page.evaluate(() => {
     const width = window.innerWidth;
-    const sideways = (node) => {
+    const inScroller = (node) => {
       for (let up = node.parentElement; up; up = up.parentElement) {
         const x = window.getComputedStyle(up).overflowX;
-        if (x === "auto" || x === "scroll" || x === "hidden" || x === "clip") return up;
+        if ((x === "auto" || x === "scroll") && up.getBoundingClientRect().right <= width + 1)
+          return true;
       }
-      return null;
+      return false;
     };
     const containers = [
       ...document.querySelectorAll(
-        '[data-testid="page-content"], [data-family-slot="scroll-region"], main[data-page-kind]',
+        '[data-testid="page-content"], [data-family-slot="scroll-region"], [data-family-slot="content"], main[data-page-kind]',
       ),
     ]
       .filter((node) => node.scrollWidth > node.clientWidth + 1)
-      .filter((node) => window.getComputedStyle(node).overflowX !== "hidden")
-      .map((node) => `${node.getAttribute("data-testid") ?? node.tagName} scrolls sideways`);
+      .map((node) => `${node.getAttribute("data-testid") ?? node.tagName} is wider than its frame`);
     const poking = [...document.querySelectorAll("body *")]
       .filter((node) => {
         const rect = node.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0 || rect.right <= width + 1) return false;
         const style = window.getComputedStyle(node);
         if (style.visibility === "hidden" || style.position === "fixed") return false;
-        const clip = sideways(node);
-        return clip === null || clip.getBoundingClientRect().right > width + 1;
+        return !inScroller(node);
       })
       .slice(0, 3)
       .map(
