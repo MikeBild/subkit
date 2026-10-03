@@ -2,12 +2,38 @@ import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
+import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
 
 export type SheetSize = "default" | "wide";
 
-/** The two sheet widths (§4); there are no others. */
+/**
+ * The two sheet widths (§4); there are no others. Stated for the right-hand
+ * side the sheet opens on, so they replace the primitive's own side width
+ * instead of losing to it; below `sm` every sheet takes the full width.
+ */
 export function sheetWidthClass(size: SheetSize): string {
-  return size === "wide" ? "sm:max-w-5xl" : "sm:max-w-xl";
+  return size === "wide" ? "data-[side=right]:sm:max-w-5xl" : "data-[side=right]:sm:max-w-xl";
+}
+
+/** The body of a record still loading: a fact list's shape, then rows. */
+function SheetBodySkeleton() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-6 gap-y-2">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="contents">
+            <span className="flex h-5 items-center">
+              <Skeleton className="h-3.5 w-24" />
+            </span>
+            <span className="flex h-5 items-center">
+              <Skeleton className={index % 2 ? "h-3.5 w-1/3" : "h-3.5 w-1/2"} />
+            </span>
+          </div>
+        ))}
+      </div>
+      <RowsSkeleton count={3} />
+    </div>
+  );
 }
 
 /**
@@ -26,6 +52,7 @@ export function RecordSheet({
   testId,
   closeTestId,
   titleTestId,
+  loading,
   children,
 }: {
   open: boolean;
@@ -40,13 +67,15 @@ export function RecordSheet({
   testId: string;
   closeTestId?: string;
   titleTestId?: string;
+  /** The record is still loading: the body holds a skeleton of its final shape. */
+  loading?: boolean;
   children: ReactNode;
 }) {
   const { t } = useI18n();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className={`w-full overflow-y-auto ${sheetWidthClass(size)}`}
+        className={`overflow-y-auto data-[side=right]:w-full ${sheetWidthClass(size)}`}
         closeLabel={t("common.close")}
         closeTestId={closeTestId}
         data-testid={testId}
@@ -79,7 +108,13 @@ export function RecordSheet({
             ) : null}
           </div>
         </SheetHeader>
-        <div className="flex flex-col gap-6 p-4 pt-0">{children}</div>
+        <Loadable
+          loading={loading}
+          skeleton={<SheetBodySkeleton />}
+          className="flex flex-col gap-6 p-4 pt-0"
+        >
+          {children}
+        </Loadable>
       </SheetContent>
     </Sheet>
   );

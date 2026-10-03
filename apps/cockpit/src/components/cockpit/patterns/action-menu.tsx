@@ -19,6 +19,12 @@ export interface ActionMenuItem {
   disabledReason?: string;
   destructive?: boolean;
   testId?: string;
+  /**
+   * Further `data-*` attributes for the entry — e.g. `data-opens` naming the
+   * dialog it opens, so the single-trigger check counts a menu entry like a
+   * button.
+   */
+  data?: Readonly<Record<`data-${string}`, string>>;
 }
 
 /**
@@ -40,7 +46,7 @@ export function ActionMenu({
   if (items.length === 1) {
     const button = only.href ? (
       <Button variant="outline" asChild data-testid={only.testId ?? testId}>
-        <a href={only.href} data-testid={only.testId ?? testId}>
+        <a href={only.href} data-testid={only.testId ?? testId} {...only.data}>
           {only.label}
         </a>
       </Button>
@@ -50,6 +56,7 @@ export function ActionMenu({
         disabled={only.disabled}
         onClick={only.onSelect}
         data-testid={only.testId ?? testId}
+        {...only.data}
       >
         {only.label}
       </Button>
@@ -84,6 +91,7 @@ export function ActionMenu({
             variant={item.destructive ? "destructive" : "default"}
             title={item.disabled ? item.disabledReason : undefined}
             data-testid={item.testId}
+            {...item.data}
             asChild={Boolean(item.href)}
             onSelect={item.onSelect}
           >
