@@ -1,5 +1,13 @@
 import type { ConversationReference } from "@/api/client";
 
+/** Every kind of object an `@`-mention can name. */
+const REFERENCE_TYPES: readonly ConversationReference["type"][] = [
+  "workflow",
+  "connector",
+  "skill",
+  "knowledge_source",
+];
+
 export type ReferencedResource = ConversationReference & {
   at: string;
   unresolved: boolean;
@@ -19,8 +27,7 @@ export function referenceList(value: unknown): ConversationReference[] {
       typeof reference === "object" &&
       typeof (reference as { id?: unknown }).id === "string" &&
       typeof (reference as { label?: unknown }).label === "string" &&
-      ((reference as { type?: unknown }).type === "workflow" ||
-        (reference as { type?: unknown }).type === "connector"),
+      REFERENCE_TYPES.includes((reference as { type?: unknown }).type as never),
   );
 }
 
