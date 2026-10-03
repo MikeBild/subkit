@@ -252,7 +252,7 @@ test("a draft is diagnosed but never repaired", async () => {
   // A version that is not this workflow's is not found — never a clean bill.
   expect(
     await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev", {
-      version_id: crypto.randomUUID(),
+      version_id: "00000000-0000-4000-8000-0000000000aa",
     }),
   ).toBeNull();
 });
