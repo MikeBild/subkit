@@ -70,10 +70,16 @@ describe("listExecutions — { rows, total } contract", () => {
     expect(scheduler.total).toBe(3);
   });
 
-  test("offset paging past the end keeps the true total", async () => {
-    const { rows, total } = await listExecutions(tenantA, { limit: 5, offset: 50 }, ctx.db);
-    expect(rows).toHaveLength(0);
-    expect(total).toBe(12);
+  test("a later page keeps the true total", async () => {
+    const first = await listExecutions(tenantA, { limit: 5 }, ctx.db);
+    expect(first.next_cursor).not.toBeNull();
+    const second = await listExecutions(
+      tenantA,
+      { limit: 5, cursor: first.next_cursor ?? "" },
+      ctx.db,
+    );
+    expect(second.rows).toHaveLength(5);
+    expect(second.total).toBe(12);
   });
 
   test("tenant isolation", async () => {

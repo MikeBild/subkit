@@ -103,6 +103,10 @@ const listCommand = defineCommand({
       type: "string",
       description: "Only runs that started before this instant (exclusive; default: open)",
     },
+    cursor: {
+      type: "string",
+      description: "Continue after a previous page (the next_cursor it printed)",
+    },
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
@@ -113,11 +117,12 @@ const listCommand = defineCommand({
       if (args.status) query.status = args.status;
       if (args.source) query.request_source = String(args.source);
       if (args.parent) query.parent_execution_id = String(args.parent);
+      if (args.cursor) query.cursor = String(args.cursor);
       // The window `sk stats operations` and `sk stats executions` count over.
       const nowMs = Date.now();
       if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
       if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
-      const { items, total } = await client.listExecutions(query);
+      const { items, total, next_cursor } = await client.listExecutions(query);
       // Tag each row by origin so authoring/manual trial-runs are not
       // mistaken for production incidents, and surface a wall-clock
       // duration (finished_at − started_at). A still-running row has no
@@ -142,8 +147,8 @@ const listCommand = defineCommand({
       // filtered set really is and how to page deeper.
       if (!args.json) {
         process.stdout.write(
-          items.length < total
-            ? `${pc.dim(`showing latest ${items.length} of ${total} executions — raise --limit to page deeper`)}\n`
+          next_cursor
+            ? `${pc.dim(`showing ${items.length} of ${total} executions — next page: --cursor ${next_cursor}`)}\n`
             : `${pc.dim(`${total} execution${total === 1 ? "" : "s"} total`)}\n`,
         );
       }

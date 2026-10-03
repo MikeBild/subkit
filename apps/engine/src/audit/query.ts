@@ -45,7 +45,7 @@ export interface AuditQueryOptions {
    * both halves of the sort key — see `AuditKeysetCursor` for why a
    * timestamp alone silently drops rows.
    */
-  before?: string;
+  cursor?: string;
 }
 
 export interface AuditQueryResult {
@@ -96,7 +96,7 @@ function formatAuditCursor(c: AuditKeysetCursor): string {
  * The cursor's shape, as one regex: an ISO-8601 UTC timestamp with up to
  * microsecond precision, optionally followed by `|<uuid>`.
  *
- * LOCAL-SK-CURSOR-MUELL-500 — the route's `before` param was widened from
+ * LOCAL-SK-CURSOR-MUELL-500 — the route's cursor param was widened from
  * `.datetime()` to `.min(1).max(128)` so the keyset form would pass, and
  * nothing took over the shape check. `"abc|def"` then reached the SQL cast
  * (`'abc'::timestamptz`), which throws: a client error reported as a 500 and
@@ -111,7 +111,7 @@ function formatAuditCursor(c: AuditKeysetCursor): string {
 export const AUDIT_CURSOR_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z(?:\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$/;
 
-/** A `before` value that is not a cursor. Thrown rather than swallowed: a
+/** A `cursor` value that is not a cursor. Thrown rather than swallowed: a
  *  parser that answered `undefined` would mean "no cursor", i.e. silently
  *  serving page one to a caller who asked for page five — the same class of
  *  quiet wrongness the cursor itself was repaired for. */
@@ -197,7 +197,7 @@ function rowToEntry(row: typeof auditLog.$inferSelect): AuditEntry {
  * Paginated tenant-scoped audit log list. `items` is ordered newest
  * first. When the page was FULL, `next_cursor` carries the last returned
  * row's rendered timestamp AND its id (`<ts>|<uuid>`); the caller passes it
- * back verbatim as `before=<cursor>`. A short page returns `null`.
+ * back verbatim as `cursor=<cursor>`. A short page returns `null`.
  *
  * This header used to say the cursor carries "the `ts` of the last returned
  * row". That was the shape that dropped every remaining member of a
@@ -212,7 +212,7 @@ export async function queryAuditLog(
   opts: AuditQueryOptions = {},
 ): Promise<AuditQueryResult> {
   const requested = Math.max(1, Math.min(opts.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
-  const before = opts.before === undefined ? undefined : parseAuditCursor(opts.before);
+  const before = opts.cursor === undefined ? undefined : parseAuditCursor(opts.cursor);
   const rows = await db
     .select({ ...getTableColumns(auditLog), ts_cursor: CURSOR_TS_SQL.as("ts_cursor") })
     .from(auditLog)

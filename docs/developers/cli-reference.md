@@ -176,6 +176,7 @@ Filter the audit log
 - `--action` (string) — Action name filter
 - `--actor` (string) — Actor id filter
 - `--resource-id` (string) — Filter by resource id
+- `--cursor` (string) — Continue after a previous page (its next_cursor)
 - `--json` — JSON output
 
 #### `sk audit show`
@@ -610,6 +611,7 @@ List executions
 - `--parent` (string) — Lineage filter: list the reruns spawned from this execution id
 - `--from` (string) — Only runs that started at or after this instant (ISO-8601 or now-24h, now-7d, startOfMonth)
 - `--to` (string) — Only runs that started before this instant (exclusive; default: open)
+- `--cursor` (string) — Continue after a previous page (the next_cursor it printed)
 - `--json` (default: false) — JSON output
 
 #### `sk executions rerun`

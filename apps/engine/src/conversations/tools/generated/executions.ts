@@ -10,7 +10,8 @@ import type { ConversationTool } from "../index.ts";
 const ListInput = z
   .object({
     limit: z.number().int().min(1).max(200).optional(),
-    offset: z.number().int().min(0).optional(),
+    /** Opaque `next_cursor` of the previous page, passed back verbatim. */
+    cursor: z.string().min(1).max(128).optional(),
     workflow_id: z.string().uuid().optional(),
     status: z.enum(executionStatusEnum.enumValues).optional(),
     request_source: z.string().min(1).optional(),
@@ -31,14 +32,13 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetExecutionToolIn
 export const listExecutionsTool: ConversationTool = {
   name: "list_executions",
   description:
-    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. started_from/started_to narrow to a window on the start time (the window `get_operating_figures` counts over), status to one outcome. `total` is the exact count under the given filters; page with limit/offset while `has_more` is true.",
+    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. started_from/started_to narrow to a window on the start time (the window `get_operating_figures` counts over), status to one outcome. `total` is the exact count under the given filters; while `has_more` is true, pass `next_cursor` back verbatim as `cursor` for the next page.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    const offset = args.offset ?? 0;
-    const { rows, total } = await ctx.engineClient.executions.list({
+    const { rows, total, next_cursor } = await ctx.engineClient.executions.list({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.offset !== undefined ? { offset: args.offset } : {}),
+      ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
       ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
       ...(args.status !== undefined ? { status: args.status } : {}),
       ...(args.request_source !== undefined ? { request_source: args.request_source } : {}),
@@ -57,8 +57,8 @@ export const listExecutionsTool: ConversationTool = {
         })),
         total,
         returned: rows.length,
-        offset,
-        has_more: offset + rows.length < total,
+        next_cursor,
+        has_more: next_cursor !== null,
       },
     };
   },

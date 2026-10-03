@@ -12,7 +12,7 @@
 // Cursor design: pages are ordered newest first. When the response
 // fills the requested page size, `next_cursor` carries an OPAQUE keyset
 // cursor — the last row's timestamp AND its id — and the follow-up
-// request passes it back verbatim as `before=<cursor>`.
+// request passes it back verbatim as `cursor=<cursor>`.
 //
 // This comment used to claim ties "are broken by id in the underlying
 // SELECT so the cursor never skips a row". The ORDER BY did break ties;
@@ -87,12 +87,12 @@ const ListQuery = FilterQuery.extend({
   // silently dropped rows.
   //
   // Opaque to this layer, but not unchecked: dropping `.datetime()` also
-  // dropped the only shape check, so `before=abc|def` walked through to
+  // dropped the only shape check, so `cursor=abc|def` walked through to
   // `'abc'::timestamptz` and came back as a 500 in the operator diagnostics
   // register (LOCAL-SK-CURSOR-MUELL-500). The pattern is the audit module's
   // own definition of the cursor — imported, not restated here, so the
   // validator and the parser cannot drift.
-  before: z
+  cursor: z
     .string()
     .min(1)
     .max(128)
@@ -212,12 +212,12 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const filters = filtersFromQuery(principal.tenant_id, q);
     const limit = q.limit ?? 50;
-    // `before` is passed through VERBATIM. It used to be parsed into a
+    // `cursor` is passed through VERBATIM. It used to be parsed into a
     // `Date` here, which threw away the microseconds Postgres stores and
     // the id that breaks a timestamp tie — between them, 9 rows in 15
     // vanished from a full walk. The cursor is opaque to this layer now.
-    const opts: { limit: number; before?: string } = { limit };
-    if (q.before) opts.before = q.before;
+    const opts: { limit: number; cursor?: string } = { limit };
+    if (q.cursor) opts.cursor = q.cursor;
     const { items, next_cursor } = await queryAuditLog(db, filters, opts);
     return c.json(
       {

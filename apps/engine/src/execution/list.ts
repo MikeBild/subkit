@@ -1,23 +1,30 @@
 // Canonical tenant-scoped execution list. Executions are an unbounded
 // history (unlike the workflow/connector/schedule catalogs), so this
-// surface keeps paging — but every page carries the exact `total` under
-// the same filters so no consumer can mistake a page for the universe.
-//
-// Single query: `count(*) over ()` rides along the row select. The HTTP
+// surface pages by KEYSET cursor over `(created_at DESC, id DESC)` — an
+// offset shifts under every run that starts while a reader pages, and
+// shows one row twice or skips it. Every page still carries the exact
+// `total` under the same filters so no consumer can mistake a page for
+// the universe (the cursor narrows the rows, never the total). The HTTP
 // route (`http/routes/executions/list.ts`), the in-process EngineClient,
 // and the conversation `list_executions` tool all read from here so the
 // filter surface cannot drift between them.
 
 import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
-import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
+import {
+  beforeKeyset,
+  cursorTimestamp,
+  formatKeysetCursor,
+  parseKeysetCursor,
+} from "../db/keyset-cursor.ts";
 import { executions, workflows } from "../db/schema/index.ts";
 
 export type ExecutionRow = typeof executions.$inferSelect;
 
 export interface ListExecutionsOptions {
   limit?: number;
-  offset?: number;
+  /** Opaque `next_cursor` of a previous page, passed back verbatim. */
+  cursor?: string;
   workflow_id?: string;
   status?: string;
   request_source?: string;
@@ -80,28 +87,48 @@ function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOption
   return conds;
 }
 
+export interface ExecutionListResult {
+  /** The page, newest first. */
+  rows: ExecutionRow[];
+  /** Exact count under the filters, independent of limit and cursor. */
+  total: number;
+  /** Cursor for the next page; null when this page reached the end. */
+  next_cursor: string | null;
+}
+
 export async function listExecutions(
   tenant_id: string,
   opts: ListExecutionsOptions = {},
   exec?: Executor,
-): Promise<ListResult<ExecutionRow>> {
+): Promise<ExecutionListResult> {
   const db = exec ?? getDb();
   const limit = Math.min(opts.limit ?? EXECUTION_LIST_DEFAULT_LIMIT, EXECUTION_LIST_MAX_LIMIT);
-  const offset = opts.offset ?? 0;
   const filters = buildExecutionListFilters(tenant_id, opts, db);
+  const cursor = opts.cursor ? parseKeysetCursor(opts.cursor) : undefined;
+  // One row past the page tells whether a next page exists; the total is
+  // its own count so a cursor never narrows it. Sequential, not parallel:
+  // the executor may be a transaction holding a single connection.
   const rows = await db
-    .select({ row: executions, total: totalOverWindow() })
+    .select({ row: executions, ts_cursor: cursorTimestamp(executions.created_at) })
     .from(executions)
-    .where(and(eq(executions.tenant_id, tenant_id), ...filters))
-    .orderBy(desc(executions.created_at))
-    .limit(limit)
-    .offset(offset);
-  const total = await resolveWindowTotal(rows, offset, async () => {
-    const [row] = await db
-      .select({ c: sql<number>`count(*)::int` })
-      .from(executions)
-      .where(and(eq(executions.tenant_id, tenant_id), ...filters));
-    return Number(row?.c ?? 0);
-  });
-  return { rows: rows.map((r) => r.row), total };
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        ...filters,
+        ...(cursor ? [beforeKeyset(executions.created_at, executions.id, cursor)] : []),
+      ),
+    )
+    .orderBy(desc(executions.created_at), desc(executions.id))
+    .limit(limit + 1);
+  const counted = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), ...filters));
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  const next_cursor =
+    rows.length > limit && last
+      ? formatKeysetCursor({ ts: last.ts_cursor, id: last.row.id })
+      : null;
+  return { rows: page.map((r) => r.row), total: Number(counted[0]?.c ?? 0), next_cursor };
 }

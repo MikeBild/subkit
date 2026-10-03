@@ -6680,7 +6680,8 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
-                    offset?: number | null;
+                    /** @description Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive. */
+                    cursor?: string;
                     workflow_id?: string;
                     status?: string;
                     request_source?: string;
@@ -16530,7 +16531,7 @@ export interface paths {
                     ts_from?: string;
                     ts_to?: string;
                     limit?: number;
-                    before?: string;
+                    cursor?: string;
                 };
                 header?: never;
                 path?: never;
@@ -19712,7 +19713,7 @@ export interface components {
         ExecutionListResponse: {
             items: components["schemas"]["ExecutionListItem"][];
             total: number;
-            next_cursor?: string | null;
+            next_cursor: string | null;
         };
         ExecutionListItem: components["schemas"]["Execution"] & {
             failure: {
