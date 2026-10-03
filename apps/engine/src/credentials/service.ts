@@ -24,11 +24,7 @@ import {
   hasCredentialConnectionColumn,
 } from "../runtime-config/secret-columns.ts";
 import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
-import {
-  authorityScopeSet,
-  normalizeScopeString,
-  sameAuthorityScopes,
-} from "./authority-scopes.ts";
+import { authorityScopeSet, sameAuthorityScopes, storedScopes } from "./authority-scopes.ts";
 import { readAccessToken, summarizeConnections } from "./connections/service.ts";
 import type { ConnectionSummary } from "./connections/types.ts";
 
@@ -115,7 +111,7 @@ function serializePlain(value: CredentialPlaintext): string {
       return JSON.stringify({
         access_token: value.access_token,
         token_type: value.token_type ?? "Bearer",
-        scope: value.scope,
+        scope: value.scope === undefined ? undefined : storedScopes(value.scope),
       });
     case "aws_sigv4":
       return JSON.stringify({
@@ -244,8 +240,8 @@ export interface UpsertCredentialInput {
   oauth2_expires_at?: Date | null;
   /**
    * G6 (runtime-logs review plan): scopes the IdP actually granted on
-   * the most recent OAuth flow, as the token-exchange response's scope
-   * string (stored space-separated whatever separator it used). Persisted on the credential row so
+   * the most recent OAuth flow, as the scope string of the token-exchange
+   * response (stored space-separated). Persisted on the credential row so
    * probe / test can diff against the connector template's expected
    * scopes and surface a `partial_grant` warning to the LLM. Optional
    * because non-oauth2 credentials and pre-G6 callers leave it null.
@@ -377,16 +373,11 @@ export async function upsertCredential(
       if (!row) throw new Error("credential insert returned no row");
       id = row.id;
     }
-    // A granted scope string is stored in one form — space-separated tokens —
-    // whatever separator the authorization server answered with, so every
-    // reader of the row sees the same list.
-    const value: CredentialPlaintext =
-      input.value.mode === "oauth2" && input.value.scope !== undefined
-        ? { ...input.value, scope: normalizeScopeString(input.value.scope) ?? "" }
-        : input.value;
-    const plain = serializePlain(value);
-    const grantedScopes = normalizeScopeString(
-      input.oauth2_granted_scopes ?? (value.mode === "oauth2" ? (value.scope ?? null) : null),
+    const plain = serializePlain(input.value);
+    // One stored form, whatever separator the authorization server used.
+    const grantedScopes = storedScopes(
+      input.oauth2_granted_scopes ??
+        (input.value.mode === "oauth2" ? (input.value.scope ?? null) : null),
     );
     let authorityChanged = Boolean(priorId);
     const prior = existing[0];
@@ -537,7 +528,7 @@ export async function rotateOAuth2Tokens(
     );
     if (priorValue.mode !== "oauth2") throw new Error("OAuth credential unavailable for refresh");
     const previousScope = prior.granted_scopes ?? priorValue.scope ?? null;
-    const nextScope = normalizeScopeString(input.scope ?? previousScope);
+    const nextScope = storedScopes(input.scope ?? previousScope);
     const previousType = priorValue.token_type ?? "Bearer";
     const nextType = input.token_type ?? previousType;
     // OAuth token type names are case-insensitive. The OAuth client normalizes
