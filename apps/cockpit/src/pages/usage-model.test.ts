@@ -47,6 +47,23 @@ describe("the consumption breakdown", () => {
     ]);
   });
 
+  test("a model row carries the engine's name for it; an unknown model keeps its id", () => {
+    const rows = consumptionRows(
+      {
+        groups: [
+          {
+            key: { model: "claude-haiku-4-5-20251001" },
+            model_name: "Claude Haiku 4.5",
+            totals: { calls: 3, tokens: { total: 300 } },
+          },
+          { key: { model: "my-local-model" }, totals: { calls: 1, tokens: { total: 100 } } },
+        ],
+      },
+      "model",
+    );
+    expect(rows.map((r) => r.name ?? r.key)).toEqual(["Claude Haiku 4.5", "my-local-model"]);
+  });
+
   test("shares add up to the whole", () => {
     const rows = consumptionRows(envelope, "workflow");
     expect(rows[0]?.share).toBeCloseTo(0.75, 5);
