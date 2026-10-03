@@ -19,7 +19,14 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { skills } from "../db/schema/index.ts";
-import type { SkillActivation, SkillMaturity, SkillSideEffects } from "../skills/types.ts";
+import {
+  type SkillActivation,
+  type SkillAppliesTo,
+  type SkillAudience,
+  type SkillMaturity,
+  type SkillSideEffects,
+  skillOfferedTo,
+} from "../skills/types.ts";
 
 /** Slim per-skill record the matcher needs. Loaded from the `skills`
  *  table by `loadActivationCatalog`. */
@@ -29,6 +36,8 @@ export interface ActivationRecord {
   maturity: SkillMaturity;
   side_effects: SkillSideEffects;
   tags: string[];
+  /** Where the skill is offered; absent means "both". */
+  applies_to?: SkillAppliesTo;
 }
 
 /** Surfaces in scope for the current turn. Caller-supplied so the
@@ -40,6 +49,9 @@ export interface ScopeFacts {
   connector_drivers?: readonly string[];
   /** Template slugs of connectors currently in scope. Lower-case. */
   connector_templates?: readonly string[];
+  /** Audience of the turn (`skillAudienceForAuthoringMode`). When set, a
+   *  skill not offered to it never autoloads or re-affirms. */
+  audience?: SkillAudience | undefined;
 }
 
 export interface ToolCallContext extends ScopeFacts {
@@ -72,6 +84,11 @@ export interface UserTurnContext extends ScopeFacts {
  */
 export const AUTHORING_ONLY_TAG = "authoring-only";
 
+/** True when `rec` is not offered to the turn's audience. */
+function notOffered(rec: ActivationRecord, audience: SkillAudience | undefined): boolean {
+  return audience !== undefined && !skillOfferedTo(rec.applies_to ?? "both", audience);
+}
+
 /** True when `rec` must be withheld from autoload on `surface`. */
 function suppressedOnSurface(rec: ActivationRecord, surface: string | undefined): boolean {
   return surface === "chat" && rec.tags.includes(AUTHORING_ONLY_TAG);
@@ -99,6 +116,7 @@ export async function loadActivationCatalog(
       maturity: skills.maturity,
       side_effects: skills.side_effects,
       tags: skills.tags,
+      applies_to: skills.applies_to,
     })
     .from(skills)
     .where(and(eq(skills.tenant_id, tenant_id), eq(skills.lifecycle, "active")));
@@ -113,6 +131,7 @@ export async function loadActivationCatalog(
       maturity: row.maturity as SkillMaturity,
       side_effects: row.side_effects as SkillSideEffects,
       tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+      applies_to: row.applies_to,
     });
   }
   return out;
@@ -151,6 +170,7 @@ export function autoloadForToolCall(
     // tenant overrides) might leak one through. Experimental skills
     // are only loadable via explicit `load_skill(slug)`.
     if (rec.maturity === "experimental") continue;
+    if (notOffered(rec, ctx.audience)) continue;
     if (matchesToolCall(rec.activates_when, ctx, drivers, templates, stepKinds)) {
       out.add(rec.slug);
     }
@@ -181,6 +201,7 @@ export function autoloadForUserTurn(
     if (out.has(rec.slug)) continue;
     if (rec.maturity === "experimental") continue;
     if (suppressedOnSurface(rec, ctx.surface)) continue;
+    if (notOffered(rec, ctx.audience)) continue;
     if (matchesUserTurn(rec.activates_when, text, drivers, templates, ctx.first_turn === true)) {
       out.add(rec.slug);
     }
@@ -227,6 +248,9 @@ export function reaffirmLoadedForTurn(
   for (const rec of catalog) {
     if (!loaded.has(rec.slug)) continue;
     if (out.has(rec.slug)) continue;
+    // A skill not offered to this turn's audience is never re-affirmed —
+    // not even a baseline one — so it ages out of the full-body window.
+    if (notOffered(rec, ctx.audience)) continue;
     // Baseline skills are the core mental model — always re-affirmed.
     if (rec.activates_when.some((r) => r.kind === "baseline")) {
       out.add(rec.slug);
@@ -269,6 +293,7 @@ export function autoloadForDiagnoses(
   catalog: readonly ActivationRecord[],
   currently_loaded: readonly string[],
   surface?: string,
+  audience?: SkillAudience,
 ): string[] {
   if (codes.length === 0) return [];
   const have = new Set(currently_loaded);
@@ -278,6 +303,7 @@ export function autoloadForDiagnoses(
     if (have.has(rec.slug)) continue;
     if (rec.maturity === "experimental") continue;
     if (suppressedOnSurface(rec, surface)) continue;
+    if (notOffered(rec, audience)) continue;
     if (
       rec.activates_when.some(
         (rule) => rule.kind === "diagnosis" && rule.codes.some((code) => seen.has(code)),
