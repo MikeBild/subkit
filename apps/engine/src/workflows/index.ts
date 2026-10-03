@@ -4,6 +4,7 @@
 
 export * from "./apply-boundary-proposals.ts";
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
+export { isOpenEnded, remainingRuns } from "./authority-live.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export * from "./boundary-proposal.ts";
 export * from "./catalog-view.ts";

@@ -38,8 +38,10 @@ export const GrantWorkflowAuthoritySchema = z
     expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
     execution_environment: z.enum(["dev", "prod"]),
     valid_from: z.string().datetime({ offset: true }),
-    valid_until: z.string().datetime({ offset: true }),
-    max_runs: z.number().int().min(1).max(10_000),
+    // Null or absent: no end date — the approval stands until it is revoked.
+    valid_until: z.string().datetime({ offset: true }).nullable().optional(),
+    // Null or absent: no run limit. Runs are still counted.
+    max_runs: z.number().int().min(1).max(10_000).nullable().optional(),
     activation: z
       .object({ expected_current_version_id: z.string().uuid().nullable() })
       .strict()
@@ -169,8 +171,8 @@ async function resolveGrantedAdmissionHolds(
           eq(webhooksInbound.workflow_id, authority.workflow_id),
           sql`${webhooksInbound.admission_hold} IS NOT NULL`,
           sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
-          sql`${authority.valid_until}::timestamptz > clock_timestamp()`,
-          sql`${authority.reserved_runs} < ${authority.max_runs}`,
+          sql`(${authority.valid_until}::timestamptz IS NULL OR ${authority.valid_until}::timestamptz > clock_timestamp())`,
+          sql`(${authority.max_runs}::int IS NULL OR ${authority.reserved_runs}::int < ${authority.max_runs}::int)`,
           sql`${authority.revoked_at}::timestamptz IS NULL`,
         ),
       );
@@ -186,8 +188,8 @@ async function resolveGrantedAdmissionHolds(
         eq(workflowsSchedules.paused, false),
         sql`${workflowsSchedules.admission_hold} IS NOT NULL`,
         sql`${authority.valid_from}::timestamptz <= clock_timestamp()`,
-        sql`${authority.valid_until}::timestamptz > clock_timestamp()`,
-        sql`${authority.reserved_runs} < ${authority.max_runs}`,
+        sql`(${authority.valid_until}::timestamptz IS NULL OR ${authority.valid_until}::timestamptz > clock_timestamp())`,
+        sql`(${authority.max_runs}::int IS NULL OR ${authority.reserved_runs}::int < ${authority.max_runs}::int)`,
         sql`${authority.revoked_at}::timestamptz IS NULL`,
       ),
     )
@@ -336,11 +338,13 @@ export async function grantWorkflowAuthority(
     const now = clock.rows[0]?.now;
     if (!now) throw new Error("database clock unavailable");
     const from = new Date(input.valid_from);
-    const until = new Date(input.valid_until);
+    const until = input.valid_until ? new Date(input.valid_until) : null;
+    const maxRuns = input.max_runs ?? null;
     if (
-      until <= from ||
-      until <= new Date(now) ||
-      until.getTime() - from.getTime() > 31 * 24 * 60 * 60_000
+      until &&
+      (until <= from ||
+        until <= new Date(now) ||
+        until.getTime() - from.getTime() > 31 * 24 * 60 * 60_000)
     )
       fail("authority_window_invalid", "choose a non-expired authority window of at most 31 days");
     const preview = await previewWorkflowAuthority(
@@ -375,8 +379,13 @@ export async function grantWorkflowAuthority(
           eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
           eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
           eq(workflowExecutionAuthorities.valid_from, from),
-          eq(workflowExecutionAuthorities.valid_until, until),
-          eq(workflowExecutionAuthorities.max_runs, input.max_runs),
+          until
+            ? eq(workflowExecutionAuthorities.valid_until, until)
+            : isNull(workflowExecutionAuthorities.valid_until),
+          maxRuns === null
+            ? isNull(workflowExecutionAuthorities.max_runs)
+            : eq(workflowExecutionAuthorities.max_runs, maxRuns),
+          isNull(workflowExecutionAuthorities.inherited_from),
           eq(workflowExecutionAuthorities.created_by, principal.id),
         ),
       )
@@ -420,8 +429,9 @@ export async function grantWorkflowAuthority(
         target_constraints: { targets },
         valid_from: from,
         valid_until: until,
-        max_runs: input.max_runs,
+        max_runs: maxRuns,
         created_by: principal.id,
+        approved_manifest: { ...preview.manifest },
       })
       .returning();
     if (!authority) throw new Error("authority insert returned no row");
@@ -440,8 +450,9 @@ export async function grantWorkflowAuthority(
           effect_manifest_digest: preview.digest,
           execution_environment: input.execution_environment,
           valid_from: from.toISOString(),
-          valid_until: until.toISOString(),
-          max_runs: input.max_runs,
+          valid_until: until?.toISOString() ?? null,
+          max_runs: maxRuns,
+          open_ended: until === null && maxRuns === null,
         },
       },
       tx,

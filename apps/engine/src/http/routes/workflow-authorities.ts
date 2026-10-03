@@ -22,9 +22,11 @@ import {
   contentPublicationLabels,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
+  isOpenEnded,
   JsonValueSchema,
   prepareReportAuthority,
   previewWorkflowAuthority,
+  remainingRuns,
   reportBoundariesFromManifest,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
@@ -47,14 +49,25 @@ const authoritySchema = z
     execution_environment: z.enum(["dev", "prod"]),
     target_constraints: z.object({ targets: z.array(z.string()) }),
     valid_from: z.string().datetime(),
-    valid_until: z.string().datetime(),
-    max_runs: z.number().int(),
+    /** Null: no end date — the approval stands until it is revoked. */
+    valid_until: z.string().datetime().nullable(),
+    /** Null: no run limit. */
+    max_runs: z.number().int().nullable(),
+    /** Runs started under this approval so far. */
     reserved_runs: z.number().int(),
-    remaining_runs: z.number().int(),
+    /** Null when there is no run limit. */
+    remaining_runs: z.number().int().nullable(),
+    /** Neither an end date nor a run limit: it stands until revoked. */
+    open_ended: z.boolean(),
     created_by: z.string().uuid(),
     created_at: z.string().datetime(),
     revoked_at: z.string().datetime().nullable(),
     revoked_by: z.string().uuid().nullable(),
+    /** The approval this one continues for a newer version whose effect
+     *  boundary did not grow; null when a person granted it directly. */
+    inherited_from: z.string().uuid().nullable(),
+    /** The approval that continued this one for a newer version. */
+    superseded_by: z.string().uuid().nullable(),
     active_version: z.boolean(),
     ready_for_new_run: z.boolean(),
     state: z.enum([
@@ -62,6 +75,7 @@ const authoritySchema = z
       "not_yet_valid",
       "expired",
       "revoked",
+      "superseded",
       "exhausted",
       "invalidated",
       "unavailable",
@@ -479,15 +493,17 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
   const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
   const now = clock.rows[0]?.now;
   if (!now) throw new Error("database clock unavailable");
-  let state: z.infer<typeof authoritySchema>["state"] = row.revoked_at
-    ? "revoked"
-    : row.valid_until <= new Date(now)
-      ? "expired"
-      : row.reserved_runs >= row.max_runs
-        ? "exhausted"
-        : row.valid_from > new Date(now)
-          ? "not_yet_valid"
-          : "approved";
+  let state: z.infer<typeof authoritySchema>["state"] = row.superseded_by
+    ? "superseded"
+    : row.revoked_at
+      ? "revoked"
+      : row.valid_until !== null && row.valid_until <= new Date(now)
+        ? "expired"
+        : row.max_runs !== null && row.reserved_runs >= row.max_runs
+          ? "exhausted"
+          : row.valid_from > new Date(now)
+            ? "not_yet_valid"
+            : "approved";
   if (state === "approved" || state === "not_yet_valid") {
     try {
       const current = await previewWorkflowAuthority(
@@ -515,9 +531,10 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
     state,
     active_version,
     ready_for_new_run: active_version && state === "approved",
-    remaining_runs: Math.max(0, row.max_runs - row.reserved_runs),
+    remaining_runs: remainingRuns(row),
+    open_ended: isOpenEnded(row),
     valid_from: row.valid_from.toISOString(),
-    valid_until: row.valid_until.toISOString(),
+    valid_until: row.valid_until?.toISOString() ?? null,
     created_at: row.created_at.toISOString(),
     revoked_at: row.revoked_at?.toISOString() ?? null,
   });

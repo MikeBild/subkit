@@ -5,9 +5,10 @@
 // hooks, the schedules and the tool name belong to other subsystems; the
 // invocation route assembles them (`http/routes/workflow-invocation.ts`).
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowExecutionAuthorities } from "../db/schema/index.ts";
+import { authorityLive } from "./authority-live.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import type { WorkflowDef } from "./types.ts";
 
@@ -124,10 +125,7 @@ export async function workflowRunAuthority(
         eq(workflowExecutionAuthorities.tenant_id, workflow.tenant_id),
         eq(workflowExecutionAuthorities.workflow_id, workflow.id),
         eq(workflowExecutionAuthorities.workflow_version_id, workflow.current_version_id),
-        isNull(workflowExecutionAuthorities.revoked_at),
-        sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-        sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
-        sql`${workflowExecutionAuthorities.reserved_runs} < ${workflowExecutionAuthorities.max_runs}`,
+        authorityLive(),
       ),
     );
   for (const row of rows) answer[row.environment] = "live_run_allowed";

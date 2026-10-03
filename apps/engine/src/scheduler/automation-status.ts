@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import {
   type webhooksInbound,
@@ -7,6 +7,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
+import { authorityLive } from "../workflows/authority-live.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
@@ -109,10 +110,7 @@ async function inspectAutomationChecked<B extends object>(
         eq(workflowExecutionAuthorities.workflow_version_id, workflow.version),
         eq(workflowExecutionAuthorities.execution_environment, binding.environment),
         eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
-        isNull(workflowExecutionAuthorities.revoked_at),
-        sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-        sql`${workflowExecutionAuthorities.valid_until} > clock_timestamp()`,
-        sql`${workflowExecutionAuthorities.reserved_runs} < ${workflowExecutionAuthorities.max_runs}`,
+        authorityLive(),
       ),
     )
     .limit(1);

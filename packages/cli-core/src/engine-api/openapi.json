@@ -4775,17 +4775,29 @@
             "format": "date-time"
           },
           "valid_until": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "max_runs": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "reserved_runs": {
             "type": "integer"
           },
           "remaining_runs": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "open_ended": {
+            "type": "boolean"
           },
           "created_by": {
             "type": "string",
@@ -4809,6 +4821,20 @@
             ],
             "format": "uuid"
           },
+          "inherited_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "superseded_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "active_version": {
             "type": "boolean"
           },
@@ -4822,6 +4848,7 @@
               "not_yet_valid",
               "expired",
               "revoked",
+              "superseded",
               "exhausted",
               "invalidated",
               "unavailable"
@@ -4841,10 +4868,13 @@
           "max_runs",
           "reserved_runs",
           "remaining_runs",
+          "open_ended",
           "created_by",
           "created_at",
           "revoked_at",
           "revoked_by",
+          "inherited_from",
+          "superseded_by",
           "active_version",
           "ready_for_new_run",
           "state"
@@ -19550,11 +19580,17 @@
                 "format": "date-time"
               },
               "valid_until": {
-                "type": "string",
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "format": "date-time"
               },
               "max_runs": {
-                "type": "integer",
+                "type": [
+                  "integer",
+                  "null"
+                ],
                 "minimum": 1,
                 "maximum": 10000
               },
@@ -19579,9 +19615,7 @@
               "workflow_version_id",
               "expected_manifest_digest",
               "execution_environment",
-              "valid_from",
-              "valid_until",
-              "max_runs"
+              "valid_from"
             ],
             "additionalProperties": false
           }
@@ -31296,11 +31330,17 @@
                     "format": "date-time"
                   },
                   "valid_until": {
-                    "type": "string",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
                     "format": "date-time"
                   },
                   "max_runs": {
-                    "type": "integer",
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
                     "minimum": 1,
                     "maximum": 10000
                   },
@@ -31325,9 +31365,7 @@
                   "workflow_version_id",
                   "expected_manifest_digest",
                   "execution_environment",
-                  "valid_from",
-                  "valid_until",
-                  "max_runs"
+                  "valid_from"
                 ],
                 "additionalProperties": false
               }
