@@ -239,12 +239,15 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await section.waitFor();
     if ((await section.locator("li[data-code]").count()) !== 4)
       throw new Error("The diagnosis does not list every refused step");
-    // The diagnosis lives inside the automation panel, whose state it decides —
+    // The diagnosis stands right under the strip, whose state it decides —
     // once on the page. Its acts stand in it and nowhere else: the title
     // carries the page's own actions only.
-    const automation = page.getByTestId("workflow-automation");
-    if ((await automation.getByTestId("workflow-diagnosis").count()) !== 1)
-      throw new Error("The diagnosis is not part of the automation panel");
+    const below = await page.evaluate(() => {
+      const strip = document.querySelector('[data-testid="workflow-automation"]');
+      const diagnosis = document.querySelector('[data-testid="workflow-diagnosis"]');
+      return Boolean(strip && diagnosis && strip.nextElementSibling === diagnosis);
+    });
+    if (!below) throw new Error("The diagnosis does not stand right under the strip");
     if ((await page.getByTestId("workflow-diagnosis").count()) !== 1)
       throw new Error("The diagnosis stands on the page twice");
     await page.waitForFunction(
@@ -284,9 +287,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     if (jumps) throw new Error(`${jumps} link(s) on the page only lead to the automation panel`);
     if (await page.getByTestId("workflow-cause-remedy").count())
       throw new Error("The cause block offers a remedy the panel below it owns");
-    // Four refused steps, an unhealthy workflow, a failed run in the list:
-    // every action once.
-    await page.getByTestId("workflow-recent-run-0").waitFor();
+    // Four refused steps and an unhealthy workflow: every action once.
     await assertSingleTriggers(page, `${locale}/gate-diagnosis`, { approvalOpeners: 0 });
 
     // The cause, in the reader's words — the precise rule, not the code.
@@ -306,7 +307,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     // conversation do the same whichever step asks: once each, under the list.
     await item(0).getByTestId("workflow-diagnosis-0-repair").waitFor();
     for (const index of [1, 2, 3])
-      if (await item(index).locator("button").count())
+      if (await item(index).locator('button:not([data-testid$="-run"])').count())
         throw new Error(`Block ${index} carries a button for an act that is not its own`);
     const shared = section.getByTestId("workflow-diagnosis-actions");
     await shared.getByTestId("workflow-diagnosis-prepare").waitFor();
@@ -325,11 +326,15 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
       if (!asked.includes(step))
         throw new Error(`The conversation does not name step ${step}: ${asked}`);
     // One run refused two of the steps: its link stands once.
-    if ((await section.locator('a[data-testid$="-run"]').count()) !== 1)
+    if ((await section.locator('[data-testid$="-run"]').count()) !== 1)
       throw new Error("The run that refused several steps is linked more than once");
 
-    // The run list names the broken rule beside the class.
-    const recent = page.getByTestId("workflow-recent-run-0-refusal-reason");
+    // The run list ("Verlauf") names the broken rule beside the class.
+    await page.getByTestId("workflow-tabs-tab-verlauf").click();
+    const recent = page
+      .getByTestId("workflow-recent-run-0-refusal-reason")
+      .filter({ visible: true })
+      .first();
     await recent.waitFor();
     const recentText = await recent.innerText();
     if (!recentText.includes(de ? "Empfänger weicht von der Freigabe ab" : "recipient differs"))
