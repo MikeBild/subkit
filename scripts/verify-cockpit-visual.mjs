@@ -2089,9 +2089,12 @@ async function mockApi(route) {
         ["465c1424-676e-44c4-8ec0-7ff754f167b4", 900, 120_000_000],
         ["b221a085-3c6f-49e1-8553-3298949ab4db", 223, 18_000_000],
       ],
+      // The engine names the models its catalog knows (`model_name`); a model
+      // it does not know keeps its id, and the page must show that id.
       model: [
-        ["claude-sonnet-4-6", 820, 104_000_000],
-        ["claude-haiku-4-5", 303, 34_000_000],
+        ["claude-sonnet-4-6", 820, 104_000_000, "Claude Sonnet 4.6"],
+        ["claude-haiku-4-5-20251001", 303, 34_000_000, "Claude Haiku 4.5"],
+        ["my-local-model", 12, 1_000_000],
       ],
     };
     const rows = byAxis[axis] ?? byAxis.workflow;
@@ -2100,11 +2103,12 @@ async function mockApi(route) {
       tz: "UTC",
       from: "2026-07-11T00:00:00.000Z",
       to: "2026-08-10T00:00:00.000Z",
-      groups: rows.map(([key, calls, total]) => ({
+      groups: rows.map(([key, calls, total, modelName]) => ({
         // The PUBLISHED shape: a map of dimension to value. This fixture used
         // to send a bare string, which is what the page assumed — so the sweep
         // photographed a table that could never fill on a real installation.
         key: { [axis]: key },
+        ...(modelName ? { model_name: modelName } : {}),
         buckets: [],
         totals: {
           // PER GROUP this is a plain number; only the envelope-level total is
