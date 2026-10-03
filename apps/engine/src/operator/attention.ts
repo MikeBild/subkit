@@ -34,6 +34,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { PreviewClassification } from "../execution/classify.ts";
 import { can, resourceAccess } from "../rbac/evaluator.ts";
+import type { BoundaryGrowth } from "../workflows/authority-growth.ts";
 import {
   type AttentionReaderOverrides,
   buildTenantFacts,
@@ -137,7 +138,13 @@ export interface AttentionItem {
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
   /** Which version an approval item is about, and where it runs. Only on
    *  `version_awaiting_approval`, `version_needs_repair` and `approval_expiring`. */
-  approval?: { version: number; environment: "dev" | "prod" };
+  approval?: {
+    version: number;
+    environment: "dev" | "prod";
+    /** Awaiting only: what this version reaches beyond the approval of the
+     *  version before it — why that approval did not follow. */
+    growth?: BoundaryGrowth[];
+  };
   /** What keeps that version from being approved. Only on `version_needs_repair`:
    *  the leading blocked step, its diagnosis code, the act that removes it,
    *  how many steps are blocked, and the filed repair or run it rests on. */

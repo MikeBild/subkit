@@ -5689,6 +5689,12 @@
           "execution_shape": {
             "$ref": "#/components/schemas/AuthorityExecutionShape"
           },
+          "boundary_growth": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorityBoundaryGrowth"
+            }
+          },
           "schedules": {
             "type": "array",
             "items": {
@@ -5936,6 +5942,53 @@
           "requests",
           "iterations",
           "run_limit_is_request_limit"
+        ]
+      },
+      "AuthorityBoundaryGrowth": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "new_connector",
+              "new_target",
+              "wider_effect",
+              "changed_boundary"
+            ]
+          },
+          "connector_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "unknown",
+              "destructive"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "connector_id",
+          "target",
+          "effect"
         ]
       },
       "WorkflowDiagnosis": {
@@ -20181,6 +20234,13 @@
                   "dev",
                   "prod"
                 ]
+              },
+              "growth": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthorityBoundaryGrowth"
+                },
+                "description": "Only on version_awaiting_approval: what this version reaches beyond the approval of the version before it, which is why that approval did not follow."
               }
             },
             "required": [

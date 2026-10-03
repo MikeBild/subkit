@@ -19,29 +19,73 @@
 // Pending drafts are never touched: only activation carries an approval.
 
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
-import { workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
+import { connectors, workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import type { BoundaryGrowth } from "./authority-growth.ts";
 import { authorityLive } from "./authority-live.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
 
-/** One thing a new version reaches that the approval did not cover. */
-export interface BoundaryGrowth {
-  /** new_connector: a connector the approval never reached.
-   *  new_target: a known connector, but a new address on it.
-   *  wider_effect: a known address, now written to (or deleted from) where it
-   *  was only read — or an effect the engine cannot classify.
-   *  changed_boundary: a known address whose connector configuration,
-   *  credential or declared request boundary changed. */
-  kind: "new_connector" | "new_target" | "wider_effect" | "changed_boundary";
-  connector_id: string | null;
-  target: string | null;
-  effect: Effect["effect"];
+/** Adds each connector's display name, so a reader can say "new target: X". */
+export async function nameGrowth(
+  db: Executor,
+  tenant_id: string,
+  growth: BoundaryGrowth[],
+): Promise<BoundaryGrowth[]> {
+  const ids = [
+    ...new Set(growth.flatMap((entry) => (entry.connector_id ? [entry.connector_id] : []))),
+  ];
+  if (ids.length === 0) return growth.map((entry) => ({ ...entry, connector_name: null }));
+  const rows = await db
+    .select({ id: connectors.id, name: connectors.display_name })
+    .from(connectors)
+    .where(and(eq(connectors.tenant_id, tenant_id), inArray(connectors.id, ids)));
+  const names = new Map(rows.map((row) => [row.id, row.name]));
+  return growth.map((entry) => ({
+    ...entry,
+    connector_name: entry.connector_id ? (names.get(entry.connector_id) ?? null) : null,
+  }));
+}
+
+/** The approval a version's boundary is measured against for display: the
+ *  newest one in this environment for another version of the workflow that a
+ *  person did not revoke (a carried-over one counts — its boundary is the one
+ *  a person approved). Null when there is none. */
+export async function referenceApprovedManifest(
+  db: Executor,
+  input: {
+    tenant_id: string;
+    workflow_id: string;
+    workflow_version_id: string;
+    execution_environment: "dev" | "prod";
+  },
+): Promise<WorkflowEffectManifest | null> {
+  const [row] = await db
+    .select({
+      approved: workflowExecutionAuthorities.approved_manifest,
+      own: workflowExecutionAuthorities.effect_manifest,
+    })
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+        eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+        ne(workflowExecutionAuthorities.workflow_version_id, input.workflow_version_id),
+        eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+        or(
+          isNull(workflowExecutionAuthorities.revoked_at),
+          isNotNull(workflowExecutionAuthorities.superseded_by),
+        ),
+      ),
+    )
+    .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
+    .limit(1);
+  return row ? parseManifest(row.approved ?? row.own) : null;
 }
 
 const EFFECT_RANK = { read: 0, write: 1, destructive: 2 } as const;
@@ -272,6 +316,10 @@ export async function carryApprovalsForward(
       // What the version adds, for the attention item. Only environments in
       // which no approval followed are named: one carried approval covers it.
       for (const environment of covered) delete outcome.growth[environment];
+      for (const environment of ["dev", "prod"] as const) {
+        const entries = outcome.growth[environment];
+        if (entries) outcome.growth[environment] = await nameGrowth(sp, input.tenant_id, entries);
+      }
       const growth = outcome.growth;
       if (Object.keys(growth).length > 0)
         await sp
