@@ -29,6 +29,7 @@ import {
   PageHeader,
   PageTabs,
   RecordSheet,
+  SaveBar,
   Section,
   Select,
   SelectContent,
@@ -657,28 +658,16 @@ function PersonSheet({
         </Section>
         {user && changed ? (
           // The save bar stands only while there is something to save (R13).
-          <div
-            className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-2 border-t bg-background px-4 py-3 text-sm"
-            data-slot="save-bar"
-            data-testid="people-save-bar"
-          >
-            <span className="min-w-0 flex-1">{t("people.unsaved")}</span>
-            <Button
-              variant="ghost"
-              disabled={update.isPending}
-              onClick={() => setPicked(null)}
-              data-testid="people-role-discard"
-            >
-              {t("people.discard")}
-            </Button>
-            <Button
-              pending={update.isPending}
-              onClick={() => update.mutate({ target: user, to: changed })}
-              data-testid="people-role-save"
-            >
-              {t("common.save")}
-            </Button>
-          </div>
+          <SaveBar
+            count={1}
+            testId="people-save-bar"
+            discard={{ onClick: () => setPicked(null), testId: "people-role-discard" }}
+            save={{
+              onClick: () => update.mutate({ target: user, to: changed }),
+              pending: update.isPending,
+              testId: "people-role-save",
+            }}
+          />
         ) : null}
       </RecordSheet>
       <ConfirmDialog
