@@ -135,16 +135,67 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     });
   };
   await page.route(pattern, handler);
+  // The approval dialog is reached through the strip, and the strip offers it
+  // only while approving is the workflow's top state (D15). This stand's
+  // workflow runs well, so a failing run does not take the strip's one action.
+  const healthy = (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: workflowId,
+            name: "Monatsreport",
+            slug: "monatsreport",
+            lifecycle: "active",
+            current_version: 8,
+            current_version_id: "018f4b4a-6d33-7b3a-9c2d-123456789ab8",
+            created_at: "2026-06-01T08:00:00.000Z",
+            updated_at: "2026-08-10T09:00:00.000Z",
+            webhooks_active: 0,
+            effective_trigger: { kind: "request", source: "default", state: "active" },
+            steps: [],
+            health_state: "ok",
+            health_reason: null,
+          }),
+        })
+      : route.fallback();
+  const recordPattern = `**/v1/workflows/${workflowId}`;
+  await page.route(recordPattern, healthy);
+  // …and no repair waits for review, which would take it as well.
+  const noRepair = (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] }),
+    });
+  const repairPattern = `**/v1/patch-candidates?*workflow_id=${workflowId}*`;
+  await page.route(repairPattern, noRepair);
   try {
     // An approval that covers nothing that runs is history, and history is
-    // folded: it does not compete with the one state the panel says.
+    // folded in "Freigaben": it does not compete with the one state the strip
+    // says.
     const openHistory = async () => {
+      await page.getByTestId("workflow-tabs-tab-freigaben").click();
       const toggle = page.getByTestId("workflow-former-grants-toggle");
       await toggle.waitFor();
-      if (await page.getByTestId("authority-history-0").count())
+      if (await page.getByTestId("workflow-former-approvals-row-0").count())
         throw new Error("Earlier approvals stand open before anyone asked for them");
       await toggle.click();
-      await page.getByTestId("authority-history-0").waitFor();
+      await page.getByTestId("workflow-former-approvals-row-0").waitFor({ state: "attached" });
+    };
+    const openRow = async (index) => {
+      let link = page.getByTestId(`workflow-former-approvals-row-link-${index}`);
+      if (!(await link.isVisible().catch(() => false)))
+        link = page.getByTestId(`workflow-former-approvals-mobile-row-link-${index}`);
+      await link.click();
+      const sheet = page.getByTestId("authority-sheet");
+      await sheet.waitFor();
+      return sheet;
+    };
+    const closeSheet = async () => {
+      await page.getByTestId("authority-sheet-close").click();
+      await page.getByTestId("authority-sheet").waitFor({ state: "hidden" });
     };
     await stand.visit(page, `workflows/${workflowId}`);
     const panel = page.getByTestId("workflow-automation");
@@ -157,12 +208,17 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
         `A workflow nothing starts reads as ${await panel.getAttribute("data-state")}, not as on request`,
       );
     await openHistory();
-    const card = page.getByTestId("authority-history-0");
+    const row = page
+      .locator(
+        '[data-testid="workflow-former-approvals-row-0"], [data-testid="workflow-former-approvals-mobile-row-0"]',
+      )
+      .filter({ visible: true });
     await capture("history");
     // The heading says what the reader decides by — where, until when, how
     // often — and the id lives on its title, for quoting, not on the page.
+    const card = await openRow(0);
     const headline = card.getByTestId("authority-headline");
-    if ((await headline.getAttribute("title")) !== id)
+    if ((await headline.locator("[title]").first().getAttribute("title")) !== id)
       throw new Error("Authority headline does not keep the exact authority on its title");
     const headlineText = await headline.innerText();
     for (const expected of locale === "de"
@@ -180,15 +236,11 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
       if (!(await card.innerText()).includes(expected))
         throw new Error(`Authority boundary missing: ${expected}`);
     }
-    // The exact boundary — version, window, checksum — is evidence, one
-    // disclosure deeper than what the reader decides by.
-    if (await card.getByTestId("authority-version").count())
-      throw new Error("An approval's technical details stand open before anyone asked");
-    await card.getByTestId("authority-history-0-details").click();
+    // The exact boundary — version, window, checksum — stands in the sheet.
     // A version this page cannot number is shortened, whole on the title.
     const version = card.getByTestId("authority-version");
     await version.waitFor();
-    if ((await version.getAttribute("title")) !== versionId)
+    if ((await version.locator("[title]").first().getAttribute("title")) !== versionId)
       throw new Error("Authority version does not keep the exact version on its title");
     for (const expected of [
       `${versionId.slice(0, 8)}…`,
@@ -198,41 +250,42 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
         throw new Error(`Authority detail missing: ${expected}`);
     }
     await capture("history-details");
+    await closeSheet();
     await page.getByTestId("authority-more").click();
-    await page.getByTestId("authority-history-1").waitFor();
+    await page.getByTestId("workflow-former-approvals-row-1").waitFor({ state: "attached" });
     await page.reload();
     await openHistory();
     if (writes !== 0) throw new Error("Reading or reloading authority history caused a mutation");
-    const trigger = page.getByTestId("authority-history-0-revoke");
+    const trigger = page.getByTestId("authority-history-0-revoke").filter({ visible: true });
     await trigger.focus();
     await trigger.press("Enter");
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByTestId("authority-revoke");
     await dialog.waitFor();
     await capture("revoke");
-    // The review names the exact authority it revokes — by what it permits,
-    // with the id on the title — never by printing the UUID.
-    const revokeTarget = dialog.getByTestId("authority-revoke-target");
-    if ((await revokeTarget.getAttribute("title")) !== id)
-      throw new Error("Revoke review omitted the exact authority");
+    // The confirmation names the approval it revokes — by its version, never
+    // by printing the approval's UUID.
+    const revokeTitle = await page.getByTestId("authority-revoke-title").innerText();
+    if (!revokeTitle.includes(`${versionId.slice(0, 8)}…`) || revokeTitle.includes(id))
+      throw new Error(`Revoke confirmation names ${JSON.stringify(revokeTitle)}`);
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
     if (writes !== 0) throw new Error("Dismissing the review revoked an authority");
     await trigger.press("Enter");
     await page.getByTestId("authority-revoke-confirm").click();
     await dialog.waitFor({ state: "hidden" });
-    await card.getByText(locale === "de" ? "Widerrufen" : "Revoked", { exact: true }).waitFor();
+    const revokedBadge = () =>
+      row.locator("[data-tone]", { hasText: locale === "de" ? "Widerrufen" : "Revoked" });
+    await revokedBadge().first().waitFor({ state: "attached" });
     await page.reload();
     await openHistory();
-    await card.getByText(locale === "de" ? "Widerrufen" : "Revoked", { exact: true }).waitFor();
+    await revokedBadge().first().waitFor({ state: "attached" });
     if (writes !== 1 || (await page.getByTestId("authority-history-0-revoke").count()))
       throw new Error("Revoked authority did not persist after reload");
     // A failed read is said as one — never as the calm state it would
     // otherwise fall through to, and never over a stale approval.
     failRead = true;
     await page.reload();
-    await page.getByTestId("workflow-automation-failed").waitFor();
-    if ((await panel.getAttribute("data-state")) !== "failed")
-      throw new Error("A failed read of the approvals still names a state");
+    await page.locator('[data-testid="workflow-automation"][data-state="failed"]').waitFor();
     if (await page.getByTestId("workflow-former-grants-toggle").count())
       throw new Error("Failed refresh still advertises a stale authority");
     failRead = false;
@@ -251,6 +304,8 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await verifyLateReviewDropped(page, stand, workflowId);
     await verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture);
   } finally {
+    await page.unroute(repairPattern, noRepair);
+    await page.unroute(recordPattern, healthy);
     await page.unroute(pattern, handler);
   }
 }

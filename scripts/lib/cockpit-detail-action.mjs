@@ -248,7 +248,7 @@ async function expectWorkflowTitle(page, where) {
   await page.getByTestId("workflow-automation-state").waitFor({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
   const beside = await besideTitle(page);
-  if (beside.join("|") !== "workflow-edit-help|workflow-menu|workflow-run-open")
+  if (beside.join("|") !== "workflow-menu-change|workflow-menu|workflow-run-open")
     throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
   if (await page.getByTestId("detail-action").count())
     throw new Error(`${where}: the title carries a state's action`);
@@ -302,7 +302,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     let where = `/workflows/<held> (${localeName})`;
     await stand.visit(page, `workflows/${HELD}`);
     await expectWorkflowTitle(page, where);
-    const approve = de ? "Jetzt freigeben" : "Approve now";
+    const approve = de ? "Freigeben…" : "Approve…";
     const panelAction = (await page.getByTestId("workflow-automation-action").innerText()).trim();
     if (panelAction !== approve) throw new Error(`${where}: the panel offers "${panelAction}"`);
     // Once, by its words — wherever on the page it would stand.
@@ -338,13 +338,23 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await assertSingleTriggers(page, where);
 
     // ── A workflow whose newest run failed ────────────────────────────────────
-    // The run stands in the list of recent runs, with its cause; the title
-    // offers no second way to it.
+    // The run stands in "Verlauf", with its cause, and opens its sheet on this
+    // page; the title offers no second way to it.
     where = `/workflows/<failed> (${localeName})`;
     await stand.visit(page, `workflows/${FAILED}`);
     await expectWorkflowTitle(page, where);
-    const newest = await page.getByTestId("workflow-recent-run-0").getAttribute("href");
-    if (newest !== `/cockpit?run=${FAILED_RUN}`)
+    await page.getByTestId("workflow-tabs-tab-verlauf").click();
+    const newest = await page
+      .locator(
+        '[data-testid="workflow-runs-row-link-0"], [data-testid="workflow-runs-mobile-row-link-0"]',
+      )
+      .filter({ visible: true })
+      .first()
+      .getAttribute("href");
+    if (
+      !newest?.startsWith(`/cockpit/workflows/${FAILED}?`) ||
+      !newest.includes(`run=${FAILED_RUN}`)
+    )
       throw new Error(`${where}: the newest run's row leads to ${newest}`);
     await assertSingleTriggers(page, where);
 
@@ -353,7 +363,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await stand.visit(page, `workflows/${PLAIN}`);
     await expectWorkflowTitle(page, where);
     await assertSingleTriggers(page, where);
-    await page.getByTestId("workflow-menu").click();
+    // "Im Chat ändern" stands beside the title, a named button of its own.
     const change = page.getByTestId("workflow-menu-change");
     await change.waitFor({ state: "visible" });
     if ((await change.innerText()).trim() !== (de ? "Im Chat ändern" : "Change in chat"))
@@ -378,23 +388,23 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     const renew = page.getByTestId("connector-renew-signin");
     await renew.waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
-    // Renewing lives where the sign-in state does: in the card. The title
-    // used to carry "Neu verbinden", a link that only scrolled to it.
+    // Renewing has one home: the status strip (D6). The title used to carry
+    // "Neu verbinden", a link that only scrolled to it.
     if (await page.getByTestId("detail-action").count())
       throw new Error(`${where}: a second trigger for the sign-in stands beside the title`);
     const renewLabel = (await renew.innerText()).trim();
     if (renewLabel !== (de ? "Neu anmelden" : "Sign in again"))
-      throw new Error(`${where}: the sign-in card's action reads "${renewLabel}"`);
-    // The run dialog's "Neu verbinden" still lands on the card.
-    if (!(await page.locator("#connector-credentials").count()))
-      throw new Error(`${where}: the sign-in card has no anchor to land on`);
+      throw new Error(`${where}: the strip's action reads "${renewLabel}"`);
+    if (!(await page.getByTestId("connector-state").getByTestId("connector-renew-signin").count()))
+      throw new Error(`${where}: renewing the sign-in is not the strip's action`);
     await assertSingleTriggers(page, where);
     await capture("detail-action-reconnect");
 
     // ── A healthy connector: the test button is its action ───────────────────
     where = `/connectors/<healthy> (${localeName})`;
     await stand.visit(page, `connectors/${HEALTHY_CONNECTOR}`);
-    await page.getByTestId("connector-test").waitFor({ state: "visible", timeout: 10_000 });
+    // Testing the connection stands in the page's menu.
+    await page.getByTestId("connector-menu").waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     if (await page.getByTestId("detail-action").count())
       throw new Error(`${where}: a healthy connector offers an extra action`);

@@ -219,7 +219,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     const reconnect = await page
       .getByTestId("workflow-run-blocked-dev-remedy")
       .getAttribute("href");
-    if (reconnect !== `/cockpit/connectors/${DEV_MAIL_ID}#connector-credentials`)
+    if (reconnect !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
       throw new Error(`${where}: the blocked line leads to ${reconnect}, not Mail's sign-in`);
     const chosen = await text(page, "workflow-run-environment");
     if (!chosen?.includes(de ? "Produktion" : "Production"))
@@ -259,7 +259,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!said.includes(expected))
       throw new Error(`${where} · refused: the dialog says "${said}", not "${expected}"`);
     const remedy = await page.getByTestId("workflow-run-error-remedy").getAttribute("href");
-    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}#connector-credentials`)
+    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (await page.getByTestId("workflow-run-outcome").count())
       throw new Error(`${where} · refused: an outcome line stands beside the refusal`);
