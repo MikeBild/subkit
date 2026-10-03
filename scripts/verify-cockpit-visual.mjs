@@ -108,6 +108,7 @@ const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 // waiting. Real-looking, and different from `uuid`: the identifier check finds
 // shapes, not this one value.
 const runWorkflowId = "5b2e9c14-7a3d-4f68-b1e0-8c9d2a4f6e37";
+const BLOCKED_WORKFLOW_ID = "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
 const runConnectorId = "c3a8f1d2-6b4e-4c97-a5f0-1e2d3b4c5a69";
 const runVersionId = "9d4f6a21-3c8b-4e05-b7a2-6f1e0d9c8b34";
 // A hostile authority for the workflow page: every identifier on it real and
@@ -1054,6 +1055,38 @@ const ATTENTION_ITEMS = [
     since: new Date(SWEEP_NOW - 4 * 3_600_000).toISOString(),
     actions: [
       { verb: "open", href: "/cockpit/settings", primary: true, permission: "settings:write" },
+    ],
+  }),
+  // A version no approval may cover: the step and its cause in one line, a
+  // step id long enough to wrap, and the repair — never "approve" — as its act.
+  attentionEntry({
+    id: `workflow:${BLOCKED_WORKFLOW_ID}`,
+    class: "decide",
+    kind: "workflow",
+    subject: {
+      kind: "workflow",
+      id: BLOCKED_WORKFLOW_ID,
+      name: "Kontaktformular-Benachrichtigung",
+    },
+    reason: "version_needs_repair",
+    trigger: { kind: "inbound_hook", name: "contact-form" },
+    approval: { version: 9, environment: "prod" },
+    repair: {
+      step_id: "send_notification_email_to_the_operations_mailbox",
+      code: "report_delivery_unprepared",
+      remedy_kind: "prepare",
+      steps: 3,
+      candidate_id: null,
+      execution_id: null,
+    },
+    since: new Date(SWEEP_NOW - 60 * 86_400_000).toISOString(),
+    actions: [
+      {
+        verb: "open",
+        href: `/cockpit/workflows/${BLOCKED_WORKFLOW_ID}#workflow-automation`,
+        primary: true,
+        permission: "workflow:run",
+      },
     ],
   }),
   attentionEntry({
@@ -2980,6 +3013,22 @@ async function assertOverviewHostile(page, label, language) {
     throw new Error(`${label}: the failed source is not named (${shape.unread})`);
   if (shape.text.includes(ATTENTION_ENGINE_DETAIL))
     throw new Error(`${label}: the engine's wording stands on the list`);
+  // A version no approval may cover names its step and offers the preparation.
+  const blocked = await page.evaluate((id) => {
+    const entry = document.querySelector(`[data-attention-id="workflow:${id}"]`);
+    return {
+      text: entry?.textContent ?? "",
+      action: entry?.querySelector('[data-testid$="-primary"]')?.textContent?.trim() ?? "",
+    };
+  }, BLOCKED_WORKFLOW_ID);
+  const wants =
+    language === "de"
+      ? { sentence: "nicht freigeben", action: "Vorbereitung ausführen", refused: "Freigeben" }
+      : { sentence: "cannot be approved", action: "Run the preparation", refused: "Approve" };
+  if (!blocked.text.includes(wants.sentence) || !blocked.text.includes("send_notification_email"))
+    throw new Error(`${label}: the blocked version does not name its step (${blocked.text})`);
+  if (blocked.action !== wants.action || blocked.action === wants.refused)
+    throw new Error(`${label}: the blocked version offers "${blocked.action}"`);
   await assertOperationsBar(page, label);
 }
 
