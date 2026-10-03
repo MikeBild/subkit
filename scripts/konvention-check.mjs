@@ -93,12 +93,13 @@ const MOUNT_MARKERS = {
   connectors: '[data-testid="catalog-connectors"]',
   knowledge: '[data-testid="catalog-knowledge"]',
   skills: '[data-testid="catalog-skills"]',
-  files: '[data-testid="catalog-files"]',
+  files: '[data-testid="files-page"]',
   "workflows/$resourceId": '[data-testid="detail-workflows"]',
   "connectors/$resourceId": '[data-testid="detail-connectors"]',
   "knowledge/$resourceId": '[data-testid="detail-knowledge"]',
   "skills/$resourceId": '[data-testid="detail-skills"]',
-  "files/$resourceId": '[data-testid="detail-files"]',
+  // A file opens as a sheet over the Dateien list.
+  "files/$resourceId": '[data-testid="file-sheet"]',
 };
 
 const NOW = Date.now();
