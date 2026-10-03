@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -18,6 +18,7 @@ import {
   Page,
   PageHeader,
   PageTabs,
+  SaveBar,
   Section,
   SegmentedControl,
   Select,
@@ -1462,54 +1463,27 @@ export function SettingsSaveBar({
 }) {
   const { t } = useI18n();
   return (
-    <div
-      className="sticky bottom-3 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl bg-background/95 p-3 shadow-lg ring-1 ring-foreground/10 backdrop-blur sm:flex-row sm:items-center sm:justify-between"
-      role="status"
-      data-testid="settings-change-bar"
-    >
-      <div className="flex items-start gap-2">
-        <CheckCircle2 className="mt-0.5 size-4 text-foreground/70" aria-hidden="true" />
-        <div>
-          <p className="text-sm font-medium">{t("settings.unsavedCount", { count })}</p>
-          {conflict ? (
-            <p role="alert" className="text-xs text-destructive" data-testid="settings-conflict">
-              {t("settings.conflict")}
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t("settings.unsavedHint")}</p>
-          )}
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <Button
-          className="flex-1 sm:flex-none"
-          variant="outline"
-          disabled={pending}
-          onClick={onDiscard}
-          data-testid="settings-discard"
-        >
-          {t("common.discard")}
-        </Button>
-        {conflict ? (
-          <Button
-            className="flex-1 sm:flex-none"
-            onClick={onReload}
-            data-testid="settings-conflict-reload"
-          >
-            {t("settings.reload")}
-          </Button>
-        ) : (
-          <Button
-            className="flex-1 sm:flex-none"
-            pending={pending}
-            disabled={invalid || count === 0}
-            onClick={onSave}
-            data-testid="settings-save"
-          >
-            {t("common.save")}
-          </Button>
-        )}
-      </div>
-    </div>
+    <SaveBar
+      count={count}
+      testId="settings-change-bar"
+      notice={
+        conflict ? (
+          <span role="alert" data-testid="settings-conflict">
+            {t("settings.conflict")}
+          </span>
+        ) : undefined
+      }
+      discard={{ onClick: onDiscard, testId: "settings-discard" }}
+      save={
+        conflict
+          ? { onClick: onReload, label: t("settings.reload"), testId: "settings-conflict-reload" }
+          : {
+              onClick: onSave,
+              pending,
+              disabled: invalid || count === 0,
+              testId: "settings-save",
+            }
+      }
+    />
   );
 }
