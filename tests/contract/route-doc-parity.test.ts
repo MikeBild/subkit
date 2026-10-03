@@ -110,6 +110,10 @@ const ENGINE_ROUTE_FILES = [
   // How a saved workflow is called — named by input-surfaces.md.
   "apps/engine/src/http/routes/workflow-invocation.ts",
   "apps/engine/src/http/routes/settings.ts",
+  // The live streams input-surfaces.md lists: the tenant-wide tail and the
+  // Cockpit's change feed.
+  "apps/engine/src/http/routes/events.ts",
+  "apps/engine/src/http/routes/cockpit-events.ts",
   // MCP OAuth 2.1 boundary endpoints — raw Hono routes (not createRoute).
   "apps/engine/src/http/routes/oauth/dcr.ts",
   "apps/engine/src/http/routes/oauth/consent.ts",

@@ -99,6 +99,9 @@ const ALLOWED = new Set<string>([
   // reasons by what the reader may see — the same probes as that route.
   "apps/engine/src/conversations/automation-context.ts",
   "apps/engine/src/conversations/tools/review-workflow-automation.ts",
+  // The Cockpit live stream asks which event families a reader may follow;
+  // a family outside the reader's grants is filtered out, not an incident.
+  "apps/engine/src/http/routes/cockpit-events.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",
