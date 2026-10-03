@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { ListTable } from "@/components/cockpit/list-table";
 import {
@@ -22,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
   StatusBadge,
+  SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import type { TranslationKey } from "@/lib/i18n";
@@ -138,25 +140,69 @@ function RuleEvents({ rule }: { rule: NotificationRuleItem }) {
 }
 
 /**
+ * The tab's two acts, for the page header: "Regel anlegen" filled, "Kanal
+ * hinzufügen" outline — only for someone who may change notifications.
+ */
+export function useNotificationActions({
+  onCreateRule,
+  onCreateChannel,
+}: {
+  onCreateRule(): void;
+  onCreateChannel(): void;
+}) {
+  const { t } = useI18n();
+  const session = useSession();
+  if (!session.permissions.includes("notification:write")) return { action: null, secondary: null };
+  return {
+    action: (
+      <Button onClick={onCreateRule} data-testid="notifications-rule-create">
+        {t("notifications.createRule")}
+      </Button>
+    ),
+    secondary: (
+      <Button
+        variant="outline"
+        onClick={onCreateChannel}
+        data-testid="notifications-channel-create"
+      >
+        {t("notifications.createChannel")}
+      </Button>
+    ),
+  };
+}
+
+/**
  * Benachrichtigungen, a tab of Einstellungen: which events leave this
  * installation (rules) and where they arrive (channels). Each is a table; a
- * row opens its facts in a sheet. Adding a rule is the tab's one filled act.
+ * row opens its facts in a sheet. Adding a rule and a channel are the page
+ * header's acts; the dialogs they open live here.
  */
-export function NotificationSettings() {
+export function NotificationSettings({
+  createRule,
+  onCreateRule,
+  createChannel,
+  onCreateChannel,
+}: {
+  createRule: boolean;
+  onCreateRule(open: boolean): void;
+  createChannel: boolean;
+  onCreateChannel(open: boolean): void;
+}) {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const canWrite = session.permissions.includes("notification:write");
   const [ruleOpen, setRuleOpen] = useState<NotificationRuleItem | null>(null);
   const [channelOpen, setChannelOpen] = useState<NotificationChannelItem | null>(null);
-  const [createRule, setCreateRule] = useState(false);
-  const [createChannel, setCreateChannel] = useState(false);
+  const live = useLiveQueryOptions();
   const rules = useQuery({
     queryKey: RULES_QUERY,
     queryFn: () => apiRequest<{ items: NotificationRuleItem[] }>("/v1/notifications/rules"),
+    ...live,
   });
   const channels = useQuery({
     queryKey: CHANNELS_QUERY,
     queryFn: () => apiRequest<{ items: NotificationChannelItem[] }>("/v1/notifications/channels"),
+    ...live,
   });
   const ruleItems = rules.data?.items ?? [];
   const channelItems = channels.data?.items ?? [];
@@ -274,17 +320,16 @@ export function NotificationSettings() {
 
   return (
     <div data-testid="admin-notifications" className="flex flex-col gap-8">
-      <Section
-        label={t("notifications.rules")}
-        testId="notifications-rules"
-        aside={
-          canWrite ? (
-            <Button onClick={() => setCreateRule(true)} data-testid="notifications-rule-create">
-              {t("notifications.createRule")}
-            </Button>
-          ) : null
-        }
-      >
+      {ruleItems.length + channelItems.length > 0 ? (
+        <SummaryLine
+          testId="notifications-summary"
+          text={t("notifications.summary", {
+            rules: String(ruleItems.length),
+            channels: String(channelItems.length),
+          })}
+        />
+      ) : null}
+      <Section label={t("notifications.rules")} testId="notifications-rules">
         <ListTable<NotificationRuleItem>
           id="notifications-rules-table"
           columns={ruleColumns}
@@ -298,21 +343,7 @@ export function NotificationSettings() {
           rowLabel={(rule) => ruleNameLabel(rule, t)}
         />
       </Section>
-      <Section
-        label={t("notifications.channels")}
-        testId="notifications-channels"
-        aside={
-          canWrite ? (
-            <Button
-              variant="outline"
-              onClick={() => setCreateChannel(true)}
-              data-testid="notifications-channel-create"
-            >
-              {t("notifications.createChannel")}
-            </Button>
-          ) : null
-        }
-      >
+      <Section label={t("notifications.channels")} testId="notifications-channels">
         <ListTable<NotificationChannelItem>
           id="notifications-channels-table"
           columns={channelColumns}
@@ -337,8 +368,8 @@ export function NotificationSettings() {
         canWrite={canWrite}
         onClose={() => setChannelOpen(null)}
       />
-      <CreateRuleDialog open={createRule} onOpenChange={setCreateRule} channels={channelItems} />
-      <CreateChannelDialog open={createChannel} onOpenChange={setCreateChannel} />
+      <CreateRuleDialog open={createRule} onOpenChange={onCreateRule} channels={channelItems} />
+      <CreateChannelDialog open={createChannel} onOpenChange={onCreateChannel} />
     </div>
   );
 }
@@ -430,7 +461,7 @@ function ChannelSheet({
         channel && !channel.active && canWrite ? (
           <Button
             variant="outline"
-            disabled={resume.isPending}
+            pending={resume.isPending}
             onClick={() => resume.mutate(channel.id)}
             data-testid="notifications-channel-resume"
           >
