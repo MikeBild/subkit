@@ -3137,7 +3137,7 @@ async function checkRightsPage(page) {
   // Anwendungen") said how the machinery works, not when one needs it.
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid^="api-access-tab-"][role="tab"]')].map(
-      (tab) => tab.querySelector("[data-tab-label]")?.textContent?.trim() ?? "",
+      (tab) => tab.firstChild?.textContent?.trim() ?? "",
     ),
   );
   if (tabs.join("|") !== RIGHTS_TABS.join("|"))
@@ -3148,15 +3148,15 @@ async function checkRightsPage(page) {
   // page is for, and a sentence above them only pushed the list down.
   const intro = await page.evaluate(() => document.body.innerText);
   if (intro.includes(RIGHTS_INTRO)) breach("§5", where, "the page description is back");
-  // A tab carries only a count someone acts on, in words — the fixture holds
-  // two keys that need a decision and three grants that ask for "Erneuern";
-  // the apps have none.
+  // A tab carries only a count someone acts on — the fixture holds two keys
+  // that need a decision and three grants that ask for "Erneuern"; the apps
+  // have none.
   const badges = await page.evaluate(() =>
     Object.fromEntries(
       ["clients", "keys", "grants"].map((section) => [
         section,
         document
-          .querySelector(`[data-testid="api-access-tab-badge-${section}"]`)
+          .querySelector(`[data-testid="api-access-tab-${section}"] span`)
           ?.textContent?.trim() ?? null,
       ]),
     ),
@@ -3173,8 +3173,8 @@ async function checkRightsPage(page) {
   // of them: how a script swaps a key is a developer's question, answered by
   // one link to the guide. No task list, no retired word.
   for (const [section, ready] of [
-    ["clients", '[data-testid="connected-clients-list"]'],
-    ["keys", '[data-testid="api-keys-list"]'],
+    ["clients", '[data-testid="connected-clients"]'],
+    ["keys", '[data-testid="api-keys"]'],
     ["grants", '[data-testid^="connection-renew-"]'],
   ]) {
     await stand.visit(page, `api-access?section=${section}`);
@@ -3217,13 +3217,9 @@ async function checkRightsPage(page) {
 
 // The product's name comes from PRODUCT_NAME, as everywhere in this check:
 // the one literal is the one place a copy in a sibling repo changes.
-const RIGHTS_TABS = [
-  `Apps mit Zugriff auf ${PRODUCT_NAME}`,
-  "Schlüssel für Skripte",
-  "Zugriff in deinem Namen",
-];
+const RIGHTS_TABS = ["Schlüssel", "Apps", "Zugriff in deinem Namen"];
 const RIGHTS_INTRO = `Wer darf auf ${PRODUCT_NAME} zugreifen — und worauf greift ${PRODUCT_NAME} in deinem Namen zu.`;
-const RIGHTS_BADGES = { clients: null, keys: "2 laufen ab", grants: "3 erneuern" };
+const RIGHTS_BADGES = { clients: null, keys: "2", grants: "3" };
 
 async function checkRightsKeys(page, where) {
   const scopeText = await page.evaluate(() =>
@@ -3240,7 +3236,7 @@ async function checkRightsKeys(page, where) {
     breach("§11", where, 'a managing right is not marked "verwaltet"');
   const shape = await page.evaluate(() => {
     const keyRow = (name) =>
-      [...document.querySelectorAll('[data-testid^="api-key-item-"]')].find(
+      [...document.querySelectorAll('[data-testid^="api-keys-row-"]')].find(
         (row) => row instanceof HTMLElement && row.innerText.includes(name),
       );
     const chip = (name) =>
@@ -3272,7 +3268,7 @@ async function checkRightsKeys(page, where) {
 /**
  * Zugriff in deinem Namen: a lost grant says its cause on its own row, and
  * the rights SubKit holds on the other system are counted — "2 Rechte" — with
- * the other system's own strings behind "Details anzeigen". No risk word: the
+ * the other system’s own strings behind a (?). No risk word: the
  * words "liest", "schreibt", "verwaltet" come from SubKit's own catalogue,
  * which cannot judge a foreign scope.
  */
@@ -3284,7 +3280,7 @@ async function checkRightsGrants(page, where) {
     };
     return {
       grants: text('[data-testid="api-access-section-grants"]'),
-      rows: [...document.querySelectorAll('[data-testid^="connection-item-"]')].map((row) =>
+      rows: [...document.querySelectorAll('[data-testid^="connections-row-"]')].map((row) =>
         row instanceof HTMLElement ? row.innerText : "",
       ),
       counts: [...document.querySelectorAll('[data-testid^="connection-rights-count-"]')].map(

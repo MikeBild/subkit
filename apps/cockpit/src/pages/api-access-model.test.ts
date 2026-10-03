@@ -20,7 +20,6 @@ import {
   scopeCatalogue,
   scopeLabel,
   scopeRisk,
-  sectionBadgeText,
   UNUSED_KEY_DAYS,
 } from "./api-access-model";
 
@@ -285,11 +284,10 @@ describe("API keys: live first, revoked collapsed", () => {
 });
 
 describe("the tabs: their order, the one that opens, and what they count", () => {
-  test("apps first, then keys for scripts, then access on your behalf", () => {
-    // Grants stood first only while the sections were stacked, to escape the
-    // wall of application rows; as tabs, the order follows what readers come
-    // for, and the OAuth callback names its tab.
-    expect([...API_ACCESS_ORDER]).toEqual(["clients", "keys", "grants"]);
+  test("keys first, then apps, then access on your behalf", () => {
+    // Schlüssel · Apps (D7): the first tab is the default and the one with
+    // the page's action.
+    expect([...API_ACCESS_ORDER]).toEqual(["keys", "clients", "grants"]);
   });
 
   test("a section the reader may not read is absent, the order stays", () => {
@@ -302,10 +300,10 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
 
   test("the address picks the tab when the reader may read it, else the first one", () => {
     const all = readableSections({ grants: true, keys: true, clients: true });
-    expect(openApiAccessSection(null, all)).toBe("clients");
+    expect(openApiAccessSection(null, all)).toBe("keys");
     expect(openApiAccessSection("grants", all)).toBe("grants");
-    const noClients = readableSections({ grants: true, keys: true, clients: false });
-    expect(openApiAccessSection("clients", noClients)).toBe("keys");
+    const noKeys = readableSections({ grants: true, keys: false, clients: true });
+    expect(openApiAccessSection("keys", noKeys)).toBe("clients");
     expect(openApiAccessSection("keys", [])).toBeNull();
   });
 
@@ -318,22 +316,11 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
       key({ revoked_at: daysAgo(2), expires_at: daysAgo(1) }), // revoked holds nothing
     ];
     expect(keysNeedingAction(items, NOW)).toBe(2);
-    expect(sectionBadgeText("keys", 2, t)).toBe("2 laufen ab");
-    expect(sectionBadgeText("keys", 1, t)).toBe("1 läuft ab");
   });
 
   test("a grants tab counts what asks for Erneuern", () => {
     const states = ["valid", "expiring", "expired", "unreadable"] as const;
     expect(grantsNeedingRenewal(states.map((state) => ({ state })))).toBe(3);
-    expect(sectionBadgeText("grants", 3, t)).toBe("3 erneuern");
-    expect(sectionBadgeText("grants", 1, t)).toBe("1 erneuern");
-  });
-
-  test("a tab never says zero, a total, or anything for the apps", () => {
-    expect(sectionBadgeText("keys", 0, t)).toBeNull();
-    expect(sectionBadgeText("grants", undefined, t)).toBeNull();
-    // Apps have no count a reader acts on; their total stands in the section.
-    expect(sectionBadgeText("clients", 12, t)).toBeNull();
   });
 });
 
