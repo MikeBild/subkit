@@ -871,7 +871,7 @@ const EN = {
   "resource.usage.empty": "No execution statistics yet.",
   "resource.usage.breakdownWindow":
     "The breakdown covers the chosen window, the figures above the calendar month — so the totals differ.",
-  "resource.usage.axisPicker": "Break down",
+  "resource.usage.axisPicker": "Break down by",
   "resource.usage.consumption": "Consumption",
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
@@ -904,10 +904,10 @@ const EN = {
   "resource.usage.pressure.ample": "Comfortable",
   "resource.usage.pressure.tightening": "Tightening",
   "resource.usage.pressure.critical": "Nearly exhausted",
-  "resource.usage.axis.workflow": "By workflow",
-  "resource.usage.axis.flow": "By purpose",
-  "resource.usage.axis.user": "By person",
-  "resource.usage.axis.model": "By model",
+  "resource.usage.axis.workflow": "Workflow",
+  "resource.usage.axis.flow": "Purpose",
+  "resource.usage.axis.user": "Person",
+  "resource.usage.axis.model": "Model",
   "resource.usage.runtime": "Runtime",
   "resource.usage.runtimeDescription": "How often workflows ran and how long they took, per day.",
   "resource.usage.runtimeDescriptionHourly":
@@ -1250,8 +1250,7 @@ const EN = {
   "detail.loadFailed": "Could not load this record",
   "knowledge.contentFailed": "This knowledge source could not be read",
   "knowledge.noDocuments": "No document yet",
-  "knowledge.noDocumentsDescription":
-    "This source carries no readable document. Upload one or continue in chat.",
+  "knowledge.technical": "Technical details",
   "resource.detail.noName": "Record details",
   "resource.field.createdAt": "Created",
   "resource.field.updatedAt": "Updated",
@@ -1522,11 +1521,14 @@ const EN = {
   "audit.scope.all": "All events",
   "audit.scope.decisions": "Decisions",
   "audit.coverageNote":
-    "The log records what the engine decided, ran and refused. It does not hold the content of a conversation, the body of a response, or anything that happened before this tenant was created.",
+    "Not recorded: the content of a conversation, the body of a response, and anything before this tenant was created.",
+  "audit.summary": "What the engine decided, ran and refused.",
+  "audit.detail.technical": "Technical details",
+  "audit.detail.openRun": "Open run",
+  "audit.detail.openRecord": "Open {resource}",
   // The record behind a row. The table shows six of the sixteen fields the
   // engine records and offered no way to reach the other ten, so the evidence
   // of what a change actually changed was readable only from the terminal.
-  "audit.detail.description": "The whole record of one operation, as the engine wrote it down.",
   "audit.detail.actorId": "Actor ID",
   "audit.detail.resourceId": "Resource ID",
   "audit.detail.trace": "Request key",
@@ -1605,11 +1607,8 @@ const EN = {
   "catalog.categoryOther": "Without a block",
   "catalog.noneInCategory": "Nothing in {category}.",
   "catalog.changeCategory": "Change block",
-  "catalog.changeCategoryDescription":
-    "A workflow belongs to the block its name starts with, so moving it renames the workflow.",
   "catalog.resultingSlug": "New name: {slug}",
-  "catalog.renameWarning":
-    "External clients address this workflow by its name; a rename changes the name they call.",
+  "catalog.renameWarning": "Clients that call this workflow by name must use the new one.",
   "catalog.categoryTooSmall": "A block appears once {count} workflows share the name.",
   "catalog.moveWorkflow": "Move workflow",
   "catalog.recategorized": "Moved. The workflow is now called {slug}.",
@@ -4237,7 +4236,7 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.empty": "Noch keine Ausführungsstatistiken.",
   "resource.usage.breakdownWindow":
     "Der Aufriss umfasst den gewählten Zeitraum, die Zahlen darüber den Kalendermonat — deshalb weichen die Summen ab.",
-  "resource.usage.axisPicker": "Aufschlüsseln",
+  "resource.usage.axisPicker": "Aufschlüsseln nach",
   "resource.usage.consumption": "Verbrauch",
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
@@ -4270,10 +4269,10 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.pressure.ample": "Reichlich",
   "resource.usage.pressure.tightening": "Wird knapp",
   "resource.usage.pressure.critical": "Fast aufgebraucht",
-  "resource.usage.axis.workflow": "Nach Workflow",
-  "resource.usage.axis.flow": "Nach Zweck",
-  "resource.usage.axis.user": "Nach Person",
-  "resource.usage.axis.model": "Nach Modell",
+  "resource.usage.axis.workflow": "Workflow",
+  "resource.usage.axis.flow": "Zweck",
+  "resource.usage.axis.user": "Person",
+  "resource.usage.axis.model": "Modell",
   "resource.usage.runtime": "Laufzeit",
   "resource.usage.runtimeDescription":
     "Wie oft Workflows liefen und wie lange sie dauerten, je Tag.",
@@ -4621,8 +4620,7 @@ const DE: Record<TranslationKey, string> = {
   "detail.loadFailed": "Dieser Datensatz konnte nicht geladen werden",
   "knowledge.contentFailed": "Diese Wissensquelle ließ sich nicht lesen",
   "knowledge.noDocuments": "Noch kein Dokument",
-  "knowledge.noDocumentsDescription":
-    "Diese Quelle enthält kein lesbares Dokument. Lad eines hoch oder mach im Chat weiter.",
+  "knowledge.technical": "Technische Angaben",
   "resource.detail.noName": "Datensatzdetails",
   "resource.field.createdAt": "Erstellt",
   "resource.field.updatedAt": "Aktualisiert",
@@ -4898,12 +4896,14 @@ const DE: Record<TranslationKey, string> = {
   "audit.scope.all": "Alle Vorgänge",
   "audit.scope.decisions": "Entscheidungen",
   "audit.coverageNote":
-    "Das Protokoll hält fest, was die Engine entschieden, ausgeführt und verweigert hat. Es enthält nicht den Inhalt einer Unterhaltung, nicht den Rumpf einer Antwort und nichts, was vor dem Anlegen dieses Mandanten geschah.",
+    "Nicht enthalten: der Inhalt einer Unterhaltung, der Rumpf einer Antwort und alles vor dem Anlegen dieses Mandanten.",
+  "audit.summary": "Was die Engine entschieden, ausgeführt und verweigert hat.",
+  "audit.detail.technical": "Technische Angaben",
+  "audit.detail.openRun": "Lauf öffnen",
+  "audit.detail.openRecord": "{resource} öffnen",
   // Der Eintrag hinter einer Zeile. Die Tabelle zeigt sechs der sechzehn
   // festgehaltenen Felder und bot keinen Weg zu den übrigen zehn — was eine
   // Änderung tatsächlich geändert hat, war nur im Terminal lesbar.
-  "audit.detail.description":
-    "Der vollständige Eintrag zu einem Vorgang, so wie die Engine ihn festgehalten hat.",
   "audit.detail.actorId": "Akteur-ID",
   "audit.detail.resourceId": "Ressourcen-ID",
   "audit.detail.trace": "Anfrage-Kennung",
@@ -4981,11 +4981,8 @@ const DE: Record<TranslationKey, string> = {
   "catalog.categoryOther": "Ohne Block",
   "catalog.noneInCategory": "Nichts in {category}.",
   "catalog.changeCategory": "Block wechseln",
-  "catalog.changeCategoryDescription":
-    "Ein Workflow gehört zu dem Block, mit dem sein Name beginnt — ein Wechsel benennt den Workflow also um.",
   "catalog.resultingSlug": "Neuer Name: {slug}",
-  "catalog.renameWarning":
-    "Fremde Clients sprechen diesen Workflow über seinen Namen an; eine Umbenennung ändert den Namen, den sie aufrufen.",
+  "catalog.renameWarning": "Clients, die diesen Workflow per Namen aufrufen, brauchen den neuen.",
   "catalog.categoryTooSmall": "Ein Block erscheint, sobald {count} Workflows den Namen teilen.",
   "catalog.moveWorkflow": "Workflow verschieben",
   "catalog.recategorized": "Verschoben. Der Workflow heißt jetzt {slug}.",
