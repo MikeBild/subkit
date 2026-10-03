@@ -450,9 +450,7 @@ export function OverviewPage() {
   const count = items.length;
   const summary = attention.query.isPending
     ? null
-    : count === 0
-      ? t("overview.count.none")
-      : t(count === 1 ? "overview.count.one" : "overview.count.other", { count });
+    : t(count === 1 ? "overview.count.one" : "overview.count.other", { count });
 
   return (
     <Page
@@ -529,34 +527,39 @@ export function OverviewPage() {
             testId="attention-unread"
           />
         ) : null}
-        <Section label={t("overview.needsYou")} testId="attention-section">
-          {view?.kind === "nothing_readable" ? (
-            <DataState
-              state="empty"
-              line={t("resource.permission.description")}
-              testId="resource-permission-alert"
-            />
-          ) : (
-            <NeedsYou
-              items={items}
-              pending={attention.query.isPending}
-              error={
-                attention.query.isError
-                  ? {
-                      line: t("overview.loadFailed"),
-                      onRetry: () => void attention.query.refetch(),
-                    }
-                  : null
-              }
-              permissions={session.permissions}
-              onReview={openReview}
-            />
-          )}
-        </Section>
-        {canRuns ? (
-          <Section label={t("overview.lastFailures")} testId="overview-failures-section">
-            <LastFailures />
+        {/* Each list is its own item: its column choice belongs to it alone. */}
+        <div data-action-scope="list">
+          <Section label={t("overview.needsYou")} testId="attention-section">
+            {view?.kind === "nothing_readable" ? (
+              <DataState
+                state="empty"
+                line={t("resource.permission.description")}
+                testId="resource-permission-alert"
+              />
+            ) : (
+              <NeedsYou
+                items={items}
+                pending={attention.query.isPending}
+                error={
+                  attention.query.isError
+                    ? {
+                        line: t("overview.loadFailed"),
+                        onRetry: () => void attention.query.refetch(),
+                      }
+                    : null
+                }
+                permissions={session.permissions}
+                onReview={openReview}
+              />
+            )}
           </Section>
+        </div>
+        {canRuns ? (
+          <div data-action-scope="list">
+            <Section label={t("overview.lastFailures")} testId="overview-failures-section">
+              <LastFailures />
+            </Section>
+          </div>
         ) : null}
       </div>
       <ReviewSheet id={review} item={reviewed} onClose={closeReview} />
