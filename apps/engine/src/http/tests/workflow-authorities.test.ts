@@ -219,7 +219,17 @@ test("an approval until revoked reads as open-ended; the next preview names no g
   const preview = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
     headers: browserHeaders,
   });
-  expect(((await preview.json()) as { boundary_growth?: unknown }).boundary_growth).toEqual([]);
+  expect(await preview.json()).toMatchObject({ boundary_growth: [] });
+  // The approved version is not active, so nothing would carry over yet.
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: f.version.id, lifecycle: "active" })
+    .where(eq(workflows.id, f.workflow.id));
+  const again = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
+    headers: browserHeaders,
+  });
+  // Active with a live approval and an equal boundary: activating carries it.
+  expect(await again.json()).toMatchObject({ boundary_growth: [], approval_carries_over: true });
 });
 
 test("missing CSRF and a changed reviewed connector are rejected", async () => {

@@ -6,6 +6,7 @@ export * from "./apply-boundary-proposals.ts";
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
 export { type BoundaryGrowth, BoundaryGrowthSchema } from "./authority-growth.ts";
 export {
+  approvalWouldCarry,
   boundaryGrowth,
   nameGrowth,
   referenceApprovedManifest,

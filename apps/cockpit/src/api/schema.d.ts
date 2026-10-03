@@ -18488,6 +18488,7 @@ export interface components {
             }[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
             boundary_growth?: components["schemas"]["AuthorityBoundaryGrowth"][];
+            approval_carries_over: boolean;
             schedules: {
                 cron: string;
                 timezone: string;

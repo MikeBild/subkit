@@ -465,7 +465,13 @@ export function GrantWorkflowAuthority({
     limited && (!Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000);
   const invalidHours =
     limited && (!Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744);
-  const boundsVisible = review && !unsupported && !incomplete;
+  // A saved change that reaches nothing the running version's live approval
+  // does not already cover: putting it into service carries that approval
+  // over, so the one decision left is to take it over — not a new approval.
+  const carriesOver = Boolean(
+    activation && review?.approval_carries_over && !unsupported && !incomplete,
+  );
+  const boundsVisible = review && !unsupported && !incomplete && !carriesOver;
   const context = useGrantContext(workflowId, open);
   // An approval that already covers exactly this — the same version, the same
   // environment. A further one is then an extension, and is offered as one.
@@ -978,6 +984,11 @@ export function GrantWorkflowAuthority({
                   </Badge>
                 </div>
               ) : null}
+              {carriesOver ? (
+                <p className="text-sm font-medium" data-testid="authority-carry-over">
+                  {t("authority.carryOver.hint")}
+                </p>
+              ) : null}
               {review && growthLine(t, review.boundary_growth) ? (
                 // Why the earlier approval did not carry over to this version.
                 <p className="text-sm font-medium" data-testid="authority-growth">
@@ -1145,12 +1156,12 @@ export function GrantWorkflowAuthority({
               carried out is offering a dead button. */}
           {activation && review && !incomplete && !sessionExpired && !actionError && (
             <Button
-              variant="outline"
+              variant={carriesOver ? "default" : "outline"}
               disabled={busy}
               onClick={() => activateOnly.mutate("nothing")}
               data-testid="authority-activate-only"
             >
-              {t("authority.activateOnly")}
+              {t(carriesOver ? "authority.carryOver.confirm" : "authority.activateOnly")}
             </Button>
           )}
           {unsupported ? (
@@ -1199,7 +1210,7 @@ export function GrantWorkflowAuthority({
                 </Button>
               )}
             </>
-          ) : (
+          ) : carriesOver ? null : (
             <Button
               disabled={busy || !input || Boolean(grant.error)}
               onClick={() => grant.mutate()}

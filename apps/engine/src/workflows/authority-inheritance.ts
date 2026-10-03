@@ -22,7 +22,12 @@ import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
-import { connectors, workflowExecutionAuthorities, workflowVersions } from "../db/schema/index.ts";
+import {
+  connectors,
+  workflowExecutionAuthorities,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import type { BoundaryGrowth } from "./authority-growth.ts";
 import { authorityLive } from "./authority-live.ts";
@@ -169,6 +174,76 @@ function parseManifest(raw: unknown): WorkflowEffectManifest | null {
   return parsed.success ? parsed.data : null;
 }
 
+type AuthorityRow = typeof workflowExecutionAuthorities.$inferSelect;
+
+/** One approval measured against a version: its boundary, what that approval
+ *  covers, and what the version adds. Null when the version cannot run on any
+ *  approval (it needs a concrete-run review; the gate says why). */
+async function judgeCarry(db: Executor, parent: AuthorityRow, to_version_id: string) {
+  // A report mail's or a publication's boundary is learnt once and kept on the
+  // approval; the new version has no approval of its own yet, so it is
+  // measured with the ones its parent carries — exactly what admission reads
+  // back from the carried approval afterwards.
+  const report_boundaries = reportBoundariesFromManifest(parent.effect_manifest);
+  const content_boundaries = contentBoundariesFromManifest(parent.effect_manifest);
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: parent.tenant_id,
+      workflow_id: parent.workflow_id,
+      workflow_version_id: to_version_id,
+      execution_environment: parent.execution_environment,
+    },
+    db,
+    {
+      ...(Object.keys(report_boundaries).length > 0 ? { report_boundaries } : {}),
+      ...(Object.keys(content_boundaries).length > 0 ? { content_boundaries } : {}),
+    },
+  );
+  if (!preview.eligible_for_repeated_runs) return null;
+  const granted = parseManifest(parent.approved_manifest ?? parent.effect_manifest);
+  if (!granted) return null;
+  return { preview, granted, growth: boundaryGrowth(granted, preview.manifest) };
+}
+
+/**
+ * Whether activating `version_id` would carry a live approval of the active
+ * version in this environment over — the same judgement activation makes, so
+ * a review can offer "take over" instead of asking for a new approval.
+ */
+export async function approvalWouldCarry(
+  db: Executor,
+  input: {
+    tenant_id: string;
+    workflow_id: string;
+    version_id: string;
+    execution_environment: "dev" | "prod";
+  },
+): Promise<boolean> {
+  const [workflow] = await db
+    .select({ current: workflows.current_version_id, lifecycle: workflows.lifecycle })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, input.workflow_id)))
+    .limit(1);
+  if (!workflow?.current || workflow.current === input.version_id) return false;
+  const parents = await db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+        eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+        eq(workflowExecutionAuthorities.workflow_version_id, workflow.current),
+        eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+        authorityLive(),
+      ),
+    );
+  for (const parent of parents) {
+    const judged = await judgeCarry(db, parent, input.version_id);
+    if (judged && judged.growth.length === 0) return true;
+  }
+  return false;
+}
+
 /**
  * Called in the transaction that makes `to_version_id` the active version.
  * Runs in a savepoint: a failure here never undoes the save — the version then
@@ -213,31 +288,9 @@ export async function carryApprovalsForward(
       const covered = new Set<"dev" | "prod">();
       for (const parent of parents) {
         const environment = parent.execution_environment;
-        // A report mail's or a publication's boundary is learnt once and kept
-        // on the approval; the new version has no approval of its own yet, so
-        // it is measured with the ones its parent carries — exactly what
-        // admission reads back from the carried approval afterwards.
-        const report_boundaries = reportBoundariesFromManifest(parent.effect_manifest);
-        const content_boundaries = contentBoundariesFromManifest(parent.effect_manifest);
-        const preview = await previewWorkflowAuthority(
-          {
-            tenant_id: input.tenant_id,
-            workflow_id: input.workflow_id,
-            workflow_version_id: input.to_version_id,
-            execution_environment: environment,
-          },
-          sp,
-          {
-            ...(Object.keys(report_boundaries).length > 0 ? { report_boundaries } : {}),
-            ...(Object.keys(content_boundaries).length > 0 ? { content_boundaries } : {}),
-          },
-        );
-        // A version that needs a concrete-run review cannot run on any
-        // approval; the gate says why, as without inheritance.
-        if (!preview.eligible_for_repeated_runs) continue;
-        const granted = parseManifest(parent.approved_manifest ?? parent.effect_manifest);
-        if (!granted) continue;
-        const growth = boundaryGrowth(granted, preview.manifest);
+        const judged = await judgeCarry(sp, parent, input.to_version_id);
+        if (!judged) continue;
+        const { preview, granted, growth } = judged;
         if (growth.length > 0) {
           outcome.growth[environment] = [...(outcome.growth[environment] ?? []), ...growth];
           continue;
