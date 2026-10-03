@@ -205,7 +205,7 @@ describe("journey: audit query surface", () => {
 
     const p2 = await journeyFetch(
       ctx,
-      `/v1/audit-log?action=workflow.updated&limit=10&before=${encodeURIComponent(p1Body.next_cursor ?? "")}`,
+      `/v1/audit-log?action=workflow.updated&limit=10&cursor=${encodeURIComponent(p1Body.next_cursor ?? "")}`,
     );
     expect(p2.status).toBe(200);
     const p2Body = (await p2.json()) as {

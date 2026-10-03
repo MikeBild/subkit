@@ -297,7 +297,7 @@ export const diagnosticsMethods = {
   queryAuditLog(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; cursor?: string }> {
+  ): Promise<{ items: Record<string, unknown>[]; next_cursor: string | null }> {
     return this.request("GET", "/v1/audit-log", undefined, query);
   },
   getAuditEvent(this: EngineClient, id: string): Promise<Record<string, unknown>> {

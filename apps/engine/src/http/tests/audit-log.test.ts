@@ -4,7 +4,7 @@
 //   - list returns tenant-scoped rows
 //   - action filter narrows
 //   - ts_from/ts_to window
-//   - limit + before cursor pagination
+//   - limit + cursor pagination
 //   - /v1/audit-log/:id returns a single row
 //   - /v1/audit-log/export.ndjson streams a valid ndjson body
 //   - audit:read permission gate (admin 200, member 403)
@@ -160,7 +160,7 @@ describe("/v1/audit-log", () => {
     expect(p1.next_cursor).toBeTruthy();
 
     const p2Res = await fetch(
-      `${srv.baseUrl}/v1/audit-log?action=workflow.created,workflow.updated,workflow.deleted,connector.created,connector.updated&limit=2&before=${encodeURIComponent(p1.next_cursor ?? "")}`,
+      `${srv.baseUrl}/v1/audit-log?action=workflow.created,workflow.updated,workflow.deleted,connector.created,connector.updated&limit=2&cursor=${encodeURIComponent(p1.next_cursor ?? "")}`,
       { headers: adminHeaders() },
     );
     expect(p2Res.status).toBe(200);
@@ -174,7 +174,7 @@ describe("/v1/audit-log", () => {
     for (const row of p2.items) expect(ids1.has(row.id)).toBe(false);
   });
 
-  // LOCAL-SK-CURSOR-MUELL-500 — `before` was widened from `.datetime()` to
+  // LOCAL-SK-CURSOR-MUELL-500 — the cursor param was widened from `.datetime()` to
   // `.min(1).max(128)` so the keyset cursor (`<ts>|<uuid>`) would pass. That
   // left NO shape check: anything 1..128 chars reached `parseAuditCursor`,
   // which split on the last `|` and handed both halves to Postgres as
@@ -182,12 +182,12 @@ describe("/v1/audit-log", () => {
   // failure lands in the operator diagnostics register. The envelope is
   // generic, so nothing leaked — but a client error must not be reported as
   // a server fault.
-  test("malformed before cursor is 400, not 500", async () => {
+  test("malformed cursor is 400, not 500", async () => {
     for (const bad of ["abc|def", "not-a-cursor", "|", "2026-01-01T00:00:00Z|nope"]) {
-      const res = await fetch(`${srv.baseUrl}/v1/audit-log?before=${encodeURIComponent(bad)}`, {
+      const res = await fetch(`${srv.baseUrl}/v1/audit-log?cursor=${encodeURIComponent(bad)}`, {
         headers: adminHeaders(),
       });
-      expect(res.status, `before=${bad}`).toBe(400);
+      expect(res.status, `cursor=${bad}`).toBe(400);
     }
   });
 
@@ -196,7 +196,7 @@ describe("/v1/audit-log", () => {
     const p1 = (await first.json()) as { next_cursor: string | null };
     expect(p1.next_cursor).toBeTruthy();
     const res = await fetch(
-      `${srv.baseUrl}/v1/audit-log?limit=1&before=${encodeURIComponent(p1.next_cursor ?? "")}`,
+      `${srv.baseUrl}/v1/audit-log?limit=1&cursor=${encodeURIComponent(p1.next_cursor ?? "")}`,
       { headers: adminHeaders() },
     );
     expect(res.status).toBe(200);

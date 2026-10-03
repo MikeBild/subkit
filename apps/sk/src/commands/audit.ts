@@ -27,6 +27,7 @@ const queryCmd = defineCommand({
     action: { type: "string", description: "Action name filter" },
     actor: { type: "string", description: "Actor id filter" },
     "resource-id": { type: "string", description: "Filter by resource id" },
+    cursor: { type: "string", description: "Continue after a previous page (its next_cursor)" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
@@ -48,6 +49,7 @@ const queryCmd = defineCommand({
       if (args.action) q.action = String(args.action);
       if (args.actor) q.actor_id = String(args.actor);
       if (args["resource-id"]) q.resource_id = String(args["resource-id"]);
+      if (args.cursor) q.cursor = String(args.cursor);
       const result = await client.queryAuditLog(q);
       if (args.json) {
         printJson(result);

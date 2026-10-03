@@ -252,12 +252,16 @@ export async function renderConnectorsList(p: FastPathParams): Promise<RenderPay
 export async function renderExecutionsList(p: FastPathParams): Promise<RenderPayload> {
   // Executions are unbounded history — page, but render from the true
   // total so a page is never presented as the universe.
-  const { rows, total } = await listExecutions(p.tenant_id, { limit: EXECUTIONS_PAGE_SIZE }, p.db);
+  const { rows, total, next_cursor } = await listExecutions(
+    p.tenant_id,
+    { limit: EXECUTIONS_PAGE_SIZE },
+    p.db,
+  );
   if (rows.length === 0) {
     return {
       ok: true,
       reply: "No executions yet.",
-      data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
+      data: { items: [], total: 0, returned: 0, next_cursor: null, has_more: false },
     };
   }
   const items = rows.map((r) => ({
@@ -271,14 +275,14 @@ export async function renderExecutionsList(p: FastPathParams): Promise<RenderPay
     (r) =>
       `- ${r.id.slice(0, 8)} ${r.status} (${r.source_kind})${r.started_at ? ` · ${r.started_at.toISOString()}` : ""}`,
   );
-  const hasMore = items.length < total;
+  const hasMore = next_cursor !== null;
   const headline = hasMore
     ? `Showing latest ${items.length} of ${total} executions (ask for more or filter by workflow):`
     : `${total} execution${total === 1 ? "" : "s"}:`;
   return {
     ok: true,
     reply: `${headline}\n${lines.join("\n")}`,
-    data: { items, total, returned: items.length, offset: 0, has_more: hasMore },
+    data: { items, total, returned: items.length, next_cursor, has_more: hasMore },
   };
 }
 

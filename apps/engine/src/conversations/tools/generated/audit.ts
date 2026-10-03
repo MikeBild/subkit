@@ -8,6 +8,8 @@ const QueryInput = z
     resource_id: z.string().optional(),
     action: z.string().optional(),
     limit: z.number().int().min(1).max(100).optional(),
+    /** Opaque `next_cursor` from a previous page, passed back verbatim. */
+    cursor: z.string().min(1).max(128).optional(),
   })
   .openapi("QueryAuditToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolInput");
@@ -15,7 +17,7 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolI
 export const queryAuditTool: ConversationTool = {
   name: "list_audit",
   description:
-    "Query the audit log for the tenant. Optional filters by resource_type, resource_id, and action.",
+    "Query the audit log for the tenant, newest first. Optional filters by resource_type, resource_id, and action. A full page returns `next_cursor`; pass it back verbatim as `cursor` for the next page (null means no more entries).",
   inputSchema: QueryInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof QueryInput>) {
@@ -23,10 +25,10 @@ export const queryAuditTool: ConversationTool = {
     if (args.resource_type) filters.resource_type = args.resource_type;
     if (args.resource_id) filters.resource_id = args.resource_id;
     if (args.action) filters.actions = [args.action];
-    const { items, next_cursor } = await ctx.engineClient.audit.query(
-      filters,
-      args.limit !== undefined ? { limit: args.limit } : undefined,
-    );
+    const { items, next_cursor } = await ctx.engineClient.audit.query(filters, {
+      ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+    });
     return { ok: true, data: { entries: items, next_cursor } };
   },
 };

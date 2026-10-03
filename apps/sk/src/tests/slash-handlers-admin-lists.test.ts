@@ -74,7 +74,7 @@ describe("dispatchAdminListSlash", () => {
 
   test("/executions and /runs both reach the same handler branch", async () => {
     const ctx = buildCtx({
-      listExecutions: () => Promise.resolve({ items: [], total: 0 }),
+      listExecutions: () => Promise.resolve({ items: [], total: 0, next_cursor: null }),
     });
     expect(await dispatchAdminListSlash("executions", ctx)).toBe("no executions");
     expect(await dispatchAdminListSlash("runs", ctx)).toBe("no executions");
