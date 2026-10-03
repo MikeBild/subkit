@@ -264,6 +264,36 @@ describe("archive tears down schedule bindings", () => {
     });
     expect(((await list.json()) as { total: number }).total).toBe(0);
   });
+
+  test("reactivating binds the running version's own schedule again", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        name: "sched-reactivate",
+        steps: [{ kind: "transform", id: "out", expression: "return { ok: true };" }],
+        trigger: { kind: "schedule", cron: "0 7 * * *", timezone: "UTC" },
+      }),
+    });
+    expect(res.ok).toBe(true);
+    const wf = (await res.json()) as { id: string };
+    const rowsOf = () =>
+      ctx.db.select().from(workflowsSchedules).where(eq(workflowsSchedules.workflow_id, wf.id));
+    expect((await rowsOf()).length).toBe(1);
+
+    const patch = (lifecycle: "active" | "archived") =>
+      fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/metadata`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify({ lifecycle }),
+      });
+    expect((await patch("archived")).status).toBe(200);
+    expect((await rowsOf()).length).toBe(0);
+    expect((await patch("active")).status).toBe(200);
+    const rebound = await rowsOf();
+    expect(rebound.length).toBe(1);
+    expect(rebound[0]?.cron).toBe("0 7 * * *");
+  });
 });
 
 test("persisted admission holds are readable and suppressed for paused schedules", async () => {
