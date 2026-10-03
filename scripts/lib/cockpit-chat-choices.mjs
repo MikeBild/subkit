@@ -101,7 +101,9 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
   await page.route(detailPattern, detail);
   await page.route(answerPattern, answer);
   try {
-    for (const surface of ["inline", "context"]) {
+    // One card, in the transcript: a second copy in the working context held
+    // a second selection ("Montags" here, "Dienstags" there).
+    for (const surface of ["inline", "inline-cancel"]) {
       waiting = true;
       expected = surface === "inline" ? "preview" : "cancel";
       await stand.visit(page, `chat/${conversation.id}`);
@@ -111,16 +113,24 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
         throw new Error("Business question is mislabeled as authority in the chat header");
       if ((await inline.innerText()).includes("commit_intent"))
         throw new Error("Raw tool JSON replaced the decision UI");
-      if (surface === "context") await page.getByTestId("chat-context-toggle").click();
-      const card = surface === "context" ? page.getByTestId("chat-context-choice") : inline;
-      if (
-        surface === "context" &&
-        /Wartet auf eine Freigabe|Waiting for an approval/.test(
-          await page.getByTestId("chat-context").innerText(),
+      if (surface === "inline") {
+        await page.getByTestId("chat-context-toggle").click();
+        await page.getByTestId("chat-context").waitFor();
+        const context = await page.getByTestId("chat-context").innerText();
+        if (/Wartet auf eine Freigabe|Waiting for an approval/.test(context))
+          throw new Error("Choice is mislabeled as an approval");
+        if (
+          await page
+            .getByTestId("chat-context")
+            .getByTestId(/-choice-submit$/)
+            .count()
         )
-      )
-        throw new Error("Choice is mislabeled as an approval");
-      const prefix = `${surface === "context" ? "chat-context" : "chat-message-0"}-choice`;
+          throw new Error("The working context repeats the choice card");
+        await page.keyboard.press("Escape");
+        await page.getByTestId("chat-context").waitFor({ state: "hidden" });
+      }
+      const card = inline;
+      const prefix = "chat-message-0-choice";
       const action = page.getByTestId(`${prefix}-submit`);
       if (!(await action.isDisabled())) throw new Error("Choice was implicitly selected");
       if (!(await page.getByTestId("chat-composer-input").isDisabled()))
@@ -160,7 +170,6 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       await card.waitFor({ state: "hidden" });
       if (queueReads <= queueBefore)
         throw new Error("Decision queue was not refreshed after answering");
-      if (surface === "context") await page.keyboard.press("Escape");
       await stand.visit(page, `chat/${conversation.id}`);
       if ((await page.getByTestId("chat-transcript").innerText()).includes("commit_intent"))
         throw new Error("Completed decision exposes technical parameters by default");
@@ -226,10 +235,9 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       { value: "force", label: "force_commit verwenden" },
       { value: "cancel", label: "Abbrechen" },
     ];
-    for (const surface of ["inline", "context"]) {
+    for (const surface of ["inline"]) {
       await stand.visit(page, `chat/${conversation.id}`);
-      if (surface === "context") await page.getByTestId("chat-context-toggle").click();
-      const prefix = `${surface === "context" ? "chat-context" : "chat-message-0"}-choice`;
+      const prefix = "chat-message-0-choice";
       const card = page.getByTestId(prefix);
       await card.waitFor();
       if (!/recommend|empfehlen/.test(await card.innerText()))

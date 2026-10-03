@@ -38,8 +38,7 @@ const EN = {
   "chat.activation.singleHelp":
     "Automatic runs cannot yet be allowed because their final requests vary. Prepare one run and review its actual effect before anything is sent.",
   "chat.singleRun.title": "Run once now?",
-  "chat.singleRun.effect":
-    "Run “{name}” once, including its external actions. This does not approve future scheduled runs.",
+  "chat.singleRun.effect": "Run “{name}” once, with all its external actions — this time only.",
   "chat.singleRun.thisWorkflow": "this workflow",
   "chat.singleRun.confirm": "Run once",
   "chat.activation.singleConfirm": "Use change and prepare one run",
@@ -81,8 +80,7 @@ const EN = {
   "chat.preparation.prompt":
     "Continue preparing the current change. Keep the requested behavior, schedule and destinations. Perform the permitted checks and save when allowed. Do not activate or run live. Ask only for missing business input using a short dialogue. Summarize the result briefly without code or tool names.",
   "chat.schedule.pending": "Automatic runs still paused",
-  "chat.schedule.effect":
-    "Automatic runs for this workflow are not approved yet. Review the next step before granting permission.",
+  "chat.schedule.effect": "Automatic runs for this workflow are not approved yet.",
   "chat.schedule.review": "Review next step",
   "chat.automationCard.authorized.title": "Automatic runs are approved",
   "chat.automationCard.authorized.hint":
@@ -124,8 +122,8 @@ const EN = {
   "chat.form.searchSite": "Website in Google Search Console",
   "chat.form.knowledgeSpace": "WikiKit space for findings",
   "chat.form.reportSite": "ContentKit website for reports",
-  "chat.form.runQuestion":
-    "Complete the missing report settings. This does not authorize automatic runs.",
+  "chat.form.runQuestion": "Complete the missing report settings.",
+  "chat.form.runQuestionHelp": "This does not authorize automatic runs.",
   "chat.form.cancel": "Cancel question",
   "chat.form.submit": "Use these details",
   "chat.form.secretHint": "Never stored or shown in the chat.",
@@ -2107,7 +2105,6 @@ const EN = {
   "chat.list.loadFailed": "The conversations could not be loaded",
   "chat.search": "Search conversations",
   "chat.rename": "Rename conversation",
-  "chat.renameDescription": "Use a concise title that makes this conversation easy to find later.",
   "chat.create.title": "Start a conversation",
   "chat.create.description": "Describe the outcome SubKit should work toward.",
   "chat.create.prompt": "Task",
@@ -2137,14 +2134,12 @@ const EN = {
   "chat.origin.unknown": "Unknown source",
   "chat.origin.you": "you",
   "chat.created.title": "Created in this conversation",
-  "chat.created.empty": "Nothing yet",
   "chat.created.kind.workflow": "Workflow",
   "chat.created.kind.connector": "Connector",
   "chat.created.kind.execution": "Run",
   "catalog.conversations.title": "Conversations about this",
   "catalog.conversations.failed": "The conversations could not be loaded",
   "catalog.conversations.open": "Open conversation",
-  "chat.summary.inProgress": "An active conversation is ready to continue.",
   "chat.resume.connectorReadyToSave": "You were setting up {target}; the probe succeeded.",
   "chat.resume.connectorDrafting": "You were drafting {target} but have not probed it yet.",
   "chat.resume.workflowReadyToCommit": "You were authoring {target}; the last preview succeeded.",
@@ -2180,13 +2175,11 @@ const EN = {
   "chat.text.placeholder": "Type your answer …",
   "chat.text.submit": "Answer",
   "chat.text.invalid": "This answer does not have the format the question asks for.",
-  "chat.text.blocked":
-    "A question is waiting for you. Your message was not sent as its answer and is still in the composer.",
+  "chat.text.blocked": "A question is waiting for you. Your message is still in the composer.",
   "chat.text.answeredQuestion": "Question",
   "chat.text.answerTo": "Answer to the question",
   "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
   "chat.failedKept": "Your message is kept.",
-  "chat.failedDetail": "Provider message",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.cause.provider_quota_exhausted": "The AI provider's usage limit has been reached.",
   "chat.cause.provider_quota_exhaustedUntil":
@@ -2198,8 +2191,7 @@ const EN = {
   "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
   "chat.cause.tenant_budget_exhausted": "This installation's monthly AI budget is used up.",
   "chat.empty.title": "What should SubKit accomplish?",
-  "chat.empty.description":
-    "Describe the outcome. The agent can inspect, verify, preview and request approval here.",
+  "chat.empty.description": "Describe the outcome you need.",
   "chat.composer.placeholder": "Message SubKit…",
   "chat.mention.categories": "Categories",
   "chat.mention.categoryCount": "{count} workflows",
@@ -2220,7 +2212,6 @@ const EN = {
   "chat.oauth.check": "Check sign-in",
   "chat.reauth.pendingHelp":
     "A question is already waiting for you. Answer it to continue signing in.",
-  "chat.reauth.continue": "Continue sign-in",
   "chat.reauth.title": "Reconnect your account",
   "chat.reauth.help": "Sign in with the provider in a new tab. Then return to this conversation.",
   "chat.reauth.expired": "This sign-in link has expired. Request a new one to continue.",
@@ -2239,16 +2230,15 @@ const EN = {
   "chat.decision.details": "What will change",
   "chat.decision.validUntil": "Decide by",
   "chat.decision.expired": "This request has expired. Ask SubKit to prepare a new request.",
-  "chat.decision.failed":
-    "The decision was not completed. Review the current request and try again.",
+  "chat.decision.failed": "The decision was not completed. Try again.",
   "chat.decision.processing": "Processing decision…",
   "chat.decision.save": "Save inactive version",
   "chat.decision.externalTool": "{connector}: run the tool “{tool}”?",
   "chat.decision.serverClaim": "The server describes this as: {claim}",
 
   "chat.context.help": "About the working context",
-  "chat.context.description": "Evidence, checkpoints and pending decisions for this conversation.",
   "chat.context.stage": "Stage",
+  "chat.context.empty": "Nothing recorded for this conversation yet.",
   "chat.context.ready": "Ready",
   "chat.context.onboarding": "Getting started",
   "chat.context.target": "Target",
@@ -2267,7 +2257,6 @@ const EN = {
   "chat.context.unsaved": "Unsaved changes",
   "chat.context.saved": "No unsaved changes",
   "chat.context.references": "Referenced in this conversation",
-  "chat.context.referencesEmpty": "No references yet",
   "chat.context.referenceUnavailable": "Unavailable",
   "chat.context.approval": "Approval required",
   "chat.approval.review": "Review this governed action before SubKit continues.",
@@ -2766,8 +2755,6 @@ const EN = {
     "Enforces the same gates as “Ask before changes”; that it only plans is an instruction to the model — a guardrail, not a limit.",
   "chat.unavailable": "Conversation not available",
   "chat.notFound": "This conversation does not exist or you have no access to it",
-  "chat.notFoundDescription":
-    "Trying again will not change that. Open a conversation from the list or start a new one.",
   "chat.retryCheck": "Refresh the conversation",
   "chat.retryManual":
     "Nothing is sent again by itself: check the refreshed conversation and send your message yourself if it is missing.",
@@ -3390,7 +3377,7 @@ const DE: Record<TranslationKey, string> = {
     "Automatische Läufe können noch nicht freigegeben werden, weil ihre endgültigen Anfragen variieren. Bereite einen einzelnen Lauf vor und prüfe seine konkrete Wirkung, bevor etwas gesendet wird.",
   "chat.singleRun.title": "Jetzt einmal ausführen?",
   "chat.singleRun.effect":
-    "„{name}“ einmal ausführen, einschließlich seiner externen Aktionen. Künftige automatische Läufe werden damit nicht freigegeben.",
+    "„{name}“ einmal mit allen externen Aktionen ausführen – nur dieses eine Mal.",
   "chat.singleRun.thisWorkflow": "diesen Ablauf",
   "chat.singleRun.confirm": "Einmal ausführen",
   "chat.activation.singleConfirm": "Übernehmen und Einzellauf vorbereiten",
@@ -3423,8 +3410,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.preparation.prompt":
     "Setze die Vorbereitung der aktuellen Änderung fort. Behalte das gewünschte Verhalten, den Zeitplan und die Ziele bei. Übernimm die erlaubten Prüfungen und speichere, soweit erlaubt. Nicht aktivieren oder live ausführen. Frage nur nach fehlenden fachlichen Angaben in einem kurzen Dialog. Fasse das Ergebnis kurz ohne Code oder Tool-Namen zusammen.",
   "chat.schedule.pending": "Automatische Läufe noch blockiert",
-  "chat.schedule.effect":
-    "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben. Prüfe den nächsten Schritt, bevor du eine Freigabe erteilst.",
+  "chat.schedule.effect": "Automatische Läufe sind für diesen Ablauf noch nicht freigegeben.",
   "chat.schedule.review": "Nächsten Schritt prüfen",
   "chat.automationCard.authorized.title": "Automatische Läufe sind freigegeben",
   "chat.automationCard.authorized.hint":
@@ -3476,8 +3462,8 @@ const DE: Record<TranslationKey, string> = {
   "chat.form.searchSite": "Website in Google Search Console",
   "chat.form.knowledgeSpace": "WikiKit-Bereich für Erkenntnisse",
   "chat.form.reportSite": "ContentKit-Website für Berichte",
-  "chat.form.runQuestion":
-    "Ergänze die fehlenden Berichtseinstellungen. Dadurch werden keine automatischen Läufe freigegeben.",
+  "chat.form.runQuestion": "Ergänze die fehlenden Berichtseinstellungen.",
+  "chat.form.runQuestionHelp": "Dadurch werden keine automatischen Läufe freigegeben.",
   "chat.form.cancel": "Rückfrage abbrechen",
   "chat.form.submit": "Angaben übernehmen",
   "chat.form.secretHint": "Wird nie im Chat gespeichert oder angezeigt.",
@@ -5495,7 +5481,6 @@ const DE: Record<TranslationKey, string> = {
   "chat.list.loadFailed": "Die Unterhaltungen konnten nicht geladen werden",
   "chat.search": "Unterhaltungen durchsuchen",
   "chat.rename": "Unterhaltung umbenennen",
-  "chat.renameDescription": "Ein knapper Titel macht diese Unterhaltung später leicht auffindbar.",
   "chat.create.title": "Unterhaltung starten",
   "chat.create.description": "Beschreib das Ergebnis, das SubKit erarbeiten soll.",
   "chat.create.prompt": "Aufgabe",
@@ -5525,14 +5510,12 @@ const DE: Record<TranslationKey, string> = {
   "chat.origin.unknown": "Unbekannte Quelle",
   "chat.origin.you": "dir",
   "chat.created.title": "In dieser Unterhaltung entstanden",
-  "chat.created.empty": "Noch nichts",
   "chat.created.kind.workflow": "Workflow",
   "chat.created.kind.connector": "Konnektor",
   "chat.created.kind.execution": "Lauf",
   "catalog.conversations.title": "Unterhaltungen dazu",
   "catalog.conversations.failed": "Die Unterhaltungen konnten nicht geladen werden",
   "catalog.conversations.open": "Unterhaltung öffnen",
-  "chat.summary.inProgress": "Eine aktive Unterhaltung kann fortgesetzt werden.",
   "chat.resume.connectorReadyToSave": "Du hast {target} eingerichtet; die Probe war erfolgreich.",
   "chat.resume.connectorDrafting": "Du hast {target} entworfen, aber noch nicht geprobt.",
   "chat.resume.workflowReadyToCommit":
@@ -5573,14 +5556,12 @@ const DE: Record<TranslationKey, string> = {
   "chat.text.placeholder": "Antwort eingeben …",
   "chat.text.submit": "Antworten",
   "chat.text.invalid": "Diese Antwort hat nicht das Format, nach dem die Rückfrage fragt.",
-  "chat.text.blocked":
-    "Eine Rückfrage wartet auf dich. Deine Nachricht wurde nicht als Antwort gesendet und steht noch im Eingabefeld.",
+  "chat.text.blocked": "Eine Rückfrage wartet auf dich. Deine Nachricht steht noch im Eingabefeld.",
   "chat.text.answeredQuestion": "Rückfrage",
   "chat.text.answerTo": "Antwort auf die Rückfrage",
   "chat.pendingQuestionRequired":
     "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
   "chat.failedKept": "Deine Nachricht bleibt erhalten.",
-  "chat.failedDetail": "Meldung des Anbieters",
   "chat.failedDescription":
     "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",
   "chat.cause.provider_quota_exhausted": "Das Nutzungslimit beim KI-Anbieter ist erreicht.",
@@ -5594,8 +5575,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.cause.tenant_budget_exhausted":
     "Das monatliche KI-Budget dieser Installation ist aufgebraucht.",
   "chat.empty.title": "Was soll SubKit erreichen?",
-  "chat.empty.description":
-    "Beschreib das Ergebnis. Der Agent kann hier prüfen, verifizieren, testen und Freigaben anfordern.",
+  "chat.empty.description": "Beschreib das Ergebnis, das du brauchst.",
   "chat.composer.placeholder": "SubKit fragen…",
   "chat.mention.categories": "Kategorien",
   "chat.mention.categoryCount": "{count} Workflows",
@@ -5617,7 +5597,6 @@ const DE: Record<TranslationKey, string> = {
   "chat.oauth.check": "Anmeldung prüfen",
   "chat.reauth.pendingHelp":
     "Eine Rückfrage wartet bereits auf dich. Beantworte sie, um die Anmeldung fortzusetzen.",
-  "chat.reauth.continue": "Anmeldung fortsetzen",
   "chat.reauth.title": "Konto erneut verbinden",
   "chat.reauth.help":
     "Melde dich beim Anbieter im neuen Tab an. Kehre danach in diesen Chat zurück.",
@@ -5638,17 +5617,15 @@ const DE: Record<TranslationKey, string> = {
   "chat.decision.details": "Was sich ändert",
   "chat.decision.validUntil": "Entscheiden bis",
   "chat.decision.expired": "Diese Anfrage ist abgelaufen. Bitte SubKit um eine neue Anfrage.",
-  "chat.decision.failed":
-    "Die Entscheidung wurde nicht abgeschlossen. Prüfe die aktuelle Anfrage und versuche es erneut.",
+  "chat.decision.failed": "Die Entscheidung wurde nicht abgeschlossen. Versuch es erneut.",
   "chat.decision.processing": "Entscheidung wird verarbeitet…",
   "chat.decision.save": "Inaktive Version speichern",
   "chat.decision.externalTool": "{connector}: Werkzeug „{tool}“ ausführen?",
   "chat.decision.serverClaim": "Laut Server: {claim}",
 
   "chat.context.help": "Informationen zum Arbeitskontext",
-  "chat.context.description":
-    "Nachweise, Prüfpunkte und offene Entscheidungen dieser Unterhaltung.",
   "chat.context.stage": "Phase",
+  "chat.context.empty": "Zu dieser Unterhaltung ist noch nichts festgehalten.",
   "chat.context.ready": "Bereit",
   "chat.context.onboarding": "Einstieg",
   "chat.context.target": "Ziel",
@@ -5667,7 +5644,6 @@ const DE: Record<TranslationKey, string> = {
   "chat.context.unsaved": "Ungespeicherte Änderungen",
   "chat.context.saved": "Keine ungespeicherten Änderungen",
   "chat.context.references": "In dieser Unterhaltung referenziert",
-  "chat.context.referencesEmpty": "Noch keine Referenzen",
   "chat.context.referenceUnavailable": "Nicht verfügbar",
   "chat.context.approval": "Freigabe erforderlich",
   "chat.approval.review": "Prüf diese gesteuerte Aktion, bevor SubKit fortfährt.",
@@ -6176,8 +6152,6 @@ const DE: Record<TranslationKey, string> = {
     "Erzwingt dieselben Schranken wie „Vor Änderungen fragen“; dass nur geplant wird, ist eine Anweisung an das Modell — eine Leitplanke, keine Grenze.",
   "chat.unavailable": "Unterhaltung nicht verfügbar",
   "chat.notFound": "Diese Unterhaltung gibt es nicht oder du hast keinen Zugriff",
-  "chat.notFoundDescription":
-    "Erneut versuchen ändert daran nichts. Öffne eine Unterhaltung aus der Liste oder beginne eine neue.",
   "chat.retryCheck": "Unterhaltung aktualisieren",
   "chat.retryManual":
     "Nichts wird von selbst erneut gesendet: prüf die aktualisierte Unterhaltung und schick deine Nachricht selbst noch einmal ab, falls sie fehlt.",
