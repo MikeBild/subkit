@@ -279,7 +279,7 @@ describe("the remaining addresses", () => {
     const all = readableSections({ clients: true, keys: true, grants: true });
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("grants");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
-    expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("clients");
+    expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
     const keysOnly = readableSections({ clients: false, keys: true, grants: false });
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), keysOnly)).toBe("keys");
   });

@@ -25,16 +25,13 @@ export const UNUSED_KEY_DAYS = 90;
 // ── Page order ──────────────────────────────────────────────────────────────
 
 /**
- * The tabs in the order of what a reader comes for: the apps that may use
- * SubKit (Claude, ChatGPT — what most people added first), the keys their own
- * scripts use, and the systems SubKit may use on their behalf. Each section is
- * its own tab with its own address, so none sits below another's wall of rows
- * any more — the reason Zugriff in deinem Namen once had to stand first. The
- * OAuth callback names its section and lands there whatever the order.
+ * The tabs in page order (D7): the keys scripts use, the apps that were
+ * approved, and — until they move to their connector — the systems SubKit
+ * may use on someone's behalf. The first is the default.
  */
 export const API_ACCESS_ORDER = [
-  "clients",
   "keys",
+  "clients",
   "grants",
 ] as const satisfies readonly ApiAccessSection[];
 
@@ -56,7 +53,7 @@ export function openApiAccessSection(
   return readable[0] ?? null;
 }
 
-// ── Tab badges ──────────────────────────────────────────────────────────────
+// ── Tab counts ──────────────────────────────────────────────────────────────
 
 /**
  * How many keys ask for a decision: expired, or lapsing within
@@ -79,28 +76,6 @@ export function keysNeedingAction(
  */
 export function grantsNeedingRenewal(items: readonly Pick<ConnectionItem, "state">[]): number {
   return items.filter((item) => connectionNeedsRenewal(item) || item.state === "expiring").length;
-}
-
-/**
- * The word on a tab: only a count a reader can act on ("2 laufen ab",
- * "1 erneuern"), never a total and never a zero. Totals stand inside the
- * section; a tab that says "0" or "234" is a number nobody asked for.
- */
-export function sectionBadgeText(
-  section: ApiAccessSection,
-  count: number | undefined,
-  t: Translate,
-): string | null {
-  if (!count) return null;
-  if (section === "keys")
-    return count === 1
-      ? t("apiAccess.badge.keysOne")
-      : t("apiAccess.badge.keys", { count: String(count) });
-  if (section === "grants")
-    return count === 1
-      ? t("apiAccess.badge.grantsOne")
-      : t("apiAccess.badge.grants", { count: String(count) });
-  return null;
 }
 
 // ── Scopes ──────────────────────────────────────────────────────────────────
