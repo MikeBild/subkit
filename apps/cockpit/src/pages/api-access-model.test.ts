@@ -6,7 +6,6 @@ import {
   type ConnectedClientItem,
   calendarDaysUntil,
   defaultKeyScopes,
-  grantsNeedingRenewal,
   groupApiKeys,
   groupConnectedClients,
   KEY_EXPIRING_DAYS,
@@ -284,25 +283,22 @@ describe("API keys: live first, revoked collapsed", () => {
 });
 
 describe("the tabs: their order, the one that opens, and what they count", () => {
-  test("keys first, then apps, then access on your behalf", () => {
+  test("keys first, then apps", () => {
     // Schlüssel · Apps (D7): the first tab is the default and the one with
     // the page's action.
-    expect([...API_ACCESS_ORDER]).toEqual(["keys", "clients", "grants"]);
+    expect([...API_ACCESS_ORDER]).toEqual(["keys", "clients"]);
   });
 
   test("a section the reader may not read is absent, the order stays", () => {
-    expect(readableSections({ grants: true, keys: false, clients: true })).toEqual([
-      "clients",
-      "grants",
-    ]);
-    expect(readableSections({ grants: false, keys: false, clients: false })).toEqual([]);
+    expect(readableSections({ keys: false, clients: true })).toEqual(["clients"]);
+    expect(readableSections({ keys: false, clients: false })).toEqual([]);
   });
 
   test("the address picks the tab when the reader may read it, else the first one", () => {
-    const all = readableSections({ grants: true, keys: true, clients: true });
+    const all = readableSections({ keys: true, clients: true });
     expect(openApiAccessSection(null, all)).toBe("keys");
-    expect(openApiAccessSection("grants", all)).toBe("grants");
-    const noKeys = readableSections({ grants: true, keys: false, clients: true });
+    expect(openApiAccessSection("clients", all)).toBe("clients");
+    const noKeys = readableSections({ keys: false, clients: true });
     expect(openApiAccessSection("keys", noKeys)).toBe("clients");
     expect(openApiAccessSection("keys", [])).toBeNull();
   });
@@ -316,11 +312,6 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
       key({ revoked_at: daysAgo(2), expires_at: daysAgo(1) }), // revoked holds nothing
     ];
     expect(keysNeedingAction(items, NOW)).toBe(2);
-  });
-
-  test("a grants tab counts what asks for Erneuern", () => {
-    const states = ["valid", "expiring", "expired", "unreadable"] as const;
-    expect(grantsNeedingRenewal(states.map((state) => ({ state })))).toBe(3);
   });
 });
 

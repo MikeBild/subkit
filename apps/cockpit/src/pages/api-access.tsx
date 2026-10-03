@@ -4,12 +4,8 @@ import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { type ApiAccessSection, apiAccessSectionFromUrl, docsHref } from "@/app/links";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import {
-  AccountConnections,
-  CONNECTIONS_QUERY,
-  ConnectDialog,
-} from "@/components/cockpit/account-connections";
 import { ListTable } from "@/components/cockpit/list-table";
 import {
   ActionMenu,
@@ -42,7 +38,6 @@ import {
   type ApiKeyItem,
   type ConnectedClientItem,
   defaultKeyScopes,
-  grantsNeedingRenewal,
   groupApiKeys,
   groupConnectedClients,
   keyState,
@@ -56,7 +51,6 @@ import {
   scopeRisk,
   scopeRiskKey,
 } from "@/pages/api-access-model";
-import type { ConnectionItem } from "@/pages/connections-model";
 
 type IssuedApiKey = ApiKeyItem & { plaintext_key: string };
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -66,19 +60,17 @@ const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 
 /** The guide a reader follows to add an app; adding starts in the app itself. */
 const CLIENTS_GUIDE = "authors/coding-agents.md";
-/** How a script swaps a key for a short-lived token — for developers, not on the page itself. */
-const TOKEN_EXCHANGE_GUIDE = "developers/token-exchange.md";
 
 const SECTION_TITLE_KEYS = {
   keys: "apiAccess.section.keys",
   clients: "apiAccess.section.clients",
-  grants: "apiAccess.section.grants",
 } as const;
 
 /**
  * API-Zugang — access INTO SubKit: the keys scripts use and the apps that
  * were approved, each a tab at its own address (`?section=`). Each tab is
  * behind its own read permission; one the reader cannot read is absent.
+ * What SubKit holds on another system's side lives on that connector's page.
  */
 export function ApiAccessPage() {
   const { t } = useI18n();
@@ -86,7 +78,7 @@ export function ApiAccessPage() {
   const can = (permission: string) => session.permissions.includes(permission);
   const canKeys = can("api_key:read");
   const canClients = can("mcp_oauth_client:read");
-  const canGrants = can("connection:read");
+  const live = useLiveQueryOptions();
 
   // Every list loads with the page: a tab counts the rows that need someone,
   // and it can only count them once its list has arrived.
@@ -94,34 +86,29 @@ export function ApiAccessPage() {
     queryKey: KEYS_QUERY,
     queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
     enabled: canKeys,
+    ...live,
   });
   const clients = useQuery({
     queryKey: CLIENTS_QUERY,
     queryFn: () => apiRequest<{ items: ConnectedClientItem[] }>("/v1/oauth/clients"),
     enabled: canClients,
-  });
-  const connections = useQuery({
-    queryKey: CONNECTIONS_QUERY,
-    queryFn: () => apiRequest<{ items: ConnectionItem[] }>("/v1/connections"),
-    enabled: canGrants,
+    ...live,
   });
 
   const readable = useMemo(
-    () => readableSections({ grants: canGrants, keys: canKeys, clients: canClients }),
-    [canGrants, canKeys, canClients],
+    () => readableSections({ keys: canKeys, clients: canClients }),
+    [canKeys, canClients],
   );
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const active = openApiAccessSection(apiAccessSectionFromUrl(searchStr), readable);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
   const [issued, setIssued] = useState<string | null>(null);
 
   const nowMs = Date.now();
   const counts: Record<ApiAccessSection, number> = {
     keys: keys.data ? keysNeedingAction(keys.data.items, nowMs) : 0,
     clients: 0,
-    grants: connections.data ? grantsNeedingRenewal(connections.data.items) : 0,
   };
   const activeKeys = groupApiKeys(keys.data?.items ?? []).active.length;
 
@@ -132,17 +119,7 @@ export function ApiAccessPage() {
       {t("apiKeys.create")}
     </Button>
   ) : null;
-  const connect = can("connection:write") ? (
-    <Button onClick={() => setConnectOpen(true)} data-testid="connection-create">
-      {t("connections.connect")}
-    </Button>
-  ) : null;
-  const action =
-    active === "keys" && (keys.data?.items.length ?? 0) > 0
-      ? createKey
-      : active === "grants" && (connections.data?.items.length ?? 0) > 0
-        ? connect
-        : null;
+  const action = active === "keys" && (keys.data?.items.length ?? 0) > 0 ? createKey : null;
 
   const content: Record<ApiAccessSection, ReactNode> = {
     keys: (
@@ -154,7 +131,6 @@ export function ApiAccessPage() {
       />
     ),
     clients: <ClientsSection query={clients} />,
-    grants: <AccountConnections query={connections} emptyAction={connect} />,
   };
   const tabs: PageTab[] = readable.map((section) => ({
     value: section,
@@ -196,7 +172,6 @@ export function ApiAccessPage() {
         }}
       />
       <IssuedKeyDialog secret={issued} onClose={() => setIssued(null)} />
-      <ConnectDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </Page>
   );
 }
@@ -378,25 +353,17 @@ function KeysSection({
 
   return (
     <>
-      <SummaryLine
-        testId="api-access-total-keys"
-        text={
-          activeCount > 0
-            ? countText(t, activeCount, "apiAccess.total.keysOne", "apiAccess.total.keys")
-            : t("apiAccess.total.keysNone")
-        }
-        aside={
-          // How a script swaps its key for a short-lived token is a
-          // developer's question: one link to the guide.
-          <a
-            href={docsHref(TOKEN_EXCHANGE_GUIDE)}
-            className="underline-offset-4 hover:underline"
-            data-testid="api-access-token-exchange-link"
-          >
-            {t("apiAccess.developerFooter")}
-          </a>
-        }
-      />
+      {total > 0 ? (
+        // An empty list says so itself; a count of nothing above it is noise.
+        <SummaryLine
+          testId="api-access-total-keys"
+          text={t("apiAccess.total.keysSummary", {
+            count: String(total),
+            active: String(activeCount),
+          })}
+          help={t("apiAccess.keysHelp")}
+        />
+      ) : null}
       <ListTable
         id="api-keys"
         columns={columns}
@@ -569,7 +536,9 @@ function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose()
       testId="secret-dialog"
     >
       <CopyField value={secret ?? ""} label={t("apiKeys.ready")} testId="secret-value" />
-      <p className="text-sm text-muted-foreground">{t("secret.once")}</p>
+      <p className="text-sm text-muted-foreground" data-testid="secret-once">
+        {t("secret.once")}
+      </p>
     </FormDialog>
   );
 }
