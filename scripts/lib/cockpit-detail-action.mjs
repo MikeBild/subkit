@@ -406,14 +406,15 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await page.unroute(isDetailApi, handler);
   }
 
-  // ── The records that are one document: a skill, a knowledge source, a file ─
-  // Served by the sweep's own fixtures; each action of the page once.
-  for (const resource of ["skills", "knowledge", "files"]) {
+  // ── The records that are one document: a skill, a knowledge source ─
+  // Served by the sweep's own fixtures; each action of the page once. A file
+  // is a sheet over its list and is swept as `files/$id`.
+  for (const resource of ["skills", "knowledge"]) {
     const where = `/${resource}/<record> (${localeName})`;
     await stand.visit(page, `${resource}/${uuid}`);
     await page.getByTestId(`detail-${resource}`).waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, where);
-    await assertRecordBar(page, where, de, resource !== "files");
+    await assertRecordBar(page, where, de, true);
   }
 }
