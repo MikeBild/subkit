@@ -1,23 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
-import type { components } from "@/api/schema";
 import { navigationItem } from "@/app/navigation";
-import {
-  ConnectorCredentials,
-  useConnectorCredential,
-} from "@/components/cockpit/connector-credentials";
-import {
-  ConnectorConnectionFacts,
-  ConnectorMcpTools,
-  ConnectorRuntimeSection,
-  ConnectorTechnicalFacts,
-  ConnectorWorkflows,
-} from "@/components/cockpit/connector-detail";
-import { ConnectorStateNotice } from "@/components/cockpit/connector-state";
-import { ConversationsAbout } from "@/components/cockpit/conversations-about";
+import { ConnectorPage } from "@/components/cockpit/connector-page";
 import { DetailAction } from "@/components/cockpit/detail-action";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
@@ -29,7 +15,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { connectorAuthState, connectorHealthLabel, needsRenewal } from "@/lib/connector-auth-state";
 import {
   type DetailEntry,
   detailEntries,
@@ -39,18 +24,10 @@ import {
 } from "@/lib/detail-fields";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
-import {
-  asInspect,
-  connectorNotice,
-  type McpInspect,
-  renewalWay,
-  returnedFromSignIn,
-  withoutSignInReturn,
-} from "@/pages/connector-detail-model";
+import { returnedFromSignIn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type RecordValue = Record<string, unknown>;
-type ProbeResult = components["schemas"]["ConnectorProbeResult"];
 
 const ENDPOINTS: Record<DetailResource, string> = {
   workflows: "/v1/workflows",
@@ -138,32 +115,16 @@ function renderDetailValue(
  * (`recordBarFacts`). A workflow has no row: its version and whether it may
  * run stand in its automation panel (`workflow-page.tsx`).
  */
-function RecordBar({
-  record,
-  canWrite,
-  connector,
-}: {
-  record: RecordValue;
-  canWrite: boolean;
-  connector: boolean;
-}) {
+function RecordBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
   const { t } = useI18n();
-  const health = connector && typeof record.health_state === "string" ? record.health_state : null;
-  const healthKey =
-    health && health !== "ok" && health !== "needs_reauth" ? connectorHealthLabel(health) : null;
-  const { status, version } = connector ? { status: null, version: null } : recordBarFacts(record);
-  if (!healthKey && status === null && version === null && canWrite) return null;
+  const { status, version } = recordBarFacts(record);
+  if (status === null && version === null && canWrite) return null;
   return (
     <div
       data-family-slot="detail-context"
       className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-6 py-2 text-xs"
       data-testid="detail-record-bar"
     >
-      {healthKey ? (
-        <Badge variant="outline" data-testid="detail-connector-health">
-          {t(healthKey)}
-        </Badge>
-      ) : null}
       {status !== null ? (
         <Badge variant="outline" data-testid="detail-record-status">
           {statusLabel(t, status)}
@@ -374,7 +335,6 @@ export function CatalogDetailPage({
   permissions: readonly string[];
 }) {
   const { t } = useI18n();
-  const queryClient = useQueryClient();
   const id = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).at(-1) ?? "");
   // The engine's sign-in callback sends the browser back here with a flag.
   // Read it once and drop it from the address, so a reload does not repeat
@@ -404,86 +364,6 @@ export function CatalogDetailPage({
   // files that is their tab of Wissen.
   const list = navigationItem(`/${resource}`);
   const back = { to: `/${resource}`, label: list ? t(list.labelKey) : t(`nav.${resource}`) };
-  // A probe result is a paragraph that names latency or the missing scopes,
-  // not a cell in a list. It belongs on the connector it describes.
-  const probe = useMutation({
-    mutationFn: () =>
-      apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
-    onSuccess: async () => {
-      // The result stands on the page; a toast would say it a second time.
-      // A test is a real call: a passed one clears a refused sign-in and
-      // closes the breaker, and either way it is the newest call on record.
-      // Read the connector again so the page says what the test changed.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] }),
-        queryClient.invalidateQueries({ queryKey: ["connector-credential", id] }),
-        queryClient.invalidateQueries({ queryKey: ["connector-runtime", id] }),
-        queryClient.invalidateQueries({ queryKey: ["connector-stats", id] }),
-      ]);
-    },
-  });
-  // For an MCP server "Verbindung testen" also reads what the server serves:
-  // one handshake, on the reader's click — never on page open.
-  const inspect = useMutation({
-    mutationFn: async (): Promise<McpInspect> => {
-      const body = asInspect(
-        await apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`, {
-          method: "POST",
-        }),
-      );
-      if (!body) throw new Error("not an inspect answer");
-      return body;
-    },
-  });
-  const isMcp = resource === "connectors" && record?.driver === "mcp";
-  const canTest = resource === "connectors" && permissions.includes("connector:test");
-  const runTest = () => {
-    probe.mutate();
-    if (isMcp) inspect.mutate();
-  };
-  // The connector's sign-in, from its record, its credential read and — once
-  // run — the manual test. One verdict for the bar and the Anmeldung card.
-  const credential = useConnectorCredential(resource === "connectors" && canRead ? id : null);
-  const connectorAuth =
-    resource === "connectors" && record
-      ? connectorAuthState(
-          {
-            auth_type: typeof record.auth_type === "string" ? record.auth_type : null,
-            driver: typeof record.driver === "string" ? record.driver : null,
-            health_state: typeof record.health_state === "string" ? record.health_state : null,
-            needs_reauth: record.needs_reauth === true,
-            auth_failed_at:
-              typeof record.auth_failed_at === "string" ? record.auth_failed_at : null,
-          },
-          probe.data
-            ? {
-                ok: probe.data.ok,
-                ...(probe.data.error_code ? { error_code: probe.data.error_code } : {}),
-              }
-            : null,
-          credential.data,
-        )
-      : null;
-
-  const notice =
-    connectorAuth && record
-      ? connectorNotice({
-          enabled: record.enabled !== false,
-          authState: connectorAuth,
-          returned,
-        })
-      : null;
-  // One filled action per page: while the sign-in card offers a renewal, that
-  // is it, and "Einschalten" stands beside it as the second step.
-  const renewalOffered =
-    connectorAuth !== null &&
-    needsRenewal(connectorAuth) &&
-    renewalWay({
-      authType: typeof record?.auth_type === "string" ? record.auth_type : null,
-      usesConnection: Boolean(credential.data?.connection),
-      canWrite,
-    }) !== null;
-
   if (!canRead)
     return (
       <Alert className="m-6">
@@ -528,6 +408,18 @@ export function CatalogDetailPage({
         permissions={permissions}
       />
     );
+  // A connector has a page of its own as well: its sign-in, its uses, its tools.
+  if (resource === "connectors")
+    return (
+      <ConnectorPage
+        id={id}
+        record={record}
+        title={recordTitle(record)}
+        purpose={recordPurpose(record)}
+        permissions={permissions}
+        returned={returned}
+      />
+    );
 
   return (
     <main
@@ -545,27 +437,14 @@ export function CatalogDetailPage({
           // tell a reader who opened one record nothing specific.
           purpose={recordPurpose(record) || undefined}
           secondary={
-            <>
-              {resource !== "files" && canWrite && (
-                <MetadataDialog
-                  resource={resource}
-                  id={id}
-                  title={recordTitle(record)}
-                  version={record.version}
-                />
-              )}
-              {canTest && (
-                <Button
-                  variant="outline"
-                  disabled={probe.isPending || inspect.isPending}
-                  onClick={runTest}
-                  data-testid="connector-test"
-                >
-                  <RefreshCw data-icon="inline-start" />
-                  {t("detail.test")}
-                </Button>
-              )}
-            </>
+            resource !== "files" && canWrite ? (
+              <MetadataDialog
+                resource={resource}
+                id={id}
+                title={recordTitle(record)}
+                version={record.version}
+              />
+            ) : undefined
           }
           action={
             <DetailAction
@@ -576,85 +455,11 @@ export function CatalogDetailPage({
           }
         />
       </div>
-      <RecordBar record={record} canWrite={canWrite} connector={resource === "connectors"} />
-      {notice ? (
-        <ConnectorStateNotice
-          connectorId={id}
-          notice={notice}
-          canWrite={canWrite}
-          primary={!renewalOffered}
-        />
-      ) : null}
-      {resource === "connectors" && probe.data && (
-        <div className="border-b px-6 py-4" data-testid="connector-probe-result">
-          <p
-            className={
-              probe.data.ok ? "text-sm text-success" : "text-sm font-medium text-destructive"
-            }
-          >
-            {probe.data.ok
-              ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
-              : (probe.data.detail ?? t("connectors.probeFailed"))}
-          </p>
-        </div>
-      )}
-      {/* A connector's page is a stack of sections taller than the screen: each
-          keeps its own height and the page scrolls, instead of the column
-          squeezing the last card to a sliver. */}
-      <div
-        data-family-slot="detail-main"
-        className={`flex min-h-0 flex-1 flex-col gap-5 p-6${resource === "connectors" ? " [&>*]:shrink-0" : ""}`}
-      >
+      <RecordBar record={record} canWrite={canWrite} />
+      <div data-family-slot="detail-main" className="flex min-h-0 flex-1 flex-col gap-5 p-6">
         {resource === "skills" ? <SkillBody id={id} record={record} canWrite={canWrite} /> : null}
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
-        {resource === "connectors" ? (
-          <ConnectorConnectionFacts
-            record={record}
-            headerNames={credential.data?.header_names ?? []}
-          />
-        ) : null}
-        {resource === "connectors" ? (
-          <ConnectorRuntimeSection
-            connectorId={id}
-            driver={typeof record.driver === "string" ? record.driver : null}
-            canReadStats={permissions.includes("stats:read")}
-          />
-        ) : null}
-        {isMcp ? (
-          <ConnectorMcpTools
-            connectorId={id}
-            record={record}
-            canWrite={canWrite}
-            inspect={{
-              data: inspect.data ?? null,
-              pending: inspect.isPending,
-              failed: inspect.isError,
-            }}
-          />
-        ) : null}
-        {/* A connector that signs in with nothing has no sign-in to show: the
-            connection's own "Anmeldung" fact already says so. */}
-        {resource === "connectors" && connectorAuth && connectorAuth !== "not_required" ? (
-          <ConnectorCredentials
-            connectorId={id}
-            authType={typeof record.auth_type === "string" ? record.auth_type : null}
-            state={connectorAuth}
-            canWrite={canWrite}
-            providerUrl={
-              probe.data && !probe.data.ok ? (probe.data.provider_action_url ?? null) : null
-            }
-          />
-        ) : null}
-        {resource === "connectors" &&
-        typeof record.slug === "string" &&
-        permissions.includes("workflow:read") ? (
-          <ConnectorWorkflows slug={record.slug} />
-        ) : null}
-        {resource === "connectors" && permissions.includes("conversation:read") ? (
-          <ConversationsAbout target={{ connector_id: id }} />
-        ) : null}
-        {resource === "connectors" ? <ConnectorTechnicalFacts record={record} id={id} /> : null}
       </div>
     </main>
   );

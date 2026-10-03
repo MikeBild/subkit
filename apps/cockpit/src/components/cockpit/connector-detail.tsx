@@ -1,22 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Copy } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { absolute, workflowHref, workflowsHref } from "@/app/links";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { MISSING } from "@/components/cockpit/table-columns";
-import { LoadFailed, queryView } from "@/components/failure-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { absolute, workflowHref } from "@/app/links";
+import {
+  ActionMenu,
+  type CockpitColumn,
+  CopyField,
+  DataState,
+  type Fact,
+  FactList,
+  RecordSheet,
+  SegmentedControl,
+  SummaryLine,
+} from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
+import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
-import { cn } from "@/lib/utils";
 import {
   asRuntime,
   authLabel,
@@ -43,39 +47,20 @@ function text(record: RecordValue, key: string): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-/** Puts a value on the clipboard and says so. */
-function CopyButton({ value, label, testId }: { value: string; label: string; testId: string }) {
-  const { t } = useI18n();
+/** One copy action per value: the same "Kopieren" beside two values is two acts. */
+function Copyable({ children }: { children: ReactNode }) {
   return (
-    <IconButton
-      label={label}
-      className="shrink-0"
-      onClick={() =>
-        void navigator.clipboard
-          .writeText(value)
-          .then(() => toast.success(t("connectorDetail.copied")))
-      }
-      data-testid={testId}
-    >
-      <Copy />
-    </IconButton>
-  );
-}
-
-function Fact({ label, testId, children }: { label: string; testId: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0 bg-background p-4" data-testid={testId}>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 min-w-0 text-sm font-medium">{children}</dd>
+    <div className="min-w-0" data-action-scope="copy">
+      {children}
     </div>
   );
 }
 
 /**
- * "Verbindung": where the connector points and how it talks — the address
- * (copyable, never truncated), what kind of system it is, how it signs in.
- * Every value is a word from the label maps; an engine value this build has no
- * word for is shown as "Andere (<wert>)", never as a bare machine string.
+ * Where the connector points and how it talks — the address (copyable, never
+ * truncated), what kind of system it is, how it signs in. Every value is a
+ * word from the label maps; an engine value this build has no word for is
+ * shown as "Andere (<wert>)", never as a bare machine string.
  */
 export function ConnectorConnectionFacts({
   record,
@@ -91,124 +76,89 @@ export function ConnectorConnectionFacts({
   const environment = text(record, "environment");
   const template = text(record, "template_name");
   const docs = documentationLinks(record);
-  return (
-    <section className="grid gap-2" data-testid="connector-connection-facts">
-      <h2 className="text-sm font-semibold">{t("connectorDetail.connection.title")}</h2>
-      <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
-        <Fact label={t("connectorDetail.connection.address")} testId="connector-fact-address">
-          {address ? (
-            <span className="grid min-w-0 gap-1">
-              <span className="flex min-w-0 items-start gap-1">
-                <span className="min-w-0 break-all font-mono text-xs leading-6">
-                  {address.shown}
-                </span>
-                {/* An address with a kept secret in it cannot be handed out whole. */}
-                {address.keepsSecret ? null : (
-                  <CopyButton
-                    value={address.shown}
-                    label={t("connectorDetail.copyAddress")}
-                    testId="connector-copy-address"
-                  />
-                )}
-              </span>
-              {address.keepsSecret ? (
-                <span
-                  className="text-xs text-muted-foreground"
-                  data-testid="connector-address-secret"
-                >
-                  {t("connectorDetail.connection.secretKept")}
-                </span>
-              ) : null}
-            </span>
-          ) : (
-            MISSING
-          )}
-        </Fact>
-        <Fact label={t("connectorDetail.connection.kind")} testId="connector-fact-kind">
-          {driverLabel(driver, t) || MISSING}
-        </Fact>
-        {driver === "mcp" ? (
-          <Fact label={t("connectorDetail.connection.transport")} testId="connector-fact-transport">
-            {transportLabel(mcpTransport(record) ?? "http", t)}
-          </Fact>
-        ) : null}
-        <Fact
-          label={t("connectorDetail.connection.environment")}
-          testId="connector-fact-environment"
-        >
-          {environment ? (
-            <Badge variant={environment === "prod" ? "secondary" : "outline"}>
-              {environmentLabel(environment, t)}
-            </Badge>
-          ) : (
-            MISSING
-          )}
-        </Fact>
-        <Fact label={t("connectorDetail.connection.signIn")} testId="connector-fact-sign-in">
-          {authLabel(text(record, "auth_type"), headerNames, t) || MISSING}
-        </Fact>
-        {template ? (
-          <Fact label={t("connectorDetail.connection.template")} testId="connector-fact-template">
-            {template}
-          </Fact>
-        ) : null}
-        {docs.length > 0 ? (
-          <Fact label={t("connectorDetail.connection.docs")} testId="connector-fact-docs">
-            <ul className="grid gap-1">
-              {docs.map((doc, index) => (
-                <li key={`${doc.kind}:${doc.url}`}>
+  const facts: Fact[] = [
+    {
+      label: t("connectorDetail.connection.address"),
+      // An address with a kept secret in it cannot be handed out whole.
+      value: address ? (
+        address.keepsSecret ? (
+          <span className="break-all font-mono text-xs">{address.shown}</span>
+        ) : (
+          <Copyable>
+            <CopyField
+              value={address.shown}
+              label={t("connectorDetail.copyAddress")}
+              testId="connector-copy-address"
+            />
+          </Copyable>
+        )
+      ) : (
+        MISSING
+      ),
+      ...(address?.keepsSecret ? { help: t("connectorDetail.connection.secretKept") } : {}),
+      testId: "connector-fact-address",
+    },
+    {
+      label: t("connectorDetail.connection.kind"),
+      value: driverLabel(driver, t) || MISSING,
+      testId: "connector-fact-kind",
+    },
+    ...(driver === "mcp"
+      ? [
+          {
+            label: t("connectorDetail.connection.transport"),
+            value: transportLabel(mcpTransport(record) ?? "http", t),
+            testId: "connector-fact-transport",
+          },
+        ]
+      : []),
+    {
+      label: t("connectorDetail.connection.environment"),
+      value: environment ? environmentLabel(environment, t) : MISSING,
+      testId: "connector-fact-environment",
+    },
+    {
+      label: t("connectorDetail.connection.signIn"),
+      value: authLabel(text(record, "auth_type"), headerNames, t) || MISSING,
+      testId: "connector-fact-sign-in",
+    },
+    ...(template
+      ? [
+          {
+            label: t("connectorDetail.connection.template"),
+            value: template,
+            testId: "connector-fact-template",
+          },
+        ]
+      : []),
+    ...(docs.length > 0
+      ? [
+          {
+            label: t("connectorDetail.connection.docs"),
+            value: (
+              <span className="flex flex-col gap-1">
+                {docs.map((doc, index) => (
                   <a
+                    key={`${doc.kind}:${doc.url}`}
                     href={doc.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="underline underline-offset-4"
+                    className="w-fit underline underline-offset-4"
                     data-testid={`connector-doc-${index}`}
                   >
                     <LabelText label={docKindLabel(doc.kind, t)} />
                   </a>
-                </li>
-              ))}
-            </ul>
-          </Fact>
-        ) : null}
-      </dl>
-    </section>
-  );
-}
-
-function Tile({
-  label,
-  testId,
-  href,
-  state,
-  children,
-}: {
-  label: string;
-  testId: string;
-  href?: string | null;
-  state?: string;
-  children: ReactNode;
-}) {
+                ))}
+              </span>
+            ),
+            testId: "connector-fact-docs",
+          },
+        ]
+      : []),
+  ];
   return (
-    <div
-      className="grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-3 py-2"
-      data-testid={testId}
-      data-figure-state={state ?? "value"}
-    >
-      <p className="truncate text-xs text-muted-foreground">{label}</p>
-      {href ? (
-        <a
-          href={absolute(href)}
-          className="truncate text-lg font-semibold underline-offset-4 hover:underline"
-          data-testid={`${testId}-link`}
-        >
-          {children}
-        </a>
-      ) : (
-        <p className={state ? "text-sm text-muted-foreground" : "truncate text-lg font-semibold"}>
-          {children}
-        </p>
-      )}
+    <div data-testid="connector-connection-facts">
+      <FactList items={facts} />
     </div>
   );
 }
@@ -217,9 +167,9 @@ function Tile({
  * "Laufzeit · letzte 7 Tage": calls, success rate, median response time and
  * the last success, read over ONE window fixed when the page opened; each
  * count leads to the audit log narrowed to the same connector and the same
- * window (§10.1). A week without a call, and figures the reader may not see,
- * are one sentence instead of tiles. The last failure — shown only when there
- * is one — is its cause class in the cockpit's words, never the remote's text.
+ * window. A week without a call, and figures the reader may not see, are one
+ * sentence instead of figures. The last failure — shown only when there is
+ * one — is its cause class in the cockpit's words, never the remote's text.
  */
 export function ConnectorRuntimeSection({
   connectorId,
@@ -241,126 +191,136 @@ export function ConnectorRuntimeSection({
     enabled: canReadStats,
     queryFn: () => apiRequest<unknown>(connectorStatsEndpoint(connectorId, bounds)),
   });
-  const runtimeView = queryView(runtime, (data) => asRuntime(data) === null);
-  const statsView = queryView(stats, (data) => connectorFigures(data, bounds) === null);
-  const title = <h2 className="text-sm font-semibold">{t("connectorDetail.runtime.title")}</h2>;
-
-  if (runtimeView === "loading" || (canReadStats && statsView === "loading"))
-    return (
-      <section className="grid gap-2" data-testid="connector-runtime">
-        {title}
-        <Skeleton className="h-[72px] w-full" />
-      </section>
-    );
+  if (runtime.isPending || (canReadStats && stats.isPending))
+    return <DataState state="loading" testId="connector-runtime" />;
   // A body that is not a runtime answer is a failed read, not an empty one.
   const data = asRuntime(runtime.data);
-  if (runtimeView !== "ready" || !data || (canReadStats && statsView !== "ready"))
+  const figures: ConnectorFigures | null = canReadStats
+    ? connectorFigures(stats.data, bounds)
+    : null;
+  if (!data || runtime.error || (canReadStats && (stats.error || !figures)))
     return (
-      <section className="grid gap-2" data-testid="connector-runtime">
-        {title}
-        <LoadFailed
-          title={t("connectorDetail.runtime.loadFailed")}
+      <div data-testid="connector-runtime">
+        <DataState
+          state="error"
+          line={t("connectorDetail.runtime.loadFailed")}
           onRetry={() => {
             void runtime.refetch();
             if (canReadStats) void stats.refetch();
           }}
           testId="connector-runtime-failed"
         />
-      </section>
+      </div>
     );
+  const muted = "text-sm text-muted-foreground";
   if (!data.recorded)
     return (
-      <section className="grid gap-2" data-testid="connector-runtime">
-        {title}
-        <p className="text-sm text-muted-foreground" data-testid="connector-runtime-not-recorded">
+      <div data-testid="connector-runtime">
+        <p className={muted} data-testid="connector-runtime-not-recorded">
           {t("connectorDetail.runtime.notRecorded")}
         </p>
-      </section>
+      </div>
     );
-
-  const figures: ConnectorFigures | null = canReadStats
-    ? connectorFigures(stats.data, bounds)
-    : null;
   const tag = locale === "de" ? "de-DE" : "en-US";
   const number = (value: number) => new Intl.NumberFormat(tag).format(value);
   const failure = data.last_failure;
   const lastSuccess = data.last_success_at
     ? formatRelativeTime(locale, data.last_success_at)
     : null;
+  const link = (href: string | null, label: string, testId: string) =>
+    href ? (
+      <a
+        href={absolute(href)}
+        className="font-medium underline-offset-4 hover:underline"
+        data-testid={`${testId}-link`}
+      >
+        {label}
+      </a>
+    ) : (
+      label
+    );
+  const facts: Fact[] =
+    !figures || figures.calls === 0
+      ? [
+          {
+            label: t("connectorDetail.runtime.lastSuccess"),
+            value: lastSuccess ?? t("connectorDetail.runtime.never"),
+            testId: "connector-last-success",
+          },
+        ]
+      : [
+          {
+            label: t("connectorDetail.runtime.calls"),
+            value: link(
+              connectorCallsHref(connectorId, driver, figures, "all"),
+              number(figures.calls),
+              "connector-figure-calls",
+            ),
+            testId: "connector-figure-calls",
+          },
+          {
+            label: t("connectorDetail.runtime.successRate"),
+            value:
+              figures.successRate === null
+                ? t("connectorDetail.runtime.noRate")
+                : link(
+                    connectorCallsHref(connectorId, driver, figures, "failed"),
+                    `${new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }).format(figures.successRate)} %`,
+                    "connector-figure-success",
+                  ),
+            testId: "connector-figure-success",
+          },
+          {
+            label: t("connectorDetail.runtime.median"),
+            value:
+              figures.medianMs === null
+                ? t("connectorDetail.runtime.noLatency")
+                : t("connectorDetail.runtime.ms", { ms: number(figures.medianMs) }),
+            testId: "connector-figure-median",
+          },
+          {
+            label: t("connectorDetail.runtime.lastSuccess"),
+            value: lastSuccess ?? t("connectorDetail.runtime.never"),
+            testId: "connector-figure-last-success",
+          },
+        ];
   return (
-    <section className="grid gap-2" data-testid="connector-runtime">
-      {title}
+    <div className="flex flex-col gap-3" data-testid="connector-runtime">
       {/* Figures the reader may not see, or a week without a call, are one
-          sentence — not a row of tiles that each say the same nothing. */}
+          sentence — not a row of figures that each say the same nothing. */}
       {!figures || figures.calls === 0 ? (
-        <>
-          <p
-            className="text-sm text-muted-foreground"
-            data-testid={figures ? "connector-runtime-unused" : "connector-runtime-not-permitted"}
-          >
-            {t(
-              figures
-                ? "connectorDetail.runtime.unused"
-                : "connectorDetail.runtime.figuresNotPermitted",
-            )}
-          </p>
-          {lastSuccess ? (
-            <p className="text-sm" data-testid="connector-last-success">
-              <span className="text-muted-foreground">
-                {t("connectorDetail.runtime.lastSuccess")}:{" "}
-              </span>
-              {lastSuccess}
-            </p>
-          ) : null}
-        </>
-      ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Tile
-            label={t("connectorDetail.runtime.calls")}
-            testId="connector-figure-calls"
-            href={connectorCallsHref(connectorId, driver, figures, "all")}
-          >
-            {number(figures.calls)}
-          </Tile>
-          <Tile
-            label={t("connectorDetail.runtime.successRate")}
-            testId="connector-figure-success"
-            href={connectorCallsHref(connectorId, driver, figures, "failed")}
-            {...(figures.successRate === null ? { state: "none" } : {})}
-          >
-            {figures.successRate === null
-              ? t("connectorDetail.runtime.noRate")
-              : `${new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }).format(figures.successRate)} %`}
-          </Tile>
-          <Tile
-            label={t("connectorDetail.runtime.median")}
-            testId="connector-figure-median"
-            {...(figures.medianMs === null ? { state: "none" } : {})}
-          >
-            {figures.medianMs === null
-              ? t("connectorDetail.runtime.noLatency")
-              : t("connectorDetail.runtime.ms", { ms: number(figures.medianMs) })}
-          </Tile>
-          <Tile
-            label={t("connectorDetail.runtime.lastSuccess")}
-            testId="connector-figure-last-success"
-            {...(lastSuccess ? {} : { state: "none" })}
-          >
-            {lastSuccess ?? t("connectorDetail.runtime.never")}
-          </Tile>
-        </div>
-      )}
-      {/* Said when there is one. "No failure recorded" is not a fact to show. */}
-      {failure ? (
-        <p className="text-sm" data-testid="connector-last-failure">
-          <span className="text-muted-foreground">
-            {t("connectorDetail.runtime.lastFailure")}:{" "}
-          </span>
-          {formatRelativeTime(locale, failure.at)} ·{" "}
-          <LabelText label={causeClassLabel(failure.cause_class, t)} />
+        <p
+          className={muted}
+          data-testid={figures ? "connector-runtime-unused" : "connector-runtime-not-permitted"}
+        >
+          {t(
+            figures
+              ? "connectorDetail.runtime.unused"
+              : "connectorDetail.runtime.figuresNotPermitted",
+          )}
         </p>
       ) : null}
-    </section>
+      <FactList
+        items={[
+          ...facts,
+          // Said when there is one. "No failure recorded" is not a fact to show.
+          ...(failure
+            ? [
+                {
+                  label: t("connectorDetail.runtime.lastFailure"),
+                  value: (
+                    <>
+                      {formatRelativeTime(locale, failure.at)} ·{" "}
+                      <LabelText label={causeClassLabel(failure.cause_class, t)} />
+                    </>
+                  ),
+                  testId: "connector-last-failure",
+                },
+              ]
+            : []),
+        ]}
+      />
+    </div>
   );
 }
 
@@ -376,29 +336,105 @@ interface ToolRow {
   name: string;
   description: string | null;
   claims: "read" | "write" | null;
+  trusted: boolean;
+}
+
+/** One tool (O6): what it says it does, and the operator's one decision about it. */
+function ToolSheet({
+  row,
+  index,
+  canWrite,
+  pending,
+  onTrust,
+  onClose,
+}: {
+  row: ToolRow;
+  index: number;
+  canWrite: boolean;
+  pending: boolean;
+  onTrust: (trusted: boolean) => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <RecordSheet
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={<span className="break-all font-mono">{row.name}</span>}
+      testId={`connector-mcp-tool-${index}-sheet`}
+      closeTestId={`connector-mcp-tool-${index}-close`}
+    >
+      {row.description ? (
+        <p className="whitespace-pre-line break-words text-sm text-muted-foreground">
+          {row.description}
+        </p>
+      ) : null}
+      <FactList
+        items={[
+          {
+            label: t("connectorDetail.tools.claims"),
+            value: row.claims
+              ? t(
+                  row.claims === "write"
+                    ? "connectorDetail.tools.claimsWrite"
+                    : "connectorDetail.tools.claimsRead",
+                )
+              : MISSING,
+            // What the server claims is not what the gate decides by.
+            help: t("connectorDetail.tools.claimsHelp"),
+          },
+        ]}
+      />
+      {canWrite ? (
+        <SegmentedControl
+          label={t("connectorDetail.tools.withoutAsking")}
+          value={row.trusted ? "trusted" : "asks"}
+          onValueChange={(value) => !pending && onTrust(value === "trusted")}
+          testId={`connector-mcp-tool-${index}-trust`}
+          options={[
+            {
+              value: "asks",
+              label: t("connectorDetail.tools.asks"),
+              testId: `connector-mcp-tool-${index}-asks`,
+            },
+            {
+              value: "trusted",
+              label: t("connectorDetail.tools.withoutAsking"),
+              testId: `connector-mcp-tool-${index}-trusted`,
+            },
+          ]}
+        />
+      ) : null}
+    </RecordSheet>
+  );
 }
 
 /**
- * "Werkzeuge des Servers": what the negotiated session says about the server,
- * and its tools with the operator's one decision per tool — "Ohne Rückfrage".
- * The list comes from "Verbindung testen" (no handshake on page open); tools
- * already marked "Ohne Rückfrage" show before that, from the connector itself.
- * What the server CLAIMS about a tool is a badge, never a switch: the gate
- * ignores it, and so does this page.
+ * "Werkzeuge" (MCP only): what the negotiated session says about the server,
+ * and its tools, each with the operator's one decision — "Ohne Rückfrage".
+ * The list comes from reading the server (never on page open); tools already
+ * marked "Ohne Rückfrage" show before that, from the connector itself. What
+ * the server CLAIMS about a tool is a word, never a switch: the gate ignores
+ * it, and so does this page.
  */
 export function ConnectorMcpTools({
   connectorId,
   record,
   canWrite,
+  canTest,
   inspect,
+  onInspect,
 }: {
   connectorId: string;
   record: RecordValue;
   canWrite: boolean;
+  canTest: boolean;
   inspect: { data: McpInspect | null; pending: boolean; failed: boolean };
+  onInspect: () => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, dateTime } = useI18n();
   const client = useQueryClient();
+  const [open, setOpen] = useState<number | null>(null);
   const trusted = toolsWithoutConfirmation(record);
   const runtime = useQuery({
     queryKey: ["connector-runtime", connectorId],
@@ -416,12 +452,12 @@ export function ConnectorMcpTools({
     },
     onError: () => toast.error(t("connectorDetail.tools.saveFailed")),
   });
-
   const listed: ToolRow[] = inspect.data
     ? inspect.data.tools.map((tool) => ({
         name: tool.name,
         description: tool.description ?? null,
         claims: tool.claims ?? null,
+        trusted: trusted.includes(tool.name),
       }))
     : [];
   const known = new Set(listed.map((row) => row.name));
@@ -429,176 +465,173 @@ export function ConnectorMcpTools({
     ...listed,
     ...trusted
       .filter((name) => !known.has(name))
-      .map((name) => ({ name, description: null, claims: null })),
+      .map((name) => ({ name, description: null, claims: null, trusted: true })),
   ];
-
+  const columns = useMemo<CockpitColumn<ToolRow>[]>(() => {
+    const column = tableColumns<ToolRow>({ t, dateTime });
+    return [
+      column.custom(
+        "name",
+        (row) => row.name,
+        t("connectorDetail.tools.name"),
+        (row) => <span className="break-all font-mono text-xs">{row.name}</span>,
+        { width: "w-[45%]" },
+      ),
+      column.custom(
+        "claims",
+        (row) => row.claims,
+        t("connectorDetail.tools.claims"),
+        (row) =>
+          row.claims
+            ? t(
+                row.claims === "write"
+                  ? "connectorDetail.tools.claimsWrite"
+                  : "connectorDetail.tools.claimsRead",
+              )
+            : MISSING,
+        { width: "w-[25%]" },
+      ),
+      column.custom(
+        "trusted",
+        (row) => row.trusted,
+        t("connectorDetail.tools.confirmation"),
+        (row) =>
+          t(row.trusted ? "connectorDetail.tools.withoutAsking" : "connectorDetail.tools.asks"),
+        { width: "w-[30%]" },
+      ),
+    ];
+  }, [t, dateTime]);
+  // What the last session negotiated — each fact only when the session has it.
+  const sessionLine = session
+    ? [
+        session.protocol_version,
+        session.capabilities
+          .map((key) => catalogLabel(key, CAPABILITY_KEYS[key], t).text)
+          .join(", "),
+        session.last_handshake_at
+          ? t("connectorDetail.tools.lastContactAt", {
+              when: formatRelativeTime(locale, session.last_handshake_at),
+            })
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : t("connectorDetail.tools.noSession");
+  const selected = open === null ? null : (rows[open] ?? null);
   return (
-    <section className="grid gap-3" data-testid="connector-mcp-tools">
-      <h2 className="text-sm font-semibold">{t("connectorDetail.tools.title")}</h2>
-      {/* What the last session negotiated — each fact only when the session
-          has it. Without a session that is one sentence, not three cells
-          saying so. */}
-      {session ? (
-        <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:auto-cols-fr sm:grid-flow-col">
-          {session.protocol_version ? (
-            <Fact label={t("connectorDetail.tools.protocol")} testId="connector-mcp-protocol">
-              <span className="font-mono text-xs">{session.protocol_version}</span>
-            </Fact>
-          ) : null}
-          {session.capabilities.length > 0 ? (
-            <Fact
-              label={t("connectorDetail.tools.capabilities")}
-              testId="connector-mcp-capabilities"
-            >
-              <span className="flex flex-wrap gap-1">
-                {session.capabilities.map((key) => (
-                  <Badge key={key} variant="outline">
-                    <LabelText label={catalogLabel(key, CAPABILITY_KEYS[key], t)} />
-                  </Badge>
-                ))}
-              </span>
-            </Fact>
-          ) : null}
-          {session.last_handshake_at ? (
-            <Fact
-              label={t("connectorDetail.tools.lastContact")}
-              testId="connector-mcp-last-contact"
-            >
-              {formatRelativeTime(locale, session.last_handshake_at)}
-            </Fact>
-          ) : null}
-        </dl>
-      ) : (
-        <p className="text-sm text-muted-foreground" data-testid="connector-mcp-no-session">
-          {t("connectorDetail.tools.noSession")}
-        </p>
-      )}
-      {inspect.pending ? <Skeleton className="h-16 w-full" /> : null}
+    <div className="flex flex-col gap-3" data-testid="connector-mcp-tools">
+      <SummaryLine
+        text={<span data-testid="connector-mcp-session">{sessionLine}</span>}
+        aside={
+          canTest ? (
+            <ActionMenu
+              items={[
+                {
+                  label: t("connectorDetail.tools.reload"),
+                  disabled: inspect.pending,
+                  onSelect: onInspect,
+                  testId: "connector-mcp-reload",
+                },
+              ]}
+            />
+          ) : undefined
+        }
+        testId="connector-mcp-summary"
+      />
       {inspect.failed ? (
-        <p className="text-sm text-destructive" data-testid="connector-mcp-inspect-failed">
-          {t("connectorDetail.tools.inspectFailed")}
-        </p>
+        <DataState
+          state="error"
+          line={t("connectorDetail.tools.inspectFailed")}
+          testId="connector-mcp-inspect-failed"
+        />
       ) : null}
-      {inspect.data && inspect.data.tools.length === 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="connector-mcp-no-tools">
-          {t("connectorDetail.tools.none")}
-        </p>
+      <RecordTable
+        columns={columns}
+        data={rows}
+        collectionId="connector-mcp-tool"
+        emptyLine={t(
+          inspect.data ? "connectorDetail.tools.none" : "connectorDetail.tools.loadHint",
+        )}
+        pending={inspect.pending}
+        onOpen={(row) => setOpen(rows.indexOf(row))}
+        rowLabel={(row) => row.name}
+        pageSize={25}
+      />
+      {selected && open !== null ? (
+        <ToolSheet
+          row={selected}
+          index={open}
+          canWrite={canWrite}
+          pending={setTrust.isPending}
+          onTrust={(next) => setTrust.mutate({ tool: selected.name, confirm: !next })}
+          onClose={() => setOpen(null)}
+        />
       ) : null}
-      {!inspect.data && !inspect.pending && !inspect.failed ? (
-        <p className="text-sm text-muted-foreground" data-testid="connector-mcp-load-hint">
-          {t("connectorDetail.tools.loadHint")}
-        </p>
-      ) : null}
-      {rows.length > 0 ? (
-        <ul className="grid gap-px overflow-hidden rounded-xl border bg-border">
-          {rows.map((row, index) => {
-            const checked = trusted.includes(row.name);
-            const switchId = `connector-mcp-tool-${index}-trust`;
-            return (
-              <li
-                key={row.name}
-                className="flex flex-wrap items-start justify-between gap-3 bg-background p-3"
-                data-testid={`connector-mcp-tool-${index}`}
-              >
-                <div className="grid min-w-0 flex-1 gap-1">
-                  <span className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="break-all font-mono text-sm">{row.name}</span>
-                    {row.claims ? (
-                      <Badge variant={row.claims === "write" ? "destructive" : "outline"}>
-                        {t(
-                          row.claims === "write"
-                            ? "connectorDetail.tools.claimsWrite"
-                            : "connectorDetail.tools.claimsRead",
-                        )}
-                      </Badge>
-                    ) : null}
-                  </span>
-                  {row.description ? <ToolDescription text={row.description} /> : null}
-                </div>
-                <label htmlFor={switchId} className="flex shrink-0 items-center gap-2 text-sm">
-                  <Switch
-                    id={switchId}
-                    checked={checked}
-                    disabled={!canWrite || setTrust.isPending}
-                    onCheckedChange={(next) =>
-                      setTrust.mutate({ tool: row.name, confirm: next !== true })
-                    }
-                    data-testid={`connector-mcp-tool-${index}-trust`}
-                  />
-                  {t("connectorDetail.tools.withoutAsking")}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </section>
+    </div>
   );
 }
 
-interface WorkflowList {
-  items?: Array<{ id: string; name?: string | null; description?: string | null }>;
+interface WorkflowItem {
+  id: string;
+  name?: string | null;
 }
 
-/** The workflows whose current version uses this connector, and the way to all of them. */
+/** The workflows whose current version uses this connector (V6a). */
 export function ConnectorWorkflows({ slug }: { slug: string }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
+  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["connector-workflows", slug],
     queryFn: () =>
-      apiRequest<WorkflowList>(`/v1/workflows?connector=${encodeURIComponent(slug)}&limit=20`),
+      apiRequest<{ items?: WorkflowItem[]; total?: number }>(
+        `/v1/workflows?connector=${encodeURIComponent(slug)}&limit=50`,
+      ),
   });
-  const view = queryView(query, (data) => (data.items ?? []).length === 0);
+  const rows = query.data?.items ?? [];
+  const columns = useMemo<CockpitColumn<WorkflowItem>[]>(() => {
+    const column = tableColumns<WorkflowItem>({ t, dateTime });
+    return [column.text("name", (row) => row.name, t("runs.column.workflow"), { width: "w-full" })];
+  }, [t, dateTime]);
+  const count = query.data?.total ?? rows.length;
   return (
-    <section className="grid gap-2" data-testid="connector-workflows">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">{t("connectorDetail.usage.title")}</h2>
-        {/* A link to an empty list promises something that is not there. */}
-        {view === "ready" ? (
-          <a
-            href={absolute(workflowsHref({ connector: slug }))}
-            className="text-sm underline underline-offset-4"
-            data-testid="connector-all-workflows"
-          >
-            {t("connectorDetail.usage.allWorkflows")}
-          </a>
-        ) : null}
-      </div>
-      {view === "loading" ? (
-        <Skeleton className="h-12 w-full" />
-      ) : view === "error" ? (
-        <LoadFailed
-          title={t("connectorDetail.usage.workflowsFailed")}
-          onRetry={() => void query.refetch()}
-          testId="connector-workflows-failed"
+    <>
+      <SummaryLine
+        text={
+          query.data
+            ? t(count === 1 ? "connectorPage.usedBy.one" : "connectorPage.usedBy.other", {
+                count,
+              })
+            : t("connectorDetail.usage.title")
+        }
+        testId="connector-usage-summary"
+      />
+      <div data-testid="connector-workflows">
+        <RecordTable
+          columns={columns}
+          data={rows}
+          collectionId="connector-workflow"
+          emptyLine={t("connectorDetail.usage.noWorkflows")}
+          pending={query.isPending}
+          error={
+            query.error
+              ? {
+                  line: t("connectorDetail.usage.workflowsFailed"),
+                  onRetry: () => void query.refetch(),
+                }
+              : null
+          }
+          onOpen={(row) => void navigate({ to: workflowHref(row.id) })}
+          rowHref={(row) => workflowHref(row.id)}
         />
-      ) : view === "empty" ? (
-        <p className="text-sm text-muted-foreground" data-testid="connector-workflows-empty">
-          {t("connectorDetail.usage.noWorkflows")}
-        </p>
-      ) : (
-        <ul className="grid gap-1">
-          {(query.data?.items ?? []).map((workflow, index) => (
-            <li key={workflow.id}>
-              <a
-                href={absolute(workflowHref(workflow.id))}
-                className="block min-w-0 truncate rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                data-testid={`connector-workflow-${index}`}
-              >
-                {workflow.name || MISSING}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      </div>
+    </>
   );
 }
 
 /**
  * "Technische Angaben", folded: what someone quoting the connector to
  * operations needs — its short name, when it was made and changed, and its
- * identifier — one disclosure deeper than everything a reader decides by.
+ * identifier.
  */
 export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; id: string }) {
   const { t, dateTime } = useI18n();
@@ -606,71 +639,37 @@ export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; i
   const created = text(record, "created_at");
   const updated = text(record, "updated_at");
   return (
-    <Collapsible data-testid="connector-technical">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 w-fit"
-          data-testid="connector-technical-toggle"
-        >
-          <ChevronRight data-icon="inline-start" />
-          {t("connectorDetail.technical.title")}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <dl className="mt-2 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 sm:[&>:last-child:nth-child(odd)]:col-span-2">
-          <Fact label={t("resource.field.slug")} testId="connector-technical-slug">
-            {slug ? <span className="break-all font-mono text-xs">{slug}</span> : MISSING}
-          </Fact>
-          <Fact label={t("resource.field.createdAt")} testId="connector-technical-created">
-            {created ? dateTime(created) : MISSING}
-          </Fact>
-          <Fact label={t("catalog.updated")} testId="connector-technical-updated">
-            {updated ? dateTime(updated) : MISSING}
-          </Fact>
-          <Fact label={t("connectorDetail.technical.id")} testId="connector-technical-id">
-            <span className="flex min-w-0 items-start gap-1">
-              <span className="min-w-0 break-all font-mono text-xs leading-6">{id}</span>
-              <CopyButton
+    <FactList
+      items={[
+        {
+          label: t("resource.field.slug"),
+          value: slug ? <span className="break-all font-mono text-xs">{slug}</span> : MISSING,
+          testId: "connector-technical-slug",
+        },
+        {
+          label: t("resource.field.createdAt"),
+          value: created ? dateTime(created) : MISSING,
+          testId: "connector-technical-created",
+        },
+        {
+          label: t("catalog.updated"),
+          value: updated ? dateTime(updated) : MISSING,
+          testId: "connector-technical-updated",
+        },
+        {
+          label: t("connectorDetail.technical.id"),
+          value: (
+            <Copyable>
+              <CopyField
                 value={id}
                 label={t("connectorDetail.technical.copyId")}
                 testId="connector-copy-id"
               />
-            </span>
-          </Fact>
-        </dl>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-/** A server's tool text can run to a page of its own; two lines, the rest on request. */
-function ToolDescription({ text }: { text: string }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const long = text.length > 160 || text.includes("\n");
-  return (
-    <div className="grid justify-items-start gap-0.5">
-      <p
-        className={cn(
-          "whitespace-pre-line break-words text-sm text-muted-foreground",
-          !open && "line-clamp-2",
-        )}
-      >
-        {text}
-      </p>
-      {long ? (
-        <button
-          type="button"
-          className="text-xs underline underline-offset-4"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-          data-testid="connector-mcp-tool-description-toggle"
-        >
-          {t(open ? "connectorDetail.tools.less" : "connectorDetail.tools.more")}
-        </button>
-      ) : null}
-    </div>
+            </Copyable>
+          ),
+          testId: "connector-technical-id",
+        },
+      ]}
+    />
   );
 }
