@@ -95,3 +95,10 @@ export function Page({
     </main>
   );
 }
+
+/**
+ * Chat's reading column, the one exception to §4: transcript and composer
+ * stand centred in a narrow column beside the conversation list, because a
+ * conversation is read, not scanned against a header.
+ */
+export const READING_COLUMN = "mx-auto w-full max-w-3xl";
