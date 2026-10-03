@@ -167,9 +167,11 @@ describe("P7 FilterBar", () => {
 });
 
 describe("P8 RecordSheet", () => {
-  test("two widths and no others", () => {
-    expect(sheetWidthClass("default")).toBe("sm:max-w-xl");
-    expect(sheetWidthClass("wide")).toBe("sm:max-w-5xl");
+  test("two widths and no others, stated for the side the sheet opens on", () => {
+    // The primitive caps a right-hand sheet with `data-[side=right]:sm:max-w-sm`;
+    // a plain `sm:max-w-xl` loses to it on specificity, so the width names the side.
+    expect(sheetWidthClass("default")).toBe("data-[side=right]:sm:max-w-xl");
+    expect(sheetWidthClass("wide")).toBe("data-[side=right]:sm:max-w-5xl");
   });
 });
 
@@ -287,6 +289,9 @@ describe("P15 CopyField and CodeBlock", () => {
     expect(html).toContain('value="https://sk.example.com/mcp"');
     expect(html).toContain("readOnly");
     expect(html).toContain('data-testid="mcp-copy"');
+    expect(html).toContain('data-testid="mcp-field"');
+    // The id names the value: the input carries it, next to its value.
+    expect(html).toMatch(/<input[^>]*data-testid="mcp"/);
   });
 
   test("code is the one pre", () => {

@@ -17,7 +17,11 @@ export function useCopy(): (value: string) => Promise<void> {
   };
 }
 
-/** An address, a key or an id to take elsewhere (P15): the value in mono, and a copy button. */
+/**
+ * An address, a key or an id to take elsewhere (P15): the value in mono, and a
+ * copy button. `testId` names the value itself (`${testId}-field` the frame,
+ * `${testId}-copy` the button), so a check reads the value off its own id.
+ */
 export function CopyField({
   value,
   label,
@@ -30,9 +34,10 @@ export function CopyField({
   const { t } = useI18n();
   const copy = useCopy();
   return (
-    <InputGroup data-slot="copy-field" data-testid={testId}>
+    <InputGroup data-slot="copy-field" data-testid={testId ? `${testId}-field` : undefined}>
       <InputGroupInput
         readOnly
+        data-testid={testId}
         value={value}
         aria-label={label}
         className="font-mono text-xs"
