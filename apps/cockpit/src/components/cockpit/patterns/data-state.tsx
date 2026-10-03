@@ -52,7 +52,13 @@ export function DataState({
   const shown =
     action ??
     (state === "error" && onRetry ? (
-      <Button variant="outline" size="sm" onClick={onRetry} data-slot="data-state-retry">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onRetry}
+        data-slot="data-state-retry"
+        data-testid={`${testId ?? "data-state"}-retry`}
+      >
         {t("pattern.retry")}
       </Button>
     ) : null);

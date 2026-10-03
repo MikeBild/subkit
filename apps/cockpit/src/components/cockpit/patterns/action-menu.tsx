@@ -40,7 +40,9 @@ export function ActionMenu({
   if (items.length === 1) {
     const button = only.href ? (
       <Button variant="outline" asChild data-testid={only.testId ?? testId}>
-        <a href={only.href}>{only.label}</a>
+        <a href={only.href} data-testid={only.testId ?? testId}>
+          {only.label}
+        </a>
       </Button>
     ) : (
       <Button
@@ -85,7 +87,13 @@ export function ActionMenu({
             asChild={Boolean(item.href)}
             onSelect={item.onSelect}
           >
-            {item.href ? <a href={item.href}>{item.label}</a> : item.label}
+            {item.href ? (
+              <a href={item.href} data-testid={item.testId}>
+                {item.label}
+              </a>
+            ) : (
+              item.label
+            )}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

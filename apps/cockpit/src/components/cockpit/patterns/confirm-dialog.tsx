@@ -9,17 +9,22 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import type { TranslationKey } from "@/lib/i18n";
+import type { Locale, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 
-/** "{Objekt} {verb}?" in German, "{Verb} {object}?" in English. */
+/**
+ * "{Objekt} {verb}?" in German, "{Verb} {object}?" in English. The verb stands
+ * capitalised on the button; inside a German sentence it is lower-cased.
+ */
 export function confirmTitle(
   t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+  locale: Locale,
   object: string,
   verb: string,
 ): string {
-  const verbLower = verb.charAt(0).toLocaleLowerCase() + verb.slice(1);
-  return t("pattern.confirm.title", { object, verb, verbLower });
+  const inSentence =
+    locale === "de" ? verb.charAt(0).toLocaleLowerCase("de") + verb.slice(1) : verb;
+  return t("pattern.confirm.title", { object, verb: inSentence });
 }
 
 /**
@@ -50,7 +55,7 @@ export function ConfirmDialog({
   onConfirm(): void | Promise<void>;
   testId: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [busy, setBusy] = useState(false);
   const working = pending || busy;
   return (
@@ -58,7 +63,7 @@ export function ConfirmDialog({
       <AlertDialogContent data-testid={testId} className="sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle data-testid={`${testId}-title`}>
-            {confirmTitle(t, object, verb)}
+            {confirmTitle(t, locale, object, verb)}
           </AlertDialogTitle>
           <AlertDialogDescription>{consequence}</AlertDialogDescription>
         </AlertDialogHeader>
