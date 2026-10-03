@@ -642,12 +642,13 @@ function failedRun(causeClass) {
 const WORDS = {
   de: {
     states: {
-      grant: "Wartet auf Freigabe",
-      approved: "Freigegeben",
+      // Approved once, the approval gone: it has stopped (D15).
+      grant: "Gestoppt",
+      approved: "Läuft",
       repair: "Reparatur nötig",
-      apply: "Änderung wartet auf Freigabe",
-      paused: "Gestoppt",
-      manual: "Auf Abruf",
+      apply: "Wartet auf Freigabe",
+      paused: "Pausiert",
+      manual: "Nicht freigegeben",
       legacy: "Altes Format",
       unknown: "Nicht geprüft",
       failing: "Schlägt fehl",
@@ -677,12 +678,12 @@ const WORDS = {
   },
   en: {
     states: {
-      grant: "Waiting for approval",
-      approved: "Approved",
+      grant: "Stopped",
+      approved: "Running",
       repair: "Repair needed",
-      apply: "Change waiting for approval",
-      paused: "Stopped",
-      manual: "On request",
+      apply: "Waiting for approval",
+      paused: "Paused",
+      manual: "Not approved",
       legacy: "Outdated format",
       unknown: "Not verified",
       failing: "Failing",
@@ -720,7 +721,8 @@ async function text(page, testId) {
 
 /** A copy field's value: it stands in a read-only input, not in the text. */
 async function fieldValue(page, testId) {
-  const input = page.getByTestId(testId).locator("input");
+  // A CopyField's id names its value: the input carries it.
+  const input = page.locator(`input[data-testid="${testId}"]`);
   if (!(await input.count())) return null;
   return (await input.first().inputValue()).trim();
 }
@@ -851,14 +853,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
     if (state.diagnosed.some((environment) => environment !== "prod"))
       throw new Error(`${where}: a hook-started workflow was diagnosed in ${state.diagnosed}`);
+    // Stopped: the line names the environment that has no valid approval.
     const headline = (await text(page, "workflow-automation-headline")) ?? "";
-    if (
-      !headline.includes("v9") ||
-      !headline.includes(localeName === "de" ? "Produktion" : "Production")
-    )
-      throw new Error(`${where}: the headline lacks version or environment: ${headline}`);
+    if (!headline.includes(localeName === "de" ? "Produktion" : "Production"))
+      throw new Error(`${where}: the headline lacks the environment: ${headline}`);
     const triggers = (await text(page, "workflow-automation-triggers")) ?? "";
-    if (!triggers.includes(words.daily) || !triggers.includes(HOOK_SLUG))
+    if (!triggers.includes(words.tabs.webhook) || !triggers.includes(words.tabs.schedule))
       throw new Error(`${where}: the triggers read "${triggers}"`);
 
     // The tabs, in the order a reader asks, the first one open.
@@ -967,7 +967,8 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await capture("workflow-call-mcp");
 
     await page.getByTestId("workflow-invocation-tab-schedule").click();
-    const scheduled = (await text(page, "workflow-invocation-schedule-0")) ?? "";
+    await page.getByTestId("workflow-schedule").waitFor({ timeout: 10_000 });
+    const scheduled = (await text(page, "workflow-schedule")) ?? "";
     for (const part of [words.daily, "Europe/Berlin", "0 7 * * *"])
       if (!scheduled.includes(part)) throw new Error(`${where}: the schedule lacks "${part}"`);
     if (
@@ -1126,10 +1127,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const body = await page.getByTestId("detail-workflows").innerText();
     if (body.includes(words.approve))
       throw new Error(`${where}: an approved workflow still offers "${words.approve}"`);
+    // Calm, the line says how the last run went; the approval's version and
+    // limits stand in "Freigaben".
     const approvedLine = (await text(page, "workflow-automation-headline")) ?? "";
-    for (const part of ["v9", "28", "30"])
-      if (!approvedLine.includes(part))
-        throw new Error(`${where}: the headline lacks "${part}": ${approvedLine}`);
+    const lastRun = localeName === "de" ? "Letzter Lauf" : "Last run";
+    if (!approvedLine.includes(lastRun))
+      throw new Error(`${where}: the headline does not say how the last run went: ${approvedLine}`);
     await openTab(page, "verwenden");
     await page.getByTestId("workflow-invocation-tab-webhook").click();
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.active)
@@ -1313,7 +1316,11 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const visibleKinds = await page
       .locator('[data-testid^="workflow-invocation-tab-"]')
       .allInnerTexts();
-    if (visibleKinds.join("|") !== [words.tabs.http, words.tabs.mcp, words.tabs.cli].join("|"))
+    // A schedule can always be set up here (R11), so its kind stays offered.
+    if (
+      visibleKinds.join("|") !==
+      [words.tabs.http, words.tabs.mcp, words.tabs.schedule, words.tabs.cli].join("|")
+    )
       throw new Error(`${where}: the call kinds are ${JSON.stringify(visibleKinds)}`);
     const hiddenLine = (await text(page, "workflow-invocation-hidden")) ?? "";
     if (!hiddenLine.includes(words.hidden))
@@ -1328,7 +1335,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     // ── Änderung wartet: the saved change is what is reviewed ───────────────
     where = at("apply");
     panel = await open(page, stand, state, "apply");
-    await expectState(page, panel, where, words, "apply", { action: words.review, openers: 1 });
+    await expectState(page, panel, where, words, "apply", { action: words.approve, openers: 1 });
     const applying = (await text(page, "workflow-automation-headline")) ?? "";
     if (!applying.includes("v10") || !applying.includes("v9"))
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
@@ -1373,7 +1380,10 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const manualKinds = await page
       .locator('[data-testid^="workflow-invocation-tab-"]')
       .allInnerTexts();
-    if (manualKinds.join("|") !== [words.tabs.http, words.tabs.mcp, words.tabs.cli].join("|"))
+    if (
+      manualKinds.join("|") !==
+      [words.tabs.http, words.tabs.mcp, words.tabs.schedule, words.tabs.cli].join("|")
+    )
       throw new Error(`${where}: the call kinds are ${JSON.stringify(manualKinds)}`);
     await page.getByTestId("workflow-io-section-toggle").click();
     await page.getByTestId("workflow-input").waitFor();

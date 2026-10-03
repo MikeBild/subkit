@@ -390,12 +390,20 @@ async function signInAtProvider(page) {
   await page.waitForLoadState("networkidle");
   // Where the sign-in itself stands is said in "Verbindung".
   await openTab(page, "verbindung");
-  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
+}
+
+/**
+ * The sign-in's state where it stands: the strip when it is the connector's
+ * whole state ("Verbunden"), else the badge of "Anmeldung".
+ */
+async function signInWord(page) {
+  return (await text(page, "connector-auth-state")) ?? (await text(page, "connector-strip-state"));
 }
 
 async function openOauth(page, stand) {
   await stand.visit(page, `connectors/${OAUTH_ID}?tab=verbindung`);
-  await page.getByTestId("connector-auth-state").waitFor({ state: "visible", timeout: 10_000 });
+  await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
   // The sign-in state settles with the credential read; read it after that.
   await page.waitForLoadState("networkidle");
 }
@@ -460,8 +468,8 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   // ── Signed in ────────────────────────────────────────────────────────────
   set({ enabled: true, needsReauth: false });
   await openOauth(page, stand);
-  if ((await text(page, "connector-auth-state")) !== words.connected)
-    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.connected)
+    throw new Error(`${where}: the sign-in reads "${await signInWord(page)}"`);
   if ((await occurrences(page, words.connected)) !== 1)
     throw new Error(`${where}: the sign-in state does not stand exactly once`);
   if (await noticeKind()) throw new Error(`${where}: a notice with nothing to say`);
@@ -502,6 +510,12 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   await openTab(page, "verwendung");
   await page.getByTestId("connector-usage-summary").waitFor();
   await page.waitForLoadState("networkidle");
+  // While the list loads the section stands with its skeleton; once the
+  // answer is empty it goes.
+  await page
+    .getByTestId("detail-conversations")
+    .waitFor({ state: "detached", timeout: 10_000 })
+    .catch(() => {});
   if (await page.getByTestId("detail-conversations").count())
     throw new Error(`${where}: an empty "Unterhaltungen dazu" section is on the page`);
   set({ conversations: "served" });
@@ -510,8 +524,8 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   where = "/connectors/<oauth> · needs sign-in";
   set({ enabled: true, needsReauth: true });
   await openOauth(page, stand);
-  if ((await text(page, "connector-auth-state")) !== words.expired)
-    throw new Error(`${where}: the sign-in reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.expired)
+    throw new Error(`${where}: the sign-in reads "${await signInWord(page)}"`);
   if ((await occurrences(page, words.expired)) !== 1)
     throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
   const sentence = (await text(page, "connector-credential-sentence")) ?? "";
@@ -572,8 +586,8 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   if (!(await strip.innerText()).includes(words.signedInOff))
     throw new Error(`${where}: the strip reads "${await strip.innerText()}"`);
   // The sign-in is fresh, not the one the page showed before it left.
-  if ((await text(page, "connector-auth-state")) !== words.connected)
-    throw new Error(`${where}: still reads "${await text(page, "connector-auth-state")}"`);
+  if ((await signInWord(page)) !== words.connected)
+    throw new Error(`${where}: still reads "${await signInWord(page)}"`);
   if (await occurrences(page, words.expired))
     throw new Error(`${where}: "${words.expired}" for a connector that was just signed in`);
   if (await page.getByTestId("connector-renew-signin").count())
@@ -688,7 +702,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     // An address without a secret is copied as it stands.
     const copy = page.getByTestId("connector-copy-address");
     if (!(await copy.count())) throw new Error(`${where}: a plain address cannot be copied`);
-    const address = await copy.locator("input").inputValue();
+    const address = await copy.inputValue();
     if (!address.includes(ADDRESS)) throw new Error(`${where}: the address is not shown whole`);
     const facts = {
       kind: de ? "MCP-Server" : "MCP server",

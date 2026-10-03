@@ -2838,7 +2838,7 @@ function markerFor(route) {
   // Übersicht, its review sheet, and the old addresses that land on one of them.
   const query = route.split("?")[1] ?? "";
   // The run sheets open over whichever page names them.
-  if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-facts"]';
+  if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-summary"]';
   if (/(^|&)runs=all/.test(query)) return '[data-testid="resource-runs"]';
   if (path === "" || path === "decisions" || path === "operations")
     return query.startsWith("review=") || query.startsWith("workflow_id=")
@@ -2874,7 +2874,9 @@ function documentThemeMatches(classes, theme) {
  * not scroll — it is cut off, and `document.scrollWidth` passes it. Instead:
  * no page container may be wider inside than out (scrolling or clipped alike),
  * and no visible element may reach past the window's right edge unless it sits
- * in a container built to scroll sideways (a wide table, a tab bar).
+ * in a container built to scroll sideways (a wide table, a tab bar). A
+ * scroller that bleeds into the page gutter on a phone (the tab bar) widens
+ * its container but stays inside the window: that is not sideways scroll.
  */
 async function assertNoHorizontalScroll(page, label) {
   const found = await page.evaluate(() => {
@@ -2893,7 +2895,35 @@ async function assertNoHorizontalScroll(page, label) {
       ),
     ]
       .filter((node) => node.scrollWidth > node.clientWidth + 1)
-      .map((node) => `${node.getAttribute("data-testid") ?? node.tagName} is wider than its frame`);
+      .flatMap((node) => {
+        // Name what reaches furthest right outside any scroller of its own,
+        // so the message points at the cause.
+        const frame = node.getBoundingClientRect();
+        const inner = frame.left + node.clientWidth;
+        const clipped = (el) => {
+          for (let up = el.parentElement; up && up !== node; up = up.parentElement) {
+            const x = window.getComputedStyle(up).overflowX;
+            if (x === "auto" || x === "scroll" || x === "hidden" || x === "clip") return true;
+          }
+          return false;
+        };
+        let widest = null;
+        for (const child of node.querySelectorAll("*")) {
+          const right = child.getBoundingClientRect().right;
+          if (right > inner + 1 && !clipped(child) && (!widest || right > widest.right))
+            widest = { child, right };
+        }
+        const name = (el) =>
+          el.getAttribute("data-testid") ?? el.getAttribute("data-slot") ?? el.tagName;
+        // Wider only by a bleed that ends inside the window: the gutter, not a scroll.
+        if (widest && widest.right <= width + 1) return [];
+        const culprit = widest
+          ? ` (${name(widest.child)} reaches ${Math.round(widest.right)}px of ${Math.round(inner)}px)`
+          : "";
+        return [
+          `${node.getAttribute("data-testid") ?? node.tagName} is wider than its frame${culprit}`,
+        ];
+      });
     const poking = [...document.querySelectorAll("body *")]
       .filter((node) => {
         const rect = node.getBoundingClientRect();
@@ -3019,14 +3049,28 @@ async function assertOpenOnce(page, label) {
   const before = await page.evaluate(() => window.history.length);
   await open.focus();
   await page.keyboard.press("Enter");
-  await page.locator('[data-testid="run-detail-facts"]').waitFor({ state: "visible" });
+  await page
+    .locator('[data-testid="run-detail-summary"]')
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(async () => {
+      const sheet = await page
+        .locator('[role="dialog"]')
+        .last()
+        .innerText()
+        .catch(() => "");
+      throw new Error(
+        `${label}: Enter on the run's link opened no run (${page.url()}): ${sheet.slice(0, 300)}`,
+      );
+    });
   const after = await page.evaluate(() => window.history.length);
   if (after - before !== 1)
     throw new Error(
       `${label}: Enter on the run's link added ${after - before} history entries — the record opened more than once`,
     );
+  // Back leaves the run for the list it was opened from, as the reader left it.
   await page.goBack();
-  await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+  await page.locator('[data-testid="run-detail"]').waitFor({ state: "hidden" });
+  await page.locator('[data-testid="resource-runs"]').waitFor({ state: "visible" });
 }
 
 /**
@@ -3037,7 +3081,11 @@ async function assertOpenOnce(page, label) {
  */
 async function assertOverviewHostile(page, label, language) {
   const shape = await page.evaluate(() => {
-    const entries = [...document.querySelectorAll('[data-testid="attention-list"] > li')];
+    // One row per entry — the table on a desktop, its cards on a phone; the
+    // entry's id rides on its completing verb.
+    const entries = [
+      ...document.querySelectorAll('[data-testid="attention-list"] [data-attention-id]'),
+    ].filter((entry) => entry.getClientRects().length > 0);
     return {
       ids: entries.map((entry) => entry.getAttribute("data-attention-id")),
       primaries: entries.map((entry) => entry.querySelectorAll('[data-testid$="-primary"]').length),
@@ -3068,16 +3116,19 @@ async function assertOverviewHostile(page, label, language) {
     throw new Error(`${label}: the engine's wording stands on the list`);
   // A version no approval may cover names its step and offers the preparation.
   const blocked = await page.evaluate((id) => {
-    const entry = document.querySelector(`[data-attention-id="workflow:${id}"]`);
+    const entry = [...document.querySelectorAll(`[data-attention-id="workflow:${id}"]`)].find(
+      (node) => node.getClientRects().length > 0,
+    );
+    const row = entry?.closest('tr, [data-testid*="mobile-row"]');
     return {
-      text: entry?.textContent ?? "",
+      text: row?.textContent ?? "",
       action: entry?.querySelector('[data-testid$="-primary"]')?.textContent?.trim() ?? "",
     };
   }, BLOCKED_WORKFLOW_ID);
   const wants =
     language === "de"
-      ? { sentence: "nicht freigeben", action: "Vorbereitung ausführen", refused: "Freigeben" }
-      : { sentence: "cannot be approved", action: "Run the preparation", refused: "Approve" };
+      ? { sentence: "blockiert", action: "Vorbereitung ausführen", refused: "Freigeben" }
+      : { sentence: "blocked", action: "Run the preparation", refused: "Approve" };
   if (!blocked.text.includes(wants.sentence) || !blocked.text.includes("send_notification_email"))
     throw new Error(`${label}: the blocked version does not name its step (${blocked.text})`);
   if (blocked.action !== wants.action || blocked.action === wants.refused)
@@ -3086,8 +3137,8 @@ async function assertOverviewHostile(page, label, language) {
 }
 
 /**
- * The operations bar: six figures above the list — three by two on a desktop,
- * six in a row where they fit, two columns on a phone, never scrolling
+ * The operations bar: four figures above the list (R1) — four in a row on a
+ * desktop, two by two where four do not fit and on a phone, never scrolling
  * sideways — compact enough that the attention list still starts on the first
  * screen, and every link carrying the window it counted.
  */
@@ -3110,9 +3161,6 @@ async function assertOperationsBar(page, label) {
       innerHeight: window.innerHeight,
       phone: window.innerWidth < 640,
       overflow: bar ? bar.scrollWidth > bar.clientWidth + 1 : false,
-      cost: (bar?.querySelector('[data-testid="operations-figure-cost"]')?.textContent ?? "")
-        .replace(/\s+/g, " ")
-        .trim(),
       budget: (bar?.querySelector('[data-testid="operations-figure-budget"]')?.textContent ?? "")
         .replace(/\s+/g, " ")
         .trim(),
@@ -3122,15 +3170,15 @@ async function assertOperationsBar(page, label) {
           ?.getAttribute("data-budget-pressure") ?? null,
     };
   });
-  if (shape.count !== 6)
+  if (shape.count !== 4)
     throw new Error(`${label}: the operations bar holds ${shape.count} figures`);
-  // Two columns on a phone; three by two on a desktop, six in a row where
-  // six fit. Never a bar that scrolls sideways.
+  // Two by two on a phone; four in a row on a desktop, two by two where four
+  // do not fit. Never a bar that scrolls sideways.
   const grids = shape.phone
-    ? [[3, 2]]
+    ? [[2, 2]]
     : [
-        [2, 3],
-        [1, 6],
+        [1, 4],
+        [2, 2],
       ];
   if (!grids.some(([rows, columns]) => shape.rows === rows && shape.columns === columns))
     throw new Error(
@@ -3146,10 +3194,8 @@ async function assertOperationsBar(page, label) {
   for (const href of shape.links)
     if (!/started_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
       throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
-  // Kosten and Kontingent in short form, from the fixture: the window's amount
-  // as a floor (partly priced), the month's share of the cap in its state.
-  if (!/(mind\.\s*412,87\s*€|at least\s*€412\.87)/.test(shape.cost ?? ""))
-    throw new Error(`${label}: the cost figure reads "${shape.cost}"`);
+  // Kontingent in short form, from the fixture: the month's share of the cap
+  // in its state.
   if (!/95\s*%/.test(shape.budget ?? "") || shape.pressure !== "critical")
     throw new Error(`${label}: the budget figure reads "${shape.budget}" (${shape.pressure})`);
 }
@@ -3162,9 +3208,10 @@ async function assertOperationsBar(page, label) {
  * after a decision, an empty sheet.
  */
 async function assertReviewCloseLeavesNoTrail(page, label) {
-  const open = page.locator(
-    `[data-testid="attention-list"] > li[data-attention-id="workflow:${uuid}"] [data-testid$="-primary"]`,
-  );
+  // The first entry whose completing verb is "Prüfen": it opens the review sheet.
+  const open = page
+    .locator('[data-testid="attention-list"] [data-attention-verb="review"]:visible')
+    .first();
   const sheet = page.locator('[data-testid="attention-review"]');
   // A page of ours before Übersicht, so Back has somewhere of ours to go: the
   // blank page a fresh tab starts on refuses the cockpit's storage.
@@ -3204,10 +3251,10 @@ async function assertLandsOnOverview(page, label, review) {
 }
 
 /**
- * Übersicht with nothing open: the operations bar stays, and below it "Alles
- * erledigt." and one status line, nothing else — no badge. Swaps the answer
- * and restores it in `finally`: a scenario that leaves its route behind
- * poisons every frame after it.
+ * Übersicht with nothing open: the operations bar stays, "Braucht dich" says
+ * "Nichts braucht dich gerade." in its empty table, the summary counts zero —
+ * and no badge. Swaps the answer and restores it in `finally`: a scenario
+ * that leaves its route behind poisons every frame after it.
  */
 async function verifyOverviewCalm(page, label, language, capture) {
   const pattern = "**/v1/attention*";
@@ -3215,17 +3262,21 @@ async function verifyOverviewCalm(page, label, language, capture) {
   await page.route(pattern, calm);
   try {
     await stand.visit(page, "");
-    await page.locator('[data-testid="attention-calm"]').waitFor({ state: "visible" });
+    const list = page.locator('[data-testid="attention"][data-family-state="empty"]');
+    await list.waitFor({ state: "visible" });
     const shape = await page.evaluate(() => ({
-      status: document.querySelectorAll('[data-testid="attention-status"]').length,
       badge: document.querySelectorAll('[data-testid="nav-overview-count"]').length,
-      text: document.querySelector('[data-testid="attention-calm"]')?.innerText ?? "",
+      text: document.querySelector('[data-testid="attention"]')?.innerText ?? "",
+      summary: document.querySelector('[data-testid="overview-summary"]')?.innerText ?? "",
     }));
-    if (shape.status !== 1) throw new Error(`${label}: ${shape.status} status lines, not one`);
     if (shape.badge) throw new Error(`${label}: a badge although nothing is open`);
     await assertOperationsBar(page, label);
-    if (!shape.text.startsWith(language === "de" ? "Alles erledigt." : "All done."))
+    if (
+      !shape.text.includes(language === "de" ? "Nichts braucht dich gerade" : "Nothing needs you")
+    )
       throw new Error(`${label}: the calm state reads "${shape.text}"`);
+    if (!/^0\b/.test(shape.summary.trim()))
+      throw new Error(`${label}: the summary does not count zero ("${shape.summary}")`);
     await capture();
   } finally {
     await page.unroute(pattern, calm);
@@ -3291,7 +3342,7 @@ async function assertAuditActionChip(page, label) {
 }
 
 async function assertRunDetail(page, label, language) {
-  const facts = page.locator('[data-testid="run-detail-facts"]');
+  const facts = page.locator('[data-testid="run-detail-summary"]');
   if (!(await facts.isVisible()))
     throw new Error(`${label} opened no run sheet — the address rendered the bare list`);
   // The title is the workflow, and leads there.
@@ -3337,7 +3388,7 @@ async function assertRunDetail(page, label, language) {
   const remedyText = (await remedy.innerText()).trim();
   if (remedyText !== (language === "de" ? "Neu anmelden" : "Sign in again"))
     throw new Error(`${label} remedy reads ${JSON.stringify(remedyText)}`);
-  const audit = await page.locator('[data-testid="run-detail-cause-more-0"]').getAttribute("href");
+  const audit = await page.locator('[data-testid="run-detail-audit"]').getAttribute("href");
   if (!audit?.startsWith("/cockpit/audit?resource_type=execution&resource_id="))
     throw new Error(`${label} offers no way into the audit trail (${audit})`);
   // The payload is evidence, not the headline: closed until asked for, and a
@@ -3392,8 +3443,9 @@ async function assertRunDetail(page, label, language) {
  * sentence, and the latest runs lead to their sheets.
  */
 async function assertWorkflowDetail(page, label, language) {
-  const badge = page.locator('[data-testid="workflow-health-badge"]');
-  await badge.waitFor();
+  // The state stands in the strip alone: no badge beside the title repeats it.
+  if (await page.locator('[data-testid="workflow-health-badge"]').count())
+    throw new Error(`${label}: a badge beside the title repeats the strip`);
   // The strip: the state in one line and at most one action (D15).
   const strip = page.locator('[data-testid="workflow-automation"]');
   await strip.waitFor();
