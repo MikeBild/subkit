@@ -15496,6 +15496,79 @@
           "content"
         ]
       },
+      "CreateKnowledgeSourceFromUrlBody": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateKnowledgeSourceBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "maxLength": 2048,
+                "format": "uri"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          }
+        ]
+      },
+      "CreateKnowledgeSourceBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "maxItems": 20
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "workflow"
+            ]
+          },
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "refresh_strategy": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "scheduled"
+            ]
+          },
+          "refresh_cron": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
       "UpdateKnowledgeSourceBody": {
         "type": "object",
         "properties": {
@@ -15601,59 +15674,6 @@
               "content"
             ]
           }
-        ]
-      },
-      "CreateKnowledgeSourceBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "pattern": "^[a-z0-9][a-z0-9_-]*$"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 40
-            },
-            "maxItems": 20
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "global",
-              "workflow"
-            ]
-          },
-          "workflow_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "refresh_strategy": {
-            "type": "string",
-            "enum": [
-              "manual",
-              "scheduled"
-            ]
-          },
-          "refresh_cron": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
         ]
       },
       "KnowledgeBundleUpsertResponse": {
@@ -37438,6 +37458,136 @@
           },
           "409": {
             "description": "Version conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/url": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create a knowledge source by reading an address",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeSourceFromUrlBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSource"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The page exceeds the maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The address could not be read, or is not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/refresh": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read an address source again now",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The source has no address to read again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The page exceeds the maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The address could not be read, or is not allowed",
             "content": {
               "application/json": {
                 "schema": {
