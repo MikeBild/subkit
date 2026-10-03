@@ -18,6 +18,7 @@
 // person applies it; that is the workflow page's "change waiting" state, not a
 // task on this list.
 
+import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
@@ -32,6 +33,7 @@ import {
   AUTHORITY_EXTEND_BELOW_RUN_SHARE,
   AUTHORITY_EXTEND_WITHIN_DAYS,
 } from "../workflows/authority-extension.ts";
+import { type BoundaryGrowth, BoundaryGrowthSchema } from "../workflows/authority-growth.ts";
 import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +51,11 @@ export interface ApprovalFact {
   /** Awaiting: the next scheduled start. Expiring: the end of the last
    *  approval, when a date is what ends it. */
   deadline: string | null;
+  /** Awaiting only: what the running version reaches that the approval of
+   *  the version before it did not, recorded when it became active. Absent
+   *  when nothing was recorded (no earlier approval, or a version before
+   *  inheritance existed). */
+  growth?: BoundaryGrowth[];
 }
 
 /** The approvals admission would use for this workflow's running version. */
@@ -107,6 +114,7 @@ interface TriggerRow {
   name: string;
   version: number;
   saved_at: Date;
+  authority_growth: Record<string, unknown> | null;
   environment: "dev" | "prod";
   covered: boolean;
   comfortable: boolean;
@@ -123,13 +131,16 @@ function factOf(row: TriggerRow, now: Date): ApprovalFact | null {
     environment: row.environment,
     trigger: row.trigger,
   };
-  if (!row.covered)
+  if (!row.covered) {
+    const growth = z.array(BoundaryGrowthSchema).safeParse(row.authority_growth?.[row.environment]);
     return {
       ...base,
       kind: "awaiting",
       since: row.saved_at.toISOString(),
       deadline: row.next_run_at,
+      ...(growth.success && growth.data.length > 0 ? { growth: growth.data } : {}),
     };
+  }
   if (row.comfortable) return null;
   const ends = row.ends === null ? null : new Date(row.ends);
   // A date is the deadline only when the date is what ends it; an approval
@@ -161,6 +172,7 @@ export async function readApprovalFacts(
         name: workflows.name,
         version: workflowVersions.version,
         saved_at: workflowVersions.created_at,
+        authority_growth: workflowVersions.authority_growth,
         environment: workflowsSchedules.execution_mode,
         cron: workflowsSchedules.cron,
         timezone: workflowsSchedules.timezone,
@@ -198,6 +210,7 @@ export async function readApprovalFacts(
         name: workflows.name,
         version: workflowVersions.version,
         saved_at: workflowVersions.created_at,
+        authority_growth: workflowVersions.authority_growth,
         slug: webhooksInbound.slug,
         // Unattended deliveries only ever run in production.
         ...approvalColumns(db, now, sql`'prod'`),

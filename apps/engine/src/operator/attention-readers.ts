@@ -468,7 +468,13 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       reason,
       trigger: fact.held ? fact.trigger : (approval?.trigger ?? null),
       ...(approval
-        ? { approval: { version: approval.version, environment: approval.environment } }
+        ? {
+            approval: {
+              version: approval.version,
+              environment: approval.environment,
+              ...(approval.growth ? { growth: approval.growth } : {}),
+            },
+          }
         : {}),
       ...(repair ? { repair } : {}),
       cause_class: lead?.cause_class ?? null,

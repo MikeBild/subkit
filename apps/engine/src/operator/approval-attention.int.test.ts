@@ -126,6 +126,29 @@ async function itemsOf(workflow_id: string): Promise<AttentionItem[]> {
 }
 
 describe("a version nobody has approved yet", () => {
+  test("says what it reaches beyond the approval that did not follow it", async () => {
+    const wf = await workflow("grown");
+    await schedule(wf.workflow_id);
+    const growth = [
+      {
+        kind: "new_connector",
+        connector_id: "00000000-0000-4000-8000-0000000000aa",
+        connector_name: "Ticket desk",
+        target: "https://desk.example.test/tickets",
+        effect: "write",
+      },
+    ];
+    await testDb.db
+      .update(workflowVersions)
+      .set({ authority_growth: { prod: growth, dev: [] } })
+      .where(eq(workflowVersions.id, wf.version_id));
+    const [item] = await itemsOf(wf.workflow_id);
+    expect(item).toMatchObject({
+      reason: "version_awaiting_approval",
+      approval: { version: 1, environment: "prod", growth },
+    });
+  });
+
   test("is listed as soon as a schedule would start it — before any refusal", async () => {
     const wf = await workflow("scheduled");
     await schedule(wf.workflow_id);

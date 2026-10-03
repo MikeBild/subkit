@@ -18487,6 +18487,7 @@ export interface components {
                 call_path?: string[];
             }[];
             execution_shape: components["schemas"]["AuthorityExecutionShape"];
+            boundary_growth?: components["schemas"]["AuthorityBoundaryGrowth"][];
             schedules: {
                 cron: string;
                 timezone: string;
@@ -18540,6 +18541,15 @@ export interface components {
             }[];
             /** @enum {boolean} */
             run_limit_is_request_limit: false;
+        };
+        AuthorityBoundaryGrowth: {
+            /** @enum {string} */
+            kind: "new_connector" | "new_target" | "wider_effect" | "changed_boundary";
+            connector_id: string | null;
+            connector_name?: string | null;
+            target: string | null;
+            /** @enum {string} */
+            effect: "read" | "write" | "unknown" | "destructive";
         };
         WorkflowDiagnosis: {
             /** Format: uuid */
@@ -22134,6 +22144,8 @@ export interface components {
                 version: number;
                 /** @enum {string} */
                 environment: "dev" | "prod";
+                /** @description Only on version_awaiting_approval: what this version reaches beyond the approval of the version before it, which is why that approval did not follow. */
+                growth?: components["schemas"]["AuthorityBoundaryGrowth"][];
             };
             /** @description Why no approval may cover that version yet. Only on version_needs_repair: the leading blocked step and its diagnosis code (GET /v1/workflows/{id}/diagnosis), the act that removes it, how many steps are blocked, and the filed repair or the run the diagnosis rests on. */
             repair?: {
