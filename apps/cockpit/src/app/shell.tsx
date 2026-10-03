@@ -53,7 +53,7 @@ import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
 import { LiveEventsProvider, type LiveStatus, useLiveStatus } from "./live-events";
-import { navigationItem, navigationTarget, visibleNavigation } from "./navigation";
+import { navigationItem, visibleNavigation } from "./navigation";
 import { useSession } from "./session";
 import {
   CHAT_COLUMN,
@@ -180,12 +180,11 @@ export function AppShell() {
                     <SidebarMenu>
                       {group.items.map((item) => {
                         const label = t(item.labelKey);
-                        const target = navigationTarget(item, session.permissions);
                         return (
                           <SidebarMenuItem key={item.path}>
                             <SidebarMenuButton asChild tooltip={label} isActive={active === item}>
                               <Link
-                                to={target}
+                                to={item.path}
                                 data-testid={
                                   item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
                                 }
