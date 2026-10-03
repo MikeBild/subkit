@@ -224,7 +224,7 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       )
         throw new Error("Saved workflow still presented as unfinished preparation");
       if (
-        (await page.getByTestId("chat-status").innerText()) !==
+        ((await page.getByTestId("chat-status").textContent()) ?? "").trim() !==
         (locale === "de" ? "Workflow gespeichert" : "Workflow saved")
       )
         throw new Error("Saved workflow still presented as running");
