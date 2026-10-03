@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, settingsHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader } from "@/components/cockpit/patterns";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -345,31 +345,36 @@ export function UsagePage() {
     );
 
   return (
-    <PageFrame
+    <Page
+      kind="list"
       surface="collection"
       testId="resource-usage"
-      title={title}
       scroll="page"
-      action={
-        // One window for the whole page, in its header like the Übersicht's.
-        <fieldset
-          className="flex flex-wrap gap-2"
-          aria-label={t("resource.usage.windowPicker")}
-          data-testid="usage-window"
-        >
-          {STATS_WINDOWS.map((candidate) => (
-            <Button
-              key={candidate}
-              size="sm"
-              variant={candidate === span ? "default" : "outline"}
-              aria-pressed={candidate === span}
-              onClick={() => chooseWindow(candidate)}
-              data-testid={`usage-window-${candidate}`}
+      header={
+        <PageHeader
+          title={title}
+          action={
+            // One window for the whole page, in its header like the Übersicht's.
+            <fieldset
+              className="flex flex-wrap gap-2"
+              aria-label={t("resource.usage.windowPicker")}
+              data-testid="usage-window"
             >
-              {t(WINDOW_OPTION[candidate])}
-            </Button>
-          ))}
-        </fieldset>
+              {STATS_WINDOWS.map((candidate) => (
+                <Button
+                  key={candidate}
+                  size="sm"
+                  variant={candidate === span ? "default" : "outline"}
+                  aria-pressed={candidate === span}
+                  onClick={() => chooseWindow(candidate)}
+                  data-testid={`usage-window-${candidate}`}
+                >
+                  {t(WINDOW_OPTION[candidate])}
+                </Button>
+              ))}
+            </fieldset>
+          }
+        />
       }
     >
       <div className="grid gap-8">
@@ -645,6 +650,6 @@ export function UsagePage() {
           </div>
         </section>
       </div>
-    </PageFrame>
+    </Page>
   );
 }

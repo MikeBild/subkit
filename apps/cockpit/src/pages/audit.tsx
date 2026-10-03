@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader } from "@/components/cockpit/patterns";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -416,7 +416,13 @@ export function AuditPage() {
     );
 
   return (
-    <PageFrame surface="audit" testId="resource-audit" title={title} scroll="content">
+    <Page
+      kind="list"
+      surface="audit"
+      testId="resource-audit"
+      scroll="content"
+      header={<PageHeader title={title} />}
+    >
       <DataTable
         columns={columns}
         data={rows}
@@ -652,6 +658,6 @@ export function AuditPage() {
           {selected && <AuditDetail entry={selected} directory={directory} />}
         </SheetContent>
       </Sheet>
-    </PageFrame>
+    </Page>
   );
 }

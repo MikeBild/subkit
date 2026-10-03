@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
 import type { components } from "@/api/schema";
+import { navigationItem } from "@/app/navigation";
 import {
   ConnectorCredentials,
   useConnectorCredential,
@@ -20,6 +21,7 @@ import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { DetailAction } from "@/components/cockpit/detail-action";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
+import { BackLink, PageHeader } from "@/components/cockpit/patterns";
 import { bytes, MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { LoadFailed, queryView } from "@/components/failure-state";
@@ -398,7 +400,10 @@ export function CatalogDetailPage({
     enabled: canRead && Boolean(id),
   });
   const record = query.data;
-  // The breadcrumb names the record once it has one; an id never stands in.
+  // The way back is the list this record belongs to — for sources, skills and
+  // files that is their tab of Wissen.
+  const list = navigationItem(`/${resource}`);
+  const back = { to: `/${resource}`, label: list ? t(list.labelKey) : t(`nav.${resource}`) };
   // A probe result is a paragraph that names latency or the missing scopes,
   // not a cell in a list. It belongs on the connector it describes.
   const probe = useMutation({
@@ -498,10 +503,11 @@ export function CatalogDetailPage({
     );
   if (view === "error" || !record)
     return (
-      <div className="p-6">
+      <div className="grid gap-4 p-6">
         {/* It used to hand the route key to the sentence, so the reader was
             told "workflows konnten nicht geladen werden" — a machine word in
-            the one line meant to explain. The way back is the breadcrumb. */}
+            the one line meant to explain. */}
+        <BackLink to={back.to} label={back.label} />
         <LoadFailed
           title={t("detail.loadFailed")}
           onRetry={() => void query.refetch()}
@@ -529,48 +535,47 @@ export function CatalogDetailPage({
       className="flex min-h-0 flex-1 flex-col overflow-auto"
       data-testid={`detail-${resource}`}
     >
-      <header
-        data-family-slot="detail-header"
-        className="flex flex-wrap items-center justify-between gap-4 border-b p-6"
-      >
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">
-              {recordTitle(record)}
-            </h1>
-          </div>
-          {/* The record's OWN description when it has one — what this thing is
-              for, in the words of whoever built it. Where it has none the line
-              is absent: the fallback was the catalogue's sentence, the same on
-              every record, which told a reader who opened one workflow to
-              decide about it nothing specific. */}
-          {recordPurpose(record) ? (
-            <p className="mt-1 text-sm text-muted-foreground">{recordPurpose(record)}</p>
-          ) : null}
-        </div>
-        <div data-family-slot="detail-actions" className="flex flex-wrap gap-2">
-          {resource !== "files" && canWrite && (
-            <MetadataDialog
+      <div className="shrink-0 px-6">
+        <PageHeader
+          back={back}
+          title={recordTitle(record)}
+          // The record's OWN description when it has one — what this thing is
+          // for, in the words of whoever built it. Where it has none the line
+          // is absent: a catalogue sentence, the same on every record, would
+          // tell a reader who opened one record nothing specific.
+          purpose={recordPurpose(record) || undefined}
+          secondary={
+            <>
+              {resource !== "files" && canWrite && (
+                <MetadataDialog
+                  resource={resource}
+                  id={id}
+                  title={recordTitle(record)}
+                  version={record.version}
+                />
+              )}
+              {canTest && (
+                <Button
+                  variant="outline"
+                  disabled={probe.isPending || inspect.isPending}
+                  onClick={runTest}
+                  data-testid="connector-test"
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  {t("detail.test")}
+                </Button>
+              )}
+            </>
+          }
+          action={
+            <DetailAction
               resource={resource}
-              id={id}
-              title={recordTitle(record)}
-              version={record.version}
+              name={recordTitle(record)}
+              permissions={permissions}
             />
-          )}
-          {canTest && (
-            <Button
-              variant="outline"
-              disabled={probe.isPending || inspect.isPending}
-              onClick={runTest}
-              data-testid="connector-test"
-            >
-              <RefreshCw data-icon="inline-start" />
-              {t("detail.test")}
-            </Button>
-          )}
-          <DetailAction resource={resource} name={recordTitle(record)} permissions={permissions} />
-        </div>
-      </header>
+          }
+        />
+      </div>
       <RecordBar record={record} canWrite={canWrite} connector={resource === "connectors"} />
       {notice ? (
         <ConnectorStateNotice

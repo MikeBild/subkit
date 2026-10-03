@@ -25,7 +25,7 @@ import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/u
 import { useReviewDecisions } from "@/app/use-decisions";
 import { DecisionCard } from "@/components/cockpit/decision-card";
 import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-card";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader } from "@/components/cockpit/patterns";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { LoadFailed } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -166,15 +166,23 @@ export function OverviewPage() {
   );
 
   return (
-    <PageFrame
+    <Page
+      kind="list"
       surface="overview"
       testId="attention-page"
-      title={title}
       scroll="page"
-      action={
-        operations.allowed ? (
-          <WindowSwitch value={bounds.window} onChange={(next) => setBounds(windowBounds(next))} />
-        ) : undefined
+      header={
+        <PageHeader
+          title={title}
+          action={
+            operations.allowed ? (
+              <WindowSwitch
+                value={bounds.window}
+                onChange={(next) => setBounds(windowBounds(next))}
+              />
+            ) : undefined
+          }
+        />
       }
     >
       <div className="grid gap-6">
@@ -264,7 +272,7 @@ export function OverviewPage() {
         )}
       </div>
       <ReviewSheet id={review} item={reviewed} now={now} onClose={closeReview} />
-    </PageFrame>
+    </Page>
   );
 }
 

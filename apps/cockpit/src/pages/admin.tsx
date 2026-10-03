@@ -14,7 +14,7 @@ import {
 import { useSession } from "@/app/session";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader } from "@/components/cockpit/patterns";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -155,29 +155,25 @@ interface PermissionItem {
 
 function AdminFrame({
   titleKey,
-  descriptionKey,
   action,
   children,
   testId,
 }: {
   titleKey: TranslationKey;
-  /** Only where the title does not already say what the page is for. */
-  descriptionKey?: TranslationKey;
   action?: ReactNode;
   children: ReactNode;
   testId: string;
 }) {
   const { t } = useI18n();
   return (
-    <PageFrame
+    <Page
+      kind="list"
       testId={testId}
-      title={t(titleKey)}
-      {...(descriptionKey ? { description: t(descriptionKey) } : {})}
-      action={action}
       scroll="page"
+      header={<PageHeader title={t(titleKey)} action={action} />}
     >
       {children}
-    </PageFrame>
+    </Page>
   );
 }
 
