@@ -87,7 +87,11 @@ const bootstrapRoute = createRoute({
 
 function safeCockpitReturnPath(raw: string | undefined): string | null {
   const value = raw ?? "/cockpit";
-  if ((value !== "/cockpit" && !value.startsWith("/cockpit/")) || value.startsWith("//")) {
+  // The start page carries its overlays in the query (`/cockpit?run=…`,
+  // `/cockpit?runs=all`, `/cockpit?review=…`), so `/cockpit?` is a page too.
+  const cockpit =
+    value === "/cockpit" || value.startsWith("/cockpit/") || value.startsWith("/cockpit?");
+  if (!cockpit || value.startsWith("//")) {
     return null;
   }
   try {
