@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { Bot, FolderTree } from "lucide-react";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref, workflowsHref } from "@/app/links";
+import { CreateAction } from "@/components/cockpit/create-choice";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
@@ -561,7 +562,16 @@ export function CatalogPage({
   // the empty state, where the reader is looking — it used to stand in both,
   // the same button twice on one screen.
   const primaryAction = (testId: string) =>
-    config.actionKey ? (
+    // Workflows and connectors are made in the chat or by hand (R16, R19).
+    (resource === "workflows" && permissions.includes("workflow:write")) ||
+    (resource === "connectors" && permissions.includes("connector:write")) ? (
+      <CreateAction
+        kind={resource === "workflows" ? "workflow" : "connector"}
+        canChat={permissions.includes("conversation:write")}
+        size={testId === "catalog-empty-action" ? "sm" : "default"}
+        testId={testId}
+      />
+    ) : config.actionKey ? (
       <Button asChild size={testId === "catalog-empty-action" ? "sm" : "default"}>
         <a href={absolute(chatNewHref({ prompt: t(config.actionKey) }))} data-testid={testId}>
           <Bot data-icon="inline-start" />
@@ -808,6 +818,42 @@ function RecategorizeDialog({
         </p>
       )}
     </FormDialog>
+  );
+}
+
+/**
+ * "Kategorie ändern" on a workflow's own page: the same dialog as the list's,
+ * with the blocks read for it.
+ */
+export function WorkflowRecategorize({
+  record,
+  onClose,
+}: {
+  record: CatalogRow;
+  onClose: () => void;
+}) {
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: ["workflow-categories"],
+    queryFn: () => apiRequest<{ categories?: CategoryCount[] }>("/v1/workflows?limit=1"),
+  });
+  const categories = useMemo(() => query.data?.categories ?? [], [query.data]);
+  const counts = useMemo(
+    () => new Map(categories.map((entry) => [entry.category, entry.count])),
+    [categories],
+  );
+  return (
+    <RecategorizeDialog
+      row={record}
+      categories={categories}
+      counts={counts}
+      onClose={onClose}
+      onDone={() => {
+        void client.invalidateQueries({ queryKey: ["catalog-detail", "workflows"] });
+        void client.invalidateQueries({ queryKey: ["catalog", "workflows"] });
+        onClose();
+      }}
+    />
   );
 }
 

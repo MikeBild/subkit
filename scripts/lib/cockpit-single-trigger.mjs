@@ -166,6 +166,8 @@ export const TRANSCRIPT = {
  * covers every view. `$id` stands for the record the sweep opens.
  */
 export const PATTERN_MIGRATED_VIEWS = [
+  // The overview: its route is the cockpit's root.
+  "",
   "chat",
   "workflows",
   "connectors",
@@ -181,6 +183,7 @@ export const PATTERN_MIGRATED_VIEWS = [
   "settings",
   "settings?tab=benachrichtigungen",
   "workflows/$id",
+  "connectors/$id",
   // The run sheets: all runs (wide) and one run (default width).
   "?runs=all",
   "?run=$id",

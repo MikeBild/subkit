@@ -51,7 +51,7 @@ export function EngineWording({ text, testId }: { text: string; testId?: string 
 /** A label in its face: prose for a word, monospace for a machine value. */
 export function LabelText({ label }: { label: CatalogLabel }) {
   return label.machine ? (
-    <code className="font-mono text-xs" data-machine-value="true">
+    <code className="font-mono text-xs [overflow-wrap:anywhere]" data-machine-value="true">
       {label.text}
     </code>
   ) : (

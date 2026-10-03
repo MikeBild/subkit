@@ -1,9 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Wrench } from "lucide-react";
+import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { absolute } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
-  DiagnosisRepairAction,
+  REPAIR_NOTE_KEYS,
+  repairReviewHref,
+  useStepRepair,
   type WorkflowDiagnosis,
   workflowDiagnosisQuery,
 } from "@/components/cockpit/workflow-diagnosis";
@@ -170,7 +175,12 @@ export function GrantRemedyAction({
   const { t } = useI18n();
   if (remedy.via === "prepare")
     return (
-      <Button disabled={busy} onClick={onRecheck} data-testid="authority-remedy-prepare">
+      <Button
+        type="button"
+        disabled={busy}
+        onClick={onRecheck}
+        data-testid="authority-remedy-prepare"
+      >
         {t("diagnosis.prepare")}
       </Button>
     );
@@ -181,5 +191,78 @@ export function GrantRemedyAction({
       via={remedy.via}
       testId="authority-remedy"
     />
+  );
+}
+
+/**
+ * A step's repair as the approval dialog's remedy: the same act as the step's
+ * own button on the workflow page. What a repair request answers is said as a
+ * toast — a dialog footer has no room for a sentence.
+ */
+function DiagnosisRepairAction({
+  diagnosis,
+  environment,
+  via,
+  testId,
+}: {
+  diagnosis: WorkflowDiagnosis;
+  environment: "dev" | "prod";
+  /** `review`: the repair is already filed; `auto`: the engine can compute one. */
+  via: "review" | "auto";
+  testId: string;
+}) {
+  const entry = diagnosis.diagnoses[0];
+  if (!entry) return null;
+  return (
+    <DiagnosisRepairButton
+      entry={entry}
+      diagnosis={diagnosis}
+      environment={environment}
+      via={via}
+      testId={testId}
+    />
+  );
+}
+
+function DiagnosisRepairButton({
+  entry,
+  diagnosis,
+  environment,
+  via,
+  testId,
+}: {
+  entry: WorkflowDiagnosis["diagnoses"][number];
+  diagnosis: WorkflowDiagnosis;
+  environment: "dev" | "prod";
+  via: "review" | "auto";
+  testId: string;
+}) {
+  const { t } = useI18n();
+  const repair = useStepRepair({
+    entry,
+    diagnosis,
+    environment,
+    onNote: (note) => toast(t(REPAIR_NOTE_KEYS[note])),
+  });
+  if (via === "review")
+    return (
+      <Button asChild>
+        <a href={absolute(repairReviewHref(diagnosis.workflow_id))} data-testid={testId}>
+          {t("remedy.reviewRepair")}
+          <ArrowRight data-icon="inline-end" />
+        </a>
+      </Button>
+    );
+  if (!entry.fixer) return null;
+  return (
+    <Button
+      type="button"
+      disabled={repair.isPending}
+      onClick={() => entry.fixer && repair.mutate(entry.fixer)}
+      data-testid={testId}
+    >
+      <Wrench data-icon="inline-start" />
+      {t("diagnosis.repair")}
+    </Button>
   );
 }
