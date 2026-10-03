@@ -12,6 +12,7 @@
 // every source this person may read has answered.
 
 import type { components } from "@/api/schema";
+import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 
@@ -329,8 +330,11 @@ export function attentionSentence(
           : item.trigger?.kind === "schedule"
             ? reasonKey
             : "overview.reason.version_awaiting_approvalAny";
+      const sentence = t(key, { subject, version, hook: item.trigger?.name ?? "" });
+      // Why the approval of the version before did not follow: what is new.
+      const growth = growthLine(t, item.approval?.growth);
       return {
-        lead: t(key, { subject, version, hook: item.trigger?.name ?? "" }),
+        lead: growth ? t("overview.withGrowth", { sentence, growth }) : sentence,
         machine: null,
         since,
       };

@@ -39,6 +39,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { effectKey, groupByCall } from "@/lib/authority-calls";
+import { growthLine } from "@/lib/authority-growth";
 import { authorityIssues } from "@/lib/authority-issues";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
@@ -976,6 +977,12 @@ export function GrantWorkflowAuthority({
                     {versionLabel}
                   </Badge>
                 </div>
+              ) : null}
+              {review && growthLine(t, review.boundary_growth) ? (
+                // Why the earlier approval did not carry over to this version.
+                <p className="text-sm font-medium" data-testid="authority-growth">
+                  {growthLine(t, review.boundary_growth)}
+                </p>
               ) : null}
               {input && (
                 <p className="text-sm">
