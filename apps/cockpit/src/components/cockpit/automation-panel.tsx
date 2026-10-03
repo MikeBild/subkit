@@ -450,6 +450,7 @@ export function WorkflowStatus({
   permissions: readonly string[];
 }) {
   const { t, locale } = useI18n();
+  const environmentWord = useEnvironmentWord();
   const { state } = automation;
   const navigate = useNavigate();
   const sheets = useOpenRunSheet();
@@ -514,7 +515,10 @@ export function WorkflowStatus({
           ? t("automation.hookOff")
           : t("workflowStrip.line.paused");
       case "stopped":
-        return t("workflowStrip.line.stopped");
+        // The environment that lost its approval — not always production.
+        return t("workflowStrip.line.stopped", {
+          environment: environmentWord(state?.environment ?? "prod"),
+        });
       case "repair":
         return t(
           blocked === 1 ? "workflowStrip.line.blocked.one" : "workflowStrip.line.blocked.other",
@@ -523,7 +527,10 @@ export function WorkflowStatus({
       case "unapproved":
         return t("workflowStrip.line.unapproved");
       case "grant":
-        return t("workflowStrip.line.grant", { version: version(state?.facts.version) });
+        return t("workflowStrip.line.grant", {
+          version: version(state?.facts.version),
+          environment: environmentWord(state?.environment ?? "prod"),
+        });
       case "apply":
         return t("workflowStrip.line.apply", {
           prepared: version(state?.facts.preparedVersion),

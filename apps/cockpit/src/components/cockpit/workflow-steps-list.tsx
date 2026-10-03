@@ -272,6 +272,7 @@ export function WorkflowStepsList({
                 <span data-action-scope="step">
                   <ActionMenu
                     testId={`workflow-step-${row.index}-menu`}
+                    label={t("stepEditor.actionsFor", { step: row.view.definition.id })}
                     items={[
                       {
                         label: t("stepEditor.edit"),
