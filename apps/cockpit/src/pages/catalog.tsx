@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Bot, FolderTree, Search } from "lucide-react";
+import { Bot, FolderTree } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
@@ -17,29 +17,26 @@ import {
 } from "@/app/links";
 import { KNOWLEDGE_TABS } from "@/app/navigation";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { Page, PageHeader, RouteTabs } from "@/components/cockpit/patterns";
-import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/patterns/data-table";
-import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import {
+  Button,
+  type CockpitColumn,
+  DataState,
+  DataTable,
+  FilterBar,
+  type FilterSelect,
+  FormDialog,
+  Page,
+  PageHeader,
+  RouteTabs,
+  RowName,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/cockpit/patterns";
+import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -389,9 +386,8 @@ function catalogColumns(
         "enabled",
         (row) => row.enabled,
         t("catalog.enabled"),
-        (row) => (
-          <Badge variant="outline">{row.enabled === true ? t("common.yes") : t("common.no")}</Badge>
-        ),
+        // A yes or no is plain text: a badge is for an engine state (P11).
+        (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
         { sortable: true, width: "w-[10%]" },
       ),
       // The same words the connector's own page uses: "Produktion", not "prod";
@@ -700,16 +696,51 @@ export function CatalogPage({
     });
   }, [setState]);
 
+  const pageTitle = knowledgeTabs.length > 0 ? t("nav.knowledge") : title;
   if (!permissions.includes(config.permission)) {
     return (
-      <main className="p-6" data-testid={`catalog-${resource}`}>
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
+      <Page
+        kind="list"
+        surface="collection"
+        testId={`catalog-${resource}`}
+        scroll="page"
+        header={<PageHeader title={pageTitle} />}
+      >
+        <DataState
+          state="empty"
+          line={t("resource.permission.description")}
+          testId="resource-permission-alert"
+        />
+      </Page>
     );
   }
+
+  const selects: FilterSelect[] = [
+    {
+      value: state.status,
+      onChange: (status) => setState({ status, page: 0 }),
+      label: t("catalog.filterStatus"),
+      testId: "catalog-status-filter",
+      options: [
+        { value: "all", label: t("catalog.allStatuses") },
+        ...config.statuses.map((status) => ({ value: status, label: statusLabel(t, status) })),
+      ],
+    },
+  ];
+  if (categories.length > 0)
+    selects.push({
+      value: state.category,
+      onChange: (category) => setState({ category, page: 0 }),
+      label: t("catalog.block"),
+      testId: "catalog-category-filter",
+      options: [
+        { value: "all", label: t("catalog.allCategories") },
+        ...categories.map((entry) => ({
+          value: entry.category,
+          label: `${categoryLabel(entry.category, t)} (${entry.count})`,
+        })),
+      ],
+    });
 
   // One action, one place. With rows it heads the page; with none it stands in
   // the empty state, where the reader is looking — it used to stand in both,
@@ -734,7 +765,7 @@ export function CatalogPage({
         <>
           <PageHeader
             // Sources, skills and files are the tabs of one page, Wissen.
-            title={knowledgeTabs.length > 0 ? t("nav.knowledge") : title}
+            title={pageTitle}
             // The header yields its action only to the one state that shows
             // the same action itself: a loaded, unfiltered, empty list. While
             // loading, after a failed read, or when a search matches nothing,
@@ -753,73 +784,15 @@ export function CatalogPage({
         data={rows}
         toolbar={
           <>
-            <InputGroup className="w-full sm:max-w-xs">
-              <InputGroupAddon>
-                <Search />
-              </InputGroupAddon>
-              <InputGroupInput
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("resource.search", { resource: title })}
-                aria-label={t("resource.search", { resource: title })}
-                data-testid="catalog-search"
-              />
-            </InputGroup>
-            <Select value={state.status} onValueChange={(status) => setState({ status, page: 0 })}>
-              <SelectTrigger
-                className="w-44"
-                aria-label={t("catalog.filterStatus")}
-                data-testid="catalog-status-filter"
-              >
-                <SelectValue placeholder={t("catalog.allStatuses")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all" data-testid="catalog-status-all">
-                    {t("catalog.allStatuses")}
-                  </SelectItem>
-                  {config.statuses.map((status) => (
-                    <SelectItem
-                      key={status}
-                      value={status}
-                      data-testid={`catalog-status-${status}`}
-                    >
-                      {statusLabel(t, status)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {categories.length > 0 && (
-              <Select
-                value={state.category}
-                onValueChange={(category) => setState({ category, page: 0 })}
-              >
-                <SelectTrigger
-                  className="w-44"
-                  aria-label={t("catalog.block")}
-                  data-testid="catalog-category-filter"
-                >
-                  <SelectValue placeholder={t("catalog.allCategories")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all" data-testid="catalog-category-all">
-                      {t("catalog.allCategories")}
-                    </SelectItem>
-                    {categories.map((entry, index) => (
-                      <SelectItem
-                        key={entry.category}
-                        value={entry.category}
-                        data-testid={`catalog-category-${index}`}
-                      >
-                        {`${categoryLabel(entry.category, t)} (${entry.count})`}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
+            <FilterBar
+              search={{
+                value: search,
+                onChange: setSearch,
+                placeholder: t("resource.search", { resource: title }),
+                testId: "catalog-search",
+              }}
+              selects={selects}
+            />
             {/* The narrowing a link brought, said out loud and removable. */}
             {resource === "connectors" && state.health === "not_ok" ? (
               <Button
@@ -981,58 +954,51 @@ function RecategorizeDialog({
   });
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent data-testid="catalog-recategorize-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("catalog.changeCategory")}</DialogTitle>
-          <DialogDescription>{t("catalog.changeCategoryDescription")}</DialogDescription>
-        </DialogHeader>
-        <Select value={target} onValueChange={setTarget}>
-          <SelectTrigger
-            aria-label={t("catalog.changeCategory")}
-            data-testid="catalog-recategorize-select"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {options.map((category, index) => (
-                <SelectItem
-                  key={category}
-                  value={category}
-                  data-testid={`catalog-recategorize-option-${index}`}
-                >
-                  {categoryLabel(category, t)}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <p className="text-sm" data-testid="catalog-recategorize-slug">
-          {t("catalog.resultingSlug", { slug: nextSlug })}
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={t("catalog.changeCategory")}
+      submit={{
+        label: t("catalog.moveWorkflow"),
+        pending: move.isPending,
+        disabled: nextSlug === slug,
+      }}
+      onSubmit={() => move.mutate()}
+      testId="catalog-recategorize-dialog"
+    >
+      <Select value={target} onValueChange={setTarget}>
+        <SelectTrigger
+          aria-label={t("catalog.changeCategory")}
+          data-testid="catalog-recategorize-select"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {options.map((category, index) => (
+              <SelectItem
+                key={category}
+                value={category}
+                data-testid={`catalog-recategorize-option-${index}`}
+              >
+                {categoryLabel(category, t)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <p className="text-sm" data-testid="catalog-recategorize-slug">
+        {t("catalog.resultingSlug", { slug: nextSlug })}
+      </p>
+      <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
+      {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
+        <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
+          {t("catalog.categoryTooSmall", {
+            count: String(MIN_CATEGORY_SIZE),
+          })}
         </p>
-        <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
-        {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
-          <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
-            {t("catalog.categoryTooSmall", {
-              count: String(MIN_CATEGORY_SIZE),
-            })}
-          </p>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} data-testid="catalog-recategorize-cancel">
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={move.isPending || nextSlug === slug}
-            data-testid="catalog-recategorize-confirm"
-            onClick={() => move.mutate()}
-          >
-            {t("catalog.moveWorkflow")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      )}
+    </FormDialog>
   );
 }
 

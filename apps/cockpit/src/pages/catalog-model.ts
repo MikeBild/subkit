@@ -48,3 +48,23 @@ export function catalogListParams(
   }
   return params;
 }
+
+/** A record of a catalogue, as the engine answers it. */
+export type RecordValue = Record<string, unknown>;
+
+/** What this record is FOR, as its author wrote it. Never a slug and never an
+ *  id: a fallback that prints an identifier answers a different question than
+ *  the one the reader asked. */
+export function recordPurpose(record: RecordValue | undefined): string | null {
+  const value = record?.description;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+/** The record's name, from the first field of its kind that carries one. */
+export function recordTitle(record: RecordValue | undefined): string {
+  for (const key of ["name", "display_name", "title", "filename", "slug"]) {
+    const value = record?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "—";
+}
