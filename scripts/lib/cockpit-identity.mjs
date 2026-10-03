@@ -248,7 +248,8 @@ export function standAt({ baseUrl, refuse, hint = "" }) {
      * @returns the navigation response, for callers that check more than status.
      */
     async visit(page, path, options = { waitUntil: "networkidle" }) {
-      const url = `${baseUrl}/cockpit/${path}`;
+      // A query on the start page (`?run=<id>`) is `/cockpit?…`, never `/cockpit/?…`.
+      const url = path.startsWith("?") ? `${baseUrl}/cockpit${path}` : `${baseUrl}/cockpit/${path}`;
       // Withdrawn before the question, restored only by an answer. Every path
       // out of here that is not the last line leaves this page unnamed.
       named.delete(page);

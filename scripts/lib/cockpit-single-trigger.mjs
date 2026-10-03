@@ -158,3 +158,49 @@ export const TRANSCRIPT = {
   root: '[data-testid="chat-transcript"]',
   content: '[data-testid="message-link"]',
 };
+
+/**
+ * The views already built from the pattern set (spec §6). The heading and
+ * alignment rules of §6 rule 3 and the single-trigger rule of §6 rule 2 run on
+ * each of them; the list grows as the page tracks migrate views, until it
+ * covers every view. `$id` stands for the record the sweep opens.
+ */
+export const PATTERN_MIGRATED_VIEWS = [
+  "workflows",
+  "connectors",
+  "knowledge",
+  "skills",
+  "files",
+  "audit",
+  "usage",
+  "people",
+  "api-access",
+  "settings",
+  "settings?tab=benachrichtigungen",
+  "workflows/$id",
+  // The run sheets: all runs (wide) and one run (default width).
+  "?runs=all",
+  "?run=$id",
+];
+
+/** The migrated view a visited route is, or null. Record ids read as `$id`. */
+export function patternMigratedView(route) {
+  const general = route
+    .replace(/^(workflows|connectors|knowledge|skills|files)\/[^/?#]+$/, "$1/$id")
+    .replace(/^\?run=[^&#]+$/, "?run=$id");
+  return PATTERN_MIGRATED_VIEWS.includes(general) ? general : null;
+}
+
+/** A migrated view that is an overlay: its rules run on the open sheet, not the page. */
+export function isSheetView(view) {
+  return view === "?runs=all" || view === "?run=$id";
+}
+
+/**
+ * The single-trigger root of a migrated view: the open sheet for the run
+ * sheets, the record for a detail page, the page for every other view.
+ */
+export function patternViewRoot(view) {
+  if (isSheetView(view)) return "[data-sheet-size]";
+  return view.includes("/") ? '[data-family-surface="detail"]' : "main[data-page-kind]";
+}

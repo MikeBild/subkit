@@ -1,10 +1,9 @@
-// Zugangsdaten against the installation production actually had.
+// API-Zugang against the installation production actually had.
 //
 // A deploy verifier registered an OAuth client on every run and never came
 // back: ~500 registrations nobody holds a grant for, against four real
 // applications. Listed flat, the real applications drowned, and the section
-// below them — where the OAuth callback and the old `/connections` address
-// land — sat out of reach. The sections are tabs now, each at its own
+// below them sat out of reach. The sections are tabs now, each at its own
 // address (`?section=clients|keys|grants`), the pattern of Personen & Rechte:
 // tabs on a wide screen, a select on a phone.
 //
@@ -14,8 +13,8 @@
 // order, and only a count someone acts on; a phone gets the select; the real
 // applications lead, the dead ones are one collapsed line with their count
 // and are not even mounted; the live keys lead with the revoked ones
-// collapsed; no command line and no token endpoint stand on any tab; and the
-// redirect from `/connections` opens the grants tab with its sentence.
+// collapsed; no command line and no token endpoint stand on any tab; and a
+// connector sign-in that comes back to the connectors list says its result.
 
 const TAB_NAMES = {
   de: ["Apps mit Zugriff auf SubKit", "Schlüssel für Skripte", "Zugriff in deinem Namen"],
@@ -180,14 +179,15 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   for (const retired of RETIRED_NAMES[locale])
     if (text.includes(retired)) throw new Error(`${where}: the retired name "${retired}" stands`);
 
-  // The old address lands on the grants tab, with the sentence its query carried.
-  await stand.visit(page, "connections?failed=denied&name=Postfach");
-  await page.getByTestId("connection-failed").waitFor({ state: "visible" });
-  // The tab strip is in the DOM at every width (hidden on a phone), so its
-  // selection says which section the address opened.
-  const selected = await page.getByTestId("api-access-tab-grants").getAttribute("aria-selected");
-  if (selected !== "true")
-    throw new Error(`/connections → /api-access (${locale}): the grants tab is not the open one`);
-  if (!(await page.getByTestId("connection-failed").innerText()).includes("Postfach"))
-    throw new Error(`/connections → /api-access (${locale}): the callback sentence lost its name`);
+  // A sign-in comes back to the connectors list with its result in the query;
+  // the list says it once, with the name it carried.
+  await stand.visit(page, "connectors?failed=denied&name=Postfach");
+  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Postfach" });
+  try {
+    await toast.first().waitFor({ state: "visible", timeout: 10_000 });
+  } catch {
+    throw new Error(`/connectors?failed=… (${locale}): the callback sentence lost its name`);
+  }
+  if (new URL(page.url()).searchParams.has("failed"))
+    throw new Error(`/connectors?failed=… (${locale}): the callback's words stay in the address`);
 }
