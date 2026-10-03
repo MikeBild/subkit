@@ -98,7 +98,7 @@ const ALLOWED: Record<string, readonly Rule[]> = {
 };
 
 /** The size of ALLOWED when it was written. Lower it as entries go; never raise it. */
-const CEILING = 52;
+const CEILING = 35;
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {

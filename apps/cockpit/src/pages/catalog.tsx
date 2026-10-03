@@ -60,8 +60,6 @@ interface CatalogState {
   category: string;
   /** Workflows only: the connector slug whose users are being listed. */
   connector: string;
-  /** Files only: the resource a file is attached to. */
-  linkedTo: string;
   /**
    * Connectors only: the narrowing the health tile's link brings. Never typed,
    * so it has no control of its own — only the chip that says so and lifts it.
@@ -120,7 +118,6 @@ function parseState(config: CatalogConfig): CatalogState {
     status: params.get("status") ?? "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
-    linkedTo: params.get("linked_to") ?? "",
     health:
       config.endpoint === "/v1/connectors"
         ? connectorHealthFilterFromUrl(window.location.search)
@@ -147,7 +144,6 @@ function useCatalogState(config: CatalogConfig) {
         if (next.status !== "all") params.set("status", next.status);
         if (next.category !== "all") params.set("category", next.category);
         if (next.connector) params.set("connector", next.connector);
-        if (next.linkedTo) params.set("linked_to", next.linkedTo);
         if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
@@ -495,7 +491,6 @@ export function CatalogPage({
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    Boolean(state.linkedTo) ||
     state.health !== null;
 
   const showsZeroStateAction =
@@ -512,7 +507,6 @@ export function CatalogPage({
       status: "all",
       category: "all",
       connector: "",
-      linkedTo: "",
       health: null,
       page: 0,
     });
