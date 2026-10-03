@@ -88,9 +88,6 @@ const MOUNT_MARKERS = {
   // The old Zugriff address: a redirect to the roles of Personen & Rechte.
   access: '[data-testid="admin-people"]',
   "api-access": '[data-testid="admin-api-access"]',
-  // The old Kontoverbindungen address: a redirect, marked by where it lands.
-  connections: '[data-testid="admin-api-access"]',
-  notifications: '[data-testid="admin-notifications"]',
   settings: '[data-testid="admin-settings"]',
   workflows: '[data-testid="catalog-workflows"]',
   connectors: '[data-testid="catalog-connectors"]',
@@ -102,13 +99,6 @@ const MOUNT_MARKERS = {
   "knowledge/$resourceId": '[data-testid="detail-knowledge"]',
   "skills/$resourceId": '[data-testid="detail-skills"]',
   "files/$resourceId": '[data-testid="detail-files"]',
-  // A run's own address is the LIST with one row's sheet open, not a second
-  // page, so the marker is the list's. Without the entry the fallback builds
-  // `[data-testid="resource-runs/$resourceId"]` out of the route string — a
-  // selector nothing can ever match, and a sweep that fails at the door tells
-  // nobody which of the two it was: a broken page, or a table that had not
-  // been told the page exists.
-  "runs/$resourceId": '[data-testid="resource-runs"]',
 };
 
 const NOW = Date.now();
@@ -468,7 +458,7 @@ const ATTENTION_ITEMS = [
       },
       {
         verb: "open_runs",
-        href: `/cockpit/runs?workflow_id=${ID}&status=failed`,
+        href: `/cockpit?runs=all&workflow_id=${ID}&status=failed`,
         primary: false,
         permission: "execution:read",
       },
@@ -1174,8 +1164,8 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
           failed: 2,
           finished: 22,
           success_rate_percent: 91,
-          href: `/cockpit/runs?${new URLSearchParams(window)}`,
-          failed_href: `/cockpit/runs?${new URLSearchParams({ status: "failed", ...window })}`,
+          href: `/cockpit?${new URLSearchParams({ runs: "all", ...window })}`,
+          failed_href: `/cockpit?${new URLSearchParams({ runs: "all", status: "failed", ...window })}`,
         },
         connectors: {
           enabled: rows.length,
@@ -1909,7 +1899,7 @@ async function checkFavicon(page) {
     );
 }
 
-/** §6 — the admin navigation group is called "Installation", never "Administration". */
+/** §6 — the admin navigation group is called "Verwaltung". */
 async function checkAdminGroupName(page) {
   const group = page.locator('[data-testid="nav-group-admin"]');
   if ((await group.count()) === 0) {
@@ -1917,13 +1907,13 @@ async function checkAdminGroupName(page) {
     return;
   }
   const label = (await group.first().innerText()).split("\n")[0]?.trim() ?? "";
-  if (label !== "Installation") breach("§6", "/overview · nav-group-admin", label);
+  if (label !== "Verwaltung") breach("§6", "/overview · nav-group-admin", label);
 }
 
 /**
- * §6 — the installation section, in the order of its questions: how it runs
- * and costs, how it is configured, who holds and grants rights, what is
- * announced, what happened.
+ * §6 — Verwaltung, in the order of its questions: what you read first (what it
+ * costs, what happened), then what you configure (who may do what, the keys
+ * and apps with access, the settings — notifications are one of their tabs).
  *
  * "System" is not among them any more, and its absence is asserted: it was a
  * third place for the health state, which Übersicht now says once — a line when
@@ -1931,11 +1921,10 @@ async function checkAdminGroupName(page) {
  */
 const INSTALLATION_ENTRIES = [
   "Nutzung",
-  "Einstellungen",
-  "Zugangsdaten",
-  "Personen & Rechte",
-  "Benachrichtigungen",
   "Audit",
+  "Personen & Rechte",
+  "API-Zugang",
+  "Einstellungen",
 ];
 
 async function checkInstallationEntries(page) {
@@ -1989,9 +1978,16 @@ async function checkOverviewNavEntry(page) {
     return {
       groupHeading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
       first: links[0]?.getAttribute("data-testid") ?? null,
-      gone: ["nav-decisions", "nav-operations"].filter((id) =>
-        document.querySelector(`[data-testid="${id}"]`),
-      ),
+      // Runs are a sheet over Übersicht, skills and files tabs of Wissen,
+      // notifications a tab of Einstellungen: none has an entry of its own.
+      gone: [
+        "nav-decisions",
+        "nav-operations",
+        "nav-runs",
+        "nav-skills",
+        "nav-files",
+        "nav-notifications",
+      ].filter((id) => document.querySelector(`[data-testid="${id}"]`)),
     };
   });
   if (placement?.groupHeading)
@@ -3122,7 +3118,7 @@ const RESUME_LINE =
   "Du hast den Konnektor \u201eReporting API 1\u201c in prod entworfen, aber noch nicht geprobt.";
 
 /**
- * §11 — Zugangsdaten is the one rights page, and it names what it holds.
+ * §11 — API-Zugang is the one rights page, and it names what it holds.
  *
  * The word "Anbindung" meant three things (outbound grants, inbound clients, a
  * deleted connector) and is gone; a key's rights are words with a risk, never
@@ -3148,8 +3144,10 @@ async function checkRightsPage(page) {
     breach("§6", where, `the sections are ${tabs.join(", ") || "no tabs"}`);
   if ((await page.locator('[data-testid="api-access-index"]').count()) > 0)
     breach("§6", where, "an index of anchors stands above the sections instead of tabs");
+  // A page description is gone (spec §5): the title and the tabs say what the
+  // page is for, and a sentence above them only pushed the list down.
   const intro = await page.evaluate(() => document.body.innerText);
-  if (!intro.includes(RIGHTS_INTRO)) breach("§5", where, "the page does not say what it is for");
+  if (intro.includes(RIGHTS_INTRO)) breach("§5", where, "the page description is back");
   // A tab carries only a count someone acts on, in words — the fixture holds
   // two keys that need a decision and three grants that ask for "Erneuern";
   // the apps have none.
@@ -3260,7 +3258,7 @@ async function checkRightsKeys(page, where) {
     };
   });
   if (shape.taskList > 0)
-    breach("§1", where, "a second task list stands on Zugangsdaten — tasks live on Übersicht");
+    breach("§1", where, "a second task list stands on API-Zugang — tasks live on Übersicht");
   if (shape.guide !== "/llms/developers/token-exchange.md")
     breach("§5", `${where} · Schlüssel`, `the developer link leads to "${shape.guide}"`);
   if (shape.expiredChip !== "abgelaufen")
@@ -3362,7 +3360,8 @@ async function checkWorkflowListHealth(page) {
 /**
  * The old Zugriff address lands on the roles of Personen & Rechte: the page it
  * was is a section now, and the section is in the address. Its tabs said
- * "Zuweisungen"; the section is "Freigaben".
+ * "Zuweisungen"; the section is "Zugriffe" — "Freigabe" is a workflow's
+ * approval and nothing else.
  */
 async function checkAccessRedirect(context) {
   const page = await context.newPage();
@@ -3381,7 +3380,7 @@ async function checkAccessRedirect(context) {
         (tab) => tab.textContent?.trim() ?? "",
       ),
     );
-    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Freigaben")
+    if (tabs.join("|") !== "Personen|Rollen|Gruppen|Zugriffe")
       breach("§6", "/people", `sections are ${tabs.join(", ")}`);
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;
@@ -3392,31 +3391,25 @@ async function checkAccessRedirect(context) {
 }
 
 /**
- * The old Kontoverbindungen address still lands — with its query. An OAuth
- * callback issued before the move arrives at `/connections?failed=…`, and the
- * sentence it carries is the only place the person learns what happened.
+ * A connector sign-in comes back to the connectors list with its result in the
+ * query, and the list says it once — the only place the person learns what
+ * happened — then drops those words from the address so a reload is quiet.
  */
-async function checkConnectionsRedirect(context) {
+async function checkConnectorCallback(context) {
+  const where = "/connectors?failed=denied";
   const page = await context.newPage();
   try {
-    await stand.visit(page, "connections?failed=denied&name=wiki");
-    await page
-      .locator('[data-testid="connection-failed"]')
-      .waitFor({ state: "visible", timeout: 15_000 });
+    await stand.visit(page, "connectors?failed=denied&name=wiki");
+    const toast = page.locator("[data-sonner-toast]").filter({ hasText: "wiki" });
+    await toast.first().waitFor({ state: "visible", timeout: 15_000 });
     const url = new URL(page.url());
-    if (url.pathname !== "/cockpit/api-access")
-      breach("§6", "/connections", `lands on ${url.pathname} instead of /cockpit/api-access`);
-    if (url.searchParams.get("section") !== "grants")
-      breach("§6", "/connections", "the redirect lost section=grants");
-    const sentence = await page.locator('[data-testid="connection-failed"]').innerText();
-    if (!sentence.includes("wiki"))
-      breach("§6", "/connections", `the callback sentence lost its name: "${sentence}"`);
+    if (url.pathname !== "/cockpit/connectors")
+      breach("§6", where, `lands on ${url.pathname} instead of /cockpit/connectors`);
+    if (url.searchParams.has("failed") || url.searchParams.has("name"))
+      breach("§6", where, "the callback's words stay in the address and repeat on reload");
   } catch (error) {
-    breach(
-      "§6",
-      "/connections?failed=denied",
-      `the callback sentence is not shown: ${error.message}`,
-    );
+    if (error instanceof NichtGemessen) throw error;
+    breach("§6", where, `the callback sentence is not shown: ${error.message}`);
   } finally {
     await page.close();
   }
@@ -3761,9 +3754,9 @@ async function checkRowsOpenByTheirName(page, where) {
  * place, this is the only chance to read it.
  */
 async function sweepDetailSurface(page, route) {
-  // A route that IS the detail surface has nothing to open: `/runs/<id>` is
-  // the run log with that run's sheet already showing, which is the whole
-  // point of giving a run an address. Trying to click a row there fails on
+  // A route that IS the detail surface has nothing to open: a record address
+  // may show its sheet already, which is the whole point of giving a record an
+  // address. Trying to click a row there fails on
   // the open dialog intercepting the pointer, and the message — "the surface
   // exists and this run could not reach it" — would be exactly backwards: the
   // run reached it by address, which is what was being tested.
@@ -4207,7 +4200,7 @@ try {
   await checkSidebarToggle(workflowList, "/workflows");
   await checkWorkflowListHealth(workflowList);
   await workflowList.close();
-  await checkConnectionsRedirect(context);
+  await checkConnectorCallback(context);
   await checkAccessRedirect(context);
 
   const connector = await openPage(context, "connectors/$resourceId");
