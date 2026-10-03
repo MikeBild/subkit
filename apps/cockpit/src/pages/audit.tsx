@@ -3,6 +3,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
   Button,
@@ -20,11 +21,12 @@ import {
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
-import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
+import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { type ListParams, useInfiniteList } from "@/lib/use-infinite-list";
 import { windowFilterLabel } from "@/lib/window-filter";
 import {
   AUDIT_LINK_KEYS,
@@ -36,7 +38,6 @@ import {
   auditEvidenceBlocks,
   auditFilterFromUrl,
   auditLinkParams,
-  auditReasonLabel,
   auditResourceHref,
   auditResourceLabel,
   auditResultFromUrl,
@@ -50,9 +51,6 @@ import {
 } from "@/pages/audit-model";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
-type AuditList = components["schemas"]["AuditLogListResponse"];
-
-const PAGE_SIZE = 50;
 const RESULTS = ["success", "denied", "error"] as const;
 const SCOPES = ["all", "operations", "decisions"] as const satisfies readonly AuditScope[];
 
@@ -151,13 +149,14 @@ function AuditDetail({
 }
 
 /**
- * The audit log is the one list the engine pages by cursor: it has no `total`
- * and no offset, only `before`. The page therefore keeps the cursor it was
- * handed for each step and never claims a count it was not given.
+ * The audit log (V9), newest first, loaded endlessly by the engine's cursor.
+ * It has no `total`, so the summary line counts what is loaded and says "more"
+ * while the engine has another page — never a count it was not given.
  */
 export function AuditPage() {
   const { t, dateTime } = useI18n();
   const session = useSession();
+  const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("audit:read");
   const title = t("resource.audit.title");
   // A failure count arrives with `?result=error`: it opens the failures it
@@ -179,8 +178,6 @@ export function AuditPage() {
       (linked.resourceType || linked.traceId || linked.actions.length > 0 ? "all" : "decisions"),
   );
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   // The row a reader opened: the sheet shows the fields the table leaves out,
   // including the before/after snapshots that say what a change changed.
   const [selected, setSelected] = useState<AuditEntry | null>(null);
@@ -196,12 +193,14 @@ export function AuditPage() {
       apiRequest<{ items?: Array<{ id: string; email?: string; name?: string }> }>(
         "/v1/identity/users?limit=200",
       ),
+    ...live,
   });
   const accounts = useQuery({
     queryKey: ["audit-directory", "system-accounts"],
     enabled: allowed && directoryReadable,
     queryFn: () =>
       apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
+    ...live,
   });
   const directory = useMemo(() => {
     const byId = new Map<string, string>();
@@ -216,25 +215,19 @@ export function AuditPage() {
     return byId;
   }, [people.data, accounts.data]);
 
-  const query = useQuery({
-    queryKey: ["audit", result, scope, linked, page, cursors[page]],
-    enabled: allowed,
-    queryFn: () => {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (result !== "all") params.set("result", result);
-      // The engine filters on `action` and takes a list, so the scope is a
-      // query and not a sieve over an already-paged answer.
-      for (const [key, value] of Object.entries(auditScopeParams(scope))) params.set(key, value);
-      // Narrowed server-side: the engine matches `trace_id`, `resource_type`
-      // and `resource_id` exactly, and this is the whole point of carrying them.
-      for (const [key, value] of Object.entries(auditLinkParams(linked))) params.set(key, value);
-      const before = cursors[page];
-      if (before) params.set("before", before);
-      return apiRequest<AuditList>(`/v1/audit-log?${params}`);
-    },
-  });
-
-  const items = useMemo(() => query.data?.items ?? [], [query.data]);
+  // Narrowed server-side: the scope is a list of verbs, and a link's trace,
+  // record and window are matched exactly by the engine.
+  const params = useMemo<ListParams>(
+    () => ({
+      ...(result !== "all" ? { result } : {}),
+      ...auditScopeParams(scope),
+      ...auditLinkParams(linked),
+    }),
+    [result, scope, linked],
+  );
+  const list = useInfiniteList<AuditEntry>("/v1/audit-log", params, { enabled: allowed });
+  const query = list.query;
+  const items = list.items;
   // The engine matches `action` exactly, so the free-text box narrows the rows
   // already on screen — by the words displayed and by the engine's token.
   const rows = useMemo(() => {
@@ -254,44 +247,30 @@ export function AuditPage() {
   const columns = useMemo<CockpitColumn<AuditEntry>[]>(() => {
     const column = tableColumns<AuditEntry>({ t, dateTime });
     return [
-      column.date("ts", (entry) => entry.ts, t("audit.column.time"), {
-        width: "w-[18%]",
-      }),
-      // The verb, named. The engine's own string stays reachable as the cell's
-      // title, because that is what an operator quotes in a ticket.
+      // What happened, to what kind of record. The engine's own verb stays
+      // reachable as the cell's title, because that is what an operator quotes.
       column.custom(
         "action",
         (entry) => entry.action,
-        t("audit.column.operation"),
+        t("audit.column.event"),
         (entry) => {
           const label = auditActionLabel(entry.action);
+          const kind = auditResourceLabel(entry.resource_type, t).text;
           return label.kind === "named" ? (
-            <span title={entry.action}>{t(label.key)}</span>
+            <span className="block break-words" title={entry.action}>
+              {t(label.key)}
+              <span className="text-muted-foreground"> · {kind}</span>
+            </span>
           ) : (
-            <span title={entry.action} className="font-mono text-xs" data-testid="audit-action-raw">
-              {label.value}
+            <span className="block break-words" title={entry.action}>
+              <span className="font-mono text-xs" data-testid="audit-action-raw">
+                {label.value}
+              </span>
+              <span className="text-muted-foreground"> · {kind}</span>
             </span>
           );
         },
-        { width: "w-[22%]" },
-      ),
-      column.link(
-        "resource",
-        (entry): Relation | null => ({
-          href: auditResourceHref(entry.resource_type, entry.resource_id),
-          label: auditResourceLabel(entry.resource_type, t).text,
-        }),
-        t("audit.column.resource"),
-        { width: "w-[14%]" },
-      ),
-      column.custom(
-        "result",
-        (entry) => entry.result,
-        t("audit.column.result"),
-        (entry) => (
-          <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />
-        ),
-        { width: "w-[11%]" },
+        { width: "w-[44%]" },
       ),
       column.custom(
         "actor",
@@ -300,25 +279,25 @@ export function AuditPage() {
         (entry) => {
           const actor = auditActorName(entry, directory, t);
           return actor ? (
-            <span className="truncate" data-testid="audit-actor">
+            <span className="block truncate" data-testid="audit-actor">
               <LabelText label={actor} />
             </span>
           ) : (
             MISSING
           );
         },
-        { width: "w-[15%]" },
-      ),
-      column.custom(
-        "reason",
-        (entry) => entry.reason,
-        t("audit.column.reason"),
-        (entry) => {
-          const reason = auditReasonLabel(entry.reason, t);
-          return reason ? <LabelText label={reason} /> : MISSING;
-        },
         { width: "w-[20%]" },
       ),
+      column.custom(
+        "result",
+        (entry) => entry.result,
+        t("audit.column.result"),
+        (entry) => (
+          <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />
+        ),
+        { width: "w-[16%]" },
+      ),
+      column.date("ts", (entry) => entry.ts, t("audit.column.time"), { width: "w-[20%]" }),
     ];
   }, [t, dateTime, directory]);
 
@@ -355,8 +334,6 @@ export function AuditPage() {
     (part: Partial<typeof linked>, keys: readonly string[]) => {
       setLinked((current) => ({ ...current, ...part }));
       forgetInAddress(keys);
-      setPage(0);
-      setCursors([undefined]);
     },
     [forgetInAddress],
   );
@@ -374,8 +351,6 @@ export function AuditPage() {
       ...AUDIT_LINK_KEYS.window,
       "scope",
     ]);
-    setPage(0);
-    setCursors([undefined]);
   }, [forgetInAddress]);
 
   const header = <PageHeader title={title} />;
@@ -399,7 +374,20 @@ export function AuditPage() {
       <div className="shrink-0 pb-3">
         <SummaryLine
           testId="audit-summary"
-          text={<span data-testid="audit-scope-note">{t("audit.summary")}</span>}
+          text={
+            <span data-testid="audit-scope-note">
+              {query.isPending
+                ? t("audit.summary")
+                : t(
+                    list.infinite.hasNextPage
+                      ? "audit.countMore"
+                      : items.length === 1
+                        ? "audit.count.one"
+                        : "audit.count",
+                    { count: items.length },
+                  )}
+            </span>
+          }
           help={t("audit.coverageNote")}
         />
       </div>
@@ -425,8 +413,6 @@ export function AuditPage() {
                   onChange: (next) => {
                     if (!isAuditScope(next)) return;
                     setScope(next);
-                    setPage(0);
-                    setCursors([undefined]);
                   },
                   options: SCOPES.map((value) => ({ value, label: t(SCOPE_KEYS[value]) })),
                 },
@@ -434,11 +420,7 @@ export function AuditPage() {
                   value: result,
                   label: t("audit.filterResult"),
                   testId: "audit-result-filter",
-                  onChange: (next) => {
-                    setResult(next);
-                    setPage(0);
-                    setCursors([undefined]);
-                  },
+                  onChange: setResult,
                   options: [
                     { value: "all", label: t("audit.allResults") },
                     ...RESULTS.map((value) => ({
@@ -546,27 +528,10 @@ export function AuditPage() {
             time: dateTime(entry.ts),
           })
         }
-        mode="cursor"
-        page={page}
-        pageSize={PAGE_SIZE}
-        hasNext={Boolean(query.data?.next_cursor)}
-        onPageChange={(next) => {
-          if (next > page) {
-            const cursor = query.data?.next_cursor;
-            if (!cursor) return;
-            setCursors((current) => {
-              const copy = [...current];
-              copy[next] = cursor;
-              return copy;
-            });
-          }
-          setPage(Math.max(0, next));
-        }}
-        previousLabel={t("catalog.previous")}
-        nextLabel={t("catalog.next")}
+        infinite={list.infinite}
+        getRowId={(entry) => entry.id}
         columnsLabel={t("catalog.columns")}
         recordsLabel={t("catalog.records")}
-        loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
       />
 
