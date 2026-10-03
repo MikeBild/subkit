@@ -88,17 +88,24 @@ Every table stays `table-fixed` inside `overflow-x-clip` (`src/components/ui/tab
 column declares its own width through `columnDef.meta.width`, and cells wrap instead of pushing the
 page sideways. A column that cannot state a width does not belong in the set.
 
-One page frame (`src/components/cockpit/page-frame.tsx`) and one table
-(`src/components/cockpit/data-table.tsx`) render every list. The frame owns the heading, the single
-primary action and which element scrolls; the table owns the toolbar strip, the column picker,
+Pages compose one closed set of patterns in `src/components/cockpit/patterns/` (P1–P19:
+`Page`, `PageHeader`, `StatusStrip`, `PageTabs`/`RouteTabs`, `SummaryLine`, `DataTable`,
+`FilterBar`, `RecordSheet`, `FactList`, `Section`/`CollapsibleSection`, `StatusBadge`, `DataState`,
+`ConfirmDialog`, `FormDialog`, `CopyField`/`CodeBlock`, `ActionMenu`, `SegmentedControl`,
+`ContextHelp`, `ChatCard`). Only the patterns import `src/components/ui/*`; a page that renders a raw
+heading, `<pre>`, `<dl>`, `SheetContent` or a `max-w-*` width breaks
+`src/app/pattern-imports.test.ts`. Files that still do are listed there with the rules they break,
+and the list only shrinks. `Page` owns width, padding and which element scrolls; `PageHeader` owns
+the one h1, the back link, the badge and the actions. The table
+(`src/components/cockpit/patterns/data-table.tsx`) owns the toolbar strip, the column picker,
 refresh, sorting, paging and all four load states. Refresh sits in the table's own action column
 rather than in the page header, because it acts on the rows and not on the page. Cell shapes — text,
 state, date, size, relation link and relation chips — come from
-`src/components/cockpit/table-columns.tsx` so a date on Runs and a date on Files cannot drift apart.
+`src/components/cockpit/table-columns.tsx` so a date on one list and a date on another cannot drift
+apart.
 
-The page description is opt-in: a visible sentence under the heading only where the title does not
-already say what the page is for (Connectors, Skills, Notifications). A description that repeats
-the title is removed.
+Pages carry no description under their heading: the title says what the page is for, and an
+explanation that is needed goes behind a (?) (`ContextHelp`), one sentence long.
 A list's primary action heads the page only while the list has rows; an empty list carries it in its
 empty state, so the same button never stands twice. A row opens by its name: the name cell is a real
 `<a href>` to the record's own address (a button where the record opens in place and has none), so
@@ -106,8 +113,9 @@ the keyboard, a screen reader and "open in new tab" all reach it; the whole row 
 pointer convenience that ignores clicks on controls inside it, and the row itself is no tab stop.
 There is no "Open" button in a row. A mobile card is not a button: its title is the link, and its row
 actions are shown on the card as well. The "⋯" glyph is reserved for a real menu of several further
-actions; a single further act is a named button. The breadcrumb stands only on a record's page, as
-"List › Record", and its list crumb is the way back.
+actions; a single further act is a named button. There is no breadcrumb: a record's page carries one
+muted back link, "‹ {Liste}", above its h1 inside the page header, and it never repeats the record's
+name.
 
 Tasks live on one page only: the Übersicht, the start page. Under its operations bar it lists what
 needs the reader — one sentence per subject with one primary action and at most one secondary link —
@@ -120,6 +128,47 @@ Every read has four states — loading, error, empty, ready — decided once by 
 do, retry), never the empty state it would otherwise fall through to. Addresses come from the
 builders in `src/app/links.ts`, router-relative, with `absolute()` only for a raw `href`; each builder
 is tested against the parser its page reads it back with.
+
+### Information architecture
+
+The sidebar holds Übersicht and Chat without a heading, then **Automatisierung** (Workflows,
+Konnektoren, Wissen) and **Verwaltung** (Nutzung, Audit, Personen & Rechte, API-Zugang,
+Einstellungen); the logo leads to Übersicht. Wissen is one entry whose tabs are pages of their own —
+Quellen `/knowledge`, Skills `/skills`, Dateien `/files` — so the entry is active on all three.
+Benachrichtigungen is a tab of Einstellungen (`/settings?tab=benachrichtigungen`). There is no run
+page: all runs open as the large sheet `?runs=all` and one run as the sheet `?run=<id>`, on whichever
+view asked for them, so an address that names a run keeps the page underneath. A connector sign-in
+returns to the connectors list with its result. The old addresses `/runs`, `/connections` and
+`/notifications` have no route: every producer — the engine's attention entries, figures and the
+OAuth callback included — writes the new ones. A tab lives in the address (`?tab=` / `?section=`),
+the first tab is the default and is left out, and choosing one replaces the history entry.
+
+Layout, checked on a screenshot:
+
+- Lists (and Übersicht, Einstellungen) take a `max-w-[1280px]` column, records `max-w-[880px]`;
+  both are left-aligned, never centred, so the left edge stays where it is from list to record. The
+  content padding is `px-6` (`px-4` below `sm`). Chat is the one exception, a centred reading column.
+- Header `pt-6 pb-4`; back link → title row `gap-1`; title → purpose `mt-1`; header → strip `mt-4`;
+  strip → tabs `mt-6`; tabs → summary line `mt-4`; summary line → list `mt-3`; sections `gap-8`,
+  collapsed sections `gap-2`, blocks inside a sheet `gap-6`. No band between header and tabs: the tab
+  bar is the only divider.
+- One h1 per page, in `PageHeader`. Tabs are not headings; a section label is
+  `text-xs font-medium text-muted-foreground` and never repeats the tab or the h1. No text stands
+  twice as a heading on one screen.
+- Back link, h1 row, strip, tab bar, summary line and table share one left edge (±2 px); the page's
+  actions are centred on the h1 row and never pushed down by a wrapping purpose line.
+- Buttons in headers, strips, sheets and dialogs are `size="default"`; row actions and segmented
+  controls are `size="sm"`; icon-only buttons are `size="icon"` with a label and a tooltip. At most
+  one filled button per view; destructive styling only in a confirmation.
+- Rows are `h-11`; the name cell is the link and the chevron stands in the last column.
+- Sheets are `sm:max-w-xl`, or `sm:max-w-5xl` for all runs; dialogs `sm:max-w-lg` (an approval
+  `sm:max-w-xl`).
+- Empty, loading and error are one line plus one action, left-aligned (`DataState`); loading is
+  three `h-11` skeleton rows; an error reads "… konnte nicht geladen werden." with "Erneut versuchen".
+- A status is a dot and a word (`StatusBadge`); a plain badge has no dot, and a category is text.
+
+`scripts/verify-cockpit-visual.mjs` checks the migrated views for one h1, no duplicated heading
+text, one left edge, centred actions, one filled button and the two sheet widths.
 
 ### Übersicht — operations bar and attention list
 
@@ -274,15 +323,14 @@ There is no decisions page and no system page. Each fact they showed has one hom
 
 ### Installation pages
 
-**Zugangsdaten** (`/api-access`) is the one page for everything that holds or grants rights. One
-sentence says what it is for ("Wer darf auf SubKit zugreifen — und worauf greift SubKit in deinem
-Namen zu."), and its three sections are named for when one needs them, each with an example:
+**API-Zugang** (`/api-access`) is the one page for everything that holds or grants rights. Its
+sections are named for when one needs them, each with an example:
 **Apps mit Zugriff auf SubKit** (Claude, ChatGPT — added from the app itself; the empty state links
 the guide), **Schlüssel für Skripte** (a script, a cron job, CI; "Schlüssel erstellen") and **Zugriff
 in deinem Namen** (SubKit uses another system on the reader's behalf; "Verbinden"). They are tabs in
 the pattern of Personen & Rechte — a tab strip on a wide screen, a select on a phone — each at its
-own address, `?section=clients|keys|grants`; the bare address opens the apps, the OAuth callback and
-the old `/connections` address land on `grants`. A tab carries a count only when someone acts on it
+own address, `?section=clients|keys|grants`; the bare address opens the apps. The OAuth callback
+lands on the connectors list, which says the result once. A tab carries a count only when someone acts on it
 ("2 laufen ab", "1 erneuern"); the totals stand as a line inside the section. The rights SubKit holds
 on another system read "N Rechte" with the raw values behind "Details anzeigen", and carry no risk
 word — the words "liest", "schreibt", "verwaltet" come from SubKit's own catalogue, which cannot judge
@@ -291,8 +339,9 @@ is one link to the developer guide. (The one deliberate exception in the Cockpit
 on a workflow's page — see "Workflow page" below: there the call IS the fact the reader came for.) It carries no attention list of its own — that would be a second
 task list. Keys and connections show their state as chips; renewing stays a row action.
 
-**Personen & Rechte** (`/people`) is the one page for people, roles, groups and grants, each section
-addressable as `?section=people|roles|groups|grants`. The entry shows for `identity:read` or
+**Personen & Rechte** (`/people`) is the one page for people, roles, groups and access — the tab
+"Zugriffe" ("Zugriff erteilen", "Zugriff entziehen"), because "Freigabe" names the approval of a
+workflow and nothing else — each section addressable as `?section=people|roles|groups|grants`. The entry shows for `identity:read` or
 `rbac:read`, and each section is behind its own read.
 
 **Einstellungen** (`/settings`, `src/pages/settings.tsx`) lists every section of the engine's
@@ -329,38 +378,20 @@ and the filter.
 
 ### Workflow page
 
-A workflow's page (`src/components/cockpit/workflow-page.tsx`) answers, top to bottom, the questions
-a reader arrives with: may it run on its own → how is it called → what does it take and return →
-what does it do → how has it been doing. Everything a reader does not decide by is folded below.
+A workflow's page (`src/components/cockpit/workflow-page.tsx`) is a `PageHeader` ("‹ Workflows",
+the name, the health mark, "Ausführen" as the one filled action, "Im Chat ändern" as outline and the
+rest behind "⋯"), one `StatusStrip` and four tabs at `?tab=` — the structure the page is rebuilt to:
 
-1. **Header.** The name, the health mark and the author's one-line purpose. It carries the page's
-   own actions and nothing else: "Ausführen", the one filled action, where the workflow can be
-   run; "Im Chat ändern", "Zu diesem Workflow fragen" and "Umbenennen" behind "⋯" — a
-   single remaining one is a named button. What may be edited where is a tooltip, not a row of
-   its own. No state puts a further action here: approving, applying, repairing and resuming are
-   the panel's, the remedy for a failure is the cause block's.
-2. **Automatischer Betrieb** — one state, one action (below), offered here and nowhere else on
-   the page.
-3. **Aufrufen** — tabs for the ways that exist: HTTP, Webhook, MCP, Zeitplan, CLI. A hook or a
-   schedule is a tab only when one is bound; the tab a reader lands on is the workflow's effective
-   trigger. HTTP shows the address, a ready-to-paste call (curl, Node, Python; production by
-   default, the environment always in the call), one line of answers (200 / 202 / 409) and one
-   line of plain text on what the call will be, taken from the panel's verdict: nothing where the panel shows
-   the environment as approved, "only a trial run" where no approval exists, "an approval is
-   stored but not confirmed here" where one exists and the panel does not say approved — the
-   engine's own field only says that an approval is stored — and "refused" for a version in an
-   earlier format. A held hook or schedule says so with a badge. Neither the line nor the badge
-   links to the approval: the block shows the status, the panel carries the trigger. A list the
-   reader may not see (webhooks, schedules) is not a missing tab passed over in silence: one line
-   under the tabs says it cannot be shown and that there may be some.
-4. **Eingabe | Ausgabe** — the schema as a table: field, type, required, example; allowed values
-   and the description under the name; an object's own fields one level deep. One line says that
-   input goes in the body under `input` and that there are no query parameters; for a hook-started
-   workflow one more says that the caller's body arrives as `input.body`.
-5. **Schritte** — one compact row per step: number, id, kind, one line on what it does, how it last
-   ended. Opening a row shows the whole configuration, the last result and the step's own preview.
-6. **Letzte Läufe**, then folded: **Technische Angaben** (slug, version, lifecycle, created,
-   changed, last run), **Frühere Freigaben**, and **Unterhaltungen dazu**.
+| Tab | Summary line | Main element | Collapsed |
+|---|---|---|---|
+| Verwenden | effective trigger and approval verdict | call type as a segmented control (HTTP · Webhook · MCP · Zeitplan · CLI) with `CopyField` / `CodeBlock` | Eingabe & Ausgabe |
+| Verlauf | runs and failures over seven days | the recent runs as a table | none |
+| Aufbau | version · step count · connectors | the steps as a table | Technische Angaben, Unterhaltungen dazu |
+| Freigaben | current approval and its duration | the approvals, current and former, each with "Widerrufen" | none |
+
+The strip shows the topmost state only — Gestoppt › Wartet auf Freigabe › Schlägt fehl › Freigabe
+läuft ab › Reparatur vorbereitet › ok — with its one action; lower states are a "+1 weiteres"
+behind (?). Approving lives in the strip only.
 
 An unhealthy workflow keeps its cause block between the header and the panel. Its next step is an
 outline action there and only there — the page's one filled action stays "Ausführen". Where the
@@ -604,8 +635,7 @@ option in one line; the full gate matrix (§14) sits behind "Was heißt das?" be
 of under it on every conversation. A running conversation shows the same pill read-only.
 
 Elsewhere the top bar stands only where it carries something: on a phone, where the navigation
-opens from it, and over a record with its breadcrumb. On a wide list page the sidebar toggle stands
-in the page header beside the title, and the body aligns to the start of that row. There is exactly
+opens from it. On a wide page the sidebar toggle stands in the page header beside the title, and the body aligns to the start of that row. There is exactly
 one toggle in the document at a time.
 
 A request that was just sent stands in the transcript at once, where and as the saved one will —
@@ -687,16 +717,17 @@ The shared contract is copied into each repository; no Cockpit imports another p
 
 - Tooltips explain icon-only controls and unfamiliar compact actions in one short sentence.
 - Hover cards are only for richer previews containing information beyond a label.
-- Inline descriptions remain for page purpose, empty states, errors, approvals and other context
-  that must stay visible for a safe decision.
+- Long explanations go behind a (?) (`ContextHelp`), one sentence each. An approval dialog keeps
+  visible only its title, the boundary as facts (environment, connectors or recipients, duration)
+  and one consequence line; every longer form of a fact sits behind its own (?).
 - Dense work surfaces do not repeat the same explanation in a heading, tooltip and paragraph.
 
 ### Layout and language
 
 - Every flex or grid ancestor of a scroll region uses `min-h-0`; flex-owned scroll regions also use
   `h-0 flex-1` so their viewport has a measurable height.
-- Shell controls use an 8 px gap. Page sections use 16 or 24 px padding. Related compact controls
-  use a 4 or 8 px gap.
+- Shell controls use an 8 px gap. Spacing between page parts follows the rhythm under
+  "Information architecture"; related compact controls use a 4 or 8 px gap.
 - All user-facing application copy comes from the English/German catalog, including tooltips and
   screen-reader labels. Both catalogs have identical keys.
 - Engine statuses and known field names are translated before display. UUIDs, tenant ids,
