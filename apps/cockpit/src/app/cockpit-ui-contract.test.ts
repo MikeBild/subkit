@@ -88,7 +88,7 @@ describe("cockpit-ui family contract", () => {
       "apps/cockpit/src/pages/audit.tsx",
       "apps/cockpit/src/pages/usage.tsx",
       "apps/cockpit/src/components/cockpit/page-frame.tsx",
-      "apps/cockpit/src/components/cockpit/data-table.tsx",
+      "apps/cockpit/src/components/cockpit/patterns/data-table.tsx",
       "apps/cockpit/src/components/cockpit/table-columns.tsx",
       "apps/cockpit/src/components/ai-elements/task.tsx",
       "apps/cockpit/src/components/ai-elements/tool.tsx",

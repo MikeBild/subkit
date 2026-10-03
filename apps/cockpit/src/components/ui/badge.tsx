@@ -28,9 +28,15 @@ function Badge({
   className,
   variant = "default",
   asChild = false,
+  dot = false,
   children,
   ...props
-}: React.ComponentProps<"span"> & VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & {
+    asChild?: boolean;
+    /** A real state only (StatusBadge); a category or a count draws no dot. */
+    dot?: boolean;
+  }) {
   const Comp = asChild ? Slot.Root : "span";
 
   return (
@@ -40,7 +46,7 @@ function Badge({
       className={cn(badgeVariants({ variant }), className)}
       {...props}
     >
-      {asChild ? (
+      {asChild || !dot ? (
         children
       ) : (
         <>
