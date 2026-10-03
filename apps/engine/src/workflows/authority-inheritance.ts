@@ -26,8 +26,10 @@ import { connectors, workflowExecutionAuthorities, workflowVersions } from "../d
 import { logger } from "../logging/logger.ts";
 import type { BoundaryGrowth } from "./authority-growth.ts";
 import { authorityLive } from "./authority-live.ts";
+import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
+import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
 
@@ -209,25 +211,27 @@ export async function carryApprovalsForward(
         .for("update");
       if (parents.length === 0) return;
       const covered = new Set<"dev" | "prod">();
-      const previews = new Map<
-        "dev" | "prod",
-        Awaited<ReturnType<typeof previewWorkflowAuthority>>
-      >();
       for (const parent of parents) {
         const environment = parent.execution_environment;
-        let preview = previews.get(environment);
-        if (!preview) {
-          preview = await previewWorkflowAuthority(
-            {
-              tenant_id: input.tenant_id,
-              workflow_id: input.workflow_id,
-              workflow_version_id: input.to_version_id,
-              execution_environment: environment,
-            },
-            sp,
-          );
-          previews.set(environment, preview);
-        }
+        // A report mail's or a publication's boundary is learnt once and kept
+        // on the approval; the new version has no approval of its own yet, so
+        // it is measured with the ones its parent carries — exactly what
+        // admission reads back from the carried approval afterwards.
+        const report_boundaries = reportBoundariesFromManifest(parent.effect_manifest);
+        const content_boundaries = contentBoundariesFromManifest(parent.effect_manifest);
+        const preview = await previewWorkflowAuthority(
+          {
+            tenant_id: input.tenant_id,
+            workflow_id: input.workflow_id,
+            workflow_version_id: input.to_version_id,
+            execution_environment: environment,
+          },
+          sp,
+          {
+            ...(Object.keys(report_boundaries).length > 0 ? { report_boundaries } : {}),
+            ...(Object.keys(content_boundaries).length > 0 ? { content_boundaries } : {}),
+          },
+        );
         // A version that needs a concrete-run review cannot run on any
         // approval; the gate says why, as without inheritance.
         if (!preview.eligible_for_repeated_runs) continue;
