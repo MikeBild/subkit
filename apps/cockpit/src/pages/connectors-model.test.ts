@@ -39,7 +39,6 @@ describe("connectors that count against health", () => {
     status: "all",
     category: "all",
     connector: "",
-    linkedTo: "",
     health: "not_ok" as const,
     sort: "name",
     order: "asc" as const,

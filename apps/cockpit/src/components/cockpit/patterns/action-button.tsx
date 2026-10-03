@@ -1,6 +1,5 @@
 import { isValidElement, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { PendingButton } from "./pending-button";
+import { Button } from "./button";
 
 /**
  * The action grammar a page may use (§5): `primary` is the one filled action
@@ -54,7 +53,7 @@ export function ActionButton({
   children: ReactNode;
 }) {
   return (
-    <PendingButton
+    <Button
       type={type}
       variant={VARIANT[variant]}
       size={size}
@@ -66,7 +65,7 @@ export function ActionButton({
       {...data}
     >
       {children}
-    </PendingButton>
+    </Button>
   );
 }
 

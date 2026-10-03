@@ -19,9 +19,9 @@ import {
   SettingsFilterToggle,
   SettingsReadOnlyNotice,
   SettingsSaveBar,
-  SettingsSectionHeading,
+  SettingsSection,
   SettingsSectionNav,
-  SettingsStorageNote,
+  SettingsSummary,
 } from "@/pages/settings";
 import {
   SETTING_GROUPS,
@@ -255,16 +255,16 @@ describe("what a row says it applies to", () => {
 });
 
 describe("how a change is stored", () => {
-  test("is answered once, below the list, in the plan's words", () => {
-    const html = render(<SettingsStorageNote />);
-    expect(html).toContain('data-testid="settings-storage"');
-    expect(html).toContain("Wie wird gespeichert?");
-    expect(html).toContain(
-      "Jede Änderung wird als neue, unveränderliche Version in der Datenbank gespeichert",
+  test("is answered once, behind the summary line's (?), in the plan's words", () => {
+    // Behind (?): the summary counts, the answer is the tooltip of its help.
+    const html = render(
+      <SettingsSummary total={6} changed={1} filter="all" onFilter={() => undefined} />,
     );
-    expect(html).toContain("bis dahin läuft die vorherige Version weiter");
+    expect(html).toContain("6 Einstellungen · 1 geändert");
+    expect(html).toContain('data-testid="settings-summary-help"');
+    expect(de("settings.storage.body")).toContain("bis dahin läuft die vorherige Version weiter");
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
-    expect(source.match(/<SettingsStorageNote \/>/g)?.length).toBe(1);
+    expect(source.match(/<SettingsSummary\b/g)?.length).toBe(1);
   });
 });
 
@@ -381,19 +381,27 @@ describe("a secret", () => {
     expect(html).toContain('data-testid="setting-secret-cancel-4"');
   });
 
-  test("the hint stands once per section, not on each secret row", () => {
+  test("the hint stands once per section, behind (?), not on each secret row", () => {
     const items = [secret("***"), { ...secret(null), path: "llm.providers.openai.api_key" }];
-    const heading = render(<SettingsSectionHeading section="llm" items={items} />);
-    expect(heading.split(de("settings.secretExternalOnly")).length - 1).toBe(1);
+    const heading = render(
+      <SettingsSection section="llm" items={items} testId="settings-section-llm">
+        <span />
+      </SettingsSection>,
+    );
+    expect(heading.split('data-testid="settings-secret-hint-llm"').length - 1).toBe(1);
     const rowHtml = render(
       <SettingRow item={secret("***")} index={4} highlighted={false}>
         <span />
       </SettingRow>,
     );
     expect(rowHtml).not.toContain(de("settings.secretExternalOnly"));
-    expect(render(<SettingsSectionHeading section="log" items={[]} />)).not.toContain(
-      "settings-secret-hint",
-    );
+    expect(
+      render(
+        <SettingsSection section="log" items={[]} testId="settings-section-log">
+          <span />
+        </SettingsSection>,
+      ),
+    ).not.toContain("settings-secret-hint");
   });
 });
 

@@ -276,12 +276,16 @@ describe("the remaining addresses", () => {
   });
 
   test("the tab the address names opens, and one the reader may not read falls back", () => {
-    const all = readableSections({ clients: true, keys: true, grants: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("grants");
+    const all = readableSections({ clients: true, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), all)).toBe("clients");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
-    expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("clients");
-    const keysOnly = readableSections({ clients: false, keys: true, grants: false });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), keysOnly)).toBe("keys");
+    expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
+    // The retired section is no address any more: it opens the first tab.
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("keys");
+    const keysOnly = readableSections({ clients: false, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), keysOnly)).toBe(
+      "keys",
+    );
   });
 
   test("a docs link is the engine's public page of a document the docs index serves", () => {

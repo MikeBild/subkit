@@ -573,7 +573,6 @@ describe("what one record says about itself", () => {
     // sentence pasted into the German block from a translation. None of these
     // words is spelled the same in both languages, so equality is the tell.
     for (const key of [
-      "audit.detail.description",
       "audit.detail.actorId",
       "audit.detail.resourceId",
       "audit.detail.trace",

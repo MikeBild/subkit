@@ -188,13 +188,7 @@ describe("cockpit i18n", () => {
     const note = Object.entries(CATALOGS.en).filter(([, text]) => /Access → Grants/.test(text));
     expect(note.map(([key]) => key)).toEqual([]);
     // "Freigabe" is the approval of a workflow and nothing else.
-    expect(CATALOGS.de["people.sheet.grantsLink"]).toBe("Personen & Rechte → Zugriffe");
     expect(CATALOGS.de["access.grants"]).toBe("Zugriffe");
     expect(CATALOGS.de["access.revokeGrant"]).toBe("Zugriff entziehen");
-  });
-
-  test("the operations block says per hour over a day and per day over longer windows", () => {
-    expect(CATALOGS.de["resource.usage.runtimeDescriptionHourly"]).toContain("je Stunde");
-    expect(CATALOGS.de["resource.usage.runtimeDescription"]).toContain("je Tag");
   });
 });

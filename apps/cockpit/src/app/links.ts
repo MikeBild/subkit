@@ -179,13 +179,13 @@ export function usageHref(filter: { window?: "24h" | "7d" | "30d" | null } = {})
 
 /**
  * The settings page, opened at one leaf (`server.public_base_url`), or at a
- * section and a search. `settingsViewFromUrl` in pages/settings-model.ts reads it back.
+ * section. `settingsViewFromUrl` in pages/settings-model.ts reads it back.
  */
 export function settingsHref(
   leaf?: string | null,
-  view: { section?: string | null; q?: string | null; filter?: "changed" | null } = {},
+  view: { section?: string | null; filter?: "changed" | null } = {},
 ): string {
-  return withQuery("/settings", { leaf, section: view.section, q: view.q, filter: view.filter });
+  return withQuery("/settings", { leaf, section: view.section, filter: view.filter });
 }
 
 export function auditHref(
@@ -249,13 +249,11 @@ export function chatSeedFromUrl(search: string): {
 }
 
 /**
- * The three sections of Zugangsdaten — the one page for everything that holds
- * or grants rights: the apps with access to SubKit (`clients`), the keys for
- * scripts (`keys`), and the systems SubKit may use on someone's behalf
- * (`grants`). The address words stay what they were: links, bookmarks and the
- * OAuth callback carry them.
+ * The two sections of API-Zugang — access INTO SubKit: the apps with access
+ * (`clients`) and the keys for scripts (`keys`). What SubKit may use on
+ * someone's behalf belongs to the connector it signs in to, not here.
  */
-export const API_ACCESS_SECTIONS = ["clients", "keys", "grants"] as const;
+export const API_ACCESS_SECTIONS = ["clients", "keys"] as const;
 export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
 
 export function apiAccessHref(section?: ApiAccessSection | null): string {

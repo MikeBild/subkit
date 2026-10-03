@@ -87,9 +87,9 @@ export function resumeTarget(target: ResumeTargetLike | null | undefined, t: Tra
 /**
  * One sentence about where the conversation stands, in the reader's language.
  *
- * An unknown stage falls back to the neutral line rather than to the engine's
- * English: a state this cockpit has not learned yet is still not a reason to
- * hand the reader another system's wording.
+ * An unknown stage has no line rather than the engine's English: a state this
+ * cockpit has not learned yet is still not a reason to hand the reader another
+ * system's wording.
  */
 export function resumeSummaryLine(
   resume: ResumeSummaryLike | null | undefined,
@@ -105,7 +105,10 @@ export function resumeSummaryLine(
   // "Deine Antwort wird benötigt", "eine Freigabe offen gelassen" — so it
   // names what the conversation is about instead.
   const key = SENTENCE_KEYS[resume.stage?.toLowerCase() ?? ""];
-  if (!key) return t("chat.summary.inProgress");
+  // A stage with nothing to say about the target says nothing: "an active
+  // conversation can be continued" stood beside the "In Arbeit" badge and
+  // told the reader what the badge had just said.
+  if (!key) return null;
   return t(key, { target: resumeTarget(resume.active_target, t) });
 }
 
