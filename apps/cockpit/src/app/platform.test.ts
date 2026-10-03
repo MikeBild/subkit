@@ -179,11 +179,11 @@ describe("route transitions", () => {
     expect(started).toBe(1);
     expect(updates).toBe(2);
     finish();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setImmediate(resolve));
     await runViewTransition(update, ["route"], doc, true);
     expect(started).toBe(2);
     finish();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setImmediate(resolve));
     process.off("unhandledRejection", onUnhandled);
     expect(unhandled).toEqual([]);
   });
