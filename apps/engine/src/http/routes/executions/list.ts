@@ -7,6 +7,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
 import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
 import {
   listExecutions,
@@ -36,7 +37,14 @@ const listExecutionsRoute = createRoute({
     query: z
       .object({
         limit: z.coerce.number().int().positive().max(200).optional(),
-        offset: z.coerce.number().int().min(0).optional(),
+        cursor: z
+          .string()
+          .max(128)
+          .regex(KEYSET_CURSOR_PATTERN, "must be a cursor returned by next_cursor (<ts>|<uuid>)")
+          .optional()
+          .describe(
+            "Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive.",
+          ),
         workflow_id: z.string().uuid().optional(),
         status: z.string().optional(),
         request_source: z.string().optional(),
@@ -116,11 +124,11 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     // Canonical list service: same filter surface as the conversation
     // tool + in-process EngineClient, exact `total` in the same query.
-    const { rows, total } = await listExecutions(
+    const { rows, total, next_cursor } = await listExecutions(
       principal.tenant_id,
       {
         ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
+        ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
         ...(q.workflow_id !== undefined ? { workflow_id: q.workflow_id } : {}),
         ...(q.status !== undefined ? { status: q.status } : {}),
         ...(q.request_source !== undefined ? { request_source: q.request_source } : {}),
@@ -153,6 +161,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
           failure: failures.get(r.id) ?? null,
         })),
         total,
+        next_cursor,
       },
       200,
     );

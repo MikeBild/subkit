@@ -8653,6 +8653,7 @@ Filter the audit log
 - `--action` (string) — Action name filter
 - `--actor` (string) — Actor id filter
 - `--resource-id` (string) — Filter by resource id
+- `--cursor` (string) — Continue after a previous page (its next_cursor)
 - `--json` — JSON output
 
 #### `sk audit show`
@@ -9087,6 +9088,7 @@ List executions
 - `--parent` (string) — Lineage filter: list the reruns spawned from this execution id
 - `--from` (string) — Only runs that started at or after this instant (ISO-8601 or now-24h, now-7d, startOfMonth)
 - `--to` (string) — Only runs that started before this instant (exclusive; default: open)
+- `--cursor` (string) — Continue after a previous page (the next_cursor it printed)
 - `--json` (default: false) — JSON output
 
 #### `sk executions rerun`
@@ -10833,6 +10835,7 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Consistency** | Pagination, filtering, and sorting follow the same conventions across all list endpoints. Learn the pattern once, apply it everywhere. |
 | **Promotion** | `POST /v1/connectors/{id}/promote` promotes DEV to PROD with explicit `copy` or `move` semantics, a required `Idempotency-Key`, admin-only RBAC, and connector/credential audit ids in the response. |
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
+| **Live streams** | Server-sent event tails over the outbox sit outside the OpenAPI document, because an SSE response has no JSON-schema body: `GET /v1/events/stream` (tenant-wide, `audit:read`, full payloads), `GET /v1/executions/{id}/stream` (one run, `execution:read`) and `GET /v1/cockpit/events/stream`. The last one is the Cockpit's change feed: any signed-in person may open it; it carries only the families the reader may read (executions with `execution:read`; workflows, authorities and proposed fixes with `workflow:read`; schedules and hooks with `schedule:read`; connectors and their credentials with `connector:read`; skills with `skill:read`), reduces each frame to its ids, starts at the current tail rather than replaying history, resumes after `Last-Event-ID`, and announces `{ cursor, version, truncated }` in its `hello` frame so a client can tell a deploy happened. An idle stream sends `ping` every 25 seconds. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
 ### Temporary execution previews

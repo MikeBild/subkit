@@ -101,9 +101,10 @@ export const ExecListItemSchema = ExecSchema.extend({
 export const ExecListResponse = z
   .object({
     items: z.array(ExecListItemSchema),
-    /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
+    /** Exact tenant-scoped count under the same filters (ignores limit and cursor). */
     total: z.number().int().nonnegative(),
-    next_cursor: z.string().nullable().optional(),
+    /** Pass back as `cursor` for the next page; null when this page reached the end. */
+    next_cursor: z.string().nullable(),
   })
   .openapi("ExecutionListResponse");
 

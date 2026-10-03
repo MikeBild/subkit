@@ -156,7 +156,7 @@ describe("audit export — completeness against the table snapshot", () => {
       const res = await queryAuditLog(
         testDb.db,
         { tenant_id: walkTenant.id },
-        before === undefined ? { limit: 3 } : { limit: 3, before },
+        before === undefined ? { limit: 3 } : { limit: 3, cursor: before },
       );
       for (const row of res.items) seen.add(row.id);
       pages++;

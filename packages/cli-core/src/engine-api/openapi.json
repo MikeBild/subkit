@@ -10067,7 +10067,8 @@
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "next_cursor"
         ]
       },
       "ExecutionListItem": {
@@ -33374,14 +33375,14 @@
           },
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "minimum": 0
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z\\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "description": "Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive."
             },
             "required": false,
-            "name": "offset",
+            "description": "Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive.",
+            "name": "cursor",
             "in": "query"
           },
           {
@@ -44876,7 +44877,7 @@
               "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z(?:\\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$"
             },
             "required": false,
-            "name": "before",
+            "name": "cursor",
             "in": "query"
           }
         ],

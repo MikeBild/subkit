@@ -101,7 +101,7 @@ export const executionsMethods = {
   listExecutions(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
+  ): Promise<{ items: Record<string, unknown>[]; total: number; next_cursor: string | null }> {
     return this.request("GET", "/v1/executions", undefined, query);
   },
   getExecution(this: EngineClient, id: string): Promise<Record<string, unknown>> {

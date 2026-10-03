@@ -461,16 +461,12 @@ describe("query filter coverage", () => {
     ).toBe(false);
   });
 
-  test("limit + before cursor walks pages newest-first", async () => {
+  test("limit + cursor walks pages newest-first", async () => {
     const first = await queryAuditLog(testDb.db, { tenant_id: tenantA }, { limit: 1 });
     expect(first.items.length).toBe(1);
     expect(first.next_cursor).not.toBeNull();
     const cursor = first.next_cursor!;
-    const second = await queryAuditLog(
-      testDb.db,
-      { tenant_id: tenantA },
-      { limit: 1, before: cursor },
-    );
+    const second = await queryAuditLog(testDb.db, { tenant_id: tenantA }, { limit: 1, cursor });
     expect(second.items.length).toBe(1);
     if (first.items[0] && second.items[0]) {
       expect(first.items[0].ts.getTime()).toBeGreaterThanOrEqual(second.items[0].ts.getTime());
