@@ -24,11 +24,6 @@ export function routeTransitionTypes(change: {
   return [ROUTE_TRANSITION];
 }
 
-/** The router's `defaultViewTransition`. */
-export const routeViewTransition = {
-  types: ({ pathChanged }: { pathChanged: boolean }) => routeTransitionTypes({ pathChanged }),
-};
-
 interface TransitionHandle {
   ready: Promise<unknown>;
   finished: Promise<unknown>;
