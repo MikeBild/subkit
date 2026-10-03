@@ -32,7 +32,12 @@ import { readMemoryUsage } from "../../../observability/runtime-telemetry.ts";
 import { skillAudienceForAuthoringMode } from "../../../skills/types.ts";
 import { requestApproval } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
-import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
+import {
+  FileNotFoundError,
+  type ResolvedFile,
+  resolveAttachmentSlugsInArgs,
+  walkAndResolve,
+} from "../../attachments.ts";
 import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
@@ -1272,8 +1277,16 @@ export function wrapOne(
         const resolveCache = new Map<string, ResolvedFile>();
         let resolvedArgs: Record<string, unknown>;
         try {
+          // A slug leaf names a file only as chat text would let this writer
+          // name it; the resolver itself never trusts a guessable name.
+          const pinnedArgs = await resolveAttachmentSlugsInArgs(rawArgs, {
+            db,
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            principal: ctx.principal ?? (await resolveConversationPrincipal(perCallCtx)),
+          });
           resolvedArgs = await walkAndResolve(
-            rawArgs,
+            pinnedArgs,
             { db, tenant_id: ctx.tenant_id },
             resolveCache,
           );

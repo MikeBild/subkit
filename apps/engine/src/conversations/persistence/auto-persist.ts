@@ -80,7 +80,7 @@ import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 import type { AnswerActor } from "../answer-actor.ts";
-import { walkAndResolve } from "../attachments.ts";
+import { resolveAttachmentSlugsInArgs, walkAndResolve } from "../attachments.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { partitionDiffs, type ToolDiff } from "../json-patch-apply.ts";
 import {
@@ -1169,10 +1169,15 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
-        // `{$file: fid_…}` refs survive the encrypted round-trip as refs; resolve
+        // `{$file: …}` refs survive the encrypted round-trip as refs; resolve
         // them here exactly as the chat wrapper does before `execute`.
         const replayArgs = await walkAndResolve(
-          claim.args,
+          await resolveAttachmentSlugsInArgs(claim.args, {
+            db: p.db,
+            tenant_id: p.tenant_id,
+            conversation_id: p.conversation_id,
+            principal: approver,
+          }),
           { db: p.db, tenant_id: p.tenant_id },
           new Map(),
         );

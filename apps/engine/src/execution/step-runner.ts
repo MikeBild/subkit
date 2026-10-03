@@ -224,7 +224,9 @@ export async function runStep(
   switch (step.kind) {
     case "request": {
       const fileCache = new Map<string, ResolvedFile>();
-      const resolverCtx = { db: ctx.db, tenant_id: ctx.tenant_id };
+      // The step is the definition as authored, so a reference it names is
+      // one a workflow author wrote and may name a file by its slug.
+      const resolverCtx = { db: ctx.db, tenant_id: ctx.tenant_id, resolve_references: true };
       let resolvedMultipart:
         | import("./steps/request/dispatch.ts").ResolvedMultipartPart[]
         | undefined;
