@@ -9,7 +9,7 @@ export {
 } from "./action-button";
 export { ActionMenu, type ActionMenuItem } from "./action-menu";
 export { ChatCard } from "./chat-card";
-export { ChoiceCard } from "./choice-card";
+export { type ChoiceCardItem, ChoiceCards } from "./choice-card";
 export { CodeBlock } from "./code-block";
 export { ConfirmDialog, confirmTitle } from "./confirm-dialog";
 export { ContextHelp } from "./context-help";

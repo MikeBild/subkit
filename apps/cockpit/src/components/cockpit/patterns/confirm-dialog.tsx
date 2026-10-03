@@ -5,14 +5,22 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { Locale, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import { DIALOG_FRAME, dialogWidthClass, FILLED_DESTRUCTIVE } from "./form-dialog";
+import {
+  DIALOG_DESCRIPTION,
+  DIALOG_FOOT,
+  DIALOG_FRAME,
+  DIALOG_HEAD,
+  DIALOG_TITLE,
+  DialogTitleRow,
+  dialogWidthClass,
+  FILLED_DESTRUCTIVE,
+} from "./dialog-frame";
 
 /**
  * "{Objekt} {verb}?" in German, "{Verb} {object}?" in English. The verb stands
@@ -68,13 +76,26 @@ export function ConfirmDialog({
         data-testid={testId}
         className={cn(dialogWidthClass("default"), DIALOG_FRAME)}
       >
-        <AlertDialogHeader>
-          <AlertDialogTitle data-testid={`${testId}-title`}>
-            {confirmTitle(t, locale, object, verb)}
-          </AlertDialogTitle>
-          <AlertDialogDescription>{consequence}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
+        <div className={DIALOG_HEAD} data-slot="dialog-head">
+          <DialogTitleRow
+            title={
+              <AlertDialogTitle className={DIALOG_TITLE} data-testid={`${testId}-title`}>
+                {confirmTitle(t, locale, object, verb)}
+              </AlertDialogTitle>
+            }
+            closeLabel={t("common.close")}
+            onClose={() => onOpenChange(false)}
+            disabled={working}
+            testId={testId}
+          />
+          <AlertDialogDescription
+            className={DIALOG_DESCRIPTION}
+            data-testid={`${testId}-consequence`}
+          >
+            {consequence}
+          </AlertDialogDescription>
+        </div>
+        <AlertDialogFooter className={DIALOG_FOOT}>
           <AlertDialogCancel variant="ghost" disabled={working} data-testid={`${testId}-cancel`}>
             {t("common.cancel")}
           </AlertDialogCancel>
