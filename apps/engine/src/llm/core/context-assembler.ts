@@ -41,7 +41,12 @@ import {
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
-import type { Skill } from "../../skills/types.ts";
+import {
+  type Skill,
+  type SkillAudience,
+  skillAudienceForAuthoringMode,
+  skillOfferedTo,
+} from "../../skills/types.ts";
 import { buildNamingGroundingBlock } from "../../workflows/catalog-view.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
@@ -52,6 +57,7 @@ import type {
   EnhancedPrompt,
   IncludedChunk,
   IncludedKnowledgeChunk,
+  LlmFlow,
   UserTurn,
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
@@ -151,6 +157,23 @@ export interface AssembledContext {
  * LlmContextTooLarge only when *even* the base system prompt does not fit
  * — i.e. all optional context has been dropped.
  */
+/** Flows that draft or repair a workflow definition in one shot. */
+const AUTHORING_FLOWS: ReadonlySet<LlmFlow> = new Set<LlmFlow>([
+  "generate",
+  "repair",
+  "critic_authoring",
+]);
+
+/** The skill audience of one prompt: a drafting flow, or a converse turn whose
+ *  authoring state is in workflow mode, is "authoring"; anything else "chat". */
+export function promptSkillAudience(
+  flow: LlmFlow,
+  authoringMode: string | null | undefined,
+): SkillAudience {
+  if (AUTHORING_FLOWS.has(flow)) return "authoring";
+  return skillAudienceForAuthoringMode(authoringMode);
+}
+
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
   exec?: Executor,
@@ -182,11 +205,16 @@ export async function assembleEnhancedPrompt(
   const baseVolatile = basePrompt.volatile
     ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
     : null;
+  // Skills enter the prompt only where they apply: the one-shot drafting
+  // flows and a converse turn working on a workflow draft are "authoring",
+  // every other turn is "chat".
+  const audience = promptSkillAudience(p.flow, p.authoring_hint?.mode);
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,
       ...(p.connector_id ? { connector_ids: [p.connector_id] } : {}),
       ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
+      audience,
     },
     db,
   );
@@ -211,8 +239,9 @@ export async function assembleEnhancedPrompt(
     skillsApplicable,
     db,
   );
-  const loadedSkills = resolvedLoaded.fullBody;
-  const loadedIndexSkills = resolvedLoaded.index;
+  const offered = (s: Skill) => skillOfferedTo(s.applies_to, audience);
+  const loadedSkills = resolvedLoaded.fullBody.filter(offered);
+  const loadedIndexSkills = resolvedLoaded.index.filter(offered);
 
   const query = buildQuery(p.user_turns);
 
