@@ -3,7 +3,6 @@ import type { ApiAccessSection } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
 import { permissionLabel } from "@/pages/admin-model";
-import { type ConnectionItem, connectionNeedsRenewal } from "@/pages/connections-model";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -25,15 +24,10 @@ export const UNUSED_KEY_DAYS = 90;
 // ── Page order ──────────────────────────────────────────────────────────────
 
 /**
- * The tabs in page order (D7): the keys scripts use, the apps that were
- * approved, and — until they move to their connector — the systems SubKit
- * may use on someone's behalf. The first is the default.
+ * The tabs in page order (D7): the keys scripts use, then the apps that were
+ * approved. The first is the default.
  */
-export const API_ACCESS_ORDER = [
-  "keys",
-  "clients",
-  "grants",
-] as const satisfies readonly ApiAccessSection[];
+export const API_ACCESS_ORDER = ["keys", "clients"] as const satisfies readonly ApiAccessSection[];
 
 /** The sections this reader may read, in page order. */
 export function readableSections(can: Record<ApiAccessSection, boolean>): ApiAccessSection[] {
@@ -68,14 +62,6 @@ export function keysNeedingAction(
     const kind = keyState(key, nowMs)?.kind;
     return kind === "expired" || kind === "expiring";
   }).length;
-}
-
-/**
- * How many grants ask for "Erneuern": lost ones (the row's red), and the ones
- * that end on a date because they cannot renew themselves.
- */
-export function grantsNeedingRenewal(items: readonly Pick<ConnectionItem, "state">[]): number {
-  return items.filter((item) => connectionNeedsRenewal(item) || item.state === "expiring").length;
 }
 
 // ── Scopes ──────────────────────────────────────────────────────────────────
