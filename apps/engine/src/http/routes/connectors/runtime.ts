@@ -38,7 +38,11 @@ const ConnectorRuntimeSchema = z
         // classification of the failure, never the remote's text.
         cause_class: z.enum(PREVIEW_CLASSIFICATIONS),
       })
-      .nullable(),
+      .nullable()
+      .openapi({
+        description:
+          "The newest failed call. Null when that call was rejected for its credential before the newest stored credential (a sign-in or a replaced key): the new credential resolved it. A token refresh resolves nothing.",
+      }),
     recorded: z.boolean().openapi({
       description:
         "Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing.",

@@ -13653,7 +13653,8 @@
               "at",
               "code",
               "cause_class"
-            ]
+            ],
+            "description": "The newest failed call. Null when that call was rejected for its credential before the newest stored credential (a sign-in or a replaced key): the new credential resolved it. A token refresh resolves nothing."
           },
           "recorded": {
             "type": "boolean",
