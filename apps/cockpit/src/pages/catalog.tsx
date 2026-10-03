@@ -15,8 +15,9 @@ import {
   workflowHref,
   workflowsHref,
 } from "@/app/links";
+import { KNOWLEDGE_TABS } from "@/app/navigation";
 import { IconButton } from "@/components/cockpit/icon-button";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { Page, PageHeader, RouteTabs } from "@/components/cockpit/patterns";
 import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/patterns/data-table";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -93,12 +94,6 @@ interface CatalogConfig {
   endpoint: string;
   permission: string;
   titleKey: TranslationKey;
-  /**
-   * Only where the title does not say what the list is for. "Konnektoren"
-   * next to "Kontoverbindungen" needs the sentence that tells them apart, and
-   * "Skills" says nothing on its own; "Workflows", "Wissen" and "Dateien" do.
-   */
-  descriptionKey?: TranslationKey;
   emptyKey: TranslationKey;
   actionKey?: TranslationKey;
   defaultSort: string;
@@ -119,7 +114,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     endpoint: "/v1/connectors",
     permission: "connector:read",
     titleKey: "resource.connectors.title",
-    descriptionKey: "resource.connectors.description",
     emptyKey: "resource.connectors.empty",
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
@@ -138,7 +132,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     endpoint: "/v1/skills",
     permission: "skill:read",
     titleKey: "resource.skills.title",
-    descriptionKey: "resource.skills.description",
     emptyKey: "resource.skills.empty",
     actionKey: "resource.skills.action",
     defaultSort: "updated_at",
@@ -671,6 +664,13 @@ export function CatalogPage({
     [categories],
   );
   const title = t(config.titleKey);
+  const knowledgeTabs = KNOWLEDGE_TABS.some((tab) => tab.path === `/${resource}`)
+    ? KNOWLEDGE_TABS.filter((tab) => permissions.includes(tab.permission)).map((tab) => ({
+        to: tab.path,
+        label: t(tab.labelKey),
+        testId: `knowledge-tab-${tab.path.slice(1)}`,
+      }))
+    : [];
   const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
   const hasActiveFilters =
     Boolean(state.q) ||
@@ -725,18 +725,28 @@ export function CatalogPage({
     ) : undefined;
 
   return (
-    <PageFrame
+    <Page
+      kind="list"
       surface="collection"
       testId={`catalog-${resource}`}
-      title={title}
-      {...(config.descriptionKey ? { description: t(config.descriptionKey) } : {})}
-      // The header yields its action only to the one state that shows the
-      // same action itself: a loaded, unfiltered, empty list. While loading,
-      // after a failed read, or when a search matches nothing, the empty
-      // state offers no "create" — hiding the header's there left no way to
-      // start one until the reader cleared the filters or the read came back.
-      action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
       scroll="content"
+      header={
+        <>
+          <PageHeader
+            // Sources, skills and files are the tabs of one page, Wissen.
+            title={knowledgeTabs.length > 0 ? t("nav.knowledge") : title}
+            // The header yields its action only to the one state that shows
+            // the same action itself: a loaded, unfiltered, empty list. While
+            // loading, after a failed read, or when a search matches nothing,
+            // the empty state offers no "create" — hiding the header's there
+            // left no way to start one until the reader cleared the filters.
+            action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
+          />
+          {knowledgeTabs.length > 1 ? (
+            <RouteTabs tabs={knowledgeTabs} label={t("nav.knowledge")} testId="knowledge-tabs" />
+          ) : null}
+        </>
+      }
     >
       <DataTable
         columns={columns}
@@ -918,7 +928,7 @@ export function CatalogPage({
           }}
         />
       )}
-    </PageFrame>
+    </Page>
   );
 }
 

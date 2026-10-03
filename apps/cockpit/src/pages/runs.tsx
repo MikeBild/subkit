@@ -794,7 +794,7 @@ function useRun(id: string | null, enabled: boolean) {
   // changes with the id, and a stale record under the previous one would title
   // the sheet after a run the reader had already closed.
   const run = isExecutionRecord(addressed.data) && addressed.data.id === id ? addressed.data : null;
-  return { run, failed: Boolean(addressed.error) };
+  return { run, failed: Boolean(addressed.error), retry: () => void addressed.refetch() };
 }
 
 /**
@@ -826,7 +826,7 @@ export function RunOverlays() {
     window.history.pushState({}, "", `${window.location.pathname}${search}${window.location.hash}`);
     setOverlay(next);
   }, []);
-  const { run, failed } = useRun(overlay.runId, allowed);
+  const { run, failed, retry } = useRun(overlay.runId, allowed);
   if (!allowed) return null;
   const open = overlay.list || overlay.runId !== null;
   const title = !overlay.runId ? (
@@ -889,7 +889,7 @@ export function RunOverlays() {
         <DataState
           state="error"
           line={t("runs.detail.loadFailed")}
-          onRetry={() => show({ ...overlay })}
+          onRetry={retry}
           testId="run-detail-missing"
         />
       ) : (

@@ -26,6 +26,7 @@ export { Page, type PageKind, type PageSurface, pageColumn } from "./page";
 export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
 export { RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
+export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { CollapsibleSection, SECTION_LABEL, Section } from "./section";
 export { SegmentedControl, type SegmentedOption } from "./segmented-control";
 export { type BadgeTone, StatusBadge, statusTone } from "./status-badge";
