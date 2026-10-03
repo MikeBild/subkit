@@ -469,7 +469,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       // The score counts every finished run; what a person can act on is the
       // failed runs the scheduler started.
       drilldown: {
-        path: "/cockpit/runs?status=failed&source=scheduler",
+        path: "/cockpit?runs=all&status=failed&source=scheduler",
         label_id: "operational.open_runs",
       },
     },
@@ -559,7 +559,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           value: executions,
           unit: "count",
           severity: "information",
-          path: "/cockpit/runs",
+          path: "/cockpit?runs=all",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_execution_volume_24h",
         }),
@@ -569,7 +569,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       id: "reliability",
       title: "Reliability",
       visualization: "kpi",
-      drilldown: { path: "/cockpit/runs", label_id: "operational.open_runs" },
+      drilldown: { path: "/cockpit?runs=all", label_id: "operational.open_runs" },
       metrics: [
         product({
           id: "executions.success_ratio",
@@ -588,7 +588,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
                 : successRatio >= 0.7
                   ? "urgent"
                   : "critical",
-          path: "/cockpit/runs",
+          path: "/cockpit?runs=all",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_execution_success_ratio",
         }),
@@ -617,7 +617,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           // window the number no longer used. Newest-first over the right KIND
           // of run opens on the runs this counted; it is wider in time, and
           // being wider is visible, where being wrong was not.
-          path: "/cockpit/runs?status=failed&source=scheduler",
+          path: "/cockpit?runs=all&status=failed&source=scheduler",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_production_incidents_24h",
         }),
@@ -630,7 +630,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           value: numberOf(row.trial_failures_24h),
           unit: "count",
           severity: "information",
-          path: "/cockpit/runs?status=failed",
+          path: "/cockpit?runs=all&status=failed",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_trial_failures_24h",
         }),

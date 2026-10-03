@@ -40,7 +40,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -50,6 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { DataState, LOADING_ROWS } from "./data-state";
 
 /** A column states its own width; that is what keeps the table `table-fixed`. */
 export interface CockpitColumnMeta {
@@ -108,8 +108,6 @@ export interface TableEmptyState {
     onReset(): void;
   };
 }
-
-const SKELETON_ROWS = 8;
 
 /** The naming cell: wrapped whole in the row's link, or handing the link to its `<RowName>`. */
 function LinkedCell({
@@ -341,7 +339,10 @@ export function DataTable<TData extends RowData>({
   // The action column exists only for something to put in it: row actions, or
   // the refresh in its head. A column that held a lone "Öffnen" per row is gone.
   const hasActionColumn = Boolean(rowActions) || Boolean(onRefresh && refreshLabel);
-  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0);
+  // A row that opens something ends in a chevron (P6): the name is the link,
+  // the chevron says the whole row leads on. There is no "Öffnen" button.
+  const hasChevron = Boolean(onOpen);
+  const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (hasChevron ? 1 : 0);
   // A reader can hide the naming column; the link then moves to the first
   // column still shown rather than leaving the row without one.
   const linkColumnId = rowLinkColumn(
@@ -362,48 +363,43 @@ export function DataTable<TData extends RowData>({
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
 
+  // One line and one action (P12). The descriptions the states still carry
+  // are not shown: a second paragraph under an empty list was the text wall.
   const stateBlock = pending ? null : error ? (
-    <div
-      className="grid justify-items-center gap-2 py-10 text-center"
-      role="alert"
-      data-family-slot="data-state"
-      data-family-state="error"
-    >
-      <p className="text-sm font-medium text-destructive">{error.title}</p>
-      <p className="max-w-md text-sm text-muted-foreground">{error.description}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid={`${collectionId}-retry`}
-        onClick={error.onRetry}
-      >
-        {error.retryLabel}
-      </Button>
-    </div>
-  ) : (
-    <div
-      className="grid justify-items-center gap-2 py-10 text-center"
-      data-testid={`${collectionId}-empty`}
-      data-family-slot="data-state"
-      data-family-state="empty"
-    >
-      <p className="text-sm font-medium">{emptyCopy.title}</p>
-      {emptyCopy.description ? (
-        <p className="max-w-md text-sm text-muted-foreground">{emptyCopy.description}</p>
-      ) : null}
-      {hasActiveFilters ? (
+    <DataState
+      state="error"
+      line={error.title}
+      action={
         <Button
           variant="outline"
           size="sm"
-          data-testid={`${collectionId}-reset-filters`}
-          onClick={emptyState.filtered.onReset}
+          data-testid={`${collectionId}-retry`}
+          onClick={error.onRetry}
         >
-          {emptyState.filtered.resetLabel}
+          {error.retryLabel}
         </Button>
-      ) : (
-        emptyState.zero.action
-      )}
-    </div>
+      }
+    />
+  ) : (
+    <DataState
+      state="empty"
+      line={emptyCopy.title}
+      testId={`${collectionId}-empty`}
+      action={
+        hasActiveFilters ? (
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid={`${collectionId}-reset-filters`}
+            onClick={emptyState.filtered.onReset}
+          >
+            {emptyState.filtered.resetLabel}
+          </Button>
+        ) : (
+          emptyState.zero.action
+        )
+      }
+    />
   );
 
   return (
@@ -532,6 +528,7 @@ export function DataTable<TData extends RowData>({
                     </span>
                   </TableHead>
                 ) : null}
+                {hasChevron ? <TableHead className="w-8" aria-hidden="true" /> : null}
               </TableRow>
             ))}
           </TableHeader>
@@ -541,18 +538,15 @@ export function DataTable<TData extends RowData>({
             aria-busy={pending ? true : undefined}
           >
             {pending ? (
-              Array.from({ length: SKELETON_ROWS }, (_, rowIndex) => (
-                <TableRow key={rowIndex} data-testid={`${collectionId}-skeleton-row-${rowIndex}`}>
-                  {visibleColumns.map((column) => (
-                    <TableCell key={column.id}>
-                      <Skeleton className="h-4 w-full" />
-                    </TableCell>
-                  ))}
-                  {hasActionColumn ? (
-                    <TableCell>
-                      <Skeleton className="h-4 w-full" />
-                    </TableCell>
-                  ) : null}
+              Array.from({ length: LOADING_ROWS }, (_, rowIndex) => (
+                <TableRow
+                  key={rowIndex}
+                  className="h-11"
+                  data-testid={`${collectionId}-skeleton-row-${rowIndex}`}
+                >
+                  <TableCell colSpan={bodySpan}>
+                    <span className="block h-4 w-full animate-pulse rounded-md bg-muted" />
+                  </TableCell>
                 </TableRow>
               ))
             ) : error || empty ? (
@@ -567,7 +561,7 @@ export function DataTable<TData extends RowData>({
                     key={row.id}
                     data-family-slot="list-row"
                     data-family-collection-row="true"
-                    className={open ? "cursor-pointer" : undefined}
+                    className={cn("h-11", open && "cursor-pointer")}
                     data-testid={`${collectionId}-row-${index}`}
                     // The whole row is a convenience for the pointer. The
                     // keyboard and the screen reader reach the record through
@@ -607,6 +601,11 @@ export function DataTable<TData extends RowData>({
                         </span>
                       </TableCell>
                     ) : null}
+                    {hasChevron ? (
+                      <TableCell className="w-8 text-muted-foreground" data-slot="row-chevron">
+                        <ChevronRight aria-hidden="true" className="size-4" />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 );
               })
@@ -619,19 +618,9 @@ export function DataTable<TData extends RowData>({
         data-testid={`${collectionId}-mobile`}
       >
         {pending ? (
-          <div
-            className="grid gap-3 p-4"
-            role="status"
-            data-family-slot="data-state"
-            data-family-state="loading"
-            aria-busy="true"
-          >
-            {Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="h-16 w-full" />
-            ))}
-          </div>
+          <DataState state="loading" className="p-4" />
         ) : error || empty ? (
-          <div className="p-4">{stateBlock}</div>
+          <div className="px-4">{stateBlock}</div>
         ) : (
           <div className="grid divide-y">
             {rows.map((row, index) => {

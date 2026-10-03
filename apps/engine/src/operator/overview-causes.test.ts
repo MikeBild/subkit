@@ -95,7 +95,9 @@ test("no core metric or health component drilldown leads to the operations page"
   const byId = new Map(overview.core.health.components.map((c) => [c.id, c.drilldown.path]));
   // Blocked work is on the attention list, not on a separate decisions page.
   expect(byId.get("decisions.blocked")).toBe("/cockpit");
-  expect(byId.get("executions.success_ratio")).toBe("/cockpit/runs?status=failed&source=scheduler");
+  expect(byId.get("executions.success_ratio")).toBe(
+    "/cockpit?runs=all&status=failed&source=scheduler",
+  );
   expect(byId.get("connectors.healthy_ratio")).toBe("/cockpit/connectors?health=not_ok");
   // The section tile of the same ratio leads to the same narrowed list: at 0 %
   // it links (a ratio at zero is the worst state), and the plain catalogue
