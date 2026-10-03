@@ -48,8 +48,8 @@ import {
 } from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
-/** The lists this page draws; sources and skills have pages of their own. */
-type CatalogResource = "workflows" | "connectors" | "files";
+/** The lists this page draws; Wissen's lists have pages of their own. */
+type CatalogResource = "workflows" | "connectors";
 type CatalogRow = Record<string, unknown>;
 type ConnectorListItem = components["schemas"]["ConnectorListItem"];
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
@@ -105,14 +105,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
     statuses: ["enabled", "disabled", "ok", "degraded", "needs_reauth"],
-  },
-  files: {
-    endpoint: "/v1/files",
-    permission: "file:read",
-    titleKey: "resource.files.title",
-    emptyKey: "resource.files.empty",
-    defaultSort: "created_at",
-    statuses: ["pending", "uploading", "scanning", "ready", "failed", "expired"],
   },
 };
 
@@ -340,95 +332,66 @@ function catalogColumns(
     ];
   }
 
-  if (resource === "connectors") {
-    const columns: CockpitColumn<CatalogRow>[] = [
-      // The name is text. It was a link to the very record the row click and
-      // the row's open button already open — three ways to one place, and the
-      // one styled as a link looked like it led somewhere else.
-      column.text("name", (row) => row.display_name, t("common.name"), {
-        sortable: true,
-        width: "w-[23%]",
-      }),
-      // One column for where the connector stands. A second one, "Zugangsdaten",
-      // read the same verdict and said it again in other words.
-      column.status("health", (row) => row.health_state, t("catalog.health"), {
-        width: "w-[18%]",
-      }),
-      column.custom(
-        "enabled",
-        (row) => row.enabled,
-        t("catalog.enabled"),
-        // A yes or no is plain text: a badge is for an engine state (P11).
-        (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
-        { sortable: true, width: "w-[10%]" },
-      ),
-      // The same words the connector's own page uses: "Produktion", not "prod";
-      // "MCP-Server", not "mcp". Sorting still reads the engine's value.
-      column.custom(
-        "environment",
-        (row) => row.environment,
-        t("catalog.environment"),
-        (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
-        { sortable: true, width: "w-[13%]" },
-      ),
-      column.custom(
-        "driver",
-        (row) => row.driver,
-        t("catalog.driver"),
-        (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
-        { sortable: true, width: "w-[13%]" },
-      ),
-    ];
-    // Without workflow:read the relation cannot be read at all. Dropping the
-    // column is honest; rendering "0" would claim a measured count.
-    if (relations.canReadWorkflows) {
-      columns.push(
-        column.link(
-          "used_by",
-          (row): Relation | null => {
-            const slug = stringField(row, "slug");
-            if (!slug) return null;
-            const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
-            if (users.length === 0) return null;
-            return {
-              href: absolute(workflowsHref({ connector: slug })),
-              label: t("connectors.usedByCount", { count: users.length }),
-            };
-          },
-          t("catalog.usedBy"),
-          { width: "w-[18%]" },
-        ),
-      );
-    }
-    return columns;
-  }
-
-  return [
-    // Text, like the connector name: the row already opens this record.
-    column.text("filename", (row) => row.filename, t("catalog.filename"), {
+  const columns: CockpitColumn<CatalogRow>[] = [
+    // The name is text. It was a link to the very record the row click and
+    // the row's open button already open — three ways to one place, and the
+    // one styled as a link looked like it led somewhere else.
+    column.text("name", (row) => row.display_name, t("common.name"), {
       sortable: true,
-      width: "w-[27%]",
+      width: "w-[23%]",
     }),
-    column.status("status", (row) => row.status, t("resource.field.status"), {
-      sortable: true,
-      width: "w-[13%]",
-    }),
-    column.status("scan_result", (row) => row.scan_result, t("catalog.scanResult"), {
-      width: "w-[14%]",
-    }),
-    column.text("content_type", (row) => row.content_type, t("catalog.contentType"), {
-      sortable: true,
+    // One column for where the connector stands. A second one, "Zugangsdaten",
+    // read the same verdict and said it again in other words.
+    column.status("health", (row) => row.health_state, t("catalog.health"), {
       width: "w-[18%]",
     }),
-    column.bytes("size_bytes", (row) => row.size_bytes, t("catalog.size"), {
-      sortable: true,
-      width: "w-[12%]",
-    }),
-    column.date("created_at", (row) => row.created_at, t("resource.field.createdAt"), {
-      sortable: true,
-      width: "w-[16%]",
-    }),
+    column.custom(
+      "enabled",
+      (row) => row.enabled,
+      t("catalog.enabled"),
+      // A yes or no is plain text: a badge is for an engine state (P11).
+      (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
+      { sortable: true, width: "w-[10%]" },
+    ),
+    // The same words the connector's own page uses: "Produktion", not "prod";
+    // "MCP-Server", not "mcp". Sorting still reads the engine's value.
+    column.custom(
+      "environment",
+      (row) => row.environment,
+      t("catalog.environment"),
+      (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
+      { sortable: true, width: "w-[13%]" },
+    ),
+    column.custom(
+      "driver",
+      (row) => row.driver,
+      t("catalog.driver"),
+      (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
+      { sortable: true, width: "w-[13%]" },
+    ),
   ];
+  // Without workflow:read the relation cannot be read at all. Dropping the
+  // column is honest; rendering "0" would claim a measured count.
+  if (relations.canReadWorkflows) {
+    columns.push(
+      column.link(
+        "used_by",
+        (row): Relation | null => {
+          const slug = stringField(row, "slug");
+          if (!slug) return null;
+          const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
+          if (users.length === 0) return null;
+          return {
+            href: absolute(workflowsHref({ connector: slug })),
+            label: t("connectors.usedByCount", { count: users.length }),
+          };
+        },
+        t("catalog.usedBy"),
+        { width: "w-[18%]" },
+      ),
+    );
+  }
+  return columns;
 }
 
 export function CatalogPage({

@@ -46,6 +46,7 @@ export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
 export { RecordSheet, type SheetSize, sheetWidthClass } from "./record-sheet";
 export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
+export { SaveBar } from "./save-bar";
 export { CollapsibleSection, SECTION_LABEL, Section } from "./section";
 export { SegmentedControl, type SegmentedOption } from "./segmented-control";
 export { Loadable, RowsSkeleton, Skeleton, TileSkeleton } from "./skeleton";
