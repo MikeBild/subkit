@@ -76,13 +76,13 @@ describe("DataTable", () => {
     expect(html).toContain('data-slot="skeleton"');
   });
 
-  test("a low-priority column leaves below the large breakpoint; cards below sm", () => {
-    expect(priorityClass("low")).toBe("hidden lg:table-cell");
+  test("the list measures its own width: cards when narrow, low-priority columns when wide", () => {
+    expect(priorityClass("low")).toBe("hidden @4xl:table-cell");
     expect(priorityClass("high")).toBeUndefined();
     const html = table();
-    expect(html).toContain("hidden lg:table-cell");
-    expect(html).toContain("sm:block");
-    expect(html).toContain("sm:hidden");
+    expect(html).toContain("hidden @4xl:table-cell");
+    expect(html).toContain("@2xl:block");
+    expect(html).toContain("@2xl:hidden");
   });
 });
 

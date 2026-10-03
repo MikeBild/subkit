@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import { useLiveQueryOptions } from "@/app/live-events";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,10 +37,11 @@ export function preparedChangeTarget(name: string): string {
 export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
+  const live = useLiveQueryOptions();
   const query = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => apiRequest<{ items: PreparedChange[] }>("/v1/secret-approvals"),
-    refetchInterval: 60_000,
+    ...live,
   });
   const refresh = () => client.invalidateQueries({ queryKey: QUERY_KEY });
   const approve = useMutation({
