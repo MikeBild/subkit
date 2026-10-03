@@ -16,7 +16,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { type StepDraft, StepEditDialog } from "@/components/cockpit/workflow-step-editor";
+import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type WorkflowPreviewSource,
@@ -39,6 +39,12 @@ interface PreviewResult {
   ok: boolean;
   preview: string;
 }
+
+const STEP_MARK_KEYS = {
+  new: "stepEditor.mark.new",
+  changed: "stepEditor.mark.changed",
+  moved: "stepEditor.mark.moved",
+} as const;
 
 /** One copy action per block: the same "Kopieren" beside two blocks is two acts. */
 function Copyable({ children }: { children: ReactNode }) {
@@ -165,11 +171,14 @@ export function WorkflowStepsList({
   steps,
   canRun,
   editor,
+  emptyAction,
 }: {
   steps: WorkflowSteps;
   canRun: boolean;
   /** The step editor (R16), for a reader who may change the workflow. */
   editor?: StepDraft;
+  /** "Schritt hinzufügen", where there is no step yet. */
+  emptyAction?: ReactNode;
 }) {
   const { t, dateTime } = useI18n();
   const connectorNames = useConnectorNames();
@@ -191,6 +200,14 @@ export function WorkflowStepsList({
             <span className="min-w-0 truncate font-mono text-xs font-medium">
               {row.view.definition.id}
             </span>
+            {editor?.marks[row.view.definition.id] ? (
+              <span
+                className="shrink-0 text-xs text-muted-foreground"
+                data-testid={`workflow-step-${row.index}-mark`}
+              >
+                {t(STEP_MARK_KEYS[editor.marks[row.view.definition.id] ?? "changed"])}
+              </span>
+            ) : null}
           </span>
         ),
         { width: "w-[26%]" },
@@ -236,7 +253,7 @@ export function WorkflowStepsList({
         { width: "w-[20%]" },
       ),
     ];
-  }, [t, dateTime, connectorNames]);
+  }, [t, dateTime, connectorNames, editor?.marks]);
   const selected = open === null ? null : (steps.views[open] ?? null);
   return (
     <div data-testid="workflow-steps">
@@ -245,9 +262,52 @@ export function WorkflowStepsList({
         data={rows}
         collectionId="workflow-step-list"
         emptyLine={t("workflow.noSteps")}
+        emptyAction={emptyAction}
         pending={steps.pending && steps.views.length === 0}
         onOpen={(row) => setOpen(row.index)}
         rowLabel={(row) => t("workflow.step", { count: row.index + 1 })}
+        rowActions={
+          editor
+            ? (row) => (
+                <span data-action-scope="step">
+                  <ActionMenu
+                    testId={`workflow-step-${row.index}-menu`}
+                    items={[
+                      {
+                        label: t("stepEditor.edit"),
+                        onSelect: () => setEditing(row.index),
+                        testId: `workflow-step-${row.index}-edit`,
+                      },
+                      ...(row.index > 0
+                        ? [
+                            {
+                              label: t("stepEditor.up"),
+                              onSelect: () => editor.move(row.index, -1),
+                              testId: `workflow-step-${row.index}-up`,
+                            },
+                          ]
+                        : []),
+                      ...(row.index < steps.views.length - 1
+                        ? [
+                            {
+                              label: t("stepEditor.down"),
+                              onSelect: () => editor.move(row.index, 1),
+                              testId: `workflow-step-${row.index}-down`,
+                            },
+                          ]
+                        : []),
+                      {
+                        label: t("stepEditor.remove"),
+                        onSelect: () => editor.remove(row.index),
+                        destructive: true,
+                        testId: `workflow-step-${row.index}-remove`,
+                      },
+                    ]}
+                  />
+                </span>
+              )
+            : undefined
+        }
       />
       {selected && open !== null ? (
         <StepSheet
@@ -257,38 +317,14 @@ export function WorkflowStepsList({
           canRun={canRun}
           steps={steps}
           onClose={() => setOpen(null)}
-          {...(editor
-            ? {
-                editing: {
-                  edit: () => setEditing(open),
-                  up:
-                    open > 0
-                      ? () => {
-                          editor.move(open, -1);
-                          setOpen(open - 1);
-                        }
-                      : undefined,
-                  down:
-                    open < steps.views.length - 1
-                      ? () => {
-                          editor.move(open, 1);
-                          setOpen(open + 1);
-                        }
-                      : undefined,
-                  remove: () => {
-                    editor.remove(open);
-                    setOpen(null);
-                  },
-                },
-              }
-            : {})}
         />
       ) : null}
       {editor && editing !== null ? (
-        <StepEditDialog
+        <StepDialog
           open
           onOpenChange={(next) => !next && setEditing(null)}
           step={editor.steps[editing]}
+          taken={editor.steps.filter((_, at) => at !== editing).map(stepId)}
           onApply={(step) => editor.replace(editing, step)}
         />
       ) : null}
@@ -304,7 +340,6 @@ function StepSheet({
   canRun,
   steps,
   onClose,
-  editing,
 }: {
   view: WorkflowStepView;
   index: number;
@@ -312,8 +347,6 @@ function StepSheet({
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
-  /** The editor's acts on this step: change, move, remove. */
-  editing?: { edit(): void; up?: () => void; down?: () => void; remove(): void };
 }) {
   const { t } = useI18n();
   const testId = `workflow-step-${index}`;
@@ -362,34 +395,6 @@ function StepSheet({
                 onSelect: () =>
                   void steps.runOne(definition.id, { source: "step", step: definition.raw }),
                 testId: `${testId}-test`,
-              },
-            ]}
-          />
-        ) : undefined
-      }
-      menu={
-        editing ? (
-          <ActionMenu
-            testId={`${testId}-menu`}
-            items={[
-              { label: t("stepEditor.edit"), onSelect: editing.edit, testId: `${testId}-edit` },
-              ...(editing.up
-                ? [{ label: t("stepEditor.up"), onSelect: editing.up, testId: `${testId}-up` }]
-                : []),
-              ...(editing.down
-                ? [
-                    {
-                      label: t("stepEditor.down"),
-                      onSelect: editing.down,
-                      testId: `${testId}-down`,
-                    },
-                  ]
-                : []),
-              {
-                label: t("stepEditor.remove"),
-                onSelect: editing.remove,
-                destructive: true,
-                testId: `${testId}-remove`,
               },
             ]}
           />

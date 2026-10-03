@@ -13,6 +13,7 @@ import { useConnectorNames } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
+  ActionButton,
   ActionMenu,
   type ActionMenuItem,
   CollapsibleSection,
@@ -32,7 +33,7 @@ import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
 import { WorkflowRuns } from "@/components/cockpit/workflow-runs";
 import {
-  StepAddDialog,
+  StepDialog,
   StepSaveBar,
   stepId,
   useStepDraft,
@@ -335,16 +336,10 @@ export function WorkflowPage({
                     definition={draftDefinition(record, editor.steps as RecordValue[])}
                   />
                 ) : null}
-                {canWrite && !legacy ? (
-                  <ActionMenu
-                    items={[
-                      {
-                        label: t("stepEditor.addTitle"),
-                        onSelect: () => setAdding(true),
-                        testId: "step-add",
-                      },
-                    ]}
-                  />
+                {canWrite && !legacy && editor.steps.length > 0 ? (
+                  <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
+                    {t("stepEditor.addTitle")}
+                  </ActionButton>
                 ) : null}
               </>
             }
@@ -355,7 +350,16 @@ export function WorkflowPage({
             key={`${id}:${versionId ?? "none"}`}
             steps={steps}
             canRun={canRun}
-            {...(canWrite && !legacy ? { editor } : {})}
+            {...(canWrite && !legacy
+              ? {
+                  editor,
+                  emptyAction: (
+                    <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
+                      {t("stepEditor.addTitle")}
+                    </ActionButton>
+                  ),
+                }
+              : {})}
           />
           {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
           <div className="flex flex-col gap-2">
@@ -445,11 +449,12 @@ export function WorkflowPage({
         />
       ) : null}
       {canWrite ? (
-        <StepAddDialog
+        <StepDialog
           open={adding}
           onOpenChange={setAdding}
+          step={null}
           taken={editor.steps.map(stepId)}
-          onAdd={editor.add}
+          onApply={editor.add}
         />
       ) : null}
       <ConfirmDialog

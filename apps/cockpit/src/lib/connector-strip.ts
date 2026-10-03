@@ -4,8 +4,8 @@ import type { RenewalWay } from "@/pages/connector-detail-model";
 
 /**
  * What a connector's status strip says, top state first (spec D15):
- * Anmeldung abgelaufen › Abgeschaltet › Nicht erreichbar › Zugangsdaten
- * unvollständig › ok. Only the top state gets its action; the rest are
+ * Anmeldung abgelaufen › Abgeschaltet › Nicht erreichbar › Nicht angemeldet ›
+ * Zugangsdaten unvollständig › ok. Only the top state gets its action; the rest are
  * counted. Switched off sits right under a lost sign-in: signing in never
  * switches a connector on, so after the sign-in it is the next thing to do.
  */
@@ -13,6 +13,7 @@ export type ConnectorStripKind =
   | "expired"
   | "off"
   | "unreachable"
+  | "notSignedIn"
   | "incomplete"
   | "signedIn"
   | "tested"
@@ -54,12 +55,11 @@ export const CONNECTOR_STRIP_KEYS: Record<ConnectorStripKind, TranslationKey> = 
   expired: "connectorStrip.state.expired",
   off: "connectorStrip.state.off",
   unreachable: "connectorStrip.state.unreachable",
+  notSignedIn: "connectorStrip.state.notSignedIn",
   incomplete: "connectorStrip.state.incomplete",
   signedIn: "connectorState.signedIn",
   tested: "connectorStrip.state.tested",
-  // The sign-in's own word ("Verbunden") stands in "Verbindung"; the strip
-  // says whether the connector is ready.
-  connected: "connectorStrip.state.ready",
+  connected: "connectorStrip.state.connected",
   notRequired: "connectorStrip.state.ready",
   unproven: "connectorStrip.state.unproven",
 };
@@ -100,7 +100,7 @@ export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
     });
   if (input.auth === "credentials_missing" || input.missingScopes > 0)
     candidates.push({
-      kind: "incomplete",
+      kind: input.auth === "credentials_missing" ? "notSignedIn" : "incomplete",
       action: input.way
         ? { kind: "complete", way: input.way, first: input.auth === "credentials_missing" }
         : null,

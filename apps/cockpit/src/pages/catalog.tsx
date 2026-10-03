@@ -16,6 +16,7 @@ import {
   workflowsHref,
 } from "@/app/links";
 import { KNOWLEDGE_TABS } from "@/app/navigation";
+import { CreateAction } from "@/components/cockpit/create-choice";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Page, PageHeader, RouteTabs } from "@/components/cockpit/patterns";
 import { type CockpitColumn, DataTable, RowName } from "@/components/cockpit/patterns/data-table";
@@ -715,7 +716,16 @@ export function CatalogPage({
   // the empty state, where the reader is looking — it used to stand in both,
   // the same button twice on one screen.
   const primaryAction = (testId: string) =>
-    config.actionKey ? (
+    // Workflows and connectors are made in the chat or by hand (R16, R19).
+    (resource === "workflows" && permissions.includes("workflow:write")) ||
+    (resource === "connectors" && permissions.includes("connector:write")) ? (
+      <CreateAction
+        kind={resource === "workflows" ? "workflow" : "connector"}
+        canChat={permissions.includes("conversation:write")}
+        size={testId === "catalog-empty-action" ? "sm" : "default"}
+        testId={testId}
+      />
+    ) : config.actionKey ? (
       <Button asChild size={testId === "catalog-empty-action" ? "sm" : "default"}>
         <a href={absolute(chatNewHref({ prompt: t(config.actionKey) }))} data-testid={testId}>
           <Bot data-icon="inline-start" />
