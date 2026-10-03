@@ -224,6 +224,15 @@ export const LlmStatsResponse = z
           tokens: TokenAggSchema,
           latency_ms: LatencyAggSchema,
         }),
+        // This group's money, priced from its own rows exactly as `cost` below
+        // prices the window's. Present when `group_by` names one dimension.
+        cost: z
+          .object({
+            amount: z.number(),
+            currency: z.string(),
+            unpriced_calls: z.number().int(),
+          })
+          .optional(),
       }),
     ),
     totals: z.object({

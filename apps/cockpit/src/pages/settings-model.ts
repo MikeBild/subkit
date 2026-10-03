@@ -92,7 +92,6 @@ export type SettingsFilter = "all" | "changed";
 export interface SettingsView {
   leaf: string | null;
   section: string | null;
-  q: string;
   /** `?filter=changed` shows only settings that differ from their default. */
   filter: SettingsFilter;
 }
@@ -103,7 +102,6 @@ export function settingsViewFromUrl(search: string): SettingsView {
   return {
     leaf: settingsLeafFromUrl(search),
     section: section.length <= 64 && /^[a-z0-9_]+$/i.test(section) ? section : null,
-    q: (params.get("q") ?? "").slice(0, 128),
     filter: params.get("filter") === "changed" ? "changed" : "all",
   };
 }
@@ -242,17 +240,6 @@ export function settingNavigation(present: readonly string[]): SettingNavGroup[]
   if (unplaced.length > 0)
     groups.push({ id: "other", label: "settings.group.other", sections: unplaced });
   return groups;
-}
-
-/** Whether a setting matches the search: its path, its name or the engine's description. */
-export function settingMatches(item: SettingItem, needle: string, t: Translate): boolean {
-  const query = needle.trim().toLowerCase();
-  if (!query) return true;
-  return (
-    item.path.toLowerCase().includes(query) ||
-    Boolean(item.meta.description?.toLowerCase().includes(query)) ||
-    settingLabel(item.path, t).text.toLowerCase().includes(query)
-  );
 }
 
 /**

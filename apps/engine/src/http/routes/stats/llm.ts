@@ -5,7 +5,7 @@ import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { can } from "../../../rbac/index.ts";
 import { aggregateLlm, type LlmGroupDim } from "../../../stats/aggregate-llm.ts";
-import { readLlmWindowCost } from "../../../stats/llm-cost.ts";
+import { readLlmCostByGroup, readLlmWindowCost } from "../../../stats/llm-cost.ts";
 import { BadRequestError, ForbiddenError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -110,7 +110,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
     // Money for the window, priced per model — through the reader
     // `get_llm_usage` prices with, so both answer with the same amount,
     // price sources and unpriced models for the same window.
-    const cost = await readLlmWindowCost(db, {
+    const window = {
       tenantId: principal.tenant_id,
       bucket: win.bucket,
       from: win.from,
@@ -119,7 +119,28 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       model: q.model,
       flow: q.flow,
       userId: q.user_id,
-    });
+    };
+    const cost = await readLlmWindowCost(db, window);
+    // With one dimension each group gets its own amount — "what did this
+    // workflow cost" is the question a breakdown by workflow is asked.
+    const [only] = groupBy;
+    const groupCost =
+      groupBy.length === 1 && only ? await readLlmCostByGroup(db, window, only) : null;
+    const groups = groupCost
+      ? result.groups.map((group) => {
+          const priced = groupCost.get(group.key[only as string] ?? "");
+          return priced
+            ? {
+                ...group,
+                cost: {
+                  amount: priced.amount,
+                  currency: priced.currency,
+                  unpriced_calls: priced.unpriced_calls,
+                },
+              }
+            : group;
+        })
+      : result.groups;
 
     return c.json(
       {
@@ -128,6 +149,7 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
         from: win.from.toISOString(),
         to: win.to.toISOString(),
         ...result,
+        groups,
         cost,
       },
       200,

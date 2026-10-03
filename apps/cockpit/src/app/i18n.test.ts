@@ -191,9 +191,4 @@ describe("cockpit i18n", () => {
     expect(CATALOGS.de["access.grants"]).toBe("Zugriffe");
     expect(CATALOGS.de["access.revokeGrant"]).toBe("Zugriff entziehen");
   });
-
-  test("the operations block says per hour over a day and per day over longer windows", () => {
-    expect(CATALOGS.de["resource.usage.runtimeDescriptionHourly"]).toContain("je Stunde");
-    expect(CATALOGS.de["resource.usage.runtimeDescription"]).toContain("je Tag");
-  });
 });

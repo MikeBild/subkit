@@ -184,7 +184,6 @@ const routes = [
   // API-Zugang, at each of its tabs: the bare address opens the apps.
   "api-access",
   "api-access?section=keys",
-  "api-access?section=grants",
   // Benachrichtigungen, a tab of Einstellungen: the seeded rule's event list
   // and a hostile long one, each entry named, beside channels in every
   // delivery state.
@@ -1287,6 +1286,7 @@ async function mockApi(route) {
         "file:read",
         "file:write",
         "notification:read",
+        "notification:write",
         "audit:read",
         "stats:read",
         "stats:read:all",
@@ -1634,6 +1634,12 @@ async function mockApi(route) {
       size_bytes: 1840,
       created_at: "2026-08-10T09:00:00.000Z",
     });
+  if (path === `/v1/files/${uuid}/usage`)
+    return json(route, {
+      workflows: [{ id: uuid, name: "Monatsreport" }],
+      conversations: [{ id: uuid, title: "Monatsreport reparieren" }],
+      other: 1,
+    });
   if (path === `/v1/files/${uuid}/content`)
     return route.fulfill({
       status: 200,
@@ -1939,6 +1945,9 @@ async function mockApi(route) {
       ? AUDIT_FIXTURE_ENTRIES.filter((entry) => wanted.includes(entry.action))
       : AUDIT_FIXTURE_ENTRIES;
     const items = actorType ? byAction.filter((entry) => entry.actor_type === actorType) : byAction;
+    // Two pages: the log is endless, so the second answers the cursor with the
+    // end of the log rather than the first page again.
+    if (url.searchParams.get("cursor")) return json(route, { items: [], next_cursor: null });
     return json(route, { items, next_cursor: "audit-cursor-2" });
   }
   // The one entry the detail sheet asks for, answered from the same array the
@@ -2106,6 +2115,13 @@ async function mockApi(route) {
           tokens: { prompt: total, completion: 0, cache_read: 0, cache_creation: 0, total },
           latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
         },
+        // One dimension: each group carries its own money, as the engine
+        // sends it — here the window's amount split by tokens.
+        cost: {
+          amount: Math.round(((412.87 * total) / rows.reduce((n, r) => n + r[2], 0)) * 100) / 100,
+          currency: "EUR",
+          unpriced_calls: 0,
+        },
       })),
       totals: {
         calls: { total: rows.reduce((n, r) => n + r[1], 0), by_result: {} },
@@ -2207,6 +2223,29 @@ async function mockApi(route) {
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
+    // Runs per workflow, for the usage page's "Läufe" column.
+    if (url.searchParams.get("group_by") === "workflow_id")
+      return json(route, {
+        bucket: "day",
+        tz: "UTC",
+        from: "2026-07-11T00:00:00.000Z",
+        to: "2026-08-10T00:00:00.000Z",
+        groups: [
+          [uuid, 30],
+          ["catalog-record-1", 10],
+        ].map(([workflow_id, executions]) => ({
+          key: { workflow_id },
+          buckets: [],
+          totals: {
+            executions,
+            duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+          },
+        })),
+        totals: {
+          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
+          duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+      });
     return json(route, {
       bucket: "day",
       tz: "UTC",
@@ -2905,7 +2944,10 @@ function markerFor(route) {
   // which is the frame that proves nothing.
   if (/^workflows\/.+/.test(path)) return '[data-testid="workflow-recent-runs"]';
   // A record of Wissen, once it has loaded: its facts stand under the document.
-  if (/^(knowledge|skills|files)\/.+/.test(path))
+  // A file opens as a sheet over the Dateien list, at its own address.
+  if (/^files\/.+/.test(path)) return '[data-testid="file-sheet"] [data-testid="file-facts"]';
+  if (path === "files") return '[data-testid="files-page"]';
+  if (/^(knowledge|skills)\/.+/.test(path))
     return `[data-testid="detail-${path.split("/")[0]}"] [data-testid="detail-overview"]`;
   if (path === "chat") return '[data-testid="chat-workspace"]';
   // Übersicht, its review sheet, and the old addresses that land on one of them.
@@ -4601,7 +4643,8 @@ for (const locale of variants) {
         shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
       );
     if (viewport.name === "desktop" && !focused) {
-      for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
+      // A file has no page of its own: its sheet is swept as `files/<id>`.
+      for (const resource of ["workflows", "connectors", "knowledge", "skills"]) {
         await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);

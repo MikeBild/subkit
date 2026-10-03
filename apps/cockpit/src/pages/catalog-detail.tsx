@@ -39,29 +39,19 @@ import {
   returnedFromSignIn,
   withoutSignInReturn,
 } from "@/pages/connector-detail-model";
-import {
-  isKnowledgeResource,
-  KnowledgeDetailPage,
-  type KnowledgeResource,
-} from "@/pages/knowledge-detail";
 
-type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
+/** The records this page builds; Wissen's records have pages of their own. */
+type DetailResource = "workflows" | "connectors";
 type ProbeResult = components["schemas"]["ConnectorProbeResult"];
 
 const ENDPOINTS: Record<DetailResource, string> = {
   workflows: "/v1/workflows",
   connectors: "/v1/connectors",
-  knowledge: "/v1/knowledge-sources",
-  skills: "/v1/skills",
-  files: "/v1/files",
 };
 
 const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
   workflows: { read: "workflow:read", write: "workflow:write" },
   connectors: { read: "connector:read", write: "connector:write" },
-  knowledge: { read: "knowledge:read", write: "knowledge:write" },
-  skills: { read: "skill:read", write: "skill:write" },
-  files: { read: "file:read", write: "file:write" },
 };
 
 /**
@@ -122,8 +112,8 @@ function RecordBar({
 }
 
 /**
- * A record's page. Sources, skills and files are records of Wissen and have
- * their own (`knowledge-detail.tsx`); workflows and connectors are built here.
+ * A record's page: a workflow or a connector. Sources, skills and files have
+ * pages of their own.
  */
 export function CatalogDetailPage({
   resource,
@@ -132,18 +122,14 @@ export function CatalogDetailPage({
   resource: DetailResource;
   permissions: readonly string[];
 }) {
-  return isKnowledgeResource(resource) ? (
-    <KnowledgeDetailPage resource={resource} permissions={permissions} />
-  ) : (
-    <RecordDetailPage resource={resource} permissions={permissions} />
-  );
+  return <RecordDetailPage resource={resource} permissions={permissions} />;
 }
 
 function RecordDetailPage({
   resource,
   permissions,
 }: {
-  resource: Exclude<DetailResource, KnowledgeResource>;
+  resource: DetailResource;
   permissions: readonly string[];
 }) {
   const { t } = useI18n();

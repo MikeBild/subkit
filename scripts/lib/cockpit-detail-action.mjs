@@ -25,7 +25,6 @@
 // - a skill, a knowledge source                         → the record's own
 //   actions, each once; its state in one status strip under the title — no
 //   badge beside it, no "Steuerung" label, no sentence about steps;
-// - a file                                              → its actions once.
 
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
@@ -264,7 +263,7 @@ async function expectWorkflowTitle(page, where) {
  * every reader "Den Namen änderst du hier, die Schritte im Chat." — on a file,
  * which has neither.
  */
-async function assertRecordHeader(page, where, de, resource) {
+async function assertRecordHeader(page, where, de) {
   const found = await page.evaluate(() => ({
     strips: document.querySelectorAll('[data-slot="status-strip"]').length,
     titleBadges: document.querySelectorAll('[data-slot="page-title-row"] [data-slot="badge"]')
@@ -278,7 +277,6 @@ async function assertRecordHeader(page, where, de, resource) {
     ? ["Steuerung", "Schritte im Chat", "Metadaten bearbeiten", "Nur lesend"]
     : ["Governance", "steps in the chat", "Edit metadata", "Read-only"])
     if (found.body.includes(gone)) throw new Error(`${where}: the page still says "${gone}"`);
-  if (resource === "files") return;
   if (found.strips !== 1) throw new Error(`${where}: ${found.strips} status strips, not one`);
   if (found.titleBadges !== 0) throw new Error(`${where}: the state stands beside the title too`);
   // "Im Chat ändern" once; whatever else the reader's rights allow, once each.
@@ -402,14 +400,15 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await page.unroute(isDetailApi, handler);
   }
 
-  // ── The records that are one document: a skill, a knowledge source, a file ─
-  // Served by the sweep's own fixtures; each action of the page once.
-  for (const resource of ["skills", "knowledge", "files"]) {
+  // ── The records that are one document: a skill, a knowledge source ─
+  // Served by the sweep's own fixtures; each action of the page once. A file
+  // is a sheet over its list and is swept as `files/$id`.
+  for (const resource of ["skills", "knowledge"]) {
     const where = `/${resource}/<record> (${localeName})`;
     await stand.visit(page, `${resource}/${uuid}`);
     await page.getByTestId(`detail-${resource}`).waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, where);
-    await assertRecordHeader(page, where, de, resource);
+    await assertRecordHeader(page, where, de);
   }
 }
