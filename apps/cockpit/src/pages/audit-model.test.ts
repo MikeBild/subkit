@@ -66,12 +66,10 @@ describe("audit resource relations", () => {
   });
 
   test("a run leads to the run it names", () => {
-    // This asserted the opposite until `/runs/$resourceId` existed, and the
-    // absence was the expensive one: the row naming a run is where an
-    // investigation starts, and it was the only row that could not reach what
-    // it named.
+    // The row naming a run is where an investigation starts. A run's address
+    // is its sheet over Übersicht.
     expect(auditResourceHref("execution", "018f4b4a-6d33-7b3a-9c2d-123456789abc")).toBe(
-      "/cockpit/runs/018f4b4a-6d33-7b3a-9c2d-123456789abc",
+      "/cockpit?run=018f4b4a-6d33-7b3a-9c2d-123456789abc",
     );
   });
 
@@ -92,6 +90,8 @@ describe("audit resource relations", () => {
     for (const type of LINKED_RESOURCE_TYPES) {
       const href = auditResourceHref(type, "018f4b4a-6d33-7b3a-9c2d-123456789abc");
       expect(href, `${type} is mapped but builds no link`).not.toBeNull();
+      // A run is a sheet, addressed in the query of the start page.
+      if (href?.startsWith("/cockpit?run=")) continue;
       const prefix = (href ?? "").replace(/^\/cockpit/, "").replace(/\/[^/]+$/, "");
       expect(detailPrefixes.has(prefix), `${type} points at ${href}, which no route matches`).toBe(
         true,

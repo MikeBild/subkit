@@ -63,7 +63,10 @@ function record(section: string, id: string): string {
   return `/${section}/${encodeURIComponent(id)}`;
 }
 
-/** The run log, narrowed. `all` is the page's own word for "no narrowing" and is left out. */
+/**
+ * All runs, narrowed — the large sheet over Übersicht (`?runs=all`). `all` is
+ * the list's own word for "no narrowing" and is left out.
+ */
 export function runsHref(
   filter: {
     workflowId?: string | null;
@@ -75,7 +78,8 @@ export function runsHref(
     startedTo?: string | null;
   } = {},
 ): string {
-  return withQuery("/runs", {
+  return withQuery("/", {
+    runs: "all",
     workflow_id: filter.workflowId,
     status: filter.status === "all" ? null : filter.status,
     source: filter.source === "all" ? null : filter.source,
@@ -85,8 +89,9 @@ export function runsHref(
   });
 }
 
+/** One run, in its sheet over Übersicht (`?run=<id>`). */
 export function runHref(id: string): string {
-  return record("runs", id);
+  return withQuery("/", { run: id });
 }
 
 export function workflowHref(id: string): string {

@@ -17,14 +17,6 @@ import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -59,8 +51,8 @@ import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { navigationItem, visibleNavigation } from "./navigation";
-import { RecordCrumbProvider, recordListPath, useRecordCrumbLabel } from "./record-crumb";
+import { RunOverlays } from "@/pages/runs";
+import { navigationItem, navigationTarget, visibleNavigation } from "./navigation";
 import { useSession } from "./session";
 import {
   CHAT_COLUMN,
@@ -105,20 +97,13 @@ function localizedRole(role: string, t: ReturnType<typeof useI18n>["t"]): string
   return role;
 }
 
-/** The shell, with the slot a record's page names itself in for the breadcrumb. */
 export function AppShell() {
-  return (
-    <RecordCrumbProvider>
-      <ShellFrame />
-    </RecordCrumbProvider>
-  );
-}
-
-function ShellFrame() {
   const session = useSession();
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const groups = visibleNavigation(session.permissions);
+  // Router-relative, so the entry for Wissen is active on all three of its tabs.
+  const active = navigationItem(pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/");
 
   return (
     <SidebarProvider
@@ -160,7 +145,7 @@ function ShellFrame() {
             */}
             <SidebarMenuItem data-testid="cockpit-wordmark">
               <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
-                <Link to="/chat" data-testid="cockpit-home-link">
+                <Link to="/" data-testid="cockpit-home-link">
                   <span
                     data-testid="cockpit-wordmark-icon"
                     className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
@@ -192,18 +177,12 @@ function ShellFrame() {
                   <SidebarMenu>
                     {group.items.map((item) => {
                       const label = t(item.labelKey);
+                      const target = navigationTarget(item, session.permissions);
                       return (
                         <SidebarMenuItem key={item.path}>
-                          <SidebarMenuButton
-                            asChild
-                            tooltip={label}
-                            isActive={
-                              pathname === `/cockpit${item.path}` ||
-                              pathname.startsWith(`/cockpit${item.path}/`)
-                            }
-                          >
+                          <SidebarMenuButton asChild tooltip={label} isActive={active === item}>
                             <Link
-                              to={item.path}
+                              to={target}
                               data-testid={
                                 item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`
                               }
@@ -249,23 +228,20 @@ function ShellFrame() {
  * The top bar and the page below it.
  *
  * The bar is drawn only where it carries something (see `shell-header.tsx`):
- * on a phone, over a record with its breadcrumb, and as the chat's own header.
- * On a wide list page the page frame holds the toggle beside its heading, and
- * a bar holding nothing but that toggle would be a band of empty space.
+ * on a phone and as the chat's own header. On a wide page the page header
+ * holds the toggle beside its heading, and a bar holding nothing but that
+ * toggle would be a band of empty space. A record's way back is the back link
+ * inside its own page header, never a crumb repeating its name.
+ *
+ * The run sheets live here, not on one page: a run's address is `?run=<id>`
+ * on whichever view opened it.
  */
 function ShellContent() {
   const { isMobile } = useSidebar();
   const header = useShellHeaderState();
-  // Subscribed for its re-render, not its value: the run log opens a run with
-  // `pushState`, which the router does not see, and names it here. The crumb
-  // and the owner then read the same address in the same render, so they agree
-  // on whether this is a record's page.
-  useRecordCrumbLabel();
-  const breadcrumb = recordListPath(window.location.pathname) !== null;
   const chat = header.chatHeaders > 0;
   const owner = triggerOwner({
     mobile: isMobile,
-    breadcrumb,
     chatHeader: chat,
     pageFrames: header.pageFrames,
   });
@@ -297,56 +273,13 @@ function ShellContent() {
             data-testid="cockpit-header"
           >
             <SidebarToggle className="-ml-1" />
-            <RecordBreadcrumb />
           </header>
         ))}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="page-content">
         <Outlet />
       </div>
+      <RunOverlays />
     </ShellHeaderProvider>
-  );
-}
-
-/**
- * "List › Record", on a record's own page and nowhere else.
- *
- * It used to print the current page's name on every page, directly above a
- * heading that said the same word. On a detail page it earns its place: the
- * list crumb is the way back, which is why it carries `detail-back` — the page
- * body no longer holds a second "back to list" button beside it.
- */
-function RecordBreadcrumb() {
-  const { t } = useI18n();
-  const label = useRecordCrumbLabel();
-  // The address as the browser holds it, not as the router last saw it: the
-  // run log opens and closes a run with `history.pushState`, which the router
-  // does not observe. The crumb re-renders on both — a router navigation
-  // re-renders the shell, and a run opening or closing changes `label`.
-  const listPath = recordListPath(window.location.pathname);
-  const list = listPath ? navigationItem(listPath) : undefined;
-  if (!listPath || !list) return null;
-  return (
-    <Breadcrumb data-testid="page-breadcrumb" data-family-slot="breadcrumbs">
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to={listPath} data-testid="detail-back">
-              {t(list.labelKey)}
-            </Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        {label ? (
-          <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem className="min-w-0">
-              <BreadcrumbPage className="truncate" data-testid="page-breadcrumb-current">
-                {label}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </>
-        ) : null}
-      </BreadcrumbList>
-    </Breadcrumb>
   );
 }
 

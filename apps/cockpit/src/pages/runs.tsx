@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
 import { ChevronRight, RotateCcw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, runHref, runsHref, workflowHref, workflowsHref } from "@/app/links";
-import { useRecordCrumb } from "@/app/record-crumb";
+import { absolute, runHref, workflowHref, workflowsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { CauseFix } from "@/components/cockpit/cause-fix";
 import { ConfirmAction } from "@/components/cockpit/confirm-action";
-import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
-import { PageFrame } from "@/components/cockpit/page-frame";
+import { DataState, RecordSheet, StatusBadge } from "@/components/cockpit/patterns";
+import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns/data-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
@@ -57,9 +55,10 @@ import {
   runCauseLinks,
   runCostFacts,
   runDurationMs,
-  runIdFromPath,
   runName,
   runOutcomeSentence,
+  runOverlayFromUrl,
+  runOverlaySearch,
   runStatusSentence,
   runVerdict,
   SOURCE_KIND_KEYS,
@@ -438,9 +437,13 @@ function RunDetail({ run, onShowRun }: { run: Execution; onShowRun(id: string): 
   );
 }
 
-export function RunsPage() {
+/**
+ * All runs, narrowed (O3): the list inside the large sheet. It reads its
+ * narrowing from the address once, when the sheet opens, and writes back what
+ * the reader removes.
+ */
+function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
-  const session = useSession();
   // Called with the search string explicitly. Handing the function itself to
   // `useState` would invoke it with no argument, and a filter read from
   // nothing is an empty filter — the link would arrive and change nothing,
@@ -460,21 +463,13 @@ export function RunsPage() {
     to: initial.startedTo,
   });
   const [page, setPage] = useState(0);
-  // The run the address names. It was a `useState<Execution | null>` holding
-  // the row itself, which is why nothing outside this component could ever
-  // open one: the only way in was a click, and local state has no address.
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    runIdFromPath(window.location.pathname),
-  );
   const debouncedSearch = useDebouncedValue(search);
-  const allowed = session.permissions.includes("execution:read");
   const title = t("resource.runs.title");
   const needle = debouncedSearch.trim();
   const query = useQuery({
     // The needle is part of the key: it is a filter the engine applies, so a
     // changed needle is a different question and gets its own answer.
     queryKey: ["runs", statusFilter, sourceFilter, workflowFilter, startedWindow, needle, page],
-    enabled: allowed,
     queryFn: () => {
       const params = executionsQuery(
         {
@@ -493,39 +488,6 @@ export function RunsPage() {
   const rows = useMemo(() => query.data?.items ?? [], [query.data]);
   const total = query.data?.total ?? rows.length;
 
-  const rowForId = selectedId ? (rows.find((run) => run.id === selectedId) ?? null) : null;
-  // A run reached by its address need not be among the rows on screen: a
-  // different filter, a later page, or simply older than the newest
-  // twenty-five. The sheet asks the engine for the record under the very key
-  // `RunDetail` reads, so the two share one request.
-  //
-  // Asked even when a row is on screen: the row is the list's snapshot, and
-  // the sheet's title and status badge must say what the record says NOW —
-  // a title reading "succeeded" above an outcome saying "failed" is two
-  // answers to one question.
-  const addressed = useQuery({
-    queryKey: ["run", selectedId ?? ""],
-    enabled: allowed && selectedId !== null,
-    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(selectedId ?? "")}`),
-  });
-  // Never the answer to a question that is no longer being asked: the key
-  // changes with the id, and a stale record under the previous one would title
-  // the sheet after a run the reader had already closed. The row is the floor
-  // while the record is on its way, and whenever the answer is not a record.
-  const fresh =
-    isExecutionRecord(addressed.data) && addressed.data.id === selectedId ? addressed.data : null;
-  const selected = fresh ?? rowForId;
-  useRecordCrumb(selected ? runName(selected, t) : null);
-
-  /**
-   * Show one run, or none, and say so in the address.
-   *
-   * `/runs` and `/runs/$resourceId` render the same component (app/router.tsx),
-   * so this moves the history entry without remounting the page: the filters,
-   * the page number and the loaded rows are exactly as the reader left them.
-   * The query string travels along because it carries the filter the reader
-   * arrived with — dropping it would silently widen the list on a reload.
-   */
   // A filter the reader removed must also leave the address. `showRun` copies
   // the query string onto every run address, so a cleared narrowing that
   // stayed in the URL came back on the next reload — after the reader had
@@ -539,21 +501,6 @@ export function RunsPage() {
       "",
       `${window.location.pathname}${query ? `?${query}` : ""}`,
     );
-  }, []);
-
-  const showRun = useCallback((id: string | null) => {
-    const path = absolute(id ? runHref(id) : runsHref());
-    window.history.pushState({}, "", `${path}${window.location.search}`);
-    setSelectedId(id);
-  }, []);
-
-  // Back and forward are the two buttons every reader already knows for
-  // "close that again". Without this the address would change and the sheet
-  // would not, which is the same lie as a sheet with no address.
-  useEffect(() => {
-    const onPopState = () => setSelectedId(runIdFromPath(window.location.pathname));
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
@@ -658,18 +605,8 @@ export function RunsPage() {
     forgetInAddress(["workflow_id", "status", "source", "q", "started_from", "started_to"]);
   }, [forgetInAddress]);
 
-  if (!allowed)
-    return (
-      <main className="p-6" data-testid="resource-runs">
-        <Alert data-testid="resource-permission-alert">
-          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
-          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
-        </Alert>
-      </main>
-    );
-
   return (
-    <PageFrame surface="collection" testId="resource-runs" title={title} scroll="content">
+    <div className="flex h-[calc(100svh-9rem)] min-h-80 flex-col">
       <DataTable
         columns={columns}
         data={rows}
@@ -828,7 +765,7 @@ export function RunsPage() {
         hasActiveFilters={hasActiveFilters}
         sorting={[] as SortingState}
         onSortingChange={() => {}}
-        onOpen={(run) => showRun(run.id)}
+        onOpen={(run) => onShowRun(run.id)}
         rowHref={(run) => runHref(run.id)}
         linkColumn="started_at"
         page={page}
@@ -842,69 +779,122 @@ export function RunsPage() {
         loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
       />
+    </div>
+  );
+}
 
-      <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && showRun(null)}>
-        <SheetContent
-          className="w-full overflow-y-auto sm:max-w-xl"
-          closeLabel={t("common.close")}
-          closeTestId="run-detail-close"
-          data-testid="run-detail"
-          aria-describedby={undefined}
-        >
-          <SheetHeader>
-            {/* The title is the workflow, and leads there: the run is one
-                answer about it, and the way to change it starts at the
-                workflow. Status beside it, so the sheet opens on the verdict. */}
-            <SheetTitle
-              data-testid="run-detail-title"
-              className="flex flex-wrap items-center gap-2 pr-8"
-            >
-              {selected?.workflow_id ? (
-                <a
-                  href={absolute(workflowHref(selected.workflow_id))}
-                  className="min-w-0 underline-offset-4 hover:underline"
-                  data-testid="run-detail-workflow-link"
-                >
-                  {runName(selected, t)}
-                </a>
-              ) : selected ? (
-                runName(selected, t)
-              ) : (
-                title
-              )}
-              {selected ? (
-                <Badge variant="outline" data-testid="run-detail-status">
-                  {
-                    runVerdict(
-                      selected.status,
-                      (selected as ExecutionDetail).outcome ?? null,
-                      t,
-                      (status) => statusLabel(t, status),
-                    ).label
-                  }
-                </Badge>
-              ) : null}
-            </SheetTitle>
-          </SheetHeader>
-          {/* Three different facts, told apart. The record is here; it is on
-              its way; or this address names no run this installation has. A
-              blank sheet reads as a rendering fault and an empty fact list
-              reads as a run that recorded nothing — neither is what happened. */}
-          {selected ? (
-            <RunDetail run={selected} onShowRun={showRun} />
-          ) : addressed.error ? (
-            <Alert variant="destructive" className="m-4 w-auto" data-testid="run-detail-missing">
-              <AlertTitle>{t("runs.detail.loadFailed")}</AlertTitle>
-              <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="grid gap-3 p-4" data-testid="run-detail-pending">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-    </PageFrame>
+/** One run, fetched by id: the sheet says what the record says NOW. */
+function useRun(id: string | null, enabled: boolean) {
+  const addressed = useQuery({
+    queryKey: ["run", id ?? ""],
+    enabled: enabled && id !== null,
+    queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(id ?? "")}`),
+  });
+  // Never the answer to a question that is no longer being asked: the key
+  // changes with the id, and a stale record under the previous one would title
+  // the sheet after a run the reader had already closed.
+  const run = isExecutionRecord(addressed.data) && addressed.data.id === id ? addressed.data : null;
+  return { run, failed: Boolean(addressed.error) };
+}
+
+/**
+ * The run sheets, on whichever view opened them (O2, O3).
+ *
+ * `?runs=all` opens all runs in the large sheet; `?run=<id>` opens one run —
+ * inside the large sheet, with the way back to the list, when the list is
+ * open, and in a sheet of its own otherwise. Both live in the query: the page
+ * underneath stays what it was, and back and forward close them again.
+ */
+export function RunOverlays() {
+  const { t } = useI18n();
+  const session = useSession();
+  const allowed = session.permissions.includes("execution:read");
+  const href = useRouterState({ select: (state) => state.location.href });
+  const [overlay, setOverlay] = useState(() => runOverlayFromUrl(window.location.search));
+  // A router navigation (a link to `?run=…` on the same page) and a history
+  // step both change the address under the sheets; the sheets follow it.
+  useEffect(() => {
+    setOverlay(runOverlayFromUrl(window.location.search));
+  }, [href]);
+  useEffect(() => {
+    const onPopState = () => setOverlay(runOverlayFromUrl(window.location.search));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const show = useCallback((next: { list: boolean; runId: string | null }) => {
+    const search = runOverlaySearch(window.location.search, next);
+    window.history.pushState({}, "", `${window.location.pathname}${search}${window.location.hash}`);
+    setOverlay(next);
+  }, []);
+  const { run, failed } = useRun(overlay.runId, allowed);
+  if (!allowed) return null;
+  const open = overlay.list || overlay.runId !== null;
+  const title = !overlay.runId ? (
+    t("runs.all")
+  ) : run?.workflow_id ? (
+    // The title is the workflow, and leads there: the run is one answer about
+    // it, and the way to change it starts at the workflow.
+    <a
+      href={absolute(workflowHref(run.workflow_id))}
+      className="min-w-0 underline-offset-4 hover:underline"
+      data-testid="run-detail-workflow-link"
+    >
+      {runName(run, t)}
+    </a>
+  ) : run ? (
+    runName(run, t)
+  ) : (
+    t("resource.runs.title")
+  );
+  return (
+    <RecordSheet
+      open={open}
+      onOpenChange={(next) => !next && show({ list: false, runId: null })}
+      size={overlay.list ? "wide" : "default"}
+      title={title}
+      titleTestId={overlay.runId ? "run-detail-title" : "runs-sheet-title"}
+      badge={
+        overlay.runId && run ? (
+          <StatusBadge
+            state={run.status}
+            label={
+              runVerdict(run.status, (run as ExecutionDetail).outcome ?? null, t, (status) =>
+                statusLabel(t, status),
+              ).label
+            }
+            testId="run-detail-status"
+          />
+        ) : undefined
+      }
+      back={
+        overlay.list && overlay.runId
+          ? { label: t("runs.all"), onClick: () => show({ list: true, runId: null }) }
+          : undefined
+      }
+      testId={overlay.runId ? "run-detail" : "resource-runs"}
+      closeTestId={overlay.runId ? "run-detail-close" : "runs-sheet-close"}
+    >
+      {/* The list stays mounted under an open run, so its filters, its page
+          and its rows are exactly as the reader left them on the way back. */}
+      {overlay.list ? (
+        <div hidden={overlay.runId !== null}>
+          <RunsList onShowRun={(id) => show({ list: true, runId: id })} />
+        </div>
+      ) : null}
+      {/* Three different facts, told apart. The record is here; it is on its
+          way; or this address names no run this installation has. */}
+      {overlay.runId === null ? null : run ? (
+        <RunDetail run={run} onShowRun={(id) => show({ list: overlay.list, runId: id })} />
+      ) : failed ? (
+        <DataState
+          state="error"
+          line={t("runs.detail.loadFailed")}
+          onRetry={() => show({ ...overlay })}
+          testId="run-detail-missing"
+        />
+      ) : (
+        <DataState state="loading" testId="run-detail-pending" />
+      )}
+    </RecordSheet>
   );
 }
