@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Locale, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
+import { DIALOG_FRAME, dialogWidthClass, FILLED_DESTRUCTIVE } from "./form-dialog";
 
 /**
  * "{Objekt} {verb}?" in German, "{Verb} {object}?" in English. The verb stands
@@ -29,7 +31,9 @@ export function confirmTitle(
 
 /**
  * Every irreversible or consequential act (P13): title "{Objekt} {verb}?", one
- * line of consequence, Abbrechen and the verb itself as the button.
+ * line of consequence, Abbrechen and the verb itself as the button — filled,
+ * red where it removes. The frame is FormDialog's: one width, and a sheet
+ * from the bottom edge under 640px.
  */
 export function ConfirmDialog({
   open,
@@ -60,7 +64,10 @@ export function ConfirmDialog({
   const working = pending || busy;
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent data-testid={testId} className="sm:max-w-lg">
+      <AlertDialogContent
+        data-testid={testId}
+        className={cn(dialogWidthClass("default"), DIALOG_FRAME)}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle data-testid={`${testId}-title`}>
             {confirmTitle(t, locale, object, verb)}
@@ -72,7 +79,8 @@ export function ConfirmDialog({
             {t("common.cancel")}
           </AlertDialogCancel>
           <Button
-            variant={destructive ? "destructive" : "default"}
+            variant="default"
+            className={destructive ? FILLED_DESTRUCTIVE : undefined}
             disabled={working}
             data-testid={`${testId}-confirm`}
             onClick={async () => {
