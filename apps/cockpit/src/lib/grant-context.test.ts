@@ -44,6 +44,9 @@ function authority(overrides: Partial<WorkflowAuthority> = {}): WorkflowAuthorit
     created_at: "2030-03-01T00:00:00.000Z",
     revoked_at: null,
     revoked_by: null,
+    open_ended: false,
+    inherited_from: null,
+    superseded_by: null,
     active_version: true,
     ready_for_new_run: true,
     state: "approved",
@@ -211,6 +214,20 @@ describe("where the suggested limits come from", () => {
         minimum_applied: true,
       })?.key,
     ).toBe("authority.suggestion.hookMinimum");
+  });
+
+  test("no call at all is not counted as 'only 0 calls'", () => {
+    const note = suggestionNote({
+      kind: "hook",
+      scheduled_runs: 0,
+      observed_deliveries: 0,
+      observed_days: 14,
+      minimum_applied: true,
+    });
+    expect(note).toEqual({ key: "authority.suggestion.hookNone", values: { days: 14 } });
+    const text = interpolate(CATALOGS.de["authority.suggestion.hookNone"], note?.values ?? {});
+    expect(text).not.toContain("0");
+    expect(text).toContain("kein Webhook-Aufruf");
   });
 
   test("a schedule says so; the one-run default needs no line", () => {

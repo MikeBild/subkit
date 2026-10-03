@@ -119,6 +119,10 @@ export function suggestionNote(
 ): { key: TranslationKey; values: Record<string, number> } | null {
   if (!basis || basis.kind === "manual") return null;
   if (basis.kind === "schedule") return { key: "authority.suggestion.schedule", values: {} };
+  // No call at all is not "only 0 calls": there is nothing to count from, and
+  // the limit is simply a small start.
+  if (basis.observed_deliveries === 0)
+    return { key: "authority.suggestion.hookNone", values: { days: basis.observed_days } };
   return {
     key: basis.minimum_applied ? "authority.suggestion.hookMinimum" : "authority.suggestion.hook",
     values: { count: basis.observed_deliveries, days: basis.observed_days },

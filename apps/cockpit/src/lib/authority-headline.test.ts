@@ -27,6 +27,18 @@ describe("authority headline", () => {
     ).toBe("Produktion · gültig bis 28.09., 18:00 MESZ · bis zu 24 Läufe");
   });
 
+  test("an approval until revoked says so instead of a date and a count", () => {
+    expect(
+      authorityHeadline(
+        { execution_environment: "prod", valid_until: null, max_runs: null },
+        tr("de"),
+        "de",
+        now,
+        zone,
+      ),
+    ).toBe("Produktion · bis auf Widerruf · unbegrenzte Läufe");
+  });
+
   test("names the year when the end is not this year", () => {
     const nextYear = new Date(Date.UTC(2027, 0, 5, 11, 0)).toISOString();
     expect(

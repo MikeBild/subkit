@@ -42,28 +42,25 @@ export function acceptReview(
 export function authorityGrantInput(
   preview: WorkflowAuthorityPreview,
   expected: { workflowId: string; versionId: string; environment: "dev" | "prod" },
-  runs: string,
-  hours: string,
+  /** Null: no run limit. */
+  runs: string | null,
+  /** Null: no end date. Both null: the approval stands until it is revoked. */
+  hours: string | null,
   now: number,
 ) {
-  const maxRuns = Number(runs);
-  const duration = Number(hours);
+  const maxRuns = runs === null ? null : Number(runs);
+  const duration = hours === null ? null : Number(hours);
   const from = Date.parse(preview.suggested_bounds.valid_from);
-  const until = from + duration * 3_600_000;
+  const until = duration === null ? null : from + duration * 3_600_000;
   if (
     !preview.eligible_for_repeated_runs ||
     preview.manifest.workflow_id !== expected.workflowId ||
     preview.manifest.workflow_version_id !== expected.versionId ||
     preview.manifest.execution_environment !== expected.environment ||
-    !Number.isInteger(maxRuns) ||
-    maxRuns < 1 ||
-    maxRuns > 10_000 ||
-    !Number.isInteger(duration) ||
-    duration < 1 ||
-    duration > 744 ||
+    (maxRuns !== null && (!Number.isInteger(maxRuns) || maxRuns < 1 || maxRuns > 10_000)) ||
+    (duration !== null && (!Number.isInteger(duration) || duration < 1 || duration > 744)) ||
     !Number.isFinite(from) ||
-    !Number.isFinite(until) ||
-    until <= now ||
+    (until !== null && (!Number.isFinite(until) || until <= now)) ||
     preview.execution_shape.requests.some(
       (request) => request.request_review_truncated || request.opaque_payload_omitted,
     )
@@ -74,7 +71,7 @@ export function authorityGrantInput(
     execution_environment: preview.manifest.execution_environment,
     expected_manifest_digest: preview.digest,
     valid_from: preview.suggested_bounds.valid_from,
-    valid_until: new Date(until).toISOString(),
+    valid_until: until === null ? null : new Date(until).toISOString(),
     max_runs: maxRuns,
   };
 }
@@ -84,6 +81,7 @@ export const AUTHORITY_STATE_KEYS = {
   not_yet_valid: "authority.state.notYetValid",
   expired: "authority.state.expired",
   revoked: "authority.state.revoked",
+  superseded: "authority.state.superseded",
   exhausted: "authority.state.exhausted",
   invalidated: "authority.state.invalidated",
   unavailable: "authority.state.unavailable",
@@ -102,12 +100,13 @@ export const AUTHORITY_EFFECT_KEYS = {
 /** A local clock may narrow an observed grant, but must never extend it. */
 export function observedAuthorityState(authority: WorkflowAuthority, now: number) {
   if (authority.state !== "approved") return authority.state;
-  const until = Date.parse(authority.valid_until);
+  // No end date and no run limit are not "unknown": they are unlimited.
+  const until = authority.valid_until === null ? null : Date.parse(authority.valid_until);
   const from = Date.parse(authority.valid_from);
-  if (!Number.isFinite(until) || !Number.isFinite(from)) return "unavailable";
-  if (until <= now) return "expired";
+  if ((until !== null && !Number.isFinite(until)) || !Number.isFinite(from)) return "unavailable";
+  if (until !== null && until <= now) return "expired";
   if (from > now) return "not_yet_valid";
-  if (authority.remaining_runs <= 0) return "exhausted";
+  if (authority.remaining_runs !== null && authority.remaining_runs <= 0) return "exhausted";
   return authority.state;
 }
 
@@ -142,7 +141,7 @@ export function authorityHeadline(
   now: number = Date.now(),
   timeZone?: string,
 ): string {
-  const until = Date.parse(authority.valid_until);
+  const until = authority.valid_until === null ? Number.NaN : Date.parse(authority.valid_until);
   // The year only when it is not this one, and always the zone: "bis 18:00"
   // read by someone in another zone, or next year, is a different moment.
   const sameYear =
@@ -164,9 +163,41 @@ export function authorityHeadline(
     t(
       authority.execution_environment === "prod" ? "authority.production" : "authority.development",
     ),
-    ...(when ? [t("authority.headline.until", { until: when })] : []),
-    t(authority.max_runs === 1 ? "authority.headline.runs.one" : "authority.headline.runs.other", {
-      max: authority.max_runs,
-    }),
-  ].join(" · ");
+    authority.valid_until === null
+      ? t("authority.headline.untilRevoked")
+      : when
+        ? t("authority.headline.until", { until: when })
+        : null,
+    authority.max_runs === null
+      ? t("authority.headline.runs.unlimited")
+      : t(
+          authority.max_runs === 1
+            ? "authority.headline.runs.one"
+            : "authority.headline.runs.other",
+          { max: authority.max_runs },
+        ),
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
+}
+
+/** How long an approval stands: until revoked, or within a run count and a window. */
+export type GrantLimit = "until_revoked" | "limited";
+
+/** An approval stands until it is revoked unless the reader chooses limits. */
+export const DEFAULT_GRANT_LIMIT: GrantLimit = "until_revoked";
+
+/** What `authorityGrantInput` receives for the chosen limit: null is "no limit". */
+export function grantLimitBounds(
+  limit: GrantLimit,
+  runs: string,
+  hours: string,
+): { runs: string | null; hours: string | null } {
+  return limit === "limited" ? { runs, hours } : { runs: null, hours: null };
+}
+
+/** The plain grant button follows the choice: "Approve" or "Allow N runs". */
+export function grantConfirmKey(limit: GrantLimit, runs: string): TranslationKey {
+  if (limit === "until_revoked") return "authority.grantConfirmUntilRevoked";
+  return Number(runs) === 1 ? "authority.grantConfirmOne" : "authority.grantConfirm";
 }

@@ -53,6 +53,9 @@ function authority(overrides: Partial<WorkflowAuthority> = {}): WorkflowAuthorit
     created_at: "2030-03-01T00:00:00.000Z",
     revoked_at: null,
     revoked_by: null,
+    open_ended: false,
+    inherited_from: null,
+    superseded_by: null,
     active_version: true,
     ready_for_new_run: true,
     state: "approved",
@@ -162,6 +165,30 @@ describe("automationState — one state, by precedence", () => {
     // No approval button once approved: only the way to look at it.
     expect(state.primaryAction).toEqual({ kind: "view" });
     expect(state.secondaryAction).toBeNull();
+  });
+
+  test("approved until revoked: no end date, no run limit, the runs so far", () => {
+    const open = authority({
+      valid_until: null,
+      max_runs: null,
+      remaining_runs: null,
+      reserved_runs: 41,
+      open_ended: true,
+    });
+    const state = automationState(inputs({ status: status(["authorized"]), authorities: [open] }));
+    expect(state.state).toBe("approved");
+    expect(state.facts).toMatchObject({
+      validUntil: null,
+      untilRevoked: true,
+      runsLeft: null,
+      runsMax: null,
+      runsSoFar: 41,
+    });
+    expect(state.primaryAction).toEqual({ kind: "view" });
+    // Nothing runs out, so nothing is offered for extension.
+    expect(state.secondaryAction).toBeNull();
+    expect(CATALOGS.de["automation.fact.untilRevoked"]).toBe("bis auf Widerruf");
+    expect(CATALOGS.de["automation.fact.runsSoFar.other"]).toBe("{count} Läufe bisher");
   });
 
   test("grant: something starts it and no approval covers it", () => {
@@ -493,6 +520,15 @@ describe("extending an approval", () => {
   test("offered below a tenth of its runs", () => {
     expect(grantNeedsExtension({ ...base, remaining_runs: 3 }, NOW)).toBe(false);
     expect(grantNeedsExtension({ ...base, remaining_runs: 2 }, NOW)).toBe(true);
+  });
+
+  test("never offered for an approval until revoked", () => {
+    const open = { valid_until: null, remaining_runs: null, max_runs: null };
+    expect(grantNeedsExtension(open, NOW)).toBe(false);
+    expect(grantNeedsExtension(open, NOW + 10_000 * DAY)).toBe(false);
+    // Only the side that has a limit can press.
+    expect(grantNeedsExtension({ ...open, remaining_runs: 1, max_runs: 30 }, NOW)).toBe(true);
+    expect(grantNeedsExtension({ ...base, remaining_runs: null, max_runs: null }, NOW)).toBe(false);
   });
 
   test("an approval running out carries the extension as its second action", () => {
