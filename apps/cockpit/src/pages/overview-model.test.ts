@@ -220,6 +220,36 @@ describe("the sentence", () => {
     expect(attentionSentence(waiting(null), en, NOW).lead).toContain("version v4");
   });
 
+  test("a waiting version says what it reaches that the earlier approval did not", () => {
+    const grown = (growth: NonNullable<AttentionItem["approval"]>["growth"]) =>
+      item({
+        class: "decide",
+        reason: "version_awaiting_approval",
+        trigger: { kind: "inbound_hook", name: "findings" },
+        approval: { version: 5, environment: "prod", growth },
+        since: daysAgo(0),
+      });
+    const connector = {
+      kind: "new_connector" as const,
+      connector_id: "c1",
+      connector_name: "Ticket desk",
+      target: "https://desk.example.test/tickets",
+      effect: "write" as const,
+    };
+    expect(attentionSentence(grown([connector]), de, NOW).lead).toContain(
+      "Neues Ziel: Ticket desk",
+    );
+    const writes = { ...connector, kind: "wider_effect" as const };
+    expect(attentionSentence(grown([writes]), de, NOW).lead).toContain(
+      "Neu: schreibt an Ticket desk",
+    );
+    expect(attentionSentence(grown([connector, writes]), en, NOW).lead).toContain(
+      "New target: Ticket desk (and 1 more)",
+    );
+    // Nothing recorded: the sentence stays as it was.
+    expect(attentionSentence(grown(undefined), de, NOW).lead).not.toContain("Neu");
+  });
+
   test("an approval item leads to the workflow's panel, named for the step", () => {
     const open = {
       verb: "open" as const,
