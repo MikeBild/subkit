@@ -65,7 +65,7 @@ import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import type { ScanResult } from "../../files/scanner.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS } from "../../files/scanner.ts";
 import { fileReference, insertFileRow, reviveFileRow } from "../../files/slug.ts";
-import { dagNamesFile } from "../../files/usage.ts";
+import { workflowUsageCounts } from "../../files/usage.ts";
 import { logger } from "../../logging/index.ts";
 import {
   observeFileUploadDuration,
@@ -1143,42 +1143,33 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    // Usage counts for the whole page in one query, counted as
-    // `GET /v1/files/{id}/usage` counts them.
-    const usageRows =
+    // Usage counts for the whole page, counted as `GET /v1/files/{id}/usage`
+    // counts them.
+    const pageIds = page.map((r) => r.id);
+    const workflowCounts = await workflowUsageCounts(db, tenant_id, page);
+    const conversationRows =
       page.length > 0
         ? await db
             .select({
-              id: files.id,
-              workflows: sql<number>`(
-                select count(*)::int from workflows w
-                join workflow_versions v on v.id = w.current_version_id
-                where w.tenant_id = "files"."tenant_id" and w.deleted_at is null
-                  and ${dagNamesFile(sql`v.dag`, sql`'fid_' || "files"."id"::text`, sql`"files"."slug"`)}
-              )`,
-              conversations: sql<number>`(
-                select count(distinct fl.resource_id)::int from file_links fl
-                where fl.tenant_id = "files"."tenant_id" and fl.file_id = "files"."id"
-                  and fl.resource_type = 'conversation'
-              )`,
+              id: fileLinks.file_id,
+              conversations: sql<number>`count(distinct ${fileLinks.resource_id})::int`,
             })
-            .from(files)
+            .from(fileLinks)
             .where(
               and(
-                eq(files.tenant_id, tenant_id),
-                inArray(
-                  files.id,
-                  page.map((r) => r.id),
-                ),
+                eq(fileLinks.tenant_id, tenant_id),
+                eq(fileLinks.resource_type, "conversation"),
+                inArray(fileLinks.file_id, pageIds),
               ),
             )
+            .groupBy(fileLinks.file_id)
         : [];
-    const usageById = new Map(usageRows.map((u) => [u.id, u]));
+    const conversationCounts = new Map(conversationRows.map((u) => [u.id, u.conversations]));
     const items = page.map((row) => ({
       ...toFileWire(row),
       usage: {
-        workflows: Number(usageById.get(row.id)?.workflows ?? 0),
-        conversations: Number(usageById.get(row.id)?.conversations ?? 0),
+        workflows: workflowCounts.get(row.id) ?? 0,
+        conversations: Number(conversationCounts.get(row.id) ?? 0),
       },
     }));
     const lastVisible = hasMore ? rows[limit - 1] : undefined;
