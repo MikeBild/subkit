@@ -20,6 +20,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { OAuthFlowOrigin } from "../../connectors/oauth-origin.ts";
 import * as connectorSvc from "../../connectors/service.ts";
+import { connectorSignIn } from "../../connectors/sign-in.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
@@ -101,6 +102,27 @@ export async function handleAuthenticate(
   const connector = await connectorSvc.getConnector(principal.tenant_id, args.connector_id, db);
   if (!connector) {
     return { ok: false, data: { error: "connector not found", reason: "connector_missing" } };
+  }
+
+  // The connector's own sign-in (`connectorSignIn` — what its `sign_in` field
+  // and both start routes answer). This tool runs the `/oauth/start` flow
+  // only: an MCP server signs in on `/mcp/authorize`, and a connector with no
+  // browser sign-in (a key, a Cognito password grant) is re-issued instead.
+  const signIn = connectorSignIn(connector);
+  if (signIn?.kind !== "oauth") {
+    return {
+      ok: false,
+      data: signIn
+        ? {
+            error: `this connector signs in on its own route (${signIn.start}) — request a one-time sign-in link with request_connector_reauth`,
+            reason: "sign_in_route_mismatch",
+          }
+        : {
+            error:
+              "this connector has no browser sign-in — re-issue its credential with request_connector_reauth",
+            reason: "no_browser_sign_in",
+          },
+    };
   }
 
   const oauthCfg = await resolveConnectorOAuthConfig(db, principal.tenant_id, connector);

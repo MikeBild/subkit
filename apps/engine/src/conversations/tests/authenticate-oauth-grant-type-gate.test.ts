@@ -175,6 +175,40 @@ describe("authenticate_oauth — grant-type gate: cognito_user_password", () => 
   });
 });
 
+describe("authenticate_oauth — route gate: an MCP server signs in on its own route", () => {
+  test("returns wrong_reauth_flow pointing at request_connector_reauth; nothing starts", async () => {
+    const [c] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "mcp-gate-test",
+        display_name: "mcp-gate-test",
+        driver: "mcp",
+        environment: "dev",
+        auth_type: "oauth2",
+        base_url: "https://remote.example.test/mcp",
+        config: { mcp: { transport: "http", auth: { kind: "oauth2" } } },
+      })
+      .returning({ id: connectors.id });
+    if (!c) throw new Error("seed connector failed");
+    const startSpy = spyOn(oauthClient, "startAuthorizationCode");
+
+    const result = await authenticateOAuthTool.execute(buildToolCtx(c.id), { connector_id: c.id });
+
+    expect(result.ok).toBe(false);
+    const data = result.data as {
+      error_code: string;
+      message: string;
+      next_best_actions: string[];
+    };
+    expect(data.error_code).toBe(WRONG_REAUTH_FLOW);
+    expect(data.message).toContain("mcp/authorize");
+    expect(data.next_best_actions).toContain("request_connector_reauth");
+    expect(startSpy).not.toHaveBeenCalled();
+    startSpy.mockRestore();
+  });
+});
+
 describe("authenticate_oauth — grant-type gate: client_credentials_json", () => {
   test("returns wrong_reauth_flow with next_best_actions=[request_connector_reauth]", async () => {
     const connectorId = await seedOAuthConnector("ccj-gate-test", "client_credentials_json");

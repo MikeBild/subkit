@@ -35,6 +35,7 @@ import {
   parseDeprecation,
   setWorkflowHealth,
 } from "../connectors/index.ts";
+import type { AuthType, DriverName } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, workflows, workflowVersions } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
@@ -122,7 +123,14 @@ export async function runEndpointContractScanForTenant(
   // Probe only operations on connectors that are currently believed
   // healthy — re-probing a flagged/open-circuit connector is noise.
   const healthyConnectors = await db
-    .select({ id: connectors.id, slug: connectors.slug, auth_type: connectors.auth_type })
+    .select({
+      id: connectors.id,
+      slug: connectors.slug,
+      driver: connectors.driver,
+      auth_type: connectors.auth_type,
+      config: connectors.config,
+      template_snapshot: connectors.template_snapshot,
+    })
     .from(connectors)
     .where(
       and(
@@ -230,7 +238,10 @@ export async function runEndpointContractScanForTenant(
             id: connector.id,
             tenant_id,
             slug: connector.slug,
-            auth_type: connectorRef.auth_type as import("../connectors/types.ts").AuthType,
+            driver: connectorRef.driver as DriverName,
+            auth_type: connectorRef.auth_type as AuthType,
+            config: connectorRef.config,
+            template_snapshot: connectorRef.template_snapshot ?? null,
           },
           { reason: `proactive contract probe: GET ${op.path} rejected authentication` },
         );

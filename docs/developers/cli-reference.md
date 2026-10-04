@@ -23,7 +23,7 @@ every API call.
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
-| `sk auth` | `connector:write` | Start a reauthentication flow for a connector (OAuth2 authorize URL). An mcp connector authorizes through `sk connectors mcp-authorize` instead — it discovers its authorization server rather than reading one from config. | — |
+| `sk auth` | `connector:write` | Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route. | — |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
 | `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `disable`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `enable`, `get`, `import`, `inspect`, `list`, `mcp-authorize`, `mcp-inspect`, `patch`, `probe`, `promote`, `test`, `validate` |
@@ -188,7 +188,7 @@ Fetch one audit event by id
 
 ### `sk auth`
 
-Start a reauthentication flow for a connector (OAuth2 authorize URL). An mcp connector authorizes through `sk connectors mcp-authorize` instead — it discovers its authorization server rather than reading one from config.
+Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route.
 
 - `--connector-id` (string, required) — Connector to reauthenticate
 - `--json` — Emit the full response as JSON

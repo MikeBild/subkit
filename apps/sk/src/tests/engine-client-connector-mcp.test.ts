@@ -85,3 +85,47 @@ describe("EngineClient mcp-driver connector methods", () => {
     expect(captured[0]?.url).toBe(`${BASE}/v1/connectors/a%2Fb%3Fc/mcp/inspect`);
   });
 });
+
+// `sk auth` and the install flows start the sign-in the connector record
+// names. The engine owns the choice of route; the client reads it.
+describe("EngineClient startConnectorSignIn", () => {
+  function signInClient(
+    captured: { url: string; method: string }[],
+    signIn: { kind: string; start: string } | null,
+  ): EngineClient {
+    const fetchImpl: FetchLike = async (input, init) => {
+      const method = String(init?.method ?? "GET");
+      captured.push({ url: String(input), method });
+      const body =
+        method === "GET"
+          ? { id: ID, slug: "conn", sign_in: signIn }
+          : { authorization_url: "https://idp.example.test/authorize", state: "s" };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    return new EngineClient({ engine_url: BASE, api_key: "test-key", tenant: "t-1", fetchImpl });
+  }
+
+  test.each([
+    ["oauth", `/v1/connectors/${ID}/oauth/start`],
+    ["mcp", `/v1/connectors/${ID}/mcp/authorize`],
+  ])("a %s connector is started on the route its record names", async (kind, start) => {
+    const captured: { url: string; method: string }[] = [];
+    const res = await signInClient(captured, { kind, start }).startConnectorSignIn(ID);
+    expect(captured).toEqual([
+      { url: `${BASE}/v1/connectors/${ID}`, method: "GET" },
+      { url: `${BASE}${start}`, method: "POST" },
+    ]);
+    expect(res.authorization_url).toBe("https://idp.example.test/authorize");
+  });
+
+  test("a connector without a browser sign-in is refused before any start is posted", async () => {
+    const captured: { url: string; method: string }[] = [];
+    await expect(signInClient(captured, null).startConnectorSignIn(ID)).rejects.toThrow(
+      "no browser sign-in",
+    );
+    expect(captured.map((c) => c.method)).toEqual(["GET"]);
+  });
+});

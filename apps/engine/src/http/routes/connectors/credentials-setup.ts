@@ -1,7 +1,8 @@
 // Public, token-gated credential-setup flow for non-OAuth (bearer / basic /
-// header / query) connectors — the browser-openable counterpart to
-// GET /v1/connectors/{id}/oauth/start?grant=… for connectors that have no
-// OAuth authorization-code dance to redirect into.
+// header / query) connectors — the browser-openable counterpart to the
+// grant-token GET of a connector's sign-in route (`/oauth/start?grant=…`,
+// `/mcp/authorize?grant=…`) for connectors that have no browser sign-in to
+// redirect into.
 //
 //   GET  /v1/connectors/{id}/credentials/setup?grant=sksg_…  — UNAUTHENTICATED
 //        (grant-token auth). Validates the single-use grant WITHOUT consuming

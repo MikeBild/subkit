@@ -44,3 +44,14 @@ test("does not turn errors, external URLs or malformed results into sign-in butt
     expect(chatReauth(part(output), origin)).toBeNull();
   expect(chatReauth(part(data, "output-error"), origin)).toBeNull();
 });
+test("an MCP server's link opens its own sign-in route and is a sign-in button too", () => {
+  const mcpHref = `${origin}/v1/connectors/${id}/mcp/authorize?grant=test-token`;
+  expect(chatReauth(part({ ...data, reauth_url: mcpHref }), origin)).toEqual({
+    href: mcpHref,
+    expiresAt: data.expires_at,
+    connectorId: id,
+    label: "gmail",
+  });
+  const inspect = `${origin}/v1/connectors/${id}/mcp/inspect?grant=x`;
+  expect(chatReauth(part({ ...data, reauth_url: inspect }), origin)).toBeNull();
+});

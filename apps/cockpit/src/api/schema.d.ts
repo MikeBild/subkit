@@ -8836,7 +8836,38 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Browser-openable OAuth 2.1 authorization for an mcp connector (single-use grant token) */
+        get: {
+            parameters: {
+                query: {
+                    grant: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Redirect to the authorization server */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Grant invalid/expired, or the authorization could not begin (HTML page) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
         put?: never;
         /** Begin an interactive OAuth 2.1 authorization for an mcp connector */
         post: {

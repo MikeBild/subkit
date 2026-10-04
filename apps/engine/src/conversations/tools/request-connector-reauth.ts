@@ -8,6 +8,9 @@
 //
 //   - OAuth2 (authorization_code): mints a single-use grant URL
 //     (skog_… token, 10-min TTL) that the operator can open in a browser.
+//     The link opens the connector's own sign-in route — the one its
+//     `sign_in` names: `/oauth/start` for a web service, `/mcp/authorize`
+//     for an MCP server.
 //     The URL is presented verbatim on its own line — never wrapped in
 //     markdown, never shortened. Opening it redirects to the provider
 //     sign-in. The grant is single-use; if it expires, call this tool again.
@@ -170,17 +173,13 @@ export const requestConnectorReauthTool: ConversationTool = {
     const oauthCfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenant_id, connector);
     const grantType = oauthCfg?.grant_type ?? null;
 
-    // Cognito USER_PASSWORD_AUTH (`cognito_user_password`) is OAuth2-typed but
-    // is NOT a browser authorization-code flow: the engine stores only the
-    // refresh token + username — never the password. Once the refresh token
-    // expires there is nothing to refresh and no authorization endpoint to
-    // redirect to; issuing a browser grant link sends the user to the Cognito
-    // InitiateAuth endpoint, where the dance throws "unexpected HTTP response
-    // status code" (the grant is burned and the user sees a misleading
-    // "link used up" page). The correct repair is the SAME in-chat re-issue
-    // used for basic/bearer/etc.: re-collect email + password and re-mint.
-    const needsInteractiveReissue =
-      method === "portal_setup" || grantType === "cognito_user_password";
+    // `method` follows the connector's `sign_in`: a connector with no browser
+    // sign-in is re-issued, not signed in. That includes Cognito
+    // USER_PASSWORD_AUTH (`cognito_user_password`), which is OAuth2-typed but
+    // has no authorization endpoint — the engine stores only the refresh
+    // token + username, never the password, so the repair is the SAME in-chat
+    // re-issue used for basic/bearer/etc.: re-collect email + password.
+    const needsInteractiveReissue = method === "portal_setup";
 
     // Non-OAuth (basic/bearer/header/query) connectors — and password grants
     // like Cognito USER_PASSWORD_AUTH — have no working click-through flow.
@@ -344,7 +343,6 @@ export const requestConnectorReauthTool: ConversationTool = {
       ...(ctx.engineClient.context.actor_type
         ? { actor_type: ctx.engineClient.context.actor_type }
         : {}),
-      grant_type: grantType,
     });
 
     if (!grantResult.ok) {

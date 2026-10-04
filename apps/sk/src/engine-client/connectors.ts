@@ -237,8 +237,30 @@ export const connectorsMethods = {
       { "idempotency-key": idempotencyKey },
     );
   },
-  startConnectorOAuth(this: EngineClient, id: string): Promise<{ oauth_url: string }> {
-    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);
+  /**
+   * Start the connector's own browser sign-in. The engine states it on the
+   * connector record (`sign_in`): `oauth` starts at `/oauth/start` (a web
+   * service), `mcp` at `/mcp/authorize` (an MCP server) — so this client
+   * never picks one by driver. An empty `authorization_url` means the sign-in finished
+   * without a browser (a client-credentials exchange); a connector with no
+   * `sign_in` signs in with a stored credential instead.
+   */
+  async startConnectorSignIn(
+    this: EngineClient,
+    id: string,
+  ): Promise<{ authorization_url: string; state: string }> {
+    const record = await this.getConnector(id);
+    const signIn = record.sign_in as { kind?: unknown } | null | undefined;
+    // Dispatched on the record's `kind` onto the two literal routes, so the
+    // CLI↔OpenAPI contract test still sees every path this client can call.
+    if (signIn?.kind === "mcp") return this.authorizeMcpConnector(id);
+    if (signIn?.kind === "oauth") {
+      return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);
+    }
+    const name = typeof record.slug === "string" ? record.slug : id;
+    throw new Error(
+      `connector '${name}' has no browser sign-in — store its credential instead (sk credentials --help)`,
+    );
   },
   ingestConnectorDocs(
     this: EngineClient,
