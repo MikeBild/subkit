@@ -9,13 +9,13 @@
 //
 // subkit's chat-first contract requires rename + lifecycle ops to be
 // reachable as a chat tool, not only as HTTP datastore ops. See
-// `apps/engine/src/conversations/tools/generated/writes/update-workflow.ts`.
+// `apps/engine/src/conversations/tools/engine-api/writes/update-workflow.ts`.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
-import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
+import { updateWorkflowTool } from "../tools/engine-api/writes/update-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -147,7 +147,7 @@ function buildToolCtx(params?: {
 
 describe("update_workflow tool — chat-native metadata patch", () => {
   test("renames a workflow (slug + name) in place", async () => {
-    const wf = await seedLiveWorkflow("legacy-slug-rn", "Legacy Name");
+    const wf = await seedLiveWorkflow("old-slug-rn", "Old Name");
 
     const result = await updateWorkflowTool.execute(toolCtx(), {
       id: wf.id,
@@ -193,9 +193,9 @@ describe("update_workflow tool — chat-native metadata patch", () => {
       to?: { slug: string; name: string };
     };
     expect(meta.kind).toBe("metadata");
-    expect(meta.from?.slug).toBe("legacy-slug-rn");
+    expect(meta.from?.slug).toBe("old-slug-rn");
     expect(meta.to?.slug).toBe("fresh-slug-rn");
-    expect(meta.from?.name).toBe("Legacy Name");
+    expect(meta.from?.name).toBe("Old Name");
     expect(meta.to?.name).toBe("Fresh Name");
   });
 

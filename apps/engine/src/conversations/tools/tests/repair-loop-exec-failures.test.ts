@@ -11,7 +11,7 @@ import {
   REPAIR_LOOP_TRIP_THRESHOLD,
   type RepairSignalRow,
   tallyRepairSignals,
-} from "../generated/writes/repair-loop-tally.ts";
+} from "../engine-api/writes/repair-loop-tally.ts";
 
 /** A `run_workflow` row whose execution FAILED at `step` with `code`. */
 function failedExec(step: string, code: string): RepairSignalRow {

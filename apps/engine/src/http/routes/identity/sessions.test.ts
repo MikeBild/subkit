@@ -25,6 +25,7 @@ import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { tenants, userIdentities, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { flushDiscoveryCache } from "../../../identity/index.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { buildDefaultRegistry, createApp } from "../../server.ts";
 
 let testDb: TestDb;
@@ -230,7 +231,7 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
       .values({
         tenant_id: defaultTenantId,
         email: "admin@victim.test",
-        role: "admin",
+        role_id: await builtinRoleId(testDb.db, "admin"),
       })
       .returning();
     if (!admin) throw new Error("seed admin failed");
@@ -248,7 +249,7 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
     expect(json.principal_id).not.toBe(admin.id);
     expect(json.email).toBeNull();
     const [adminAfter] = await testDb.db.select().from(users).where(eq(users.id, admin.id));
-    expect(adminAfter?.role).toBe("admin");
+    expect(adminAfter?.role_id).toBe(await builtinRoleId(testDb.db, "admin"));
     const adminIdentities = await testDb.db
       .select()
       .from(userIdentities)
@@ -262,7 +263,7 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
       .values({
         tenant_id: defaultTenantId,
         email: "bound@victim.test",
-        role: "member",
+        role_id: await builtinRoleId(testDb.db, "member"),
       })
       .returning();
     if (!bound) throw new Error("seed bound user failed");
@@ -310,7 +311,7 @@ describe("POST /v1/identity/sessions — auth.enable_signup gate", () => {
       .values({
         tenant_id: defaultTenantId,
         email: "gate-sessions-linked@example.test",
-        role: "member",
+        role_id: await builtinRoleId(testDb.db, "member"),
       })
       .returning();
     if (!existing) throw new Error("seed user failed");
@@ -340,7 +341,7 @@ describe("POST /v1/identity/sessions — auth.enable_signup gate", () => {
       .values({
         tenant_id: defaultTenantId,
         email: "gate-sessions-email@example.test",
-        role: "member",
+        role_id: await builtinRoleId(testDb.db, "member"),
       })
       .returning();
     if (!existing) throw new Error("seed user failed");
@@ -373,6 +374,6 @@ describe("POST /v1/identity/sessions — auth.enable_signup gate", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as { principal_id: string };
     const [row] = await testDb.db.select().from(users).where(eq(users.id, json.principal_id));
-    expect(row?.role).toBe("member");
+    expect(row?.role_id).toBe(await builtinRoleId(testDb.db, "member"));
   });
 });

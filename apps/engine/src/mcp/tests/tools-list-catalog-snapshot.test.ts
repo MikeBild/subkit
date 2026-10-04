@@ -111,7 +111,6 @@ const PRODUCT_TOOLS = [
   "save_learning",
   "search_docs",
   "search_knowledge",
-  "search_knowledge_v2",
   "test_connector",
   "whoami",
 ];
@@ -204,7 +203,6 @@ const AUTHORING_TOOLS = [
   "save_learning",
   "search_docs",
   "search_knowledge",
-  "search_knowledge_v2",
   "suggest_connector_templates",
   "suggest_jsonata_paths",
   "suggest_related_conversations",
@@ -327,7 +325,6 @@ const ADMIN_TOOLS = [
   "save_learning",
   "search_docs",
   "search_knowledge",
-  "search_knowledge_v2",
   "self_healing_scan",
   "subkit_settings",
   "subkit_update_setting",

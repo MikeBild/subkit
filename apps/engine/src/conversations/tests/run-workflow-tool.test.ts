@@ -16,7 +16,7 @@ import {
 } from "../../db/schema/index.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { bindPersistedWorkflow } from "../authoring-state.ts";
-import { runWorkflowTool } from "../tools/generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";

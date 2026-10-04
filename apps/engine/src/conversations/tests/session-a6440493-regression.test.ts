@@ -230,7 +230,7 @@ describe("run_workflow · withStatus contract on gate paths", () => {
   test("workflow_not_persisted gate returns data with status=failed", async () => {
     const conversationId = await freshConversation();
     const { runWorkflowTool } = await import(
-      "../../conversations/tools/generated/writes/run-workflow.ts"
+      "../../conversations/tools/engine-api/writes/run-workflow.ts"
     );
     const draft: DraftDocument = {
       mode: "workflow_authoring",

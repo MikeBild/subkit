@@ -59,12 +59,6 @@ const inputSchema = z
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     budget_ms_per_step: z.number().int().min(500).max(60_000).optional(),
-    execute_writes: z
-      .boolean()
-      .optional()
-      .describe(
-        "Legacy preference retained for compatibility. Draft previews always hold writes, even when true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
-      ),
     include_step_results: z
       .boolean()
       .optional()
@@ -77,7 +71,7 @@ const inputSchema = z
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
   description:
-    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders.",
+    "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
@@ -1252,8 +1246,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             : {}),
           ...(warningSummary ? { warning_summary: warningSummary } : {}),
           // Top-level banner so the LLM can't miss warnings on first
-          // read. `warnings` (legacy field) stays for back-compat
-          // consumers but the banner is the canonical surface.
+          // read; `warnings` carries the full per-warning detail.
           ...(warningsBanner ? { warnings_banner: warningsBanner } : {}),
           ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
           // Propose-only repair outcomes (Fix 10). `repaired: true`

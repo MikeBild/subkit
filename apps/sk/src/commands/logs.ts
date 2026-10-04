@@ -17,7 +17,7 @@
 // without SSH-ing into the container.
 
 import { exitCodeFor } from "@cli-core/errors";
-import { isEngineError, TransportError } from "@cli-core/errors.ts";
+import { TransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
 import { defineCommand } from "citty";
@@ -149,12 +149,6 @@ export const logsCommand = defineCommand({
       // Live tail picks up where the window left off.
       since_ms = window.next_since_ms;
     } catch (err) {
-      if (isEngineError(err) && err.status === 404) {
-        process.stderr.write(
-          "engine does not expose /v1/diagnostics/logs — upgrade the engine to a build that exposes the diagnostics log surface.\n",
-        );
-        process.exit(1);
-      }
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
     }

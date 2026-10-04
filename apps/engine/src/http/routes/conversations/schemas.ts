@@ -188,7 +188,7 @@ export const ConversationDetailSchema = z
     created_resources: z.array(ConversationCreatedResourceSchema),
     /**
      * Parts-based `UIMessage` array — mirrors Vercel AI SDK UI's message
-     * shape. Built by `buildMessagesV2` over the persisted message +
+     * shape. Built by `buildMessages` over the persisted message +
      * tool-call rows.
      */
     messages: z.array(UIMessageSchema),

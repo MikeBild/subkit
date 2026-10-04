@@ -117,7 +117,7 @@ test("read queries may vary only their approved values, never fixed resources or
     expect(() => assertReadQuery(bounds, target, { ...req, url })).toThrow();
 });
 
-test("Unicode report MIME uses the UTF-8 encoder; legacy byte truncation is rejected", async () => {
+test("Unicode report MIME uses the UTF-8 encoder; byte truncation is rejected", async () => {
   const text =
     "From: sender@example.test\r\nTo: recipient@example.test\r\nSubject: Größe – Bericht\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\nMesswerte → vollständig";
   const correct = await runJs<string>({
@@ -126,12 +126,12 @@ test("Unicode report MIME uses the UTF-8 encoder; legacy byte truncation is reje
     clock: null,
   });
   expect(observed({ raw: correct.output })?.boundary).toEqual(boundary);
-  const legacy = await runJs<string>({
+  const truncated = await runJs<string>({
     code: "return sk.base64UrlEncode(input.text);",
     input: { text },
     clock: null,
   });
-  expect(observed({ raw: legacy.output })).toBeNull();
+  expect(observed({ raw: truncated.output })).toBeNull();
 });
 
 // ── The report profile, case by case ──────────────────────────────────────

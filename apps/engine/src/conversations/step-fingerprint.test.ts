@@ -64,15 +64,15 @@ describe("pruneTracesForMutation", () => {
     expect(removed).toEqual([]);
   });
 
-  test("fingerprintless legacy traces are kept (and stamped) only when the definition is unchanged", () => {
-    const legacy: WorkflowDraftStepPreview = { ...trace(fetchStep()) };
-    delete (legacy as { fingerprint?: string }).fingerprint;
-    const keptUnchanged = pruneTracesForMutation([legacy], [fetchStep()], [fetchStep()]);
+  test("fingerprintless traces are kept (and stamped) only when the definition is unchanged", () => {
+    const unstamped: WorkflowDraftStepPreview = { ...trace(fetchStep()) };
+    delete (unstamped as { fingerprint?: string }).fingerprint;
+    const keptUnchanged = pruneTracesForMutation([unstamped], [fetchStep()], [fetchStep()]);
     expect(keptUnchanged).toHaveLength(1);
     expect(keptUnchanged[0]?.fingerprint).toBe(stepFingerprint(fetchStep()));
 
     const keptChanged = pruneTracesForMutation(
-      [{ ...legacy }],
+      [{ ...unstamped }],
       [fetchStep()],
       [{ ...fetchStep(), url: "https://other" }],
     );

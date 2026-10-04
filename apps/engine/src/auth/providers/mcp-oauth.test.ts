@@ -13,6 +13,7 @@ import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { generateAccessToken, generateRefreshToken } from "../oauth/tokens.ts";
 import { canonicalizeResourceUri, createMcpOAuthAuthProvider } from "./mcp-oauth.ts";
 
@@ -42,7 +43,11 @@ beforeAll(async () => {
 
   const [u] = await db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "mcp-auth@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantId,
+      email: "mcp-auth@test.local",
+      role_id: await builtinRoleId(db, "admin"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
@@ -243,7 +248,11 @@ describe("createMcpOAuthAuthProvider — tenant isolation", () => {
 
     const [userB] = await db
       .insert(users)
-      .values({ tenant_id: tenantB.id, email: "user-b@test.local", role: "member" })
+      .values({
+        tenant_id: tenantB.id,
+        email: "user-b@test.local",
+        role_id: await builtinRoleId(db, "member"),
+      })
       .returning();
     if (!userB) throw new Error("seed user B failed");
 

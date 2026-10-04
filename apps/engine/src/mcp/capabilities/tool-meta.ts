@@ -151,7 +151,7 @@ function reachesExternal(toolName: string): boolean {
  * fully loaded so a fresh session can look domain facts up on the first turn
  * without a search round-trip — they ARE the search.
  */
-const ALWAYS_LOAD_TOOLS: ReadonlySet<string> = new Set(["search_knowledge_v2", "find_skill"]);
+const ALWAYS_LOAD_TOOLS: ReadonlySet<string> = new Set(["search_knowledge", "find_skill"]);
 
 export function alwaysLoadTool(toolName: string): boolean {
   return ALWAYS_LOAD_TOOLS.has(toolName);

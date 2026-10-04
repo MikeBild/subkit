@@ -115,7 +115,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const original = rows[0];
     if (!original) throw new NotFoundError("execution");
     if (original.source_kind !== "saved" || !original.workflow_id) {
-      throw HttpError.withEnvelope(
+      throw new HttpError(
         409,
         "conflict",
         `execution has source_kind='${original.source_kind}' — only saved-workflow executions can be rerun`,

@@ -13,6 +13,7 @@ import {
   patchCandidates,
   users,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../../test-helpers/patch-candidates.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -121,7 +122,7 @@ describe("GET /v1/operator/health-digest", () => {
       .values({
         tenant_id: srv.tenantId,
         email: "member-digest@test.local",
-        role: "member",
+        role_id: await builtinRoleId(srv.db, "member"),
       })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");

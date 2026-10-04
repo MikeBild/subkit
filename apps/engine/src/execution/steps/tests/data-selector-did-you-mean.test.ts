@@ -25,7 +25,6 @@ describe("loop · data_selector did_you_mean", () => {
       // typo: fetch_projets vs. fetch_projects (the actual key)
       data_selector: "(s) => s.fetch_projets.data.projects",
       body: ["x"],
-      item_var: "p",
     });
     const scope = {
       fetch_projects: { data: { projects: [{ id: 1 }] } },
@@ -49,7 +48,6 @@ describe("loop · data_selector did_you_mean", () => {
       // Force the QuickJS error to mention the step-id-typo path
       data_selector: "(s) => { const x = s.fetch_projets; return x.foo; }",
       body: ["x"],
-      item_var: "p",
     });
     const scope = {
       fetch_projects: { data: { projects: [] } },

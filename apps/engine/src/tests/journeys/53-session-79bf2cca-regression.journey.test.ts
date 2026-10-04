@@ -99,7 +99,7 @@ async function createConversationAndRunTurn(
   }
 }
 
-import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../../conversations/tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
@@ -226,7 +226,6 @@ describe("journey 53: session-79bf2cca regression set", () => {
           kind: "loop",
           id: "iter",
           over: "items.data",
-          item_var: "project",
           body: ["fetch_resources"],
         },
         // Body always returns []. Three iterations succeed; productive body output = 0.
@@ -365,7 +364,6 @@ describe("journey 53: session-79bf2cca regression set", () => {
               id: "fetch_resources",
               kind: "loop",
               over: "extract.data",
-              item_var: "project",
               body: ["get_project_resources"],
             },
             {
@@ -385,7 +383,7 @@ describe("journey 53: session-79bf2cca regression set", () => {
     // Loop-specific shape — the LLM needs to see this exact form so it
     // does not invent `$scope.fetch_resources.data.resources`.
     expect(out!).toContain("$scope.fetch_resources.data");
-    expect(out!).toContain("$project");
+    expect(out!).toContain("$item");
     expect(out!).toContain("flat access across all iterations");
     expect(out!).toContain("$scope.fetch_resources.data.get_project_resources.data");
     expect(out!).toContain("$scope.fetch_resources.data[0].get_project_resources.data");

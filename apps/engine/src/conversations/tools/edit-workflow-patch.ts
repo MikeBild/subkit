@@ -15,14 +15,10 @@ import { z } from "@hono/zod-openapi";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
 import {
-  type ItemvarRewriteChange,
-  rewriteWorkflowItemVars,
-} from "../../workflows/itemvar-rewrite.ts";
-import {
   describeStepReferences,
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
+import type { WorkflowDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
@@ -119,7 +115,7 @@ export const editWorkflowPatchTool: ConversationTool = {
  * (`apply_workflow_patch` commit_intent) share ONE gate chain + one
  * durability contract. Applies the RFC-6902 `patches` to the workflow
  * draft, runs every pre-flight gate (validation, cycle, placeholder,
- * reference, legacy item_var migration), commits the patched draft, and
+ * reference), commits the patched draft, and
  * returns the recorded-eval findings. The patch fails atomically — an
  * invalid patch leaves the draft untouched.
  *
@@ -158,13 +154,6 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    // Legacy item_var auto-migration (Chat-First contract): a workflow
-    // loaded for editing may still carry the retired `item_var` contract
-    // (the boot backfill leaves unprovable rewrites untouched). Rather
-    // than bouncing EVERY edit with "item_var is retired", run the
-    // PROVEN AST rewriter in-band: a provable rewrite is applied and
-    // reported; an unprovable one earns a typed error naming the manual
-    // step — the user can always edit their own workflow from chat.
     // A patch may legally target `steps`, and nothing upstream guarantees the
     // op left an ARRAY behind — `applyDiffsToConfig` applies what it is given.
     // `?? []` only covers null/undefined, so a `replace` that put an object
@@ -185,44 +174,6 @@ export async function applyWorkflowPatchToDraft(
           extra: { patches },
         }),
       };
-    }
-
-    let legacyItemvarChanges: ItemvarRewriteChange[] | null = null;
-    const declaresItemvar = (patched.steps ?? []).some(
-      (st) =>
-        typeof st === "object" &&
-        st !== null &&
-        (st as { kind?: unknown }).kind === "loop" &&
-        typeof (st as { item_var?: unknown }).item_var === "string",
-    );
-    if (declaresItemvar) {
-      const parsedLegacy = WorkflowDefSchema.safeParse(patched);
-      if (parsedLegacy.success) {
-        const rewrite = rewriteWorkflowItemVars(parsedLegacy.data);
-        if (rewrite.ok) {
-          patched = { ...patched, steps: rewrite.def.steps } as typeof patched;
-          legacyItemvarChanges = rewrite.changes;
-        } else {
-          recordAuthoringGateBlock({
-            code: "legacy_itemvar_migration_required",
-            tool: "edit_workflow_patch",
-          });
-          return {
-            ok: false,
-            data: buildGateError(currentDraft, {
-              error_code: "legacy_itemvar_migration_required",
-              message: `this workflow still uses the retired item_var loop contract and the automatic $item rewrite could not be PROVEN equivalent (${rewrite.reason}) — rewrite the affected loop-body expressions to $item manually (include the change in your patch), then retry`,
-              recommended_mode: "workflow",
-              next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
-              extra: {
-                reason: rewrite.reason,
-                ...(rewrite.step_id ? { step_id: rewrite.step_id } : {}),
-                ...(rewrite.field ? { field: rewrite.field } : {}),
-              },
-            }),
-          };
-        }
-      }
     }
 
     // Unsupported-placeholder pre-flight BEFORE the structural validator:
@@ -440,12 +391,6 @@ export async function applyWorkflowPatchToDraft(
           steps: patched.steps.length,
           last_step_id: patched.steps[patched.steps.length - 1]?.id ?? null,
           recorded_eval: recordedEval,
-          ...(legacyItemvarChanges
-            ? {
-                legacy_itemvar_migrated: true,
-                itemvar_changes: legacyItemvarChanges,
-              }
-            : {}),
         },
       }),
     };

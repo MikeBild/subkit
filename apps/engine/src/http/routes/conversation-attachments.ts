@@ -5,17 +5,15 @@
 //   GET    /v1/conversations/:id/attachments              — list linked files
 //   DELETE /v1/conversations/:id/attachments/:slug        — unlink (does NOT delete the file)
 //
-// URL shape is preserved for backwards compatibility with operator
-// tooling that POSTs to the legacy path. Under the hood every call
-// goes through the canonical `files` + `file_links` tables:
+// The cockpit chat uploads and lists through this conversation-scoped
+// path. Under the hood every call goes through the canonical `files` +
+// `file_links` tables:
 //
 //   - POST decodes the JSON body, dedups + inserts a `files` row
 //     (sha256-scoped to the tenant), then attaches a `file_links` row
 //     pointing the file at the conversation under the derived slug.
 //     Emits `FILE_CREATED` + `FILE_SCAN_COMPLETED` + `FILE_LINK_ADDED`
-//     symmetric with the canonical `/v1/files/inline` route. The legacy
-//     `conversation.attachment_*` audit actions are removed; SIEM
-//     consumers filter on the new `file.*` vocabulary.
+//     symmetric with the canonical `/v1/files/inline` route.
 //   - GET joins `file_links` with `files` filtered by the conversation.
 //   - DELETE removes the `file_links` row only — the `files` row stays
 //     for any other conversation / resource that still references it,

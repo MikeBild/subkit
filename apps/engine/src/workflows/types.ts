@@ -1037,22 +1037,6 @@ export const LoopStepSchema = z
      * while expensive or side-effecting loops can opt into bounded failure.
      */
     fail_fast: z.boolean().optional(),
-    /**
-     * RETIRED authoring field — legacy passthrough only, never authored
-     * anew. Loop items are addressed as `$item` (JSONata) / `${item.…}`
-     * (strings), with `$loop_index` for the iteration counter.
-     *
-     * Historical workflow versions declared `item_var` and their loop
-     * bodies reference the bare name; those stored versions keep
-     * executing unchanged (the engine binds the bare name ONLY when the
-     * stored definition declares it — see `execution/loop-scope.ts`).
-     * The field is optional with NO default so migrated/new definitions
-     * simply omit it; `validateWorkflowDef` rejects any definition that
-     * still declares it (the single enforcement point for every write
-     * surface). This is a versioned stored-data contract, not a
-     * compatibility flag.
-     */
-    item_var: z.string().optional(),
   })
   .refine((s) => Boolean(s.over) !== Boolean(s.data_selector), {
     message:

@@ -4,11 +4,11 @@ import { NAVIGATION } from "@/app/navigation";
 import {
   ALL_ROUTE_PATHS,
   CATALOG_RESOURCES,
-  legacyTarget,
+  movedTarget,
   PAGE_ROUTES,
   REDIRECT_ROUTES,
 } from "@/app/route-table";
-import { peopleSectionFromUrl, reviewFromUrl } from "./links";
+import { peopleSectionFromUrl } from "./links";
 
 /**
  * The router cannot be imported here — it reaches `window` while it loads — so
@@ -85,36 +85,11 @@ describe("cockpit route table", () => {
     expect(REDIRECT_ROUTES).toContain("/access");
     expect(PAGE_ROUTES as readonly string[]).not.toContain("/access");
     expect(ALL_ROUTE_PATHS).toContain("/access");
-    const landed = legacyTarget("/access", "");
+    const landed = movedTarget("");
     expect(landed).toBe("/people?section=roles");
     expect(peopleSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("roles");
-    expect(legacyTarget("/access", "?section=permissions")).toBe("/people?section=roles");
-    expect(legacyTarget("/access", "?q=admin")).toBe("/people?section=roles&q=admin");
-  });
-
-  test("sends the decisions queue and the system page to Übersicht", () => {
-    const W = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
-    for (const path of ["/decisions", "/operations"] as const) {
-      expect(REDIRECT_ROUTES).toContain(path);
-      expect(PAGE_ROUTES as readonly string[]).not.toContain(path);
-      // Still routed: the sweep visits an old address and sees where it lands.
-      expect(ALL_ROUTE_PATHS).toContain(path);
-    }
-    expect(legacyTarget("/decisions", "")).toBe("/");
-    // A bucket narrowed a page that no longer exists; it does not travel.
-    for (const bucket of ["blocked", "failing", "overdue", "other"])
-      expect(legacyTarget("/decisions", `?bucket=${bucket}`)).toBe("/");
-    // One workflow's decisions open that workflow's review sheet.
-    const review = legacyTarget("/decisions", `?workflow_id=${W}`);
-    expect(review).toBe(`/?review=workflow:${W}`);
-    expect(reviewFromUrl(review.slice(1))).toBe(`workflow:${W}`);
-    expect(legacyTarget("/decisions", `?bucket=failing&workflow_id=${W}`)).toBe(
-      `/?review=workflow:${W}`,
-    );
-    // Not a workflow id: Übersicht, never a sheet for an address nobody wrote.
-    expect(legacyTarget("/decisions", "?workflow_id=1e5")).toBe("/");
-    expect(legacyTarget("/operations", "")).toBe("/");
-    expect(legacyTarget("/operations", "?tab=health")).toBe("/");
+    expect(movedTarget("?section=permissions")).toBe("/people?section=roles");
+    expect(movedTarget("?q=admin")).toBe("/people?section=roles&q=admin");
   });
 
   test("old run, connection and notification addresses are gone, not redirected", () => {
@@ -122,7 +97,14 @@ describe("cockpit route table", () => {
     // that opened it, all runs are `?runs=all`, a sign-in comes back to the
     // connectors, notifications are a tab of Einstellungen — so the old
     // addresses have no route and no redirect of their own.
-    for (const gone of ["/runs", "/runs/$resourceId", "/connections", "/notifications"]) {
+    for (const gone of [
+      "/runs",
+      "/runs/$resourceId",
+      "/connections",
+      "/notifications",
+      "/decisions",
+      "/operations",
+    ]) {
       expect(ALL_ROUTE_PATHS).not.toContain(gone);
     }
   });
@@ -132,7 +114,7 @@ describe("cockpit route table", () => {
     expect(source).toContain("REDIRECT_ROUTES.map(");
     // The raw query, and a browser navigation: the router's own search
     // serialiser JSON-parses values (`1e5` → `100000`) on both of its paths.
-    expect(source).toContain("legacyTarget(path, window.location.search)");
+    expect(source).toContain("movedTarget(window.location.search)");
     expect(source).toContain("window.location.replace(");
     const code = source.replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/location\.searchStr|redirect\(\{/);

@@ -9,6 +9,7 @@ import {
   users,
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
@@ -19,7 +20,7 @@ import {
   deleteWorkflowTool,
   revokeApiKeyTool,
   revokePortalTokenTool,
-} from "../generated/writes/cleanup.ts";
+} from "../engine-api/writes/cleanup.ts";
 import type { ToolContext } from "../index.ts";
 import { checkToolPermission } from "../permission-gate.ts";
 
@@ -35,7 +36,7 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenant_id,
       email: "member-cleanup@test.local",
-      role: "member",
+      role_id: await builtinRoleId(ctx.testDb.db, "member"),
     })
     .returning();
   memberUserId = member!.id;

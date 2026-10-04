@@ -71,11 +71,6 @@ interface PersonaSnapshot {
 }
 
 import { loadBootstrap } from "./lib/bootstrap.ts";
-// Persona resolution: route through `loadBootstrap` so the readline
-// REPL gets the same one-call UX-gating snapshot the Ink REPL uses.
-// Falls back to the tier-filtered legacy probe for older engines that
-// don't expose `/v1/sk/bootstrap`.
-import { ALL_PROBE_PERMISSIONS as PROBE_PERMISSIONS } from "./persona-probe.ts";
 
 async function resolvePersona(
   client: EngineClient,
@@ -90,10 +85,6 @@ async function resolvePersona(
     source: snap.source,
   };
 }
-// Suppress unused-import lint: `PROBE_PERMISSIONS` is exported for
-// callers that introspect the full list (e.g. /whoami debug). It is
-// not referenced inside this module.
-void PROBE_PERMISSIONS;
 
 export async function runRepl(opts: ReplRunOptions): Promise<number> {
   const stdout = opts.stdout ?? process.stdout;

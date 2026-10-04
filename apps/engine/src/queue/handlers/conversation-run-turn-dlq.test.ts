@@ -20,6 +20,7 @@ import { getConfig, loadConfig } from "../../config/loader.ts";
 import * as svc from "../../conversations/service.ts";
 import { auditLog, tenants, users } from "../../db/schema/index.ts";
 import { getMcpTask, insertMcpTask, setMcpTaskCancelled } from "../../mcp/tasks/store.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { CONVERSATION_RUN_TURN_DLQ } from "../queues.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
@@ -55,7 +56,11 @@ beforeAll(async () => {
   tenantId = t.id;
   const [u] = await queue.testDb.db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "rt-dlq@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantId,
+      email: "rt-dlq@test.local",
+      role_id: await builtinRoleId(queue.testDb.db, "admin"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;

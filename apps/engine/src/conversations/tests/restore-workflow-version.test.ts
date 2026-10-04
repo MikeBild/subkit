@@ -50,15 +50,19 @@ function makeCtx(): ToolContext {
   };
 }
 
-const STEP_V1 = [{ id: "a", kind: "transform", language: "javascript", expression: "return 1;" }];
-const STEP_V2 = [{ id: "b", kind: "transform", language: "javascript", expression: "return 2;" }];
+const ORIGINAL_STEPS = [
+  { id: "a", kind: "transform", language: "javascript", expression: "return 1;" },
+];
+const REPLACEMENT_STEPS = [
+  { id: "b", kind: "transform", language: "javascript", expression: "return 2;" },
+];
 
 describe("restore_workflow_version", () => {
   test("brings back the named version's content as the new active version", async () => {
     const created = await createWorkflow(
       {
         tenant_id: ctx.tenant_id,
-        def: { name: "restore-me", slug: "restore-me", steps: STEP_V1 },
+        def: { name: "restore-me", slug: "restore-me", steps: ORIGINAL_STEPS },
         actor_id: ctx.user_id,
       },
       ctx.testDb.db,
@@ -68,7 +72,7 @@ describe("restore_workflow_version", () => {
       {
         tenant_id: ctx.tenant_id,
         id: created.workflow.id,
-        def: { name: "restore-me", slug: "restore-me", steps: STEP_V2 },
+        def: { name: "restore-me", slug: "restore-me", steps: REPLACEMENT_STEPS },
         actor_id: ctx.user_id,
       },
       ctx.testDb.db,
@@ -95,7 +99,7 @@ describe("restore_workflow_version", () => {
     const created = await createWorkflow(
       {
         tenant_id: ctx.tenant_id,
-        def: { name: "only-one", slug: "only-one", steps: STEP_V1 },
+        def: { name: "only-one", slug: "only-one", steps: ORIGINAL_STEPS },
         actor_id: ctx.user_id,
       },
       ctx.testDb.db,
@@ -113,7 +117,7 @@ describe("restore_workflow_version", () => {
     const created = await createWorkflow(
       {
         tenant_id: ctx.tenant_id,
-        def: { name: "stored-earlier", slug: "stored-earlier", steps: STEP_V1 },
+        def: { name: "stored-earlier", slug: "stored-earlier", steps: ORIGINAL_STEPS },
         actor_id: ctx.user_id,
       },
       ctx.testDb.db,

@@ -20,9 +20,8 @@ import { conversationToolProvider } from "../../../tools/providers/conversation.
 import { buildRegistry } from "../../../tools/registry.ts";
 import { makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import type { ToolDescriptor } from "../../../tools/types.ts";
-import { findConnectorTool } from "../find-connector.ts";
-import { getConnectorTool, listConnectorsTool } from "../generated/connectors.ts";
-import { getExecutionTool } from "../generated/executions.ts";
+import { getConnectorTool, listConnectorsTool } from "../engine-api/connectors.ts";
+import { getExecutionTool } from "../engine-api/executions.ts";
 import {
   getApiKeyTool,
   getUserTool,
@@ -31,15 +30,16 @@ import {
   listSystemAccountsTool,
   listUsersTool,
   whoamiTool,
-} from "../generated/identity.ts";
+} from "../engine-api/identity.ts";
 import {
   getKnowledgeSourceTool,
   listKnowledgeSourcesTool,
   readKnowledgeTool,
-} from "../generated/knowledge-sources.ts";
-import { getSkillTool, listAllSkillsTool } from "../generated/skills.ts";
-import { getStatusSummaryTool } from "../generated/status.ts";
-import { listSchedulesTool } from "../generated/writes/schedules.ts";
+} from "../engine-api/knowledge-sources.ts";
+import { getSkillTool, listAllSkillsTool } from "../engine-api/skills.ts";
+import { getStatusSummaryTool } from "../engine-api/status.ts";
+import { listSchedulesTool } from "../engine-api/writes/schedules.ts";
+import { findConnectorTool } from "../find-connector.ts";
 import { listCapabilityGapsTool } from "../list-capability-gaps.ts";
 import { listSkillsTool } from "../list-skills.ts";
 import { reviewWorkflowAutomationTool } from "../review-workflow-automation.ts";

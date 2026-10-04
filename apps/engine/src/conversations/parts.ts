@@ -3,8 +3,8 @@
 // conversation's tool calls. Mirrors Vercel AI SDK UI's `UIMessage`.
 //
 // The engine still persists `content: unknown`; this adapter is the
-// read-side projection consumed by `messages_v2` on the detail
-// endpoint. Once CLIs consume `messages_v2` exclusively a later PR can
+// read-side projection consumed by `messages` on the detail
+// endpoint. Once CLIs consume `messages` exclusively a later PR can
 // physically migrate rows.
 
 import type { ConversationReference } from "./references.ts";
@@ -76,7 +76,7 @@ export function toMessageParts(
  * Unanchored legacy rows are ignored here and remain available only on
  * the raw `tool_calls` detail surface.
  */
-export function buildMessagesV2(
+export function buildMessages(
   messages: ConversationMessageRecord[],
   toolCalls: ConversationToolCallRecord[],
 ): UIMessage[] {
@@ -88,7 +88,7 @@ export function buildMessagesV2(
  * Walk the messages and group tool calls under their parent assistant
  * message. Only explicit anchors are considered. Unanchored rows stay
  * visible through the raw detail endpoint rather than being guessed
- * into `messages_v2`.
+ * into `messages`.
  */
 function groupToolCallsByAssistantTurn(
   messages: ConversationMessageRecord[],

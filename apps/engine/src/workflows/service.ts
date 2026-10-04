@@ -25,7 +25,7 @@ import {
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
-import { legacyDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
+import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
@@ -91,8 +91,8 @@ export interface WorkflowView {
   /** True when the current version is stored in an earlier definition format
    *  and no longer passes the schema. `definition` is then the stored dag as
    *  written — readable, never executable: a run or an activation of it is
-   *  refused with `workflow_version_legacy`. */
-  legacy: boolean;
+   *  refused with `workflow_version_invalid`. */
+  invalid: boolean;
   definition: WorkflowDef;
   steps: WorkflowDef["steps"];
 }
@@ -150,8 +150,8 @@ async function workflowViewsFromRows(
     // a definition to refuse.
     const stored = v ? readStoredDefinition(v.dag) : null;
     const def: WorkflowDef = stored
-      ? stored.legacy
-        ? legacyDefinitionForRead(v?.dag, wf.name)
+      ? stored.invalid
+        ? invalidDefinitionForRead(v?.dag, wf.name)
         : stored.definition
       : ({ name: wf.name, steps: [] } as WorkflowDef);
     return {
@@ -170,7 +170,7 @@ async function workflowViewsFromRows(
       health_state: wf.health_state,
       health_reason: wf.health_reason ?? null,
       health_changed_at: wf.health_changed_at ?? null,
-      legacy: stored?.legacy ?? false,
+      invalid: stored?.invalid ?? false,
       definition: def,
       steps: def.steps,
     };
@@ -604,7 +604,7 @@ export async function updateWorkflowMetadata(
           )
           .limit(1);
         const stored = version ? readStoredDefinition(version.dag) : null;
-        if (stored && !stored.legacy)
+        if (stored && !stored.invalid)
           await applyTriggerBindings(
             tx,
             input.tenant_id,

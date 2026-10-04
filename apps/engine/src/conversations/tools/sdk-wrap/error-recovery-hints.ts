@@ -99,8 +99,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // USER_PASSWORD_AUTH or client_credentials_json). Those rotate in chat.
   wrong_reauth_flow:
     "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
-  legacy_itemvar_migration_required:
-    "this workflow predates the $item contract and the automatic rewrite could not be proven equivalent — read the named step/field, rewrite its bare loop-variable references to $item yourself, include that change in the patch, and retry edit_workflow_patch",
   // Authoring guardrails — evidence is fingerprint-keyed: edits to
   // OTHER steps keep their recorded previews; only the referenced
   // step's own definition change invalidates it.

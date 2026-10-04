@@ -96,10 +96,10 @@ describe("ConfigTab — description footer + section dividers", () => {
 
   test("fallback message renders when description is absent", async () => {
     const ui = renderInk(
-      <ConfigTab fields={[leaf("legacy.no_description_leaf", "x")]} client={stubClient()} />,
+      <ConfigTab fields={[leaf("misc.no_description_leaf", "x")]} client={stubClient()} />,
     );
     try {
-      await ui.waitFor((t) => t.includes("legacy.no_description_leaf"));
+      await ui.waitFor((t) => t.includes("misc.no_description_leaf"));
       expect(ui.text()).toContain("(no description in engine schema)");
     } finally {
       ui.unmount();

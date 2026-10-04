@@ -6,6 +6,7 @@ import {
 } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { sessions, users, workflowsSchedules } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
@@ -104,7 +105,11 @@ async function fixture(loop = false) {
   const now = await databaseNow(db);
   const [user] = await db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, role: "admin", email: `content-${sequence}@example.test` })
+    .values({
+      tenant_id: ctx.tenantId,
+      role_id: await builtinRoleId(db, "admin"),
+      email: `content-${sequence}@example.test`,
+    })
     .returning();
   if (!user) throw new Error("missing user");
   const [session] = await db

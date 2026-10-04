@@ -12,7 +12,7 @@ import {
   pausedStopCondition,
 } from "./stop-conditions.ts";
 
-test("completed readiness card ends narration; failed or legacy reviews continue", () => {
+test("completed readiness card ends narration; failed or earlier-format reviews continue", () => {
   const data = { kind: "workflow_automation_review", presentation: "automation_readiness_card" };
   const run = (output: unknown, toolName = "review_workflow_automation") =>
     automationReviewStopCondition({ steps: [{ toolResults: [{ toolName, output }] }] });

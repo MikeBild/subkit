@@ -21,6 +21,7 @@ import { connectors, conversations, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { JOURNEY_HOOK_TIMEOUT } from "./setup.ts";
 
 const SIGNING_SECRET = "slack-signing-secret-ABC";
@@ -56,7 +57,11 @@ beforeAll(async () => {
   if (!tenant) throw new Error("seed tenant");
   const [user] = await testDb.db
     .insert(users)
-    .values({ tenant_id: tenant.id, email: "admin@chat.test", role: "admin" })
+    .values({
+      tenant_id: tenant.id,
+      email: "admin@chat.test",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("seed user");
   const [sys] = await testDb.db

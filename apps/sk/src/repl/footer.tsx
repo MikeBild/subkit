@@ -217,7 +217,7 @@ interface BudgetLineProps {
 // across every LLM call of the turn in apps/engine/src/conversations/
 // loop.ts. We render it as a `cache N%` chip so the operator sees prompt-
 // cache effectiveness without leaving the REPL. Hidden when the engine
-// sent no cache figure (non-LLM tool turn or an older engine).
+// sent no cache figure (non-LLM tool turn).
 const BudgetLine: React.FC<BudgetLineProps> = ({
   sessionTokens,
   tokensToday,

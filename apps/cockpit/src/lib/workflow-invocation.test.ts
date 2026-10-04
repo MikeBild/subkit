@@ -194,7 +194,7 @@ describe("a list the reader may not see", () => {
 
 describe("what a call will be", () => {
   const stored = { dev: "held_preview_only", prod: "live_run_allowed" } as const;
-  const invocation = { authority: stored, legacy: false };
+  const invocation = { authority: stored, invalid: false };
 
   test("live only where the panel shows the environment as approved", () => {
     expect(callVerdict(invocation, "prod", "prod")).toBe("live");
@@ -212,7 +212,7 @@ describe("what a call will be", () => {
   });
 
   test("a version in an earlier format is refused in every environment", () => {
-    const legacy = { authority: stored, legacy: true };
+    const legacy = { authority: stored, invalid: true };
     expect(callVerdict(legacy, "prod", "prod")).toBe("refused");
     expect(callVerdict(legacy, "dev", null)).toBe("refused");
   });

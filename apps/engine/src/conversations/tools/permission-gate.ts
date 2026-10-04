@@ -32,22 +32,14 @@ export async function resolveConversationPrincipal(
 
   if (actorType === "user") {
     const rows = await ctx.db
-      .select({ role: users.role, role_id: users.role_id })
+      .select({ role_name: roles.name })
       .from(users)
+      .leftJoin(roles, eq(roles.id, users.role_id))
       .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    let roleNames: string[] = [row.role];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
+    const roleNames = row.role_name ? [row.role_name] : [];
     return {
       provider: "conversation_tool",
       kind: "user",

@@ -11,7 +11,7 @@ import {
 import { EngineClient } from "../../engine-client/index.ts";
 import { inspectHeldPreviewEvidence } from "../../workflows/report-delivery-proposal.ts";
 import { renderAutomationContext } from "../automation-context.ts";
-import { listSchedulesTool } from "../tools/generated/writes/schedules.ts";
+import { listSchedulesTool } from "../tools/engine-api/writes/schedules.ts";
 import { reviewWorkflowAutomationTool } from "../tools/review-workflow-automation.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

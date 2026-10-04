@@ -44,7 +44,7 @@ describe("preparation holds are stricter than retry hints", () => {
   test.each(["postgres", "graphql", "s3", "mcp", "unknown"])(
     "a resolved %s driver cannot borrow HTTP read semantics",
     (driver) => {
-      expect(requestRequiresPreparationHold(legacyStep({ method: "GET" }), driver)).toBe(true);
+      expect(requestRequiresPreparationHold(requestStep({ method: "GET" }), driver)).toBe(true);
     },
   );
 });
@@ -53,7 +53,7 @@ function step(partial: Record<string, unknown>) {
   return RequestStepSchema.parse({ kind: "request", id: "s", ...partial });
 }
 
-function legacyStep(partial: Record<string, unknown>): RequestStep {
+function requestStep(partial: Record<string, unknown>): RequestStep {
   return { kind: "request", id: "s", method: "GET", ...partial } as RequestStep;
 }
 
@@ -89,7 +89,7 @@ describe("classifyRequestStepSideEffects · explicit override wins both directio
   });
 
   test.each([["PUT"], ["PATCH"], ["DELETE"]])("%s cannot be forced to read", (method) => {
-    expect(classifyRequestStepSideEffects(legacyStep({ method, url, side_effects: "read" }))).toBe(
+    expect(classifyRequestStepSideEffects(requestStep({ method, url, side_effects: "read" }))).toBe(
       "write",
     );
   });
@@ -326,10 +326,10 @@ describe("classifyRequestStepSideEffects · S3", () => {
     ).toBe("write");
   });
 
-  test("PUT remains write when a legacy definition claims read", () => {
+  test("PUT remains write when a definition claims read", () => {
     expect(
       classifyRequestStepSideEffects(
-        legacyStep({
+        requestStep({
           connector_id: CONNECTOR_ID,
           method: "PUT",
           side_effects: "read",

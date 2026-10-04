@@ -30,7 +30,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { logger } from "../logging/logger.ts";
 import {
-  backfillRoleIds,
+  backfillSystemAccountRoleIds,
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
@@ -73,7 +73,7 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
 
 async function seedEssentials(db: Db): Promise<SeededRoleIds> {
   const rbacIds = await seedBuiltinRolesAndPermissions(db);
-  await backfillRoleIds(db, rbacIds);
+  await backfillSystemAccountRoleIds(db, rbacIds);
   return rbacIds;
 }
 
@@ -213,7 +213,6 @@ export async function seedTenantBootstrap(
         .values({
           tenant_id: tenant.id,
           email,
-          role: "admin",
           role_id: rbacIds.admin,
         })
         .returning();
@@ -226,7 +225,7 @@ export async function seedTenantBootstrap(
           resource_type: "user",
           resource_id: user.id,
           result: "success",
-          metadata: { email: user.email, role: user.role, source: "bootstrap" },
+          metadata: { email: user.email, role_id: user.role_id, source: "bootstrap" },
         },
         tx,
       );
@@ -473,7 +472,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       .values({
         tenant_id: tenant.id,
         email: "admin@local",
-        role: "admin",
         role_id: rbacIds.admin,
       })
       .returning();
@@ -486,7 +484,7 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
         resource_type: "user",
         resource_id: user.id,
         result: "success",
-        metadata: { email: user.email, role: user.role },
+        metadata: { email: user.email, role_id: user.role_id },
       },
       tx,
     );

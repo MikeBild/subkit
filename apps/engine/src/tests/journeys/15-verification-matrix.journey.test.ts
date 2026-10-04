@@ -11,6 +11,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { executions, workflows, workflowsSchedules } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
@@ -85,7 +86,11 @@ describe("journey: verification matrix (docs/33)", () => {
     const { users } = await import("../../db/schema/index.ts");
     const [u] = await ctx.db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "matrix@test.local", role: "admin" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "matrix@test.local",
+        role_id: await builtinRoleId(ctx.db, "admin"),
+      })
       .returning();
     const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
@@ -264,7 +269,11 @@ describe("journey: verification matrix (docs/33)", () => {
     const { users, apiKeys } = await import("../../db/schema/index.ts");
     const [u] = await ctx.db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "rotator@matrix.test", role: "admin" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "rotator@matrix.test",
+        role_id: await builtinRoleId(ctx.db, "admin"),
+      })
       .returning();
     const issue = (await (
       await journeyFetch(ctx, "/v1/identity/api-keys", {

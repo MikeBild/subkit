@@ -7,7 +7,7 @@
 //   3. Conversation synthetic `wf_<slug>` palette
 //      (apps/engine/src/conversations/tools/sdk-wrap/synthetic-workflow-tools.ts).
 //   4. The fallback `run_workflow` conversation tool
-//      (apps/engine/src/conversations/tools/generated/writes/run-workflow.ts).
+//      (apps/engine/src/conversations/tools/engine-api/writes/run-workflow.ts).
 //
 // They must agree on the RBAC decision and on the POLICY_DENIED audit
 // row on refusal. This helper extracts the canonical block from MCP's

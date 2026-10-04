@@ -20,6 +20,7 @@ import { SYSTEM_TENANT_ID } from "../../../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -172,7 +173,7 @@ describe("GET /v1/settings", () => {
       .values({
         tenant_id: otherTenant!.id,
         email: `reader-${seqTag}@test.local`,
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning();
     const plaintext = `wf_live_${det(16)}`;
@@ -477,7 +478,7 @@ describe("PUT /v1/settings/{path}", () => {
       .values({
         tenant_id: otherTenant!.id,
         email: `member-${seqTag}@test.local`,
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning();
     // Deterministic 32-char hex token — replaces randomBytes() so the
@@ -526,7 +527,7 @@ describe("PUT /v1/settings/{path}", () => {
       .values({
         tenant_id: otherTenant!.id,
         email: `admin-${seqTag}@test.local`,
-        role: "admin",
+        role_id: await builtinRoleId(server.db, "admin"),
       })
       .returning();
     const plaintext = `wf_live_${det(16)}`;
@@ -569,7 +570,7 @@ describe("PUT /v1/settings/{path}", () => {
       .values({
         tenant_id: SYSTEM_TENANT_ID,
         email: `sysop-${seqTag}@test.local`,
-        role: "admin",
+        role_id: await builtinRoleId(server.db, "admin"),
       })
       .returning();
     const plaintext = `wf_live_${det(16)}`;
@@ -608,7 +609,7 @@ describe("PUT /v1/settings/{path}", () => {
       .values({
         tenant_id: otherTenant!.id,
         email: `overlay-member-${seqTag}@test.local`,
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning();
     const plaintext = `wf_live_${det(16)}`;

@@ -46,7 +46,6 @@ describe("journey: audit query surface", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member-audit-query@test.local",
-        role: "member",
         role_id: ctx.rbacRoleIds.member,
       })
       .returning();

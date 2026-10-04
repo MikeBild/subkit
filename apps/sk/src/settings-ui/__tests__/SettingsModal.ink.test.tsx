@@ -173,7 +173,7 @@ describe("SettingsModal — render shape", () => {
     unmount();
   });
 
-  test("legacy initialTab (e.g. an engine section name) falls back to Status", () => {
+  test("an unknown initialTab (e.g. an engine section name) falls back to Status", () => {
     const state: StubState = { setCalls: [], putResult: { value: "x", requiresRestart: false } };
     const { lastFrame, unmount } = render(
       <SettingsModal

@@ -41,7 +41,6 @@ import {
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
-import { runItemvarBackfill } from "./migrations/itemvar-backfill.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
@@ -110,19 +109,19 @@ async function ensureMigrationsTable(db: Db): Promise<void> {
   await db.execute(
     sql`ALTER TABLE "subkit"."__drizzle_migrations" ADD COLUMN IF NOT EXISTS tag text`,
   );
-  const legacy = (await db.execute(
+  const drizzleSchemaTable = (await db.execute(
     sql`SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present`,
   )) as unknown as { rows: Array<{ present: boolean }> };
-  if (legacy.rows[0]?.present === true) {
+  if (drizzleSchemaTable.rows[0]?.present === true) {
     await db.execute(sql`
       INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag)
-      SELECT legacy.hash, legacy.created_at, legacy.tag
-        FROM "drizzle"."__drizzle_migrations" legacy
+      SELECT source.hash, source.created_at, source.tag
+        FROM "drizzle"."__drizzle_migrations" source
        WHERE NOT EXISTS (
          SELECT 1
            FROM "subkit"."__drizzle_migrations" isolated
-          WHERE isolated.hash = legacy.hash
-            AND isolated.tag IS NOT DISTINCT FROM legacy.tag
+          WHERE isolated.hash = source.hash
+            AND isolated.tag IS NOT DISTINCT FROM source.tag
        )
     `);
   }
@@ -180,7 +179,7 @@ export async function runMigrations(
   // unqualified and expect `public` first; replaying one of them onto an
   // already-isolated database must NOT, because 0041 moved those objects into
   // `subkit` and forcing `public` makes them invisible.
-  replayLegacyLineage = false,
+  replayFromScratch = false,
 ): Promise<MigrationReport> {
   // `db.$client` is the node-postgres Pool backing this drizzle instance
   // (the global pool in prod, a disposable per-suite pool in tests), so the
@@ -189,7 +188,7 @@ export async function runMigrations(
   if (!pool || typeof pool.connect !== "function") {
     // No reachable pool (e.g. a mock/tx handle in a unit test) — fall back
     // to running without the cross-process lock.
-    const report = await applyMigrations(db, migrations, replayLegacyLineage);
+    const report = await applyMigrations(db, migrations, replayFromScratch);
     resetSecretColumnDetection();
     return report;
   }
@@ -201,7 +200,7 @@ export async function runMigrations(
     // this keeps the post-migration search_path switch session-local and lets a
     // one-connection migration pool remain genuinely bounded.
     const lockedDb = drizzle(lockClient, { schema }) as Db;
-    const report = await applyMigrations(lockedDb, migrations, replayLegacyLineage);
+    const report = await applyMigrations(lockedDb, migrations, replayFromScratch);
     // The preflight asked about the schema before this ran; whoever asks
     // next in this process must be answered from the schema that is now.
     resetSecretColumnDetection();
@@ -236,7 +235,7 @@ export async function runMigrationsFromUrl(
 async function applyMigrations(
   db: Db,
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
-  replayLegacyLineage = false,
+  replayFromScratch = false,
 ): Promise<MigrationReport> {
   logger.info({
     module: "db",
@@ -320,7 +319,7 @@ async function applyMigrations(
       // Only while replaying the lineage from scratch, and only for the
       // pre-isolation migrations. Transaction scoped, so it is correct behind
       // a pooler in transaction mode, which rejects startup parameters.
-      if (replayLegacyLineage && m.tag <= ISOLATION_MIGRATION_TAG) {
+      if (replayFromScratch && m.tag <= ISOLATION_MIGRATION_TAG) {
         await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
       }
       for (const stmt of m.statements) {
@@ -361,16 +360,6 @@ async function applyMigrations(
   // Each is one-shot via a `data_migrations` marker row and never
   // breaks boot: a failure logs + leaves the marker unset so the next
   // boot retries.
-  try {
-    await runItemvarBackfill(db);
-  } catch (err) {
-    logger.error({
-      module: "db",
-      action: "migrate.code_backfill_failed",
-      msg: "item_var backfill failed (non-fatal; retried on next boot)",
-      ...errorFields(err),
-    });
-  }
   try {
     await runInboxNonActionablePurge(db);
   } catch (err) {
@@ -486,11 +475,11 @@ export async function detectDrift(db: Db): Promise<DriftReport> {
   const currentTags = new Set(
     dbRows.flatMap((r) => (r.tag !== null && embeddedByTag.get(r.tag) === r.hash ? [r.tag] : [])),
   );
-  const legacyCurrentHashes = new Set(
+  const untaggedCurrentHashes = new Set(
     dbRows.filter((r) => r.tag === null && embeddedByHash.has(r.hash)).map((r) => r.hash),
   );
   const missing_in_db = EMBEDDED_MIGRATIONS.filter(
-    (m) => !currentTags.has(m.tag) && !legacyCurrentHashes.has(m.hash),
+    (m) => !currentTags.has(m.tag) && !untaggedCurrentHashes.has(m.hash),
   ).map((m) => ({ idx: m.idx, tag: m.tag, hash: m.hash }));
 
   return { unknown_in_db, historical_in_db, missing_in_db };

@@ -5,7 +5,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
 import type { ChatChoice } from "./chat-choice";
-import { chatChoicePresentation } from "./chat-choice-presentation";
 
 /**
  * A question with fixed answers: the question as the card's line, each option
@@ -38,8 +37,7 @@ export function ChatChoiceCard({
   }, []);
   const deadline = Date.parse(choice.expiresAt);
   const expired = !Number.isFinite(deadline) || deadline <= now;
-  const presentation = chatChoicePresentation(choice, t);
-  const selected = presentation.options.find((option) => option.value === value);
+  const selected = choice.options.find((option) => option.value === value);
   const readable = (text: string) =>
     hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
   const disabled = busy || expired;
@@ -47,7 +45,7 @@ export function ChatChoiceCard({
     <ChatCard
       testId={testId}
       title={t("chat.choice.title")}
-      line={readable(presentation.question)}
+      line={readable(choice.question)}
       action={
         <Button
           disabled={disabled || !selected}
@@ -65,7 +63,7 @@ export function ChatChoiceCard({
         className="flex flex-col gap-2"
         data-testid={`${testId}-select`}
       >
-        {presentation.options.map((option) => {
+        {choice.options.map((option) => {
           const checked = value === option.value;
           return (
             // biome-ignore lint/a11y/useSemanticElements: a radio that carries a two-line label and its effect

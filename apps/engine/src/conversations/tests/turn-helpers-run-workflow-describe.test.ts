@@ -103,7 +103,7 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
     expect(msg).toContain("transient timeout");
   });
 
-  test("legacy 'fields:' fallback is preserved for tools without recognised structure", () => {
+  test("'fields:' fallback is preserved for tools without recognised structure", () => {
     const events: TurnEvent[] = [
       toolResultEvent("unknown_tool", { foo: 1, bar: 2 }),
       toolResultEvent("unknown_tool", { foo: 1, bar: 2 }),

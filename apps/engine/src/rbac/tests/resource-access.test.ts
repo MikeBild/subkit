@@ -14,6 +14,7 @@ import {
   workflows,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import { can, resourceAccess } from "../evaluator.ts";
 import { grantResource } from "../grants.ts";
 
@@ -43,13 +44,13 @@ beforeAll(async () => {
         .where(and(isNull(rolesTable.tenant_id), eq(rolesTable.name, name)))
         .limit(1)
     )[0]?.id ?? null;
-  const user = async (
-    email: string,
-    role: "admin" | "member" | "enduser",
-    role_id: string | null,
-  ) =>
+  const noPermissionsRoleId = await emptyRoleId(db, tenant_id);
+  const user = async (email: string, role_id: string | null) =>
     (
-      await db.insert(users).values({ tenant_id, email, role, role_id }).returning({ id: users.id })
+      await db
+        .insert(users)
+        .values({ tenant_id, email, role_id: role_id ?? noPermissionsRoleId })
+        .returning({ id: users.id })
     )[0]!.id;
 
   const base = (id: string, roles: string[]): ResolvedPrincipal => ({
@@ -59,10 +60,10 @@ beforeAll(async () => {
     tenant_id,
     roles,
   });
-  const adminId = await user("admin@ra", "admin", await roleId("admin"));
-  const memberId = await user("member@ra", "member", await roleId("member"));
-  const grantedId = await user("granted@ra", "enduser", null);
-  const groupedId = await user("grouped@ra", "enduser", null);
+  const adminId = await user("admin@ra", await roleId("admin"));
+  const memberId = await user("member@ra", await roleId("member"));
+  const grantedId = await user("granted@ra", null);
+  const groupedId = await user("grouped@ra", null);
 
   principals.admin = base(adminId, ["admin"]);
   principals.member = base(memberId, ["member"]);

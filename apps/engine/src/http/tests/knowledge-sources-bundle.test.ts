@@ -17,6 +17,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -35,7 +36,11 @@ beforeAll(async () => {
   // deny principal for the bundle write gate.
   const [enduser] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "enduser-bundle@test.local", role: "enduser" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "enduser-bundle@test.local",
+      role_id: await builtinRoleId(srv.db, "enduser"),
+    })
     .returning();
   const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: test only
   const plaintext = `wf_live_${rand}`;
@@ -515,7 +520,11 @@ describe("cross-tenant isolation on the full-content read", () => {
       .returning();
     const [userB] = await srv.db
       .insert(users)
-      .values({ tenant_id: tenantB!.id, email: "admin-b@test.local", role: "admin" })
+      .values({
+        tenant_id: tenantB!.id,
+        email: "admin-b@test.local",
+        role_id: await builtinRoleId(srv.db, "admin"),
+      })
       .returning();
     const randB = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: test only
     const keyB = `wf_live_${randB}`;

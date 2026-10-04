@@ -3,8 +3,9 @@
 // callers identify a configured adapter, never an issuer or vendor mode.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import * as jose from "jose";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
   IdentityLinkConflictError,
@@ -15,13 +16,12 @@ import {
 import { getConfig } from "../../../config/loader.ts";
 import type { Config } from "../../../config/schema.ts";
 import type { Db } from "../../../db/client.ts";
-import { tenants } from "../../../db/schema/index.ts";
+import { roles, tenants } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { type DiscoveryDoc, fetchDiscovery } from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { BadRequestError, ForbiddenError, HttpError, UnauthorizedError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema } from "./schemas.ts";
 
 type ProviderConfig = Config["auth"]["providers"][number];
 type OidcConfig = Extract<ProviderConfig, { protocol: "oidc" }>;
@@ -173,13 +173,23 @@ async function resolveOidcAssertion(
       db,
     );
   }
+  const [assignedRole] = await db
+    .select({ name: roles.name })
+    .from(roles)
+    .where(
+      and(
+        eq(roles.id, user.role_id),
+        or(isNull(roles.tenant_id), eq(roles.tenant_id, resolvedTenantId)),
+      ),
+    )
+    .limit(1);
   return {
     principal: {
       provider: provider.id,
       kind: "user",
       id: user.id,
       tenant_id: resolvedTenantId,
-      roles: [user.role],
+      roles: assignedRole ? [assignedRole.name] : [],
       ...(user.email ? { email: user.email } : {}),
     },
     subject,

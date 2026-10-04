@@ -68,7 +68,6 @@ beforeAll(async () => {
       email: "portal@conv-attach-asym.local",
       // Legacy enum kept for the column constraint; the RBAC evaluator
       // reads `role_id` (see seeded `portal_token_user` row above).
-      role: "enduser",
       role_id: portalRole.id,
     })
     .returning();

@@ -1,13 +1,11 @@
 // Materialized persona snapshot for the Ink REPL bridge.
 //
-// Persona resolution: prefer `/v1/sk/bootstrap` (one round-trip for the
-// full UX-gating allow-set) and fall back to the legacy tier-filtered
-// `whoami + rbac:can` fan-out for older engines. `loadBootstrap` owns
-// the disk cache + 3-tier resolution.
+// Persona resolution: `/v1/sk/bootstrap` (one round-trip for the full
+// UX-gating allow-set). `loadBootstrap` owns the disk cache.
 
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { DEFAULT_SK_PREFS, loadBootstrap, type SkBootstrapSnapshot } from "../lib/bootstrap.ts";
+import { loadBootstrap, type SkBootstrapSnapshot, unresolvedSnapshot } from "../lib/bootstrap.ts";
 import type { PersonaProbe } from "../slash.ts";
 
 export interface ResolvedPersona {
@@ -23,7 +21,7 @@ export interface ResolvedPersona {
    *  cached allow-set is fresh or stale. */
   fetchedAt: number;
   /** Where the snapshot came from: network, disk cache, or the
-   *  legacy tiered fallback. */
+   *  no-grant profile-only snapshot. */
   source: "network" | "cache" | "fallback";
   /** Engine-resolved REPL/UI/notification prefs. */
   prefs: SkBootstrapSnapshot["prefs"];
@@ -33,23 +31,17 @@ export interface ResolvedPersona {
  *  unreachable during a profile switch so the footer at least shows the
  *  right engine + profile name. Grants nothing. */
 export function fallbackPersona(profile: ResolvedProfile): ResolvedPersona {
-  return {
-    label: profile.persona_hint ?? "user",
-    probe: { allows: () => false },
-    allowed: new Set(),
-    tenant: profile.active_tenant_id ?? null,
-    email: null,
-    fetchedAt: Date.now(),
-    source: "fallback",
-    prefs: DEFAULT_SK_PREFS,
-  };
+  return personaFromSnapshot(unresolvedSnapshot(profile, Date.now()));
 }
 
 export async function resolvePersona(
   client: EngineClient,
   profile: ResolvedProfile,
 ): Promise<ResolvedPersona> {
-  const snap = await loadBootstrap(client, profile);
+  return personaFromSnapshot(await loadBootstrap(client, profile));
+}
+
+function personaFromSnapshot(snap: SkBootstrapSnapshot): ResolvedPersona {
   return {
     label: snap.label,
     probe: snap.probe,

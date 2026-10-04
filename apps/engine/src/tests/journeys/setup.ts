@@ -35,7 +35,7 @@ import { logger } from "../../logging/logger.ts";
 import { createBoss, disposeBoss, startBoss, stopBoss } from "../../queue/boss.ts";
 import { registerAllHandlers } from "../../queue/handlers/index.ts";
 import {
-  backfillRoleIds,
+  backfillSystemAccountRoleIds,
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../../rbac/seed.ts";
@@ -210,7 +210,6 @@ export async function createJourneyCtx(
       .values({
         tenant_id: tenant.id,
         email: `admin-${safeLabel}@test.local`,
-        role: "admin",
         role_id: rbacRoleIds.admin,
       })
       .returning();
@@ -228,7 +227,7 @@ export async function createJourneyCtx(
     if (!sysAcct) throw new Error("seed system_account failed");
 
     // Back-fill any rows that drop through the cracks (defense in depth).
-    await backfillRoleIds(testDb.db, rbacRoleIds);
+    await backfillSystemAccountRoleIds(testDb.db, rbacRoleIds);
 
     const key = generateApiKey();
     await testDb.db.insert(apiKeys).values({

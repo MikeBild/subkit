@@ -14,7 +14,7 @@
 //
 // Two binding paths cover single- and multi-connector recipes:
 //
-//   1. Legacy single-connector path. When `recipe.required_connectors`
+//   1. Single-connector path. When `recipe.required_connectors`
 //      is empty the recipe ships at most one placeholder UUID
 //      (`00000000-0000-0000-0000-000000000000`). The operator passes
 //      `connector_id` and the placeholder is rebound to that saved
@@ -23,7 +23,7 @@
 //      non-empty the operator must pass `connector_bindings` covering
 //      every declared placeholder UUID; each placeholder in the cloned
 //      workflow steps is rebound to its mapped saved connector. The
-//      legacy `connector_id` arg is rejected for multi-connector
+//      single `connector_id` arg is rejected for multi-connector
 //      recipes — the per-placeholder map disambiguates which step gets
 //      which connector.
 
@@ -65,7 +65,7 @@ const inputSchema = z
       .uuid()
       .optional()
       .describe(
-        "Single-connector legacy path. Bind every request step that carries the placeholder connector_id `00000000-0000-0000-0000-000000000000` to this saved connector id. Required for SQL/Postgres-style recipes that cannot express the connector via a base_url placeholder. Reject when the recipe declares `required_connectors` — use `connector_bindings` instead.",
+        "Single-connector path. Bind every request step that carries the placeholder connector_id `00000000-0000-0000-0000-000000000000` to this saved connector id. Required for SQL/Postgres-style recipes that cannot express the connector via a base_url placeholder. Reject when the recipe declares `required_connectors` — use `connector_bindings` instead.",
       ),
     connector_bindings: z
       .record(z.string().uuid(), z.string().uuid())
@@ -110,7 +110,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     "The cloned draft validates as-is under WorkflowDefSchema. Only override fields the user explicitly customized.",
     "Recipes are READ ONLY in templates.json. Edits land on the draft, not on the template.",
     "If the recipe declares `derived_from_skill`, the cloned workflow's `derived_from_skill_id` is populated so `save_workflow_draft` can apply the skill-schema gate.",
-    "Multi-connector recipes (non-empty `required_connectors`) require `connector_bindings` covering every declared placeholder UUID. The legacy `connector_id` arg is rejected for those — use `inspect_recipe` to see the placeholder roster, then resolve each placeholder to a saved connector via `find_connector` before cloning.",
+    "Multi-connector recipes (non-empty `required_connectors`) require `connector_bindings` covering every declared placeholder UUID. The single `connector_id` arg is rejected for those — use `inspect_recipe` to see the placeholder roster, then resolve each placeholder to a saved connector via `find_connector` before cloning.",
   ],
   inputSchema,
   category: "draft_write" as const,
@@ -147,12 +147,12 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     //
     //   - Multi-connector recipe (`required_connectors` non-empty):
     //     `connector_bindings` is mandatory and must cover every declared
-    //     placeholder. The legacy single-connector arg is rejected to
+    //     placeholder. The single-connector arg is rejected to
     //     avoid silent partial substitution.
     //   - Single-connector recipe (`required_connectors` empty): the
     //     operator may still pass `connector_bindings` (no-op for
     //     unknown UUIDs) but the typical path remains `connector_id`
-    //     against the legacy `00000000-…` placeholder.
+    //     against the `00000000-…` placeholder.
     const required = recipe.required_connectors ?? [];
     let bindings: Record<string, string> = {};
     if (required.length > 0) {
@@ -180,7 +180,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     } else if (args.connector_bindings) {
       bindings = { ...args.connector_bindings };
     }
-    // Legacy single-connector path layered onto the binding map. Routes
+    // Single-connector path layered onto the binding map. Routes
     // the well-known `00000000-…` placeholder to the supplied
     // `connector_id`, so a single rebind walk handles both shapes
     // without a second traversal.

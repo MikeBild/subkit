@@ -204,7 +204,7 @@ export function planTurnRouting(args: {
           "Explain that scheduled workflow execution is available here through `create_schedule`, `list_schedules`, `update_schedule`, and `delete_schedule`. Ground the answer in the cron/every:<seconds> contract and tell the user to resolve the workflow first when needed.",
         question: null,
         required_grounding: [
-          "apps/engine/src/conversations/tools/generated/writes/schedules.ts",
+          "apps/engine/src/conversations/tools/engine-api/writes/schedules.ts",
           "list_workflows",
         ],
         notes: [

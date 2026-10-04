@@ -78,7 +78,7 @@ describe("/usage — deep-link into SettingsModal Usage tab", () => {
   });
 });
 
-describe("/config-form — the legacy 4-field settings prompt is still reachable", () => {
+describe("/config-form — the 4-field settings prompt is reachable", () => {
   test("opens the kind:'config-form' pane", async () => {
     const { ctx, panes } = buildCtx();
     const out = await handleSlash("config-form", [], ctx);

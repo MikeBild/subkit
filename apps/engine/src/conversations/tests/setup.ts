@@ -17,6 +17,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { type AnswerActor, MODEL_RELAYED_ANSWER } from "../answer-actor.ts";
 import * as svc from "../service.ts";
@@ -188,7 +189,7 @@ export async function createConversationTestCtx(label: string): Promise<Conversa
     .values({
       tenant_id: tenant.id,
       email: `admin-${label}@test.local`,
-      role: "admin",
+      role_id: await builtinRoleId(testDb.db, "admin"),
     })
     .returning();
   if (!user) throw new Error("seed user failed");

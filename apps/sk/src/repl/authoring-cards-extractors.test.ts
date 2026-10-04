@@ -7,7 +7,7 @@ import type { ToolCallState } from "@cli-core/index.ts";
 // test at the bottom of this file detects shape drift at compile time:
 // if the engine renames a field or drops one, the fixture below stops
 // matching the type and TypeScript refuses to compile this test.
-import type { CreateKnowledgeSourceOutputData } from "@engine/conversations/tools/generated/writes/create-knowledge-source.ts";
+import type { CreateKnowledgeSourceOutputData } from "@engine/conversations/tools/engine-api/writes/create-knowledge-source.ts";
 import {
   extractConnectorIntent,
   extractConnectorSummary,
@@ -485,7 +485,7 @@ describe("extractConnectorSummary", () => {
 
 describe("extractKnowledgeSourceSummary", () => {
   // Mirrors the engine create_knowledge_source success payload at
-  // apps/engine/src/conversations/tools/generated/writes/create-knowledge-source.ts.
+  // apps/engine/src/conversations/tools/engine-api/writes/create-knowledge-source.ts.
   const validKsData = {
     created: true,
     knowledge_source: {

@@ -11592,7 +11592,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are held unless execute_writes is true. */
+        /** Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are always held. */
         post: {
             parameters: {
                 query?: never;
@@ -16357,7 +16357,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assign or clear a user's role */
+        /** Assign a user's role */
         post: {
             parameters: {
                 query?: never;
@@ -18323,10 +18323,7 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             email: string;
-            /** @enum {string} */
-            role: "admin" | "member" | "enduser";
-            effective_role: string;
-            role_consistent: boolean;
+            role: string | null;
             /** @enum {string} */
             status: "invited" | "active" | "disabled";
             oauth_connections: number;
@@ -19009,8 +19006,8 @@ export interface components {
             /** Format: uuid */
             workflow_id: string;
             slug: string;
-            /** @description True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_legacy` until the workflow is saved again. */
-            legacy: boolean;
+            /** @description True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_invalid` until the workflow is saved again. */
+            invalid: boolean;
             base_url: string | null;
             http: {
                 /** @enum {string} */
@@ -19555,7 +19552,6 @@ export interface components {
             over?: string;
             body: string[];
             fail_fast?: boolean;
-            item_var?: string;
         };
         WorkflowRuntime: {
             stdlib_version?: string;
@@ -19645,7 +19641,7 @@ export interface components {
             note: string | null;
             created_at: string;
             dag?: unknown;
-            legacy: boolean;
+            invalid: boolean;
         };
         Workflow: {
             id: string;
@@ -19663,8 +19659,8 @@ export interface components {
             health_state: string;
             health_reason: string | null;
             health_changed_at: string | null;
-            /** @description True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_legacy` until it is saved again in the current format. */
-            legacy: boolean;
+            /** @description True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_invalid` until it is saved again in the current format. */
+            invalid: boolean;
             steps: unknown[];
             input_schema: {
                 [key: string]: unknown;
@@ -21916,7 +21912,6 @@ export interface components {
             input?: unknown;
             /** @enum {string} */
             environment?: "dev" | "prod";
-            execute_writes?: boolean;
             include_step_results?: boolean;
             budget_ms_per_step?: number;
         };
@@ -23310,10 +23305,10 @@ export interface components {
             /** @enum {boolean} */
             ok: true;
             user_id: string;
-            role_id: string | null;
+            role_id: string;
         };
         AssignUserRoleRequest: {
-            role_id?: string | null;
+            role_id: string;
         };
         RbacGrantListResponse: {
             items: components["schemas"]["RbacGrant"][];

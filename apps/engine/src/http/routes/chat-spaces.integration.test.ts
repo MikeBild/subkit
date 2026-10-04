@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import { apiKeys, chatIdentities, tenants, users } from "../../db/schema/index.ts";
-import { createRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -93,7 +93,6 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "noop-chat-spaces@test.local",
-      role: "member",
       role_id: noopRole.id,
     })
     .returning();
@@ -107,7 +106,7 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "member-chat-spaces@test.local",
-      role: "member",
+      role_id: await builtinRoleId(ctx.db, "member"),
     })
     .returning();
   if (!memberUser) throw new Error("seed member user failed");
@@ -124,7 +123,7 @@ beforeAll(async () => {
     .values({
       tenant_id: tenant2.id,
       email: "admin-chat-spaces-b@test.local",
-      role: "admin",
+      role_id: await builtinRoleId(ctx.db, "admin"),
     })
     .returning();
   if (!admin2) throw new Error("seed admin B failed");

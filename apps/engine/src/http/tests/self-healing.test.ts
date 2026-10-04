@@ -23,6 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, selfHealingScans, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -50,7 +51,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "member-self-healing@test.local",
-      role: "member",
+      role_id: await builtinRoleId(srv.db, "member"),
     })
     .returning();
   if (!member) throw new Error("seed member failed");

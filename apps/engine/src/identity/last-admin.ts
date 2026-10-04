@@ -8,7 +8,6 @@
 // check inside its own transaction.
 
 import { and, eq, isNull, ne } from "drizzle-orm";
-import { resolveEffectiveUserRole } from "../auth/user-role.ts";
 import type { Executor } from "../db/client.ts";
 import { roles, users } from "../db/schema/index.ts";
 
@@ -36,7 +35,6 @@ export async function assertAdminRemains(
   const rows = await tx
     .select({
       id: users.id,
-      role: users.role,
       status: users.status,
       assigned: roles.name,
     })
@@ -50,7 +48,7 @@ export async function assertAdminRemains(
       ),
     )
     .for("update", { of: users });
-  const admins = rows.filter((row) => resolveEffectiveUserRole(row.role, row.assigned) === "admin");
+  const admins = rows.filter((row) => row.assigned === "admin");
   if (!admins.some((row) => row.id === input.user_id)) return;
   if (admins.length <= 1) throw new LastAdminError();
 }

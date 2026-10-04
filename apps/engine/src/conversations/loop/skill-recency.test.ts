@@ -282,7 +282,7 @@ describe("parseLoadedSkills — boundary validation", () => {
     expect(invalidCalls).toBe(0);
   });
 
-  test("legacy string[] ratchet rows are dropped (not cast to undefined slugs)", () => {
+  test("string[] ratchet rows are dropped (not cast to undefined slugs)", () => {
     const seen: Array<{ dropped: number; raw: unknown }> = [];
     // The pre-migration shape: a bare array of slug strings.
     const out = parseLoadedSkills(["http-connectors", "gmail"], (info) => seen.push(info));
@@ -298,7 +298,7 @@ describe("parseLoadedSkills — boundary validation", () => {
         { slug: "ok", last_turn: 1 },
         { slug: "", last_turn: 2 }, // empty slug → invalid
         { slug: "bad-turn", last_turn: "x" }, // non-numeric → invalid
-        "legacy-string", // wrong shape → invalid
+        "plain-string", // wrong shape → invalid
         { slug: "ok2", last_turn: 4 },
       ],
       (info) => seen.push(info),

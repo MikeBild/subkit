@@ -29,7 +29,6 @@ import { roles, sessions, users } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { browserSessionFromRequest, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
-import { resolveEffectiveUserRole } from "../user-role.ts";
 
 export interface BrowserSessionProviderOptions {
   db?: Db;
@@ -111,7 +110,7 @@ export function createBrowserSessionProvider(
 
       // tenant-filter:exempt — the session row already fixed the tenant.
       const [u] = await db
-        .select({ role: users.role, role_name: roles.name, email: users.email })
+        .select({ role_name: roles.name, email: users.email })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
         .where(eq(users.id, row.user_id))
@@ -126,7 +125,7 @@ export function createBrowserSessionProvider(
         kind: "user",
         id: row.user_id,
         tenant_id: row.tenant_id,
-        roles: [resolveEffectiveUserRole(u.role, u.role_name)],
+        roles: u.role_name ? [u.role_name] : [],
         session_id: row.id,
       };
       if (u.email) principal.email = u.email;

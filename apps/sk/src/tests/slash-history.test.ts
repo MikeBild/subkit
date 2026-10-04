@@ -53,7 +53,7 @@ describe("slash history ring", () => {
     expect(loadSlashHistory(path)).toEqual([]);
   });
 
-  test("tenant-filtered read drops legacy untagged rows (R10-W1, mirrors R9-W3)", () => {
+  test("tenant-filtered read drops untagged rows", () => {
     appendSlashHistory("/x", { path, tenant: "t1" });
     appendSlashHistory("/y", { path, tenant: "t2" });
     appendSlashHistory("/z", { path, tenant: null });

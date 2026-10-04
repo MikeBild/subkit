@@ -36,6 +36,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { generateKey } from "../../identity/api-key.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 
 export interface McpTestSuite {
@@ -317,7 +318,7 @@ export async function startMcpTestSuite(
       .values({
         tenant_id: tenant.id,
         email: `admin-${label}@second.test.local`,
-        role: "admin",
+        role_id: await builtinRoleId(http.db, "admin"),
       })
       .returning();
     if (!user) throw new Error("seed second tenant user failed");

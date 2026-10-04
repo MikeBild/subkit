@@ -64,6 +64,6 @@ response shapes, and the slash-command grammar, call:
 search_knowledge({ query: "<your question>", tags: ["sk-platform-reference"] })
 ```
 
-(or `search_knowledge_v2` for hybrid ranking). The exhaustive content lives in
+The exhaustive content lives in
 the knowledge source slug `sk-ref-chat`. Do not reconstruct route paths, payload
 shapes, or setup steps from memory — fetch the reference and quote it.

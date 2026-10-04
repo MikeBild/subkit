@@ -9,9 +9,8 @@
 //   - Built-in roles are upserted by `(tenant_id IS NULL, name)`.
 //   - `role_permissions` rows are inserted with ON CONFLICT DO NOTHING.
 //
-// The function also back-fills `users.role_id` + `system_accounts.role_id`
-// for any rows that still lack an assignment — this keeps old seed
-// data consistent after the migration lands without a separate script.
+// `backfillSystemAccountRoleIds` assigns a role to any system account
+// that still lacks one.
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -20,7 +19,6 @@ import {
   rolePermissions,
   roles as rolesTable,
   systemAccounts,
-  users,
 } from "../db/schema/index.ts";
 import { loadPermissionCatalog } from "./catalog.ts";
 
@@ -241,25 +239,10 @@ export async function seedBuiltinRolesAndPermissions(db: Db): Promise<SeededRole
 }
 
 /**
- * Back-fill `users.role_id` based on the legacy `users.role` enum
- * value and `system_accounts.role_id` based on the account name. Only
+ * Back-fill `system_accounts.role_id` based on the account name. Only
  * touches rows where `role_id IS NULL`.
  */
-export async function backfillRoleIds(db: Db, ids: SeededRoleIds): Promise<void> {
-  // Users: map enum role -> built-in role id.
-  await db
-    .update(users)
-    .set({ role_id: ids.admin })
-    .where(and(isNull(users.role_id), eq(users.role, "admin")));
-  await db
-    .update(users)
-    .set({ role_id: ids.member })
-    .where(and(isNull(users.role_id), eq(users.role, "member")));
-  await db
-    .update(users)
-    .set({ role_id: ids.enduser })
-    .where(and(isNull(users.role_id), eq(users.role, "enduser")));
-
+export async function backfillSystemAccountRoleIds(db: Db, ids: SeededRoleIds): Promise<void> {
   // System accounts: name-based heuristic. Everything unknown falls
   // back to `member` (NOT admin — that was the old default and it's
   // exactly the footgun C7 exists to close).

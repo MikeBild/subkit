@@ -8,6 +8,7 @@ import type { Db } from "../../db/client.ts";
 import { tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as grantsSvc from "../../rbac/grants.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 
 describe("authorConnectorWriteWarnings", () => {
@@ -26,7 +27,11 @@ describe("authorConnectorWriteWarnings", () => {
     tenantId = t.id;
     const [u] = await db
       .insert(users)
-      .values({ tenant_id: tenantId, email: "author@abw", role: "member", role_id: null })
+      .values({
+        tenant_id: tenantId,
+        email: "author@abw",
+        role_id: await emptyRoleId(db, tenantId),
+      })
       .returning({ id: users.id });
     if (!u) throw new Error("seed user");
     userId = u.id;

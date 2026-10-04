@@ -65,7 +65,6 @@ describe("journey: sk-cli member daily driver", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member@sk-cli-02.test",
-        role: "member",
         role_id: ctx.rbacRoleIds.member,
       })
       .returning();

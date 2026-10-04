@@ -31,6 +31,7 @@ import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import type { Db } from "../db/client.ts";
 import { portalTokens, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { fetchDiscovery, flushDiscoveryCache } from "./oidc-discovery.ts";
 import { issuePortalToken, revokePortalToken } from "./service.ts";
 
@@ -61,7 +62,11 @@ describe("portal-token revocation propagation", () => {
   test("revoke flips the resolver decision on the next request", async () => {
     const [user] = await db
       .insert(users)
-      .values({ tenant_id: tenantId, email: "portal-rev@id.local", role: "enduser" })
+      .values({
+        tenant_id: tenantId,
+        email: "portal-rev@id.local",
+        role_id: await builtinRoleId(db, "enduser"),
+      })
       .returning();
     if (!user) throw new Error("seed user failed");
 
@@ -98,7 +103,11 @@ describe("portal-token revocation propagation", () => {
   test("revoke is idempotent: revoking twice leaves the row revoked once", async () => {
     const [user] = await db
       .insert(users)
-      .values({ tenant_id: tenantId, email: "portal-rev2@id.local", role: "enduser" })
+      .values({
+        tenant_id: tenantId,
+        email: "portal-revoke-twice@id.local",
+        role_id: await builtinRoleId(db, "enduser"),
+      })
       .returning();
     if (!user) throw new Error("seed user failed");
 

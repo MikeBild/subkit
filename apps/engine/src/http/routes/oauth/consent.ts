@@ -215,7 +215,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // off its existing cookie. (`deactivateUser` now revokes sessions as well;
     // this is the second, independent guard, so neither alone has to be perfect.)
     const userRows = await db
-      .select({ email: users.email, role: users.role, role_name: rolesTable.name })
+      .select({ email: users.email, role_name: rolesTable.name })
       .from(users)
       .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
@@ -284,8 +284,6 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       client.scope || (target.kind === "cli_login" ? CLI_LOGIN_SCOPE : "mcp:read");
     const requestedScope = scopeParam ?? registeredScope;
     // A token can never carry a scope its owner's role lacks.
-    // Prefer the custom-role name from the roles table; fall back to the
-    // legacy enum column so built-in roles without a roles row still resolve.
     const roleScopes =
       target.kind === "cli_login"
         ? [CLI_LOGIN_SCOPE]
@@ -293,7 +291,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
             db,
             sessionPayload.tenant_id,
             sessionPayload.user_id,
-            userRow.role_name ?? userRow.role,
+            userRow.role_name,
           );
     // A consent screen may only offer scopes the client actually requested.
     // Clamp request ∩ supported ∩ current role, in stable presentation order.
@@ -355,7 +353,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
           result: "denied",
           reason: target.kind === "cli_login" ? "no_cli_login_entitlement" : "no_mcp_entitlement",
           metadata: {
-            role: userRow.role_name ?? userRow.role,
+            role: userRow.role_name,
             requested_scope: requestedScope,
           },
         },
@@ -368,7 +366,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: sessionPayload.tenant_id,
         user_id: sessionPayload.user_id,
         client_id: clientId,
-        role: userRow.role_name ?? userRow.role,
+        role: userRow.role_name,
       });
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
@@ -570,7 +568,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     // role so a downgrade between consent render and decision is honored.
     const ceiling = (csrfPayload.offered_scopes as string | undefined) ?? "";
     const freshUserRows = await db
-      .select({ role: users.role, role_name: rolesTable.name })
+      .select({ role_name: rolesTable.name })
       .from(users)
       .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
@@ -578,9 +576,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       )
       .limit(1);
     const freshRoleRow = freshUserRows[0];
-    // Prefer the custom-role name from the roles table; fall back to the
-    // legacy enum column so built-in roles without a roles row still resolve.
-    const freshRole = freshRoleRow?.role_name ?? freshRoleRow?.role ?? "enduser";
+    const freshRole = freshRoleRow?.role_name ?? null;
     const freshRoleScopes =
       target.kind === "cli_login"
         ? [CLI_LOGIN_SCOPE]

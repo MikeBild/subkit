@@ -105,7 +105,7 @@ describe("GET /v1/agent/briefing — happy path", () => {
     expect(body.markdown).toContain("Halbgeviertstrich");
     expect(body.markdown).not.toContain("Unrelated");
     expect(body.markdown).toContain("blog-de-betrieb");
-    expect(body.markdown).toContain("search_knowledge_v2");
+    expect(body.markdown).toContain("search_knowledge");
     expect(body.skills_full.length).toBe(1);
     expect(body.knowledge_sources).toContain("blog-de-betrieb");
     expect(body.used_tokens).toBeLessThanOrEqual(body.budget_tokens);

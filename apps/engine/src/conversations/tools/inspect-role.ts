@@ -45,25 +45,8 @@ export const inspectRoleTool: ConversationTool = {
       .select({ id: users.id, email: users.email })
       .from(users)
       .where(and(eq(users.tenant_id, ctx.tenant_id), eq(users.role_id, role.id)));
-    // Legacy enum match — only when the role name happens to match
-    // one of the enum values (`admin | member | enduser`). Custom
-    // roles aren't representable in the enum column, so we skip the
-    // enum query for them entirely (a query against an unrelated
-    // string would throw `invalid_text_representation`).
-    const LEGACY_ENUM_VALUES = new Set(["admin", "member", "enduser"]);
-    const byEnum = LEGACY_ENUM_VALUES.has(role.name)
-      ? await ctx.db
-          .select({ id: users.id, email: users.email })
-          .from(users)
-          .where(
-            and(
-              eq(users.tenant_id, ctx.tenant_id),
-              eq(users.role, role.name as "admin" | "member" | "enduser"),
-            ),
-          )
-      : [];
     const memberMap = new Map<string, { id: string; email: string }>();
-    for (const m of [...byRoleId, ...byEnum]) memberMap.set(m.id, m);
+    for (const m of byRoleId) memberMap.set(m.id, m);
     return {
       ok: true,
       data: {

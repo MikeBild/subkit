@@ -5,7 +5,7 @@
 // tools already return, so the loop can mirror them into the audit log —
 // "this answer ← these sources" — without the model re-stating them in prose.
 //
-// Covers knowledge-source hits (search_knowledge / search_knowledge_v2 →
+// Covers knowledge-source hits (search_knowledge →
 // knowledge_chunk) and connector-documentation hits (fetch_connector_docs /
 // search_docs → connector_doc): each hit already carries an id, its source
 // name, and a snippet — exactly a citation. Execution and connector-call
@@ -68,7 +68,7 @@ function isDocHit(v: unknown): v is DocHit {
  * Returns `[]` when the turn used no grounding tool — i.e. a direct answer
  * with no source, which the prove-before gate is responsible for catching.
  *
- * Covers Knowledge-Source hits (`search_knowledge*` → knowledge_chunk) and
+ * Covers Knowledge-Source hits (`search_knowledge` → knowledge_chunk) and
  * connector-documentation hits (`fetch_connector_docs`/`search_docs` →
  * connector_doc). Every harvested kind MUST have a matching resolve branch
  * in `source-faithful.ts` — a harvested-but-unresolvable id would let a
@@ -89,7 +89,7 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
     const hits = output?.hits;
     if (!Array.isArray(hits)) continue;
 
-    if (ev.tool === "search_knowledge" || ev.tool === "search_knowledge_v2") {
+    if (ev.tool === "search_knowledge") {
       for (const h of hits) {
         if (!isKnowledgeHit(h)) continue;
         const key = `knowledge_chunk:${h.id}`;

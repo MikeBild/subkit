@@ -126,8 +126,8 @@ export function usePasteBuffers(
 // engine opens the masked `ask_user_form(type: password, sensitive:
 // true)` deterministically, no LLM turn. The benign
 // REQUEST_CREDENTIAL_FORM_FALLBACK prose rides along as the turn's
-// `message`, so an older engine (or a path that cannot carry events)
-// degrades to the old re-prompt behavior. Esc clears it without
+// `message`, so a path that cannot carry events (a create-conversation
+// first turn) degrades to the re-prompt behavior. Esc clears it without
 // sending anything. Only the kind name + 6-char prefix sample ever
 // surface in the UI; the matched secret is dropped on the floor and
 // never leaves this process.
@@ -179,9 +179,8 @@ export function useSecretRedirect(
     // opens the masked `ask_user_form(type: password, sensitive:
     // true)` deterministically, zero LLM calls. The benign
     // REQUEST_CREDENTIAL_FORM_FALLBACK prose still rides as the
-    // `message` so an older engine (which strips the unknown `event`
-    // key) — or any path that cannot carry events, like a
-    // create-conversation first turn — degrades to the plain-language
+    // `message` so any path that cannot carry events, like a
+    // create-conversation first turn, degrades to the plain-language
     // re-prompt the agent's skills already handle. Neither path ever
     // sees the original token.
     showInfo("forwarding masked credential request to the agent");

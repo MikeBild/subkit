@@ -212,31 +212,31 @@ test("an admitted execution cannot change authority or input but can progress no
       ctx.db.update(executions).set(patch).where(eq(executions.id, id)).execute(),
     ).rejects.toThrow();
   await ctx.db.update(executions).set({ status: "running" }).where(eq(executions.id, id));
-  const legacy = await createExecution(ctx.db, { ...f.params, execution_authority_id: null });
+  const unbound = await createExecution(ctx.db, { ...f.params, execution_authority_id: null });
   await expect(
     ctx.db
       .update(executions)
       .set({ execution_authority_id: f.authority.id })
-      .where(eq(executions.id, legacy))
+      .where(eq(executions.id, unbound))
       .execute(),
   ).rejects.toThrow();
   expect(await reserved(f.authority.id)).toBe(1);
 });
 
-test("upgrading preserves legacy executions without assigning or consuming an authority", async () => {
-  const legacy = await createTestDb("authority_reservation_upgrade", { upToIdx: 54 });
+test("upgrading preserves executions created before authorities without assigning or consuming an authority", async () => {
+  const upgraded = await createTestDb("authority_reservation_upgrade", { upToIdx: 54 });
   try {
-    const owner = await legacy.pool.query<{ id: string }>(
-      "INSERT INTO subkit.tenants (slug,display_name) VALUES ('legacy-run','Legacy run') RETURNING id",
+    const owner = await upgraded.pool.query<{ id: string }>(
+      "INSERT INTO subkit.tenants (slug,display_name) VALUES ('upgraded-run','Upgraded run') RETURNING id",
     );
     const tenant = owner.rows[0]?.id;
-    if (!tenant) throw new Error("missing legacy tenant fixture");
-    const inserted = await legacy.pool.query<{ id: string }>(
+    if (!tenant) throw new Error("missing upgraded tenant fixture");
+    const inserted = await upgraded.pool.query<{ id: string }>(
       "INSERT INTO subkit.executions (tenant_id,source_kind,status,request_source,execution_mode,input) VALUES ($1,'draft','queued','api','dev','{\"original\":true}') RETURNING id",
       [tenant],
     );
-    await runMigrations(legacy.db);
-    const [row] = await legacy.db
+    await runMigrations(upgraded.db);
+    const [row] = await upgraded.db
       .select()
       .from(executions)
       .where(eq(executions.id, inserted.rows[0]!.id));
@@ -245,8 +245,8 @@ test("upgrading preserves legacy executions without assigning or consuming an au
       status: "queued",
       input: { original: true },
     });
-    expect(await legacy.db.select().from(workflowExecutionAuthorities)).toHaveLength(0);
+    expect(await upgraded.db.select().from(workflowExecutionAuthorities)).toHaveLength(0);
   } finally {
-    await legacy.cleanup();
+    await upgraded.cleanup();
   }
 });

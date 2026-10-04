@@ -162,7 +162,7 @@ describe("sdk helper parity — find_workflow (defaulted field in required)", ()
 //
 // The workflow's `$input` map is a `z.union([z.record(...), z.string()])
 // .transform(...).pipe(z.record(...))` slot (see
-// `conversations/tools/generated/writes/run-workflow.ts`) so a client sees a
+// `conversations/tools/engine-api/writes/run-workflow.ts`) so a client sees a
 // typed OBJECT rather than the empty `{}` schema a bare `z.unknown()` would
 // emit — the empty schema tells a client nothing and invites it to
 // serialize the input map into a string. `environment` carries

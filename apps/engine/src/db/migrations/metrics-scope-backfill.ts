@@ -24,7 +24,6 @@
 
 import { eq, isNull } from "drizzle-orm";
 import { WILDCARD_SCOPE } from "../../auth/scopes.ts";
-import { resolveEffectiveUserRole } from "../../auth/user-role.ts";
 import { logger } from "../../logging/logger.ts";
 import type { Db } from "../client.ts";
 import {
@@ -57,16 +56,15 @@ export async function runMetricsScopeBackfill(db: Db): Promise<MetricsScopeBackf
     .limit(1);
   if (marker.length > 0) return { skipped: true, granted: 0 };
 
-  // Every live, scope-bearing key with its owner's effective role. The join is
-  // the same owner resolution `providers/api-key-row.ts` performs at auth time
-  // (custom role name wins over the legacy enum column), so the predicate here
-  // and the gate there see the same role.
+  // Every live, scope-bearing key with its owner's role. The join is the same
+  // owner resolution `providers/api-key-row.ts` performs at auth time, so the
+  // predicate here and the gate there see the same role.
   const candidates = await db
     .select({
       id: apiKeys.id,
       tenant_id: apiKeys.tenant_id,
       scopes: apiKeys.scopes,
-      user_role: users.role,
+      user_id: apiKeys.user_id,
       user_role_name: rolesTable.name,
       system_account_id: apiKeys.system_account_id,
     })
@@ -97,8 +95,8 @@ export async function runMetricsScopeBackfill(db: Db): Promise<MetricsScopeBackf
     // for it, so the key's answer on `/metrics` is unchanged.
     if (scopes.includes(WILDCARD_SCOPE)) continue;
     const role =
-      row.user_role !== null
-        ? resolveEffectiveUserRole(row.user_role, row.user_role_name)
+      row.user_id !== null
+        ? row.user_role_name
         : row.system_account_id !== null
           ? (accountRoles.get(row.system_account_id) ?? "member")
           : null;

@@ -129,7 +129,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "rerun_execution",
     "run_workflow", // gated by gateWorkflowRunRbac, not by a descriptor
     "search_knowledge",
-    "search_knowledge_v2",
     "update_schedule",
   ],
 };
@@ -178,7 +177,7 @@ describe("MCP RBAC descriptor coverage", () => {
   // LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH — the published count was prose, and
   // prose drifts. This makes it arithmetic instead: the list above IS the
   // inventory, so its size must equal what the provider actually reports as
-  // ungated (19 deliberate, 41 known gaps = 60 after gating persisted probes).
+  // ungated (19 deliberate, 40 known gaps = 59 after gating persisted probes).
   // Adding a properly gated tool leaves all three numbers
   // alone; adding an ungated one moves them together with the list, so the
   // header can never again quote a figure the code does not produce.
@@ -189,10 +188,10 @@ describe("MCP RBAC descriptor coverage", () => {
     const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
 
     expect(byDesign.length, "deliberate exemptions").toBe(19);
-    expect(knownGap.length, "known gaps still needing a permission").toBe(41);
-    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(60);
-    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(60);
-    expect(ungatedIn("product").length, "product catalog, ungated").toBe(40);
+    expect(knownGap.length, "known gaps still needing a permission").toBe(40);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(59);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(59);
+    expect(ungatedIn("product").length, "product catalog, ungated").toBe(39);
   });
 
   test("the audit trail is gated on MCP exactly as it is over HTTP", () => {

@@ -167,8 +167,6 @@ export interface ConversationRunOutcome {
  * `ask_user_form` (password/sensitive field) directly after the
  * composer's input-side secret filter fired. `credential_hint` is a
  * short kind label (e.g. "digitalocean_pat") — NEVER the secret itself.
- * Older engines strip the unknown key and fall back to the prose the
- * same request carries as `message`.
  */
 export interface RequestCredentialFormEvent {
   type: "request_credential_form";
@@ -458,8 +456,7 @@ export const conversationsMethods = {
    * Direct draft dry-run — one synchronous request, no model turn.
    * Runs `dry_run_workflow` (or `dry_run_step` when `step_id` is set)
    * against the conversation draft; the engine persists the tool call
-   * so the next model turn sees the result. Writes stay held unless
-   * `execute_writes` is true.
+   * so the next model turn sees the result. Writes are always held.
    */
   previewConversationDraft(
     this: EngineClient,
@@ -468,7 +465,6 @@ export const conversationsMethods = {
       step_id?: string;
       input?: unknown;
       environment?: "dev" | "prod";
-      execute_writes?: boolean;
       include_step_results?: boolean;
     } = {},
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {

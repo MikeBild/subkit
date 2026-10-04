@@ -91,7 +91,6 @@ async function seedTenant(ctx: JourneyCtx, label: string): Promise<TenantBundle>
     .values({
       tenant_id: tenant.id,
       email: `b-${label}@test.local`,
-      role: "admin",
       role_id: ctx.rbacRoleIds.admin,
     })
     .returning();

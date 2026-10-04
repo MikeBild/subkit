@@ -17,7 +17,7 @@ import { createDeterministicHexFactory } from "../../test-helpers/determinism/id
 
 const hex = createDeterministicHexFactory(0xc4112_d15c);
 
-import { createRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -72,7 +72,7 @@ beforeAll(async () => {
     .values({
       tenant_id: secondTenantId,
       email: "admin-conn-disc-b@test.local",
-      role: "admin",
+      role_id: await builtinRoleId(ctx.db, "admin"),
     })
     .returning();
   if (!u2) throw new Error("seed user B failed");
@@ -99,7 +99,6 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "member-conn-disc@test.local",
-      role: "member",
       role_id: noopRole.id,
     })
     .returning();

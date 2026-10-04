@@ -25,7 +25,7 @@ function engineWith(total: number, serverPageCap = 200) {
           version: total - offset - i,
           note: null,
           created_at: "2030-01-01T00:00:00.000Z",
-          legacy: false,
+          invalid: false,
         }),
       );
       return new Response(JSON.stringify({ items, total }), {
@@ -82,7 +82,7 @@ describe("listWorkflowVersions", () => {
                   version: 2,
                   note: null,
                   created_at: "2030-01-01T00:00:00.000Z",
-                  legacy: false,
+                  invalid: false,
                 },
               ]
             : [];

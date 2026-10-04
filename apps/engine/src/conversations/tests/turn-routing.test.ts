@@ -48,7 +48,7 @@ describe("planTurnRouting", () => {
     expect(plan.intent).toBe("surface_help");
     expect(plan.action).toContain("create_schedule");
     expect(plan.required_grounding).toContain(
-      "apps/engine/src/conversations/tools/generated/writes/schedules.ts",
+      "apps/engine/src/conversations/tools/engine-api/writes/schedules.ts",
     );
   });
 

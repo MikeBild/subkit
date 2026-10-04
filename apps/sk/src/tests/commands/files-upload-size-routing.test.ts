@@ -39,25 +39,6 @@ afterEach(() => {
 });
 
 describe("uploadPath size routing", () => {
-  test("absolute legacy upload URLs never receive the engine bearer token", async () => {
-    let authorization: string | null = null;
-    const client = new EngineClient({
-      engine_url: "http://engine.local",
-      api_key: "wf_live_must_not_leak",
-      fetchImpl: async (_input, init) => {
-        authorization = new Headers(init?.headers).get("authorization");
-        return new Response(null, { status: 200 });
-      },
-    });
-
-    await client.putToPresignedUrl(
-      "https://object-store.example/upload",
-      { "content-length": "1" },
-      new Uint8Array([1]),
-    );
-    expect(authorization).toBeNull();
-  });
-
   test("file ≤ MAX_INLINE_BYTES goes to /v1/files/inline", async () => {
     const paths: string[] = [];
     const client = new EngineClient({

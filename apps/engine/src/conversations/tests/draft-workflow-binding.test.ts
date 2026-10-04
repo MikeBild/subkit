@@ -125,11 +125,11 @@ describe("loadDraft", () => {
   });
 });
 
-describe("legacy saved-state reconciliation", () => {
+describe("earlier saved-state reconciliation", () => {
   test("ignores the save-time runtime stamp but preserves real unsaved edits without writing", async () => {
     const definition = {
       name: "Report",
-      slug: "legacy-report",
+      slug: "earlier-report",
       steps: [{ id: "result", kind: "transform", language: "javascript", expression: "return 1;" }],
     };
     const [workflow] = await ctx.testDb.db
@@ -227,11 +227,11 @@ describe("legacy saved-state reconciliation", () => {
       changedRuntime.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status,
     ).toBe("stale");
     // Reproduce the old editor: change content without advancing its revision.
-    const legacy = structuredClone(saved);
-    legacy.workflow.name = "Revised report";
+    const earlier = structuredClone(saved);
+    earlier.workflow.name = "Revised report";
     await ctx.testDb.db
       .update(conversations)
-      .set({ draft: legacy })
+      .set({ draft: earlier })
       .where(eq(conversations.id, conversation.id));
     const [snapshot] = await ctx.testDb.db
       .insert(conversationDrafts)
@@ -239,7 +239,7 @@ describe("legacy saved-state reconciliation", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversation.id,
         ordinal: "000001",
-        snapshot: legacy,
+        snapshot: earlier,
       })
       .returning();
     if (!snapshot) throw new Error("missing snapshot");
@@ -252,12 +252,12 @@ describe("legacy saved-state reconciliation", () => {
       .select({ draft: conversations.draft })
       .from(conversations)
       .where(eq(conversations.id, conversation.id));
-    expect(stored?.draft).toEqual(legacy);
+    expect(stored?.draft).toEqual(earlier);
     const [storedSnapshot] = await ctx.testDb.db
       .select({ snapshot: conversationDrafts.snapshot })
       .from(conversationDrafts)
       .where(eq(conversationDrafts.id, snapshot.id));
-    expect(storedSnapshot?.snapshot).toEqual(legacy);
+    expect(storedSnapshot?.snapshot).toEqual(earlier);
     const wrongTenant = await loadDraft(
       "00000000-0000-4000-8000-000000000099",
       conversation.id,

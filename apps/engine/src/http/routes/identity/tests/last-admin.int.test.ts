@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { roles, users } from "../../../../db/schema/index.ts";
+import { builtinRoleId } from "../../../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -47,7 +48,7 @@ describe("the only administrator", () => {
     });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { code: string }).code).toBe("last_admin");
-    expect((await roleOf(ctx.userId))?.role).toBe("admin");
+    expect((await roleOf(ctx.userId))?.role_id).toBe(await builtinRoleId(ctx.db, "admin"));
   });
 
   test("cannot be given a custom role through RBAC", async () => {
@@ -58,7 +59,7 @@ describe("the only administrator", () => {
     });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { code: string }).code).toBe("last_admin");
-    expect((await roleOf(ctx.userId))?.role_id).toBeNull();
+    expect((await roleOf(ctx.userId))?.role_id).toBe(await builtinRoleId(ctx.db, "admin"));
   });
 
   test("cannot be deactivated", async () => {
@@ -73,9 +74,11 @@ describe("the only administrator", () => {
 
 describe("with a second administrator", () => {
   test("the first one may leave the role", async () => {
-    await ctx.db
-      .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "second-admin@test.local", role: "admin" });
+    await ctx.db.insert(users).values({
+      tenant_id: ctx.tenantId,
+      email: "second-admin@test.local",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    });
     const res = await fetch(`${ctx.baseUrl}/v1/rbac/users/${ctx.userId}/role`, {
       method: "POST",
       headers: headers(),

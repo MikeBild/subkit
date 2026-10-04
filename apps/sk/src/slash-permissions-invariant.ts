@@ -14,8 +14,7 @@
 // **What to do when the assignment in `slash.ts` fails to compile**:
 // the failing position references a `SlashCommand.requires` literal
 // that isn't on the canonical list. Two valid responses:
-//   1. Add the permission to `packages/shared/src/ux-gating.ts`
-//      AND `apps/sk/src/persona-probe.ts#TIER_PERMISSIONS` so
+//   1. Add the permission to `packages/shared/src/ux-gating.ts` so
 //      admins see the slash.
 //   2. Drop the `requires:` field from the slash entry if the
 //      permission is genuinely outside the bootstrap probe set.

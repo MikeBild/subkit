@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
-import { createKnowledgeSourceTool } from "../tools/generated/writes/create-knowledge-source.ts";
+import { createKnowledgeSourceTool } from "../tools/engine-api/writes/create-knowledge-source.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

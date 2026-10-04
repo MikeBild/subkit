@@ -25,8 +25,7 @@
 // They are complementary, not duplicative.
 //
 // Auth-graceful: the liveness probe needs no key; every authenticated
-// section degrades to a dim "unavailable" note on 401/403 or an older
-// engine without the route, so `sk health --engine-url <url>` still works
+// section degrades to a dim "unavailable" note on 401/403, so `sk health --engine-url <url>` still works
 // as a bare reachability check.
 
 import { exitCodeFor } from "@cli-core/errors";

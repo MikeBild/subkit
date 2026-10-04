@@ -59,7 +59,6 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenant_id,
       email: "bare-call-connector@test.local",
-      role: "enduser",
       role_id: bareRole!.id,
     })
     .returning();

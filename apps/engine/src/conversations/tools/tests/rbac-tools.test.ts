@@ -58,7 +58,6 @@ beforeAll(async () => {
     .values({
       tenant_id,
       email: "ada@example.com",
-      role: "admin",
       role_id: approverRoleId,
     })
     .returning();

@@ -90,7 +90,7 @@ Once the trio exists, coding agents (Claude Code, Codex) can work inside the
 domain: tag the domain's Skills and Knowledge Sources with `domain:<slug>`,
 have the user run `sk agent init --domains <slug>` in their repo, and every
 new session starts with the domain briefing and searches the knowledge with
-`search_knowledge_v2`. What sessions teach flows back as `session_learning`
+`search_knowledge`. What sessions teach flows back as `session_learning`
 candidates reviewed via `sk learnings review`. Offer this as the follow-up
 when a user finishes modeling a domain and mentions Claude Code, Codex, or
 coding sessions.

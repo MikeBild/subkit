@@ -13,6 +13,7 @@ import type { Db } from "../../../db/client.ts";
 import { auditLog, portalTokens, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { generatePortalToken } from "../../../identity/portal-token.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { createPortalTokenProvider } from "../portal-token.ts";
@@ -33,7 +34,11 @@ beforeAll(async () => {
   tenantId = t.id;
   const [u] = await db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "owner@pt.local", role: "member" })
+    .values({
+      tenant_id: tenantId,
+      email: "owner@pt.local",
+      role_id: await builtinRoleId(db, "member"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   ownerId = u.id;

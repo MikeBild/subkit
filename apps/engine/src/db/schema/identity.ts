@@ -14,7 +14,6 @@ import { bytea, tenantId, timestamps } from "./_common.ts";
 
 // ----- enums ----------------------------------------------------------------
 
-export const userRoleEnum = pgEnum("user_role", ["admin", "member", "enduser"]);
 // Provisioning lifecycle: `invited` once an admin issues an invite that
 // has not yet been redeemed, `active` after redemption (or for any user
 // created directly), `disabled` after a soft-deactivation. Distinct from
@@ -104,11 +103,7 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
-    role: userRoleEnum("role").notNull(),
-    // Pass-2 C1: foreign key into `roles`. Populated via seed and the
-    // RBAC management API. The legacy `role` enum column stays for
-    // backward compatibility with existing tests and bootstrap code.
-    role_id: uuid("role_id"),
+    role_id: uuid("role_id").notNull(),
     // Provisioning lifecycle (invited|active|disabled). Defaults to
     // `active` so directly-created and pre-invite-feature users are
     // unaffected; the invite-redeem path flips a fresh invited user to

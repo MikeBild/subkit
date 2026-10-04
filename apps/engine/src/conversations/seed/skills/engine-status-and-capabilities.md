@@ -32,4 +32,4 @@ This skill is intentionally thin. For every field, endpoint, gating permission, 
 search_knowledge({ query: "<your status or capability question>", tags: ["sk-platform-reference"] })
 ```
 
-(or `search_knowledge_v2` with the same `tags` filter). The complete status & capabilities reference lives in the knowledge source slug `sk-ref-status`.
+The complete status & capabilities reference lives in the knowledge source slug `sk-ref-status`.

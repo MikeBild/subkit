@@ -30,9 +30,9 @@ describe("pickInitialOuter", () => {
     expect(pickInitialOuter("Admin", ALL_TABS)).toBe(0);
   });
 
-  test("legacy engine-section names (e.g. 'llm') fall back to 0", () => {
-    for (const legacy of ["llm", "server", "database", "auth", "log"]) {
-      expect(pickInitialOuter(legacy, ALL_TABS)).toBe(0);
+  test("engine-section names (e.g. 'llm') fall back to 0", () => {
+    for (const name of ["llm", "server", "database", "auth", "log"]) {
+      expect(pickInitialOuter(name, ALL_TABS)).toBe(0);
     }
   });
 

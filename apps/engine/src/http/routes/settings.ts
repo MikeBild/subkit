@@ -394,25 +394,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const auditSource = headers[AUDIT_SOURCE_HEADER] ?? null;
     const deployVersion = headers[DEPLOY_VERSION_HEADER] ?? null;
 
-    // Surface untagged settings writes so an operator dashboard can
-    // see who is still on a pre-4.2.0 client (or a misconfigured
-    // 4.2.0+ caller). Compliance review queries against
-    // `audit_log.metadata.audit_source` will show a `null` bucket;
-    // this log line maps each null back to a principal_id so the
-    // bucket can be drained over time. Once-per-PUT, info-level —
-    // not a gate, just observability.
-    if (!auditSource) {
-      logger.info({
-        module: "audit",
-        action: "settings.changed.untagged",
-        msg: "settings PUT landed without x-subkit-audit-source — pre-4.2.0 client or misconfigured caller",
-        leaf: leaf.path.join("."),
-        actor_id: principal.id,
-        principal_kind: principal.kind,
-        tenant_id: tenant ?? principal.tenant_id,
-      });
-    }
-
     try {
       let result: Awaited<ReturnType<typeof setConfigKey>>;
       let usedRevisionService = false;
@@ -448,7 +429,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
                 metadata: {
                   name: secret.name,
                   version: secret.version,
-                  source: "legacy_leaf_adapter",
+                  source: "settings_leaf_write",
                 },
               },
               db,
@@ -474,7 +455,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
                 changed_paths: [leaf.path.join(".")],
                 active_revision: saved.active_revision,
                 pending_restart_fields: saved.pending_restart_fields,
-                source: "legacy_leaf_adapter",
+                source: "settings_leaf_write",
               },
             },
             db,
@@ -496,7 +477,7 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
               resource_id: String(saved.saved_revision),
               metadata: {
                 activation_status: activated.activation_status,
-                source: "legacy_leaf_adapter",
+                source: "settings_leaf_write",
               },
             },
             db,

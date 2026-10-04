@@ -16,7 +16,7 @@ import { tenants, workflows, workflowVersions } from "../../../db/schema/index.t
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
-import { runWorkflowTool } from "../generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
 let ctx: TestDb;
@@ -97,7 +97,7 @@ describe("run_workflow — a version stored in an earlier format", () => {
   test("is refused by its name, not as a run that failed", async () => {
     const [workflow] = await ctx.db
       .insert(workflows)
-      .values({ tenant_id, slug: "legacy-run", name: "Legacy run", lifecycle: "active" })
+      .values({ tenant_id, slug: "invalid-run", name: "Invalid run", lifecycle: "active" })
       .returning();
     if (!workflow) throw new Error("workflow fixture");
     const [version] = await ctx.db
@@ -108,7 +108,7 @@ describe("run_workflow — a version stored in an earlier format", () => {
         version: 1,
         // A transform language the schema no longer knows.
         dag: {
-          name: "Legacy run",
+          name: "Invalid run",
           steps: [{ id: "old", kind: "transform", language: "jsonata", expression: "$" }],
         },
       })
@@ -121,11 +121,11 @@ describe("run_workflow — a version stored in an earlier format", () => {
 
     const result = await runWorkflowTool.execute(
       { ...makeCtx({ workflow: { name: "", steps: [] } }), principal: adminPrincipal(tenant_id) },
-      { workflow: "legacy-run", execute_writes: false },
+      { workflow: "invalid-run", execute_writes: false },
     );
     expect(result.ok).toBe(false);
     const data = result.data as { error_code: string; message: string; execution_id?: string };
-    expect(data.error_code).toBe("workflow_version_legacy");
+    expect(data.error_code).toBe("workflow_version_invalid");
     expect(data.message).toContain("earlier definition format");
     // Nothing ran: there is no execution to point at.
     expect(data.execution_id).toBeUndefined();

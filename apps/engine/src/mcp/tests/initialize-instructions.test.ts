@@ -31,6 +31,7 @@ import {
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../../observability/metrics.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 // Mirror the server's resolveEngineVersion() logic so tests assert the
@@ -170,7 +171,7 @@ describe("mcp initialize — instructions field", () => {
       .values({
         tenant_id: suite.http.tenantId,
         email: "member-instr@test.local",
-        role: "member",
+        role_id: await builtinRoleId(suite.http.db, "member"),
       })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");

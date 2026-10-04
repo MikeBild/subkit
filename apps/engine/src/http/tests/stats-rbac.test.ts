@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, portalTokens, systemAccounts, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -74,7 +75,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "member-stats@test.local",
-      role: "member",
+      role_id: await builtinRoleId(srv.db, "member"),
     })
     .returning();
   const mk = genKey("wf_live_");
@@ -93,7 +94,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "enduser-stats@test.local",
-      role: "enduser",
+      role_id: await builtinRoleId(srv.db, "enduser"),
     })
     .returning();
   const pt = genKey("wf_portal_");

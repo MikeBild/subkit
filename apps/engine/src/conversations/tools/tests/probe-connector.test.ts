@@ -318,7 +318,6 @@ describe("probe_connector — dispatch + credential substitution", () => {
       .values({
         tenant_id: env.tenant_id,
         email: "probe-no-access@example.test",
-        role: "enduser",
         role_id: role!.id,
       })
       .returning();

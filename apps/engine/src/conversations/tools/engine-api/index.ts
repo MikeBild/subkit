@@ -1,4 +1,4 @@
-// Generated read-tool families. One module per domain; each module
+// Engine-API read-tool families. One module per domain; each module
 // exports an array of `ConversationTool` instances. All tools are
 // `tenant_read` — safe to invoke in parallel, tenant-scoped via the
 // EngineClient, and carry no side effects beyond audit-log entries
@@ -46,7 +46,7 @@ import { statusReadTools } from "./status.ts";
 import { subscriptionReadTools } from "./subscriptions.ts";
 import { workflowReadTools } from "./workflows.ts";
 
-export const ALL_GENERATED_READ_TOOLS: ConversationTool[] = [
+export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
   ...workflowReadTools,
   ...connectorReadTools,
   ...executionReadTools,

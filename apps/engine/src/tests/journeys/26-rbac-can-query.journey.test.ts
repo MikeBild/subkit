@@ -44,8 +44,7 @@ describe("journey: rbac can query", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "m@26",
-        role: "member",
-        role_id: memberRoleId,
+        role_id: memberRoleId!,
       })
       .returning();
     memberUserId = m!.id;
@@ -60,7 +59,6 @@ describe("journey: rbac can query", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "b@26",
-        role: "enduser",
         role_id: bare.id,
       })
       .returning();

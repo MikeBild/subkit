@@ -52,6 +52,6 @@ request/response shape, and required permission — call:
 search_knowledge({ query: "<what you need, e.g. run a workflow, create a connector>", tags: ["sk-platform-reference"] })
 ```
 
-(or `search_knowledge_v2` with the same arguments). The complete REST reference lives in the
+The complete REST reference lives in the
 knowledge source slug `sk-ref-rest-api`. When in doubt about an exact path or field, prefer
 the generated `/openapi.json` over any narrative description.

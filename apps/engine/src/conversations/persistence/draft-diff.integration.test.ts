@@ -29,7 +29,7 @@ import {
 } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
-import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
+import { updateWorkflowTool } from "../tools/engine-api/writes/update-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { maybeAutoPersistFromElicitation } from "./auto-persist.ts";

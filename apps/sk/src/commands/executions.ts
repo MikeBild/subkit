@@ -190,8 +190,7 @@ const getCommand = defineCommand({
         }
         // Execution-cost card: weighted tokens, cache-read %, LLM
         // latency, external cost_usd (when non-zero), and a per-flow
-        // breakdown. Best-effort — a 403 (no stats:read) or older engine
-        // without the route simply omits the card.
+        // breakdown. Best-effort — a 403 (no stats:read) omits the card.
         try {
           const cost = await client.executionCost(id);
           printExecutionCostCard(cost);
@@ -204,7 +203,7 @@ const getCommand = defineCommand({
         // What happened, from the engine's structured outcome — a held
         // preview or a tolerated step failure both finalize "succeeded".
         const outcomeLine = executionOutcomeLine(
-          (execution as { outcome?: Parameters<typeof executionOutcomeLine>[0] }).outcome,
+          (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
         );
         if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
         // A failed execution is useless without the reason — print the

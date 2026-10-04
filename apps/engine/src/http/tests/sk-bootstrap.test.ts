@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { apiKeys, conversations, systemAccounts, tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -33,7 +34,11 @@ beforeAll(async () => {
   foreignTenantId = t2.id;
   const [u2] = await ctx.db
     .insert(users)
-    .values({ tenant_id: t2.id, email: "admin-foreign@test.local", role: "admin" })
+    .values({
+      tenant_id: t2.id,
+      email: "admin-foreign@test.local",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   if (!u2) throw new Error("seed foreign user failed");
   // Deterministic key: stable across test runs so the determinism lint
@@ -53,7 +58,11 @@ beforeAll(async () => {
   // ----- non-admin (member) user inside the primary tenant -----
   const [member] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member@test.local", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member@test.local",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member user failed");
   const mk = "wf_live_MBR_skbootstrap_primary_member_dummy_pad_000";

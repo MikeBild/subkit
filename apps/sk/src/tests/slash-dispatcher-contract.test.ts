@@ -1,13 +1,13 @@
 // Slash-dispatcher contract test.
 //
 // This is the dispatcher parity gate: every entry in the
-// removed-slash guidance map MUST NOT also appear as a registered
+// unsupported-slash guidance map MUST NOT also appear as a registered
 // command (otherwise the guidance would shadow a working command),
 // and every registered command MUST resolve to a routing other than
 // `unknown`.
 
 import { describe, expect, test } from "bun:test";
-import { classifySlash, REMOVED_SLASH_GUIDANCE } from "../repl/slash/dispatcher.ts";
+import { classifySlash, UNSUPPORTED_SLASH_GUIDANCE } from "../repl/slash/dispatcher.ts";
 import { SLASH_COMMANDS } from "../slash.ts";
 
 describe("slash dispatcher contract", () => {
@@ -32,14 +32,14 @@ describe("slash dispatcher contract", () => {
     }
   });
 
-  test("every removed-slash guidance entry is NOT a registered command", () => {
+  test("every unsupported-slash guidance entry is NOT a registered command", () => {
     const registered = new Set<string>();
     for (const cmd of SLASH_COMMANDS) {
       registered.add(cmd.name);
       for (const alias of cmd.aliases ?? []) registered.add(alias);
     }
     const overlap: string[] = [];
-    for (const name of Object.keys(REMOVED_SLASH_GUIDANCE)) {
+    for (const name of Object.keys(UNSUPPORTED_SLASH_GUIDANCE)) {
       if (registered.has(name)) overlap.push(name);
     }
     expect(
@@ -48,15 +48,15 @@ describe("slash dispatcher contract", () => {
     ).toEqual([]);
   });
 
-  test("removed slashes route through the unknown branch and emit guidance", () => {
-    for (const name of Object.keys(REMOVED_SLASH_GUIDANCE)) {
+  test("unsupported slashes route through the unknown branch and emit guidance", () => {
+    for (const name of Object.keys(UNSUPPORTED_SLASH_GUIDANCE)) {
       const plan = classifySlash(name);
-      expect(plan.routing, `removed slash /${name} should be unknown`).toBe("unknown");
+      expect(plan.routing, `unsupported slash /${name} should be unknown`).toBe("unknown");
     }
   });
 
-  test("the install-* per-service slashes are gone", () => {
-    const removed = [
+  test("the install-* per-service slashes are gone without guidance", () => {
+    for (const name of [
       "install-slack",
       "install-teams",
       "install-github",
@@ -64,11 +64,9 @@ describe("slash dispatcher contract", () => {
       "install-salesforce",
       "install-jira",
       "install-hubspot",
-    ];
-    for (const name of removed) {
-      const plan = classifySlash(name);
-      expect(plan.routing).toBe("unknown");
-      expect(REMOVED_SLASH_GUIDANCE[name]).toMatch(/`\/install`/);
+    ]) {
+      expect(classifySlash(name).routing).toBe("unknown");
+      expect(UNSUPPORTED_SLASH_GUIDANCE[name]).toBeUndefined();
     }
   });
 

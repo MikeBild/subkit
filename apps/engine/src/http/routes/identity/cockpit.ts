@@ -1,8 +1,8 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   browserSessionForPrincipal,
-  resolveEffectiveUserRole,
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
@@ -12,7 +12,6 @@ import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { ALL_PERMISSION_NAMES, can } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
-import { ErrorSchema } from "./schemas.ts";
 
 const CockpitLoginQuery = z.object({
   return_to: z.string().max(2048).optional(),
@@ -152,7 +151,6 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const [identityRow] = await db
       .select({
         email: users.email,
-        role_legacy: users.role,
         role_name: roles.name,
         tenant_id: tenants.id,
         tenant_slug: tenants.slug,
@@ -210,7 +208,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           id: principal.id,
           kind: "user" as const,
           email: identityRow.email,
-          role_name: resolveEffectiveUserRole(identityRow.role_legacy, identityRow.role_name),
+          role_name: identityRow.role_name,
           provider: "browser_session" as const,
         },
         tenant: {

@@ -4,7 +4,7 @@
 // History shows what was saved, as it was saved. The definition schema moves
 // on; a version written under an earlier schema is still part of the record
 // and must stay listable, so the list never parses a stored dag strictly — it
-// only marks whether the version would still validate (`legacy`). Restore is
+// only marks whether the version would still validate (`invalid`). Restore is
 // the opposite: it makes a stored dag the live definition, so there the schema
 // is enforced and a version that no longer validates is refused by name.
 // Restore is additive: it duplicates the old version's dag as a new version
@@ -37,7 +37,7 @@ export interface VersionView {
   dag: unknown;
   /** True when the stored definition no longer passes the current schema.
    *  Such a version can be read but not restored. */
-  legacy: boolean;
+  invalid: boolean;
   note: string | null;
   created_at: Date;
 }
@@ -89,7 +89,7 @@ export async function listWorkflowVersions(
       workflow_id: r.workflow_id,
       version: r.version,
       dag: r.dag,
-      legacy: readStoredDefinition(r.dag).legacy,
+      invalid: readStoredDefinition(r.dag).invalid,
       note: r.note,
       created_at: r.created_at,
     })),
@@ -117,7 +117,7 @@ export class VersionNotRestorableError extends Error {
  *  naming the step and field that no longer validate. */
 function parseRestorableVersion(version: number, dag: unknown): WorkflowDef {
   const stored = readStoredDefinition(dag);
-  if (stored.legacy) throw new VersionNotRestorableError(version, stored.issues);
+  if (stored.invalid) throw new VersionNotRestorableError(version, stored.issues);
   return stored.definition;
 }
 

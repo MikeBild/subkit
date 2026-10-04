@@ -18,21 +18,14 @@ export interface DigestFailureGroup {
   /**
    * How many of these runs the scheduler started. `origin` collapses to
    * "mixed" once a group holds more than one kind, so it cannot answer this.
-   *
-   * Optional because this CLI talks to engines it did not ship with: an engine
-   * older than the field simply omits it. Read it through `scheduledRunsOf`,
-   * never directly — `undefined > 0` is false, which would render every
-   * failing production schedule as a harmless trial run.
    */
-  scheduled_count?: number;
+  scheduled_count: number;
   last_seen: string;
   /**
    * The workflow's most recent clean run on its own schedule, when that run is
-   * newer than the group's last failure; null while the cause is live. Optional for the same reason as `scheduled_count` — an
-   * older engine omits it. Read it through `resolvedAtOf`: `undefined` must
-   * mean "this engine cannot tell", not "still broken".
+   * newer than the group's last failure; null while the cause is live.
    */
-  resolved_at?: string | null;
+  resolved_at: string | null;
   cause: string;
   guidance: string | null;
 }
@@ -80,19 +73,10 @@ export interface OperatorHealthDigest {
   /** `open`: exact count of proposed AND reviewable candidates; `items` is capped. */
   patch_candidates: { open: number; items: DigestPatch[] };
   risk: RiskSignal[];
-  /**
-   * What needs the reader now; `headline` and `all_clear` are rendered from it.
-   * Optional because an engine older than the attention list omits it — read
-   * it through `attentionOf`.
-   */
-  attention?: DigestAttention;
+  /** What needs the reader now; `headline` and `all_clear` are rendered from it. */
+  attention: DigestAttention;
   rendered: string;
   all_clear: boolean;
-}
-
-/** The digest's attention list, or an empty answered one from an engine that has none. */
-export function attentionOf(digest: OperatorHealthDigest): DigestAttention {
-  return digest.attention ?? { schema_version: "attention.v1", sources: {}, items: [] };
 }
 
 export const selfHealingMethods = {
@@ -173,28 +157,3 @@ export const selfHealingMethods = {
     return this.request("GET", `/v1/self-healing/scans/${encodeURIComponent(id)}`);
   },
 };
-
-/**
- * How many of a group's runs the scheduler started, also from an engine that
- * does not report it yet.
- *
- * The fallback is the best the old shape allows: `scheduled` meant every run,
- * anything else meant none. It gets "mixed" wrong in the old direction, which
- * is what the field exists to fix — but it keeps a mixed-version pair honest
- * about the ordinary cases instead of silently downgrading all of them.
- */
-export function scheduledRunsOf(group: DigestFailureGroup): number {
-  if (typeof group.scheduled_count === "number") return group.scheduled_count;
-  return group.origin === "scheduled" ? group.count : 0;
-}
-
-/**
- * When a group's workflow last ran clean on its schedule, or null.
- *
- * An engine that does not report the field answers null — the safe direction:
- * an unresolved cause stays on screen, where a human decides it is over. The
- * opposite default would hide a live incident because the engine was old.
- */
-export function resolvedAtOf(group: DigestFailureGroup): string | null {
-  return group.resolved_at ?? null;
-}

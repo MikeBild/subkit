@@ -7,7 +7,7 @@
 // delivery attempts are short-circuited to a "circuit_open" dead
 // letter without an HTTP call.
 
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -122,9 +122,3 @@ export async function hydrate(db: Executor, subscriptionId: string): Promise<voi
 export function __resetAll(): void {
   state.clear();
 }
-
-// Silence linters that flag the imported `sql` as unused in lint
-// configurations that do not understand conditional usage inside
-// helper functions. The import is kept for future `sql` interpolation
-// needs without having to re-plumb it.
-void sql;

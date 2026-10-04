@@ -244,8 +244,10 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       } catch (error) {
         if (error instanceof svc.PendingElicitationBlockedError) {
           throw new HttpError(409, "pending_elicitation_blocked", error.message, {
-            conversation_status: "awaiting_input",
-            pending_elicitation: error.pending_elicitation,
+            details: {
+              conversation_status: "awaiting_input",
+              pending_elicitation: error.pending_elicitation,
+            },
           });
         }
         throw error;

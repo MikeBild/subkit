@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { createKnowledgeSourceTool } from "../../conversations/tools/generated/writes/create-knowledge-source.ts";
+import { createKnowledgeSourceTool } from "../../conversations/tools/engine-api/writes/create-knowledge-source.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";

@@ -6,7 +6,6 @@
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { resolveEffectiveUserRole } from "../auth/user-role.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
@@ -19,6 +18,7 @@ import {
   users,
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { now } from "../utils/clock.ts";
 import { generateKey, hashKey } from "./api-key.ts";
 import { assertAdminRemains } from "./last-admin.ts";
@@ -89,12 +89,12 @@ export interface UpdateUserInput {
   tenant_id: string;
   id: string;
   role?: UserRole;
-  role_id?: string | null;
+  role_id?: string;
   actor_id: string | null;
 }
 
 /**
- * Update a user's role (legacy enum + optional `role_id`). Writes a
+ * Update a user's role, by built-in role name or `role_id`. Writes a
  * `USER_ROLE_CHANGED` audit row carrying the before/after role. Returns
  * `null` when no matching non-deleted user exists in the tenant.
  */
@@ -111,41 +111,27 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
     const before = current[0];
     if (!before) return null;
 
-    const patch: { role?: UserRole; role_id?: string | null; updated_at: Date } = {
+    const patch: { role_id?: string; updated_at: Date } = {
       updated_at: new Date(now()),
     };
-    if (input.role !== undefined) {
-      patch.role = input.role;
-      if (input.role_id === undefined) {
-        // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
-        const [builtinRole] = await tx
-          .select({ id: roles.id })
-          .from(roles)
-          .where(and(isNull(roles.tenant_id), eq(roles.name, input.role)))
-          .limit(1);
-        patch.role_id = builtinRole?.id ?? null;
-      }
-    }
     if (input.role_id !== undefined) patch.role_id = input.role_id;
+    else if (input.role !== undefined) patch.role_id = await builtinRoleId(tx, input.role);
 
-    // The role the person will hold afterwards, as admin-only routes read it.
-    const nextRoleId = patch.role_id !== undefined ? patch.role_id : before.role_id;
-    const [assigned] = nextRoleId
-      ? await tx
-          .select({ name: roles.name })
-          .from(roles)
-          .where(
-            and(
-              eq(roles.id, nextRoleId),
-              or(isNull(roles.tenant_id), eq(roles.tenant_id, input.tenant_id)),
-            ),
-          )
-          .limit(1)
-      : [];
+    const nextRoleId = patch.role_id ?? before.role_id;
+    const [assigned] = await tx
+      .select({ name: roles.name })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, nextRoleId),
+          or(isNull(roles.tenant_id), eq(roles.tenant_id, input.tenant_id)),
+        ),
+      )
+      .limit(1);
     await assertAdminRemains(tx, {
       tenant_id: input.tenant_id,
       user_id: input.id,
-      nextEffectiveRole: resolveEffectiveUserRole(patch.role ?? before.role, assigned?.name),
+      nextEffectiveRole: assigned?.name ?? null,
     });
 
     const [row] = await tx
@@ -163,8 +149,8 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
         resource_type: "user",
         resource_id: row.id,
         result: "success",
-        before: { role: before.role, role_id: before.role_id },
-        after: { role: row.role, role_id: row.role_id },
+        before: { role_id: before.role_id },
+        after: { role_id: row.role_id },
         metadata: { email: row.email },
       },
       tx,

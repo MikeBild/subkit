@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 const MCP_PROTOCOL_VERSION = "2025-11-25";
@@ -87,7 +88,11 @@ describe("streamable-http transport — session ↔ principal binding", () => {
     if (!tenant) throw new Error("seed attacker tenant failed");
     const [user] = await suite.http.db
       .insert(users)
-      .values({ tenant_id: tenant.id, email: "attacker@test.local", role: "admin" })
+      .values({
+        tenant_id: tenant.id,
+        email: "attacker@test.local",
+        role_id: await builtinRoleId(suite.http.db, "admin"),
+      })
       .returning();
     if (!user) throw new Error("seed attacker user failed");
     const attacker = await suite.issueApiKeyForTenant(tenant.id, user.id, ["mcp:read"]);

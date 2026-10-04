@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { apiKeys, systemAccounts, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
@@ -28,7 +29,11 @@ beforeAll(async () => {
   // shared admin key is used for control-plane calls below).
   const [user] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "rotate@test.local", role: "admin" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "rotate@test.local",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
     method: "POST",

@@ -11,6 +11,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { parseFileIdOrThrow } from "../../api/files-schemas.ts";
 import { apiKeys, auditLog, files, roles, tenants, users } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 
 // Deterministic 24-byte source for synthetic api keys. Seeded for replay.
@@ -47,7 +48,11 @@ beforeAll(async () => {
 
   const [uB] = await srv.db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "admin@fhttp-b.local", role: "admin" })
+    .values({
+      tenant_id: tenantBId,
+      email: "admin@fhttp-b.local",
+      role_id: await builtinRoleId(srv.db, "admin"),
+    })
     .returning();
   if (!uB) throw new Error("seed user B");
   const k = genKey();
@@ -76,7 +81,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "portal@fhttp-a.local",
-      role: "enduser", // legacy enum; the evaluator reads role_id
+      // legacy enum; the evaluator reads role_id
       role_id: portalRole.id,
     })
     .returning();

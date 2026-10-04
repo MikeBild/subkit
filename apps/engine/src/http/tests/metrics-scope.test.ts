@@ -229,7 +229,6 @@ describe("the entitlement gate still gates", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "enduser-metrics@test.local",
-        role: "enduser",
         role_id: roleIds.enduser,
       })
       .returning();

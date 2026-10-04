@@ -44,10 +44,10 @@ describe("MessageContent · width-aware wrapping", () => {
     r.unmount();
   });
 
-  test("renders without a width prop (legacy callers)", () => {
-    const r = render(<MessageContent content="legacy text" />);
+  test("renders without a width prop", () => {
+    const r = render(<MessageContent content="plain text" />);
     const frame = snapshot(r);
-    expect(frame).toContain("legacy text");
+    expect(frame).toContain("plain text");
     r.unmount();
   });
 });

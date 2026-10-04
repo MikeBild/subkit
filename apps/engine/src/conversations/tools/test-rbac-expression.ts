@@ -126,31 +126,19 @@ export const testRbacExpressionTool: ConversationTool = {
     }
     const actor_kind = args.actor_kind ?? "user";
 
-    // Resolve the actor's role names from their tenant row. Users and
-    // system_accounts both carry a legacy enum role + an optional
-    // `role_id` pointer. We prefer the named role when present and fall
-    // back to the enum so the probe works on legacy rows too.
+    // Resolve the actor's role names from their tenant row's `role_id`.
     let actorRoles: string[] = [];
     let actorExists = false;
     if (actor_kind === "user") {
       const rows = await ctx.db
-        .select({ role: users.role, role_id: users.role_id })
+        .select({ role_name: roles.name })
         .from(users)
+        .leftJoin(roles, eq(roles.id, users.role_id))
         .where(and(eq(users.id, args.actor_id), eq(users.tenant_id, ctx.tenant_id)))
         .limit(1);
       if (rows[0]) {
         actorExists = true;
-        if (rows[0].role_id) {
-          // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-          const named = await ctx.db
-            .select({ name: roles.name })
-            .from(roles)
-            .where(eq(roles.id, rows[0].role_id))
-            .limit(1);
-          actorRoles = named[0] ? [named[0].name] : [rows[0].role];
-        } else {
-          actorRoles = [rows[0].role];
-        }
+        actorRoles = rows[0].role_name ? [rows[0].role_name] : [];
       }
     } else {
       const rows = await ctx.db

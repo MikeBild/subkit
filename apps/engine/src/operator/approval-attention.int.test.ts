@@ -15,6 +15,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { addWorkflowVersion, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
@@ -44,7 +45,11 @@ beforeAll(async () => {
   tenant_id = tenant.id;
   const [user] = await testDb.db
     .insert(users)
-    .values({ tenant_id, email: "owner@approval", role: "admin", role_id: null })
+    .values({
+      tenant_id,
+      email: "owner@approval",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("user fixture");
   owner = adminPrincipal(tenant_id, user.id);

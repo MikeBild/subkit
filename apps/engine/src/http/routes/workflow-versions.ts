@@ -2,8 +2,8 @@
 //
 // History is a read-only view of what was stored: each version's definition
 // comes back as it was saved, and a version that no longer passes the current
-// workflow schema is marked `legacy` rather than failing the list. Restore
-// makes a stored definition live, so it is strict — a legacy version is
+// workflow schema is marked `invalid` rather than failing the list. Restore
+// makes a stored definition live, so it is strict — an invalid version is
 // refused with `version_not_restorable`.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -26,7 +26,7 @@ const VersionSchema = z
     dag: z.unknown(),
     /** True when the stored definition no longer passes the current workflow
      *  schema. Such a version can be read but not restored. */
-    legacy: z.boolean(),
+    invalid: z.boolean(),
   })
   .openapi("WorkflowVersion");
 
@@ -119,7 +119,7 @@ export function registerWorkflowVersionRoutes(app: OpenAPIHono<AppEnv>): void {
           note: v.note,
           created_at: v.created_at.toISOString(),
           dag: v.dag,
-          legacy: v.legacy,
+          invalid: v.invalid,
         })),
         total,
       },
@@ -140,8 +140,8 @@ export function registerWorkflowVersionRoutes(app: OpenAPIHono<AppEnv>): void {
       wf = await svc.restoreWorkflowVersion(principal.tenant_id, id, v, principal.id, db);
     } catch (error) {
       if (!(error instanceof svc.VersionNotRestorableError)) throw error;
-      throw HttpError.withEnvelope(422, error.code, error.message, {
-        hint: "Restore a version that GET /v1/workflows/{id}/history does not mark legacy, or save the definition again in the current format.",
+      throw new HttpError(422, error.code, error.message, {
+        hint: "Restore a version that GET /v1/workflows/{id}/history does not mark invalid, or save the definition again in the current format.",
         details: { version: error.version, issues: error.issues },
       });
     }

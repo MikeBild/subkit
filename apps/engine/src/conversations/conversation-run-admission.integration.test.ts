@@ -33,7 +33,7 @@ import { resolveElicitationAndReactivate } from "./elicitations.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
 import { maybeAutoPersistFromElicitation } from "./persistence/auto-persist.ts";
 import { decideToolMode, type ToolPolicies } from "./tool-policies.ts";
-import { runWorkflowTool } from "./tools/generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "./tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnSignals } from "./tools/sdk-wrap/state.ts";
 import { buildSyntheticWorkflowTools } from "./tools/sdk-wrap/synthetic-workflow-tools.ts";
@@ -925,7 +925,7 @@ test("activation after a held preview invalidates the chat approval without disp
   expect(denied).toHaveLength(1);
 });
 
-test("a legacy or unreadable held approval cannot inherit the latest version", async () => {
+test("an earlier-format or unreadable held approval cannot inherit the latest version", async () => {
   const f = await fixture();
   await f.runTool("synthetic");
   await tdb.db

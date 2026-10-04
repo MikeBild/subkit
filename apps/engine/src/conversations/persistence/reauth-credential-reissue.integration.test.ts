@@ -218,7 +218,6 @@ describe("request_connector_reauth + credential re-issue", () => {
       .values({
         tenant_id: ctx.tenant_id,
         email: "reauth-reader-only@example.test",
-        role: "member",
         role_id: role.id,
       })
       .returning();

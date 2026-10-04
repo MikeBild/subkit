@@ -9,7 +9,7 @@ import { apiKeys, auditLog } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
-import { createApiKeyTool } from "../generated/writes/create-api-key.ts";
+import { createApiKeyTool } from "../engine-api/writes/create-api-key.ts";
 import type { ToolContext } from "../index.ts";
 
 let ctx: ConversationTestCtx;

@@ -12,8 +12,7 @@ import { asRecord, unwrapData } from "./authoring-cards-shared.tsx";
 
 // Safe extractors — return a typed Intent/Summary built from the tool
 // payload, or null when the shape doesn't match. Callers fall back to
-// the legacy compact cards on null, so engine response evolution
-// doesn't break the REPL.
+// the compact cards on null.
 function extractTrigger(raw: unknown): WorkflowTrigger {
   const r = asRecord(raw);
   if (r) {
@@ -146,11 +145,9 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
 // create_knowledge_source returns
 //   { created: true, knowledge_source: { id, name, slug, scope, status,
 //     chunk_count, bytes_total, mime_type?, filename? }, audit_log_id }
-// Since 6.2.12 the tool response carries the resolved `mime_type` and
+// The tool response carries the resolved `mime_type` (nullable) and
 // `filename` so the card shows the real content_type (`text/markdown`
-// for an .md upload) instead of a hardcoded fallback. Pre-6.2.12 the
-// from_attachment branch defaulted to `application/octet-stream` and
-// surfaced as a misleading display in the OCPP-2.0.1.md session.
+// for an .md upload) instead of a hardcoded fallback.
 // `file_id` is still read from args (engine never echoes it).
 export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
   const d = unwrapData(call);
@@ -167,8 +164,7 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
   // Resolution order: engine-echoed mime_type (authoritative) →
   // args.mime_type (set explicitly in inline mode) → mode-derived
   // default. The from_attachment branch falls back to
-  // `application/octet-stream` only when the engine response is
-  // missing the field (older engine on a newer sk).
+  // `application/octet-stream` only when the stored row has no MIME.
   // Coerce empty strings to null so the `??` chain falls through to
   // the next tier. Pre-fix `??` only treated nullish as missing, so an
   // engine that ever returned `mime_type: ""` would surface as an

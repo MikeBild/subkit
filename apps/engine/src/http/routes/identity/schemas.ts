@@ -1,16 +1,8 @@
 // Identity-specific zod schemas. Shared schemas that apply to more than
 // one subsystem (ErrorSchema, PaginationQuery, IdParam) live in
-// `apps/engine/src/api/common-schemas.ts`. Re-exported below for
-// backwards compatibility with callers that still import from here.
+// `apps/engine/src/api/common-schemas.ts`.
 
 import { z } from "@hono/zod-openapi";
-
-export {
-  ErrorSchema,
-  IdParam,
-  PaginationQuery,
-  paginatedResponse,
-} from "../../../api/common-schemas.ts";
 
 export const TenantSchema = z
   .object({
@@ -27,9 +19,7 @@ export const UserSchema = z
     id: z.string().uuid(),
     tenant_id: z.string().uuid(),
     email: z.string(),
-    role: z.enum(["admin", "member", "enduser"]),
-    effective_role: z.string(),
-    role_consistent: z.boolean(),
+    role: z.string().nullable(),
     status: z.enum(["invited", "active", "disabled"]),
     /** Live MCP connections this person approved. Withdrawing them ends
      *  exactly this many, which is what the Cockpit says before it asks. */

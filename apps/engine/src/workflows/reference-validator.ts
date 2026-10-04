@@ -21,7 +21,7 @@
 // `output_transform_function` validation.
 
 import { findUnsupportedPlaceholders } from "../llm/substitution/unsupported.ts";
-import { findBareItemRefs, rewriteBareItemRefs } from "./itemvar-rewrite.ts";
+import { findBareItemRefs, rewriteBareItemRefs } from "./bare-item-refs.ts";
 import { levenshtein, suggestClosest } from "./levenshtein.ts";
 import type { WorkflowDef } from "./types.ts";
 
@@ -534,18 +534,11 @@ export function describeStepReferences(errors: ReadonlyArray<ReferenceValidation
 }
 
 /**
- * Bare-iteration-identifier lint (item_var retirement). Inside a loop
- * body, JSONata must address the current item as `$item` — the bare
- * `item` default and the legacy declared `item_var` name are no longer
- * bound for new definitions (see `execution/loop-scope.ts`). This pass
- * walks every loop's body steps' JSONata sites (`transform.expression`,
- * `branch.when`, nested loop `over`) on the parsed AST and flags
- * root-context bare references to:
- *
- *   - `item` (the retired schema default), and
- *   - the enclosing loop's declared `item_var` (legacy form being
- *     re-authored — `validateWorkflowDef` already rejects the
- *     declaration itself; this lint adds the concrete rewrite).
+ * Bare-iteration-identifier lint. Inside a loop body, JSONata must
+ * address the current item as `$item` — a bare `item` is not bound
+ * (see `execution/loop-scope.ts`). This pass walks every loop's body
+ * steps' JSONata sites (`branch.when`, nested loop `over`) on the
+ * parsed AST and flags root-context bare references to `item`.
  *
  * `did_you_mean` carries the full `$item`-rewritten expression when the
  * AST rewriter can prove the rewrite, else the `$item` binding name —
@@ -599,7 +592,6 @@ export function validateBareIterationIdentifiers(
     const site = jsonataSite(step);
     if (!site) continue;
     const names = new Set<string>(["item"]);
-    if (typeof loop.item_var === "string" && loop.item_var.length > 0) names.add(loop.item_var);
     const found = findBareItemRefs(site.text, names);
     if (!found.ok) continue; // unparseable / shadowed — other validators own those
     const referenced = [...new Set(found.refs.map((r) => r.name))];

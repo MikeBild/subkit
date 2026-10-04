@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import { errorRing } from "../../observability/error-ring.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -71,7 +72,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "member-diag@test.local",
-      role: "member",
+      role_id: await builtinRoleId(srv.db, "member"),
     })
     .returning();
   if (!member) throw new Error("seed member failed");
@@ -90,7 +91,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "enduser-diag@test.local",
-      role: "enduser",
+      role_id: await builtinRoleId(srv.db, "enduser"),
     })
     .returning();
   if (!enduser) throw new Error("seed enduser failed");
@@ -260,7 +261,7 @@ describe("/v1/diagnostics/setup", () => {
     // surface deliberate.
     const KNOWN_OMITTED: Record<string, string> = {
       "llm.api_key":
-        "Legacy single-provider key (pre-multi-provider). Tenant-scoped overrides go through llm.providers.<p>.api_key; this leaf is reserved for back-compat only.",
+        "Generic key mirrored into the active provider's llm.providers.<p>.api_key, which is the leaf surfaced here.",
       "auth.session.secret":
         "Auto-generated on first boot if empty (logged once); operators don't author this — surfacing it as 'configured' would just be noise.",
       "platform.slack.signing_secret":

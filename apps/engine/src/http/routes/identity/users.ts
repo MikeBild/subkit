@@ -3,7 +3,13 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, or } from "drizzle-orm";
-import { hasLegacyRoleDrift, policy, resolveEffectiveUserRole } from "../../../auth/index.ts";
+import {
+  ErrorSchema,
+  IdParam,
+  PaginationQuery,
+  paginatedResponse,
+} from "../../../api/common-schemas.ts";
+import { policy } from "../../../auth/index.ts";
 import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -12,7 +18,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema, IdParam, PaginationQuery, paginatedResponse, UserSchema } from "./schemas.ts";
+import { UserSchema } from "./schemas.ts";
 
 const UserListResponse = paginatedResponse(UserSchema, "UserListResponse");
 
@@ -125,16 +131,14 @@ function lastAdminAsConflict(err: unknown): never {
 
 function serialize(
   u: NonNullable<Awaited<ReturnType<typeof identity.getUser>>>,
-  assignedRoleName?: string | null,
+  roleName: string | null,
   oauthConnections = 0,
 ) {
   return {
     id: u.id,
     tenant_id: u.tenant_id,
     email: u.email,
-    role: u.role,
-    effective_role: resolveEffectiveUserRole(u.role, assignedRoleName),
-    role_consistent: !hasLegacyRoleDrift(u.role, assignedRoleName),
+    role: roleName,
     status: u.status,
     oauth_connections: oauthConnections,
     created_at: u.created_at.toISOString(),
@@ -195,7 +199,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(
       {
         items: items.map((user) =>
-          serialize(user, roleNames.get(user.role_id ?? ""), connections.get(user.id) ?? 0),
+          serialize(user, roleNames.get(user.role_id) ?? null, connections.get(user.id) ?? 0),
         ),
       },
       200,
@@ -223,19 +227,17 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       principal.tenant_id,
       new Date(now()),
     );
-    const [role] = u.role_id
-      ? await db
-          .select({ name: roles.name })
-          .from(roles)
-          .where(
-            and(
-              eq(roles.id, u.role_id),
-              or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)),
-            ),
-          )
-          .limit(1)
-      : [];
-    return c.json(serialize(u, role?.name, connections.get(u.id) ?? 0), 200);
+    const [role] = await db
+      .select({ name: roles.name })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.id, u.role_id),
+          or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)),
+        ),
+      )
+      .limit(1);
+    return c.json(serialize(u, role?.name ?? null, connections.get(u.id) ?? 0), 200);
   });
 
   app.openapi(createRoute_, async (c) => {

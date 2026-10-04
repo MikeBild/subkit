@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { storedAuthoringMode } from "./chat-permission";
 
 describe("stored authoring mode", () => {
-  test("never labels missing or unrecognised old data as automatic", () => {
+  test("never labels a missing or unrecognised mode as automatic", () => {
     for (const draft of [
       null,
       undefined,
@@ -10,7 +10,7 @@ describe("stored authoring mode", () => {
       { session: {} },
       { session: { permission_mode: "future" } },
     ]) {
-      expect(storedAuthoringMode(draft)).toBe("legacy");
+      expect(storedAuthoringMode(draft)).toBe("unset");
     }
   });
   test("displays the stored mode after reload", () => {

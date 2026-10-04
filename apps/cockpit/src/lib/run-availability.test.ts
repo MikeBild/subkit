@@ -68,7 +68,7 @@ describe("approvalRefusal", () => {
   });
 
   test("any other failure is not an approval refusal", () => {
-    expect(approvalRefusal(new ApiError(409, { code: "workflow_version_legacy" }, null))).toBe(
+    expect(approvalRefusal(new ApiError(409, { code: "workflow_version_invalid" }, null))).toBe(
       false,
     );
     expect(approvalRefusal(new ApiError(500, { code: "execution_authority_changed" }, null))).toBe(
@@ -160,7 +160,7 @@ describe("legacyRefusal", () => {
     new ApiError(
       409,
       {
-        code: "workflow_version_legacy",
+        code: "workflow_version_invalid",
         message: "stored in an earlier definition format",
         details,
       },

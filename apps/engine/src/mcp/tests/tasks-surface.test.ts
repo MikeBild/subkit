@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
 import { conversations, mcpTasks, tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -66,7 +67,7 @@ async function seedOtherTenantPrincipal(): Promise<{ apiKey: string; tenantId: s
     .values({
       tenant_id: tenant.id,
       email: "tasks-other@test.local",
-      role: "admin",
+      role_id: await builtinRoleId(suite.http.db, "admin"),
     })
     .returning({ id: users.id });
   if (!user) throw new Error("seed other user failed");

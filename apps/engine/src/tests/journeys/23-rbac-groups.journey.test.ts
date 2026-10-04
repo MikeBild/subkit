@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -41,9 +42,7 @@ describe("journey: rbac groups", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "group@23.local",
-        role: "member",
-        // deliberately NULL role_id — access should flow via the group.
-        role_id: null,
+        role_id: await emptyRoleId(ctx.db, ctx.tenantId),
       })
       .returning();
     userId = u!.id;

@@ -12,7 +12,6 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import { resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { users as usersTable } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import * as rolesSvc from "../../../rbac/index.ts";
@@ -174,7 +173,7 @@ const assignUserRoleRoute = createRoute({
   method: "post",
   path: "/v1/rbac/users/{user_id}/role",
   tags: ["rbac"],
-  summary: "Assign or clear a user's role",
+  summary: "Assign a user's role",
   security: [{ bearerAuth: [] }],
   request: {
     params: UserIdParam,
@@ -182,9 +181,7 @@ const assignUserRoleRoute = createRoute({
       required: true,
       content: {
         "application/json": {
-          schema: z
-            .object({ role_id: z.string().nullable().optional() })
-            .openapi("AssignUserRoleRequest"),
+          schema: z.object({ role_id: z.string() }).openapi("AssignUserRoleRequest"),
         },
       },
     },
@@ -198,7 +195,7 @@ const assignUserRoleRoute = createRoute({
             .object({
               ok: z.literal(true),
               user_id: z.string(),
-              role_id: z.string().nullable(),
+              role_id: z.string(),
             })
             .openapi("AssignUserRoleResponse"),
         },
@@ -397,14 +394,12 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     // Application-state check: the role must belong to this tenant or
     // be a built-in. Schema validation cannot decide this.
-    const role = body.role_id
-      ? await rolesSvc.getRole(db, principal.tenant_id, body.role_id)
-      : null;
-    if (body.role_id && !role) throw new BadRequestError("role_id not found");
+    const role = await rolesSvc.getRole(db, principal.tenant_id, body.role_id);
+    if (!role) throw new BadRequestError("role_id not found");
     const rows = await db
       .transaction(async (tx) => {
         const [current] = await tx
-          .select({ role: usersTable.role })
+          .select({ id: usersTable.id })
           .from(usersTable)
           .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
           .limit(1);
@@ -414,12 +409,12 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
           await identity.assertAdminRemains(tx, {
             tenant_id: principal.tenant_id,
             user_id,
-            nextEffectiveRole: resolveEffectiveUserRole(current.role, role?.name),
+            nextEffectiveRole: role.name,
           });
         }
         return tx
           .update(usersTable)
-          .set({ role_id: body.role_id ?? null })
+          .set({ role_id: body.role_id })
           .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
           .returning({ id: usersTable.id });
       })
@@ -433,16 +428,14 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         actor_type: principal.kind,
         actor_id: principal.id,
-        action: body.role_id
-          ? AuditAction.RBAC_USER_ROLE_ASSIGNED
-          : AuditAction.RBAC_USER_ROLE_REVOKED,
+        action: AuditAction.RBAC_USER_ROLE_ASSIGNED,
         resource_type: "user",
         resource_id: user_id,
         result: "success",
-        metadata: { role_id: body.role_id ?? null },
+        metadata: { role_id: body.role_id },
       },
       db,
     );
-    return c.json({ ok: true as const, user_id, role_id: body.role_id ?? null }, 200);
+    return c.json({ ok: true as const, user_id, role_id: body.role_id }, 200);
   });
 }

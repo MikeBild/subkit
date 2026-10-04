@@ -59,7 +59,7 @@ function record(state) {
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
     lifecycle: "active",
     // Stored in an earlier definition format: shown as stored, refused to run.
-    legacy: Boolean(state.legacy),
+    invalid: Boolean(state.legacy),
     current_version: 9,
     current_version_id: VERSION,
     draft_version_id: state.scenario === "apply" ? DRAFT : VERSION,
@@ -187,7 +187,7 @@ function fullInvocation(state) {
   return {
     workflow_id: WORKFLOW,
     slug: SLUG,
-    legacy: Boolean(state.legacy),
+    invalid: Boolean(state.legacy),
     base_url: address,
     http: {
       method: "POST",

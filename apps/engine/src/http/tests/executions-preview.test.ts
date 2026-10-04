@@ -47,7 +47,6 @@ describe("HTTP temporary execution previews", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "preview-scoped@test.local",
-        role: "member",
         role_id: role.id,
       })
       .returning();

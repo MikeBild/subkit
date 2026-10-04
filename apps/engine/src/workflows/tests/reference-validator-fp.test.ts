@@ -123,7 +123,6 @@ describe("validateUnsupportedPlaceholders", () => {
           id: "loop_a",
           kind: "loop",
           over: "$scope.fetch.data",
-          item_var: "row",
           body: ["body_step"],
         },
         {

@@ -61,7 +61,7 @@ export function blockingConnector(preview: unknown): UnavailableConnector | null
  * the reader looking for a fault that is not one.
  */
 export function legacyRefusal(error: unknown): { steps: string[] } | null {
-  if (!(error instanceof ApiError) || error.code !== "workflow_version_legacy") return null;
+  if (!(error instanceof ApiError) || error.code !== "workflow_version_invalid") return null;
   const issues = Array.isArray(error.details?.issues) ? error.details.issues : [];
   const steps = issues.flatMap((issue) => {
     const id = (issue as { step_id?: unknown } | null)?.step_id;

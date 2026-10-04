@@ -9,13 +9,12 @@
 // Best-effort: any failure here must never block the REPL.
 
 import pc from "picocolors";
-import {
-  type AttentionItem,
-  attentionOf,
-  type EngineClient,
-  type FailureOrigin,
-  type OperatorHealthDigest,
-  type RiskSeverity,
+import type {
+  AttentionItem,
+  EngineClient,
+  FailureOrigin,
+  OperatorHealthDigest,
+  RiskSeverity,
 } from "../engine-client.ts";
 
 /** Friendly label per failure origin. Shared by the needs-attention panel so
@@ -92,7 +91,7 @@ export function attentionItemLine(item: AttentionItem): string {
 
 /** The attention sources the engine could not read — never to be taken as empty. */
 export function unreadAttentionSources(digest: OperatorHealthDigest): string[] {
-  return Object.entries(attentionOf(digest).sources)
+  return Object.entries(digest.attention.sources)
     .filter(([, state]) => state === "failed")
     .map(([source]) => source);
 }
@@ -130,7 +129,7 @@ export function digestAsContext(digest: OperatorHealthDigest): string {
     digest.headline,
     "",
   ];
-  const attention = attentionOf(digest);
+  const attention = digest.attention;
   if (attention.items.length > 0) {
     parts.push("Needs attention now (one line per item; act at the address named):");
     for (const item of attention.items) parts.push(`- ${attentionItemLine(item)}`);

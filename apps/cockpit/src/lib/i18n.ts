@@ -60,17 +60,6 @@ const EN = {
   "chat.activation.active": "Currently in use: {version}",
   "chat.activation.none": "Not yet in use",
 
-  "chat.choice.preparation.question":
-    "Check the workflow before saving. We recommend this check because it can reveal errors without publishing anything.",
-  "chat.choice.preparation.dryrun": "Check first (recommended)",
-  "chat.choice.preparation.dryrunEffect":
-    "Check available data and steps, then prepare saving. Publications are held and remain untested.",
-  "chat.choice.preparation.force": "Request saving without a check",
-  "chat.choice.preparation.forceEffect":
-    "Errors may remain undetected. Requests an exceptional save; it does not authorize publication or automatic runs.",
-  "chat.choice.preparation.cancel": "Keep draft unchanged",
-  "chat.choice.preparation.cancelEffect": "Stop here. The current draft is retained.",
-
   "chat.resume.workflowSaved": "Saved {target}.",
   "chat.resume.stage.workflowSaved": "Workflow saved",
   "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
@@ -143,7 +132,7 @@ const EN = {
   "chat.mode.description.plan": "Plans and proposes; asks like “Asks first” before any step.",
   "chat.mode.explain": "What does this mean?",
   "chat.mode.yolo": "Explicit unrestricted exception",
-  "chat.mode.legacy": "Existing session policy",
+  "chat.mode.unset": "Existing session policy",
   "chat.mode.loading": "Loading stored mode…",
   "authority.unsupportedSteps": "Review these steps: {steps}",
   "authority.adjustTitle": "Automatic operation is not ready for approval",
@@ -1393,7 +1382,6 @@ const EN = {
   "catalog.usedBy": "Used by",
   "catalog.scanResult": "Scan result",
   "catalog.sideEffects": "Side effects",
-  "catalog.loaded": "{count} loaded",
   "catalog.clearFilters": "Clear filters",
   "catalog.linkedFilter": "Only files linked to one resource are shown.",
   "scope.global": "Workspace",
@@ -1772,8 +1760,6 @@ const EN = {
   "workflow.testRun": "Run as preview",
   "workflow.testStep": "Preview this step",
   "workflow.testing": "Previewing…",
-  "catalog.previous": "Previous",
-  "catalog.next": "Next",
   "catalog.columns": "Columns",
   "catalog.records": "records",
   "detail.canEdit": "Rename it here; change its steps in the chat.",
@@ -2671,13 +2657,9 @@ const EN = {
   "people.change.purpose": "What the role is for: {purpose}",
   "people.change.more": "and {count} more",
   "people.roleUpdateFailed": "The role could not be changed.",
-  "people.repair.consequence": "What {email} can do does not change.",
   "people.inviteConsequence": "The code is valid for {hours} hours and is shown once.",
   "people.inviteReadyUntil": "Invite ready — valid until {time}",
   "people.createSubmit": "Invite",
-  "people.roleDrift": "Role needs repair",
-  "people.repair.object": "the role of {email}",
-  "people.repair.verb": "Repair",
   "people.inviteObject": "an invite for {email}",
   "people.inviteVerb": "Issue",
   "people.deactivateConsequence": "Their active access ends at once.",
@@ -3274,7 +3256,7 @@ const EN = {
   "automation.title": "Automatic operation",
   "automation.help.label": "About automatic operation",
   "automation.help": "Whether a schedule or webhook may start this workflow without you.",
-  "automation.state.legacy": "Outdated format",
+  "automation.state.invalid": "Outdated format",
   "automation.state.paused": "Paused",
   "automation.state.apply": "Change waiting",
   "automation.state.repair": "Repair needed",
@@ -3300,9 +3282,9 @@ const EN = {
   "automation.headline.applyUnnamed": "A saved change is waiting; {active} is running.",
   "automation.headline.paused": "Schedule and webhook are stopped.",
   "automation.headline.unknown": "Whether it may run could not be verified.",
-  "automation.headline.legacy":
+  "automation.headline.invalid":
     "This version is stored in an earlier format and cannot run until it is saved again.",
-  "automation.legacyPrompt":
+  "automation.invalidPrompt":
     "The workflow “{name}” is stored in an earlier format and cannot run. Save it again in the current format: ",
   "automation.headline.inactive": "No active version.",
   "automation.headline.manual": "Runs only when called — no schedule, no webhook.",
@@ -3913,16 +3895,6 @@ const DE: Record<TranslationKey, string> = {
   "authority.sessionExpiredHint":
     "Deine Sitzung ist nicht mehr gültig. Es wurde nichts freigegeben. Melde dich an und bestätige anschließend hier erneut.",
   "authority.signIn": "Anmelden und hier fortfahren",
-  "chat.choice.preparation.question":
-    "Prüfe den Ablauf vor dem Speichern. Wir empfehlen diese Prüfung: Sie kann Fehler erkennen, ohne etwas zu veröffentlichen.",
-  "chat.choice.preparation.dryrun": "Zuerst prüfen (empfohlen)",
-  "chat.choice.preparation.dryrunEffect":
-    "Verfügbare Daten und Schritte prüfen, danach das Speichern vorbereiten. Veröffentlichungen werden zurückgehalten und bleiben ungetestet.",
-  "chat.choice.preparation.force": "Speichern ohne Prüfung anfragen",
-  "chat.choice.preparation.forceEffect":
-    "Fehler können unentdeckt bleiben. Fragt eine Ausnahme zum Speichern an; erlaubt keine Veröffentlichung oder automatischen Läufe.",
-  "chat.choice.preparation.cancel": "Entwurf unverändert lassen",
-  "chat.choice.preparation.cancelEffect": "Hier beenden. Der aktuelle Entwurf bleibt erhalten.",
   "chat.choice.expired": "Rückfrage abgelaufen",
   "chat.choice.cancelled": "Rückfrage abgebrochen",
   "chat.form.title": "Angaben ergänzen",
@@ -3957,7 +3929,7 @@ const DE: Record<TranslationKey, string> = {
     "Plant und schlägt vor; fragt wie „Fragt vorher“ vor jedem Schritt.",
   "chat.mode.explain": "Was heißt das?",
   "chat.mode.yolo": "Explizite unbeschränkte Ausnahme",
-  "chat.mode.legacy": "Bestehende Sitzungsrichtlinie",
+  "chat.mode.unset": "Bestehende Sitzungsrichtlinie",
   "chat.mode.loading": "Gespeicherter Modus wird geladen…",
   "authority.unsupportedSteps": "Diese Schritte prüfen: {steps}",
   "authority.adjustTitle": "Automatik noch nicht freigabefähig",
@@ -5223,7 +5195,6 @@ const DE: Record<TranslationKey, string> = {
   "catalog.usedBy": "Verwendet von",
   "catalog.scanResult": "Prüfergebnis",
   "catalog.sideEffects": "Seiteneffekte",
-  "catalog.loaded": "{count} geladen",
   "catalog.clearFilters": "Filter zurücksetzen",
   "catalog.linkedFilter": "Es werden nur Dateien einer verknüpften Ressource gezeigt.",
   "scope.global": "Arbeitsbereich",
@@ -5607,8 +5578,6 @@ const DE: Record<TranslationKey, string> = {
   "workflow.testRun": "Als Vorschau ausführen",
   "workflow.testStep": "Vorschau dieses Schritts",
   "workflow.testing": "Vorschau läuft …",
-  "catalog.previous": "Zurück",
-  "catalog.next": "Weiter",
   "catalog.columns": "Spalten",
   "catalog.records": "Datensätze",
   "detail.canEdit": "Den Namen änderst du hier, die Schritte im Chat.",
@@ -6537,13 +6506,9 @@ const DE: Record<TranslationKey, string> = {
   "people.change.purpose": "Wofür die Rolle da ist: {purpose}",
   "people.change.more": "und {count} weitere",
   "people.roleUpdateFailed": "Die Rolle konnte nicht geändert werden.",
-  "people.repair.consequence": "Was {email} tun kann, ändert sich nicht.",
   "people.inviteConsequence": "Der Code gilt {hours} Stunden und wird nur einmal angezeigt.",
   "people.inviteReadyUntil": "Einladung bereit — gültig bis {time}",
   "people.createSubmit": "Einladen",
-  "people.roleDrift": "Rolle muss repariert werden",
-  "people.repair.object": "Rolle von {email}",
-  "people.repair.verb": "Reparieren",
   "people.inviteObject": "Einladung für {email}",
   "people.inviteVerb": "Ausstellen",
   "people.deactivateConsequence": "Aktive Zugriffe enden sofort.",
@@ -7156,7 +7121,7 @@ const DE: Record<TranslationKey, string> = {
   "automation.title": "Automatischer Betrieb",
   "automation.help.label": "Was heißt automatischer Betrieb?",
   "automation.help": "Ob Zeitplan oder Webhook diesen Workflow ohne dich starten dürfen.",
-  "automation.state.legacy": "Altes Format",
+  "automation.state.invalid": "Altes Format",
   "automation.state.paused": "Pausiert",
   "automation.state.apply": "Übernahme nötig",
   "automation.state.repair": "Reparatur nötig",
@@ -7182,9 +7147,9 @@ const DE: Record<TranslationKey, string> = {
   "automation.headline.applyUnnamed": "Eine gespeicherte Änderung wartet; es läuft {active}.",
   "automation.headline.paused": "Zeitplan und Webhook sind angehalten.",
   "automation.headline.unknown": "Ob er laufen darf, ließ sich nicht prüfen.",
-  "automation.headline.legacy":
+  "automation.headline.invalid":
     "Diese Fassung ist in einem älteren Format gespeichert und kann nicht laufen, bis sie neu gespeichert ist.",
-  "automation.legacyPrompt":
+  "automation.invalidPrompt":
     "Der Workflow „{name}“ ist in einem älteren Format gespeichert und kann nicht laufen. Speichere ihn im aktuellen Format neu: ",
   "automation.headline.inactive": "Keine aktive Fassung.",
   "automation.headline.manual": "Läuft nur auf Abruf – kein Zeitplan, kein Webhook.",

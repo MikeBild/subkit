@@ -38,7 +38,7 @@ import {
 import { renderRunOutput } from "./fast-path-render.ts";
 import { loadEnumerationCoverage } from "./loop/enumeration-coverage.ts";
 import { listConversations } from "./service/lifecycle.ts";
-import { listWorkflowsTool } from "./tools/generated/workflows.ts";
+import { listWorkflowsTool } from "./tools/engine-api/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnEvent } from "./types.ts";
 

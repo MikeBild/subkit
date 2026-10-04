@@ -71,7 +71,6 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "member-hook-review@test.local",
-      role: "member",
       role_id: ctx.rbacRoleIds.member,
     })
     .returning();

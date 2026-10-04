@@ -127,8 +127,7 @@ export function OAuthWaitView({
         const raw = await poll();
         if (cancelled) return;
         // Validate the wire shape at the CLI boundary. A malformed
-        // engine response (legacy server, partial deploy) lands in
-        // `setError` rather than crashing the view.
+        // engine response lands in `setError` rather than crashing the view.
         const parsed = OAuthPollResponseSchema.safeParse(raw);
         if (!parsed.success) {
           setError(`malformed poll response: ${parsed.error.message}`);

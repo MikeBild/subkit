@@ -47,11 +47,13 @@ function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
       count,
       scheduled_count: 0,
       last_seen: "2026-06-22T07:30:00Z",
+      resolved_at: null,
       cause: "Something failed",
       guidance: null,
     })),
     patch_candidates: { open: 0, items: [] },
     risk: [],
+    attention: { schema_version: "attention.v1", sources: {}, items: [] },
     rendered: "",
     all_clear: false,
   };

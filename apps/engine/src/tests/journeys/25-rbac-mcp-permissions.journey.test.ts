@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   createJourneyCtx,
@@ -49,7 +50,11 @@ describe("journey: rbac mcp permissions", () => {
     });
     const [u] = await ctx.db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "portal@25", role: "enduser" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "portal@25",
+        role_id: await builtinRoleId(ctx.db, "enduser"),
+      })
       .returning();
     portalUser = u!.id;
     // Seed a raw portal token row to test the principal_id lookup.
@@ -92,7 +97,6 @@ describe("journey: rbac mcp permissions", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member@25",
-        role: "member",
         role_id: member.id,
       })
       .returning();
@@ -115,7 +119,6 @@ describe("journey: rbac mcp permissions", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "bare@25",
-        role: "enduser",
         role_id: bare.id,
       })
       .returning();

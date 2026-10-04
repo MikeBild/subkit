@@ -25,6 +25,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { executionSteps, sessions, users } from "../../db/schema/index.ts";
 import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
@@ -86,7 +87,11 @@ beforeAll(async () => {
   const now = await databaseNow(ctx.db);
   const [user] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "approver@example.com", role: "admin" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "approver@example.com",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("missing user");
   const [session] = await ctx.db

@@ -313,8 +313,8 @@ function useHeadline(state: AutomationState | null): string | null {
             active,
           });
     }
-    case "legacy":
-      return t("automation.headline.legacy");
+    case "invalid":
+      return t("automation.headline.invalid");
     case "paused":
       // Paused with nothing to resume: only a hook is stopped, and the engine
       // has no act that switches one back on. Said, instead of a dead button.
@@ -490,7 +490,7 @@ export function WorkflowStatus({
     if (window.location.hash === `#${WORKFLOW_AUTOMATION_ANCHOR}`)
       anchor.current?.scrollIntoView({ block: "start" });
   }, []);
-  const legacy = state?.state === "legacy";
+  const invalid = state?.state === "invalid";
   const target = state?.target ?? null;
   const opensApproval = strip.action?.kind === "approve";
   const notice =
@@ -587,7 +587,7 @@ export function WorkflowStatus({
           href: absolute(
             chatNewHref({
               workflowId: automation.workflowId,
-              prompt: t("automation.legacyPrompt", { name: workflowName }),
+              prompt: t("automation.invalidPrompt", { name: workflowName }),
             }),
           ),
         };
@@ -656,7 +656,7 @@ export function WorkflowStatus({
       </div>
       {/* Why the gate holds it and what removes that — one row per refused
           step, each with its own fix, right under the strip (R5). */}
-      {state && !legacy && !disabled ? (
+      {state && !invalid && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}
           environment={state.environment}
@@ -668,7 +668,7 @@ export function WorkflowStatus({
           onRepairRejected={automation.noteRejectedRepair}
         />
       ) : null}
-      {automation.canWrite && state && target && !legacy ? (
+      {automation.canWrite && state && target && !invalid ? (
         <GrantWorkflowAuthority
           key={`${automation.workflowId}:${target.version_id}`}
           workflowId={automation.workflowId}

@@ -66,7 +66,7 @@ export function createEmptyState(mode: AuthoringSurfaceMode): AuthoringState {
   };
 }
 
-export function modeFromLegacy(mode: AuthoringMode | undefined): AuthoringSurfaceMode {
+export function surfaceModeFor(mode: AuthoringMode | undefined): AuthoringSurfaceMode {
   if (mode === "workflow_authoring" || mode === "resume_review") return "workflow";
   return "connector";
 }
@@ -456,9 +456,9 @@ function normalizeJudgeVerdictMemo(value: unknown): JudgeVerdictMemo | null {
 
 /**
  * Coerce the persisted preview-judge breaker (P3). Reads the current
- * `blocks_since_commit` shape; falls back to the legacy
+ * `blocks_since_commit` shape; falls back to an earlier
  * `{ fingerprint, blocks }` entry by seeding the monotonic counter from
- * `blocks` (a stale legacy entry over-counts at worst, never deadlocks).
+ * `blocks` (a stale entry over-counts at worst, never deadlocks).
  */
 function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
   if (!isRecord(value)) return null;
@@ -493,11 +493,8 @@ function normalizeLastDeniedIntent(
   };
 }
 
-export function normalizeState(
-  raw: unknown,
-  legacyMode: AuthoringMode | undefined,
-): AuthoringState {
-  const fallback = createEmptyState(modeFromLegacy(legacyMode));
+export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefined): AuthoringState {
+  const fallback = createEmptyState(surfaceModeFor(draftMode));
   if (!isRecord(raw) || !isRecord(raw.state)) return fallback;
   const state = raw.state;
   const next: AuthoringState = {
@@ -524,8 +521,8 @@ export function normalizeState(
     // Preview-judge circuit-breaker (P3) — a MONOTONIC count of judge
     // blocks since the last commit plus a fingerprint-keyed verdict
     // memo. It must survive the round-trip or the breaker never trips
-    // across turns and the memo never skips a re-judge. Backward
-    // tolerant: a legacy `{ fingerprint, blocks }` entry seeds
+    // across turns and the memo never skips a re-judge. An earlier
+    // persisted `{ fingerprint, blocks }` entry seeds
     // `blocks_since_commit` from `blocks` (a soft over-count at worst —
     // it only makes the breaker escalate to the user one block sooner,
     // never a deadlock).

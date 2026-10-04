@@ -32,7 +32,6 @@ import {
   TOKEN_PREFIX_LENGTH,
 } from "../oauth/tokens.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
-import { resolveEffectiveUserRole } from "../user-role.ts";
 
 /**
  * RFC 8707 canonical form of a resource indicator URI.
@@ -227,7 +226,6 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       // recreated under a different tenant since the token was issued).
       const userRows = await db
         .select({
-          role: users.role,
           email: users.email,
           role_id: users.role_id,
           role_name: rolesTable.name,
@@ -278,7 +276,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         return null;
       }
 
-      const roles = [resolveEffectiveUserRole(u.role, u.role_name)];
+      const roles = u.role_name ? [u.role_name] : [];
       const scopes = row.scope.split(" ").filter(Boolean);
 
       const principal: ResolvedPrincipal = {

@@ -46,7 +46,7 @@ function powerless(): ResolvedPrincipal {
   return {
     provider: "conversation_tool",
     kind: "user",
-    id: ctx.user_id,
+    id: "00000000-0000-4000-8000-00000000b0b0",
     tenant_id: ctx.tenant_id,
     roles: ["no-such-role"],
   } as ResolvedPrincipal;

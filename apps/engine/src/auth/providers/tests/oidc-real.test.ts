@@ -30,6 +30,7 @@ import {
   users,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createOidcProvider } from "../oidc.ts";
 import { type MockOidcHandle, startMockOidc } from "./fixtures/mock-oidc.ts";
@@ -378,7 +379,11 @@ describe("oidc provider — auth.enable_signup gate", () => {
   test("signup disabled: a verified email still links to an EXISTING user without creating one", async () => {
     const [seeded] = await testDb.db
       .insert(users)
-      .values({ tenant_id: tenantId, email: "gate-linkable@test.local", role: "member" })
+      .values({
+        tenant_id: tenantId,
+        email: "gate-linkable@test.local",
+        role_id: await builtinRoleId(testDb.db, "member"),
+      })
       .returning();
     if (!seeded) throw new Error("seed linkable user failed");
 

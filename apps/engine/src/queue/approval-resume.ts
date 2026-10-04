@@ -47,21 +47,13 @@ async function approvalOwnerPrincipal(
   if (!id) return null;
 
   const [user] = await db
-    .select({ role: users.role, role_id: users.role_id })
+    .select({ role_name: roles.name })
     .from(users)
+    .leftJoin(roles, eq(roles.id, users.role_id))
     .where(and(eq(users.id, id), eq(users.tenant_id, tenant_id)))
     .limit(1);
   if (user) {
-    let roleNames: string[] = [user.role];
-    if (user.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id (global or tenant row).
-      const [named] = await db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, user.role_id))
-        .limit(1);
-      if (named?.name) roleNames = [named.name];
-    }
+    const roleNames = user.role_name ? [user.role_name] : [];
     return { provider: "conversation_tool", kind: "user", id, tenant_id, roles: roleNames };
   }
 

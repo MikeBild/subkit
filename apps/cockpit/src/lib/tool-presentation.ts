@@ -198,17 +198,6 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   ask_user_confirm: "tool.name.askUserConfirm",
 };
 
-/**
- * The registry key for a tool name.
- *
- * A trailing version is not a different action: `search_knowledge_v2` is the
- * same lookup as `search_knowledge`, and treating it as unregistered dropped it
- * out of the background tier and gave it a card of its own.
- */
-function registryKey(toolName: string): string {
-  return toolName.replace(/_v\d+$/, "");
-}
-
 /** The saved workflow behind a `wf_<slug>` action, or null. */
 export function workflowSlugFromTool(toolName: string): string | null {
   if (!toolName.startsWith(WORKFLOW_TOOL_PREFIX)) return null;
@@ -216,16 +205,9 @@ export function workflowSlugFromTool(toolName: string): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-/**
- * Last-resort reading of a name nobody registered.
- *
- * The trailing-version strip matters: without it `search_knowledge_v2` reads as
- * "Search Knowledge V2", which tells a person about our versioning rather than
- * about what happened.
- */
+/** Last-resort reading of a name nobody registered. */
 export function humaniseToolName(toolName: string): string {
   return toolName
-    .replace(/_v\d+$/, "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .trim();
@@ -233,7 +215,7 @@ export function humaniseToolName(toolName: string): string {
 
 export function toolTier(toolName: string): ToolTier {
   if (workflowSlugFromTool(toolName)) return "action";
-  if (registryKey(toolName) in BACKGROUND_TOOLS) return "background";
+  if (toolName in BACKGROUND_TOOLS) return "background";
   return "action";
 }
 
@@ -254,10 +236,9 @@ export type ToolLabel =
 export function toolLabel(toolName: string): ToolLabel {
   const slug = workflowSlugFromTool(toolName);
   if (slug) return { kind: "workflow", slug };
-  const key = registryKey(toolName);
-  const background = BACKGROUND_TOOLS[key];
+  const background = BACKGROUND_TOOLS[toolName];
   if (background) return { kind: "background", words: background };
-  const action = ACTION_TOOLS[key];
+  const action = ACTION_TOOLS[toolName];
   if (action) return { kind: "key", key: action };
   return { kind: "literal", text: humaniseToolName(toolName) };
 }
@@ -292,7 +273,7 @@ function runPayload(output: unknown): Record<string, unknown> | null {
 
 /** Whether a tool is one that runs a saved workflow. */
 export function isWorkflowRunTool(toolName: string): boolean {
-  return workflowSlugFromTool(toolName) !== null || registryKey(toolName) === "run_workflow";
+  return workflowSlugFromTool(toolName) !== null || toolName === "run_workflow";
 }
 
 export function workflowRunKind(output: unknown): WorkflowRunKind | null {
@@ -314,7 +295,7 @@ export function workflowRunKind(output: unknown): WorkflowRunKind | null {
 /** Why the engine turned a run away, where the cockpit has a word for it. */
 const REFUSAL_WORDS: Record<string, TranslationKey> = {
   workflow_activation_required: "tool.refusal.activationRequired",
-  workflow_version_legacy: "tool.refusal.legacy",
+  workflow_version_invalid: "tool.refusal.legacy",
   workflow_not_persisted: "tool.refusal.notSaved",
   workflow_not_found: "tool.refusal.notFound",
   permission_denied: "tool.refusal.permission",

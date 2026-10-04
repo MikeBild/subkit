@@ -253,7 +253,7 @@ export interface BudgetSummary {
   /** How much of the cap is spent, 0–1. `null` when there is no cap. */
   consumedShare: number | null;
   /** The engine's own word for the month (`/v1/status` `monthly_budget_state`). */
-  state?: "ample" | "tightening" | "critical" | null;
+  state: "ample" | "tightening" | "critical" | null;
 }
 
 /**
@@ -270,9 +270,7 @@ export function budgetSummary(status: unknown): BudgetSummary {
   const remaining = numberOrNull(s.remaining_monthly_budget_tokens);
   const state = s.monthly_budget_state;
   return {
-    ...(state === "ample" || state === "tightening" || state === "critical" || state === null
-      ? { state }
-      : {}),
+    state: state === "ample" || state === "tightening" || state === "critical" ? state : null,
     usedTokens: used,
     budgetTokens: budget,
     remainingTokens: remaining,
@@ -293,17 +291,10 @@ export function budgetSummary(status: unknown): BudgetSummary {
  * The engine decides: `/v1/status` sends `monthly_budget_state`, the same word
  * the attention list, MCP `get_token_budget` and `sk health` use, measured on
  * the exact share (75 %, 90 %). The cockpit computed its own on a rounded
- * percentage, so 89.6 % was critical here and tightening everywhere else. The
- * local rule remains only for an engine that does not send the field.
+ * percentage, so 89.6 % was critical here and tightening everywhere else.
  */
 export function budgetPressure(summary: BudgetSummary): "ample" | "tightening" | "critical" | null {
-  if (summary.state !== undefined) return summary.state;
-  const { usedTokens, budgetTokens } = summary;
-  if (budgetTokens === null || budgetTokens <= 0 || usedTokens === null) return null;
-  const share = usedTokens / budgetTokens;
-  if (share >= 0.9) return "critical";
-  if (share >= 0.75) return "tightening";
-  return "ample";
+  return summary.state;
 }
 
 /**

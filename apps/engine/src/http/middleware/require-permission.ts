@@ -58,7 +58,7 @@ async function forbiddenFor(
   }
   const reason = decision.reason ?? fallbackReason;
   const details = denialDetails(decision.detail, level);
-  return HttpError.withEnvelope(403, "forbidden", reason, {
+  return new HttpError(403, "forbidden", reason, {
     hint: denialHint(decision.detail, level),
     ...(details ? { details } : {}),
   });

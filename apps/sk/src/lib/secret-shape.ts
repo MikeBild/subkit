@@ -123,8 +123,7 @@ function prefixSample(token: string): string {
  * `RequestCredentialFormEvent` in engine-client/conversations.ts) — the
  * engine short-circuits the turn and opens the masked `ask_user_form`
  * deterministically, no LLM call. This prose rides along for code
- * paths that cannot carry the event (a create-conversation first turn)
- * and for older engines that strip the unknown `event` key: the
+ * paths that cannot carry the event (a create-conversation first turn): the
  * agent's skill set already requires `ask_user_form(type: password)`
  * for any credential, so re-prompting in plain language still gets the
  * masked form back.

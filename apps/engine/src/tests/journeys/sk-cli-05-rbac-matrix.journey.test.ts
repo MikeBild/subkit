@@ -127,7 +127,6 @@ describe("journey: sk-cli rbac matrix", () => {
           // The legacy enum column is constrained to admin/member/enduser,
           // so we pick the closest legacy value for rows whose built-in
           // role has no enum equivalent. The evaluator only reads role_id.
-          role: roleName === "member" ? "member" : "enduser",
           role_id: ctx.rbacRoleIds[roleName],
         })
         .returning();

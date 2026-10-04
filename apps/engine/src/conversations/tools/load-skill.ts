@@ -55,8 +55,7 @@ export const loadSkillTool: ConversationTool = {
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
     const wanted = args.slug.toLowerCase();
-    // Match by slug (preferred, stable cross-tenant id) or fall through
-    // to id / title for legacy callers.
+    // Match by slug (preferred, stable cross-tenant id), then id, then title.
     const candidates = await ctx.engineClient.skills.list();
     const match = candidates.find(
       (s) =>
@@ -114,8 +113,8 @@ export const loadSkillTool: ConversationTool = {
     const currentTurn = rows[0]?.turn_count ?? 0;
     // Persist the SLUG (not the UUID id) so downstream palette gating
     // and prompt-context lookup can both rely on the stable cross-tenant
-    // identifier. The context-assembler already accepts id-or-slug for
-    // backwards compat with any rows that still hold UUIDs.
+    // identifier. The context-assembler reads id-or-slug, since persisted
+    // rows may still hold UUIDs.
     const key = match.slug ?? match.id;
     if (current.some((e) => e.slug === key)) {
       // Already loaded — refresh recency so an explicit re-load re-promotes

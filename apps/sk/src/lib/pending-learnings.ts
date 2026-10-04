@@ -28,8 +28,7 @@ export interface LearningCandidate {
 
 /** Full review queue for `sk learnings list/review` — paginates until the
  *  server-reported `total` is reached, so the queue matches the honest
- *  welcome-row count even beyond one page. Against an engine that does not
- *  emit `total` yet, the first page is the queue (old behavior). */
+ *  welcome-row count even beyond one page. */
 export async function fetchProposedLearnings(client: EngineClient): Promise<LearningCandidate[]> {
   const out: LearningCandidate[] = [];
   const seen = new Set<string>();
@@ -52,26 +51,21 @@ export async function fetchProposedLearnings(client: EngineClient): Promise<Lear
       seen.add(item.id);
       out.push(item);
     }
-    const total = typeof res.total === "number" ? res.total : fetched;
-    if (items.length === 0 || fetched >= total) return out;
+    if (items.length === 0 || fetched >= res.total) return out;
   }
 }
 
 /**
  * True pending count for the REPL start screen. Uses the server-computed
  * `total` (limit: 1 keeps the payload to one row) so the count is honest
- * beyond any page cap. Against an engine that does not emit `total` yet,
- * fall back to the page length — a floor, but the signal (there IS a
- * queue) survives instead of injecting "undefined". Best-effort: any
+ * beyond any page cap. Best-effort: any
  * failure here must never block or delay the REPL — mirror of the
  * operator-digest fetch contract.
  */
 export async function fetchPendingLearningsCount(client: EngineClient): Promise<number> {
   try {
     const res = await client.listSkillCandidates({ ...PROPOSED_LEARNINGS_QUERY, limit: 1 });
-    return typeof res.total === "number" && Number.isFinite(res.total)
-      ? res.total
-      : res.items.length;
+    return res.total;
   } catch {
     return 0;
   }

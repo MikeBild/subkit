@@ -11,7 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { upsertKnowledgeBundle } from "../../knowledge/bundle-service.ts";
-import { readKnowledgeTool } from "../tools/generated/knowledge-sources.ts";
+import { readKnowledgeTool } from "../tools/engine-api/knowledge-sources.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

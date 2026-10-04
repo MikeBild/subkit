@@ -124,25 +124,7 @@ describe("smoke — corrupt config", () => {
   });
 });
 
-describe("smoke — legacy SK_OVERRIDE_* import", () => {
-  test("legacy env seeds canonical config without active overrides", async () => {
-    await loadConfig({
-      env: {
-        DATABASE_URL: "postgres://x",
-        NODE_ENV: "test",
-        SK_OVERRIDE_LLM_API_KEY: "override-key",
-        SK_OVERRIDE_ERRORS_RING_SIZE: "42",
-      },
-      configPathOverride: cfgPath,
-    });
-    const diag = getDiagnostics();
-    expect(diag.override_keys).toEqual([]);
-    expect(diag.source_map["llm.api_key"]).toBe("global");
-    expect(diag.source_map["errors.ring_size"]).toBe("global");
-    expect(getConfig().llm.api_key).toBe("override-key");
-    expect(getConfig().errors.ring_size).toBe(42);
-  });
-
+describe("smoke — DATABASE_URL bootstrap seed", () => {
   test("DATABASE_URL is consulted only when config is empty; warn when both differ", async () => {
     writeFileSync(
       cfgPath,

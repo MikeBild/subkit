@@ -23,8 +23,7 @@ const inputSchema = z
 interface UserSummary {
   id: string;
   email: string;
-  role: string;
-  role_id: string | null;
+  role_id: string;
   role_name: string | null;
 }
 
@@ -53,16 +52,13 @@ export const findUserTool: ConversationTool = {
           next_best_actions: ["find_user", "list_users"],
         };
       }
-      let role_name: string | null = null;
-      if (u.role_id) {
-        // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-        const named = await ctx.db
-          .select({ name: roles.name })
-          .from(roles)
-          .where(eq(roles.id, u.role_id))
-          .limit(1);
-        role_name = named[0]?.name ?? null;
-      }
+      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
+      const named = await ctx.db
+        .select({ name: roles.name })
+        .from(roles)
+        .where(eq(roles.id, u.role_id))
+        .limit(1);
+      const role_name = named[0]?.name ?? null;
       return {
         ok: true,
         data: {
@@ -70,8 +66,7 @@ export const findUserTool: ConversationTool = {
             {
               id: u.id,
               email: u.email,
-              role: u.role,
-              role_id: u.role_id ?? null,
+              role_id: u.role_id,
               role_name,
             },
           ],
@@ -81,9 +76,7 @@ export const findUserTool: ConversationTool = {
     }
     const list = await listUsers(ctx.tenant_id, { limit: 200 }, ctx.db);
     // Bulk-resolve role names so we don't issue N queries.
-    const roleIds = list
-      .map((u) => u.role_id)
-      .filter((rid): rid is string => typeof rid === "string");
+    const roleIds = list.map((u) => u.role_id);
     const roleRows =
       roleIds.length > 0
         ? // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
@@ -96,14 +89,13 @@ export const findUserTool: ConversationTool = {
     const summaries: UserSummary[] = list.map((u) => ({
       id: u.id,
       email: u.email,
-      role: u.role,
-      role_id: u.role_id ?? null,
-      role_name: u.role_id ? (roleNameById.get(u.role_id) ?? null) : null,
+      role_id: u.role_id,
+      role_name: roleNameById.get(u.role_id) ?? null,
     }));
     const ranked = keywordSearch(
       args.query ?? "*",
       summaries,
-      (u) => `${u.email} ${u.role} ${u.role_name ?? ""}`,
+      (u) => `${u.email} ${u.role_name ?? ""}`,
     );
     const limited = ranked.slice(0, args.limit);
     return {

@@ -162,7 +162,7 @@ ReauthCard.displayName = "ReauthCard";
 // Absolute local time, not a relative countdown: the card is a static
 // transcript row, so "in 10 minutes" would silently go stale while a
 // clock time stays true. Falls back to the raw string on unparseable
-// input (engine always sends ISO-8601; belt-and-braces for old engines).
+// input.
 function formatReauthExpiry(expiresAt: string): string {
   const ts = Date.parse(expiresAt);
   if (Number.isNaN(ts)) return expiresAt;

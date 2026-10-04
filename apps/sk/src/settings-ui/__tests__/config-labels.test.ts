@@ -55,7 +55,7 @@ describe("config-labels — pure helpers", () => {
 
   test("labelForPath falls back to formatLabel for unknown paths", () => {
     expect(labelForPath("not.a.real.leaf")).toBe("Leaf");
-    expect(labelForPath("legacy.some_flag")).toBe("Some flag");
+    expect(labelForPath("misc.some_flag")).toBe("Some flag");
   });
 
   test("formatLabel humanizes the last segment", () => {

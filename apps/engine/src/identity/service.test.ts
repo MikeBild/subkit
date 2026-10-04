@@ -23,6 +23,7 @@ import {
   type HttpTestServer,
   loadAuthProvidersForTest,
 } from "../http/tests/setup.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { flushDiscoveryCache } from "./oidc-discovery.ts";
 import {
@@ -71,7 +72,11 @@ beforeAll(async () => {
 
   const [u] = await testDb.db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "svc@test.local", role: "member" })
+    .values({
+      tenant_id: tenantId,
+      email: "svc@test.local",
+      role_id: await builtinRoleId(testDb.db, "member"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
@@ -82,7 +87,7 @@ afterAll(async () => {
 });
 
 describe("service — user roles", () => {
-  test("changing a legacy role synchronizes the effective built-in role", async () => {
+  test("changing the built-in role by name sets its role_id", async () => {
     const builtinRoles = await testDb.db
       .select({ id: roles.id, name: roles.name })
       .from(roles)
@@ -96,7 +101,6 @@ describe("service — user roles", () => {
       .values({
         tenant_id: tenantId,
         email: "role-sync@test.local",
-        role: "member",
         role_id: memberRole.id,
       })
       .returning();
@@ -107,7 +111,6 @@ describe("service — user roles", () => {
       testDb.db,
     );
 
-    expect(updated?.role).toBe("admin");
     expect(updated?.role_id).toBe(adminRole.id);
 
     const [audit] = await testDb.db
@@ -115,8 +118,8 @@ describe("service — user roles", () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, "user.role_changed"), eq(auditLog.resource_id, target.id)))
       .limit(1);
-    expect(audit?.before).toEqual({ role: "member", role_id: memberRole.id });
-    expect(audit?.after).toEqual({ role: "admin", role_id: adminRole.id });
+    expect(audit?.before).toEqual({ role_id: memberRole.id });
+    expect(audit?.after).toEqual({ role_id: adminRole.id });
   });
 });
 
@@ -528,7 +531,7 @@ describe("JIT provisioning — duplicate-email collision (scenario 4)", () => {
       .values({
         tenant_id: httpCtx.tenantId,
         email: "collide@test.local",
-        role: "member",
+        role_id: await builtinRoleId(httpCtx.db, "member"),
       })
       .returning();
     if (!existingUser) throw new Error("seed user failed");
@@ -546,7 +549,7 @@ describe("JIT provisioning — duplicate-email collision (scenario 4)", () => {
       .values({
         tenant_id: defaultTenant.id,
         email: "collide@test.local",
-        role: "member",
+        role_id: await builtinRoleId(httpCtx.db, "member"),
       })
       .returning();
     if (!defaultUser) throw new Error("default user seed failed");

@@ -2083,8 +2083,8 @@ export function ChatPage() {
     question && !anchoredCalls.has(question.toolCallId) ? question : null;
   // The mode in force: the one being picked, the one the conversation was
   // started in — or, while a conversation begun here loads its detail, the
-  // one it was just sent in, so the pill does not pass through "loading". A
-  // legacy or armed exception has no matrix this page can state, so it shows
+  // one it was just sent in, so the pill does not pass through "loading". An
+  // unset mode or armed exception has no matrix this page can state, so it shows
   // its name and no matrix rather than a guess.
   const storedConcrete: AuthoringMode | null =
     storedMode === "auto" || storedMode === "ask" || storedMode === "plan" ? storedMode : null;

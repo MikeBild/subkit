@@ -6188,13 +6188,12 @@
               "kind": "loop",
               "id": "iterate",
               "data_selector": "(sourceData) => sourceData.list.body.filter(function(r){ return !r.fork; })",
-              "body": ["per_repo_log"],
-              "item_var": "repo"
+              "body": ["per_repo_log"]
             },
             {
               "kind": "transform",
               "id": "per_repo_log",
-              "expression": "{ \"name\": $.repo.full_name, \"updated_at\": $.repo.updated_at }"
+              "expression": "return { name: input.scope.$item.full_name, updated_at: input.scope.$item.updated_at };"
             }
           ]
         }
@@ -16050,13 +16049,12 @@
               "kind": "transform",
               "id": "urls",
               "language": "javascript",
-              "expression": "const u = input.scope.fetch_sitemap.data.urlset.url; return (Array.isArray(u) ? u : [u]).map((x) => x.loc);"
+              "expression": "const u = input.scope.fetch_sitemap.data.urlset.url; return (Array.isArray(u) ? u : [u]).map((x) => ({ page_url: x.loc }));"
             },
             {
               "kind": "loop",
               "id": "pages",
               "over": "urls",
-              "item_var": "page_url",
               "body": ["fetch_page", "readable", "to_markdown", "envelope"]
             },
             {

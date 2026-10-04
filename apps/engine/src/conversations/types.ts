@@ -154,7 +154,7 @@ export interface ConversationToolCallRecord {
   created_at: string;
   /**
    * Causal anchor to the assistant message that produced this tool
-   * call. Nullable only for legacy or synthetic rows; `messages_v2`
+   * call. Nullable only for legacy or synthetic rows; `messages`
    * ignores unanchored calls rather than guessing their placement.
    */
   parent_message_id?: string | null;
@@ -468,7 +468,7 @@ export interface ConnectorDraftProbeSummary {
    *  `force_save` cooldown guard in `saveConnectorAtomic`: a probe
    *  that just failed must not be force-saved without first
    *  re-probing with the rotated credential (conversation 730c568a).
-   *  Optional for backwards-compat with old persisted drafts. */
+   *  Absent on drafts persisted before it was recorded. */
   probed_at?: string;
 }
 

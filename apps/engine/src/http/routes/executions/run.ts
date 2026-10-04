@@ -101,7 +101,7 @@ export async function enforceSavedWorkflowAllowlist(
     // Preserve the deny even if audit persistence fails.
   }
 
-  throw HttpError.withEnvelope(403, "forbidden", "workflow_not_in_allowlist", {
+  throw new HttpError(403, "forbidden", "workflow_not_in_allowlist", {
     hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (sk rbac / api-key allowed_workflows) or run a workflow you are granted",
   });
 }
@@ -380,7 +380,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         code === "draft_invalid" ||
         code === "step_invalid"
       ) {
-        throw HttpError.withEnvelope(400, "bad_request", (err as Error).message, {
+        throw new HttpError(400, "bad_request", (err as Error).message, {
           details: {
             code,
             ...(details ? { details } : {}),

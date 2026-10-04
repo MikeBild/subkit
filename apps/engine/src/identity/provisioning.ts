@@ -12,8 +12,9 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { apiKeys, roles, sessions, userInvites, users } from "../db/schema/index.ts";
+import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 import { generateInviteToken, parseInviteToken } from "./invite.ts";
@@ -38,7 +39,7 @@ export interface CreateUserInput {
   tenant_id: string;
   email: string;
   role?: UserRole;
-  role_id?: string | null;
+  role_id?: string;
   status?: UserStatus;
   actor_id: string | null;
 }
@@ -46,9 +47,9 @@ export interface CreateUserInput {
 /**
  * Create a user row in the caller's tenant. Rejects a duplicate
  * `(tenant_id, email)` among non-deleted users with `DuplicateUserError`.
- * Writes a `USER_CREATED` audit row inside the same transaction. The
- * `role` enum defaults to `member`; the legacy enum is the source the RBAC
- * evaluator falls back to when `role_id` is unset.
+ * Writes a `USER_CREATED` audit row inside the same transaction. Without
+ * `role_id` the user gets the built-in role named by `role` (default
+ * `member`).
  */
 export async function createUser(input: CreateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
@@ -66,24 +67,13 @@ export async function createUser(input: CreateUserInput, exec?: Executor) {
       .limit(1);
     if (existing.length > 0) throw new DuplicateUserError(input.email);
 
-    const legacyRole = input.role ?? "member";
-    let roleId = input.role_id;
-    if (roleId === undefined) {
-      // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
-      const [builtinRole] = await tx
-        .select({ id: roles.id })
-        .from(roles)
-        .where(and(isNull(roles.tenant_id), eq(roles.name, legacyRole)))
-        .limit(1);
-      roleId = builtinRole?.id ?? null;
-    }
+    const roleId = input.role_id ?? (await builtinRoleId(tx, input.role ?? "member"));
 
     const [row] = await tx
       .insert(users)
       .values({
         tenant_id: input.tenant_id,
         email: input.email,
-        role: legacyRole,
         role_id: roleId,
         status: input.status ?? "active",
       })
@@ -98,7 +88,7 @@ export async function createUser(input: CreateUserInput, exec?: Executor) {
         resource_type: "user",
         resource_id: row.id,
         result: "success",
-        metadata: { email: row.email, role: row.role, status: row.status },
+        metadata: { email: row.email, role_id: row.role_id, status: row.status },
       },
       tx,
     );

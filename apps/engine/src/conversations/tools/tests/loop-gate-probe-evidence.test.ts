@@ -36,7 +36,6 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
             id: "iter",
             kind: "loop",
             over: "$scope.fetch.data.projects",
-            item_var: "project",
             body: ["body"],
           },
           {
@@ -71,10 +70,9 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
             id: "iter",
             kind: "loop",
             over: "$scope.fetch.data",
-            item_var: "c",
             body: ["body"],
           },
-          { id: "body", kind: "transform", expression: "$c" },
+          { id: "body", kind: "transform", expression: "$item" },
         ],
       },
       null,
@@ -114,8 +112,8 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", item_var: "x", body: ["b"] },
-          { id: "b", kind: "transform", expression: "$x" },
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["b"] },
+          { id: "b", kind: "transform", expression: "$item" },
         ],
       },
       preview,
@@ -154,8 +152,8 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", item_var: "x", body: ["b"] },
-          { id: "b", kind: "transform", expression: "$x" },
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["b"] },
+          { id: "b", kind: "transform", expression: "$item" },
         ],
       },
       preview,
@@ -180,10 +178,9 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
             id: "iter",
             kind: "loop",
             over: "$scope.fetch.data.projects",
-            item_var: "p",
             body: ["body"],
           },
-          { id: "body", kind: "transform", expression: "$p" },
+          { id: "body", kind: "transform", expression: "$item" },
         ],
       },
       null,

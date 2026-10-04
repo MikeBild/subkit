@@ -67,12 +67,12 @@ export function hiddenInvocationKey(
 export type CallVerdict = "refused" | "live" | "preview" | "unconfirmed";
 
 export function callVerdict(
-  invocation: Pick<WorkflowInvocation, "authority" | "legacy">,
+  invocation: Pick<WorkflowInvocation, "authority" | "invalid">,
   environment: "dev" | "prod",
   /** The environment the automation panel shows as approved, or null. */
   approvedEnvironment: "dev" | "prod" | null,
 ): CallVerdict {
-  if (invocation.legacy) return "refused";
+  if (invocation.invalid) return "refused";
   if (invocation.authority[environment] !== "live_run_allowed") return "preview";
   return approvedEnvironment === environment ? "live" : "unconfirmed";
 }

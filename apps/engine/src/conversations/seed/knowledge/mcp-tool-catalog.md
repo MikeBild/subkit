@@ -229,8 +229,6 @@ Ground answers in tenant knowledge and product docs.
 
 - `search_knowledge` **[product]** — semantic search over the tenant's Knowledge
   Sources.
-- `search_knowledge_v2` **[authoring]** — newer ranked knowledge search
-  (chunk-level).
 - `list_knowledge_sources` **[product]** — enumerate Knowledge Sources.
 - `get_knowledge_source` **[product]** — one source's metadata + chunk count.
 - `search_docs` **[product]** — search the sk product documentation.

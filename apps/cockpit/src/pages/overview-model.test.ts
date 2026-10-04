@@ -112,7 +112,7 @@ describe("the sentence", () => {
       expect(
         attentionSentence(held(reason, { kind: "schedule", name: null }), de, NOW).lead,
       ).toContain("Zeitplan");
-      // An engine without the field keeps the sentence it always had.
+      // No trigger named keeps the schedule sentence.
       expect(attentionSentence(held(reason, null), de, NOW).lead).toContain("Zeitplan");
     }
   });

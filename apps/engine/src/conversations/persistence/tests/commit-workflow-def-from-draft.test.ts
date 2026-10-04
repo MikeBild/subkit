@@ -40,7 +40,7 @@ describe("workflowDefFromDraft", () => {
     expect((def as { trigger: { kind: string } }).trigger.kind).toBe("webhook");
   });
 
-  it("omits trigger entirely when the draft does not carry one (back-compat)", () => {
+  it("omits trigger entirely when the draft does not carry one", () => {
     const def = workflowDefFromDraft({
       name: "No trigger",
       slug: "no-trig",

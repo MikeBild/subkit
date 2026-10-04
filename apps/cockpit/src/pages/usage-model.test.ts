@@ -131,20 +131,7 @@ describe("the month against its cap", () => {
     expect(budgetPressure(budgetSummary({ tokens_month: 1 }))).toBeNull();
   });
 
-  test("names the pressure at the thresholds it claims", () => {
-    const at = (used: number) =>
-      budgetPressure(budgetSummary({ tokens_month: used, monthly_budget_tokens: 100 }));
-    expect(at(10)).toBe("ample");
-    expect(at(74)).toBe("ample");
-    expect(at(75)).toBe("tightening");
-    expect(at(89)).toBe("tightening");
-    // On the exact share, like the engine: 89.6 % is still tightening.
-    expect(at(89.6)).toBe("tightening");
-    expect(at(90)).toBe("critical");
-    expect(at(200)).toBe("critical");
-  });
-
-  test("the engine's word wins over the local rule", () => {
+  test("the pressure is the engine's word, never a local rule", () => {
     const s = budgetSummary({
       tokens_month: 10,
       monthly_budget_tokens: 100,

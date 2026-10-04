@@ -671,16 +671,13 @@ export async function restoreSkill(
   const entry = rows[0];
   if (!entry) throw new NotFoundError("audit entry");
   if (entry.action !== AuditAction.SKILL_UPDATED || entry.resource_id !== id) {
-    throw HttpError.withEnvelope(
-      409,
-      "conflict",
-      "audit entry does not reference an update of this skill",
-      { hint: `Pick an audit_entry_id from GET /v1/skills/${id}/history.` },
-    );
+    throw new HttpError(409, "conflict", "audit entry does not reference an update of this skill", {
+      hint: `Pick an audit_entry_id from GET /v1/skills/${id}/history.`,
+    });
   }
   const snapshot = snapshotFromAudit(entry.after);
   if (!snapshot) {
-    throw HttpError.withEnvelope(
+    throw new HttpError(
       409,
       "conflict",
       "audit entry predates full skill snapshots and cannot be restored",

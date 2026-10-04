@@ -70,9 +70,7 @@ export interface FileStatsWire {
 /** Inline-upload cap + link-resource-type enum — re-exported from the
  *  shared constants module so the CLI cannot drift from the engine's
  *  413 threshold or link-target whitelist. Above the inline cap the
- *  CLI must use `batchCreateFiles` + the authenticated streamed upload helper
- *  (`putToPresignedUrl` is retained as its legacy method name) +
- *  `finalizeFile`; the resource-type tuple is consumed by
+ *  CLI must use `batchCreateFiles` + `putUploadBytes` + `finalizeFile`; the resource-type tuple is consumed by
  *  `parseResourceRef` to reject bad `--link-to` / `--linked-to`
  *  values locally. */
 export {
@@ -179,28 +177,22 @@ export const filesMethods = {
     return BatchCreateResponseSchema.parse(raw);
   },
 
-  /** PUT bytes to an upload URL with progress callback. The legacy method
-   *  name remains wire-compatible. Relative URLs target the authenticated
-   *  engine endpoint; absolute URLs are supported for older engines. */
-  async putToPresignedUrl(
+  /** PUT bytes to the engine-relative upload URL returned by
+   *  `batchCreateFiles`, with progress callback. */
+  async putUploadBytes(
     this: EngineClient,
     url: string,
     headers: Record<string, string>,
     body: BodyInit,
     onProgress?: (sent: number, total: number) => void,
   ): Promise<void> {
-    const isAbsolute = /^https?:\/\//i.test(url);
-    const fullUrl = isAbsolute ? url : `${this.base}${url}`;
+    const fullUrl = `${this.base}${url}`;
     // Bun's fetch supports `ReadableStream` bodies with `duplex: "half"`.
     // The progress callback fires from the byte-counter wrapper around
     // the stream, not from the response itself.
-    // Relative upload endpoints are engine-authenticated and must carry the
-    // profile bearer token. Never forward that credential to an absolute
-    // third-party URL retained for compatibility with older engines.
-    const requestHeaders = isAbsolute ? headers : this.headers(headers);
     const init: RequestInit & { duplex?: "half" } = {
       method: "PUT",
-      headers: requestHeaders,
+      headers: this.headers(headers),
       body,
     };
     if (body instanceof ReadableStream) init.duplex = "half";

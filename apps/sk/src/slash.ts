@@ -373,7 +373,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "config-form",
-    help: "Legacy 4-field user-settings form (model / SK.md / mention size / status-line refresh)",
+    help: "4-field user-settings form (model / SK.md / mention size / status-line refresh)",
     category: "util",
     routing: "local",
   },
@@ -587,13 +587,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "admin",
     requires: "discovery:read",
   },
-  // Per-service `install-*` slashes were collapsed into a single
-  // `/install` slash that opens the existing onboarding wizard
-  // (template picker → credential prompt → probe → save). The
-  // alias lives on `/onboard` above as `aliases: ["install"]`, so
-  // this spot is intentionally empty. Removed-slash guidance for the
-  // old per-service `install-*` names lives in
-  // `dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
   // admin list commands
   {
     name: "apikeys",

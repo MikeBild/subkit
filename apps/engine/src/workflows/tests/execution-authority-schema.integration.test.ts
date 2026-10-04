@@ -102,44 +102,44 @@ test("new workflow drafts receive no execution authority implicitly", async () =
   expect(result.rows).toHaveLength(0);
 });
 
-test("upgrading an active legacy workflow preserves its version and grants no execution authority", async () => {
-  const legacy = await createTestDb("authority_upgrade", { upToIdx: 50 });
+test("upgrading an active earlier workflow preserves its version and grants no execution authority", async () => {
+  const upgraded = await createTestDb("authority_upgrade", { upToIdx: 50 });
   try {
-    const owner = await legacy.pool.query<{ id: string }>(
-      "INSERT INTO subkit.tenants (slug,display_name) VALUES ('legacy-authority','Legacy authority') RETURNING id",
+    const owner = await upgraded.pool.query<{ id: string }>(
+      "INSERT INTO subkit.tenants (slug,display_name) VALUES ('upgraded-authority','Upgraded authority') RETURNING id",
     );
     const ownerId = owner.rows[0]?.id;
-    if (!ownerId) throw new Error("missing legacy tenant");
-    const workflow = await legacy.pool.query<{ id: string }>(
-      "INSERT INTO subkit.workflows (tenant_id,slug,name,lifecycle) VALUES ($1,'legacy-active','Legacy active','active') RETURNING id",
+    if (!ownerId) throw new Error("missing upgraded tenant");
+    const workflow = await upgraded.pool.query<{ id: string }>(
+      "INSERT INTO subkit.workflows (tenant_id,slug,name,lifecycle) VALUES ($1,'upgraded-active','Upgraded active','active') RETURNING id",
       [ownerId],
     );
     const workflowId = workflow.rows[0]?.id;
-    const versionRow = await legacy.pool.query<{ id: string }>(
+    const versionRow = await upgraded.pool.query<{ id: string }>(
       "INSERT INTO subkit.workflow_versions (tenant_id,workflow_id,version,dag) VALUES ($1,$2,1,$3) RETURNING id",
-      [ownerId, workflowId, JSON.stringify({ name: "Legacy active", steps: [] })],
+      [ownerId, workflowId, JSON.stringify({ name: "Upgraded active", steps: [] })],
     );
     const versionId = versionRow.rows[0]?.id;
-    await legacy.pool.query(
+    await upgraded.pool.query(
       "UPDATE subkit.workflows SET current_version_id=$3 WHERE tenant_id=$1 AND id=$2",
       [ownerId, workflowId, versionId],
     );
-    await runMigrations(legacy.db);
-    await runMigrations(legacy.db);
-    const preserved = await legacy.pool.query(
+    await runMigrations(upgraded.db);
+    await runMigrations(upgraded.db);
+    const preserved = await upgraded.pool.query(
       "SELECT lifecycle,current_version_id,draft_version_id FROM subkit.workflows WHERE tenant_id=$1 AND id=$2",
       [ownerId, workflowId],
     );
     expect(preserved.rows).toEqual([
       { lifecycle: "active", current_version_id: versionId, draft_version_id: null },
     ]);
-    const grants = await legacy.pool.query(
+    const grants = await upgraded.pool.query(
       "SELECT id FROM subkit.workflow_execution_authorities WHERE tenant_id=$1",
       [ownerId],
     );
     expect(grants.rows).toHaveLength(0);
   } finally {
-    await legacy.cleanup();
+    await upgraded.cleanup();
   }
 });
 

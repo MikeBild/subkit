@@ -23,6 +23,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import { ALL_PERMISSION_NAMES, getPermissionByName, loadPermissionCatalog } from "../catalog.ts";
 import { assertCan, can } from "../evaluator.ts";
 import * as grantsSvc from "../grants.ts";
@@ -161,15 +162,10 @@ describe("rbac matrix", () => {
     const metricsRoleId = await findRoleId(BUILTIN_ROLE_NAMES.METRICS_SCRAPER);
     const portalUserRoleId = await findRoleId(BUILTIN_ROLE_NAMES.PORTAL_TOKEN_USER);
 
-    const seedUser = async (
-      tenantId: string,
-      email: string,
-      legacyRole: "admin" | "member" | "enduser",
-      roleId: string,
-    ): Promise<string> => {
+    const seedUser = async (tenantId: string, email: string, roleId: string): Promise<string> => {
       const [row] = await db
         .insert(users)
-        .values({ tenant_id: tenantId, email, role: legacyRole, role_id: roleId })
+        .values({ tenant_id: tenantId, email, role_id: roleId })
         .returning({ id: users.id });
       if (!row) throw new Error("seed user");
       return row.id;
@@ -187,11 +183,11 @@ describe("rbac matrix", () => {
       return row.id;
     };
 
-    const adminId = await seedUser(tenantA, "admin@a", "admin", adminRoleId);
-    const memberId = await seedUser(tenantA, "member@a", "member", memberRoleId);
-    const enduserId = await seedUser(tenantA, "enduser@a", "enduser", enduserRoleId);
+    const adminId = await seedUser(tenantA, "admin@a", adminRoleId);
+    const memberId = await seedUser(tenantA, "member@a", memberRoleId);
+    const enduserId = await seedUser(tenantA, "enduser@a", enduserRoleId);
     const metricsAcctId = await seedSystemAccount(tenantA, "metrics-scraper-a", metricsRoleId);
-    const portalUserId = await seedUser(tenantA, "portaluser@a", "enduser", portalUserRoleId);
+    const portalUserId = await seedUser(tenantA, "portaluser@a", portalUserRoleId);
 
     principals[BUILTIN_ROLE_NAMES.ADMIN] = {
       provider: "api_key",
@@ -235,7 +231,7 @@ describe("rbac matrix", () => {
 
     // Cross-tenant fixture: a member under tenantB. Used to prove that
     // a tenantA resource grant does not leak.
-    const memberBId = await seedUser(tenantB, "member@b", "member", memberRoleId);
+    const memberBId = await seedUser(tenantB, "member@b", memberRoleId);
     memberB = {
       provider: "api_key",
       kind: "user",
@@ -247,7 +243,7 @@ describe("rbac matrix", () => {
     // Resource-grant fixture: a tenantA member with audit:read on
     // workflowAlpha only. Member role does NOT include audit:read, so
     // any allow on this principal+permission must come from the grant.
-    const grantedId = await seedUser(tenantA, "granted@a", "member", memberRoleId);
+    const grantedId = await seedUser(tenantA, "granted@a", memberRoleId);
     grantedMember = {
       provider: "api_key",
       kind: "user",
@@ -264,12 +260,9 @@ describe("rbac matrix", () => {
       permission: "audit:read",
     });
 
-    // Group fixture: a tenantA user (no role_id) belongs to a group
-    // with the admin role assigned. Hits the group path.
-    const groupUserId = await seedUser(tenantA, "groupie@a", "member", memberRoleId);
-    // Re-null the role so role lookup misses and we know any allow
-    // must come from the group path.
-    await db.update(users).set({ role_id: null }).where(eq(users.id, groupUserId));
+    // Group fixture: a tenantA user whose own role grants nothing belongs
+    // to a group with the admin role assigned. Hits the group path.
+    const groupUserId = await seedUser(tenantA, "groupie@a", await emptyRoleId(db, tenantA));
     const [group] = await db
       .insert(groups)
       .values({ tenant_id: tenantA, name: "ops" })
@@ -675,28 +668,14 @@ describe("rbac matrix", () => {
     });
   });
 
-  describe("legacy principal.roles fallback", () => {
-    // The evaluator falls back to principal.roles[*] when the user
-    // row has no role_id (or the system account row has none). Pin
-    // both legacy paths so the rbac/ coverage floor holds.
-
-    test("user with role_id=NULL falls back to principal.roles[name]", async () => {
-      const [row] = await db
-        .insert(users)
-        .values({
-          tenant_id: tenantA,
-          email: "legacy@a",
-          role: "member",
-          role_id: null,
-        })
-        .returning({ id: users.id });
-      if (!row) throw new Error("seed legacy user");
+  describe("principal.roles fallback", () => {
+    test("a user principal without a user row falls back to principal.roles[name]", async () => {
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: {
           provider: "api_key",
           kind: "user",
-          id: row.id,
+          id: "00000000-0000-4000-8000-00000000f00d",
           tenant_id: tenantA,
           roles: [BUILTIN_ROLE_NAMES.MEMBER],
         },
@@ -709,9 +688,9 @@ describe("rbac matrix", () => {
     test("system_account with role_id=NULL falls back to principal.roles[name]", async () => {
       const [row] = await db
         .insert(systemAccounts)
-        .values({ tenant_id: tenantA, name: "legacy-sa", role_id: null })
+        .values({ tenant_id: tenantA, name: "unassigned-sa", role_id: null })
         .returning({ id: systemAccounts.id });
-      if (!row) throw new Error("seed legacy sa");
+      if (!row) throw new Error("seed sa");
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: {
@@ -727,23 +706,13 @@ describe("rbac matrix", () => {
       expect(decision.source).toBe("role");
     });
 
-    test("legacy fallback denies when principal.roles is empty and role_id is NULL", async () => {
-      const [row] = await db
-        .insert(users)
-        .values({
-          tenant_id: tenantA,
-          email: "noroles@a",
-          role: "member",
-          role_id: null,
-        })
-        .returning({ id: users.id });
-      if (!row) throw new Error("seed no-role user");
+    test("a user principal without a user row and without roles is denied", async () => {
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: {
           provider: "api_key",
           kind: "user",
-          id: row.id,
+          id: "00000000-0000-4000-8000-00000000f00e",
           tenant_id: tenantA,
           roles: [],
         },

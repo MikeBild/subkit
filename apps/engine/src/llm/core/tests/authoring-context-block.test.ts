@@ -109,7 +109,6 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               id: "fetch_resources",
               kind: "loop",
               over: "extract_projects.data",
-              item_var: "project",
               body: ["get_project_resources"],
             },
             {
@@ -131,7 +130,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out!).toContain("$scope.extract_projects.data");
     // Loop-specific shape with iteration variable + flat-access form
     expect(out!).toContain("$scope.fetch_resources.data");
-    expect(out!).toContain("$project");
+    expect(out!).toContain("$item");
     expect(out!).toContain("flat access across all iterations");
     expect(out!).toContain("$scope.fetch_resources.data.get_project_resources.data");
     expect(out!).toContain("$scope.fetch_resources.data[0].get_project_resources.data");
@@ -166,7 +165,6 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               id: "fetch_resources",
               kind: "loop",
               over: "$scope.list_projects.data.projects",
-              item_var: "project",
               body: ["get_project_resources"],
             },
             {
@@ -202,7 +200,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
       user_message: "hi",
     });
     expect(out).not.toBeNull();
-    expect(out!).toContain("$project.{ id, name, owner_uuid, purpose }");
+    expect(out!).toContain("$item.{ id, name, owner_uuid, purpose }");
     expect(out!).toContain("sampled from preview of `list_projects`");
   });
 
@@ -265,7 +263,6 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               id: "fetch_resources",
               kind: "loop",
               over: "$scope.list_projects.data.projects",
-              item_var: "project",
               body: ["get_project_resources"],
             },
             {
@@ -281,7 +278,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
       user_message: "hi",
     });
     expect(out).not.toBeNull();
-    expect(out!).toContain("$project shape unknown");
+    expect(out!).toContain("$item shape unknown");
     expect(out!).toContain("run `dry_run_workflow`");
   });
 
@@ -298,7 +295,6 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               id: "fetch_each",
               kind: "loop",
               data_selector: "(sourceData) => sourceData.list_messages.data.messages",
-              item_var: "msg",
               body: ["get_message"],
             },
             {
@@ -330,7 +326,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
       user_message: "hi",
     });
     expect(out).not.toBeNull();
-    expect(out!).toContain("$msg.{ id, threadId }");
+    expect(out!).toContain("$item.{ id, threadId }");
     expect(out!).toContain("sampled from preview of `list_messages`");
   });
 });

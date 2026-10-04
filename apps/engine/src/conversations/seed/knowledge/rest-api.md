@@ -149,8 +149,8 @@ Runs one step. `timeout_ms` is capped at 60000.
 - `PUT /v1/workflows/{id}` — full update; rewrites the DAG and rolls a new version.
 - `PATCH /v1/workflows/{id}/metadata` — governed rename of `slug`/`name`/`description`/`lifecycle` WITHOUT rotating a version (audited). `409` on slug conflict.
 - `DELETE /v1/workflows/{id}` — delete (`204`).
-- `GET /v1/workflows/{id}/history` — version history, newest first (`limit`, `offset`; response carries `total`). Each version returns its stored definition unchanged; `legacy: true` marks one that no longer passes the current workflow schema.
-- `POST /v1/workflows/{id}/restore/{version}` — restore a prior version as a new current version. A `legacy` version is refused with `422 version_not_restorable`, naming the step and field that no longer validate.
+- `GET /v1/workflows/{id}/history` — version history, newest first (`limit`, `offset`; response carries `total`). Each version returns its stored definition unchanged; `invalid: true` marks one that no longer passes the current workflow schema.
+- `POST /v1/workflows/{id}/restore/{version}` — restore a prior version as a new current version. An `invalid` version is refused with `422 version_not_restorable`, naming the step and field that no longer validate.
 - `GET /v1/workflows/{id}/input-schema` — the declared input schema (use this when a saved run rejects input).
 - `POST /v1/workflows/validate` — validate a definition without persisting.
 - `GET /v1/schedules` — list workflow schedules.

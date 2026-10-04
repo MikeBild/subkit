@@ -3,12 +3,12 @@
 // audience and scope, not by the normal API RBAC middleware.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { readRequestSource } from "../../../audit/index.ts";
 import { consumeCliLoginToken } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { ForbiddenError, UnauthorizedError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { ErrorSchema } from "./schemas.ts";
 
 const CliSessionResponse = z
   .object({

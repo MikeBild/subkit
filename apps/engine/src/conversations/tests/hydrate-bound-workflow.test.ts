@@ -477,29 +477,29 @@ describe("loadDraft — idempotency: re-hydrate does not clobber", () => {
   });
 });
 
-test("legacy chat observes only an empty draft slot without losing local edits", async () => {
+test("an earlier chat observes only an empty draft slot without losing local edits", async () => {
   const base = await seedWorkflow({
-    slug: "legacy-empty-draft-base",
+    slug: "earlier-empty-draft-base",
     name: "Report",
     steps: [{ id: "result", kind: "transform", expression: "return 1;" }],
   });
   const { conversation_id } = await seedConversation(base.workflow_id);
-  const legacy = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
-  if (!legacy.state) throw new Error("missing state");
-  for (const ref of legacy.state.persisted_resources) {
+  const earlier = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
+  if (!earlier.state) throw new Error("missing state");
+  for (const ref of earlier.state.persisted_resources) {
     delete ref.draft_version_id;
     delete ref.current_version_id;
     delete ref.persistence_kind;
   }
-  legacy.workflow.steps[0] = { id: "result", kind: "transform", expression: "return 2;" };
-  const storeLegacy = () =>
+  earlier.workflow.steps[0] = { id: "result", kind: "transform", expression: "return 2;" };
+  const storeEarlier = () =>
     ctx.testDb.db
       .update(conversations)
-      .set({ draft: legacy })
+      .set({ draft: earlier })
       .where(
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, conversation_id)),
       );
-  await storeLegacy();
+  await storeEarlier();
   const resumed = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
   expect(resumed.workflow.steps[0]?.expression).toBe("return 2;");
   const ref = resumed.state?.persisted_resources.find((item) => item.id === base.workflow_id);
@@ -516,7 +516,7 @@ test("legacy chat observes only an empty draft slot without losing local edits",
       expected_draft_version_id: null,
       def: {
         name: "Other author",
-        slug: "legacy-empty-draft-base",
+        slug: "earlier-empty-draft-base",
         steps: [{ id: "result", kind: "transform", expression: "return 3;" }],
       },
       actor_id: ctx.user_id,
@@ -533,7 +533,7 @@ test("legacy chat observes only an empty draft slot without losing local edits",
       expected_draft_version_id: null,
       def: {
         name: "Report",
-        slug: "legacy-empty-draft-base",
+        slug: "earlier-empty-draft-base",
         steps: [{ id: "result", kind: "transform", expression: "return 2;" }],
       },
       actor_id: ctx.user_id,
@@ -543,8 +543,8 @@ test("legacy chat observes only an empty draft slot without losing local edits",
   );
   expect(conflict.draft).toBeUndefined();
   expect(conflict.code).toBe("draft_conflict");
-  // Reopening an unobserved legacy chat never silently adopts that draft.
-  await storeLegacy();
+  // Reopening an unobserved earlier chat never silently adopts that draft.
+  await storeEarlier();
   const blocked = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
   expect(blocked.workflow.steps[0]?.expression).toBe("return 2;");
   expect(

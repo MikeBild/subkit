@@ -19,6 +19,7 @@ import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { generateKey } from "../../../identity/api-key.ts";
 import { logger } from "../../../logging/logger.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createApiKeyProvider } from "../api-key.ts";
 
@@ -38,7 +39,7 @@ beforeAll(async () => {
   tenantId = t.id;
   const [u] = await db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "u@ak.local", role: "admin" })
+    .values({ tenant_id: tenantId, email: "u@ak.local", role_id: await builtinRoleId(db, "admin") })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
@@ -202,7 +203,7 @@ describe("api-key provider — user lifecycle", () => {
       .values({
         tenant_id: tenantId,
         email: "disabled@ak.local",
-        role: "member",
+        role_id: await builtinRoleId(db, "member"),
         status: "disabled",
       })
       .returning();
@@ -217,7 +218,7 @@ describe("api-key provider — user lifecycle", () => {
       .values({
         tenant_id: tenantId,
         email: "deleted@ak.local",
-        role: "member",
+        role_id: await builtinRoleId(db, "member"),
         deleted_at: new Date(FROZEN_NOW - 60_000),
       })
       .returning();

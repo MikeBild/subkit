@@ -115,7 +115,6 @@ export type {
   RiskSeverity,
   RiskSignal,
 } from "./engine-client/self-healing.ts";
-export { attentionOf, resolvedAtOf, scheduledRunsOf } from "./engine-client/self-healing.ts";
 export type {
   EngineRestartAccepted,
   EngineRestartStatus,

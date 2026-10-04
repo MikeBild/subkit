@@ -22,6 +22,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { currentMonthBucket } from "../../llm/accounting/budget.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -182,7 +183,11 @@ beforeAll(async () => {
 
   const [userB] = await db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "admin-b-cost@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantBId,
+      email: "admin-b-cost@test.local",
+      role_id: await builtinRoleId(db, "admin"),
+    })
     .returning();
   if (!userB) throw new Error("seed user B failed");
 

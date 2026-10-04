@@ -3,7 +3,7 @@
 // A SessionStart hook calls `GET /v1/agent/briefing?domains=…` and injects the
 // returned markdown into the fresh session. The briefing carries the domain's
 // prescriptive conventions (skill bodies) plus a knowledge INDEX — full
-// documents stay behind `search_knowledge_v2` so the session grounds by
+// documents stay behind `search_knowledge` so the session grounds by
 // lookup instead of preloading everything (context economy).
 //
 // Domain = tag convention `domain:<slug>` on skills and knowledge sources.
@@ -96,7 +96,7 @@ function assemble(input: AssembleInput, state: AssembleState): string {
     `# sk session briefing — domains: ${input.domains.join(", ")}`,
     "",
     "Grounding rule: for facts of these domains, look up instead of guessing —",
-    `call \`search_knowledge_v2\` with \`tags: ["${[...domainTags(input.domains)].join('", "')}"]\`.`,
+    `call \`search_knowledge\` with \`tags: ["${[...domainTags(input.domains)].join('", "')}"]\`.`,
     "If the search returns nothing, say so; do not invent domain internals.",
   ];
 

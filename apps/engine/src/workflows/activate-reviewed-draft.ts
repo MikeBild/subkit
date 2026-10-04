@@ -49,11 +49,11 @@ export async function activateReviewedDraft(
   if (!target) throw new Error("reviewed workflow version unavailable");
   const definition = executableDefinition(target.dag);
   const previous = expectedCurrent ? await readVersion(expectedCurrent) : null;
-  // The version being replaced may itself be legacy — activating a newer one
+  // The version being replaced may itself be invalid — activating a newer one
   // is how such a workflow is repaired. Its trigger is then unknown, which
   // reads as "changed" below.
   const stored = previous ? readStoredDefinition(previous.dag) : null;
-  const oldDefinition = stored && !stored.legacy ? stored.definition : null;
+  const oldDefinition = stored && !stored.invalid ? stored.definition : null;
   await tx
     .update(workflows)
     .set({

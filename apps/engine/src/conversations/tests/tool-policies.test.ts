@@ -145,8 +145,8 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     expect(withoutPermissionMode.rule).toBe("conversation_override");
   });
 
-  it("dry_run_workflow remains preparation regardless of legacy flags or environment", () => {
-    // Draft writes stay held even when a caller requests live execution.
+  it("dry_run_workflow remains preparation in every environment", () => {
+    // Draft writes stay held.
     const heldWritesProd = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
@@ -155,23 +155,23 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     });
     expect(heldWritesProd.mode).toBe("no_confirm");
 
-    const liveWriteRun = decideToolMode({
+    const heldWritesDev = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
-      input: { environment: "prod", execute_writes: true },
+      input: { environment: "dev" },
       overrides: {},
     });
-    expect(liveWriteRun.mode).toBe("no_confirm");
+    expect(heldWritesDev.mode).toBe("no_confirm");
 
     // Auto does not need a redundant decision over a held preview.
-    const liveWriteRunAuto = decideToolMode({
+    const heldWritesAuto = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
-      input: { environment: "dev", execute_writes: true },
+      input: { environment: "dev" },
       overrides: {},
       permission_mode: "auto",
     });
-    expect(liveWriteRunAuto.mode).toBe("no_confirm");
+    expect(heldWritesAuto.mode).toBe("no_confirm");
   });
 
   it("generic starts use bounded admission and draft previews always hold writes", () => {

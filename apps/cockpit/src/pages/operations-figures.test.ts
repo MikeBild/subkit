@@ -80,6 +80,7 @@ describe("the operations figures", () => {
     tokens_month: 40_500_000,
     monthly_budget_tokens: 150_000_000,
     remaining_monthly_budget_tokens: 109_500_000,
+    monthly_budget_state: "ample",
   });
   // The calendar month's money — what the budget figure leads with.
   const monthPriced = {
@@ -280,7 +281,7 @@ describe("the operations figures", () => {
   });
 
   test("the month's usage is its money, with its whole share of the cap and the engine's word", () => {
-    const at = (used: number) =>
+    const at = (used: number, state = "ample") =>
       value(
         figuresOf({
           budget: answered(
@@ -288,6 +289,7 @@ describe("the operations figures", () => {
               tokens_month: used,
               monthly_budget_tokens: 1000,
               remaining_monthly_budget_tokens: Math.max(1000 - used, 0),
+              monthly_budget_state: state,
             }),
           ),
         })[5],
@@ -297,9 +299,15 @@ describe("the operations figures", () => {
       { currency: "USD", unpricedCalls: 0 },
     ]);
     expect([at(270)?.budget?.percent, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
-    expect([at(750)?.budget?.percent, at(750)?.budget?.pressure]).toEqual([75, "tightening"]);
+    expect([
+      at(750, "tightening")?.budget?.percent,
+      at(750, "tightening")?.budget?.pressure,
+    ]).toEqual([75, "tightening"]);
     // 89.6 % reads "89 %" beside "Wird knapp" — the engine's exact share.
-    expect([at(896)?.budget?.percent, at(896)?.budget?.pressure]).toEqual([89, "tightening"]);
+    expect([
+      at(896, "tightening")?.budget?.percent,
+      at(896, "tightening")?.budget?.pressure,
+    ]).toEqual([89, "tightening"]);
     expect(at(270)?.budget).toMatchObject({ budgetTokens: 1000, remainingTokens: 730 });
     expect(at(270)?.basis).toBe("month");
   });

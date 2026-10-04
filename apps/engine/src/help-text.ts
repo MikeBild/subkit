@@ -23,9 +23,6 @@ export function engineHelp(version: string): string {
     "  --help             print this help and exit\n" +
     "  --smoke            validate logger/audit/redaction and exit\n" +
     "  --migrate          run pending database migrations and exit\n" +
-    "  --bridge-stateless import legacy config/blobs into PostgreSQL + S3 and exit\n" +
-    "    --legacy-config=<path>    required legacy subkit.config.json\n" +
-    "    --legacy-files-dir=<path> optional legacy blobs directory\n" +
     "  --seed             seed the database and exit\n" +
     "  --check-update     check for a newer binary and exit\n" +
     "  --self-update      download + install a newer binary and exit\n" +

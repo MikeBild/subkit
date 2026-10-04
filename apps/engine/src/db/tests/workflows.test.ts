@@ -30,8 +30,8 @@ describe("workflows + versions", () => {
       })
       .returning();
 
-    const dagV1 = { steps: [{ key: "a", kind: "request" }] };
-    const dagV2 = {
+    const originalDag = { steps: [{ key: "a", kind: "request" }] };
+    const extendedDag = {
       steps: [
         { key: "a", kind: "request" },
         { key: "b", kind: "transform" },
@@ -44,7 +44,7 @@ describe("workflows + versions", () => {
         tenant_id: tenant!.id,
         workflow_id: wf!.id,
         version: 1,
-        dag: dagV1,
+        dag: originalDag,
       })
       .returning();
 
@@ -54,7 +54,7 @@ describe("workflows + versions", () => {
         tenant_id: tenant!.id,
         workflow_id: wf!.id,
         version: 2,
-        dag: dagV2,
+        dag: extendedDag,
       })
       .returning();
 
@@ -94,7 +94,7 @@ describe("workflows + versions", () => {
     expect(latest).toHaveLength(3);
     expect(latest[0]?.version).toBe(3);
     expect(latest[0]?.note).toBe("restored from v1");
-    expect(latest[0]?.dag).toEqual(dagV1);
+    expect(latest[0]?.dag).toEqual(originalDag);
 
     const [current] = await ctx.db.select().from(workflows).where(eq(workflows.id, wf!.id));
     expect(current?.current_version_id).toBe(v3!.id);

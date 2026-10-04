@@ -1,9 +1,7 @@
-// Single-call CLI bootstrap with disk cache + tiered fallback.
+// Single-call CLI bootstrap with disk cache.
 //
-// New engines (>= the Checkpoint-0 release) expose `GET /v1/sk/bootstrap`
-// which returns the authenticated principal's UX-gating permission
-// allow-set in one call. Older engines don't, so we fall back to the
-// tiered `whoami + rbac:can` probing in `persona-probe.ts`.
+// `GET /v1/sk/bootstrap` returns the authenticated principal's UX-gating
+// permission allow-set in one call.
 //
 // A small disk cache at `~/.sk/cache/persona-{tenant}-{user}.json` lets
 // subsequent CLI launches skip the network entirely for `cacheTtlMs`,
@@ -22,7 +20,6 @@ import { z } from "zod";
 import type { ResolvedProfile } from "../config.ts";
 import { debugLog, serializeDebugError } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { type ResolvedPersonaSnapshot, resolvePersonaShared } from "../persona-probe.ts";
 import type { PersonaProbe } from "../slash.ts";
 
 /** Persisted-snapshot schema version. Bump on any field-shape
@@ -210,11 +207,10 @@ function filterFlagsToKnown(rawFlags: Record<string, boolean>): SkBootstrapFlags
  * Resolve the bootstrap snapshot for the active profile. Tries:
  *   1. disk cache (if not `forceRefresh` and not stale)
  *   2. `GET /v1/sk/bootstrap`
- *   3. tiered `resolvePersonaShared` fallback (older engines)
  *
  * Always resolves — never throws — so the REPL can render even if
- * every path fails (in which case the persona collapses to "user" with
- * an empty allow-set, matching the legacy behavior).
+ * every path fails (in which case the persona collapses to the profile
+ * hint with an empty allow-set).
  */
 export async function loadBootstrap(
   client: EngineClient,
@@ -232,7 +228,6 @@ export async function loadBootstrap(
     }
   }
 
-  // Try the new endpoint first.
   try {
     const resp = await client.skBootstrap();
     const persisted: PersistedSnapshot = {
@@ -249,12 +244,6 @@ export async function loadBootstrap(
     writeCachedSnapshot(cachePath, persisted);
     return materialize(persisted, "network");
   } catch (err) {
-    // 404 means "older engine without the endpoint". Anything else
-    // (auth, network, 500) also falls through to the legacy probe
-    // so the REPL still gets *some* persona to gate on. Log at debug
-    // so a 401 mid-bootstrap (e.g. revoked api_key) doesn't masquerade
-    // as a 404 in operator diagnosis. The legacy probe has its own
-    // try/catch and returns a conservative default.
     debugLog(
       "bootstrap.fetch_failed",
       {
@@ -266,9 +255,7 @@ export async function loadBootstrap(
     );
   }
 
-  // Fallback: tiered persona-probe.
-  const fallback = await resolvePersonaShared(client, profile);
-  return fromLegacy(fallback, now());
+  return unresolvedSnapshot(profile, now());
 }
 
 function materialize(
@@ -300,8 +287,7 @@ function materialize(
 }
 
 /** CLI-side pref defaults, used whenever the engine cannot supply prefs
- *  (older engines without /v1/sk/bootstrap, unreachable engine during a
- *  profile switch). Stay conservative when no current server policy is known;
+ *  (unreachable engine, failed bootstrap, profile switch). Stay conservative when no current server policy is known;
  *  a reachable new engine supplies its autonomous-preparation default. */
 export const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
   permissionMode: "ask",
@@ -316,17 +302,21 @@ export const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
   portalTokenTtlMin: 15,
 };
 
-function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstrapSnapshot {
-  const defaultPrefs = DEFAULT_SK_PREFS;
+/** Snapshot keyed off the profile alone, for when the engine cannot
+ *  answer the bootstrap. Grants nothing; the engine gates every call. */
+export function unresolvedSnapshot(
+  profile: ResolvedProfile,
+  fetchedAt: number,
+): SkBootstrapSnapshot {
   return {
-    label: snap.label,
-    allowed: snap.allowed,
-    probe: snap.probe,
-    tenant: snap.tenant,
-    email: snap.email,
+    label: profile.persona_hint ?? "user",
+    allowed: new Set(),
+    probe: { allows: () => false },
+    tenant: profile.active_tenant_id ?? null,
+    email: null,
     recentSessions: [],
     flags: {},
-    prefs: defaultPrefs,
+    prefs: DEFAULT_SK_PREFS,
     fetchedAt,
     source: "fallback",
   };

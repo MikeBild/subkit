@@ -73,8 +73,6 @@ interface UserItem {
   id: string;
   email: string;
   role: string;
-  effective_role: string;
-  role_consistent: boolean;
   status: string;
   /** Live connections this person approved — what a withdrawal would end. */
   oauth_connections?: number;
@@ -404,9 +402,9 @@ function RoleChangeConsequence({
 }) {
   const { t } = useI18n();
   const byName = (name: string) => roles?.find((item) => item.name === name) ?? null;
-  const before = useRoleDetail(byName(user.effective_role));
+  const before = useRoleDetail(byName(user.role));
   const after = useRoleDetail(byName(to));
-  const notes = roleChangeNotes({ from: user.effective_role, to, isSelf });
+  const notes = roleChangeNotes({ from: user.role, to, isSelf });
   const toName = roleName(to, roles, t).text;
   const change =
     Array.isArray(before.data?.permissions) && Array.isArray(after.data?.permissions)
@@ -475,15 +473,15 @@ function PersonSheet({
   // it the picker offers the person roles only — the ones this sheet can save.
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<"deactivate" | "repair" | "invite" | null>(null);
+  const [confirm, setConfirm] = useState<"deactivate" | "invite" | null>(null);
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
-  const role = user ? (roles?.find((item) => item.name === user.effective_role) ?? null) : null;
+  const role = user ? (roles?.find((item) => item.name === user.role) ?? null) : null;
   const detail = useRoleDetail(role);
   const choices = useMemo(() => {
     const all = assignableRoles(roles ?? []);
     const offered = canAssignCustom ? all : all.filter((item) => isPersonRole(item.name));
     const names = offered.length > 0 ? offered.map((item) => item.name) : [...PERSON_ROLES];
-    return user && !names.includes(user.effective_role) ? [user.effective_role, ...names] : names;
+    return user && !names.includes(user.role) ? [user.role, ...names] : names;
   }, [roles, canAssignCustom, user]);
   const refresh = () => client.invalidateQueries({ queryKey: ["admin", "people"] });
   const close = () => {
@@ -538,14 +536,11 @@ function PersonSheet({
     onError: (error) => refusalToast(error, t),
   });
 
-  const label = user ? roleName(user.effective_role, roles, t) : null;
-  const purpose = user
-    ? builtinRoleDescription(user.effective_role, role?.description ?? null, t)
-    : null;
-  const changed = user && picked && picked !== user.effective_role ? picked : null;
+  const label = user ? roleName(user.role, roles, t) : null;
+  const purpose = user ? builtinRoleDescription(user.role, role?.description ?? null, t) : null;
+  const changed = user && picked && picked !== user.role ? picked : null;
   // An unsaved role choice is kept from a reload the new-version notice offers.
   useDirtyGuard(Boolean(changed));
-  const drifted = Boolean(user && !user.role_consistent && isPersonRole(user.effective_role));
   const menu = canWrite
     ? [
         {
@@ -553,15 +548,6 @@ function PersonSheet({
           onSelect: () => setConfirm("invite"),
           testId: "people-invite",
         },
-        ...(drifted
-          ? [
-              {
-                label: t("people.repair.verb"),
-                onSelect: () => setConfirm("repair"),
-                testId: "people-repair",
-              },
-            ]
-          : []),
         {
           label: t("people.deactivate"),
           onSelect: () => setConfirm("deactivate"),
@@ -592,7 +578,7 @@ function PersonSheet({
                 help: purpose ?? undefined,
                 testId: "people-sheet-role",
                 value: canWrite ? (
-                  <Select value={picked ?? user.effective_role} onValueChange={setPicked}>
+                  <Select value={picked ?? user.role} onValueChange={setPicked}>
                     <SelectTrigger
                       className="w-full"
                       aria-label={t("people.role")}
@@ -692,19 +678,6 @@ function PersonSheet({
         testId="people-deactivate-confirm"
       />
       <ConfirmDialog
-        open={confirm === "repair"}
-        onOpenChange={(open) => !open && setConfirm(null)}
-        object={t("people.repair.object", { email: user?.email ?? "" })}
-        verb={t("people.repair.verb")}
-        consequence={t("people.repair.consequence", { email: user?.email ?? "" })}
-        pending={update.isPending}
-        onConfirm={async () => {
-          if (user)
-            await update.mutateAsync({ target: user, to: user.effective_role }).catch(() => {});
-        }}
-        testId="people-repair-confirm"
-      />
-      <ConfirmDialog
         open={confirm === "invite"}
         onOpenChange={(open) => !open && setConfirm(null)}
         object={t("people.inviteObject", { email: user?.email ?? "" })}
@@ -744,10 +717,10 @@ function PeopleTab({ action }: { action: ReactNode }) {
   const needle = search.trim().toLowerCase();
   const shown = items.filter(
     (item) =>
-      (roleFilter === "all" || item.effective_role === roleFilter) &&
+      (roleFilter === "all" || item.role === roleFilter) &&
       (!needle || item.email.toLowerCase().includes(needle)),
   );
-  const roleOptions = [...new Set(items.map((item) => item.effective_role))];
+  const roleOptions = [...new Set(items.map((item) => item.role))];
   const columns = useMemo<CockpitColumn<UserItem>[]>(() => {
     const column = tableColumns<UserItem>({ t, dateTime });
     return [
@@ -764,11 +737,11 @@ function PeopleTab({ action }: { action: ReactNode }) {
       ),
       column.custom(
         "role",
-        (row) => row.effective_role,
+        (row) => row.role,
         t("people.role"),
         (row, index) => (
           <span className="block truncate" data-testid={`people-role-badge-${index}`}>
-            <LabelText label={roleName(row.effective_role, roleItems, t)} />
+            <LabelText label={roleName(row.role, roleItems, t)} />
           </span>
         ),
         { width: "w-[28%]" },
@@ -777,16 +750,7 @@ function PeopleTab({ action }: { action: ReactNode }) {
         "status",
         (row) => row.status,
         t("resource.field.status"),
-        (row, index) =>
-          row.role_consistent ? (
-            <StatusBadge state={row.status} />
-          ) : (
-            <StatusBadge
-              state="needs_attention"
-              label={t("people.roleDrift")}
-              testId={`people-role-drift-${index}`}
-            />
-          ),
+        (row) => <StatusBadge state={row.status} />,
         { width: "w-[28%]" },
       ),
     ];
@@ -815,7 +779,7 @@ function PeopleTab({ action }: { action: ReactNode }) {
           rowLabel={(row) =>
             t("people.openRow", {
               email: row.email,
-              role: roleName(row.effective_role, roleItems, t).text,
+              role: roleName(row.role, roleItems, t).text,
             })
           }
           filtered={Boolean(needle) || roleFilter !== "all"}

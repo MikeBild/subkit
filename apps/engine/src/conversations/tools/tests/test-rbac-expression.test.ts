@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import type { ToolContext } from "../index.ts";
 import { testRbacExpressionTool } from "../test-rbac-expression.ts";
@@ -44,7 +45,11 @@ beforeAll(async () => {
   tenant_id = t!.id;
   const [u] = await ctx.db
     .insert(users)
-    .values({ tenant_id, email: "rbac-probe@example.com", role: "admin" })
+    .values({
+      tenant_id,
+      email: "rbac-probe@example.com",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   actor_id = u!.id;
 });

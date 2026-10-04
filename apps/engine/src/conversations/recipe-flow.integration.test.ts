@@ -4,7 +4,7 @@
 // from the live `templates.json` catalog into a draft document that
 // (a) preserves the recipe's `derived_from_skill` linkage,
 // (b) substitutes a placeholder `connector_id` when the operator
-//     supplied a real one (legacy single-connector path), and
+//     supplied a real one (single-connector path), and
 // (c) rebinds every declared placeholder via `connector_bindings` for
 //     multi-connector recipes — refusing partial maps with a typed
 //     `connector_bindings_missing` error so the LLM cannot accidentally
@@ -177,7 +177,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(byId.fetch_stripe_customer).toBe(stripeConnector);
     expect(byId.upsert_hubspot_contact).toBe(hubspotConnector);
     expect(byId.notify_slack).toBe(slackConnector);
-    // The legacy placeholder UUID must NOT appear anywhere — every
+    // The placeholder UUID must NOT appear anywhere — every
     // placeholder declared in `required_connectors` is replaced.
     const serialized = JSON.stringify(draft.current.workflow);
     expect(serialized).not.toContain("11111111-1111-4111-8111-111111111111");
@@ -211,7 +211,7 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(draft.current.workflow?.steps ?? []).toEqual([]);
   });
 
-  test("multi-connector recipe rejects the legacy connector_id arg with connector_bindings_required", async () => {
+  test("multi-connector recipe rejects the single connector_id arg with connector_bindings_required", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(
       makeToolCtx({ tenant_id, conversation_id, draft }),

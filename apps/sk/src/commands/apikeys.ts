@@ -43,8 +43,6 @@ function csv(value: unknown): string[] | undefined {
 const createCmd = defineCommand({
   meta: { name: "create", description: "Issue a new API key (shown once)" },
   args: {
-    // Friendly label. Optional; can also be passed positionally for back-compat
-    // with the previous `sk apikeys create <name>` invocation shape.
     name: { type: "string", description: "Friendly key name (label)" },
     expires: { type: "string", description: "Expiry — ISO-8601 timestamp" },
     scopes: {

@@ -22,6 +22,7 @@ import { mcpOauthClients, users } from "../../db/schema/index.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
 import { countLiveConnectionsByUser } from "../../identity/oauth-connections.ts";
 import { deactivateUser } from "../../identity/provisioning.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { signBrowserCsrf } from "../browser-session.ts";
 import { createMcpOAuthAuthProvider } from "../providers/mcp-oauth.ts";
 import {
@@ -74,7 +75,7 @@ async function seedPerson(): Promise<string> {
     .values({
       tenant_id: ctx.tenantId,
       email: `withdrawal-${++seq}@test.local`,
-      role: "admin",
+      role_id: await builtinRoleId(db, "admin"),
     })
     .returning({ id: users.id });
   if (!row) throw new Error("seed user failed");

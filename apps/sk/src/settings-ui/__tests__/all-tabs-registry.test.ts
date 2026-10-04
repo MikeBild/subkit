@@ -20,7 +20,7 @@ describe("SettingsModal — ALL_TABS registry", () => {
     expect(ALL_TABS[0]).toBe("Status");
   });
 
-  test("OuterTabName excludes legacy / moved tab names", () => {
+  test("OuterTabName excludes moved tab names", () => {
     // Compile-time guard: legacy names must NOT be assignable to
     // OuterTabName. Each `// @ts-expect-error` line will fail the
     // typecheck if the union ever widens again.

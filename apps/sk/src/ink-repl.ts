@@ -973,8 +973,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       engineMentionCandidates: boot.mentions,
       // Pass the engine-resolved push/notification prefs so
       // applyEventStream can call notify() without an env-var hop.
-      // On older engines the snapshot's prefs come from `fromLegacy()`
-      // defaults.
       prefs: active.persona.prefs,
       // Per-process env override sampled exactly once at REPL boot.
       // See declaration above.

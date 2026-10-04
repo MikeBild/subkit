@@ -12,7 +12,7 @@ import {
   approveDiscoveryArtifactTool,
   getDiscoveryArtifactTool,
   listDiscoveryArtifactsTool,
-} from "../generated/discovery.ts";
+} from "../engine-api/discovery.ts";
 import type { ToolContext } from "../index.ts";
 
 const TEST_NOW_MS = getTestNow();

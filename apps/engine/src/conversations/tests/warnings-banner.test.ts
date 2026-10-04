@@ -99,7 +99,7 @@ describe("dry_run_workflow · warnings_banner", () => {
     expect(data.warnings_banner!.count).toBeGreaterThan(0);
     expect(data.warnings_banner!.codes).toContain("loop_over_unresolved");
     expect(data.warnings_banner!.summary).toContain("loop_over_unresolved");
-    // The legacy nested `warnings` field stays for back-compat.
+    // The nested `warnings` list carries the full detail.
     expect(data.warnings).toBeDefined();
   });
 

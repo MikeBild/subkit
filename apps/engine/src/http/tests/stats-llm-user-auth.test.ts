@@ -15,6 +15,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, llmUsage, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -55,7 +56,11 @@ beforeAll(async () => {
   // --- another admin user (reading their own stats → needs only stats:read) ---
   const [other] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "other-admin@test.local", role: "admin" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "other-admin@test.local",
+      role_id: await builtinRoleId(srv.db, "admin"),
+    })
     .returning();
   if (!other) throw new Error("seed other user failed");
   otherUserId = other.id;
@@ -73,7 +78,11 @@ beforeAll(async () => {
   // --- member user (stats:read excluded by memberPermissionFilter) ---
   const [member] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "member-llm-auth@test.local", role: "member" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "member-llm-auth@test.local",
+      role_id: await builtinRoleId(srv.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member user failed");
 

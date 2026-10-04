@@ -43,7 +43,6 @@ import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-sess
 import { resolveProviderIdentity, SignupDisabledError } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
-import { resolveEffectiveUserRole } from "../user-role.ts";
 
 const SESSION_COOKIE = "subkit_session";
 const DEFAULT_TENANT_SLUG = "default";
@@ -771,7 +770,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
       const userRows = await exec
-        .select({ role: users.role, role_name: roles.name, email: users.email })
+        .select({ role_name: roles.name, email: users.email })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
         .where(eq(users.id, row.user_id))
@@ -784,7 +783,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         kind: "user",
         id: row.user_id,
         tenant_id: row.tenant_id,
-        roles: [resolveEffectiveUserRole(u.role, u.role_name)],
+        roles: u.role_name ? [u.role_name] : [],
         session_id: row.id,
       };
       if (u.email) principal.email = u.email;

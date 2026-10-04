@@ -65,7 +65,7 @@ describe("StepSchema — retired `tool` step is rejected", () => {
         then_steps: ["a"],
       },
       { ...baseFields, kind: "parallel", branches: [["a"], ["b"]] },
-      { ...baseFields, kind: "loop", over: "$.list", body: ["b"], item_var: "row" },
+      { ...baseFields, kind: "loop", over: "$.list", body: ["b"] },
     ];
     for (const s of samples) {
       const result = StepSchema.safeParse(s);
