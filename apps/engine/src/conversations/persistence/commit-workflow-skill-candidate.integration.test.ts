@@ -10,8 +10,9 @@
 //        existing candidate; no duplicate row created.
 //   D.3  No skills row with lifecycle "active" is created by the commit
 //        path. Active skills are only created via the explicit approve gate.
-//   D.4  The commit result's next_prompt carries the human-readable
-//        candidate notice line (POST /v1/skill-candidates/<id>/approve).
+//   D.4  The commit result's next_prompt does not announce the candidate:
+//        it is advisory drafting context (reviewable: false), not a
+//        decision, so no approve invitation reaches the conversation.
 //
 // Requires Postgres — set REQUIRES_PG=0 to skip.
 
@@ -317,42 +318,43 @@ describe.skipIf(skip)(
 );
 
 // ---------------------------------------------------------------------------
-// D.4 Commit result next_prompt carries the candidate notice
+// D.4 Commit result next_prompt does not announce the advisory candidate
 // ---------------------------------------------------------------------------
 
-describe.skipIf(skip)("D.4 — commit result next_prompt contains the candidate notice line", () => {
-  test("next_prompt includes POST /v1/skill-candidates/<id>/approve", async () => {
-    const conversationId = await freshConversation();
-    const toolCtx = stubToolCtx(conversationId, readyDraft("sc-notice-check", "SC Notice Check"));
-    const result = await commitWorkflowAtomic({
-      ctx: toolCtx,
-      skipPriorApprovalCheck: true,
-    });
-    expect(result.ok).toBe(true);
+describe.skipIf(skip)(
+  "D.4 — commit result next_prompt does not invite approving the candidate",
+  () => {
+    test("next_prompt names no skill candidate and no approve URL", async () => {
+      const conversationId = await freshConversation();
+      const toolCtx = stubToolCtx(conversationId, readyDraft("sc-notice-check", "SC Notice Check"));
+      const result = await commitWorkflowAtomic({
+        ctx: toolCtx,
+        skipPriorApprovalCheck: true,
+      });
+      expect(result.ok).toBe(true);
 
-    const data = result.data as Record<string, unknown>;
-    const nextPrompt = data.next_prompt as string | undefined;
+      const data = result.data as Record<string, unknown>;
+      const nextPrompt = data.next_prompt as string | undefined;
 
-    // The operator must be able to act on the candidate from the LLM
-    // turn summary; the approve URL must be present in the prompt.
-    expect(typeof nextPrompt).toBe("string");
-    expect(nextPrompt).toContain("/v1/skill-candidates/");
-    expect(nextPrompt).toContain("/approve");
+      // The candidate is advisory: no surface offers it as a decision, so the
+      // turn must not hand the user an approve URL for it.
+      expect(typeof nextPrompt).toBe("string");
+      expect(nextPrompt).not.toContain("/v1/skill-candidates/");
+      expect(nextPrompt).not.toContain("Skill-Candidate");
 
-    // The workflow id embedded in the URL must match the committed workflow.
-    const workflowId = data.workflow_id as string;
-    const candidateRows = await ctx.testDb.db
-      .select({ id: skillCandidates.id })
-      .from(skillCandidates)
-      .where(
-        and(
-          eq(skillCandidates.tenant_id, ctx.tenant_id),
-          eq(skillCandidates.workflow_id, workflowId),
-        ),
-      );
-    expect(candidateRows).toHaveLength(1);
-    const candidateId = candidateRows[0]!.id;
-    // The notice line must reference the actual candidate id.
-    expect(nextPrompt).toContain(candidateId);
-  }, 60_000);
-});
+      // The candidate itself is still filed, as drafting context.
+      const workflowId = data.workflow_id as string;
+      const candidateRows = await ctx.testDb.db
+        .select({ id: skillCandidates.id })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, ctx.tenant_id),
+            eq(skillCandidates.workflow_id, workflowId),
+          ),
+        );
+      expect(candidateRows).toHaveLength(1);
+      expect(nextPrompt).not.toContain(candidateRows[0]!.id);
+    }, 60_000);
+  },
+);
