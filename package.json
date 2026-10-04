@@ -20,7 +20,7 @@
   "scripts": {
     "audit:invariants": "bun run apps/engine/scripts/audit-invariants.ts",
     "build:all": "bun run build:engine && bun run build:sk",
-    "build:cockpit": "bunx vite build --config apps/cockpit/vite.config.ts && bun run gen:cockpit",
+    "build:cockpit": "NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts && bun run gen:cockpit",
     "build:engine": "bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --external cpu-features --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && sh scripts/codesign-macos.sh dist/engine",
     "build:engine:linux-x64": "bun run build:cockpit && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --external cpu-features --target=bun-linux-x64 --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"${ENGINE_VERSION:-$(node -p 'require(\"./package.json\").version')}\\\"\" --outfile dist/engine-linux-x64",
     "build:sk": "bun build apps/sk/src/index.ts --compile --external cpu-features --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/sk && sh scripts/codesign-macos.sh dist/sk",
