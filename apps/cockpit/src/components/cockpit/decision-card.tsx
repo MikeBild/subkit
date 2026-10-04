@@ -53,7 +53,7 @@ const KIND_EFFECT: Record<DecidableKind, TranslationKey> = {
   skill: "decisions.effect.skill",
 };
 
-const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
+export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
   observedFailure: "decisions.origin.observedFailure",
   repairPattern: "decisions.origin.repairPattern",
   failurePattern: "decisions.origin.failurePattern",

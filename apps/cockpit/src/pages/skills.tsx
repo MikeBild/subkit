@@ -4,14 +4,9 @@ import type { SortingState } from "@tanstack/react-table";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import {
-  approveSkillCandidate,
-  listProposedSkillCandidates,
-  rejectSkillCandidate,
-  type SkillCandidate,
-} from "@/api/decisions";
+import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
-import { absolute, attentionHref, chatNewHref, recordHref, routerTarget } from "@/app/links";
+import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import {
@@ -47,6 +42,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
+import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
   type SkillAppliesTo,
@@ -85,11 +81,9 @@ function rowTitle(row: SkillRow): string {
   return row.kind === "skill" ? row.skill.title : row.candidate.title;
 }
 
-/** Where a row's name leads: the skill's page, or the proposals' review sheet. */
-function rowAddress(row: SkillRow): string {
-  return row.kind === "skill"
-    ? recordHref("skills", row.skill.id)
-    : attentionHref({ review: "skills" });
+/** A skill's own page; a proposal has none — it opens in place, in its sheet. */
+function rowAddress(row: SkillRow): string | null {
+  return row.kind === "skill" ? recordHref("skills", row.skill.id) : null;
 }
 
 function rowScope(row: SkillRow): string {
@@ -111,6 +105,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const canRead = permissions.includes("skill:read");
   const canWrite = permissions.includes("skill:write");
   const canChat = permissions.includes("conversation:write");
+  const [proposalId, setProposalId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
@@ -127,32 +122,17 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     ...live,
   });
   const open = proposals.data?.items ?? [];
+  const proposal = open.find((candidate) => candidate.id === proposalId) ?? null;
   const decided = () => {
     void client.invalidateQueries({ queryKey: PROPOSALS_KEY });
     void client.invalidateQueries({ queryKey: ["catalog"] });
+    void client.invalidateQueries({ queryKey: ["decisions"] });
+    void client.invalidateQueries({ queryKey: ["attention"] });
   };
-  const accept = useMutation({
-    mutationFn: (candidate: SkillCandidate) =>
-      approveSkillCandidate(candidate.id, candidate.review_digest ?? ""),
-    onSuccess: (_result, candidate) => {
-      toast.success(t("skills.accepted", { name: candidate.title }));
-      decided();
-    },
-    onError: () => toast.error(t("common.actionFailed")),
-  });
-  const reject = useMutation({
-    mutationFn: (candidate: SkillCandidate) =>
-      rejectSkillCandidate(candidate.id, t("skills.rejectReason")),
-    onSuccess: (_result, candidate) => {
-      toast.success(t("skills.rejected", { name: candidate.title }));
-      decided();
-    },
-    onError: () => toast.error(t("common.actionFailed")),
-  });
   const title = t("nav.skills");
 
-  // One list, as a reader expects it: the open proposals first, each with
-  // its two verbs, then the skills themselves.
+  // One list, as a reader expects it: the open proposals first, then the
+  // skills themselves. A proposal is decided in its sheet, after reading it.
   const columns = useMemo<CockpitColumn<SkillRow>[]>(() => {
     const column = tableColumns<SkillRow>({ t, dateTime });
     return [
@@ -273,32 +253,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             getRowId={(row) =>
               row.kind === "skill" ? row.skill.id : `proposal:${row.candidate.id}`
             }
-            rowActions={(row, index) =>
-              row.kind === "proposal" && canWrite ? (
-                <span className="flex items-center gap-1">
-                  {row.candidate.reviewable !== false && row.candidate.review_digest ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      pending={accept.isPending && accept.variables?.id === row.candidate.id}
-                      onClick={() => accept.mutate(row.candidate)}
-                      data-testid={`skills-accept-${index}`}
-                    >
-                      {t("skills.accept")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    pending={reject.isPending && reject.variables?.id === row.candidate.id}
-                    onClick={() => reject.mutate(row.candidate)}
-                    data-testid={`skills-reject-${index}`}
-                  >
-                    {t("skills.reject")}
-                  </Button>
-                </span>
-              ) : null
-            }
             toolbar={
               <FilterBar
                 search={{
@@ -332,17 +286,30 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             hasActiveFilters={Boolean(q)}
             sorting={sorting}
             onSortingChange={setSorting}
-            // A proposal has no page of its own: its name opens the review of
-            // the proposals on the Übersicht, where it is decided.
-            onOpen={(row) => void navigate(routerTarget(rowAddress(row)))}
+            // A proposal has no page of its own: its name opens its sheet here,
+            // where what it says is read and it is adopted or discarded.
+            onOpen={(row) => {
+              if (row.kind === "proposal") setProposalId(row.candidate.id);
+              else void navigate(routerTarget(recordHref("skills", row.skill.id)));
+            }}
             rowHref={rowAddress}
-            rowLabel={(row) => rowTitle(row)}
+            rowLabel={(row) =>
+              row.kind === "proposal"
+                ? t("skills.openProposal", { name: rowTitle(row) })
+                : rowTitle(row)
+            }
             columnsLabel={t("catalog.columns")}
             actionsLabel={t("common.actions")}
             collectionId="skills"
           />
         </div>
       </div>
+      <SkillProposalSheet
+        candidate={proposal}
+        permissions={permissions}
+        onClose={() => setProposalId(null)}
+        onDecided={decided}
+      />
     </Page>
   );
 }
