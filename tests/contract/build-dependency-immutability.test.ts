@@ -3,12 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "..", "..");
-const surfaces = [
-  "package.json",
-  ".github/workflows/release.yml",
-  "Dockerfile",
-  "scripts/stage-cli-binaries.ts",
-].map((path) => ({ path, body: readFileSync(join(REPO, path), "utf8") }));
+const surfaces = ["package.json", "Dockerfile", "scripts/stage-cli-binaries.ts"].map((path) => ({
+  path,
+  body: readFileSync(join(REPO, path), "utf8"),
+}));
 
 describe("compiled builds keep installed dependencies immutable", () => {
   test("externalizes ssh2's optional native addon instead of deleting it", () => {

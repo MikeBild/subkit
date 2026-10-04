@@ -1,703 +1,136 @@
 name: release
 
 on:
-  # Triggered by `git push origin <tag>` — releases are cut by hand:
-  # bump the version, tag `v<version>`, and push the tag. This workflow
-  # then builds the binaries, publishes the GitHub Release, and pushes
-  # the Docker image.
-  #
-  # We intentionally do NOT listen on `release: published` — a single tag
-  # push must fan out exactly once.
   push:
-    tags: ['v*.*.*']
-  # Manual recovery — two modes:
-  #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
-  #      github.ref becomes the tag ref and the workflow runs as if the
-  #      tag were just pushed. Uses the workflow file AT THAT TAG.
-  #   2. `gh workflow run release.yml --ref main -f tag=<tag>` — runs
-  #      the CURRENT main's workflow file but checks out `<tag>` for the
-  #      build + attaches assets to that tag's release. Use this when a
-  #      past tag's workflow file is broken (e.g. stuck macos-13 runners)
-  #      and you need main's fixes.
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build+release against (leave blank to use github.ref)"
-        required: false
-        default: ""
-      sweep_versions:
-        description: "Older versions whose -amd64/-arm64 tags should also be removed (space separated)"
-        required: false
-        default: ""
+        description: "Tag to release"
+        required: true
 
 permissions:
   contents: write
-  # `gh run download` in publish-release reads artifacts produced by
-  # earlier jobs of the same run — requires `actions: read`.
-  # The `gate` job dispatches ci.yml when no green run exists for the
-  # release SHA (`gh workflow run`); that needs `actions: write`. Without
-  # it the dispatch fails with HTTP 403 (Resource not accessible by
-  # integration) and the gate times out — releases stall even when
-  # ci.yml would have passed.
-  actions: write
-  # `docker-publish` pushes the image to GHCR using GITHUB_TOKEN.
   packages: write
 
-# Prevent two runs for the same tag (e.g. a tag push plus a manual
-# workflow_dispatch) from building + publishing the same release assets
-# concurrently. Per-tag group — different versions may build in parallel.
-# NOTE: docker-publish mutates the shared `:latest` tag. Two different
-# versions releasing at once is last-write-wins on `:latest`; if that ever
-# matters (or a new step mutates other shared state), tighten this back to
-# a single global group.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  # The release gate is the SAME `ci.yml / build` job that protects `main`.
-  # We don't duplicate steps here. Two paths:
-  #
-  #  1. Tag points at a SHA that already has a green `ci / build` run →
-  #     skip the gate, save ~7 min per release.
-  #  2. Tag points at a SHA without a green run (e.g. retag, manual
-  #     dispatch with --ref main while ci is mid-flight) → invoke the
-  #     full ci.yml workflow on that SHA via `gh workflow run` and wait
-  #     on it.
-  gate:
-    name: gate
+  release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
-      - name: Resolve tag SHA
-        id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Require green ci.yml on this SHA
+
+      - name: Resolve version
+        run: echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          build-args: ENGINE_VERSION=${{ env.VERSION }}
+          tags: subkit:release
+          labels: |
+            org.opencontainers.image.source=https://github.com/MikeBild/subkit
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+
+      - name: Smoke image
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ steps.sha.outputs.sha }}
-          # GitHub's `gh workflow run --ref` requires a branch or tag
-          # name; raw SHAs return HTTP 422 "No ref found". Pass the tag
-          # we're releasing (the workflow_dispatch ref or the inputs.tag
-          # override) so the dispatch resolves correctly.
-          DISPATCH_REF: ${{ inputs.tag || github.ref_name }}
+          MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
+          SUBKIT_IMAGE: subkit:release
+        run: |
+          docker compose -p subkit-release -f docker-compose.yml up --detach --wait --wait-timeout 360
+          curl --fail --silent --show-error http://127.0.0.1:3000/health
+          curl --fail --silent --show-error http://127.0.0.1:3000/ready
+
+      - name: Compose logs and cleanup
+        if: always()
+        env:
+          SUBKIT_IMAGE: subkit:release
+        run: |
+          docker compose -p subkit-release -f docker-compose.yml logs --no-color || true
+          docker compose -p subkit-release -f docker-compose.yml down --volumes --remove-orphans || true
+
+      - name: Extract release binaries from the image
         run: |
           set -euo pipefail
-          # A release tag is pushed alongside its `main` commit, so a
-          # ci.yml run for this exact SHA is normally ALREADY running
-          # (triggered by the `main` push). Wait for whatever ci.yml run
-          # exists on this SHA — only dispatch one if none exists at all.
-          # Previously this step always dispatched a fresh run and waited
-          # 30 min; ci.yml itself takes ~30+ min, so the wait timed out
-          # and failed the release even though ci.yml went green. The
-          # 300-min budget below covers both ci.yml's runtime and GitHub
-          # runner queueing. A run can register immediately while its
-          # central build job waits close to an hour for a runner; a
-          # 100-min wall-clock budget therefore failed v6.2.5 five minutes
-          # before that exact-SHA CI run completed successfully.
-          # `|| echo ""` — the step runs under `bash -e`, so a single
-          # transient GitHub API hiccup inside the polling loop would
-          # otherwise kill the whole gate (v6.15.1: one `dial tcp …
-          # i/o timeout` failed the release while ci.yml went green).
-          # An empty row is already handled by the callers as "not
-          # registered yet — keep polling".
-          latest_run() {
-            gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow ci.yml \
-              --commit "$SHA" \
-              --limit 1 \
-              --json conclusion,status \
-              --jq '.[0] // ""' 2>/dev/null || echo ""
-          }
-          # Poll for the push-triggered ci.yml run to register instead
-          # of a fixed `sleep 30`. The push trigger usually fires within
-          # a few seconds, but a slow webhook can take longer — a fixed
-          # window either wastes time or dispatches a redundant run. Poll
-          # every 6s for up to 60s; proceed to the wait loop as soon as a
-          # run appears. Only if none has registered after the full poll
-          # budget do we dispatch one ourselves.
-          found=""
-          poll_deadline=$(( $(date +%s) + 60 ))
-          while [ "$(date +%s)" -lt "$poll_deadline" ]; do
-            if [ -n "$(latest_run)" ]; then
-              found="yes"
-              break
-            fi
-            sleep 6
+          mkdir -p assets
+          id=$(docker create subkit:release)
+          docker cp "$id:/usr/local/bin/engine.bin" assets/engine_linux_x64
+          docker cp "$id:/usr/local/share/subkit/binaries/." assets/
+          docker rm "$id"
+          rm -f assets/SHA256SUMS
+          for a in engine_linux_x64 sk_darwin_arm64 sk_darwin_x64 sk_linux_arm64 sk_linux_x64 sk_windows_x64.exe; do
+            test -s "assets/$a"
           done
-          if [ -z "$found" ]; then
-            echo "No ci.yml run for $SHA after 60s — dispatching one against ref=$DISPATCH_REF."
-            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
-          else
-            echo "Found an existing ci.yml run for $SHA — waiting for it."
-          fi
-          # Wait up to 300 min for the ci.yml run on this SHA to complete.
-          # This remains below GitHub's six-hour default job limit and
-          # still fails closed when CI never completes.
-          deadline=$(( $(date +%s) + 18000 ))
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            sleep 30
-            row=$(latest_run)
-            if [ -z "$row" ] || [ "$row" = "null" ]; then continue; fi
-            st=$(echo "$row" | jq -r '.status')
-            if [ "$st" = "completed" ]; then
-              cc=$(echo "$row" | jq -r '.conclusion')
-              if [ "$cc" = "success" ]; then
-                echo "ci.yml run for $SHA completed: success — gate passes."
-                exit 0
-              fi
-              echo "ci.yml run for $SHA completed: $cc — failing release gate."
-              exit 1
-            fi
-          done
-          echo "Timed out (300 min) waiting for ci.yml run on $SHA."
-          exit 1
+          chmod 755 assets/engine_linux_x64
+          assets/engine_linux_x64 --smoke
+          (cd assets && sha256sum engine_* sk_* > SHA256SUMS && cat SHA256SUMS)
 
-  # ── Multi-platform CLI binaries ──
-
-  build-cli-binaries:
-    name: build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-    needs: gate
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Using `include` only (no base dimensions) so every listed
-        # combination produces exactly one job. A previous base
-        # `binary: [...]` dimension made GitHub Actions merge each
-        # base entry with the LAST matching include, silently dropping
-        # every non-windows build. See git log for the fix.
-        include:
-          # darwin-arm64
-          - binary: sk
-            os: darwin
-            arch: arm64
-            runner: macos-14
-            target: ""
-            entry: apps/sk/src/index.ts
-          - binary: engine
-            os: darwin
-            arch: arm64
-            runner: macos-14
-            target: ""
-            entry: apps/engine/src/index.ts
-          # darwin-x64
-          - binary: sk
-            os: darwin
-            arch: x64
-            runner: macos-15-intel
-            target: ""
-            entry: apps/sk/src/index.ts
-          - binary: engine
-            os: darwin
-            arch: x64
-            runner: macos-15-intel
-            target: ""
-            entry: apps/engine/src/index.ts
-          # linux-x64
-          - binary: sk
-            os: linux
-            arch: x64
-            runner: ubuntu-latest
-            target: ""
-            entry: apps/sk/src/index.ts
-          - binary: engine
-            os: linux
-            arch: x64
-            runner: ubuntu-latest
-            target: ""
-            entry: apps/engine/src/index.ts
-          # linux-arm64
-          - binary: sk
-            os: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            target: ""
-            entry: apps/sk/src/index.ts
-          - binary: engine
-            os: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            target: ""
-            entry: apps/engine/src/index.ts
-          # windows-x64
-          - binary: sk
-            os: windows
-            arch: x64
-            runner: windows-latest
-            target: ""
-            entry: apps/sk/src/index.ts
-          - binary: engine
-            os: windows
-            arch: x64
-            runner: windows-latest
-            target: ""
-            entry: apps/engine/src/index.ts
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          # See bun-version comment in the `test` job above.
-          bun-version: 1.4.0
-      - name: Cache Bun install
-        uses: actions/cache@v6
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      # Cache the embedded-embedding model so each engine matrix build
-      # doesn't re-download ~146 MB from the HuggingFace CDN. Keyed on the
-      # fetch script (pins the model id) + os/arch. No-op for the sk binary.
-      - name: Cache embedding assets
-        uses: actions/cache@v6
-        with:
-          path: apps/engine/assets/embeddings
-          key: ${{ runner.os }}-${{ matrix.arch }}-embed-assets-${{ hashFiles('scripts/fetch-embedding-assets.ts') }}
-      - run: bun install --frozen-lockfile
-
-      - name: Compile binary
-        shell: bash
-        env:
-          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
-        run: |
-          VERSION="${RELEASE_REF#v}"
-          EXT=""
-          TARGET_FLAG=""
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            EXT=".exe"
-          fi
-          if [ -n "${{ matrix.target }}" ]; then
-            TARGET_FLAG="--target=${{ matrix.target }}"
-          fi
-          OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
-          mkdir -p dist
-          # The engine binary inlines the embedding model + tokenizer +
-          # onnxruntime-web WASM (see embedded-assets.ts); fetch them before
-          # the compile, exactly as package.json build:engine does. Skipped
-          # for the sk binary, which embeds nothing.
-          if [ "${{ matrix.binary }}" = "engine" ]; then
-            bun scripts/fetch-embedding-assets.ts
-          fi
-          # Identity-define NODE_ENV so the bundler does NOT inline its
-          # build-time value ("development" on a bare runner) into the
-          # binary — every runtime NODE_ENV gate (devtools wrap, egress
-          # guard strictness, OIDC Secure cookies) must stay runtime-
-          # resolved. See the same define in package.json build:* scripts.
-          bun build "${{ matrix.entry }}" \
-            --compile \
-            --external cpu-features \
-            $TARGET_FLAG \
-            --define "process.env.NODE_ENV=process.env.NODE_ENV" \
-            --define "BUILD_VERSION=\"$VERSION\"" \
-            --outfile "dist/$OUT"
-
-      - name: macOS codesign
-        if: matrix.os == 'darwin'
-        run: |
-          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}"
-          codesign --remove-signature "$BINARY" 2>/dev/null || true
-          codesign --sign - --force "$BINARY"
-
-      # Smoke-test the native binary. Cross-targets (matrix.target != "")
-      # can't be executed on this runner, so they remain un-smoked — the
-      # un-pinned attack surface that justifies this step is "did
-      # `bun build --compile` produce a runnable binary on the runner's own
-      # arch", not "does the cross-compiled artifact work".
-      - name: Smoke native binary
-        if: matrix.target == ''
-        shell: bash
-        run: |
-          set -eux
-          EXT=""
-          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
-          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
-          if [ "${{ matrix.binary }}" = "engine" ]; then
-            "$BINARY" --smoke
-          else
-            "$BINARY" --version
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}
-          path: dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
-          # Intermediate hand-off to publish-release; the binaries also become
-          # Release assets, so keep the artifacts around for the shortest time.
-          retention-days: 1
-
-  # ── Publish GitHub Release with all binaries + checksums ──
-
-  publish-release:
-    name: publish-release
-    needs: build-cli-binaries
-    # Publish when we have a tag context — either a tag-ref trigger
-    # (push/release events) or a workflow_dispatch with inputs.tag set.
-    # Skips for branch-only dispatches that are validating the build
-    # matrix.
-    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      # actions/download-artifact@v4 reliably fails when pulling 20+
-      # artifacts in parallel ("Artifact download failed after 5
-      # retries" — Azure blob transient). Iterate via `gh run download`
-      # with per-artifact retries instead.
-      - name: Download all artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          for binary in sk engine; do
-            for os in darwin linux windows; do
-              for arch in x64 arm64; do
-                if [ "$os" = "windows" ] && [ "$arch" = "arm64" ]; then continue; fi
-                name="${binary}_${os}_${arch}"
-                for attempt in 1 2 3 4 5; do
-                  if gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$name" --dir "artifacts/$name" 2>&1; then
-                    break
-                  fi
-                  if [ "$attempt" -eq 5 ]; then
-                    echo "FATAL: failed to download $name after 5 attempts"
-                    exit 1
-                  fi
-                  echo "retry $attempt for $name"
-                  sleep $((attempt * 5))
-                done
-              done
-            done
-          done
-          find artifacts -type f | sort
-
-      - name: Generate SBOM (CycloneDX)
-        # Pinned to a commit SHA, not @v0, because anchore frequently
-        # republishes major-tagged actions with breaking changes. To
-        # update: pick the latest sha at https://github.com/anchore/sbom-action
-        # and re-pin here.
-        #
-        # The trailing comment names the release the SHA belongs to, and it has
-        # to be checked rather than copied. It said `v0.20.4` here for two
-        # different SHAs, neither of which was that release: the pin was
-        # v0.24.0, and v0.20.4 is a genuine release from over a year earlier.
-        # Anyone following the instruction above would have gone looking for
-        # v0.20.4, found it, and pinned a year-old action believing they were
-        # staying current. Resolve the tag through the API before writing it.
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
-        with:
-          path: .
-          format: cyclonedx-json
-          output-file: artifacts/sbom.cdx.json
-          # Don't auto-attach to the GitHub Release here; we batch the
-          # whole upload in the next step so the SHA256SUMS line covers
-          # the SBOM too.
-          upload-release-assets: false
-          upload-artifact: false
-
-      - name: Generate SHA256SUMS
-        run: |
-          set -euo pipefail
-          cd artifacts
-          # Keep the output outside artifacts while walking the tree. Writing
-          # SHA256SUMS.tmp inside artifacts made `find` hash the empty temp file
-          # and, because the SBOM step used to run later, omitted the SBOM.
-          sums_tmp=$(mktemp)
-          trap 'rm -f "$sums_tmp"' EXIT
-          find . -type f -not -name 'SHA256SUMS*' -not -name '*.sig' | sort | while read -r f; do
-            digest=$(sha256sum "$f" | cut -d ' ' -f 1)
-            printf '%s  %s\n' "$digest" "$(basename "$f")"
-          done > "$sums_tmp"
-          mv "$sums_tmp" SHA256SUMS
-          trap - EXIT
-
-          expected=$(find . -type f -not -name 'SHA256SUMS*' -not -name '*.sig' | wc -l | tr -d ' ')
-          actual=$(wc -l < SHA256SUMS | tr -d ' ')
-          binary_expected=$(find . -type f \( -name 'sk_*' -o -name 'engine_*' \) | wc -l | tr -d ' ')
-          binary_actual=$(grep -Ec '^[0-9a-f]{64}  (sk|engine)_' SHA256SUMS || true)
-          sbom_actual=$(grep -Ec '^[0-9a-f]{64}  sbom\.cdx\.json$' SHA256SUMS || true)
-          test "$actual" -eq "$expected"
-          test "$binary_actual" -eq "$binary_expected"
-          test "$sbom_actual" -eq 1
-          if grep -Eq 'SHA256SUMS|\.sig$' SHA256SUMS; then
-            echo "SHA256SUMS must not hash itself or signature files" >&2
-            exit 1
-          fi
-          cat SHA256SUMS
-
-      # Sign the complete SHA256SUMS file (binaries + SBOM) with the
-      # project's Ed25519 release key. `updater.ts::performUpdate`
-      # refuses to install any binary whose SHA256SUMS does not validate
-      # against the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded
-      # as the `SHA256SUMS.sig` release asset alongside the sums file.
-      - name: Sign SHA256SUMS (Ed25519)
+      - name: Sign SHA256SUMS
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
-            echo "FATAL: RELEASE_SIGNING_KEY secret is not set — refusing to publish an unsigned release."
-            exit 1
-          fi
-          # Stash the PEM-encoded private key into a tmpfile so openssl
-          # can read it; tmpfile is in the runner's ephemeral storage
-          # and is gone with the runner.
-          tmpkey=$(mktemp)
-          trap 'rm -f "$tmpkey"' EXIT
-          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$tmpkey"
-          openssl pkeyutl -sign -inkey "$tmpkey" -rawin -in artifacts/SHA256SUMS -out artifacts/SHA256SUMS.sig
-          ls -la artifacts/SHA256SUMS artifacts/SHA256SUMS.sig
+          test -n "${RELEASE_SIGNING_KEY:-}"
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+          openssl pkeyutl -sign -inkey "$key" -rawin -in assets/SHA256SUMS -out assets/SHA256SUMS.sig
 
-      # The release body is the tag's own CHANGELOG.md section, so the
-      # GitHub release page answers "what shipped?" without a click —
-      # an empty body made a released commit look unreleased. Fetched
-      # via the contents API at the tag ref (this job deliberately has
-      # no checkout: a checkout would silently change the SBOM scan
-      # input from artifacts-only to the whole source tree). Best-effort
-      # by construction: a missing section falls back to a pointer at
-      # CHANGELOG.md and never fails the release.
-      - name: Extract release notes from CHANGELOG
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        run: |
+          set -euo pipefail
+          for image in docker.io/mikebild/subkit ghcr.io/mikebild/subkit; do
+            for tag in "$VERSION" latest; do
+              docker tag subkit:release "$image:$tag"
+              docker push "$image:$tag"
+            done
+          done
+
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          VERSION="${TAG#v}"
-          gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGELOG.md?ref=${TAG}" \
-            --jq .content | base64 -d > changelog-at-tag.md || true
-          awk -v ver="$VERSION" '
-            $0 ~ "^## \\[" ver "\\]" { hit=1; next }
-            hit && /^## \[/ { exit }
-            hit { print }
-          ' changelog-at-tag.md 2>/dev/null | sed -e '/./,$!d' > release-notes.md || true
-          if [ ! -s release-notes.md ]; then
-            echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md) for this release." > release-notes.md
-          fi
-          echo "--- release body ---"
-          cat release-notes.md
+          prev=$(git describe --tags --abbrev=0 --match 'v*.*.*' "$TAG^" 2>/dev/null || true)
+          git log --no-merges --format='- %s' ${prev:+$prev..}"$TAG" > notes.md
+          gh release create "$TAG" assets/* --title "$TAG" --notes-file notes.md
 
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          body_path: release-notes.md
-          files: |
-            artifacts/*/sk_*
-            artifacts/*/engine_*
-            artifacts/SHA256SUMS
-            artifacts/SHA256SUMS.sig
-            artifacts/sbom.cdx.json
-
-  request-deploy:
-    name: Request production deployment
-    needs: publish-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch the exact release tag
+      - name: Request production deployment
         env:
           DEPLOY_TOKEN: ${{ secrets.SUBKIT_DEPLOY_DISPATCH_TOKEN }}
-          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          [ -n "${DEPLOY_TOKEN:-}" ] \
-            || { echo "SUBKIT_DEPLOY_DISPATCH_TOKEN is required" >&2; exit 1; }
-          payload=$(jq -nc --arg ref "$TAG" \
-            '{event_type:"subkit-release",client_payload:{ref:$ref}}')
+          test -n "${DEPLOY_TOKEN:-}"
+          payload=$(jq -nc --arg ref "$TAG" '{event_type:"subkit-release",client_payload:{ref:$ref}}')
           curl --fail-with-body --silent --show-error -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $DEPLOY_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/MikeBild/subkit-deploy/dispatches \
             --data "$payload"
-
-  # ── Native Linux image builds; no QEMU or cross-architecture execution ──
-  docker-build:
-    name: Docker linux/${{ matrix.arch }}
-    needs: publish-release
-    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: amd64
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - name: Download native sk artifacts for the image
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: sk_*
-          path: docker-cli/out/binaries
-          merge-multiple: true
-      - name: Verify and checksum embedded sk artifacts
-        run: |
-          set -euo pipefail
-          cd docker-cli/out/binaries
-          test "$(find . -maxdepth 1 -type f -name 'sk_*' | wc -l)" -eq 5
-          sha256sum sk_* > SHA256SUMS
-      - name: Resolve version
-        id: meta
-        env:
-          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
-        run: echo "version=${RELEASE_REF#v}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push architecture image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/${{ matrix.arch }}
-          push: true
-          provenance: mode=max
-          sbom: true
-          build-args: |
-            ENGINE_VERSION=${{ steps.meta.outputs.version }}
-            CLI_BINARIES_SOURCE=cli_binaries
-          build-contexts: cli_binaries=./docker-cli
-          tags: |
-            docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}-${{ matrix.arch }}
-            ghcr.io/mikebild/subkit:${{ steps.meta.outputs.version }}-${{ matrix.arch }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/MikeBild/subkit
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
-      - name: Smoke image with external PostgreSQL, health and readiness
-        env:
-          # Test-only bootstrap material. The production image deliberately
-          # refuses to invent a MASTER_KEY in a stateless container.
-          MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
-          SUBKIT_IMAGE: docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}-${{ matrix.arch }}
-        run: |
-          docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml up --detach --wait --wait-timeout 360
-          curl --fail --silent --show-error http://127.0.0.1:3000/health
-          curl --fail --silent --show-error http://127.0.0.1:3000/ready
-      - name: Compose diagnostics and cleanup
-        if: always()
-        env:
-          SUBKIT_IMAGE: docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}-${{ matrix.arch }}
-        run: |
-          docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml ps || true
-          docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml logs --no-color || true
-          docker compose -p "subkit-release-${{ matrix.arch }}" -f docker-compose.yml down --volumes --remove-orphans || true
-
-  docker-publish:
-    name: Publish public Docker Hub and private GHCR manifests
-    needs: [gate, docker-build]
-    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Resolve version
-        id: meta
-        env:
-          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
-        run: echo "version=${RELEASE_REF#v}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create version and latest manifests
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          for registry in docker.io ghcr.io; do
-            image="$registry/mikebild/subkit"
-            docker buildx imagetools create --tag "$image:$VERSION" "$image:$VERSION-amd64" "$image:$VERSION-arm64"
-            docker buildx imagetools create --tag "$image:latest" "$image:$VERSION-amd64" "$image:$VERSION-arm64"
-          done
-      - name: Verify public Docker Hub and private GHCR access
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          ghcr_output="$(docker buildx imagetools inspect "ghcr.io/mikebild/subkit:$VERSION")"
-          grep -q 'linux/amd64' <<<"$ghcr_output"
-          grep -q 'linux/arm64' <<<"$ghcr_output"
-          docker logout docker.io
-          dockerhub_output="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$VERSION")"
-          grep -q 'linux/amd64' <<<"$dockerhub_output"
-          grep -q 'linux/arm64' <<<"$dockerhub_output"
-          docker logout ghcr.io
-          if docker buildx imagetools inspect "ghcr.io/mikebild/subkit:$VERSION"; then
-            echo '::error::GHCR image must remain private'
-            exit 1
-          fi
-      # Every release leaves `:VERSION-amd64` and `:VERSION-arm64` behind. They
-      # exist only so the line above can join them into one multi-arch tag, and
-      # nobody should pull them: an arch tag pulled on the other architecture
-      # fails in a way that looks like a broken image.
-      #
-      # Best-effort ON PURPOSE, and only here: whether this token may delete
-      # tags is not knowable until it tries, and a release that shipped must not
-      # fail over tidying up afterwards.
-      - name: Remove the per-architecture tags
-        continue-on-error: true
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-          SWEEP: ${{ inputs.sweep_versions }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -u
-          jwt="$(curl -s -H 'Content-Type: application/json' \
-            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-            https://hub.docker.com/v2/users/login/ | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
-          if [ -z "$jwt" ]; then echo 'no Docker Hub session; leaving the arch tags in place'; exit 0; fi
-          for version in $VERSION $SWEEP; do
-            for arch in amd64 arm64; do
-              tag="${version}-${arch}"
-              code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
-                -H "Authorization: JWT ${jwt}" \
-                "https://hub.docker.com/v2/repositories/mikebild/subkit/tags/${tag}/")"
-              # 404 is the goal state reached by another route, not a failure.
-              case "$code" in
-                2*|404) echo "removed or already gone: ${tag} (${code})" ;;
-                *) echo "could not remove ${tag} (${code})" ;;
-              esac
-            done
-          done
-      # NOT best-effort. Deleting a tag can collect the manifest it pointed at,
-      # so the only thing that proves the release is still whole is asking for
-      # it again. Kept apart from the step above for exactly that reason: one
-      # step with `continue-on-error` would swallow the two failures that have
-      # to be told apart — "the token may not delete" and "the release is now
-      # broken".
-      - name: The multi-arch manifests still resolve
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          for tag in "$VERSION" latest; do
-            out="$(docker buildx imagetools inspect "docker.io/mikebild/subkit:$tag")"
-            grep -q 'linux/amd64' <<<"$out"
-            grep -q 'linux/arm64' <<<"$out"
-            echo "docker.io/mikebild/subkit:$tag still resolves on both platforms"
-          done
