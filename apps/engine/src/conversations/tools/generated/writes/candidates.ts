@@ -2,10 +2,8 @@
 
 import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
-import {
-  AdvisoryCandidateError,
-  approveSkillCandidate,
-} from "../../../../skill-candidates/service.ts";
+import { AdvisoryCandidateError } from "../../../../skill-candidates/candidate-view.ts";
+import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
