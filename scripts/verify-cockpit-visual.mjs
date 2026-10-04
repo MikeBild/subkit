@@ -2886,42 +2886,87 @@ async function mockApi(route) {
         },
       ],
     });
-  if (path === "/v1/skill-candidates")
-    return json(route, {
-      total: 1,
-      reviewable_total: 1,
-      items: [
-        {
-          id: uuid,
-          tenant_id: uuid,
-          reviewable: true,
-          review_reason: null,
-          review_digest: "a".repeat(64),
-          base_version_id: uuid,
-          scope: "workflow",
-          connector_id: null,
-          workflow_id: uuid,
-          endpoint_key: null,
-          pattern_kind: "repair_pattern",
-          title: "Umbenannte Antwortfelder zuerst prüfen",
-          // The text approval would promote. Never rendered before this change.
-          body: "Wenn ein Schritt plötzlich undefined liest, hat das System meist ein Feld verschoben statt es zu entfernen.\n\nErst die Antwortstruktur mit der aufgezeichneten vergleichen, dann den Pfad nachziehen — ein neuer Aufruf ist selten nötig.",
-          examples: [`data.id wurde zu data.result.id (Lauf ${uuid})`],
-          best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
-          pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
-          doc_refs: ["docs/concepts/self-healing.md"],
-          evidence_count: 2,
-          confidence: "high",
-          status: "proposed",
-          promoted_skill_id: null,
-          fingerprint: "fp-1",
-          version: 1,
-          tags: ["domain:reporting"],
-          created_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
-          updated_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
-        },
-      ],
+  if (path === "/v1/skill-candidates") {
+    // The engine's SkillCandidate, and its filters: `status` and `reviewable`
+    // narrow the rows, `total` counts them, `reviewable_total` counts the
+    // adoptable ones among them. The two advisory rows are what PROD holds most
+    // of — a workflow's described interface and a recurring failure — and a
+    // page that asked for them would show them as decisions it cannot take.
+    const candidate = (overrides) => ({
+      id: uuid,
+      tenant_id: uuid,
+      scope: "workflow",
+      connector_id: null,
+      endpoint_key: null,
+      workflow_id: uuid,
+      pattern_kind: "repair_pattern",
+      title: "Umbenannte Antwortfelder zuerst prüfen",
+      body: "Wenn ein Schritt plötzlich undefined liest, hat das System meist ein Feld verschoben statt es zu entfernen.\n\nErst die Antwortstruktur mit der aufgezeichneten vergleichen, dann den Pfad nachziehen — ein neuer Aufruf ist selten nötig.",
+      examples: [`data.id wurde zu data.result.id (Lauf ${uuid})`],
+      best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
+      pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
+      doc_refs: ["docs/concepts/self-healing.md"],
+      evidence_count: 2,
+      confidence: "high",
+      status: "proposed",
+      promoted_skill_id: null,
+      reviewable: true,
+      review_digest: "a".repeat(64),
+      fingerprint: "fp-1",
+      version: 1,
+      tags: ["domain:reporting"],
+      created_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
+      updated_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
+      ...overrides,
     });
+    const rows = [
+      candidate({}),
+      candidate({
+        id: "018f4b4a-6d33-7b3a-9c2d-0000000000a1",
+        pattern_kind: "authoring_capability",
+        connector_id: uuid,
+        title: "Workflow 'beispiel-bericht' capabilities",
+        body: `Workflow 'Beispiel-Bericht' (slug beispiel-bericht) — what it does and how to invoke it.\nInputs: none declared.\nOutput shape: unknown.\nConnectors: ${uuid}.`,
+        examples: [],
+        best_practices: [],
+        pitfalls: [],
+        doc_refs: [],
+        evidence_count: 1,
+        reviewable: false,
+        review_digest: "b".repeat(64),
+        fingerprint: "fp-2",
+        tags: [],
+      }),
+      candidate({
+        id: "018f4b4a-6d33-7b3a-9c2d-0000000000a2",
+        pattern_kind: "failure_pattern",
+        title: "Recurring failure on step 'write_products'",
+        body: "Step 'write_products' fails with 'request_outside_declared_boundary' consistently (3 times in 30 days). Consider adding input validation or a guard step.",
+        examples: ["3 failures with error kind 'request_outside_declared_boundary'"],
+        best_practices: ["Add input validation before this step"],
+        pitfalls: [],
+        doc_refs: [],
+        evidence_count: 3,
+        confidence: "low",
+        reviewable: false,
+        review_digest: "c".repeat(64),
+        fingerprint: "fp-3",
+        tags: [],
+      }),
+    ];
+    const status = url.searchParams.get("status");
+    const reviewable = url.searchParams.get("reviewable");
+    const matching = rows.filter(
+      (row) =>
+        (!status || row.status === status) &&
+        (reviewable === null || row.reviewable === (reviewable === "true")),
+    );
+    return json(route, {
+      items: matching,
+      total: matching.length,
+      reviewable_total: matching.filter((row) => row.reviewable).length,
+    });
+  }
 
   const label = path.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") || "record";
   return json(route, {
@@ -4801,6 +4846,40 @@ for (const locale of variants) {
         await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, {
           fullPage: false,
         });
+      }
+      // A proposed skill opens in place, in its sheet: its content, what it
+      // applies to, why — and the two verbs. The advisory candidates the engine
+      // also holds are not decisions and never reach the list.
+      {
+        const where = `${locale.artifact}/desktop/skill-proposal`;
+        await stand.visit(page, "skills");
+        await page.locator('[data-testid="catalog-skills"]').waitFor({ state: "visible" });
+        const listed = await page.locator('[data-testid="catalog-skills"]').innerText();
+        for (const advisory of ["capabilities", "Recurring failure"])
+          if (listed.includes(advisory))
+            throw new Error(`${where}: advisory candidate "${advisory}" listed as a proposal`);
+        await page.locator('[data-testid="skills-row-link-0"]').click();
+        const sheet = page.locator('[data-testid="skill-proposal"]');
+        await sheet.waitFor({ state: "visible" });
+        for (const part of ["skill-proposal-preview", "skill-proposal-facts"])
+          await sheet.locator(`[data-testid="${part}"]`).waitFor({ state: "visible" });
+        for (const verb of ["skill-proposal-accept", "skill-proposal-reject"])
+          if ((await sheet.locator(`[data-testid="${verb}"]`).count()) !== 1)
+            throw new Error(`${where}: expected exactly one ${verb}`);
+        await page.waitForTimeout(300);
+        await assertInteractiveSelectors(page, where);
+        await shoot(page, `${locale.artifact}-desktop-skill-proposal`, { fullPage: false });
+        await sheet.locator('[data-testid="skill-proposal-reject"]').click();
+        await page
+          .locator('[data-testid="skill-proposal-reject-confirm"]')
+          .waitFor({ state: "visible" });
+        await shoot(page, `${locale.artifact}-desktop-skill-proposal-reject`, { fullPage: false });
+        await page.keyboard.press("Escape");
+        await page
+          .locator('[data-testid="skill-proposal-reject-confirm"]')
+          .waitFor({ state: "hidden" });
+        await page.keyboard.press("Escape");
+        await sheet.waitFor({ state: "hidden" });
       }
       // The expanded decision card, in the review sheet. The sweep only ever
       // photographed collapsed cards, which is how a surface that asks people
