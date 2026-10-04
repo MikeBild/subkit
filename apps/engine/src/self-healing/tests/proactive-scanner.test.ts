@@ -1,19 +1,3 @@
-// Unit tests for the proactive drift scanner.
-//
-// The scanner is pure DB read: no LLM, no network. Tests seed each
-// of the three drift surfaces in isolation and assert that
-// scanForDrift returns exactly the expected signals.
-//
-//   * stdlib_version_drift — covered already by stdlib-drift-scan.test.ts;
-//     this file checks the scanner glue that lifts those signals
-//     into the ScannedSignal envelope.
-//   * schema_diff          — two recorded shapes for one (connector,
-//     endpoint); the older shape vs the newer shape must produce
-//     a non-empty diff.
-//   * validation_failed    — a workflow with a validation_expression
-//     in its dag whose latest execution failed AFTER a prior success
-//     on the same workflow_version.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   connectors,
@@ -27,9 +11,6 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { scanForDrift } from "../proactive-scanner.ts";
 
-// Deterministic timestamps derived from the frozen test clock so the
-// scanner's "two recorded shapes, newer one differs" ordering is
-// reproducible across runs.
 const TEST_NOW = getTestNow();
 const NOW = new Date(TEST_NOW);
 const SIXTY_S_AGO = new Date(TEST_NOW - 60_000);
@@ -190,7 +171,6 @@ describe("scanForDrift", () => {
   });
 
   test("legacy schema rows without provenance cannot create a workflow candidate", async () => {
-    // Seed an isolated connector that no workflow references.
     const { connectors } = await import("../../db/schema/index.ts");
     const [orphan] = await testDb.db
       .insert(connectors)
@@ -239,7 +219,6 @@ describe("scanForDrift", () => {
   test("schema drift between two recorded shapes emits a schema_diff signal", async () => {
     const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
 
-    // Older shape — observed first.
     await testDb.db.insert(schemaVersions).values({
       tenant_id: tenantId,
       connector_id,
@@ -254,7 +233,6 @@ describe("scanForDrift", () => {
       },
       seen_at: SIXTY_S_AGO,
     });
-    // Newer shape changes a nested type and also adds a compatible key.
     await testDb.db.insert(schemaVersions).values({
       tenant_id: tenantId,
       connector_id,
@@ -281,17 +259,12 @@ describe("scanForDrift", () => {
     expect(sig.ctx.workflow_id).toBe(workflow_id);
     expect(sig.ctx.connector_id).toBe(connector_id);
     expect(sig.ctx.endpoint_key).toBe("GET /users/1");
-    // No execution row, but the definition anchor must travel with the
-    // signal — without it an approved proactive patch has nothing to rewrite.
     expect(sig.ctx.step_id).toBeNull();
     expect(sig.ctx.workflow_step_id).toBe("r");
   });
 
   test("a response that stopped being describable raises no repair signal", async () => {
     const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
-    // One non-JSON body collapses the accumulated contract to `unknown`. The
-    // diff has no field to name, so a repair attempt could only ever fail —
-    // and it would be retried on every scan.
     await testDb.db.insert(schemaVersions).values({
       tenant_id: tenantId,
       connector_id,
@@ -359,7 +332,6 @@ describe("scanForDrift", () => {
       validationExpression: "count > 0",
     });
 
-    // Older succeeded execution.
     await testDb.db.insert(executions).values({
       tenant_id: tenantId,
       workflow_id,
@@ -369,7 +341,6 @@ describe("scanForDrift", () => {
       execution_mode: "dev",
       started_at: TWO_MIN_AGO,
     });
-    // Newer failed execution.
     await testDb.db.insert(executions).values({
       tenant_id: tenantId,
       workflow_id,
@@ -393,8 +364,6 @@ describe("scanForDrift", () => {
     const { workflow_id, workflow_version_id } = await seedWorkflowWithConnector({
       validationExpression: "count > 0",
     });
-    // Only one execution, and it failed. Without a prior succeeded
-    // execution we don't have evidence of drift.
     await testDb.db.insert(executions).values({
       tenant_id: tenantId,
       workflow_id,
@@ -410,7 +379,6 @@ describe("scanForDrift", () => {
 
   test("connector_id filter restricts schema scanning", async () => {
     const { connector_id, workflow_id } = await seedWorkflowWithConnector({});
-    // Seed drift on the workflow's connector.
     await testDb.db.insert(schemaVersions).values([
       {
         tenant_id: tenantId,
@@ -431,7 +399,6 @@ describe("scanForDrift", () => {
         seen_at: NOW,
       },
     ]);
-    // Filter to a different connector — nothing should match.
     const other = "11111111-1111-1111-1111-111111111111";
     const result = await scanForDrift({ tenant_id: tenantId, connector_id: other }, testDb.db);
     expect(result.signals.filter((s) => s.signal.kind === "schema_diff")).toEqual([]);

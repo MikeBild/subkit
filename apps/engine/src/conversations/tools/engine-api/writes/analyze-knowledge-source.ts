@@ -1,22 +1,9 @@
-// analyze_knowledge_source — LLM-enrich a persisted Knowledge Source's
-// metadata (description + topical tags). Reuses the same
-// `analyzeKnowledgeSource` service path the interactive upload sites and
-// the HTTP `POST /:id/analyze` route call.
-//
-// Pattern parity with create_knowledge_source / update_knowledge_source:
-// `category: "tenant_write"`, inline `knowledge:write` RBAC check, an
-// audit_log row before returning. NEVER renames name/slug — analysis
-// enriches metadata only. `tags` are a deduped REPLACEMENT set; the
-// description is overwritten only when currently null OR force=true.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "../../index.ts";
 
 const AnalyzeKnowledgeSourceInput = z
   .object({
     id: z.string().uuid("knowledge source id must be a UUID"),
-    // Overwrite an existing description; otherwise only a null description
-    // is filled. Tags are always replaced with the freshly generated set.
     force: z.boolean().optional(),
   })
   .openapi("AnalyzeKnowledgeSourceToolInput");

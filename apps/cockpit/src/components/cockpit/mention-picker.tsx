@@ -1,14 +1,3 @@
-// `@`-mentions in the chat composer.
-//
-// `useMentionInput` owns everything a mention-capable textarea does — trigger
-// detection, ranked groups, keyboard navigation, whole-token deletion and
-// caret restore. `MentionPicker` is the popover (cmdk `Command`, so the list
-// and its selection state are the same primitive every other palette in the
-// Cockpit uses). `MentionChips` renders a sent message's tokens as chips.
-//
-// The entity icons are the navigation's own (`Workflow`, `Cable`), so a
-// workflow reads as the same thing in the rail, the picker and the transcript.
-
 import { BookOpen, Cable, CircleAlert, FileText, Layers, Sparkles, Workflow } from "lucide-react";
 import {
   type KeyboardEvent,
@@ -46,8 +35,6 @@ import {
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
 
-// Categories first: a block of the catalog is the broadest thing to point at.
-// Then the automation objects, then what SubKit knows: sources, skills, files.
 const TYPE_ORDER: MentionCandidateType[] = [
   "category",
   "workflow",
@@ -89,10 +76,7 @@ export interface UseMentionInputOptions {
   references: ConversationReference[];
   setReferences: (next: ConversationReference[]) => void;
   candidates: readonly MentionCandidate[];
-  /** The in-progress query (null when the picker is closed) — the owner
-   *  fetches candidates for it. */
   onQueryChange: (query: string | null) => void;
-  /** A stored file was picked: it joins the message as an attachment. */
   onPickFile?: (candidate: MentionCandidate) => void;
 }
 
@@ -109,8 +93,6 @@ export function useMentionInput({
   const [mention, setMention] = useState<MentionQuery | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
-  // Which query the highlight belongs to, so a caret move does not reset
-  // the row the person just walked to with the arrow keys.
   const mentionKey = useRef<string | null>(null);
 
   const groups = useMemo<MentionGroup[]>(() => {
@@ -122,7 +104,6 @@ export function useMentionInput({
   }, [mention, candidates]);
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
-  // Keep the highlight on a row that still exists as the list shrinks.
   useEffect(() => {
     if (flat.length === 0) {
       setHighlighted(null);
@@ -134,8 +115,6 @@ export function useMentionInput({
     }
   }, [flat, highlighted]);
 
-  // Caret positions apply after React commits the new value; otherwise the
-  // re-render parks the caret at the end of the text.
   useEffect(() => {
     const caret = pendingCaret.current;
     if (caret === null) return;
@@ -158,7 +137,6 @@ export function useMentionInput({
         close();
         return;
       }
-      // A caret parked inside a completed token is a click, not a query.
       if (references.length > 0 && isInsideMentionToken(text, references, caret)) {
         close();
         return;
@@ -179,8 +157,6 @@ export function useMentionInput({
     (candidate: MentionCandidate) => {
       if (!mention) return;
       const caret = textareaRef.current?.selectionStart ?? value.length;
-      // A file is not a word in the text: the typed `@query` goes, and the
-      // file stands above the field as an attachment.
       if (candidate.type === "file") {
         pendingCaret.current = mention.start;
         setValue(value.slice(0, mention.start) + value.slice(caret));
@@ -188,8 +164,6 @@ export function useMentionInput({
         close();
         return;
       }
-      // A category is a phrase, not a reference: it goes into the text as
-      // `@kategorie/<name>` and nothing travels beside it.
       if (!isReferenceCandidate(candidate)) {
         const result = insertMentionText(
           value,
@@ -213,8 +187,6 @@ export function useMentionInput({
     [mention, textareaRef, value, setValue, references, setReferences, close, onPickFile],
   );
 
-  // A mention is one unit: a single Backspace or Delete removes the whole
-  // token and leaves the trigger, so the picker reopens for a different pick.
   const deleteToken = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (e.key !== "Backspace" && e.key !== "Delete") return false;
@@ -235,7 +207,6 @@ export function useMentionInput({
     [references, value, setValue, sync],
   );
 
-  /** Returns true when the event was consumed (deletion or picker navigation). */
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (deleteToken(e)) return true;
@@ -317,15 +288,11 @@ export function MentionPicker({
   const { t } = useI18n();
   if (!open) return null;
   let index = 0;
-  // Portalled above the composer. Drawn inside the composer area it was cut
-  // off by that area's own scroll box: the menu was in the DOM, correct, and
-  // invisible — typing "@" seemed to do nothing.
   return (
     <PopoverContent
       side="top"
       align="start"
       sideOffset={8}
-      // The caret stays in the textarea; the menu never takes focus.
       onOpenAutoFocus={(event) => event.preventDefault()}
       onCloseAutoFocus={(event) => event.preventDefault()}
       style={{ width: "var(--radix-popper-anchor-width)" }}
@@ -350,7 +317,6 @@ export function MentionPicker({
                       key={candidateKey(item)}
                       value={candidateKey(item)}
                       onSelect={() => onSelect(item)}
-                      // Keep the caret in the textarea: a click here must not blur it.
                       onMouseDown={(event) => event.preventDefault()}
                       data-testid={testId}
                     >
@@ -395,12 +361,10 @@ export interface MentionChipsProps {
   text: string;
   references: readonly ConversationReference[];
   unresolved?: readonly ConversationReference[];
-  /** Replacement for a raw identifier in the plain runs (never shown as-is). */
   hiddenLabel: string;
   testIdPrefix: string;
 }
 
-/** A sent message's text with its `@`-tokens rendered as chips. */
 export function MentionChips({
   text,
   references,
@@ -415,15 +379,12 @@ export function MentionChips({
     <span className="whitespace-pre-wrap" data-testid={`${testIdPrefix}-mentions`}>
       {splitByMentions(text, references).map((segment, i) => {
         if (!segment.reference) {
-          // Masking runs only over the plain runs: a chip label is display
-          // text the person picked, never an identifier.
           return <span key={i}>{hideTechnicalIdentifiers(segment.text, hiddenLabel)}</span>;
         }
         const reference = segment.reference;
         const missing = gone.has(`${reference.type}:${reference.id}`);
         const Icon = missing ? CircleAlert : TYPE_ICON[reference.type];
         return (
-          // A chip is a reference, not a state: no dot, no badge.
           <span
             key={i}
             className={cn(

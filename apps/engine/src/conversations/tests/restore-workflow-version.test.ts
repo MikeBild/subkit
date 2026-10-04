@@ -1,13 +1,3 @@
-// `restore_workflow_version` — the recovery move that was missing.
-//
-// A bad save reached production twice. The session that found the damage could
-// describe it precisely and could not undo it: the capability existed at
-// `POST /v1/workflows/{id}/restore/{version}` and nowhere in the tool palette.
-// So it reached for an HTTP connector aimed at the engine's own API — leaving
-// per-tool RBAC, the confirm gate and the commit-intent audit behind to do
-// something entirely legitimate. The fix is not to police that detour but to
-// remove the reason for it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { workflowVersions } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -85,13 +75,9 @@ describe("restore_workflow_version", () => {
     });
     expect(result.ok).toBe(true);
 
-    // The proof is the stored definition, not the envelope's own claim: a
-    // restore that returns a cheerful message while leaving v2 live would be
-    // the same class of lie this whole change is about.
     const live = await getWorkflow(ctx.tenant_id, created.workflow.id, ctx.testDb.db);
     if (!live) throw new Error("workflow vanished after restore");
     expect((live.steps as Array<{ id: string }>)[0]?.id).toBe("a");
-    // History is kept, not rewound — the restore lands as a NEW version.
     expect(live.current_version).toBe(3);
   });
 
@@ -123,9 +109,6 @@ describe("restore_workflow_version", () => {
       ctx.testDb.db,
     );
     if (!created.workflow) throw new Error(`seed failed: ${created.errors?.join(", ")}`);
-    // A version as an earlier engine stored it: `jsonata` is no longer a
-    // transform language. Inserted directly, because today's write path would
-    // refuse the definition.
     await ctx.testDb.db.insert(workflowVersions).values({
       tenant_id: ctx.tenant_id,
       workflow_id: created.workflow.id,
@@ -146,7 +129,6 @@ describe("restore_workflow_version", () => {
     expect(data.error_code).toBe("version_not_restorable");
     expect(data.message).toContain('step "shape"');
 
-    // Refused before any write: the live definition is still version 1.
     const live = await getWorkflow(ctx.tenant_id, created.workflow.id, ctx.testDb.db);
     if (!live) throw new Error("workflow vanished after refused restore");
     expect(live.current_version).toBe(1);
@@ -163,8 +145,6 @@ describe("restore_workflow_version", () => {
   });
 
   test("permission_mode auto cannot short-circuit it", async () => {
-    // Restoring replaces what is LIVE. If `auto` could clear it, the tool would
-    // reintroduce the hole it was built to close, from the other direction.
     const decision = decideToolMode({
       tool: "restore_workflow_version",
       category: "tenant_write",

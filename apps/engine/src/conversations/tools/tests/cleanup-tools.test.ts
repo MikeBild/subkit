@@ -99,20 +99,15 @@ async function seedWorkflow(name: string, slug: string) {
   return result.workflow;
 }
 
-// The central RBAC gate (wrapOne → checkToolPermission) is the enforcement
-// point now that the tools carry declarative `permission` descriptors. Drive it
-// directly with real principals (the tool bodies no longer self-gate).
 describe("central RBAC gate — deny + policy.denied audit", () => {
   test("member lacking api_key:revoke is denied and a policy.denied audit row is written", async () => {
     const memberCtx = makeToolContext(memberUserId, "user");
     const perm = revokeApiKeyTool.permission;
     if (!perm) throw new Error("revoke_api_key lost its permission descriptor");
-    // Resource ids are UUIDs (resource_grants.resource_id is a uuid column).
     const apiKeyId = crypto.randomUUID(); // allow-random: test fixture id
     const result = await checkToolPermission(memberCtx, perm, { id: apiKeyId });
     expect(result.allow).toBe(false);
     if (!result.allow) expect(result.permission).toBe("api_key:revoke");
-    // audit written against the resolved resource id.
     expect(await countAudit("policy.denied", apiKeyId)).toBe(1);
   });
 
@@ -146,12 +141,6 @@ describe("cleanup write conversation tools", () => {
   });
 
   test("delete_workflow now allowed for a member (members own the lifecycle of their workflows)", async () => {
-    // Pre-fix this test pinned `permission_denied:workflow:delete`
-    // for the member role. Session 0aed284f showed that was the
-    // actual product bug — operators couldn't delete the workflows
-    // they had just created. The member role now has
-    // `workflow:delete` and the test inverts: a member SHOULD be
-    // able to delete a workflow they have access to.
     const workflow = await seedWorkflow("Member-Owned Workflow", "member-owned-workflow");
     const result = await deleteWorkflowTool.execute(makeToolContext(memberUserId), {
       id: workflow.id,

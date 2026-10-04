@@ -1,11 +1,3 @@
-// Bug II regression: the LLM emits a numbered options list with a
-// trailing question ("1. … 2. … Which would you prefer?") despite
-// the STRUCTURED USER INTERACTION skill rule. The CLI now
-// translates that shape into a real ChoicePrompt. These tests pin
-// the detector contract so it never silently widens (false positives
-// on ordinary numbered prose) or narrows (regressions on the exact
-// shape the LLM keeps emitting).
-
 import { describe, expect, test } from "bun:test";
 import { detectProseOptions } from "./prose-options-detector.ts";
 
@@ -41,8 +33,6 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
   });
 
   test("strips a trailing 'or' from the last option label", () => {
-    // The LLM frequently writes "1. Do A, 2. Do B, or" — we drop
-    // the trailing 'or' so the rendered label reads cleanly.
     const text = ["1. Run the workflow", "2. Show the diff, or", "Which would you prefer?"].join(
       "\n",
     );
@@ -60,14 +50,6 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
     expect(detectProseOptions(text)).toBeNull();
   });
 
-  // Bug II.b regression — session 16d6e46a — the LLM described a
-  // workflow with 4 numbered bullets ("1. Fetches… 2. Loops…
-  // 3. Fetches… 4. Returns a formatted list…") and asked "Would you
-  // like me to run this workflow for you now?". The detector treated
-  // the bullets as a fork; the user picked option 4 ("Returns a
-  // formatted list…"); the engine treated that as a free-text
-  // prompt; a duplicate `you` line landed in the transcript. Yes/no
-  // questions are now an explicit exclusion.
   test("returns null when the trailing question is yes/no ('Would you…?')", () => {
     const text = [
       'The "DigitalOcean Projects and Resources" workflow:',
@@ -101,15 +83,10 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
       "2. The token expired yesterday",
       "What does this mean for the deploy?",
     ].join("\n");
-    // No pick marker → looks like prose Q&A about a list, not a
-    // user-facing fork.
     expect(detectProseOptions(text)).toBeNull();
   });
 
   test("returns null when the numeric indices are not contiguous 1..N", () => {
-    // Paragraph numbering ("In step 2 we will…") is not a fork —
-    // requiring a contiguous 1..N sequence is what keeps the
-    // detector narrow.
     const text = ["2. Apply the patch", "5. Roll back if it fails", "Which would you prefer?"].join(
       "\n",
     );
@@ -128,9 +105,6 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
       "Which would you prefer?",
     ].join("\n");
     const got = detectProseOptions(text);
-    // The chosen value must be a sentence the LLM can interpret on
-    // the next turn — not a bare digit ("1") that the engine would
-    // then have to re-classify.
     expect(got?.options[0]?.value).toBe("Run the existing workflow");
     expect(got?.options[1]?.value).toBe("Show me the diff");
   });
@@ -144,8 +118,6 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
       "2. Second",
       "Which one?",
     ].join("\n");
-    // Walk-back from the `?` line stops at the first non-numbered
-    // line, so only "2. Second" is collected → < 2 → null.
     expect(detectProseOptions(text)).toBeNull();
   });
 
@@ -162,8 +134,6 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
   });
 
   test("matches real prose ('would you prefer to adjust …?')", () => {
-    // Lifted from the user-reported transcript so the detector
-    // proves it covers the exact wording the LLM keeps emitting.
     const text = [
       "I see two ways forward.",
       "",

@@ -1,5 +1,3 @@
-// Unit tests for ConfigSchema. Pure logic; no I/O.
-
 import { describe, expect, test } from "bun:test";
 import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
@@ -39,9 +37,6 @@ describe("ConfigSchema", () => {
     expect(result.data.egress.mode).toBeNull();
     expect(result.data.egress.provider_hosts_extra).toEqual([]);
     expect(result.data.errors.ring_size).toBe(100);
-    // One, not eight. The worker hard-coded a batch size of 1 for as long as
-    // this leaf went unread, so wiring it up with a higher default would have
-    // silently multiplied every deployment's parallel side effects on upgrade.
     expect(result.data.queue.concurrency).toBe(1);
     expect(result.data.queue.abort_poll_interval_ms).toBe(500);
     expect(result.data.queue.crash_recovery_sweep_interval_ms).toBe(60_000);
@@ -168,9 +163,6 @@ describe("ConfigSchema", () => {
 });
 
 describe("ConfigSchema — llm.web_search leaf", () => {
-  // Regression: the leaf was added without a test; these cases ensure the
-  // default, round-trip, and meta scope all stay in sync with the schema.
-
   test("default value is true (web search enabled by default)", () => {
     const r = ConfigSchema.safeParse({ database: { url: "postgres://x" } });
     expect(r.success).toBe(true);

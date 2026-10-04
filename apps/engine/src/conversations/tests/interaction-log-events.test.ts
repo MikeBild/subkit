@@ -1,17 +1,3 @@
-// Interaction-log events — unit tests on the shape the service wires
-// through recordTransition when an elicitation resolves. We skip the
-// full runLoop round-trip (which would require live mock-provider
-// plans) and instead assert the primitive contract every caller
-// composes from.
-//
-// The service.ts integration is exercised in the acceptance e2e (Block L).
-// Here we want a deterministic, fast proof that:
-//
-//   - The four user_* transitions each write the expected log entry shape.
-//   - interaction_log is append-only: multiple transitions stack in order.
-//   - recordTransition idempotency: same state logged twice → two entries
-//     (not deduped); the column is a log, not a set.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -80,7 +66,6 @@ describe("recordTransition — one entry per user_* state", () => {
     expect(log).toHaveLength(1);
     expect(log[0]!.type).toBe("user_confirmed");
     expect(typeof log[0]!.ts).toBe("string");
-    // also persists confirmation_state on the row
     const [row] = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -189,10 +174,6 @@ describe("interaction_log — append-only semantics", () => {
 });
 
 describe("recordTransition — visible transcript message", () => {
-  // Without this, the user's dialog Approve/Reject click is only
-  // recorded in interaction_log metadata — invisible to the scrollback.
-  // Passing conversation_id opts in to a user-visible marker message.
-
   async function readDecisionMessages(cid: string): Promise<Array<Record<string, unknown>>> {
     const rows = await ctx.db
       .select()
@@ -254,7 +235,6 @@ describe("recordTransition — visible transcript message", () => {
       .returning();
     const cid = conv!.id;
     const id = await seedToolCall("create_api_key");
-    // No conversation_id passed — mirrors the test setup path.
     await recordTransition(ctx.db, {
       tool_call_id: id,
       tenant_id,
@@ -286,19 +266,10 @@ describe("recordTransition — visible transcript message", () => {
 
 describe("service-layer wiring — code review", () => {
   test("respondElicitation mirrors output to recordTransition (source inspection)", async () => {
-    // This is a best-effort static inspection: we assert the substring
-    // pattern in service/elicit.ts so future refactors
-    // that drop the wiring fail loudly rather than silently passing the
-    // unit tests above.
     const fs = await import("node:fs/promises");
     const src = await fs.readFile(new URL("../service/elicit.ts", import.meta.url), "utf8");
-    // Must import recordTransition:
     expect(src.includes('import("../confirmation.ts")')).toBe(true);
     expect(src.includes("recordTransition")).toBe(true);
-    // Must handle the four primary outcomes. (`auto_declined` was a
-    // pre-auto-persist transient state — the harness now applies the
-    // commit_intent or marks the elicitation declined directly, so the
-    // intermediate `auto_declined` label is gone.)
     for (const state of ["confirmed", "declined", "partial", "tested"]) {
       expect(src.includes(state)).toBe(true);
     }

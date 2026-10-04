@@ -1,18 +1,3 @@
-// inspect_execution_step — read the persisted output of a single step
-// from a completed execution.
-//
-// Closes the blind-authoring gap observed in session 3f6082d2: the LLM
-// authored a `format_output` transform against an imagined loop scope
-// shape, the projection silently produced [{project_id, project_name}]
-// while the actual loop body fetched real droplets/domains, and the
-// LLM had no way to peek at the underlying step output to fix the
-// JSONata path. The tool reads `output_preview` from the
-// `execution_steps` row plus the offloaded payload from
-// the canonical object-store reference (with legacy fixture:// read support),
-// so the LLM can author the next
-// transform iteration against the REAL shape — post-execution
-// introspection.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executionSteps, executions } from "../../db/schema/index.ts";
@@ -28,21 +13,10 @@ const Input = z
       .describe(
         "Step id within the workflow definition (e.g. 'fetch_projects', 'project_loop'). Match the step's `id` field, not the row id.",
       ),
-    /**
-     * Default behaviour returns `output_preview` (capped to fit the LLM
-     * context). Set `include_full_payload: true` when the LLM
-     * specifically needs the full offloaded body (rare — preview is
-     * almost always enough to author the next transform).
-     */
     include_full_payload: z.boolean().default(false),
   })
   .openapi("InspectExecutionStepToolInput");
 
-/**
- * Per-kind recipe for what the LLM should do next after reading a
- * step's output_preview. Kept as a switch (not a nested ternary) so
- * adding the next step kind doesn't churn the call-site.
- */
 function nextBestActionsFor(kind: string, step_key: string): string[] {
   switch (kind) {
     case "loop":
@@ -87,9 +61,6 @@ export const inspectExecutionStepTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
-    // Tenant scoping is critical — the executions row carries the
-    // tenant_id and we filter on it explicitly so a leaked execution_id
-    // from another tenant cannot leak step outputs.
     const execRows = await ctx.db
       .select({
         id: executions.id,
@@ -136,7 +107,6 @@ export const inspectExecutionStepTool: ConversationTool = {
       .limit(1);
     const step = stepRows[0];
     if (!step) {
-      // List available step_keys so the LLM can retry without guessing.
       const allSteps = await ctx.db
         .select({
           step_key: executionSteps.step_key,

@@ -1,25 +1,9 @@
-// Unit tests for usage-guidance.ts pure builders.
-//
-// What's covered:
-//   - inputs from declared `definition.input_schema` (properties + required flags)
-//   - inputs synthesized from `${input.x}` placeholders when no input_schema
-//   - output: "shaped by the workflow's output transform" when output_transform set
-//   - output: last-step line when no output_transform
-//   - access entries: always cli/mcp/chat/rest; rest has `url` only with publicBaseUrl
-//   - live unpaused schedule rows → `via:"schedule"` entries with cron+tz in detail
-//   - no live schedule → single hint entry with create_schedule command
-//   - paused schedule rows are excluded from live schedules
-//   - webhook entries only when inboundHooks non-empty; url only with publicBaseUrl
-//   - follow_up values for workflow, connector, knowledge_source
-
 import { describe, expect, test } from "bun:test";
 import {
   buildConnectorUsage,
   buildKnowledgeSourceUsage,
   buildWorkflowUsageFromParts,
 } from "../usage-guidance.ts";
-
-// ── buildWorkflowUsageFromParts ─────────────────────────────────────────────
 
 describe("buildWorkflowUsageFromParts — inputs from input_schema", () => {
   test("extracts inputs from declared input_schema properties + required array", () => {
@@ -99,9 +83,6 @@ describe("buildWorkflowUsageFromParts — inputs from input_schema", () => {
 
 describe("buildWorkflowUsageFromParts — inputs synthesized from placeholders", () => {
   test("synthesizes inputs from placeholder references in a request step URL", () => {
-    // synthesizeInputSchema collects from request step url.
-    // The URL contains ${input.date} and ${input.format} placeholder syntax
-    // (workflow substitution, not JS template literals — hence the raw string).
     // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow step URL literals use ${input.*} syntax
     const stepUrl = "https://api.example.com/?d=${input.date}&fmt=${input.format}";
     const usage = buildWorkflowUsageFromParts({
@@ -110,7 +91,6 @@ describe("buildWorkflowUsageFromParts — inputs synthesized from placeholders",
         slug: "fetch-by-date",
         name: "Fetch By Date",
         definition: {
-          // no explicit input_schema — inputs are synthesized from placeholders
           steps: [
             {
               id: "fetch",
@@ -126,12 +106,10 @@ describe("buildWorkflowUsageFromParts — inputs synthesized from placeholders",
       publicBaseUrl: null,
     });
 
-    // synthesizeInputSchema yields all string type, none required
     expect(usage.inputs.length).toBeGreaterThanOrEqual(2);
     const names = usage.inputs.map((i) => i.name);
     expect(names).toContain("date");
     expect(names).toContain("format");
-    // synthesized inputs have type "string"
     for (const inp of usage.inputs) {
       expect(inp.type).toBe("string");
     }
@@ -367,7 +345,6 @@ describe("buildWorkflowUsageFromParts — schedule access entries", () => {
     });
 
     const scheduleEntries = usage.access.filter((a) => a.via === "schedule");
-    // The paused schedule counts as "no live schedule" → one hint entry
     expect(scheduleEntries).toHaveLength(1);
     expect(scheduleEntries[0]?.command).toContain("create_schedule");
   });
@@ -407,7 +384,6 @@ describe("buildWorkflowUsageFromParts — schedule access entries", () => {
     });
 
     const scheduleEntries = usage.access.filter((a) => a.via === "schedule");
-    // One live entry (no create_schedule hint)
     expect(scheduleEntries).toHaveLength(1);
     expect(scheduleEntries[0]?.detail).toContain("0 18 * * *");
     expect(scheduleEntries[0]?.command).toBeUndefined();
@@ -487,8 +463,6 @@ describe("buildWorkflowUsageFromParts — identity + follow_up", () => {
   });
 });
 
-// ── follow_up_options ───────────────────────────────────────────────────────
-
 describe("buildWorkflowUsageFromParts — follow_up_options", () => {
   test("follow_up_options is present and non-empty for workflow usage", () => {
     const usage = buildWorkflowUsageFromParts({
@@ -549,9 +523,7 @@ describe("buildWorkflowUsageFromParts — follow_up_options", () => {
     });
 
     const values = (usage.follow_up_options ?? []).map((o) => o.value);
-    // No duplicate values
     expect(new Set(values).size).toBe(values.length);
-    // Must include the four primary access vias
     expect(values).toContain("cli");
     expect(values).toContain("mcp");
     expect(values).toContain("chat");
@@ -651,8 +623,6 @@ describe("buildWorkflowUsageFromParts — follow_up_options", () => {
   });
 });
 
-// ── buildConnectorUsage ─────────────────────────────────────────────────────
-
 describe("buildConnectorUsage", () => {
   test("returns kind=connector with expected fields", () => {
     const usage = buildConnectorUsage({
@@ -698,8 +668,6 @@ describe("buildConnectorUsage", () => {
   });
 });
 
-// ── buildKnowledgeSourceUsage ───────────────────────────────────────────────
-
 describe("buildKnowledgeSourceUsage", () => {
   test("returns kind=knowledge_source with expected fields", () => {
     const usage = buildKnowledgeSourceUsage({
@@ -743,7 +711,6 @@ describe("buildKnowledgeSourceUsage", () => {
       workflow_id: "wf-abc",
     });
 
-    // The scope-detail string for workflow scope references the workflow id
     const chatEntry = usage.access.find((a) => a.via === "chat");
     expect(chatEntry?.detail).toContain("wf-abc");
   });

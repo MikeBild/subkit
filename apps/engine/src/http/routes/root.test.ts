@@ -1,10 +1,3 @@
-// The entry point, and the promise it makes.
-//
-// GET / lists what this engine hands out. A link there that 404s is worse than
-// no entry point: it tells a newcomer the service is broken at the first thing
-// they touch. So this test holds the list against the routes actually
-// registered, and pins the two renderings.
-
 import { describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
@@ -30,9 +23,6 @@ describe("GET /", () => {
     expect(res.headers.get("content-type")).toContain("text/markdown");
     const body = await res.text();
     expect(body).toContain("# sk");
-    // Absolute links, because the reader may be an agent that cannot resolve
-    // a relative path against a URL it was handed as a bare string. The host
-    // itself is whatever origin the engine resolves, so assert the shape.
     expect(body).toMatch(/\(https?:\/\/[^)]+\/llms\.txt\)/);
   });
 
@@ -57,10 +47,6 @@ describe("GET /", () => {
 
 describe("what the entry point promises", () => {
   test("every self-description path it lists is served here", async () => {
-    // Only the routes this test file registers can answer; the rest
-    // (/openapi.json, /docs, /cockpit, /health, /ready) belong to other
-    // registrars and are covered by their own tests. This checks the ones
-    // that travel with the binary as documentation.
     for (const path of ["/docker-compose.yml", "/install/skill", "/llms.txt", "/llms-full.txt"]) {
       expect(ROOT_ENTRY_PATHS).toContain(path);
       const res = await get(path);
@@ -87,8 +73,6 @@ describe("the self-description set", () => {
   });
 
   test("no served page links to a page the binary does not carry", async () => {
-    // A comparison run on 2026-09-03 found twelve such links and read them as
-    // breakage. Links to carried pages must still resolve; the rest are text.
     for (const rel of LLMS_PAGE_PATHS) {
       const body = await (await get(`/llms/${rel}`)).text();
       const links = [
@@ -104,8 +88,6 @@ describe("the self-description set", () => {
   });
 
   test("a page outside the set is not carried", async () => {
-    // The point of the set is that it is small. If everything resolved, the
-    // binary would be carrying the whole documentation again.
     const res = await get("/llms/concepts/glossary.md");
     expect(res.status).toBe(404);
   });

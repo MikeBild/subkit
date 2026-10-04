@@ -3,18 +3,11 @@ import { type ReactNode, useId } from "react";
 export interface ChoiceCardItem {
   icon: ReactNode;
   title: string;
-  /** One line. */
   line: string;
   onSelect(): void;
   testId: string;
 }
 
-/**
- * Equal ways to go, as full-width cards (P22): icon, title, one line. Choosing
- * one proceeds — the dialog that offers them has no submit of its own, only
- * "Abbrechen". Side by side from 640px, stacked with the icon at the left on a
- * phone.
- */
 export function ChoiceCards({ items }: { items: readonly ChoiceCardItem[] }) {
   const id = useId();
   return (

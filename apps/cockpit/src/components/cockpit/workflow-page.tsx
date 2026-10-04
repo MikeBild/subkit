@@ -57,7 +57,6 @@ const text = (record: RecordValue, key: string): string | null => {
   return typeof value === "string" && value ? value : null;
 };
 
-/** The saved workflow replayed as a draft, so a preview never touches the stored version. */
 function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): RecordValue {
   return {
     name: text(record, "name") ?? "Preview",
@@ -67,7 +66,6 @@ function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): Re
   };
 }
 
-/** "Technische Angaben": what someone quoting the workflow needs, folded. */
 function useTechnicalFacts(record: RecordValue): Fact[] {
   const { t, dateTime } = useI18n();
   const slug = text(record, "slug");
@@ -110,13 +108,6 @@ function useTechnicalFacts(record: RecordValue): Fact[] {
   ];
 }
 
-/**
- * A workflow's page (V4): the header with its one filled action, the status
- * strip with the one action of its top state, and four tabs in the order a
- * reader asks — how do I call it, how has it been doing, what does it do, who
- * approved it. Each tab is a summary line, one main element and the rest
- * folded. Every fact has one home, and every action one trigger.
- */
 export function WorkflowPage({
   id,
   record,
@@ -126,9 +117,7 @@ export function WorkflowPage({
 }: {
   id: string;
   record: RecordValue;
-  /** The record's name, as the page heading. */
   title: string;
-  /** What the workflow is for, in its author's words. Null when there are none. */
   purpose: string | null;
   permissions: readonly string[];
 }) {
@@ -143,8 +132,6 @@ export function WorkflowPage({
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
   const versionId = text(record, "current_version_id");
-  // The running version is stored in an earlier format: the engine refuses to
-  // run it, so the page does not offer a run it would refuse.
   const legacy = record.invalid === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
   const trigger =
@@ -165,7 +152,6 @@ export function WorkflowPage({
     invalid: legacy,
   };
   const health = text(record, "health_state");
-  // Switched off: archived, its schedule and webhook unbound (D17).
   const disabled = record.lifecycle === "archived";
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
@@ -179,7 +165,6 @@ export function WorkflowPage({
     })),
   );
   const technical = useTechnicalFacts(record);
-  // Switched on or off at once; put back if the engine refuses.
   const lifecycle = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", id],
     mutationFn: (next: "active" | "archived") =>
@@ -253,7 +238,6 @@ export function WorkflowPage({
       : []),
   ];
 
-  // "Verwenden": what starts it on its own (R2); the approval is the strip's.
   const state = automation.state;
   const kinds = [
     ...((state?.triggers.some((entry) => entry.kind === "hook") ?? false) || webhooksActive > 0
@@ -272,7 +256,6 @@ export function WorkflowPage({
       t("workflowPage.calledOnRequest")
     )
   ) : null;
-  // "Aufbau": version · steps · connectors.
   const connectors = [
     ...new Set(
       steps.views

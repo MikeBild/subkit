@@ -254,7 +254,6 @@ test("preview -> human recurring grant -> schedule resolved -> two changing repo
       );
     expect(schedule?.admission_hold).toBeNull();
     expect((await inspectScheduleAutomation(schedule!, ctx.testDb.db)).ready).toBe(true);
-    // Retention of preview traces must not remove an existing human boundary.
     await ctx.testDb.db.delete(executionSteps).where(eq(executionSteps.tenant_id, ctx.tenantId));
     expect((await f.run()).status).toBe("succeeded");
     const next = Buffer.from(
@@ -282,8 +281,6 @@ test("a report approval follows an activated version that reaches nothing new, a
     await f.automaticPrepare();
     const granted = await f.grant();
     const db = ctx.testDb.db;
-    // v2: a changed description; the same mail step. It has no approval and
-    // no preparation run of its own — the mail boundary comes from the parent.
     const [current] = await db
       .select({ dag: workflowVersions.dag })
       .from(workflowVersions)
@@ -526,23 +523,12 @@ test("documented report reads cannot delegate preview permission through a redir
 });
 
 test("the report refusal says which of three situations this is", async () => {
-  // One code answered all three, and its remedy — "let a preparation run" — is
-  // the right advice for two of them and a circle for the third. On production
-  // `radar-collect-weekly` sat in that third state: a preparation run existed,
-  // its email step sits behind a branch whose condition depends on a write the
-  // preparation holds back, so no preparation can ever observe it. The dialog
-  // kept telling a person to do the one thing that cannot work.
   const f = await fixture();
   const reasonFor = async () =>
     (await f.inspect()).request_refusals.find((entry) => entry.step_id === "send")?.reason;
 
-  // Nothing has watched this step yet.
   expect(await reasonFor()).toBe("report_delivery_unprepared");
 
-  // A preparation run that never reaches the step: the run exists, the step
-  // does not appear in it. Seeded directly, because producing the real
-  // unreachable shape needs a branch on a held write — which is exactly the
-  // situation that cannot be produced by running one.
   const db = ctx.testDb.db;
   const [stranded] = await db
     .insert(executions)
@@ -567,11 +553,7 @@ test("the report refusal says which of three situations this is", async () => {
     request_meta: { driver: "http", url: "https://metrics.example.test/history" },
   });
   expect(await reasonFor()).toBe("report_delivery_unreachable");
-  // And the run is read at all despite having failed — the evidence is per
-  // step, so requiring the whole run to succeed threw away the only evidence a
-  // partially-reaching run ever leaves.
 
-  // The step ran and was held, but recorded nothing the profile can read.
   await db.insert(executionSteps).values({
     tenant_id: ctx.tenantId,
     execution_id: stranded?.id as string,
@@ -585,9 +567,6 @@ test("the report refusal says which of three situations this is", async () => {
 });
 
 test("a report step the profile has already bounded reports no refusal at all", async () => {
-  // Every healthy Gmail report step carried `stricter_profile_applies` on every
-  // preview — a refusal beside a boundary that exists, on a step with nothing
-  // wrong with it. Noise that buries the steps a person has to act on.
   const f = await fixture();
   await f.prepare();
   const preview = await f.inspect();
@@ -598,16 +577,6 @@ test("a report step the profile has already bounded reports no refusal at all", 
 });
 
 test("a preparation that is already running is refused with a reason, not started twice", async () => {
-  // The dialog showed a bare "loading" for as long as a held run takes, so
-  // people opened a second tab — and three held runs started against the same
-  // workflow, each reading the same remote systems and each overwriting the
-  // evidence the others left. A flag inside the component cannot see a second
-  // tab. This can, and it sees a second engine process too.
-  //
-  // Seeded rather than raced: two concurrent calls only reach the lock when
-  // they interleave a particular way, and a test that asserts on an
-  // interleaving asserts on the machine it runs on. The state under test is
-  // "a held run for this version is already going", so that is what is set up.
   const f = await fixture();
   const db = ctx.testDb.db;
   await db.insert(executions).values({
@@ -630,8 +599,6 @@ test("a preparation that is already running is refused with a reason, not starte
     db,
     f.principal,
   );
-  // A reason, not an error: two tabs on one dialog is ordinary, and a repair
-  // reload takes this path routinely.
   expect(outcome).toEqual({ prepared: false, reason: "preparation_in_flight" });
   const runs = await db
     .select({ id: executions.id })
@@ -647,11 +614,6 @@ test("a preparation that is already running is refused with a reason, not starte
 });
 
 test("two preparations at once never run side by side", async () => {
-  // The concurrent case, asserting only what does not depend on interleaving:
-  // the lock promises one preparation AT A TIME, not one ever. When the first
-  // finishes before the second reaches the lock, a second held run is a
-  // legitimate repeat; what must never happen is two held runs overlapping.
-  // Which call is refused, and on which check, is the machine's business.
   const f = await fixture();
   const input = {
     tenant_id: ctx.tenantId,
@@ -684,17 +646,6 @@ test("two preparations at once never run side by side", async () => {
 });
 
 test("a recipient the author declares is reviewed, and the runtime still holds it to the wire", async () => {
-  // The step this exists for cannot be observed at all: it sits behind a
-  // condition that depends on a write a preparation holds back, so a held run
-  // can never see past its own suppression. Without a way to state the
-  // recipient, such a step is refused for good — and the advice it carried
-  // ("let a preparation run") was a circle.
-  //
-  // This is not a way around the review. The author states who it goes to, a
-  // human approves that statement, and the dispatcher still decodes the real
-  // message and compares the recipient byte for byte. The last assertion is
-  // the one that matters: a declaration that does not match what is sent is
-  // refused at the wire, exactly as an observed one would be.
   const f = await fixture();
   const db = ctx.testDb.db;
   const [version] = await db
@@ -723,8 +674,6 @@ test("a recipient the author declares is reviewed, and the runtime still holds i
     .set({ dag: declared })
     .where(eq(workflowVersions.id, f.wf.version_id));
 
-  // No preparation run has ever happened for this version, and the review is
-  // nevertheless complete: the recipient is stated rather than observed.
   const preview = await f.inspect();
   expect(
     preview.manifest.effects.find((effect) => effect.step_id === "send")?.report_delivery?.to,
@@ -744,9 +693,6 @@ test("a recipient the author declares is reviewed, and the runtime still holds i
   await withDriverFetchForTests(remote, async () => {
     expect((await f.run()).status).toBe("succeeded");
     expect(sent).toBe(1);
-    // The same approval, a message to somebody else: refused before egress.
-    // This is the assertion the whole field rests on — a declaration is a
-    // claim, and the wire is where it is checked.
     const elsewhere = Buffer.from(
       Buffer.from(f.raw, "base64url")
         .toString()
@@ -763,9 +709,6 @@ test("a recipient the author declares is reviewed, and the runtime still holds i
 });
 
 test("a declared recipient is contradicted only by what this version's preparation saw", async () => {
-  // The declaration is believed until a held capture of this very step shows
-  // otherwise. A capture recorded before inspections were recorded is no
-  // evidence either way; a refused message or a different address is.
   const f = await fixture();
   const db = ctx.testDb.db;
   const [version] = await db

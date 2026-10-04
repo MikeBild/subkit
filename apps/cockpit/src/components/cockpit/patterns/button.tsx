@@ -4,12 +4,6 @@ import { Button as Primitive } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 
-/**
- * The one button pages use. With `pending` its action is under way: the label
- * stays where it is, hidden, and a spinner sits over it — so the button keeps
- * its width and the row it stands in does not shift. It cannot be pressed
- * twice. `asChild` (a link drawn as a button) has no pending state.
- */
 export function Button({
   pending,
   disabled,

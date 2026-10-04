@@ -1,16 +1,3 @@
-// Structured cards for high-signal authoring milestones.
-//
-// The chat view shows only these milestone cards; the inspect view can
-// still fall back to raw tool cards for full engine transparency.
-//
-// Shared tone/badge chrome, envelope readers, and output-preview
-// formatting live in authoring-cards-shared.tsx; the payload
-// extractors, the probe/dry-run preview cards, and the reauth
-// affordance live in the other authoring-cards-* siblings. This module
-// keeps the remaining milestone cards plus the renderAuthoringCard
-// dispatcher, and re-exports the extracted surface so existing
-// importers are unaffected.
-
 import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -191,15 +178,6 @@ const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
       </Box>
     );
   }
-  // Status comes from `d.status` (run_workflow lifecycle payload).
-  // When missing AND the call lifecycle says "done", the engine sent a
-  // tool_result without a status field — that is a contract bug, NOT a
-  // run state. We log it as `card.execution_status_missing` so the
-  // regression stays detectable for engineers, but render a friendly
-  // "Awaiting result..." badge to the user instead of the scary
-  // `× bug, not a state` literal that scared the operator in session
-  // a6440493. The user has nothing to act on; making them stare at a
-  // dev-targeted error is worse than silently surfacing pending state.
   const rawStatus = typeof d?.status === "string" ? d.status : null;
   const status =
     rawStatus ??
@@ -226,12 +204,6 @@ const ExecutionDiagnosisCard: React.FC<CardProps> = memo(({ call }) => {
   const warnings = Array.isArray(d?.warnings) ? d.warnings.length : 0;
   const needsDiagnosis = d?.diagnosis_available === true;
   const isPartial = rawStatus === "partial_success";
-  // Surface the ACTUAL warning(s) the run produced — never a hardcoded
-  // cause. A `partial_success` can come from an empty transform, an
-  // unresolved reference, a loop that never iterated, etc. The engine
-  // already ships a human-readable message on every warning; the card
-  // must read it instead of asserting "Loop body produced no rows" for
-  // a workflow that may have no loop at all.
   const warningEntries = Array.isArray(d?.warnings)
     ? (d.warnings as Array<{ code?: string; message?: string }>)
     : [];
@@ -345,9 +317,6 @@ export const ResumeSummaryCard: React.FC<ResumeSummaryProps> = memo(
 );
 ResumeSummaryCard.displayName = "ResumeSummaryCard";
 
-// Connector-draft card — fires on start_connector_from_* /
-// update_connector_draft / validate_connector_draft. Shows the driver,
-// auth, env, and validation-missing list inline under the tool call.
 const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -386,9 +355,6 @@ const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 ConnectorDraftCard.displayName = "ConnectorDraftCard";
 
-// Workflow-draft card — fires on validate_draft / inspect_workflow_draft.
-// One-line "N step(s), last step: <id> (<kind>)" plus validation errors
-// when present.
 const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -447,14 +413,6 @@ const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 WorkflowDraftCard.displayName = "WorkflowDraftCard";
 
-// author_workflow — the one-shot authoring pipeline. The envelope is a
-// draft-mutation payload carrying `{ workflow: { name, slug, goal,
-// step_count }, definition, validation, recorded_eval: { ok, summary,
-// expressions[], gates, missing_evidence, next_actions }, attempts,
-// next_step: "dry_run_workflow" }`. The card answers three operator
-// questions in one glance: what was built (name/slug/steps), did the
-// recorded evaluation pass (clean vs. findings), and what happens next
-// (always dry_run_workflow).
 const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -466,8 +424,6 @@ const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
         ? (d.name as string)
         : null;
   const slug = typeof workflow?.slug === "string" ? workflow.slug : null;
-  // Step count + kinds summary from the full definition when present;
-  // the lighter workflow.step_count otherwise.
   const definition = asRecord(d?.definition);
   const defSteps = Array.isArray(definition?.steps) ? definition.steps : null;
   const stepCount =
@@ -484,8 +440,6 @@ const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
   const attempts = typeof d?.attempts === "number" ? d.attempts : null;
   const nextStep = typeof d?.next_step === "string" ? d.next_step : "dry_run_workflow";
 
-  // Failure envelope (gate error / pipeline failure): error_code +
-  // message, no definition. Render the refusal plainly.
   const errorCode = typeof d?.error_code === "string" ? d.error_code : null;
   const message = typeof d?.message === "string" ? d.message : null;
   if (tone === "fail" || (errorCode && !definition)) {
@@ -506,9 +460,6 @@ const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
     );
   }
 
-  // Recorded-eval verdict line. Clean → one quiet line. Findings →
-  // count by status plus the first finding's site + message so the
-  // operator sees WHERE without opening inspect view.
   const recordedEval = asRecord(d?.recorded_eval);
   const evalOk = recordedEval?.ok === true;
   const findings = (
@@ -574,11 +525,6 @@ const AuthorWorkflowCard: React.FC<CardProps> = memo(({ call }) => {
 });
 AuthorWorkflowCard.displayName = "AuthorWorkflowCard";
 
-// Generic milestone fallback — used when a tool fires a milestone card
-// but its result shape didn't match the dedicated extractor. Renders
-// a single tone-aware line plus a short preview of the result so the
-// chat conversation always has *something* to say instead of going
-// silent on a shape regression.
 const GenericMilestoneCard: React.FC<CardProps & { label: string }> = memo(({ call, label }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -606,9 +552,6 @@ const GenericMilestoneCard: React.FC<CardProps & { label: string }> = memo(({ ca
 });
 GenericMilestoneCard.displayName = "GenericMilestoneCard";
 
-// Approval card — renders ask_user_confirm / ask_user_choice elicitation
-// *requests* inline (while the user is answering) and their resolved
-// outcome afterwards. The kind tells the user what they're approving.
 const ApprovalCard: React.FC<CardProps> = memo(({ call }) => {
   const args = asRecord(call.args) ?? {};
   const d = unwrapData(call);
@@ -666,28 +609,11 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "run_workflow",
   "diagnose_latest_execution",
   "create_knowledge_source",
-  // The reauth affordance MUST surface in chat mode — the sign-in link
-  // is the whole point of the tool result; hiding it behind inspect
-  // view would dead-end the recovery flow.
   "request_connector_reauth",
 ]);
 
-// Tools we render an in-flight card for (running/pending) — even in
-// chat mode — so the operator sees what the engine is doing. The
-// `IN_FLIGHT_VISIBLE_TOOLS` set is broader than `CHAT_MILESTONE_TOOLS`
-// because authoring tools that *substantively edit* state benefit from
-// a "started" line while running. Pure-introspection / pre-flight
-// tools are EXCLUDED so the operator doesn't see the LLM's plumbing:
-// `validate_draft`, `inspect_workflow_draft`, `inspect_connector_draft`
-// load state for the LLM, never produce a result the operator needs to
-// see; the assistant's `text_delta` narrative is what surfaces. The
-// May 2026 OCPP review session showed 8+ cards for one workflow edit
-// because every meta-tool got its own in-flight card.
 const IN_FLIGHT_VISIBLE_TOOLS = new Set([
   ...CHAT_MILESTONE_TOOLS,
-  // Excluded as of 6.2.13 — informational reads, not edits. They run
-  // silently; the assistant narrates any salient outcome via text:
-  //   "validate_draft", "inspect_workflow_draft", "inspect_connector_draft"
   "discover_connector_endpoints",
   "fetch_connector_docs",
   "list_connector_endpoints",
@@ -706,16 +632,8 @@ function shouldRenderInChat(call: ToolCallState): boolean {
   return CHAT_MILESTONE_TOOLS.has(call.name);
 }
 
-// In-flight one-liner — renders while a tool call is running. Shows
-// the tool name + a tiny one-line summary derived from the call's
-// args. On completion the milestone card replaces this in place
-// (because the same `call.id` keys both renders).
 const InFlightToolCard: React.FC<CardProps> = memo(({ call }) => {
   const args = asRecord(call.args) ?? {};
-  // Pick a single salient field from the args that helps the user
-  // diagnose what's happening RIGHT NOW. Each tool surfaces something
-  // different — preview shows step id, run shows env, a step-shaped
-  // arg shows step.id+kind, etc.
   const stepArg = asRecord(args.step) ?? null;
   const summary =
     typeof args.url === "string"
@@ -745,26 +663,14 @@ const InFlightToolCard: React.FC<CardProps> = memo(({ call }) => {
 });
 InFlightToolCard.displayName = "InFlightToolCard";
 
-// Dispatcher — returns a custom card for known authoring tools, or null
-// so the caller falls back to the generic ToolCard.
 export function renderAuthoringCard(
   call: ToolCallState,
   mode: AuthoringCardMode = "inspect",
 ): React.ReactNode | null {
   if (mode === "chat" && !shouldRenderInChat(call)) return null;
-  // Running/pending tools render the in-flight one-liner so the user
-  // sees what the engine is doing in real time, instead of a silent
-  // 5–8s spinner with nothing on screen.
   if (call.status === "running" || call.status === "pending") {
     return <InFlightToolCard key={`acc-${call.id}-flight`} call={call} />;
   }
-  // Policy-gated tenant-write tools (e.g. create_knowledge_source,
-  // run_workflow, save_workflow_draft) return a sentinel envelope
-  // BEFORE the side effect runs when policy is
-  // `confirm_before_execution`. The companion `elicit_request` event
-  // surfaces the approval UI separately. Suppress the result card so
-  // the operator doesn't see "✓ Knowledge source ready" while the
-  // engine is still waiting for the approve/decline click.
   if (isPolicyGatePending(call)) {
     return mode === "chat" ? null : (
       <InFlightToolCard key={`acc-${call.id}-pending-approval`} call={call} />
@@ -790,8 +696,6 @@ export function renderAuthoringCard(
     case "create_knowledge_source": {
       const summary = extractKnowledgeSourceSummary(call);
       if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
-      // Fall back to a compact one-liner when the result shape didn't
-      // match — keeps the chat narration alive instead of vanishing.
       return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Knowledge source" />;
     }
     case "run_workflow":
@@ -815,9 +719,6 @@ export function renderAuthoringCard(
     case "request_connector_reauth": {
       const outcome = extractReauthOutcome(call);
       if (outcome) return <ReauthCard key={`acc-${call.id}`} call={call} outcome={outcome} />;
-      // Errors and the non-OAuth credential_re_issue path (which the
-      // assistant narrates and follows with ask_user_form) render the
-      // generic milestone line.
       return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Connector re-auth" />;
     }
     case "ask_user_confirm":

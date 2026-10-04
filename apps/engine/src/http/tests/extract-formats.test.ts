@@ -1,11 +1,3 @@
-// /v1/extract — file-format matrix against docs/authors/authoring-workflows.md.
-//
-// The endpoint accepts a raw body and detects the format from the
-// content-type header. This suite covers the happy path for each
-// supported format — including the binary office formats (PDF / DOCX /
-// XLSX / PPTX) — and the 415 path for a genuinely unsupported one
-// (application/octet-stream).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -185,12 +177,6 @@ describe("/v1/extract file-format matrix", () => {
     expect(body.details?.supported).toContain("docx");
   });
 
-  // Lock middleware order: the route is registered as
-  //   requirePermission("workflow:read") → extractBodyCap() → handler
-  // (see `extract.ts`). A future refactor could accidentally reorder
-  // these and let an unauthenticated request reach the parser. The two
-  // 401 tests below cover the binary-MIME surface so a regression is
-  // caught at the test layer instead of in production logs.
   test("PDF body without Authorization → 401", async () => {
     const pdf = buildPdfFixture("hidden");
     const res = await fetch(`${srv.baseUrl}/v1/extract`, {
@@ -218,10 +204,6 @@ describe("/v1/extract file-format matrix", () => {
     expect(res.status).toBe(401);
   });
 
-  // Audit-trail coverage. The success branch writes an immutable
-  // `data.exported` row for binary formats; without a test asserting
-  // the row exists, a future refactor that drops the audit call would
-  // pass metrics-level tests but break governance queries.
   test("PDF success writes an audit_log row scoped to the bearer's tenant", async () => {
     const pdf = buildPdfFixture("Audit trail probe.");
     const res = await fetch(`${srv.baseUrl}/v1/extract`, {
@@ -250,11 +232,6 @@ describe("/v1/extract file-format matrix", () => {
     expect(metadata.filename).toBe("audit-probe.pdf");
     expect(metadata.request_source).toBeDefined();
 
-    // Cross-tenant invisibility: the same audit query scoped to a
-    // different tenant must return nothing. Catches a regression that
-    // drops the `tenant_id` predicate on read OR writes the wrong
-    // `tenant_id` on insert — either would leak this `data.exported`
-    // row (which carries the uploaded filename) across the boundary.
     const otherTenantId = "00000000-0000-0000-0000-0000000000aa";
     expect(otherTenantId).not.toBe(srv.tenantId);
     const crossTenantRows = await srv.db
@@ -265,8 +242,6 @@ describe("/v1/extract file-format matrix", () => {
   });
 
   test("PDF parse failure writes an audit_log row with result=failure", async () => {
-    // Send the PDF magic byte sequence then garbage so format detection
-    // succeeds (matches `%PDF`) but pdf-parse rejects the document.
     const truncated = Buffer.concat([
       Buffer.from([0x25, 0x50, 0x44, 0x46]),
       Buffer.from("--garbage--"),

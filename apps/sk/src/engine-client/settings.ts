@@ -1,15 +1,6 @@
-// Settings surfaces of the engine client. Settings writes are tagged
-// with the sk-cli audit source so compliance review can distinguish
-// operator-driven writes from the deploy-body bootstrap path. Method
-// group merged into `EngineClient` by `../engine-client.ts`.
-
 import { AUDIT_SOURCE_HEADER, type AuditSource } from "@shared/audit-source.ts";
 import type { EngineClient } from "../engine-client.ts";
 
-/** The CLI's channel tag on audit_log.metadata.audit_source. The
- *  engine validates against `AUDIT_SOURCE_VALUES` (shared package)
- *  at the route boundary; this constant just narrows the union to
- *  the value sk uses. */
 const SK_CLI_AUDIT_SOURCE = "sk_cli" satisfies AuditSource;
 
 export type SettingSource = "override" | "tenant" | "global" | "default";
@@ -42,7 +33,6 @@ export interface SettingPutResult {
   requiresRestart: boolean;
 }
 
-/** `GET /v1/system/restart-status` — which process runs and what still waits. */
 export interface EngineRestartStatus {
   boot_id: string;
   started_at: string;
@@ -53,7 +43,6 @@ export interface EngineRestartStatus {
   pending_restart_fields: string[];
 }
 
-/** `POST /v1/system/restart` → 202. */
 export interface EngineRestartAccepted {
   request_id: string;
   audit_id: string;
@@ -62,7 +51,6 @@ export interface EngineRestartAccepted {
 }
 
 export const settingsMethods = {
-  // --------------------------- Restart ------------------------------------
   requestEngineRestart(this: EngineClient): Promise<EngineRestartAccepted> {
     return this.request("POST", "/v1/system/restart");
   },
@@ -71,7 +59,6 @@ export const settingsMethods = {
     return this.request("GET", "/v1/system/restart-status");
   },
 
-  // --------------------------- Settings -----------------------------------
   listSettings(this: EngineClient, opts: { tenant?: string } = {}): Promise<SettingsListResponse> {
     const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
     return this.request("GET", `/v1/settings${qs}`);
@@ -95,12 +82,6 @@ export const settingsMethods = {
     const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
     const body: Record<string, unknown> = { value };
     if (opts.force) body.force = true;
-    // Tag the audit row with audit_source=sk_cli so compliance review
-    // can distinguish operator-driven settings writes from the
-    // deploy-body bootstrap path. Header name + value come from
-    // `@shared/audit-source` — same module the engine route boundary
-    // (apps/engine/src/audit/audit-source.ts) imports from. A future
-    // rename of either lands in one place and propagates here.
     return this.request(
       "PUT",
       `/v1/settings/${encodeURIComponent(path)}${qs}`,

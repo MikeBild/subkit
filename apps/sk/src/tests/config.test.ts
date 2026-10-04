@@ -1,5 +1,3 @@
-// Unit tests for apps/sk/src/config.ts.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,17 +65,14 @@ describe("sk config", () => {
     delete process.env.SUBKIT_API_KEY;
     delete process.env.SUBKIT_TENANT;
 
-    // disk wins over defaults
     const fromDisk = resolveProfile({ path });
     expect(fromDisk.engine_url).toBe("http://disk.local");
     expect(fromDisk.api_key).toBe("disk_key");
 
-    // env wins over disk
     process.env.SUBKIT_ENGINE_URL = "http://env.local";
     const fromEnv = resolveProfile({ path });
     expect(fromEnv.engine_url).toBe("http://env.local");
 
-    // flag wins over env
     const fromFlag = resolveProfile({ path, engine_url: "http://flag.local" });
     expect(fromFlag.engine_url).toBe("http://flag.local");
 

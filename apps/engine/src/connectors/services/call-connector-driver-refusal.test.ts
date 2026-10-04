@@ -1,17 +1,3 @@
-// `call_connector` and driver `mcp`.
-//
-// Two things are pinned here.
-//
-// FIRST, that the refusal is the same on both surfaces. `call_connector` exists
-// twice — this service behind `POST /v1/connectors/{id}/call`, and the
-// conversation tool in `conversations/tools/call-connector.ts` — and the two
-// deliberately dispatch different driver sets. What they must not do is tell an
-// author two different stories about the same driver.
-//
-// SECOND, that the refusal is actionable. "driver not supported" leaves an
-// author with nowhere to go; the message has to name the shape that does fit,
-// which for MCP is the request step's `mcp` sub-block.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { callConnectorTool } from "../../conversations/tools/call-connector.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
@@ -56,7 +42,6 @@ describe("the refusal names the shape that fits", () => {
     expect(refusal.message).toContain("mcp");
     expect(refusal.message).toContain("call_tool");
     expect(refusal.message).toContain("connector_id");
-    // Not "yet": the shapes differ, so this is not a gap waiting to be filled.
     expect(refusal.message).not.toContain("yet");
   });
 

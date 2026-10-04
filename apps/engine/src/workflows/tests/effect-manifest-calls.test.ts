@@ -1,15 +1,3 @@
-// What a called workflow puts into an approval.
-//
-// A `call` step used to end the review: it raised `unbound_workflow_call` and
-// the workflow could never be granted, however ordinary its child was. Three
-// production workflows sit behind that, each genuinely orchestrating — one
-// reads the child's output, one branches on it, one loops over it.
-//
-// The rule these pin: a child is COMPILED here, by the same code that compiles
-// the parent, and its effects and issues are folded in under the call step they
-// came through. Nothing is taken on the resolver's word, and a child whose
-// target could change between the approval and the run is refused outright.
-
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
@@ -31,7 +19,6 @@ function request(id: string, extra: Record<string, unknown> = {}) {
   return { id, kind: "request", connector_id: connector, method: "POST", path: `/${id}`, ...extra };
 }
 
-/** A binding as resolution would freeze it, bound to the step it describes. */
 function binding(
   definition: ReturnType<typeof def>,
   step_id: string,
@@ -92,7 +79,6 @@ test("a call nobody resolved stays unbound — exactly as before", () => {
   expect(result.manifest.issues).toEqual([{ step_id: "run_child", code: "unbound_workflow_call" }]);
   expect(result.eligible_for_repeated_runs).toBe(false);
   expect(result.call_refusals).toEqual([{ step_id: "run_child", reason: "child_unavailable" }]);
-  // Nothing about the child leaked into an approval that refused it.
   expect(result.manifest.calls).toBeUndefined();
   expect(result.manifest.effects.map((e) => e.step_id)).toEqual(["collect"]);
 });
@@ -106,7 +92,6 @@ test("a resolved call folds the child's effects under the step they came through
     ["collect", undefined],
     ["publish", ["run_child"]],
   ]);
-  // The approval pins WHICH version runs, not what it is called.
   expect(result.manifest.calls).toEqual([
     {
       step_id: "run_child",
@@ -166,7 +151,6 @@ test("a call step that does not name exactly one fixed workflow is refused", () 
     calls: [resolvedChild()],
   });
   expect(neither.call_refusals).toEqual([{ step_id: "run_child", reason: "target_not_static" }]);
-  // A resolver that answered with a different workflow than the step names.
   const swapped = compileWorkflowEffectManifest({
     ...parent(),
     calls: [resolvedChild({ workflow_id: "00000000-0000-4000-8000-0000000000ff" })],
@@ -181,9 +165,6 @@ test("a call step that does not name exactly one fixed workflow is refused", () 
 });
 
 test("a parent and its child may share a step id without merging", () => {
-  // Both call their step `publish`, against different targets. If the call path
-  // were dropped anywhere — in the fold, the sort, or a flattened key — the two
-  // would collapse and the reviewer would see one permission instead of two.
   const shared = def([
     request("publish"),
     { id: "run_child", kind: "call", workflow_id: child_workflow },
@@ -252,9 +233,6 @@ test("a resolved call must name a call step of this workflow, once", () => {
 });
 
 test("a child carrying a proposal-derived profile is reported, not silently folded", () => {
-  // Children are resolved with empty profile maps, so this cannot happen by the
-  // intended path. It is refused anyway: a permission derived from the PARENT's
-  // proposal context has not been reviewed for the child.
   const child = def([request("mail", { path: "/messages/send" })], "child");
   const withProfile = {
     ...binding(child, "mail", "https://mail.test/messages/send"),

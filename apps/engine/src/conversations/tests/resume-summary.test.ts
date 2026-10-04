@@ -1,5 +1,3 @@
-// Resume summary — one-sentence recap + next-best-action across states.
-
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -184,8 +182,6 @@ describe("buildResumeSummary", () => {
     });
     expect(s.stage).toBe("awaiting_approval");
     expect(s.pending_approval?.tool_name).toBe("ask_user_confirm");
-    // The deadline reaches the client verbatim — a resume banner that cannot
-    // say how long is left is the gap this field closes.
     expect(s.pending_approval?.expires_at).toBe("2026-08-18T12:00:00.000Z");
     expect(s.one_sentence.toLowerCase()).toContain("approval");
   });

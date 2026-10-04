@@ -1,6 +1,3 @@
-// Authority preparation reads identities and permissions, never token material.
-// In particular, it must not call readAccessToken/getCredentialForConnector,
-// whose connection-backed path can refresh against a remote authorization server.
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { credentials, outboundConnections, runtimeSecretVersions } from "../db/schema/index.ts";
@@ -27,12 +24,9 @@ export interface CredentialAuthorityMetadata {
       granted_scopes: string[] | null;
     } | null;
   };
-  // Availability is evaluated separately from the stable binding. Expiry or a
-  // failed refresh must not make a token version part of the identity digest.
   available: boolean;
 }
 
-/** Identity of the connection row whose exact token version was read. */
 export interface ConnectionAuthorityIdentity {
   id: string;
   revision: number;

@@ -1,9 +1,3 @@
-// `for_each` takes a JavaScript selector over the run scope. The two forms an
-// author reaches for by analogy both validate clean and then fail at run time
-// with "is not defined" — which names neither the mistake nor the fix. A
-// production repair hit that three times in a row and then regenerated the
-// whole workflow instead. The validator names the right form up front.
-
 import { expect, test } from "bun:test";
 import { validateWorkflowDef } from "../validator.ts";
 

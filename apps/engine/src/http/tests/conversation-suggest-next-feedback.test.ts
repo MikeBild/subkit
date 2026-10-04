@@ -1,16 +1,3 @@
-// HTTP-layer coverage for `POST /v1/conversations/:id/suggest-next/feedback`,
-// the metric-only feedback route added under the next-message preview
-// feature. Pinning the contract here so:
-//
-//   - admin api key with conversation:read → 200
-//   - scoped api key without conversation:read/workflow:read → 403
-//   - cross-tenant `:id` → 404 (tenant isolation)
-//   - missing required fields / unknown source enum → 400 (Zod boundary)
-//
-// The route only increments a Prometheus counter and emits a structured
-// log line — no audit row, no DB mutation — so this file does not
-// assert against `audit_log`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -41,12 +28,6 @@ beforeAll(async () => {
     .returning();
   conversation_id = c!.id;
 
-  // Same approach as conversation-fork.test.ts: bind a system account
-  // to the `metrics_scraper` role (no conversation/workflow read), so
-  // an authenticated request without the right permission returns 403
-  // instead of 401. Pinning the 403 path matters because the route is
-  // gated only on `conversation:read|workflow:read`; if that gate
-  // were ever loosened, this test catches the regression.
   const [scraperRole] = await srv.db
     .select({ id: roles.id })
     .from(roles)
@@ -71,7 +52,6 @@ beforeAll(async () => {
   });
   scopedKey = key.plaintext;
 
-  // Second tenant for the cross-tenant 404 case.
   const [otherTenant] = await srv.db
     .insert(tenants)
     .values({ slug: "t-feedback-other", display_name: "other" })

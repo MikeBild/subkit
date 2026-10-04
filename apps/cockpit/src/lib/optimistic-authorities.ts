@@ -6,15 +6,10 @@ import type {
   WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
 
-// How the approvals read looks the moment an approval is granted or revoked
-// (useOptimisticAction): the strip and "Freigaben" answer at once, and the
-// read that follows replaces this with what the engine holds.
-
 export type AuthorityPages = InfiniteData<WorkflowAuthorityList, string | null>;
 
 type GrantInput = NonNullable<ReturnType<typeof authorityGrantInput>>;
 
-/** The approval `id`, revoked at `at`. */
 export function withAuthorityRevoked(
   data: AuthorityPages | undefined,
   id: string,
@@ -39,10 +34,6 @@ export function withAuthorityRevoked(
   };
 }
 
-/**
- * The approval being granted, ahead of the engine's answer: what the reviewer
- * approved, standing newest. Its id says it is not the engine's yet.
- */
 export function withProvisionalAuthority(
   data: AuthorityPages | undefined,
   review: WorkflowAuthorityPreview,

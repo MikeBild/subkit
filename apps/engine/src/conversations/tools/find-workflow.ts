@@ -1,11 +1,3 @@
-// find_workflow — fuzzy lookup over the saved-workflow catalog.
-// Keyword overlap against
-// id/slug/name/description/step.id/step.kind/step.connector_id.
-//
-// Read-only. Use when the operator says "do we have a HubSpot
-// workflow somewhere?" or "find that orders thing I built last
-// month". For "fetch by exact id" call `get_workflow`.
-
 import { z } from "@hono/zod-openapi";
 import {
   bindingFor,
@@ -49,7 +41,6 @@ interface WorkflowSummary {
   description: string | null;
   category?: string;
   connectors?: string[];
-  /** What really starts the workflow — see `scheduler/trigger-bindings.ts`. */
   effective_trigger?: EffectiveTrigger;
   steps: Array<{ id: string; kind: string; connector_id: string | null }>;
 }
@@ -69,9 +60,6 @@ export function summarize(wf: {
     slug: wf.slug,
     name: wf.name,
     current_version: wf.current_version ?? null,
-    // Row description (editable metadata) wins over the DAG's authoring-time
-    // description, matching the HTTP catalog (routes/workflows.ts) and MCP
-    // resources. Otherwise a metadata-only update_workflow leaves this stale.
     description: wf.description ?? wf.definition?.description ?? null,
     steps: stepArr.map((s) => ({
       id: typeof s.id === "string" ? s.id : "",
@@ -96,8 +84,6 @@ function searchableText(s: WorkflowSummary): string {
     s.slug,
     s.name,
     s.description ?? "",
-    // The catalog block and the connector slugs are searchable too, so
-    // "notion" or "gmail" finds the family even when no step id spells it.
     s.category ?? "",
     ...(s.connectors ?? []),
     ...s.steps.map((st) => st.id),
@@ -139,14 +125,10 @@ export const findWorkflowTool: ConversationTool = {
         data: { matches: [withTrigger(summarize(wf), wf.definition.trigger, bindings)], total: 1 },
       };
     }
-    // Complete catalog (service default = safety bound) so a match can
-    // never be missed because it sat beyond an arbitrary page size.
     const { rows: list } = await ctx.engineClient.workflows.list({
       ...(args.category !== undefined ? { category: args.category } : {}),
       ...(args.connector !== undefined ? { connector: args.connector } : {}),
     });
-    // Derived over the whole catalog, so a match reports the block it really
-    // belongs to even when the search was narrowed.
     const [categories, connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.categories(),
       ctx.engineClient.workflows.connectorRefs(),

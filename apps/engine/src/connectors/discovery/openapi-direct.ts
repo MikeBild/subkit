@@ -1,11 +1,3 @@
-// Strategy #1: fetch a URL we already believe is an OpenAPI / Swagger spec
-// and normalise it into a `DiscoveryResult`.
-//
-// Supports both OpenAPI 3.x and Swagger 2.x. YAML is detected by file
-// extension or `content-type`; JSON otherwise. Pagination heuristics run
-// per-operation against parameter names first, then a sample 200 response
-// schema, then the `Link` header.
-
 import { load as loadYaml } from "js-yaml";
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
@@ -24,23 +16,8 @@ import {
 } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_SIZE_BYTES = 16 * 1024 * 1024; // discovery specs can be larger than runtime fetches
+const MAX_SIZE_BYTES = 16 * 1024 * 1024;
 
-/**
- * Rewrite well-known doc-hosting URLs to their raw-spec equivalents so the
- * fetcher gets JSON/YAML instead of a Swagger-UI HTML shell. Returns the
- * original URL when no rule matches. Idempotent — already-rewritten URLs
- * pass through unchanged.
- *
- * Currently handles:
- *   - SwaggerHub UI host (`app.swaggerhub.com/apis/`) → API host
- *     (`api.swaggerhub.com/apis/`), same `/{owner}/{api}/{version}` path.
- *   - SwaggerHub *rendered docs* host (`app.swaggerhub.com/apis-docs/`) →
- *     API host (`api.swaggerhub.com/apis/`). Operators frequently paste
- *     the docs URL when the API URL is what they want.
- *   The API host returns JSON by default; the UI / docs hosts return
- *   rendered HTML pages that would trip `unknown_spec_version`.
- */
 export function normalizeKnownHosts(rawUrl: string): string {
   let url: URL;
   try {
@@ -138,14 +115,10 @@ function parseSpecText(text: string, url: string, contentType: string | null): L
     return parsed;
   } catch (err) {
     if (err instanceof DiscoveryError) throw err;
-    // Fall back to YAML parse if the JSON parse failed (some endpoints
-    // serve YAML with a generic `text/plain` content-type).
     try {
       const parsed = loadYaml(text);
       if (isObject(parsed)) return parsed;
-    } catch {
-      // ignore — original error wins
-    }
+    } catch {}
     const msg = err instanceof Error ? err.message : String(err);
     throw new DiscoveryError("parse_failed", `JSON parse failed: ${msg}`);
   }
@@ -156,14 +129,9 @@ async function fetchSpec(
   opts: DiscoveryStrategyOptions,
 ): Promise<{ text: string; contentType: string | null; linkHeader: string | null }> {
   const effectiveUrl = normalizeKnownHosts(url);
-  // Egress guard — discovery is just as much an outbound fetch surface
-  // as the runtime drivers, and SSRF attempts via spec URLs (private
-  // ranges, localhost, link-local) need the same RFC1918 reject.
   assertEgressAllowed(effectiveUrl, {});
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
-  // If the caller supplied a signal, abort our internal controller when
-  // theirs fires so we honour both budgets.
   if (opts.signal) {
     if (opts.signal.aborted) controller.abort();
     else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
@@ -211,7 +179,6 @@ function extractTitle(spec: LooseObject): string | null {
 }
 
 function extractServers(spec: LooseObject): string[] {
-  // OpenAPI 3.x
   if (Array.isArray(spec.servers)) {
     const out: string[] = [];
     for (const srv of spec.servers) {
@@ -219,7 +186,6 @@ function extractServers(spec: LooseObject): string[] {
     }
     if (out.length > 0) return out;
   }
-  // Swagger 2.x — assemble from host + basePath + schemes
   const host = asString(spec.host);
   if (host) {
     const basePath = asString(spec.basePath) ?? "";
@@ -343,9 +309,6 @@ function extractParams(operation: LooseObject, pathItem: LooseObject): Discovere
   return out;
 }
 
-/** The request body of an operation: its schema plus the media type the
- *  spec declares it under. `content_type` lets authoring encode the body as
- *  the API expects (e.g. `text/markdown`) instead of always JSON-wrapping. */
 interface ExtractedRequestBody {
   schema: unknown;
   content_type: string | null;
@@ -353,9 +316,6 @@ interface ExtractedRequestBody {
 
 function extractRequestBody(operation: LooseObject, isV2: boolean): ExtractedRequestBody | null {
   if (isV2) {
-    // Swagger 2 declares body media types on the operation's `consumes`
-    // (or the spec root, which the caller can't see here); a `body`
-    // parameter carries the schema.
     const params = Array.isArray(operation.parameters) ? operation.parameters : [];
     const consumes = Array.isArray(operation.consumes)
       ? operation.consumes.filter((c): c is string => typeof c === "string")
@@ -370,9 +330,6 @@ function extractRequestBody(operation: LooseObject, isV2: boolean): ExtractedReq
   }
   const body = asRecord(operation.requestBody);
   const content = asRecord(body.content);
-  // Prefer JSON body schema; fall back to first declared content type. Carry
-  // whichever media type the schema came from so a non-JSON body (e.g.
-  // `text/markdown`) is not silently treated as JSON downstream.
   const json = asRecord(content["application/json"]);
   if (isObject(json.schema)) return { schema: json.schema, content_type: "application/json" };
   for (const [mediaType, value] of Object.entries(content)) {
@@ -380,8 +337,6 @@ function extractRequestBody(operation: LooseObject, isV2: boolean): ExtractedReq
       return { schema: value.schema, content_type: mediaType };
     }
   }
-  // A body declared with a media type but no schema (e.g. raw `text/markdown`
-  // with no shape) still tells authoring the expected encoding.
   const firstMediaType = Object.keys(content)[0];
   if (firstMediaType) return { schema: null, content_type: firstMediaType };
   return null;
@@ -423,7 +378,6 @@ function detectPaginationFromParams(
     if (kind) matches.push({ kind, name: p.name });
   }
   if (matches.length === 0) return null;
-  // Cursor wins over page wins over offset when mixed.
   const order: Record<"cursor" | "page" | "offset", number> = { cursor: 0, page: 1, offset: 2 };
   matches.sort((a, b) => order[a.kind] - order[b.kind]);
   const top = matches[0];
@@ -438,7 +392,6 @@ function detectPaginationFromParams(
 function detectPaginationFromResponse(
   responses: Record<string, unknown>,
 ): DiscoveredEndpointPaginationHint | null {
-  // DigitalOcean-style: response schema describes `links.pages.next`.
   const success = responses["200"] ?? responses["201"] ?? responses.default;
   if (!isObject(success)) return null;
   const props = asRecord(success.properties);
@@ -483,8 +436,6 @@ function buildEndpoints(
       const responses = extractResponses(opRaw, isV2);
       let pagination: DiscoveredEndpointPaginationHint | null = detectPaginationFromParams(params);
       if (!pagination) pagination = detectPaginationFromResponse(responses);
-      // If the live response carried a `Link: <…>; rel="next"` header for
-      // this URL we capture that as a fallback hint.
       if (
         !pagination &&
         method === "GET" &&
@@ -513,11 +464,6 @@ function buildEndpoints(
   return endpoints;
 }
 
-/**
- * Parse a raw spec object (already JSON / YAML decoded) into a
- * `DiscoveryResult`. Exposed so other strategies (e.g.
- * `swagger-ui-scrape`) can reuse the normaliser without re-fetching.
- */
 export function normalizeSpec(
   spec: LooseObject,
   sourceUrl: string,
@@ -549,8 +495,6 @@ class OpenApiDirectStrategy implements DiscoveryStrategy {
   readonly name = "openapi-direct" as const;
 
   canHandle(_url: string): boolean {
-    // The orchestrator decides eligibility — we always attempt direct fetch
-    // because callers already think the URL is a spec.
     return true;
   }
 

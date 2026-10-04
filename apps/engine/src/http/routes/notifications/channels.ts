@@ -1,13 +1,3 @@
-// Notification channels — REST surface.
-//
-//   GET    /v1/notifications/channels
-//   POST   /v1/notifications/channels
-//   PATCH  /v1/notifications/channels/{id}
-//   DELETE /v1/notifications/channels/{id}
-//
-// Schemas live next to the routes that use them — same Zod-first
-// contract.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";

@@ -31,10 +31,8 @@ import {
 type ScheduleEntry = components["schemas"]["ScheduleEntry"];
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
-/** The zone a new schedule runs in: the reader's own, said in the dialog. */
 const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-/** This workflow's one schedule, under the key the automation state reads it by. */
 function useWorkflowSchedule(workflowId: string) {
   const live = useLiveQueryOptions();
   const query = useQuery({
@@ -49,10 +47,6 @@ function useWorkflowSchedule(workflowId: string) {
   return { query, schedule };
 }
 
-/**
- * Anlegen and Bearbeiten (R11): a rhythm, a weekday where it is weekly, and a
- * time. One schedule per workflow; saving an existing one changes it.
- */
 function ScheduleDialog({
   open,
   onOpenChange,
@@ -117,10 +111,6 @@ function ScheduleDialog({
   );
 }
 
-/**
- * Rhythmus · Wochentag (weekly only) · Uhrzeit — shared by the schedule
- * dialog and a workflow created by hand.
- */
 export function ScheduleFields({
   value,
   onChange,
@@ -133,7 +123,6 @@ export function ScheduleFields({
   const { t, locale } = useI18n();
   const setValue = onChange;
   const days = Array.from({ length: 7 }, (_, index) => {
-    // 2023-01-01 was a Sunday: day `index` of that week is weekday `index`.
     const date = new Date(Date.UTC(2023, 0, 1 + index));
     return {
       value: String(index),
@@ -183,11 +172,6 @@ export function ScheduleFields({
   );
 }
 
-/**
- * "Zeitplan" in "Verwenden" (R11): the schedule's rhythm, its next run and
- * its zone, with Bearbeiten · Pausieren/Fortsetzen · Löschen; or, without
- * one, "Zeitplan anlegen" — and the chat as the second way.
- */
 export function WorkflowScheduleSection({
   workflowId,
   workflowName,
@@ -197,7 +181,6 @@ export function WorkflowScheduleSection({
 }: {
   workflowId: string;
   workflowName: string;
-  /** When the engine fires it next, from the invocation read. */
   nextFireAt: string | null;
   canWrite: boolean;
   canChat: boolean;

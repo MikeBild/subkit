@@ -1,20 +1,3 @@
-// Integration tests for commit-workflow atomic gates.
-//
-// C.1 — same-slug adoption:
-//   - commit a workflow whose slug matches a live workflow the conversation
-//     is rebuilding (no foreign bound artifact) → single workflow row,
-//     version incremented, no "-v2" slug.
-//   - a draft pivoted to a DIFFERENT artifact's slug with a foreign workflow
-//     bound → slug_conflict_with_live_workflow.
-//
-// C.2 — preview-failure-class gate:
-//   - force_commit:true + runtime_data failure → succeeds.
-//   - force_commit:true + config_invalid failure (unresolved_identifier) → blocked.
-//
-// C.3 — already_persisted idempotency:
-//   - commit a workflow; re-commit byte-identical draft → already_persisted:true,
-//     no new workflow version, exactly one WORKFLOW_CREATED audit row total.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import {
@@ -78,7 +61,6 @@ function draftWithFailedPreview(
   failureKind: "runtime_data" | "config_invalid",
 ): DraftDocument {
   const base = readyDraft(slug);
-  // Override the preview to be failed with the correct error signal.
   const stepTrace =
     failureKind === "runtime_data"
       ? {
@@ -160,8 +142,6 @@ async function observedEdit(conversationId: string, next: DraftDocument): Promis
   };
 }
 
-// ── C.1 same-slug adoption ────────────────────────────────────────────────────
-
 test("inert authoring saves a scheduled draft without approval or trigger activation", async () => {
   const conversationId = await freshConversation();
   const draft = readyDraft("inert-authoring-schedule");
@@ -212,7 +192,6 @@ describe("C.1 — same-slug adoption", () => {
     const conversationId = await freshConversation();
     await seedApprovedConfirm(conversationId);
 
-    // First commit.
     const first = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, readyDraft("adopt-slug", "Adopt Slug")),
     });
@@ -220,8 +199,6 @@ describe("C.1 — same-slug adoption", () => {
     const firstData = first.data as { workflow_id: string; version: number; slug: string };
     expect(firstData.slug).toBe("adopt-slug");
 
-    // Second commit with the SAME slug from the same conversation
-    // (simulates "user edited a step, re-save").
     await seedApprovedConfirm(conversationId);
     const second = await commitWorkflowAtomic({
       ctx: stubToolCtx(
@@ -232,12 +209,10 @@ describe("C.1 — same-slug adoption", () => {
     expect(second.ok).toBe(true);
     const secondData = second.data as { workflow_id: string; version: number; slug: string };
 
-    // Same row adopted — single workflow row, version incremented.
     expect(secondData.workflow_id).toBe(firstData.workflow_id);
     expect(secondData.version).toBeGreaterThan(firstData.version);
     expect(secondData.slug).toBe("adopt-slug");
 
-    // Only ONE workflow row for this slug.
     const live = await ctx.testDb.db
       .select({ slug: workflows.slug })
       .from(workflows)
@@ -250,13 +225,7 @@ describe("C.1 — same-slug adoption", () => {
       );
     expect(live).toHaveLength(1);
   });
-
-  // Note: the slug_conflict_with_live_workflow case when pivoting to a DIFFERENT
-  // workflow's slug is covered by topic-pivot-identity.test.ts. That test file
-  // carries this assertion and is the canonical regression guard for that case.
 });
-
-// ── C.2 preview-failure-class gate ───────────────────────────────────────────
 
 describe("C.2 — preview-failure-class gate", () => {
   test("force_commit:true + runtime_data failure → commit succeeds", async () => {
@@ -271,8 +240,6 @@ describe("C.2 — preview-failure-class gate", () => {
     });
     expect(result.ok).toBe(true);
     const data = result.data as { preview_failure_class?: string };
-    // The runtime-data override should be signalled in the envelope.
-    // (The gate clears for runtime_data + force_commit.)
     expect(result.ok).toBe(true);
     void data;
   });
@@ -292,9 +259,6 @@ describe("C.2 — preview-failure-class gate", () => {
     const workflowId = (result.data as { workflow_id?: string }).workflow_id;
     expect(workflowId).toBeDefined();
 
-    // The committed-over-failed-preview signal must land in the audit row so
-    // operators can answer "was this committed over a failed dry-run?" without
-    // correlating logs by timestamp.
     const rows = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -321,22 +285,16 @@ describe("C.2 — preview-failure-class gate", () => {
       forceCommit: true,
       skipPriorApprovalCheck: true,
     });
-    // config_invalid must block even with force_commit.
     expect(result.ok).toBe(false);
-    // The top-level error_code from commitWorkflowAtomic.
     const res = result as {
       error_code?: string;
       data?: { preview_failure_class?: string; force_commit_available?: boolean };
     };
     expect(res.error_code).toBe("preview_failed");
-    // The failure class is surfaced in data.preview_failure_class.
     expect(res.data?.preview_failure_class).toBe("config_invalid");
-    // force_commit_available is false for config_invalid failures.
     expect(res.data?.force_commit_available).toBe(false);
   });
 });
-
-// ── C.4 webhook-binding removal guard ────────────────────────────────────────
 
 describe("C.4 — saving never changes live webhook bindings", () => {
   for (const forceCommit of [false, true]) {
@@ -408,22 +366,18 @@ describe("C.4 — saving never changes live webhook bindings", () => {
   }
 });
 
-// ── C.3 already_persisted idempotency ────────────────────────────────────────
-
 describe("C.3 — already_persisted idempotency", () => {
   test("re-commit byte-identical draft → already_persisted:true, no new version, one audit row", async () => {
     const conversationId = await freshConversation();
     await seedApprovedConfirm(conversationId);
     const draft = readyDraft("idempotent-commit", "Idempotent");
 
-    // First commit.
     const first = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, await observedEdit(conversationId, draft)),
     });
     expect(first.ok).toBe(true);
     const firstData = first.data as { workflow_id: string; version: number };
 
-    // Count audit rows for this workflow after first commit.
     const auditAfterFirst = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -437,7 +391,6 @@ describe("C.3 — already_persisted idempotency", () => {
     const createdCount = auditAfterFirst.length;
     expect(createdCount).toBe(1);
 
-    // Second commit — byte-identical draft, same slug, same conversation.
     await seedApprovedConfirm(conversationId);
     const second = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, await observedEdit(conversationId, draft)),
@@ -453,7 +406,6 @@ describe("C.3 — already_persisted idempotency", () => {
     expect(secondData.workflow_id).toBe(firstData.workflow_id);
     expect(second.committed_workflow_id).toBeUndefined();
 
-    // Still exactly one WORKFLOW_CREATED audit row — no second write.
     const auditAfterSecond = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -467,8 +419,6 @@ describe("C.3 — already_persisted idempotency", () => {
     expect(auditAfterSecond).toHaveLength(1);
   });
 });
-
-// ── M4 — unbound-schedule prominent warning ──────────────────────────────────
 
 describe("M4 — unbound-schedule warning on the commit envelope", () => {
   test("cadence phrasing with no schedule trigger surfaces schedule_warning + next_prompt banner", async () => {
@@ -498,8 +448,6 @@ describe("M4 — unbound-schedule warning on the commit envelope", () => {
     expect(data.next_prompt ?? "").not.toContain("WARNING");
   });
 });
-
-// ── C.5 unattended-trigger binding guard ─────────────────────────────────────
 
 describe("C.5 — schedule activation is not draft persistence", () => {
   const trigger = { kind: "schedule" as const, cron: "0 7 * * *", tz: "Europe/Berlin" };

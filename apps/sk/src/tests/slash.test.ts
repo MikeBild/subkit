@@ -1,6 +1,3 @@
-// Unit tests for apps/sk/src/slash.ts — the slash-command registry
-// and persona filter.
-
 import { describe, expect, test } from "bun:test";
 import {
   findSlashCommand,
@@ -50,7 +47,6 @@ describe("sk slash registry", () => {
 
   test("enduser persona: session-scoped commands visible, admin + mcp + skills + tenant + approve hidden", () => {
     const visible = slashCommandsForPersona(endUserPersona).map((c) => c.name);
-    // Chat session controls the enduser can use.
     expect(visible).toContain("clear");
     expect(visible).toContain("resume");
     expect(visible).toContain("draft");
@@ -61,14 +57,13 @@ describe("sk slash registry", () => {
     expect(visible).toContain("model");
     expect(visible).toContain("compact");
     expect(visible).toContain("init");
-    // Anything requiring perms the enduser lacks.
-    expect(visible).not.toContain("audit"); // audit:read
-    expect(visible).not.toContain("mcp"); // mcp:read
-    expect(visible).not.toContain("skills"); // skill:read
-    expect(visible).not.toContain("tenant"); // identity:read
-    expect(visible).not.toContain("setup"); // identity:read
-    expect(visible).not.toContain("approve"); // conversation:approve
-    expect(visible).not.toContain("reject"); // conversation:approve
+    expect(visible).not.toContain("audit");
+    expect(visible).not.toContain("mcp");
+    expect(visible).not.toContain("skills");
+    expect(visible).not.toContain("tenant");
+    expect(visible).not.toContain("setup");
+    expect(visible).not.toContain("approve");
+    expect(visible).not.toContain("reject");
   });
 
   test("portal persona hides /resume (no conversation:list)", () => {

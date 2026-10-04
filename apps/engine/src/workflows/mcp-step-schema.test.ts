@@ -1,16 +1,3 @@
-// The `mcp` sub-block's authoring contract.
-//
-// The reason this is a schema concern rather than a runtime one: every
-// mistake below is one an author (human or LLM) makes at write time, and
-// each has a runtime failure that names the wrong thing. A `read_resource`
-// step with `tool` set would fail with "uri is required" against a step
-// whose intent was obvious; an mcp step without `connector_id` would reach
-// the dispatcher and be told a request step needs a url. Naming the field
-// here costs one edit instead of one failed run.
-//
-// The invariant behind constraint 2 is also asserted: `mcp` is a FIELD of
-// `request`, never a member of the step-kind union.
-
 import { describe, expect, test } from "bun:test";
 import { RequestStepSchema, StepSchema } from "./types.ts";
 
@@ -75,8 +62,6 @@ describe("each operation names its own target field", () => {
   });
 
   test("another operation's target field is refused, not ignored", () => {
-    // Silently ignoring it is the failure mode: the author believes the
-    // uri is what gets read and the engine calls a tool instead.
     const res = parse({ operation: "read_resource", uri: "file:///a.md", tool: "search" });
     expect(res.success).toBe(false);
     expect(messages(res)).toContain('mcp.tool belongs to operation "call_tool"');
@@ -111,9 +96,6 @@ describe("an mcp step is bound to a connector and asserts nothing HTTP-shaped", 
   });
 
   test("timeout_ms is refused, and the refusal names the lever that works", () => {
-    // The dispatcher clears the step timer before the MCP call, so this
-    // field bounded nothing. Accepting it would tell the author a deadline
-    // is in force when none is.
     const res = parse({ tool: "search" }, { timeout_ms: 5000 });
     expect(res.success).toBe(false);
     const msg = messages(res);
@@ -132,8 +114,6 @@ describe("an mcp step is bound to a connector and asserts nothing HTTP-shaped", 
   });
 
   test("the HTTP-verb guard does not fire on an mcp step", () => {
-    // The guard's message tells the author to add an s3/sql/mcp block —
-    // reaching it from a step that already has one would be nonsense.
     const res = parse({ tool: "search" }, { method: "POST" });
     expect(res.success).toBe(true);
   });

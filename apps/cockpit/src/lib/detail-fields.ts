@@ -1,36 +1,5 @@
 import type { TranslationKey } from "./i18n";
 
-/**
- * What a detail page shows about a record, and under which words.
- *
- * The overview used to be built from the response itself: every scalar field
- * the engine happened to return, labelled `key.replaceAll("_", " ")`. On the
- * connector page that WAS the page, and it read as the engine's own field list
- * — "Updated At", "Auth Type", "Needs Reauth" — in a cockpit that is otherwise
- * German, with the record's UUID as its first and most prominent value.
- *
- * A mechanical label is worse than a missing one: it looks designed. Nobody
- * chose those words, nobody can translate them, and a field the engine renames
- * silently renames itself on screen.
- *
- * So the table below is a decision per field, not a transform. The label keys
- * are the ones the LIST columns already use, which is the point: a connector's
- * driver is "Treiber" in the list and "Treiber" on its detail page, because
- * both read the same key. A second vocabulary for the same fields is how two
- * surfaces start naming one fact differently (§12).
- *
- * Three rules decide what is NOT here:
- *
- *   - Identifiers. `id`, `tenant_id`, `workflow_id` and their kin never appear
- *     on a surface (§5). The detail page keeps the record's own reference one
- *     disclosure deeper, for the person who has to quote it to operations.
- *   - The record's name. The heading above already says it; repeating it in the
- *     first cell is the same fact twice.
- *   - Anything unknown. A field this table does not name is not rendered at
- *     all. The alternative — printing the raw key — is exactly the defect this
- *     replaces, and dressing a raw value as a designed label is a lie about how
- *     much thought went into it.
- */
 export type DetailFieldFormat =
   | "text"
   | "date"
@@ -47,7 +16,6 @@ export interface DetailField {
   format: DetailFieldFormat;
 }
 
-/** The reading order of the overview — chosen here, not inherited from JSON. */
 export const DETAIL_FIELDS: readonly DetailField[] = [
   { key: "status", labelKey: "resource.field.status", format: "status" },
   { key: "lifecycle", labelKey: "catalog.lifecycle", format: "status" },
@@ -77,7 +45,6 @@ export const DETAIL_FIELDS: readonly DetailField[] = [
   { key: "updated_at", labelKey: "catalog.updated", format: "date" },
 ];
 
-/** The value vocabularies shared with the catalogue list's own cells. */
 export const SCOPE_KEYS: Record<string, TranslationKey> = {
   global: "scope.global",
   connector: "scope.connector",
@@ -95,14 +62,6 @@ export interface DetailEntry extends DetailField {
   value: unknown;
 }
 
-/**
- * The curated fields this record actually carries, in the order above.
- *
- * A field the record does not mention is left out rather than rendered as `—`:
- * a workflow has no scan verdict, and a row of dashes for every field some
- * other collection owns is noise, not information. A field the record DOES
- * carry as `null` stays — that is a measured absence and the page says so.
- */
 export function detailEntries(record: Record<string, unknown>): DetailEntry[] {
   return DETAIL_FIELDS.filter((field) => record[field.key] !== undefined).map((field) => ({
     ...field,
@@ -110,16 +69,6 @@ export function detailEntries(record: Record<string, unknown>): DetailEntry[] {
   }));
 }
 
-/**
- * What the row under a record's title says — only what is a state of THIS
- * record, taken from the record:
- *
- *   - its lifecycle word, when it carries one. A record without a lifecycle
- *     gets no word: "Aktiv" on a file was a default, not a fact.
- *   - its version, when that is a number. A knowledge source's `version` is a
- *     content marker ("knowledge-v4"), and a "v" in front of it reads as a
- *     version it is not.
- */
 export function recordBarFacts(record: Record<string, unknown>): {
   status: string | null;
   version: number | null;

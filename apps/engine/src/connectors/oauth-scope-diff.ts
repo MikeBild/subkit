@@ -1,14 +1,3 @@
-// Shared OAuth requested-vs-granted scope diff helper.
-//
-// G6 (runtime-logs review plan): pre-fix the engine wrote credential
-// rows that silently 401'd against APIs the user did not consent to.
-// 6.2.4 added the data path (requested_scopes on state, granted_scopes
-// on credential). 6.2.6 surfaced the diff on the conversation tool.
-// H1 / H4 collapse the duplication so the REST + MCP + conversation
-// surfaces all carry the same diff envelope, and so an explicit
-// "unknown" sentinel disambiguates "fully granted" from "we have no
-// recorded scope data" (legacy pre-6.2.4 credential rows).
-
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { parseScopeList } from "../credentials/authority-scopes.ts";
 // biome-ignore lint/style/useImportType: Db is the runtime type the drizzle queries operate on
@@ -17,36 +6,13 @@ import { credentials } from "../db/schema/index.ts";
 import type { ConnectorView } from "./types.ts";
 
 export interface ScopeDiff {
-  /**
-   * - `true`  — granted ⊊ expected (real partial grant; missing_scopes
-   *             enumerates the gap).
-   * - `false` — granted ⊇ expected (every requested scope is present).
-   * - `"unknown"` — credential row predates the 6.2.4 G6 migration; no
-   *                 granted_scopes was recorded. The LLM must NOT infer
-   *                 "fully granted" from missing data — re-authorising
-   *                 is the only safe way to learn the actual grant set.
-   */
   partial_grant: boolean | "unknown";
   expected: string[];
   granted: string[];
-  /** Always [] when partial_grant is false or "unknown". */
   missing: string[];
-  /** Actionable hint for the LLM, populated only when partial_grant=true. */
   note?: string;
 }
 
-/**
- * Pure-function diff used by both surfaces (and the unit test). Returns
- * null when the diff is structurally not applicable:
- *   - the connector is not oauth2,
- *   - the connector template declared no expected scope set
- *     (`connector.config.oauth.scope` missing/empty),
- *   - the credential row's granted_scopes is missing AND expected is
- *     missing (nothing to compare).
- *
- * Returns `partial_grant: "unknown"` when expected is known but
- * granted is null — H4's explicit-unknown contract.
- */
 export function diffOauthScopes(
   expectedScopeStr: string | null | undefined,
   grantedScopeStr: string | null | undefined,
@@ -54,14 +20,8 @@ export function diffOauthScopes(
   if (!expectedScopeStr) return null;
   const expected = parseScopeList(expectedScopeStr);
   if (expected.length === 0) return null;
-  // A string with no scope token in it (empty, blanks, separators only) is
-  // read like no string: the stored form of " , " is "", and the callback and
-  // every later reader must agree on what the grant was.
   const granted = parseScopeList(grantedScopeStr ?? "");
   if (granted.length === 0) {
-    // H4: expected is known but we never recorded granted (pre-G6 row).
-    // Surface as "unknown" so the LLM can prompt the user to re-auth
-    // rather than assuming the credential is fully provisioned.
     return {
       partial_grant: "unknown",
       expected,
@@ -84,11 +44,6 @@ export function diffOauthScopes(
   };
 }
 
-/**
- * Load the credential row's `granted_scopes` for a connector and compute
- * the diff against `connector.config.oauth.scope`. Best-effort: a DB
- * blip returns null (callers treat null as "no diff signal").
- */
 export async function computeConnectorScopeDiff(
   db: Db,
   tenant_id: string,

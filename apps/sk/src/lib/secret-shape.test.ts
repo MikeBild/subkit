@@ -1,11 +1,3 @@
-// Unit tests for the input-side credential filter.
-//
-// These run on the literal `detectSecretShape` function — no Ink, no
-// network — so we can scan a wide table of fixtures fast. Each fixture
-// pairs a sample token against the expected `kind`. A matching record
-// is asserted to round-trip kind + a 6-char prefix; non-matching ones
-// (whitelist + plain prose) must return `matched: false`.
-
 import { describe, expect, test } from "bun:test";
 import {
   detectSecretShape,
@@ -13,7 +5,6 @@ import {
   secretRedirectHint,
 } from "./secret-shape.ts";
 
-// 64-char hex blob — used to pad real-shape tokens like `dop_v1_…`.
 const HEX64 = "a9053683ac4c864800f693f0c7b325d880a44f056bd884c8d975db2ece655796";
 const HEX36 = "abcdefghijklmnopqrstuvwxyz0123456789";
 const HEX40 = "abcdefghijklmnopqrstuvwxyz0123456789abcd";
@@ -39,9 +30,7 @@ describe("detectSecretShape — positive matches", () => {
     if (result.matched) {
       expect(result.kind).toBe(kind);
       expect(result.sample.startsWith(expectedSample)).toBe(true);
-      // Sample must NEVER contain the full token. 6 chars + ellipsis = 7.
       expect(result.sample.length).toBeLessThanOrEqual(8);
-      // Cross-check: the sample never accidentally leaks the whole token.
       expect(result.sample).not.toBe(sample);
     }
   });
@@ -73,9 +62,6 @@ describe("detectSecretShape — negative + whitelist", () => {
   });
 
   test("UUIDv4 conversation id alone is not flagged", () => {
-    // A bare UUID is shorter than every pattern's minimum length, but
-    // the whitelist is the load-bearing guarantee for the case where a
-    // future pattern might be more permissive.
     expect(detectSecretShape("00b93a52-1234-4abc-9def-0123456789ab").matched).toBe(false);
   });
 

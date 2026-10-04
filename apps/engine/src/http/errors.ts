@@ -1,15 +1,7 @@
-// Typed HTTP errors and the central error -> response mapper.
-//
-// All routes throw `HttpError` (or a subclass). The error middleware
-// converts the error into a JSON envelope and emits a `request.failed`
-// log entry. Anything else that escapes a handler becomes a 500.
-
 export interface HttpErrorBody {
   code: string;
   message: string;
-  /** Operator-friendly remediation hint. Surfaced verbatim by the sk CLI. */
   hint?: string;
-  /** Seconds the client should wait before retrying. Set on 429/503. */
   retry_after?: number;
   details?: Record<string, unknown>;
 }
@@ -78,10 +70,6 @@ export class ConflictError extends HttpError {
   }
 }
 
-/**
- * The change would leave the workspace without an administrator. Its own
- * code, so a client can say that — not a generic "conflict".
- */
 export class LastAdminConflictError extends HttpError {
   constructor(message: string) {
     super(409, "last_admin", message);
@@ -100,26 +88,12 @@ export class UnsupportedMediaTypeError extends HttpError {
   }
 }
 
-/**
- * 422 — the request was syntactically valid (Zod-level fields parsed
- * fine) but the application-level state makes it unprocessable. Used
- * for things like "the connector exists but its driver is unsupported
- * for this surface", "the connector exists but has no credential", or
- * "this GraphQL connector requires body.query".
- */
 export class UnprocessableEntityError extends HttpError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(422, "unprocessable_entity", message, details ? { details } : {});
   }
 }
 
-/**
- * 503 — the request can't be served because of an engine-side
- * configuration / dependency gap (e.g. an admin route requires a
- * config key the operator hasn't set). Distinct from 400 (which
- * blames the caller for a bad body) and from 422 (which blames the
- * caller for an inconsistent application state).
- */
 export class ServiceUnavailableError extends HttpError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(503, "service_unavailable", message, details ? { details } : {});

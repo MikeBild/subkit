@@ -9,15 +9,10 @@ import { useI18n } from "@/lib/i18n-context";
 export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
   const { t, dateTime } = useI18n();
   const concrete = schedule.admission_hold?.reason_code === "execution_authority_required";
-  // A repaired version already waiting changes what the reader has to do:
-  // approving the running version is what kept failing, because the running
-  // version is the one with the problem.
   const prepared = Boolean(schedule.prepared_version_id);
   return (
     <Card size="sm" data-testid="schedule-admission-held">
       <CardHeader>
-        {/* One column, the action under the words it acts on. Beside them it
-            sat askew against a description that wraps at every width. */}
         <div className="flex min-w-0 flex-col items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -41,8 +36,6 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
                     : "schedules.held.authorityShort",
               )}
             </CardDescription>
-            {/* Since when. It was fetched and never shown, and "held" reads
-                very differently at ten minutes than at eight days. */}
             {schedule.admission_hold?.observed_at && (
               <p className="text-muted-foreground text-xs" data-testid="schedule-admission-since">
                 {t("schedules.held.since", {
@@ -57,11 +50,6 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
               params={{ resourceId: schedule.workflow_id }}
               data-testid="schedule-admission-review"
             >
-              {/* Two reason codes, opposite outcomes: one needs the workflow
-                  repaired, the other only needs approving. The same label sent
-                  both to the same page, and only one of them could act there.
-                  A prepared version overrides both: the repair already exists
-                  and the next step is putting it into service. */}
               {t(
                 prepared
                   ? "schedules.held.reviewPrepared"

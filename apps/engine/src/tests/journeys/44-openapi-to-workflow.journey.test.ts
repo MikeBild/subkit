@@ -1,15 +1,3 @@
-// User story: As an operator, I want to upload an OpenAPI spec and have the
-// engine extract endpoints deterministically without calling any LLM, so
-// that workflows can be generated from structured API docs reliably.
-//
-// Acceptance criteria:
-//   - AC1: `runDocumentAnalysisFlow` parses an OpenAPI JSON spec and returns
-//          the correct endpoint list with no LLM call.
-//   - AC2: Confidence is ≥ 90 for structured formats.
-//   - AC3: Parsed endpoints include method, path, expected_statuses, idempotent.
-//   - AC4: Multiple attachments are merged, deduplicating by method+path.
-// Spec refs: plan docs — Approach 2 document analysis
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runDocumentAnalysisFlow } from "../../llm/flows/document-analysis.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
@@ -125,7 +113,6 @@ describe("44: OpenAPI → workflow (deterministic parser)", () => {
   });
 
   test("AC4: multiple attachments merged, no duplicate method+path", async () => {
-    // Same spec uploaded twice — should deduplicate
     const result = await runDocumentAnalysisFlow({
       tenant_id: ctx.tenantId,
       attachments: [

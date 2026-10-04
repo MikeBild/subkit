@@ -40,7 +40,6 @@ import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
 import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 const skip = process.env.REQUIRES_PG === "0";
 
 let convCtx: ConversationTestCtx;
@@ -65,9 +64,6 @@ afterAll(async () => {
   await convCtx?.cleanup();
 }, 30_000);
 
-/** Build a minimal ResolvedPrincipal that passes workflow:run RBAC.
- *  The 'admin' role (seeded by createTestDb via seedBuiltinRolesAndPermissions)
- *  grants all permissions including workflow:run. */
 function makePrincipal(tenant_id: string, actor_id: string): ResolvedPrincipal {
   return {
     provider: "api_key",
@@ -78,7 +74,6 @@ function makePrincipal(tenant_id: string, actor_id: string): ResolvedPrincipal {
   };
 }
 
-/** Seed a conversation row so run_workflow can bind to it. */
 async function seedConversation(): Promise<string> {
   const [row] = await convCtx.testDb.db
     .insert(conversations)
@@ -92,7 +87,6 @@ async function seedConversation(): Promise<string> {
   return row.id;
 }
 
-/** Seed a two-step workflow (GET + POST) under the conversation tenant. */
 async function seedTwoStepWorkflow(slug: string): Promise<string> {
   const [wf] = await convCtx.testDb.db
     .insert(workflows)
@@ -141,7 +135,6 @@ async function seedTwoStepWorkflow(slug: string): Promise<string> {
   return wf.id;
 }
 
-/** Build a ToolContext for run_workflow calls under the conversation tenant. */
 function makeCtx(opts: { conversation_id: string; principal: ResolvedPrincipal }): ToolContext {
   const draftDoc = createEmptyDraftDocument();
   return {
@@ -163,7 +156,6 @@ function makeCtx(opts: { conversation_id: string; principal: ResolvedPrincipal }
   } as unknown as ToolContext;
 }
 
-/** Query the most recent conversation.run_workflow audit row for the tenant. */
 async function latestRunWorkflowAuditRow() {
   const rows = await convCtx.testDb.db
     .select()
@@ -187,18 +179,14 @@ describe.skipIf(skip)("run_workflow (A: default holds write steps, does not disp
     const principal = makePrincipal(convCtx.tenant_id, convCtx.user_id);
     const toolCtx = makeCtx({ conversation_id, principal });
 
-    // Run WITHOUT execute_writes — hold-writes is the default.
     const result = await runWorkflowTool.execute(toolCtx, {
       workflow: workflow_id,
       environment: "dev",
-      // execute_writes omitted → hold-writes mode
     });
 
-    // Read step must have executed live; write step must NOT have hit the server.
     expect(hits.filter((h) => h.url.startsWith("/data"))).toHaveLength(1);
     expect(hits.filter((h) => h.url.startsWith("/send"))).toHaveLength(0);
 
-    // Envelope must carry the hold signals.
     const data = result.data as Record<string, unknown>;
     expect(data.writes_held).toBe(true);
     expect(Array.isArray(data.held_step_ids)).toBe(true);
@@ -206,7 +194,6 @@ describe.skipIf(skip)("run_workflow (A: default holds write steps, does not disp
     expect(heldIds).toContain("send_email");
     expect(typeof data.writes_held_note).toBe("string");
 
-    // Audit row must record execute_writes:false and held_step_ids.
     const auditRow = await latestRunWorkflowAuditRow();
     expect(auditRow).not.toBeNull();
     const meta = auditRow?.metadata as Record<string, unknown>;
@@ -224,24 +211,20 @@ describe.skipIf(skip)("run_workflow (B: execute_writes:true cannot grant authori
     const principal = makePrincipal(convCtx.tenant_id, convCtx.user_id);
     const toolCtx = makeCtx({ conversation_id, principal });
 
-    // The live-run preference is not a version-bound grant.
     const result = await runWorkflowTool.execute(toolCtx, {
       workflow: workflow_id,
       environment: "dev",
       execute_writes: true,
     });
 
-    // Preparation reads run; unapproved writes do not.
     expect(hits.filter((h) => h.url.startsWith("/data"))).toHaveLength(1);
     expect(hits.filter((h) => h.url.startsWith("/send"))).toHaveLength(0);
 
-    // Hold signals remain explicit in the envelope.
     const data = result.data as Record<string, unknown>;
     expect(data.writes_held).toBe(true);
     expect(data.held_step_ids).toContain("send_email");
     expect(typeof data.writes_held_note).toBe("string");
 
-    // Audit records actual behavior, not the requested flag.
     const auditRow = await latestRunWorkflowAuditRow();
     expect(auditRow).not.toBeNull();
     const meta = auditRow?.metadata as Record<string, unknown>;
@@ -255,9 +238,6 @@ describe.skipIf(skip)("run_workflow (negative: wrong-tenant isolation at lookup 
     const workflow_id = await seedTwoStepWorkflow("rw-tenant-guard");
     const conversation_id = await seedConversation();
 
-    // A ToolContext with a completely different tenant_id — the workflow
-    // row belongs to convCtx.tenant_id, so the cross-tenant lookup
-    // must return nothing.
     const wrongTenantId = "00000000-dead-beef-cafe-000000000002";
     const wrongActorId = "00000000-dead-beef-cafe-000000000001";
     const wrongPrincipal: ResolvedPrincipal = {
@@ -270,7 +250,6 @@ describe.skipIf(skip)("run_workflow (negative: wrong-tenant isolation at lookup 
     const draftDoc = createEmptyDraftDocument();
     const wrongCtx: ToolContext = {
       db: convCtx.testDb.db,
-      // Wrong tenant — the workflow lookup is tenant-scoped and will find nothing.
       tenant_id: wrongTenantId,
       conversation_id,
       actor_id: wrongActorId,
@@ -294,8 +273,6 @@ describe.skipIf(skip)("run_workflow (negative: wrong-tenant isolation at lookup 
 
     expect(result.ok).toBe(false);
     const data = result.data as { error_code?: string };
-    // Cross-tenant isolation: the lookup is tenant-scoped, so the wrong tenant
-    // sees workflow_not_found rather than a permission error.
     expect(data.error_code).toBe("workflow_not_found");
   }, 60_000);
 });

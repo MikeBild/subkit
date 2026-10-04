@@ -1,6 +1,3 @@
-// Unit tests for resolveWorkflowByIdOrSlug and looksLikeUuid.
-// Uses testcontainers postgres (createTestDb) — no mocks of the DB.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -15,7 +12,6 @@ let otherTenantId: string;
 beforeAll(async () => {
   tdb = await createTestDb("workflows-lookup");
 
-  // Create two tenants for isolation tests
   const [t1] = await tdb.db
     .insert(tenants)
     .values({ slug: "t-lookup-1", display_name: "Tenant 1" })
@@ -34,7 +30,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clean workflows between tests to keep isolation
   await tdb.db.delete(workflowVersions);
   await tdb.db.delete(workflows);
 });
@@ -82,10 +77,6 @@ async function seedWorkflow(
   return { id: wf.id, version_id: v.id };
 }
 
-// ---------------------------------------------------------------------------
-// looksLikeUuid
-// ---------------------------------------------------------------------------
-
 describe("looksLikeUuid", () => {
   test("recognises a v4 UUID", () => {
     expect(looksLikeUuid("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
@@ -108,10 +99,6 @@ describe("looksLikeUuid", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveWorkflowByIdOrSlug — UUID path
-// ---------------------------------------------------------------------------
-
 describe("resolveWorkflowByIdOrSlug — uuid path", () => {
   test("returns the row when looking up by UUID", async () => {
     const { id } = await seedWorkflow({ slug: "uuid-lookup" });
@@ -130,10 +117,6 @@ describe("resolveWorkflowByIdOrSlug — uuid path", () => {
     expect(result).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveWorkflowByIdOrSlug — slug path
-// ---------------------------------------------------------------------------
 
 describe("resolveWorkflowByIdOrSlug — slug path", () => {
   test("returns the row when looking up by slug", async () => {
@@ -156,10 +139,6 @@ describe("resolveWorkflowByIdOrSlug — slug path", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveWorkflowByIdOrSlug — soft-deleted rows excluded
-// ---------------------------------------------------------------------------
-
 describe("resolveWorkflowByIdOrSlug — soft-deleted excluded", () => {
   test("slug lookup returns null for a soft-deleted row", async () => {
     await seedWorkflow({ slug: "deleted-wf", deleted: true });
@@ -173,10 +152,6 @@ describe("resolveWorkflowByIdOrSlug — soft-deleted excluded", () => {
     expect(result).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveWorkflowByIdOrSlug — tenant isolation
-// ---------------------------------------------------------------------------
 
 describe("resolveWorkflowByIdOrSlug — tenant isolation", () => {
   test("workflow in other tenant is invisible to the requesting tenant (slug)", async () => {
@@ -199,7 +174,6 @@ describe("resolveWorkflowByIdOrSlug — tenant isolation", () => {
     const r2 = await resolveWorkflowByIdOrSlug(tdb.db, otherTenantId, "shared-slug");
     expect(r1).not.toBeNull();
     expect(r2).not.toBeNull();
-    // They should be distinct rows
     expect(r1?.id).not.toBe(r2?.id);
   });
 });

@@ -1,7 +1,3 @@
-// The `sk chat` engine-client method group must hit the exact routes
-// the engine exposes, with the Bearer header attached. A drift here
-// silently 404s the CLI while typechecking fine (paths are strings).
-
 import { describe, expect, test } from "bun:test";
 import { EngineClient } from "../engine-client.ts";
 

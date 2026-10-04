@@ -1,36 +1,11 @@
-// update_workflow — patch a persisted workflow's metadata (slug,
-// display name, description, lifecycle) without rewriting the dag or
-// version history. Generic on purpose: the LLM picks which subset of
-// fields to send, the same tool covers rename, re-describe, archive,
-// and reactivate.
-//
-// `description` writes the editable `workflows.description` column —
-// the canonical source for the LLM-facing `wf_<slug>` tool description
-// (catalog precedence: column → DAG → name). It is metadata: setting it
-// does NOT roll a new version. Sending an empty string clears it.
-//
-// Subkit's chat-first contract requires rename + lifecycle ops to be
-// reachable as a chat tool, not only as HTTP datastore ops — collapsing
-// rename and lifecycle into one generic patch (one tool, several fields).
-//
-// Audit shape uses the existing WORKFLOW_UPDATED action with
-// `metadata.kind: "metadata"` plus before/after snapshots — never a
-// new action enum entry, since it's still a workflow.updated event.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../../../db/schema/index.ts";
 import { bindPersistedWorkflow } from "../../../authoring-state.ts";
-// Import from the leaf module, not the auto-persist barrel: the barrel
-// (auto-persist.ts) imports this tool for the update_workflow_metadata
-// commit_intent dispatch, so pulling the barrel here would form a cycle.
 import { translateAutoPersistError } from "../../../persistence/auto-persist/error-translation.ts";
 import { classifyDraftVsPersisted } from "../../../persistence/draft-diff.ts";
 import type { ConversationTool } from "../../index.ts";
 
-/** Exported so the ONE direct caller outside the dispatcher — the
- *  `update_workflow_metadata` commit-intent in `persistence/auto-persist.ts` —
- *  parses the LLM-authored payload at its own boundary. `execute` never parses. */
 export const UpdateWorkflowInput = z
   .object({
     id: z.string().uuid("workflow id must be a UUID"),
@@ -65,11 +40,6 @@ export const updateWorkflowTool: ConversationTool = {
   name: "update_workflow",
   description:
     "Patch a persisted workflow's metadata (slug, display name, description, lifecycle) without rewriting the dag or version history.",
-  // NOT `requires_persisted_workflow`: like delete_workflow this targets an
-  // EXISTING workflow by an explicit id supplied in the args, is only called on
-  // explicit management intent ("rename/archive workflow X"), and has no
-  // no-args loop failure mode. Flagging it made the step-router hide it on a
-  // fresh conversation, so those requests silently failed. See step-router.ts.
   use_case:
     "Use when the user asks to rename a workflow, set or change its description, archive it, or reactivate it. Send only the fields that should change. Does NOT alter steps, input/output schema, or version count — for those, edit the draft and use save_workflow_draft.",
   important_notes: [
@@ -84,14 +54,6 @@ export const updateWorkflowTool: ConversationTool = {
   category: "tenant_write",
   permission: { action: "workflow:write", resourceType: "workflow", resourceIdArg: "id" },
   async execute(ctx, args: z.infer<typeof UpdateWorkflowInput>) {
-    // Anti silent step-loss (B3): update_workflow writes METADATA only
-    // (slug/name/description/lifecycle) and rolls no version. If the
-    // conversation's working draft has uncommitted STEP edits for THIS workflow,
-    // persisting metadata here leaves those edits unsaved while the model reports
-    // success — the wrong-verb trap behind the render-upload-slides incident.
-    // Refuse and point at the durable step path; metadata-only / clean / unbound
-    // drafts proceed. classifyDraftVsPersisted is read-only and resolves any
-    // ambiguity to "no_target", so this never blocks a legitimate metadata edit.
     const draftState = await classifyDraftVsPersisted(
       ctx.db,
       ctx.tenant_id,
@@ -120,10 +82,6 @@ export const updateWorkflowTool: ConversationTool = {
         ...(args.lifecycle !== undefined ? { lifecycle: args.lifecycle } : {}),
       });
     } catch (err) {
-      // Translate Postgres errors so the LLM gets `slug_already_in_use`
-      // / `in_use_by_dependent_rows` / `missing_required_field`
-      // instead of a raw SQL string. Mirrors save-connector-draft.ts
-      // and the auto-persist dispatcher.
       const translated = translateAutoPersistError(err, "save_workflow_draft");
       return {
         ok: false,

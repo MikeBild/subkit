@@ -1,22 +1,3 @@
-// The connector detail page's engine reads and its one trust write:
-//
-//   - GET /v1/stats/connectors counts an mcp connector's calls. The pool's
-//     `mcp_external_tool.invoked` row names the connector only as
-//     `resource_id`; the per-connector filter read the metadata key alone, so
-//     every mcp call was invisible to it. A workflow's mcp call also writes an
-//     egress row, which must not count the same call twice. A call the user
-//     stopped is `denied`, never a failure.
-//   - GET /v1/connectors/{id}/runtime reports the newest success and failure
-//     (as a class, never text) and the negotiated mcp session.
-//   - POST /v1/connectors/{id}/test is a call like any other: it is the newest
-//     one on record, so the runtime read moves with it. A probe the engine
-//     refused before anything left it — a disabled connector — is not a call.
-//   - PUT /v1/connectors/{id}/mcp/tool-confirmation is permission-gated,
-//     audited, and the only way the trust list changes: a PATCH keeps it and
-//     refuses a different one.
-//   - GET /v1/connectors/{id}/credential names a header credential's header,
-//     never its value.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -102,13 +83,10 @@ beforeAll(async () => {
   );
   httpId = http.id;
 
-  // Two successes, one remote error, one call the user stopped.
   await mcpCall("success");
   await mcpCall("success");
   await mcpCall("error");
   await mcpCall("cancelled");
-  // A workflow step's mcp call ALSO passes the egress wrapper: the same call,
-  // a second row. It must not count twice.
   await srv.db.insert(auditLog).values({
     id: uuid(),
     tenant_id: srv.tenantId,
@@ -119,7 +97,6 @@ beforeAll(async () => {
     result: "success",
     metadata: { connector_id: mcpId, connector_slug: "runtime-mcp", driver: "mcp" },
   });
-  // The http connector: one call the upstream refused with 401.
   await srv.db.insert(auditLog).values({
     id: uuid(),
     tenant_id: srv.tenantId,
@@ -146,7 +123,6 @@ beforeAll(async () => {
     consecutive_failures: 0,
   });
 
-  // A key that may read connectors but not change them.
   const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: test only
   const plaintext = `wf_live_${rand}`;
   await srv.db.insert(apiKeys).values({
@@ -256,7 +232,6 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
     });
   }
 
-  /** The row a stored credential writes: `resource_id` is the credential. */
   async function credentialStored(
     id: string,
     at: number,
@@ -287,7 +262,6 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
     await credentialStored(id, getTestNow() - 10 * minute, "credential.updated");
     const body = await runtime(id);
     expect(body.last_failure).toBeNull();
-    // A sign-in is not a call.
     expect(body.last_success_at).toBeNull();
   });
 
@@ -347,7 +321,6 @@ describe("POST /v1/connectors/{id}/test is the newest call on record", () => {
           driver: "http",
           environment: "prod",
           auth_type: "none",
-          // Nothing answers here: the probe is a real call that fails.
           base_url: "http://127.0.0.1:9",
           config: {},
         },
@@ -422,7 +395,6 @@ describe("PUT /v1/connectors/{id}/mcp/tool-confirmation", () => {
       readOnlyKey,
     );
     expect(res.status).toBe(403);
-    // The same key may still read the runtime.
     expect((await call(`/v1/connectors/${mcpId}/runtime`, {}, readOnlyKey)).status).toBe(200);
   });
 

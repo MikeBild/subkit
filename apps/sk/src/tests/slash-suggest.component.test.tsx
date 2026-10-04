@@ -35,7 +35,6 @@ describe("<SlashSuggest>", () => {
     );
     try {
       await flush();
-      // No suggestion panel content; only minimal rendering.
       const text = ui.text();
       expect(text).not.toContain("type to filter");
       expect(text).not.toContain("›");
@@ -69,9 +68,6 @@ describe("<SlashSuggest>", () => {
     try {
       await flush();
       const text = ui.text();
-      // /audit requires audit:read which the enduser doesn't have, so
-      // it should NOT appear in the suggestion list. (Fuzzy search may
-      // still surface other commands; just assert /audit is hidden.)
       expect(text).not.toContain("/audit");
     } finally {
       ui.unmount();

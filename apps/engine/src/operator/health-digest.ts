@@ -1,25 +1,3 @@
-// Operator health digest — a deterministic, LLM-free summary of what
-// needs a human's attention on a tenant right now.
-//
-// Two surfaces consume it:
-//   * GET /v1/operator/health-digest (this slice) — the `sk` REPL fetches
-//     it at startup and renders it as a colored first assistant turn.
-//   * the structured payload is injected as conversation context so the
-//     LLM can act on the failures (diagnose / approve patches / fix
-//     inputs) without re-deriving them.
-//
-// It groups failed executions by ROOT-CAUSE SIGNATURE — (workflow, step,
-// error code) — rather than listing 250 independent rows, tags each
-// group by where it came from (authoring trial-run vs manual test vs
-// scheduled workflow), and reuses the runtime failure classifier so
-// the cause reads like a sentence, not a stack trace. Open patch
-// decisions (proposed AND reviewable — `readOpenPatchDecisions`, the one
-// predicate every surface counts) ride along as the digest's review list.
-//
-// What needs a human NOW — the headline, `all_clear`, the "Needs attention"
-// lines and the MCP connect instructions — is not decided here. It is rendered
-// from `buildAttention` (attention.ts), the one list every surface reads.
-
 import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
@@ -42,27 +20,10 @@ import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
-/**
- * How far back the decision queue asks "which approved workflows are failing".
- *
- * One constant, because two surfaces answer that question and they used to ask
- * it over different spans: the overview over 24 hours, the queue over seven
- * days. The result was "production incidents: 0" next to a badge counting two
- * of them, with nothing on screen to explain the difference.
- */
 export const DECISION_FAILURE_WINDOW_HOURS = 168;
 export const MAX_PENDING_PATCHES = 50;
-// A proposed patch older than this has sat unreviewed long enough to be an
-// operational problem in its own right — a self-healing fix was found but
-// never applied, so the underlying workflow keeps failing. An `unsafe` patch
-// can only ever leave `proposed` via an explicit human approve/reject, so
-// nothing moves it without this surfacing it. We rank stuck patches to the top
-// (and never drop them past the cap) so a 4-day-old fix can't hide behind
-// fresh noise.
 const STUCK_PATCH_DAYS = 3;
 
-/** Where a failed run came from. Authoring trial-runs and manual test
- *  runs are NOT production incidents — the tag keeps them honest. */
 export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
 
 export interface DigestFailureGroup {
@@ -73,51 +34,14 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: FailureOrigin;
   count: number;
-  /**
-   * How many of these runs the scheduler started.
-   *
-   * `origin` cannot answer that once a group holds more than one kind of run:
-   * it collapses to `mixed`, which reads the same whether the other runs were
-   * manual retries of a failing schedule or an authoring trial that never ran
-   * unattended. Filtering on `origin === "scheduled"` therefore dropped a
-   * workflow from the decision queue the moment somebody retried it by hand —
-   * the schedule kept failing, and the decision left both surfaces at once.
-   */
   scheduled_count: number;
   last_seen: string;
-  /**
-   * The oldest failure of this group inside the window — when the cause
-   * started, as far as the window can see. `last_seen` answers "is it still
-   * happening"; ordering a queue by it would put the freshest breakage first.
-   */
   first_seen: string;
-  /** The newest failed run of this group — what a chat about it attaches. */
   latest_execution_id: string;
-  /**
-   * The connector the stopping step of the newest failed run resolved, when it
-   * went through one. What an authentication failure is remedied at.
-   */
   connector_id: string | null;
-  /**
-   * The workflow's most recent clean run on its own schedule, when that run is
-   * newer than this group's last failure. Null while the cause is still live.
-   *
-   * A timestamp rather than a flag, so the arithmetic lives in one place and
-   * the row can say WHEN it last ran clean instead of only that it did. Without
-   * it a group is counted forever: it knows `last_seen` and nothing about what
-   * happened afterwards, so a workflow whose grant was re-issued and which has
-   * run clean since kept a decision open with nothing left to decide.
-   */
   resolved_at: string | null;
-  /** One-sentence human cause, classifier-derived. */
   cause: string;
-  /**
-   * The classifier's class behind `cause` — the structured half of the same
-   * verdict, so a surface can word the cause itself instead of repeating the
-   * engine's English sentence.
-   */
   cause_class: PreviewClassification;
-  /** The connector-authored remediation hint, when the step carried one. */
   guidance: string | null;
 }
 
@@ -126,9 +50,7 @@ export interface DigestPatch {
   workflow_id: string | null;
   workflow_name: string | null;
   classification: "safe" | "unsafe";
-  /** Whole days the candidate has been in `proposed`. */
   age_days: number;
-  /** age_days ≥ STUCK_PATCH_DAYS — surfaced first and flagged for the operator. */
   stuck: boolean;
   summary: string;
 }
@@ -136,28 +58,12 @@ export interface DigestPatch {
 export interface OperatorHealthDigest {
   generated_at: string;
   window_hours: number;
-  /** Outcome-first one-liner for the chat surface. */
   headline: string;
   failure_groups: DigestFailureGroup[];
-  /** `open` is the exact count of open patch decisions (proposed AND
-   *  reviewable on the current workflow version); `items` is capped at
-   *  MAX_PENDING_PATCHES so a backlog can't flood the digest. Every count the
-   *  digest prints comes from `open`, never from `items.length`. */
   patch_candidates: { open: number; items: DigestPatch[] };
-  /** Leading-indicator risk signals computed from the live process
-   *  gauges/counters vs the operator-tuned predictive thresholds. The
-   *  failure groups above are lagging (a run already failed); these flag
-   *  what is trending toward an incident. Highest-severity first. */
   risk: RiskSignal[];
-  /** What needs this reader now — the same list `GET /v1/attention` returns.
-   *  The headline, `all_clear` and the rendered decision block come from it. */
   attention: AttentionV1;
-  /** Plain-text fallback render; the CLI styles its own from the
-   *  structured fields above. */
   rendered: string;
-  /** Nothing needs this reader: no attention item, and every source it may
-   *  read answered. Failure history and warning trends do not clear it or
-   *  block it — they are detail, not something to act on now. */
   all_clear: boolean;
 }
 
@@ -175,32 +81,11 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
 
-/** The connector a persisted step's request metadata names, if it went through one. */
 function stepConnectorId(requestMeta: unknown): string | null {
   const id = asRecord(asRecord(requestMeta).connector).connector_id;
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
-/**
- * Stamp `resolved_at` on every group whose workflow has since run clean on its
- * own schedule.
- *
- * Only a SCHEDULED success counts. A manual re-run is what an operator does to
- * check whether the fix took, and it proves the workflow can work when driven
- * by hand — not that the thing which fires it unattended has recovered. An
- * authoring trial proves even less.
- *
- * The comparison is `created_at` against `last_seen`, the same column the
- * group's own timestamp comes from: mixing in `finished_at` here is precisely
- * the silent difference that made two surfaces disagree before.
- *
- * One aggregated row per workflow, not a capped list of runs. A capped list
- * ordered by time fills from the global floor forward, so on a busy tenant 500
- * older successes belonging to OTHER workflows evict the one row that proves
- * this workflow recovered — and the query quietly stops resolving anything.
- * `max()` per workflow cannot be crowded out, and the row count is bounded by
- * the number of failing workflows rather than by their traffic.
- */
 async function markRecoveredGroups(
   db: Db,
   tenant_id: string,
@@ -209,8 +94,6 @@ async function markRecoveredGroups(
   const candidates = groups.filter((group) => group.workflow_id && group.scheduled_count > 0);
   if (!candidates.length) return;
   const workflowIds = [...new Set(candidates.map((group) => group.workflow_id as string))];
-  // The earliest failure among them — no success before that can resolve
-  // anything, so there is no reason to read one.
   const earliest = candidates.reduce(
     (min, group) => (group.last_seen < min ? group.last_seen : min),
     candidates[0]?.last_seen ?? "",
@@ -241,19 +124,6 @@ async function markRecoveredGroups(
   }
 }
 
-/**
- * The failures of one window, grouped by root cause.
- *
- * Extracted so there is exactly one answer to "which workflows are failing".
- * The overview used to ask it in its own SQL and got a different number than
- * the queue it linked to: a different timestamp column (`finished_at` against
- * `created_at`), a different status set (`timed_out` counted or not) and a
- * different window. Nobody could reconcile them, because reconciling them
- * meant reading two files and noticing three silent differences.
- *
- * Re-deriving this in SQL would mean porting the first-failed-step rule, the
- * origin merge and the scan cap as well — three more places for the same bug.
- */
 export async function collectFailureGroups(
   db: Db,
   tenant_id: string,
@@ -305,9 +175,6 @@ export async function collectFailureGroups(
         )
     : [];
 
-  // The step that stopped each run — the same rule the execution outcome
-  // uses (`pickStoppingStep`), so the digest and a run's own page name the
-  // same step: an earlier `on_error:"continue"` failure did not stop anything.
   const rowsByExec = new Map<string, (typeof failedSteps)[number][]>();
   for (const s of failedSteps) {
     const list = rowsByExec.get(s.execution_id) ?? [];
@@ -320,7 +187,6 @@ export async function collectFailureGroups(
     if (stopping) stepByExec.set(exec.id, stopping);
   }
 
-  // Group by root-cause signature.
   const groups = new Map<string, DigestFailureGroup>();
   for (const exec of failedExecs) {
     const step = stepByExec.get(exec.id);
@@ -361,7 +227,6 @@ export async function collectFailureGroups(
       count: 1,
       scheduled_count: origin === "scheduled" ? 1 : 0,
       last_seen: lastSeen,
-      // Runs are read newest first, so the run that opens a group is its newest.
       first_seen: lastSeen,
       latest_execution_id: exec.id,
       connector_id: stepConnectorId(step?.request_meta),
@@ -374,18 +239,6 @@ export async function collectFailureGroups(
 
   await markRecoveredGroups(db, tenant_id, [...groups.values()]);
 
-  // Resolve workflow names for saved-workflow groups — and drop the groups
-  // whose workflow is gone.
-  //
-  // A deleted workflow kept producing a decision nobody could close: the runs
-  // that failed are still in the history, so the group survived its own
-  // subject. Deleting the thing is the one remedy always available for "this
-  // keeps failing and cannot be fixed here", and it did not work. The same
-  // shape as a cause that healed, from the other side: the group knew what
-  // failed and nothing about whether the workflow still exists.
-  //
-  // Soft-deleted, so the history stays readable; it is only the open decision
-  // that goes.
   const wfIds = [
     ...new Set([...groups.values()].map((g) => g.workflow_id).filter(Boolean)),
   ] as string[];
@@ -414,42 +267,12 @@ export async function collectFailureGroups(
   );
 }
 
-/**
- * The failure groups a human still has to decide about: a workflow that was
- * approved, runs on its schedule, and fails every time. An authoring trial that
- * failed is feedback, not an incident — mixing the two is how a real one ends
- * up buried among experiments.
- *
- * The question is whether the SCHEDULER ever started one of these runs, not
- * whether it started all of them. Asking `origin === "scheduled"` answered the
- * second: one manual retry of a failing scheduled step turned the group
- * `mixed` and the decision disappeared, while the schedule went on failing
- * every hour. Retrying something by hand is what an operator does when it
- * breaks; it must not delete the record that it broke.
- */
 export function failingScheduledGroups(
   groups: readonly DigestFailureGroup[],
 ): DigestFailureGroup[] {
-  // `resolved_at` is the second half of the same question. A cause whose
-  // workflow has run clean on its schedule since is history, not a decision —
-  // counting it left the tile, the badge and the headline all reporting an
-  // incident that had already ended, with no way on screen to tell that it had.
   return groups.filter((group) => group.scheduled_count > 0 && group.resolved_at === null);
 }
 
-/**
- * The digest for one reader.
- *
- * Its decision block — the headline, `all_clear` and the "Needs attention"
- * lines — is rendered from `buildAttention`, the same list `GET /v1/attention`,
- * `get_attention` and the MCP connect line read. The failure groups, the open
- * patch list and the risk signals stay as the digest's detail: they include
- * what is worth reading (an authoring trial that failed, a warning trend) but
- * is not something a person has to act on now.
- *
- * Read-only. The RISK_SIGNAL_* edge audits are written by the scheduler tick
- * (`scheduler/risk-signal-edges-runner.ts`), never by a read of this digest.
- */
 export async function buildOperatorHealthDigest(
   db: Db,
   principal: ResolvedPrincipal,
@@ -460,9 +283,6 @@ export async function buildOperatorHealthDigest(
   const generatedAt = new Date();
   const [failureGroups, openDecisions, attention] = await Promise.all([
     collectFailureGroups(db, tenant_id, windowHours, generatedAt),
-    // Open patch decisions, OLDEST first: a candidate's urgency grows with how
-    // long it has sat unreviewed, so when the cap bites it must drop the
-    // freshest rows, never the stuck ones. The total is exact and uncapped.
     readOpenPatchDecisions(db, tenant_id, { limit: MAX_PENDING_PATCHES }),
     buildAttention(db, principal, { now: generatedAt }),
   ]);
@@ -500,19 +320,12 @@ export async function buildOperatorHealthDigest(
             : "Self-healing fix awaiting review",
       };
     })
-    // Most-stuck first (oldest age wins; unsafe breaks an age tie since only a
-    // human can clear it). This is the operator's review queue order.
     .sort(
       (a, b) =>
         b.age_days - a.age_days ||
         Number(b.classification === "unsafe") - Number(a.classification === "unsafe"),
     );
 
-  // Leading-indicator risks from the live process metrics, plus the month's
-  // allowance, which the registry cannot answer: `llm_tokens_total` is a
-  // counter since process start and resets on every deploy. The digest holds
-  // both halves already, so it hands them over rather than letting the signal
-  // guess. Still deterministic for a fixed registry + config + usage snapshot.
   const risk = computeRiskSignals({
     monthTokens: await monthlyUsage(tenant_id, db),
     monthBudget: resolveMonthlyBudget(tenant_id),
@@ -540,12 +353,6 @@ const CLASS_WORD: Record<AttentionItem["class"], string> = {
   decide: "to decide",
 };
 
-/**
- * The attention list's one-line summary, in the engine's English — for the
- * `sk` REPL, the MCP connect instructions and the digest. Counts items, never
- * the rows behind them: three proposed fixes on one workflow are one thing to
- * decide.
- */
 export function attentionHeadline(attention: AttentionV1): string {
   const failed = Object.entries(attention.sources)
     .filter(([, state]) => state === "failed")
@@ -568,7 +375,6 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** One line per attention item — subject, machine reason, counts, engine detail. */
 export function attentionLine(item: AttentionItem): string {
   const subject = item.subject
     ? `${item.subject.kind} "${item.subject.name ?? item.subject.id}"`
@@ -577,10 +383,8 @@ export function attentionLine(item: AttentionItem): string {
     item.counts.failures ? plural(item.counts.failures, "failure", "failures") : null,
     item.counts.patches ? plural(item.counts.patches, "fix", "fixes") : null,
     item.counts.skills ? plural(item.counts.skills, "skill proposal", "skill proposals") : null,
-    // Which version waits, and where it runs.
     item.approval ? `v${item.approval.version}` : null,
     item.approval ? item.approval.environment : null,
-    // What blocks the approval, and the act that removes it.
     item.repair?.step_id
       ? `step "${item.repair.step_id}"${item.repair.code ? ` ${item.repair.code.replace(/_/g, " ")}` : ""}`
       : null,
@@ -631,9 +435,6 @@ function renderDigest(
       const times = g.count === 1 ? "once" : `${g.count}×`;
       lines.push(`${ORIGIN_TAG[g.origin]} ${label} — failed ${times} (last ${g.last_seen})`);
       lines.push(`   ${g.cause}`);
-      // The group stays in the list — what broke is worth reading — but it must
-      // not read as a running incident. The line says when it recovered, so the
-      // operator does not go looking for a fault that is already fixed.
       if (g.resolved_at) lines.push(`   last ran clean on its schedule ${g.resolved_at}`);
     }
   }
@@ -641,17 +442,8 @@ function renderDigest(
   return lines.join("\n");
 }
 
-/** How many attention lines the compact MCP summary carries before collapsing
- *  the tail to a "+N more" count. Keeps the `instructions` string short enough
- *  to ride every initialize without bloating the handshake. */
 export const MCP_SUMMARY_TOP_N = 10;
 
-/**
- * Compact attention summary for the MCP surface — the `instructions` string
- * handed to the client at connect. Rendered from `buildAttention` for the
- * connecting principal: the headline counts the same items `GET /v1/attention`
- * returns, and each line is one of them. Read-only.
- */
 export async function buildOperatorHealthSummary(
   db: Db,
   principal: ResolvedPrincipal,

@@ -1,14 +1,3 @@
-// Runtime-log assertions for the v3.5+ structured-log surface added in
-// audit pass 6:
-//
-//   - config.boot.complete                      (one per boot, lists consumers)
-//   - config.requires_restart_pending           (warn per call, lists pending leaves)
-//   - config.tenant_overlay.applied             (covered indirectly via setting.applied scope)
-//
-// Each test captures stdout, drives the loader, and asserts the line
-// fires once with the expected shape. Catches drift in the operator-
-// observable contract.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,9 +37,7 @@ function attach(buf: Cap[]): () => void {
       if (!t.startsWith("{")) continue;
       try {
         buf.push(JSON.parse(t));
-      } catch {
-        /* not JSON */
-      }
+      } catch {}
     }
     return orig(chunk);
   }) as typeof process.stdout.write;
@@ -117,7 +104,6 @@ describe("config.boot.complete", () => {
     await emitBootComplete();
     captured.length = 0;
     recordBootConsumer("late_arrival");
-    // Re-arming the emit doesn't add the late consumer because we're sealed.
     await emitBootComplete();
     const lines = captured.filter((l) => l.module === "config" && l.action === "boot.complete");
     expect(lines.length).toBe(0);

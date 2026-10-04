@@ -1,9 +1,3 @@
-// Per-execution rollup of the connector-resolution summaries the
-// step-runner stamps on each step's `request_meta`. Deduped by
-// connector_id (first occurrence wins) so the run-result envelope
-// surfaces one row per connector even when multiple steps targeted
-// it. Pure compute on the per-step summaries — no DB, no async.
-
 import type { AppliedAuthMethod, ConnectorResolutionSummary, ExecutionMode } from "../types.ts";
 
 export function rollupConnectorResolutions(

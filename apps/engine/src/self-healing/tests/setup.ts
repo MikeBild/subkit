@@ -1,11 +1,3 @@
-// Shared self-healing loop test harness.
-//
-// Spins a disposable Postgres via the db test helper, seeds a tenant,
-// connector, workflow+version, an execution, a failed execution_step,
-// a schema_versions row, and an execution_fixtures row so the loop
-// has everything it needs to run end-to-end. Tests then call
-// `runSelfHealingLoop(ctx.jobPayload, ctx.testDb.db)` directly.
-
 import {
   connectors,
   executionFixtures,
@@ -33,12 +25,8 @@ export interface SelfHealingTestCtx {
   cleanup: () => Promise<void>;
 }
 
-/** The DAG step the seeded execution fails on — `execution_steps.step_key`
- *  matches it, which is how a patch finds its target in the definition. */
 export const SEED_STEP_ID = "req-1";
 
-/** The pre-drift projection. A patch that heals this workflow rewrites it to
- *  `data.result.id`. */
 export const SEED_DATA_SELECTOR = "data.id";
 
 function buildSeedDag(label: string, connector_id: string) {
@@ -57,13 +45,6 @@ function buildSeedDag(label: string, connector_id: string) {
   };
 }
 
-/**
- * Restore the workflow's CURRENT version to the pre-drift definition.
- *
- * An applied patch rewrites the step, so a test that approves twice would
- * otherwise be measuring "already healed, nothing to change" the second time
- * instead of the guard it means to test. Resetting keeps each seed independent.
- */
 export async function resetSeedDag(ctx: SelfHealingTestCtx): Promise<void> {
   const { eq } = await import("drizzle-orm");
   const rows = await ctx.testDb.db
@@ -147,7 +128,6 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
     .returning();
   if (!execution) throw new Error("seed execution failed");
 
-  // A failing step row with an HTTP 404 drift envelope.
   const [step] = await testDb.db
     .insert(executionSteps)
     .values({
@@ -184,7 +164,6 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
 
   const endpoint_key = "GET /users/1";
 
-  // Record the last known success shape.
   await testDb.db.insert(schemaVersions).values({
     tenant_id: tenant.id,
     connector_id: connector.id,
@@ -205,9 +184,6 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
     },
   });
 
-  // Record a fixture that the dry-run will replay. The fixture's
-  // response carries the drifted *new* shape (`data.result.id`) so a
-  // patch that renames `data.id` -> `data.result.id` succeeds.
   const [fixture] = await testDb.db
     .insert(executionFixtures)
     .values({

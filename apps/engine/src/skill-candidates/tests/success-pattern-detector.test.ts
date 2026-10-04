@@ -1,19 +1,3 @@
-// Integration tests for detectSuccessPatterns.
-//
-// The detector:
-//   • Queries execution_steps with kind='request', status='succeeded', tenant_id,
-//     started_at >= cutoff (30 days).
-//   • Skips rows whose execution has no workflow_id (draft/step runs).
-//   • Groups by workflow_id; threshold >= 10 steps per group.
-//   • Within a group, checks data_selector usage: if >= 10 steps carry
-//     request_meta.data_selector AND the dominant selector accounts for >= 80%
-//     of those steps at >= 10 count, emits 1 signal per qualifying selector.
-//   • Fingerprint: sha256(`success:<workflowId>:data_selector:<selector>`).slice(0,32).
-//   • Emitted signal: scope:"workflow", workflow_id set.
-//
-// Clock: detectSuccessPatterns reads time through `now()`. Tests that need
-// a lookback boundary use installClock/restoreClock to freeze time.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { executionSteps, executions } from "../../db/schema/executions.ts";
@@ -36,9 +20,8 @@ let otherTenantId: string;
 let workflowId: string;
 let otherWorkflowId: string;
 
-// Fixed timestamps relative to FROZEN_NOW.
-const WITHIN_WINDOW_TS = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000); // 1 day before frozen
-const OUTSIDE_WINDOW_TS = new Date(FROZEN_NOW - 31 * 24 * 60 * 60 * 1000); // 31 days before frozen
+const WITHIN_WINDOW_TS = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000);
+const OUTSIDE_WINDOW_TS = new Date(FROZEN_NOW - 31 * 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
   if (skip) return;
@@ -96,7 +79,6 @@ afterEach(async () => {
   await testDb.db.delete(executions);
 }, 30_000);
 
-/** Seed an execution (saved workflow). */
 async function seedExecution(tenantIdArg: string, wfId: string, startedAt: Date): Promise<string> {
   const [ex] = await testDb.db
     .insert(executions)
@@ -113,7 +95,6 @@ async function seedExecution(tenantIdArg: string, wfId: string, startedAt: Date)
   return ex.id;
 }
 
-/** Seed one successful request step with an optional request_meta payload. */
 async function seedSuccessStep(
   executionId: string,
   stepKey: string,
@@ -193,7 +174,6 @@ describe.skipIf(skip)("detectSuccessPatterns", () => {
   test("TENANT ISOLATION: other tenant's steps are excluded", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // Seed 10 successful steps for the other tenant.
     for (let i = 0; i < 10; i++) {
       const [ex] = await testDb.db
         .insert(executions)
@@ -219,7 +199,6 @@ describe.skipIf(skip)("detectSuccessPatterns", () => {
       });
     }
 
-    // Primary tenant sees 0 signals.
     const signals = await detectSuccessPatterns(tenantId, testDb.db);
     expect(signals).toHaveLength(0);
   });
@@ -269,8 +248,6 @@ describe.skipIf(skip)("detectSuccessPatterns", () => {
   test("BELOW RATIO: mixed selectors (one dominant at < 80%) → 0 signals", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // 10 steps with data_selector, split 6/4 between two selectors.
-    // The dominant one is "$.a" at 6/10 = 60% < 80% → no signal.
     for (let i = 0; i < 6; i++) {
       const execId = await seedExecution(tenantId, workflowId, WITHIN_WINDOW_TS);
       await seedSuccessStep(execId, `mixed_${i}`, { data_selector: "$.a" }, WITHIN_WINDOW_TS);

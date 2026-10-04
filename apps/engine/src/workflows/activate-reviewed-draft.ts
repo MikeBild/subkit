@@ -6,7 +6,6 @@ import { emitWorkflowLifecycle } from "./service.ts";
 import { executableDefinition, readStoredDefinition } from "./stored-definition.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 
-/** Internal to the human-authority transaction; never a model-callable activation shortcut. */
 export async function activateReviewedDraft(
   tx: Executor,
   workflow: typeof workflows.$inferSelect,
@@ -49,9 +48,6 @@ export async function activateReviewedDraft(
   if (!target) throw new Error("reviewed workflow version unavailable");
   const definition = executableDefinition(target.dag);
   const previous = expectedCurrent ? await readVersion(expectedCurrent) : null;
-  // The version being replaced may itself be invalid — activating a newer one
-  // is how such a workflow is repaired. Its trigger is then unknown, which
-  // reads as "changed" below.
   const stored = previous ? readStoredDefinition(previous.dag) : null;
   const oldDefinition = stored && !stored.invalid ? stored.definition : null;
   await tx
@@ -65,7 +61,6 @@ export async function activateReviewedDraft(
       updated_at: new Date(),
     })
     .where(and(eq(workflows.tenant_id, workflow.tenant_id), eq(workflows.id, workflow.id)));
-  // Keep separately configured schedules when the authored trigger did not change.
   if (
     !oldDefinition ||
     JSON.stringify(triggerOf(oldDefinition)) !== JSON.stringify(triggerOf(definition))

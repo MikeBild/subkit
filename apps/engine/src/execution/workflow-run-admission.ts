@@ -30,9 +30,6 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-/** Caller checks authentication and workflow RBAC first. Omission discovers
- * an existing local grant, never manufactures one. Otherwise only a durably
- * held preparation may be queued. Explicit live requests fail closed. */
 export async function admitWorkflowRun(raw: unknown, db: Db) {
   const input = schema.parse(raw);
   const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
@@ -61,7 +58,6 @@ export async function admitWorkflowRun(raw: unknown, db: Db) {
         ].includes(code ?? "")
       )
         throw error;
-      // The preview transaction must independently prove any replay boundary.
     }
   }
   const resolved = await resolveDefinition(db, input.tenant_id, {

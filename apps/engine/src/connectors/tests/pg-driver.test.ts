@@ -45,7 +45,6 @@ describe("pg driver", () => {
     expect(probe.ok).toBe(true);
     expect(probe.latency_ms).toBeGreaterThanOrEqual(0);
 
-    // driver registry dispatch
     const dispatched = await probeConnector({
       db: ctx.db,
       tenant_id: tenantId,
@@ -53,7 +52,6 @@ describe("pg driver", () => {
     });
     expect(dispatched.ok).toBe(true);
 
-    // run an arbitrary query
     const res = await pgQueryWithCount<{ n: number }>({
       connector: conn!,
       sql: "SELECT 1 as n",

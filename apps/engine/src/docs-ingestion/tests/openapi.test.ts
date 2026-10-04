@@ -66,7 +66,6 @@ describe("docs-ingestion/openapi", () => {
       },
       ctx.testDb.db,
     );
-    // 1 overview + 3 operations + 1 schema = 5 chunks.
     expect(result.ingested_count).toBe(5);
     expect(result.budget_exceeded).toBe(false);
     expect(result.total_bytes).toBeGreaterThan(0);
@@ -94,7 +93,6 @@ describe("docs-ingestion/openapi", () => {
         ),
       );
     expect(chunks.length).toBe(5);
-    // Operation chunks carry dotted paths.
     const operationPaths = chunks.map((c) => c.path).filter((p): p is string => !!p);
     expect(operationPaths).toContain("paths./pet.get");
     expect(operationPaths).toContain("paths./pet.post");

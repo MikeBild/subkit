@@ -1,9 +1,3 @@
-// Coding-agent session capture surface.
-//
-// A SessionEnd/Stop hook (`sk agent capture`) POSTs the session
-// transcript here; distillation runs async on the `agent-session.analyze`
-// queue and every learning lands as a `proposed` skill candidate.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { DOMAIN_SLUG_RE } from "../../agent/briefing.ts";
 import { TRANSCRIPT_MAX_CHARS } from "../../agent/sessions.ts";

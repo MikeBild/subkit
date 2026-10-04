@@ -1,20 +1,7 @@
-// `repairToolCall` missing-tool rewrite tests.
-//
-// Focus on the unknown-tool branch, which never reaches the LLM: it
-// decides purely from the tool name + which execution targets the
-// palette carries. The two-target rewrite keeps the draft-run path
-// reachable when the execution-tool gate has stripped `run_workflow`
-// and the `wf_<slug>` peers from an authoring conversation, so the
-// model's "test the draft I just built" call lands on
-// `dry_run_workflow` instead of dead-ending in the repair cap.
-
 import { describe, expect, test } from "bun:test";
 import type { LanguageModel } from "ai";
 import { repairToolCall } from "./repair-tool-call.ts";
 
-// The missing-tool branch never touches the model, so a bare sentinel
-// suffices — if any test reaches `generateObject` it will throw and the
-// test fails loudly rather than silently passing.
 const UNUSED_MODEL = {} as unknown as LanguageModel;
 
 function noSuchToolError(toolName: string) {
@@ -24,8 +11,6 @@ function noSuchToolError(toolName: string) {
   return err as any;
 }
 
-// A minimal Tool stand-in — presence (truthiness) is all the rewrite
-// branch checks for the target tools.
 const STUB_TOOL = { description: "stub" } as const;
 
 describe("repairToolCall — missing-tool draft-run rewrite", () => {
@@ -90,7 +75,6 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
         toolName: "wf_acme_report",
         input: JSON.stringify({ month: "june" }),
       },
-      // Both targets present: run_workflow wins for wf_<slug>.
       tools: { run_workflow: STUB_TOOL, dry_run_workflow: STUB_TOOL } as never,
       messages: [],
       system: "",

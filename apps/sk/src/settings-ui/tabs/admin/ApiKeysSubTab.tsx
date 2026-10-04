@@ -1,9 +1,3 @@
-// API Keys sub-tab — list with revoke (consent-gated). Issue + rotate
-// are CLI-only because both produce a one-time secret that the existing
-// `sk apikeys create` flow already handles end-to-end (clipboard write,
-// terminal echo control). Surfacing the same flow inside Ink would
-// duplicate that code path; defer until create-form refactor lands.
-
 import { osc52Copy } from "@cli-core/clipboard.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -14,12 +8,6 @@ import { AdminCreateForm } from "./AdminCreateForm.tsx";
 
 interface Props {
   client: EngineClient;
-  /**
-   * Fired when this sub-tab owns Esc — true while a revoke
-   * confirmation, the create form, or the "shown once" issued-secret
-   * panel is up. Threaded up to AdminTab → AdminCommand so the
-   * outer shell's Esc handler stays suppressed.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 

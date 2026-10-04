@@ -1,8 +1,3 @@
-// Every change to how a workflow is started — its schedule created, edited,
-// paused or deleted, a held schedule or inbound hook released — writes one `workflow.automation_changed` row on the internal
-// `resource.lifecycle` channel. The live Cockpit refreshes the workflow's
-// automation status from it; the row carries ids only.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -64,7 +59,6 @@ test("a schedule's create, edit, release and delete each announce themselves", a
   await updateSchedule(testDb.db, tenant_id, schedule_id, { paused: true });
   await updateSchedule(testDb.db, tenant_id, schedule_id, { paused: false });
 
-  // A held schedule whose hold is lifted: the standing state changes once.
   const claimed_at = new Date("2026-01-01T03:00:00.000Z");
   await testDb.db
     .update(workflowsSchedules)
@@ -114,7 +108,6 @@ test("a held inbound hook announces its release", async () => {
       null,
     ),
   ).toBe(true);
-  // The same state again is no change, and says nothing.
   expect(
     await recordInboundAdmission(
       testDb.db,

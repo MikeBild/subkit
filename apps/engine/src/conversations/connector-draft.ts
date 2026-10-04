@@ -27,19 +27,12 @@ function pushError(
   errors.push({ path, message });
 }
 
-// Refuse base_urls that obviously came from a model hallucination instead
-// of grounded tenant context. Catches the shapes models actually invent:
-// the `example.*` family (RFC 2606 reserved), `placeholder` literals, and
-// `your-host` / `<YOUR_HOST>` style templates. Loopback (`localhost`,
-// `127.0.0.1`) is intentionally NOT in this list — real dev / test setups
-// legitimately point at local stubs, and models rarely hallucinate
-// loopback as a fabricated production target.
 const PLACEHOLDER_HOST_PATTERNS: ReadonlyArray<RegExp> = [
   /\bexample\.(com|net|org)\b/i,
   /\bplaceholder\b/i,
   /\byour[-_]?(host|domain|api|company|tenant|engine|server)/i,
   /\b(api\.)?your-/i,
-  /<[^>]*>/, // angle-bracket templating like <YOUR_HOST>
+  /<[^>]*>/,
   /\[(YOUR|HOST|API|TOKEN|KEY)[^\]]*]/i,
 ];
 
@@ -56,14 +49,6 @@ function looksLikePlaceholderUrl(raw: string): boolean {
   return false;
 }
 
-/**
- * `templates` is REQUIRED and must be the resolved builtin+tenant merge
- * (`listResolvedConnectorTemplates(...).map(e => e.template)`). It used
- * to be optional with a builtin-only fallback — two callers omitted it
- * and every tenant-created template was rejected with "template_slug
- * must reference a known connector template". The compiler now makes
- * forgetting impossible.
- */
 export function validateConnectorDraft(
   connector: ConnectorDraftDocument | null,
   templates: ConnectorTemplate[],
@@ -154,14 +139,6 @@ export function validateConnectorDraft(
           );
         }
       }
-      // For the GraphQL driver `base_url` IS the full endpoint URL — there
-      // is no base_url/path split. A base_url trimmed to the host root
-      // (e.g. dropping `/graphql`) passes `new URL()` but makes every
-      // request 404. The template's `url_pattern` is the canonical
-      // endpoint shape, so enforce it here rather than discovering the
-      // breakage at run time. HTTP connectors legitimately store a
-      // host-root base_url and address many paths per step, so this check
-      // is GraphQL-only.
       if (connector.driver === "graphql" && template.url_pattern && connector.base_url) {
         const placeholders = extractTemplatePlaceholders(connector.base_url);
         if (placeholders.length === 0) {

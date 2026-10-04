@@ -16,9 +16,6 @@ import {
 
 describe("toolLabel", () => {
   test("passes a saved workflow's own name through instead of mangling it", () => {
-    // The slug is a name a person chose. Humanising it would render
-    // `ga4-daily-report` as "Ga4 Daily Report" — a mangling of a name rather
-    // than the name.
     expect(toolLabel("wf_ga4-daily-report")).toEqual({
       kind: "workflow",
       slug: "ga4-daily-report",
@@ -74,8 +71,6 @@ describe("workflowSlugFromTool", () => {
 
 describe("toolOutcomeKey", () => {
   test("a human decision outranks the machine result", () => {
-    // Someone who declined a call cares that they declined it, not that the
-    // engine then reported nothing ran.
     expect(toolOutcomeKey({ confirmationState: "declined", outcome: "error" })).toBe(
       "tool.outcome.declined",
     );
@@ -153,7 +148,6 @@ describe("isStaleCall", () => {
 });
 
 describe("what a workflow call really was", () => {
-  // The three answers `run_workflow` gives (`{ ok, data }`), as the engine writes them.
   const trial = {
     ok: false,
     data: {
@@ -177,7 +171,6 @@ describe("what a workflow call really was", () => {
     ok: false,
     data: { error_code: "workflow_activation_required", status: "failed" },
   };
-  // A saved workflow's own action answers flat; its held preview waits for a person.
   const heldPreview = {
     ok: false,
     status: "succeeded",
@@ -229,7 +222,6 @@ describe("what a workflow call really was", () => {
     expect(title(named, "trial")).toBe("Probelauf von „finding-triage“ ohne Wirkung");
     expect(title(named, "refused")).toBe("Lauf von „finding-triage“ abgelehnt");
     expect(title(named, "live")).toBe("Workflow „finding-triage“ ausgeführt");
-    // No result yet: the title it always had.
     expect(title(generic, null)).toBe("Workflow ausgeführt");
     expect(translate("en", "tool.name.runWorkflow.trial")).toBe("Trial run without effects");
     expect(translate("en", "tool.name.runWorkflow.refused")).toBe("Run refused");
@@ -262,7 +254,6 @@ describe("what a workflow call really was", () => {
     expect(workflowRefusalKey({ ok: false, data: { error_code: "permission_denied" } })).toBe(
       "tool.refusal.permission",
     );
-    // A version in an earlier format is refused by that name, not as a failed run.
     const legacy = {
       ok: false,
       data: { error_code: "workflow_version_invalid", status: "failed" },
@@ -271,7 +262,6 @@ describe("what a workflow call really was", () => {
     expect(translate("de", workflowRefusalKey(legacy) ?? "tool.outcome.foundIssue")).toBe(
       "Fassung in älterem Format gespeichert",
     );
-    // A reason this build has no word for falls back to the outcome word.
     expect(workflowRefusalKey({ ok: false, data: { error_code: "run_failed" } })).toBeNull();
     expect(workflowRefusalKey(undefined)).toBeNull();
   });

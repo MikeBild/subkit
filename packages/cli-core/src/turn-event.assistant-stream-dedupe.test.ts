@@ -1,19 +1,3 @@
-// Duplicate-assistant-output bug — debug.log forensics, conversation
-// 68b5c87e (seq 477–491): during an elicitation-resolution turn the
-// engine emitted the persisted assistant `message` event MID-STREAM
-// (self-parented: parent_message_id === id), then kept delivering
-// `text_delta` frames that replayed the TAIL of that same text. The
-// reducer cleared `streamingAssistantText` on the message, then
-// re-accumulated the tail — and `completed` never clears the buffer —
-// so the Ink transcript rendered the full message followed by a
-// dangling partial duplicate starting mid-sentence.
-//
-// Contract under test: a `message` event whose text equals (or
-// prefix-extends) the delta-accumulated assistant text reconciles into
-// ONE transcript cell, and late deltas that replay already-materialized
-// text are swallowed. Legitimate multi-message turns (distinct texts)
-// and genuinely new post-message streams still render.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, initialSessionState, type TurnEvent } from "./turn-event.ts";
 
@@ -22,8 +6,6 @@ const FULL_TEXT =
   "Your options:\n1. Re-probe in ~20 seconds — wait for the cooldown and try " +
   "saving again (the API may recover).\n2. Rotate the credential.";
 
-// Split exactly like the forensic stream: deltas up to a mid-sentence
-// point, the persisted message, then the remaining tail as deltas.
 const STREAMED_PREFIX = FULL_TEXT.slice(0, FULL_TEXT.indexOf("saving again"));
 const TAIL_AFTER_MESSAGE = FULL_TEXT.slice(FULL_TEXT.indexOf("saving again"));
 
@@ -36,10 +18,8 @@ function assistantMessages(state: ReturnType<typeof initialSessionState>) {
 describe("applyTurnEvent · assistant stream/message dedupe", () => {
   test("forensic replay 68b5c87e — persisted message mid-stream + trailing tail deltas yield ONE assistant cell and an empty stream buffer", () => {
     let state = initialSessionState("conv-68b5c87e");
-    // Deltas up to the mid-sentence point where the message landed.
     state = applyTurnEvent(state, { type: "text_delta", text: STREAMED_PREFIX.slice(0, 30) });
     state = applyTurnEvent(state, { type: "text_delta", text: STREAMED_PREFIX.slice(30) });
-    // The persisted assistant message — full text, SELF-parented.
     state = applyTurnEvent(state, {
       type: "message",
       role: "assistant",
@@ -47,16 +27,12 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       id: SELF_PARENTED_ID,
       parent_message_id: SELF_PARENTED_ID,
     });
-    // Late deltas replaying the tail of the already-materialized text —
-    // pre-fix these re-populated streamingAssistantText with a
-    // mid-sentence fragment that rendered below the full message.
     state = applyTurnEvent(state, { type: "text_delta", text: TAIL_AFTER_MESSAGE.slice(0, 40) });
     state = applyTurnEvent(state, { type: "text_delta", text: TAIL_AFTER_MESSAGE.slice(40) });
     state = applyTurnEvent(state, { type: "completed", status: "active" });
 
     expect(assistantMessages(state)).toHaveLength(1);
     expect(assistantMessages(state)[0]?.content).toBe(FULL_TEXT);
-    // The dangling partial duplicate — the actual user-visible bug.
     expect(state.streamingAssistantText).toBe("");
   });
 
@@ -174,7 +150,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       content: { text: FULL_TEXT },
       id: "msg-c",
     });
-    // Genuinely NEW assistant text — must stream, not be swallowed.
     state = applyTurnEvent(state, { type: "text_delta", text: "Next, I'll verify the schedule." });
     expect(state.streamingAssistantText).toBe("Next, I'll verify the schedule.");
   });
@@ -188,26 +163,10 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       content: { text: "abcxyz" },
       id: "msg-d",
     });
-    // "xyz" replays the materialized tail; "123" is new text.
     state = applyTurnEvent(state, { type: "text_delta", text: "xyz123" });
     expect(state.streamingAssistantText).toBe("123");
     expect(assistantMessages(state)).toHaveLength(1);
   });
-
-  // ── Forensics, conversation 35a3b9ba (sk 6.17.0, ~19:11:57) ────────
-  //
-  // The engine's delta stream is a CONTINUOUS lagging replay of the
-  // concatenated assistant texts: the persisted `message` event can land
-  // BEFORE any of its `text_delta` frames (seq 153 message, seq 154
-  // delta with the identical full text), and a single delta can span a
-  // message boundary (seq 135: tail of message ba3d4a8f + the full text
-  // of message 87abe312 in ONE frame). Pre-fix, `applyAssistantMessage`
-  // only armed `expectedStreamTail` when the stream buffer was a
-  // NON-EMPTY prefix of the persisted text — so a message arriving ahead
-  // of its deltas armed nothing, the full-text replay delta accumulated
-  // into `streamingAssistantText`, and the Ink view rendered the same
-  // assistant text above the pending ask_user_form panel (persisted
-  // message, static) AND below it (live-delta row, dynamic).
 
   const XRAY_TEXT =
     "The OAuth2 flow for Xray Cloud requires collecting the client credentials " +
@@ -245,7 +204,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       input: { question: "Confirm the OAuth2 credentials.", fields: [] },
       parent_message_id: XRAY_MSG_ID,
     });
-    // Persisted message lands BEFORE its delta replay (self-parented).
     state = applyTurnEvent(state, {
       type: "message",
       role: "assistant",
@@ -253,7 +211,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       id: XRAY_MSG_ID,
       parent_message_id: XRAY_MSG_ID,
     });
-    // The full-text replay delta — the second visual copy pre-fix.
     state = applyTurnEvent(state, { type: "text_delta", text: XRAY_TEXT });
     state = applyTurnEvent(state, { type: "completed", status: "awaiting_input" });
     return state;
@@ -263,8 +220,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
     const state = replayXrayElicitTurn();
     expect(assistantMessages(state)).toHaveLength(1);
     expect(assistantMessages(state)[0]?.content).toBe(XRAY_TEXT);
-    // The user-visible bug: the replayed delta re-populated the live
-    // buffer, rendering the same text again below the form panel.
     expect(state.streamingAssistantText).toBe("");
     expect(state.pendingElicitation?.id).toBe("10fc2aaa");
     expect(state.status).toBe("awaiting_input");
@@ -284,7 +239,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       id: "ba3d4a8f",
       parent_message_id: "ba3d4a8f",
     });
-    // Lagging replay of T1's head…
     state = applyTurnEvent(state, { type: "text_delta", text: T1.slice(0, 40) });
     state = applyTurnEvent(state, {
       type: "elicit_request",
@@ -301,7 +255,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       id: "87abe312",
       parent_message_id: "87abe312",
     });
-    // …then ONE delta carrying the rest of T1 AND all of T2 (seq 135).
     state = applyTurnEvent(state, { type: "text_delta", text: T1.slice(40) + T2 });
     state = applyTurnEvent(state, { type: "completed", status: "awaiting_input" });
 
@@ -311,7 +264,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
 
   test("resolving the elicitation in the next turn keeps the message and renders the follow-up", () => {
     let state = replayXrayElicitTurn();
-    // Next turn (elicitation resolved): a fresh stream with new text.
     state = applyTurnEvent(state, {
       type: "message",
       role: "assistant",
@@ -335,8 +287,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
 
   test("an undelivered replay expectation does not leak across `completed` into the next turn's stream", () => {
     let state = initialSessionState("conv-leak");
-    // Turn 1: message persisted, but the engine never replays its
-    // deltas before the stream closes.
     state = applyTurnEvent(state, {
       type: "message",
       role: "assistant",
@@ -344,9 +294,6 @@ describe("applyTurnEvent · assistant stream/message dedupe", () => {
       id: "msg-t1",
     });
     state = applyTurnEvent(state, { type: "completed", status: "active" });
-    // Turn 2: a new SSE stream — replay expectations from the closed
-    // stream are void. The new turn's own ahead-of-delta replay must
-    // still be swallowed.
     state = applyTurnEvent(state, {
       type: "message",
       role: "assistant",

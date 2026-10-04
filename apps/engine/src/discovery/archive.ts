@@ -1,18 +1,3 @@
-// Archive extraction for codebase discovery.
-//
-// Accepts a zip archive buffer, walks every entry via the shared
-// `walkZipEntries` core, filters out paths that aren't worth analysing
-// (node_modules, .git, lockfiles, binaries, huge files), and returns a
-// list of {filename, buffer} pairs ready for `createDiscoveryRun`.
-//
-// Constraints:
-//   - Total extracted bytes capped at 50 MB (sum across entries).
-//   - Per-entry byte cap at 1 MB — prevents a single large binary
-//     checked into a repo from dominating the run.
-//   - Entry count capped at 500 (discovery run already caps at 50 files
-//     for LLM analysis; the extra headroom lets us extract and then let
-//     the service rank).
-
 import { walkZipEntries } from "../utils/zip-walk.ts";
 
 export interface ExtractedFile {
@@ -29,16 +14,10 @@ export interface ArchiveExtractionResult {
   truncated: boolean;
 }
 
-const MAX_TOTAL_BYTES = 50 * 1024 * 1024; // 50 MB
-const MAX_PER_ENTRY_BYTES = 1 * 1024 * 1024; // 1 MB
+const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+const MAX_PER_ENTRY_BYTES = 1 * 1024 * 1024;
 const MAX_ENTRY_COUNT = 500;
 
-/**
- * Path-based skip rules. Checked with `.startsWith(...)` and suffix
- * matches against the normalised (forward-slash) path. Matches here are
- * unambiguous noise — generated artifacts, lockfiles that add nothing
- * semantic, binary blobs.
- */
 const SKIP_PREFIXES = [
   "node_modules/",
   ".git/",

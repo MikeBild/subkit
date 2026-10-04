@@ -1,16 +1,3 @@
-// Authoring eval (CI mode): for_each per-step inline iteration + JS-first
-// transforms.
-//
-// Verifies:
-//   1. A step with `for_each` iterates over the selector result, binding
-//      $item + $loop_index, and produces an array of per-iteration envelopes
-//      at $scope.<step>.data.
-//   2. A downstream JS transform projects across the iteration array via
-//      .map(iter => iter.<step_id>.data.<field>).
-//   3. No `loop` kind step is used — for_each on baseStep is the pattern.
-//   4. All transforms use `language: "javascript"` (JS-first contract).
-//   5. Zero egress — no live HTTP calls.
-
 import { runExecution } from "../../src/execution/engine.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 import { Checks, withAuthoringEvalEnv, withEgressTripwire } from "./shared/authoring-env.ts";
@@ -33,7 +20,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   return withAuthoringEvalEnv("for_each_js", async (env) => {
     const c = new Checks();
 
-    // Structural contract: no loop kind used, all transforms are JS.
     if (input.expect.no_loop_kind) {
       const loopSteps = input.steps.filter((s) => s.kind === "loop");
       c.check(loopSteps.length === 0, `expected no loop kind steps, found ${loopSteps.length}`);
@@ -50,7 +36,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
 
     if (c.failed) return { pass: false, reason: c.failed };
 
-    // Runtime contract: for_each step produces an array envelope.
     const { result: run, fetch_calls } = await withEgressTripwire(() =>
       runExecution({
         db: env.db,
@@ -79,14 +64,12 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
 
     if (c.failed) return { pass: false, reason: c.failed };
 
-    // list_items step.
     const listStep = run.steps.find((s) => s.step_key === "list_items");
     c.check(
       listStep?.status === input.expect.list_items_status,
       `list_items status is ${String(listStep?.status)}, expected ${input.expect.list_items_status}`,
     );
 
-    // tag_item step: should have iterated and produced an array.
     const tagStep = run.steps.find((s) => s.step_key === "tag_item");
     c.check(tagStep !== undefined, "tag_item step not found in run output");
     if (tagStep) {
@@ -107,7 +90,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       }
     }
 
-    // collect step: projects across iterations.
     const collectStep = run.steps.find((s) => s.step_key === "collect");
     c.check(collectStep !== undefined, "collect step not found in run output");
     if (collectStep) {

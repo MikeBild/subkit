@@ -1,10 +1,3 @@
-// One-off helper for local smoke tests:
-//   bun run apps/engine/src/db/print-key.ts
-//
-// Issues a fresh API key against the seeded `default` tenant + `default-bot`
-// system account, prints the plaintext to stdout, and exits 0. Each
-// invocation creates a NEW row — there is no rotation here.
-
 import { eq } from "drizzle-orm";
 import { issueApiKey } from "../identity/service.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
@@ -33,7 +26,6 @@ async function main(): Promise<void> {
     actor_id: null,
   });
 
-  // Plaintext goes to stdout in a machine-grep-friendly format.
   process.stdout.write(`${result.plaintext}\n`);
 }
 

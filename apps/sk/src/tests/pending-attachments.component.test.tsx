@@ -1,5 +1,3 @@
-// Ink-component coverage for PendingPasteRefs.
-
 import { describe, expect, test } from "bun:test";
 import type { StoredPaste } from "../repl/paste-store.ts";
 import { PendingPasteRefs } from "../repl/pending-attachments.tsx";

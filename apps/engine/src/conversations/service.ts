@@ -1,25 +1,3 @@
-// Conversations service — public API used by REST + MCP.
-//
-// Thin barrel. The implementation lives in `service/`:
-//
-//   - `service/shared.ts`    — Executor type + permission-mode helpers
-//                               + rowToRecord + isAskUserToolName +
-//                               shared error / outcome types
-//   - `service/get.ts`       — getConversation (the read path that
-//                               every other op delegates to)
-//   - `service/create.ts`    — createConversation + CreateConversationParams
-//   - `service/append.ts`    — appendUserMessage + AppendMessageParams
-//   - `service/elicit.ts`    — respondElicitation + RespondElicitationParams
-//                               + auto-persist + commit short-circuit
-//   - `service/snapshot.ts`  — getContextSnapshot + ContextSnapshot
-//   - `service/lifecycle.ts` — cancelConversation + listConversations +
-//                               patchConversation + the list/patch types
-//   - `service/compact.ts`   — compactConversation + CompactConversationResult
-//                               + undoLastDraftMutation
-//
-// External callers (REST routes use `import * as svc from "../../conversations/service.ts"`)
-// continue to see the same public surface.
-
 export {
   type AppendMessageParams,
   type AppendMessageResult,

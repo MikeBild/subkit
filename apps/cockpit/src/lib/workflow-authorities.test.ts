@@ -77,8 +77,6 @@ describe("which review answer the dialog shows", () => {
     expect(acceptReview(3, 3, expected, preview)).toBe("accept");
   });
   test("drops an answer to an older request, even one that matches", () => {
-    // The request that finishes last is not the one asked last: a slow first
-    // review must not replace the one the reader is looking at.
     expect(acceptReview(4, 3, expected, preview)).toBe("stale");
   });
   test("refuses an answer about another version or environment", () => {
@@ -111,7 +109,6 @@ describe("exact grant input", () => {
       valid_until: null,
       max_runs: null,
     });
-    // Without an end date the review never expires by the local clock.
     expect(
       authorityGrantInput(preview, expected, null, null, Date.parse(UNTIL) + 1),
     ).not.toBeNull();

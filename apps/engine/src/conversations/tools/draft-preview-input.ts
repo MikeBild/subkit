@@ -3,8 +3,6 @@ import { workflowPreparationInput } from "../../workflows/preparation-input.ts";
 import type { DraftDocument } from "../types.ts";
 import { getAuthoringSnapshot } from "./authoring-contract.ts";
 
-/** Draft previews always hold writes. Only an unambiguous saved schedule
- * supplies omitted input; explicit values (even null or {}) are preserved. */
 export async function draftPreviewInput(
   db: Executor,
   tenantId: string,

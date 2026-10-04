@@ -1,18 +1,3 @@
-// User story: As an operator, I want to inspect and manage workflow
-// executions via the `sk executions` CLI so I can diagnose failures
-// and stop runaway jobs without writing HTTP calls by hand.
-// Acceptance criteria:
-//   - AC1: `executions list --json` returns an array after seeding a run.
-//   - AC2: `executions list --status running --json` returns an array
-//          (may be empty depending on timing; just asserts array shape).
-//   - AC3: `executions get <id>` returns the execution with id, workflow_id,
-//          and a status field.
-//   - AC4: `executions steps <id> --json` returns an array of steps.
-//   - AC5: `executions abort <id>` aborts a queued/running execution; the
-//          command outputs "aborted" and a subsequent get shows status
-//          aborted or failed.
-// Spec refs: docs/concepts/workflows.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { defineCommand } from "citty";
 import { and, eq } from "drizzle-orm";
@@ -32,8 +17,6 @@ let wfId = "";
 let executionId = "";
 let abortWfId = "";
 let abortExecutionId = "";
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -85,9 +68,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      /* fall through */
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -104,9 +85,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          /* continue */
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -183,7 +162,6 @@ async function runExpectError(
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-executions");
 
-  // Seed a workflow that completes quickly (sync-safe).
   const wf = await seedWorkflow(ctx, {
     slug: "exec-test-wf",
     name: "exec-test-wf",
@@ -191,7 +169,6 @@ beforeAll(async () => {
   });
   wfId = wf.id;
 
-  // Run the workflow via HTTP to create an execution row.
   const runResp = await journeyFetch(ctx, "/v1/executions", {
     method: "POST",
     body: JSON.stringify({ source: "saved", workflow_id: wfId, input: {} }),
@@ -200,11 +177,6 @@ beforeAll(async () => {
   const runData = (await runResp.json()) as { execution_id: string };
   executionId = runData.execution_id;
 
-  // Seed a second workflow for the abort test. Use a deliberately long
-  // external request so the execution stays in-flight long enough to abort.
-  // httpbin.org/delay/30 would add 30 s of real network latency in CI;
-  // instead we use a non-routable address so the request hangs immediately
-  // without network egress and the execution can be aborted right away.
   const abortWf = await seedWorkflow(ctx, {
     slug: "abort-test-wf",
     name: "abort-test-wf",
@@ -219,7 +191,6 @@ beforeAll(async () => {
   });
   abortWfId = abortWf.id;
 
-  // Start the abort workflow asynchronously (do NOT pass ?sync=1).
   const abortRunResp = await journeyFetch(ctx, "/v1/executions", {
     method: "POST",
     body: JSON.stringify({ source: "saved", workflow_id: abortWfId, input: {}, async: true }),
@@ -244,9 +215,6 @@ describe("journey 42: sk executions CLI", () => {
   });
 
   test("AC2: executions list --status running returns an array", async () => {
-    // The seeded sync execution has already completed; the async abort execution
-    // may still be in a running/queued state. Either way the --status filter
-    // must return a valid array (empty is also valid).
     const { stdout } = await run(executionsCommand, ["list"], ["--status=running"]);
     const body = JSON.parse(extractLastJson(stdout));
     expect(Array.isArray(body)).toBe(true);
@@ -303,9 +271,6 @@ describe("journey 42: sk executions CLI", () => {
   });
 
   test("AC6: executions get with wrong-tenant id returns an error", async () => {
-    // Use a valid-looking UUID that belongs to no execution in this tenant.
-    // RFC-4122-compliant — the pinned contract is the tenant-scoped
-    // not-found, not the uuid-shape 400 (see journey 37's note).
     const fakeId = "00000000-0000-4000-8000-000000000042";
     const { message, captured } = await runExpectError(executionsCommand, ["get", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();

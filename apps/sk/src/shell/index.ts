@@ -1,15 +1,4 @@
-// Public barrel for the new sk shell + domain components.
-//
-// Existing call sites (ink-app.tsx, ink-repl.ts, the readline REPL,
-// onboarding wizard, settings UI) opt into the overhaul by importing
-// from this barrel. The legacy modules continue to work; nothing
-// imports from the new tree until a consumer flips the import.
-//
-// Treat this barrel as the contract. Re-exports here are stable;
-// internal re-organization stays behind it.
-
 export type { ThemeName, ThemeTokens } from "@chat-ui/index.ts";
-// Theme re-exports for callers that don't import directly from chat-ui.
 export {
   defaultTheme,
   PALETTES,
@@ -23,7 +12,6 @@ export type {
   ConnectorTemplate,
   IntegrationPickerProps,
 } from "../domain/connectors/IntegrationPicker.tsx";
-// Domain surfaces.
 export { IntegrationPicker } from "../domain/connectors/IntegrationPicker.tsx";
 export type { OAuthPollResponse, OAuthWaitViewProps } from "../domain/connectors/OAuthWaitView.tsx";
 export { OAuthWaitView } from "../domain/connectors/OAuthWaitView.tsx";
@@ -36,7 +24,6 @@ export type {
 } from "../domain/schema/SchemaForm.tsx";
 export { SchemaForm } from "../domain/schema/SchemaForm.tsx";
 export type { TurnEvent, TurnEventKind } from "../domain/sessions/store.ts";
-// Sessions + status-line.
 export {
   appendEvent,
   deleteEvents,
@@ -65,7 +52,6 @@ export { bootstrapCachePath, loadBootstrap } from "../lib/bootstrap.ts";
 export type { SlashDispatchPlan, SlashRouting } from "../repl/slash/dispatcher.ts";
 export { classifySlash } from "../repl/slash/dispatcher.ts";
 export type { SlashSpan } from "../repl/slash/findPositions.ts";
-// Slash + bootstrap.
 export {
   findSlashCommandPositions,
   spanAtCursor,
@@ -78,20 +64,16 @@ export { runShellHook } from "../repl/status-line/shell-hook.ts";
 export type { UseStatusLineResult } from "../repl/status-line/useStatusLine.ts";
 export { useStatusLine } from "../repl/status-line/useStatusLine.ts";
 export type { TranscriptItem, TranscriptViewProps } from "../repl/transcript/TranscriptView.tsx";
-// Transcript view wrapper.
 export { TranscriptView } from "../repl/transcript/TranscriptView.tsx";
 export type { UsePersonaResult } from "../repl/usePersona.ts";
-// usePersona hook (replaces blocking persona gate).
 export { usePersona } from "../repl/usePersona.ts";
 export type { SettingsDraftSnapshot } from "../settings-ui/lib/draft-store.ts";
-// Settings draft store.
 export { clearDraft, loadDraft, saveDraft } from "../settings-ui/lib/draft-store.ts";
 export type {
   EngineFieldDescriptor,
   EngineSchemaDescriptor,
   EngineSchemaSource,
 } from "../settings-ui/lib/engine-schema-loader.ts";
-// Engine schema loader (settings UI form mode).
 export {
   loadEngineSchema,
   materializeSchema,
@@ -111,7 +93,6 @@ export { MessageGutter } from "./MessageGutter.tsx";
 export type { ResizeBoundaryProps } from "./ResizeBoundary.tsx";
 export { ResizeBoundary } from "./ResizeBoundary.tsx";
 export type { Toast, ToastInput, ToastLevel, ToastQueueAPI } from "./ToastQueue.tsx";
-// Core primitives.
 export { ToastQueue, useToast } from "./ToastQueue.tsx";
 export type { VirtualTranscriptProps } from "./VirtualTranscript.tsx";
 export { VirtualTranscript } from "./VirtualTranscript.tsx";

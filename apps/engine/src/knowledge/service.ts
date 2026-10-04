@@ -1,8 +1,3 @@
-// Knowledge Sources service — CRUD, ingest, and search.
-//
-// Reuses the chunking/dedup pipeline from docs-ingestion (pure functions,
-// no table coupling). Persists to knowledge_sources + knowledge_chunks.
-
 import { createHash } from "node:crypto";
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -45,10 +40,6 @@ import { knowledgeSourceRowToView } from "./view.ts";
 export { countKnowledgeSources, getKnowledgeSource, listKnowledgeSources } from "./catalog.ts";
 export { knowledgeSourceRowToView } from "./view.ts";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function toSlug(name: string): string {
   return name
     .toLowerCase()
@@ -57,17 +48,6 @@ function toSlug(name: string): string {
     .slice(0, 100);
 }
 
-// Tag normalization + the structural-tag contract live in ./tags.ts.
-
-/**
- * Fire-and-forget, source-scoped embedding backfill kicked right after a
- * create/ingest commits. Freshly (re)ingested chunks carry NULL embeddings
- * and the scheduler sweep only lands every 5 minutes (capped) — until then a
- * source ranks on FTS alone, which for non-English content made it
- * practically invisible right after every update. The targeted kick keeps
- * the request path non-blocking (the deliberate create-path property), stays
- * bounded to one source, and is a no-op when the local model is unavailable.
- */
 export async function kickSourceEmbeddingBackfill(
   tenant_id: string,
   knowledge_source_id: string,
@@ -89,17 +69,12 @@ export async function kickSourceEmbeddingBackfill(
   }
 }
 
-// ---------------------------------------------------------------------------
-// CRUD
-// ---------------------------------------------------------------------------
-
 export async function createKnowledgeSource(
   p: CreateKnowledgeSourceParams,
   exec?: Executor,
 ): Promise<KnowledgeSourceView> {
   const db = exec ?? getDb();
 
-  // Validate scope constraints
   if (p.input.scope === "workflow" && !p.input.workflow_id) {
     throw new Error("workflow_id is required when scope is 'workflow'");
   }
@@ -122,11 +97,6 @@ export async function createKnowledgeSource(
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
   const format = detectFormat(p.upload.filename, p.upload.mime);
 
-  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work).
-  // Bundle imports arrive pre-parsed (one chunk per file, path attached),
-  // skip the file parser, AND skip dedup: bundle files are per-path entities
-  // addressed by `read_knowledge {path}` — near-dup/exact dedup across paths
-  // would silently make an imported file unreadable.
   const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
   const { accepted, skipped } = p.parsed_chunks
@@ -135,10 +105,6 @@ export async function createKnowledgeSource(
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
 
-  // Persist the upload bytes before the transaction (object-store put +
-  // scan must not run inside it). Known risk: the files row commits
-  // independently, so a failed create below leaves an orphaned files row
-  // for the cleanup cron to reap.
   const sourceType = p.source_type_override ?? "file_upload";
   const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
 
@@ -182,9 +148,6 @@ export async function createKnowledgeSource(
       });
     }
 
-    // Insert chunks. Embeddings are populated out-of-band by
-    // backfillEmbeddings so the inline HTTP create never blocks on model
-    // load + inference; FTS works immediately, vectors follow.
     if (accepted.length > 0) {
       await tx.insert(knowledgeChunks).values(
         accepted.map((c, i) => ({
@@ -228,11 +191,6 @@ export async function createKnowledgeSource(
   return created;
 }
 
-/**
- * Look up a non-deleted Knowledge Source by its `(tenant_id, slug)` natural
- * key. Used by the boot-time seeder to decide insert vs. re-ingest vs. skip
- * without re-deriving the upsert logic in two places.
- */
 export async function getKnowledgeSourceBySlug(
   tenant_id: string,
   slug: string,
@@ -275,7 +233,6 @@ export async function updateKnowledgeSource(
     if (!existing[0]) return null;
     const before = knowledgeSourceRowToView(existing[0]);
 
-    // Validate scope+workflow_id constraint
     const effectiveScope = p.patch.scope ?? existing[0].scope;
     const effectiveWorkflowId =
       p.patch.workflow_id !== undefined ? p.patch.workflow_id : existing[0].workflow_id;
@@ -321,12 +278,6 @@ export async function updateKnowledgeSource(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Analyze (LLM enrichment — best-effort, interactive call sites only)
-// ---------------------------------------------------------------------------
-
-// Token-budget the analysis sample to ~6–8k tokens (≈4 chars/token → ~28k
-// chars) so a large source never blows the enrichment budget.
 const ANALYZE_SAMPLE_MAX_CHARS = 28_000;
 
 const AnalysisSchema = z.object({
@@ -334,18 +285,6 @@ const AnalysisSchema = z.object({
   tags: z.array(z.string().min(1).max(40)).min(1).max(8),
 });
 
-/**
- * Enrich a Knowledge Source's metadata with an LLM-generated description
- * and topical tags. NEVER renames `name`/`slug` (churns the unique slug
- * index and breaks references). The `description` is overwritten only when
- * currently null OR `force` is set; `tags` are always set to a deduped
- * REPLACEMENT set (never concatenated).
- *
- * The LLM call runs OUTSIDE the DB transaction. Callers at the interactive
- * upload sites wrap this in best-effort try/catch — a failed analysis must
- * never fail the upload. Returns the updated view, or `null` if the source
- * does not exist.
- */
 export async function analyzeKnowledgeSource(
   p: AnalyzeKnowledgeSourceParams,
   exec?: Executor,
@@ -366,7 +305,6 @@ export async function analyzeKnowledgeSource(
   const source = sources[0];
   if (!source) return null;
 
-  // Load the first chunks in ordinal order, token-bounded.
   const chunks = await db
     .select({
       title: knowledgeChunks.title,
@@ -395,7 +333,6 @@ export async function analyzeKnowledgeSource(
   }
 
   if (sample.trim().length === 0) {
-    // Nothing to analyze (e.g. a source with no chunks). Leave it as-is.
     return knowledgeSourceRowToView(source);
   }
 
@@ -422,7 +359,6 @@ export async function analyzeKnowledgeSource(
 
   const analysis = result.object;
   if (!analysis) {
-    // Model returned no structured object — leave the source un-enriched.
     return knowledgeSourceRowToView(source);
   }
 
@@ -515,10 +451,6 @@ export async function deleteKnowledgeSource(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Ingest (re-ingest / refresh)
-// ---------------------------------------------------------------------------
-
 export async function ingestKnowledgeSource(
   p: IngestKnowledgeSourceParams,
   exec?: Executor,
@@ -553,8 +485,6 @@ export async function ingestKnowledgeSource(
     fn: () => p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format),
   });
   const fingerprinted = fingerprintChunks(rawChunks);
-  // Bundles skip dedup — see the create path: per-path entities must all
-  // stay readable via `read_knowledge {path}`.
   const { accepted, skipped } = p.parsed_chunks
     ? { accepted: fingerprinted, skipped: 0 }
     : dedupChunks(fingerprinted);
@@ -562,10 +492,6 @@ export async function ingestKnowledgeSource(
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
 
-  // Re-persist the refreshed bytes so file_id tracks the current content.
-  // URL sources stay file-less (source_uri is their canonical reference).
-  // Same orphan risk as the create path: the files row commits outside
-  // the transaction below.
   const sourceRows = await db
     .select({ source_type: knowledgeSources.source_type, slug: knowledgeSources.slug })
     .from(knowledgeSources)
@@ -602,18 +528,12 @@ export async function ingestKnowledgeSource(
     if (p.expected_version !== undefined && lockedSource.version !== p.expected_version) {
       throw new KnowledgeVersionConflictError(p.expected_version, lockedSource.version);
     }
-    // Same tenant-budget guard as the create path — a re-ingest that grows
-    // a source (nightly bundle re-import) must not silently sail past the
-    // cap. Counts everything except the source being replaced.
     await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes, p.knowledge_source_id);
 
-    // Delete old chunks
     await tx
       .delete(knowledgeChunks)
       .where(eq(knowledgeChunks.knowledge_source_id, p.knowledge_source_id));
 
-    // Insert new chunks. Embeddings are populated out-of-band by
-    // backfillEmbeddings (see the create path).
     if (accepted.length > 0) {
       await tx.insert(knowledgeChunks).values(
         accepted.map((c, i) => ({
@@ -629,7 +549,6 @@ export async function ingestKnowledgeSource(
       );
     }
 
-    // Update source metadata
     await tx
       .update(knowledgeSources)
       .set({
@@ -702,13 +621,6 @@ export async function ingestKnowledgeSource(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-
-// In-memory cache for repeated FTS lookups within a conversation turn.
-// Scopes to (tenant, scope, workflow, ids?, normalized query, limit) so
-// cache poisoning across tenants is impossible. TTL 60s, cap 256 keys.
 const knowledgeSearchCache = new TtlCache<KnowledgeSearchHit[]>({
   maxEntries: 256,
   ttlMs: 60_000,
@@ -745,18 +657,11 @@ export async function searchKnowledge(
   const db = exec ?? getDb();
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
 
-  // Always cache; HTTP routes and tools pass a request-scoped executor
-  // but the underlying reads are stable for a 60s TTL.
   const cacheKey = knowledgeSearchCacheKey(p);
   const cached = knowledgeSearchCache.get(cacheKey);
   if (cached) return cached;
 
   if (!p.query || p.query.trim().length === 0) return [];
-
-  // Build WHERE conditions dynamically. Always filter by tenant and active
-  // sources (join via knowledge_source_id → knowledge_sources.status).
-  // When workflow_id is provided, include both global and workflow-scoped.
-  // When knowledge_source_ids is provided, filter to those specific sources.
 
   let scopeFilter = sql`AND ks.deleted_at IS NULL AND ks.status = 'active'`;
 
@@ -769,9 +674,6 @@ export async function searchKnowledge(
     scopeFilter = sql`${scopeFilter} AND ks.scope = ${p.scope}`;
   }
 
-  // Tag filter rides inside the `kc.tenant_id = ${p.tenant_id}` scope below,
-  // so it can only ever narrow results within the tenant — never widen
-  // across tenants. `&&` is the GIN-indexed array-overlap operator.
   if (p.tags && p.tags.length > 0) {
     const tagLiterals = p.tags.map((t) => sql`${t}`);
     scopeFilter = sql`${scopeFilter} AND ks.tags && ARRAY[${sql.join(tagLiterals, sql`, `)}]::text[]`;
@@ -831,11 +733,6 @@ export async function searchKnowledge(
           : null,
   }));
 
-  // Hybrid recovery: the FTS prefilter is English-stemmer only, so a German
-  // or synonym query can return few/zero lexical hits. Scan a bounded set of
-  // in-scope embedded chunks, rank by cosine, and fuse vector-first so the
-  // right chunk surfaces even with no shared stemmed lexeme. NULL-safe +
-  // bounded; unembedded chunks stay reachable via FTS.
   const fused = await fuseKnowledgeWithVectors(db, p, hits, scopeFilter, limit);
 
   log.knowledge.searched({
@@ -853,8 +750,6 @@ export async function searchKnowledge(
   return fused;
 }
 
-/** Bounded full-scope vector recovery for searchKnowledge. Returns `hits`
- *  unchanged when embeddings are unavailable or nothing clears the floor. */
 const KNOWLEDGE_VECTOR_SCAN_CAP = 2000;
 async function fuseKnowledgeWithVectors(
   db: Executor,

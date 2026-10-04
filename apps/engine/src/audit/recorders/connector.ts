@@ -1,17 +1,3 @@
-// Connector audit recorders.
-//
-// Every Wave-1..3 state-changing path against a connector lands here:
-//   - createConnector → recordConnectorCreated
-//   - updateConnector / save_connector_draft re-issue → recordConnectorUpdated
-//   - deleteConnector → recordConnectorDeleted
-//   - call_connector / probe_connector → recordConnectorInvoked
-//   - a health probe of a saved connector, from any surface → recordConnectorProbed
-//   - save_connector_draft with force_save → recordConnectorSavedOverride
-//   - update_connector_draft credential rejection → recordConnectorDraftCredentialRejected
-//
-// The metadata shape is locked at the recorder level so a schema drift
-// in one call site cannot silently desynchronise the audit trail.
-
 import { audit, auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
 import {
@@ -26,12 +12,9 @@ export interface RecordConnectorCreatedParams extends RecorderBase {
   slug: string;
   driver: string;
   environment: string;
-  /** Free-form reason; defaults to "manual_re_issue" when null. */
   reason: string;
-  /** Tags the dispatch path: tool re-issue vs harness auto-persist. */
   source: "harness_auto_persist" | "tool_call";
   credential_persisted?: boolean;
-  /** When auto-persisted, the carrier elicitation kind. */
   commit_intent_kind?: string;
 }
 
@@ -65,14 +48,12 @@ export async function recordConnectorCreated(
 
 export interface RecordConnectorUpdatedParams extends RecorderBase {
   connector_id: string;
-  /** "credential_rotated" | "create_via_tool" | "auto_persist" — surfaced verbatim. */
   kind: string;
   reason: string;
   source: "harness_auto_persist" | "tool_call";
   environment?: string;
   credential_mode?: string;
   credential_persisted?: boolean;
-  /** Idempotent re-issue against an already-persisted connector. */
   idempotent?: boolean;
   commit_intent_kind?: string;
   tool?: string;
@@ -147,19 +128,8 @@ export interface RecordConnectorInvokedParams extends RecorderBase {
   url_host: string;
   status_code: number;
   latency_ms: number;
-  /** "error" rows ALSO get audited — the call happened, only the upstream failed. */
   outcome: AuditOutcome;
   conversation_id?: string;
-  /**
-   * the id of the resource a write call created/sent, lifted from the
-   * response body (e.g. a Gmail message id from `POST .../messages/send`).
-   * Makes "WHAT did this outbound call actually produce?" answerable from
-   * the audit log alone — previously the row carried only host/status, so a
-   * stale-send incident left no record of which message went out.
-   * Generic (first id-like field of a non-idempotent response), never
-   * vendor-specific. Runs through the metadata secret-scrubber like every
-   * other field.
-   */
   created_resource_id?: string;
 }
 
@@ -206,16 +176,6 @@ export interface RecordConnectorProbedParams extends RecorderBase {
   conversation_id?: string;
 }
 
-/**
- * A health probe of a saved connector is a call like any other, and the
- * newest one on record: "last successful call" on the connector's page must
- * move when someone tests the connection. One recorder for every surface that
- * probes — the REST route and the conversation tool — so the row has one
- * shape and neither surface can forget it.
- *
- * A probe the engine refused before anything left it — a disabled connector —
- * is not a call, and is not recorded as one.
- */
 export async function recordConnectorProbed(
   p: RecordConnectorProbedParams,
 ): Promise<RecordedEntry | null> {
@@ -252,28 +212,13 @@ export interface RecordConnectorSavedOverrideParams extends RecorderBase {
   slug: string;
   driver: string;
   environment: string;
-  /** Why the operator forced past the failing probe (audit trail). */
   reason: string;
-  /** Latest probe envelope captured BEFORE the override. */
   latest_probe: unknown | null;
   source: "harness_auto_persist" | "tool_call";
   tool?: string;
   probe_failure_code?: string | null;
-  /**
-   * Override the metadata `kind` tag. Defaults to "force_save_override"
-   * (the canonical marker). The tool path passes "probe_override"
-   * when the row is the tool's secondary audit alongside the atomic
-   * helper's force_save_override row, so operators can tell the two
-   * paths apart.
-   */
   kind?: string;
-  /** True when the save overrode a failed probe via force_save. */
   forced?: boolean;
-  /**
-   * True when the fresh-probe force_save cooldown was bypassed by a
-   * resolved operator approval (commit-intent dispatch). A bare
-   * LLM-initiated force_save never sets this — the cooldown refuses it.
-   */
   cooldown_bypassed?: boolean;
 }
 
@@ -309,17 +254,10 @@ export async function recordConnectorSavedOverride(
 
 export interface RecordConnectorDiscoveredParams extends RecorderBase {
   connector_id: string;
-  /** Strategy that produced the result (openapi-direct, graphql-introspect, …). */
   strategy: string;
-  /** Cache key the discovery dispatcher used (template:slug or url:hash). */
   cache_key: string;
-  /** "cache" when the result was served from `knowledge_sources`, "fresh"
-   *  when the strategy chain ran. */
   source: "cache" | "fresh";
   endpoint_count: number;
-  /** Per-strategy warnings accumulated by the dispatcher — surfaced verbatim
-   *  so operators can see "openapi-direct 404, llms.txt empty,
-   *  html-scrape succeeded". */
   warnings: ReadonlyArray<{ code: string; message: string }>;
 }
 
@@ -351,29 +289,10 @@ export async function recordConnectorDiscovered(
 
 export interface RecordConnectorDraftCredentialRejectedParams extends RecorderBase {
   conversation_id: string;
-  /**
-   * Dotted path of the offending field in the draft `config`. Value is
-   * intentionally NOT recorded — only the path is safe to surface.
-   */
   matched_key_path: string;
-  /**
-   * Policy discriminator. Defaults to `credential_must_use_form` (a
-   * credential-shaped value smuggled into config). The query-auth
-   * param-name guard passes `auth_param_name_in_config` so operators
-   * tailing `audit_log` can tell the two rejection classes apart.
-   */
   reason?: "credential_must_use_form" | "auth_param_name_in_config";
 }
 
-/**
- * Credential-rejection rows are emitted from the rejection branch
- * BEFORE any DB mutation, so the recorder uses the fire-and-forget
- * `audit()` form. A failed audit insert (e.g. malformed tenant_id in a
- * unit-test stub context) MUST NOT propagate as a tool-level error —
- * the rejection envelope returned to the LLM is the user-facing
- * contract. Tests that assert on the audit row pass an `executor` and
- * await the underlying row appearance via SELECT.
- */
 export function recordConnectorDraftCredentialRejected(
   p: RecordConnectorDraftCredentialRejectedParams,
 ): RecordedEntry {

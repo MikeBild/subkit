@@ -1,8 +1,3 @@
-// Process-local map: execution_id -> AbortController. POST
-// /v1/executions/:id/cancel looks the controller up here and fires
-// `abort('cancelled')`. The map is cleaned up automatically when the
-// execution finishes.
-
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -42,12 +37,6 @@ export interface AbortMonitor {
   checkNow(): Promise<number>;
 }
 
-/**
- * Observe the durable abort_requested_at flag for executions owned by this
- * process. One batched query per active tenant keeps the control path bounded;
- * the next delay is read after every cycle so queue.abort_poll_interval_ms
- * hot-reloads without restarting a worker.
- */
 export function startAbortMonitor(
   db: Db,
   options: { intervalMs?: () => number } = {},
@@ -121,17 +110,6 @@ export function startAbortMonitor(
   };
 }
 
-// Combine an external signal (e.g. parent execution's abort) with a
-// per-step timeout signal so the step honors whichever fires first.
-//
-// Uses the platform `AbortSignal.any` rather than hand-rolled
-// addEventListener wiring: the manual version registered a listener on
-// each LONG-LIVED parent signal (the execution-scoped controller) per
-// step and never removed it, so listeners — and the per-step closures
-// they captured — accumulated on the parent for the whole execution
-// (MaxListenersExceededWarning + memory retention on long runs).
-// `AbortSignal.any` manages its source subscriptions internally and
-// releases them when the derived signal becomes unreachable.
 export function combineSignals(signals: AbortSignal[]): AbortSignal {
   return AbortSignal.any(signals);
 }

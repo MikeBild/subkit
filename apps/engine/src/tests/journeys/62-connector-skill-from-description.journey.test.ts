@@ -1,22 +1,3 @@
-// User story: As an operator, I want a connector I authored from a plain
-// description in chat to come with a skill proposal that tells the model how
-// to navigate the server, so that a later conversation does not answer "there
-// are no tables" while the server lists them behind a data path.
-// Acceptance criteria:
-//   - AC1: Authoring an MCP connector from a description, then probing it
-//          green, auto-saves the connector.
-//   - AC2: The save proposes exactly one connector-scoped skill candidate
-//          bound to the new connector. Its body names the data paths and the
-//          paging hints the server's own tool descriptions carry.
-//   - AC3: The candidate is a decision: reviewable, and counted where
-//          pending skill candidates are surfaced (`/v1/attention`). Until
-//          approved it reaches no prompt.
-//   - AC4: Re-probing while it is still proposed refreshes that candidate.
-//   - AC5: Approving it through the approval route loads the promoted skill
-//          into the context of a conversation that uses the connector.
-//   - AC6: Probing the unchanged server after approval adds no candidate.
-// Spec refs: docs/concepts/knowledge-and-skills.md, docs/concepts/connectors.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
@@ -27,7 +8,6 @@ import {
 } from "../../mcp/client/pool.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-// The tool catalog of a real Metabase MCP server, as `tools/list` returned it.
 const METABASE_TOOLS = [
   {
     name: "read_resource",
@@ -173,7 +153,6 @@ async function sendTurn(
   };
 }
 
-/** The same authoring conversation probes its saved draft once more. */
 function reprobe(conversationId: string): Promise<ProbeOutcome> {
   return sendTurn(
     conversationId,
@@ -251,7 +230,6 @@ describe("journey: connector authored from a description proposes its skill", ()
     const text = await res.text();
     expect(text).toContain("skill_candidates");
 
-    // Unapproved, it quotes third-party instructions: no prompt carries it.
     const prompt = await assembleConverse();
     expect(prompt.included_candidate_ids).not.toContain(candidate.id);
     expect(prompt.system).not.toContain("metabase://databases");
@@ -279,8 +257,6 @@ describe("journey: connector authored from a description proposes its skill", ()
 
     const prompt = await assembleConverse();
     expect(prompt.included_skill_ids).toContain(skillId);
-    // Ambient connector skills render as an index line: it must name where
-    // to start, so the model loads the skill before calling data missing.
     expect(prompt.system).toContain("`metabase://databases`");
   });
 

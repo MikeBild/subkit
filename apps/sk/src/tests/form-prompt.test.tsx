@@ -1,18 +1,6 @@
-// End-to-end keystroke tests for `FormPrompt` — the multi-field
-// `ask_user_form` prompt whose Tab navigation was swallowed by
-// `@inkjs/ui`'s nested `useInput`, trapping users on field 0 (see
-// the German "Urlaub" form in the bug report). These tests drive the
-// real Ink renderer via `ink-testing-library` and assert on both the
-// rendered frame and the `onResponse` spy.
-//
-// The fixture mirrors the screenshot payload: text required + number
-// required with placeholder + boolean + select required.
-
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { type FormField, FormPrompt } from "@chat-ui/index.ts";
 import { cleanup, render } from "ink-testing-library";
-
-// ---------- Helpers ----------
 
 async function yieldTick(ms = 10): Promise<void> {
   // allow-wall-clock: ink's keypress parser needs real ms to
@@ -25,8 +13,6 @@ async function writeKeys(instance: ReturnType<typeof render>, keys: string[]): P
     instance.stdin.write(k);
     await new Promise((r) => setImmediate(r));
   }
-  // 40ms — enough for Ink to detect a bare ESC as standalone (not the
-  // prefix of a CSI/SS3 sequence) and to flush state updates.
   await yieldTick(40);
 }
 
@@ -73,8 +59,6 @@ function fixtureFields(): FormField[] {
 
 afterEach(() => cleanup());
 
-// ---------- Tests ----------
-
 describe("FormPrompt — rendering", () => {
   test("renders all four field types with the question, required markers, placeholder, and current values", () => {
     const onResponse = mock();
@@ -94,7 +78,6 @@ describe("FormPrompt — rendering", () => {
     expect(frame).toContain("Woher kommen die Anträge?");
     expect(frame).toContain("[ ] no");
     expect(frame).toContain("Tab/Shift+Tab to navigate · Enter to submit");
-    // select field shows all options; the currently-selected one is bracketed
     expect(frame).toContain("[Webhook/API]");
     expect(frame).toContain("Formular-Eingabe");
     expect(frame).toContain("Datenbank");
@@ -107,7 +90,6 @@ describe("FormPrompt — rendering", () => {
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={mock()} />,
     );
     const frame = instance.lastFrame() ?? "";
-    // field 1 is unfocused at mount (cursor starts at 0)
     expect(frame).toContain("z.B. 2 oder 3");
   });
 
@@ -125,7 +107,6 @@ describe("FormPrompt — focus navigation (regression for Tab swallowing)", () =
     );
     await yieldTick();
 
-    // Initial: ▶ before field 0's label
     expect(instance.lastFrame() ?? "").toMatch(/▶ Was soll genehmigt werden\?/);
 
     await writeKeys(instance, [KEY.tab]);
@@ -155,9 +136,7 @@ describe("FormPrompt — focus navigation (regression for Tab swallowing)", () =
     await type(instance, "x");
     await writeKeys(instance, [KEY.tab]);
     const frame = instance.lastFrame() ?? "";
-    // focus advanced
     expect(frame).toMatch(/▶ Wie viele Genehmigungsstufen\?/);
-    // value preserved on field 0 (visible in the unfocused display)
     expect(frame).toContain("x");
   });
 });
@@ -187,8 +166,8 @@ describe("FormPrompt — text and number input", () => {
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={mock()} />,
     );
     await type(instance, "urlaub");
-    await writeKeys(instance, [KEY.tab]); // focus → field 1
-    await writeKeys(instance, [KEY.shiftTab]); // focus → field 0
+    await writeKeys(instance, [KEY.tab]);
+    await writeKeys(instance, [KEY.shiftTab]);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("urlaub");
   });
@@ -198,10 +177,8 @@ describe("FormPrompt — text and number input", () => {
     const instance = render(
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={onResponse} />,
     );
-    // Tab to number field (index 1)
     await writeKeys(instance, [KEY.tab]);
     await type(instance, "a");
-    // "a" should not have been inserted — number field still shows placeholder
     expect(instance.lastFrame() ?? "").toContain("z.B. 2 oder 3");
     await type(instance, "2");
     expect(instance.lastFrame() ?? "").toContain("2");
@@ -215,7 +192,6 @@ describe("FormPrompt — boolean and select", () => {
     const instance = render(
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={mock()} />,
     );
-    // Tab to boolean (index 2)
     await writeKeys(instance, [KEY.tab, KEY.tab]);
     await writeKeys(instance, [KEY.space]);
     expect(instance.lastFrame() ?? "").toContain("[✓] yes");
@@ -227,13 +203,11 @@ describe("FormPrompt — boolean and select", () => {
     const instance = render(
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={mock()} />,
     );
-    // Tab to select (index 3)
     await writeKeys(instance, [KEY.tab, KEY.tab, KEY.tab]);
     expect(instance.lastFrame() ?? "").toContain("[Webhook/API]");
     await writeKeys(instance, [KEY.right]);
     expect(instance.lastFrame() ?? "").toContain("[Formular-Eingabe]");
     await writeKeys(instance, [KEY.left, KEY.left]);
-    // wrapped backwards from Webhook/API → Manuelle Eingabe (last option)
     expect(instance.lastFrame() ?? "").toContain("[Manuelle Eingabe]");
   });
 });
@@ -245,7 +219,7 @@ describe("FormPrompt — submit and validation", () => {
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={onResponse} />,
     );
     await type(instance, "urlaub");
-    await writeKeys(instance, [KEY.tab]); // → number
+    await writeKeys(instance, [KEY.tab]);
     await type(instance, "2");
     await writeKeys(instance, [KEY.enter]);
 
@@ -264,14 +238,12 @@ describe("FormPrompt — submit and validation", () => {
     const instance = render(
       <FormPrompt question="Q" fields={fixtureFields()} onResponse={onResponse} />,
     );
-    // Leave text required empty; Tab past number (also empty & required) — submit should point at field 0 first
-    await writeKeys(instance, [KEY.tab, KEY.tab, KEY.tab]); // focus is on select now
+    await writeKeys(instance, [KEY.tab, KEY.tab, KEY.tab]);
     await writeKeys(instance, [KEY.enter]);
 
     expect(onResponse).not.toHaveBeenCalled();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("Please fill");
-    // Focus jumped back to the first missing required field (subject = index 0)
     expect(frame).toMatch(/▶ Was soll genehmigt werden\?/);
   });
 
@@ -300,7 +272,6 @@ describe("FormPrompt — inputDisabled", () => {
     await type(instance, "hello");
     await writeKeys(instance, [KEY.enter]);
     expect(onResponse).not.toHaveBeenCalled();
-    // Focus marker did not move (still on field 0)
     expect(instance.lastFrame() ?? "").toMatch(/▶ Was soll genehmigt werden\?/);
   });
 

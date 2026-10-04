@@ -1,11 +1,3 @@
-// Tests the short-circuit guard added to refreshIfStale:
-// when connector.needs_reauth === true, a stale credential is returned
-// unchanged and the IdP is never contacted.
-//
-// Mirrors the harness in refresh.test.ts exactly — same DB setup,
-// same mock OAuth server, same upsertCredential + getCredentialForConnector
-// helpers, same __resetOAuth2CacheForTests guard.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -17,7 +9,6 @@ import { type MockOAuthServer, startMockOAuthServer } from "./mock-server.ts";
 let ctx: TestDb;
 let mock: MockOAuthServer;
 let tenantId: string;
-// One connector per grant type so the tests are independent.
 let connectorIdNeedsReauth: string;
 let connectorIdRefreshToken: string;
 let connectorIdFresh: string;
@@ -33,8 +24,6 @@ beforeAll(async () => {
     .returning();
   tenantId = t!.id;
 
-  // Connector A — needs_reauth=true, standard refresh_token grant (matches
-  // the existing refresh.test.ts style).
   const [cA] = await ctx.db
     .insert(connectors)
     .values({
@@ -58,10 +47,6 @@ beforeAll(async () => {
     .returning();
   connectorIdNeedsReauth = cA!.id;
 
-  // Connector B — needs_reauth=true, grant type cognito_user_password so the
-  // test covers that the short-circuit fires before any grant-type dispatch.
-  // We stash a fake aws_region inside config; the guard fires before the
-  // Cognito path is reached, so the value never matters.
   const [cB] = await ctx.db
     .insert(connectors)
     .values({
@@ -87,8 +72,6 @@ beforeAll(async () => {
     .returning();
   connectorIdRefreshToken = cB!.id;
 
-  // Connector C — needs_reauth=false; used for the regression test that
-  // proves the guard doesn't fire when the flag is cleared.
   const [cC] = await ctx.db
     .insert(connectors)
     .values({
@@ -119,16 +102,7 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// ---------------------------------------------------------------------------
-// Helper — seed an expired oauth2 credential for a given connector.
-// Returns the decrypted credential value and the db row as returned by
-// getCredentialForConnector, exactly as refresh.test.ts does it.
-// ---------------------------------------------------------------------------
 async function seedExpiredCredential(connId: string, accessToken: string) {
-  // A fixed far-past expiry so refreshIfStale always considers the token
-  // stale, regardless of wall-clock. (Deterministic — no Date.now() in tests:
-  // refreshIfStale's own `expiresMs - now > bufferMs` check is always false
-  // for a year-2000 timestamp.)
   const expiredAt = new Date("2000-01-01T00:00:00.000Z");
   await upsertCredential(
     {
@@ -164,20 +138,15 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
 
     const result = await refreshIfStale(ctx.db, tenantId, fetched.row, fetched.value);
 
-    // Must return the same stale access token — not a refreshed one.
     expect(result.mode).toBe("oauth2");
     if (result.mode === "oauth2") {
       expect(result.access_token).toBe(staleAccessToken);
     }
 
-    // The mock IdP must NOT have been called.
     expect(mock.issuedCount()).toBe(issuedBefore);
   });
 
   test("short-circuits when needs_reauth=true (cognito_user_password grant): returns stale token, IdP not called", async () => {
-    // For the cognito grant type the connector needs aws_region + cognito_username
-    // to reach the branch; however the needs_reauth guard fires BEFORE
-    // grant-type dispatch, so those fields don't matter.
     const issuedBefore = mock.issuedCount();
     const staleAccessToken = "stale-at-cognito-grant";
 
@@ -191,13 +160,10 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
       expect(result.access_token).toBe(staleAccessToken);
     }
 
-    // IdP still not called — regardless of grant type.
     expect(mock.issuedCount()).toBe(issuedBefore);
   });
 
   test("regression — needs_reauth=false still calls IdP and returns a refreshed token", async () => {
-    // Seed a long-lived token for the initial client_credentials round so
-    // the refresh mock can issue a fresh token with a proper expires_in.
     mock.setExpiresIn(1);
     const initial = await runClientCredentialsGrant({
       issuer_url: mock.baseUrl,
@@ -224,7 +190,6 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
       ctx.db,
     );
 
-    // Wait past the 1 s expiry window.
     await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: token-refresh skew window for the OAuth2 fixture clock
     mock.setExpiresIn(3600);
 
@@ -236,7 +201,6 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
 
     const result = await refreshIfStale(ctx.db, tenantId, fetched.row, fetched.value);
 
-    // The IdP was called and a new access token was returned.
     expect(mock.issuedCount()).toBeGreaterThan(issuedBefore);
     expect(mock.lastGrantType()).toBe("refresh_token");
     expect(result.mode).toBe("oauth2");

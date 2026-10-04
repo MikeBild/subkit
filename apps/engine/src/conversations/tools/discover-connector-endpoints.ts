@@ -1,30 +1,3 @@
-// discover_connector_endpoints — wraps the multi-strategy ingestion module
-// (apps/engine/src/connectors/discovery/) so the LLM can ground its
-// endpoint choices in a real OpenAPI/Swagger spec instead of guessing.
-//
-// Why this exists. Session 00b93a52 had the agent guess `/account` and
-// `/projects` against DigitalOcean, hit 404s, and burn ~216k tokens on
-// retries. Templates record `ingestion_url` pointing at the spec; the
-// discovery module already parses that URL. This tool is the
-// conversational surface — call it BEFORE probing or proposing
-// workflow steps.
-//
-// Caching contract. Result is persisted as a `knowledge_sources` row
-// with `source_type = "discovery_endpoint_index"`, scoped to the tenant
-// via `tenant_id` and uniquely keyed via `slug` (which encodes the
-// cache key — template id or URL hash — plus the environment). The
-// JSON `DiscoveryResult` lives in a single `knowledge_chunks` row so
-// the existing storage path (parsers, dedup, search) stays consistent.
-// `last_refreshed_at` is the cache timestamp; `KNOWLEDGE_SOURCE_TTL_MS`
-// (24h) is the freshness window.
-//
-// The persistence + cache plumbing lives in
-// `connectors/discovery/service.ts` so the matching HTTP route
-// (`POST /v1/connectors/discover`) shares the same path. This module
-// owns only the conversation-specific concerns: the recent-user-message
-// scoring and the structured `next_best_actions` envelope on empty
-// results.
-
 import { z } from "@hono/zod-openapi";
 import { type EndpointScore, scoreEndpoints } from "../../connectors/discovery/endpoint-scorer.ts";
 import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
@@ -37,8 +10,6 @@ import { getConnector } from "../../connectors/service.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-/** 24h freshness window for cached endpoint indexes. Re-exported here
- *  for tests + tooling that referenced it under this module path. */
 export const KNOWLEDGE_SOURCE_TTL_MS = DISCOVERY_TTL_MS;
 
 const inputSchema = z
@@ -54,9 +25,6 @@ const inputSchema = z
   })
   .openapi("DiscoverConnectorEndpointsToolInput");
 
-/** Build a `suggested_endpoints` payload from the operator's message,
- *  if any. Returns `null` when the message is missing/empty/stop-words —
- *  callers omit the field entirely so the LLM doesn't see noise. */
 function maybeSuggestEndpoints(
   message: string | null | undefined,
   result: DiscoveryResult,
@@ -72,8 +40,6 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
     "Discovers what an API can do BEFORE you author against it. For REST it fetches the OpenAPI/Swagger spec; for a GraphQL connector it runs `__schema` introspection (pass the GraphQL endpoint as `base_url`) and returns every query/mutation root field flattened with its args, enum values, and input-field shapes — AND ingests the full schema (SDL) as searchable knowledge you can then `search_knowledge`. Either way you get a curated list of endpoints with auth schemes, parameters, and pagination hints. Call this **before** probing or proposing workflow steps so field names, enum values (casing matters), and filter/connection shapes come from the real schema instead of guesses — essential for GraphQL, where list fields are usually Relay connections (`edges{node}`) and orderBy/enum values are schema-defined. To introspect a connector you already have in scope, pass its `connector_id` — the tool uses that connector's stored base_url (no need to re-type the URL or guess a template slug). Cached per-tenant for 24h; pass `force_refresh: true` to re-fetch.",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   use_case:
     "Before drafting a workflow step that hits a third-party API, run this so endpoint paths, auth schemes, and pagination come from the vendor's spec instead of guesses.",
@@ -86,11 +52,6 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     try {
-      // `connector_id` is the natural "introspect the connector I'm authoring
-      // against" intent — resolve it to the connector's stored base_url so a
-      // custom (template-less) connector, e.g. a GraphQL endpoint, can be
-      // introspected without the agent re-typing its URL. Without this the
-      // agent tends to (wrongly) pass the slug as template_id → template_not_found.
       let resolvedBaseUrl = args.base_url;
       if (args.connector_id && !resolvedBaseUrl) {
         const connector = await getConnector(ctx.tenant_id, args.connector_id, ctx.db);
@@ -125,11 +86,6 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
           ...(args.template_id ? { template_id: args.template_id } : {}),
           ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
           ...(args.ingestion_url ? { ingestion_url: args.ingestion_url } : {}),
-          // Forward connector_id so discovery (a) injects the connector's
-          // credential for auth-gated introspection and (b) records the
-          // discovered self-description LINK on the connector. Without it this
-          // path resolved the base_url but dropped the binding, so link capture
-          // was silently skipped.
           ...(args.connector_id ? { connector_id: args.connector_id } : {}),
           force_refresh: args.force_refresh,
         },
@@ -166,19 +122,6 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
   },
 };
 
-/**
- * Compose the success-shape envelope. When the discovery chain returned
- * neither structured endpoints nor a `text_corpus` (i.e. the spec was
- * not found via any strategy), we surface `next_best_actions:
- * ["discover_systems_from_files"]` so the agent reaches for the
- * file-based fallback (uploaded README, architecture doc) instead of
- * abandoning the turn.
- *
- * Informational `recommended_auth_type` is derived deterministically from
- * the spec's securitySchemes. This tool is tenant_read — it does NOT
- * mutate any draft. Callers (e.g. start_connector_from_description) own
- * the decision of whether to act on this hint.
- */
 function finalizeOk(p: {
   source: "fresh" | "cache";
   result: DiscoveryResult;
@@ -190,8 +133,6 @@ function finalizeOk(p: {
   if (noStructure) {
     data.next_best_actions = ["discover_systems_from_files"];
   }
-  // Surface a deterministic auth hint so the authoring loop can steer
-  // the operator toward the right credential type without guessing.
   const recognized = recognizeAuthFromSchemes(p.result.auth_schemes);
   if (recognized) {
     data.recommended_auth_type = recognized.auth_type;

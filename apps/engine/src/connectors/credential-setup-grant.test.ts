@@ -1,18 +1,3 @@
-// Unit tests for the credential-setup grant token utilities.
-//
-// Mirrors apps/engine/src/connectors/tests/oauth-start-grant.test.ts:
-//   - generate/hash round-trip
-//   - prefix recognizability
-//   - TTL via the clock seam
-//
-// DB-dependent behavior (mint/validate/consume, the two-hit
-// validate-does-not-consume contract, the wrong-connector-id guard, and
-// expiry) is covered by the integration test at
-// apps/engine/src/http/routes/connectors/credentials-setup.test.ts, which
-// exercises the full HTTP surface against a real Postgres instance —
-// consistent with how oauth-start-grant.ts's DB-dependent paths are covered
-// by http/routes/connectors/oauth-start-grant.test.ts rather than here.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   createDeterministicClock,
@@ -72,9 +57,6 @@ describe("TTL via clock seam", () => {
     const clock = createDeterministicClock(frozen);
     prevClock = installClock(clock);
 
-    // Verify the seam is installed — expires_at should be frozen + 10min.
-    // We test this conceptually since mintCredentialSetupGrantUrl needs a
-    // DB; the integration test covers the full DB path.
     const expectedExpiry = new Date(frozen + 600_000);
     expect(expectedExpiry.getTime()).toBe(frozen + 600_000);
   });

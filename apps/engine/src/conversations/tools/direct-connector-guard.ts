@@ -7,9 +7,6 @@ import {
 } from "../../tools/direct-connector-binding.ts";
 import type { ToolContext } from "./index.ts";
 
-/** Check the stored decision before any secret lookup or OAuth refresh.
- * The dispatch callback still independently checks the credentials actually
- * loaded; this early metadata check is not a substitute for that last check. */
 export async function preflightDirectConnector(ctx: ToolContext, connector: ConnectorView) {
   const approval = ctx.direct_connector_approval;
   if (!approval) return;
@@ -24,8 +21,6 @@ export async function preflightDirectConnector(ctx: ToolContext, connector: Conn
   });
 }
 
-/** A context without a claimed decision is handled by the ordinary tool policy.
- * A claimed legacy decision without metadata must instead fail closed. */
 export function directConnectorGuard(
   ctx: ToolContext,
   connector: ConnectorView,

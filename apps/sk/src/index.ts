@@ -1,13 +1,3 @@
-// `sk` — end-user conversational CLI for subkit-backend. See
-// docs/developers/input-surfaces.md for the rationale; this file is the command
-// entry point only.
-//
-// Bare `sk` opens the interactive Ink REPL against the active profile.
-// `sk -p "..."` runs headless and prints via the chosen output
-// format. `sk login`, `sk logout`, `sk tenants [use <id>]`, and
-// `sk status` live here as top-level commands so scripts never need
-// to enter the REPL.
-
 import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
@@ -74,11 +64,6 @@ import { runCliOAuthLogin } from "./login-oauth.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
 import { personaCanSee, recordPersonaHint } from "./persona-probe.ts";
 
-// `runInkRepl` is loaded lazily — its module graph pulls in Ink, React,
-// every transcript cell, and the slash registry, which is wasteful for
-// `sk -p "..."` (headless) and `sk` invocations on a non-TTY stdout
-// (CI pipes, container exec). The headless checkpoint below dynamically
-// imports the REPL only when we actually need it.
 type RunInkRepl = typeof import("./ink-repl.ts")["runInkRepl"];
 async function loadInkRepl(): Promise<RunInkRepl> {
   const mod = await import("./ink-repl.ts");
@@ -88,16 +73,12 @@ async function loadInkRepl(): Promise<RunInkRepl> {
 import { mostRecentSession } from "./sessions.ts";
 import { renderHelp } from "./slash.ts";
 
-// ---------- Shared arg shapes ----------
-
 const commonArgs = {
   "engine-url": { type: "string" as const, description: "Engine base URL" },
   "api-key": { type: "string" as const, description: "API key (Bearer)" },
   tenant: { type: "string" as const, description: "Active tenant id" },
   profile: { type: "string" as const, description: "Profile name (~/.sk/config.json)" },
 };
-
-// ---------- `sk login` ----------
 
 const loginCommand = defineCommand({
   meta: { name: "login", description: "Authenticate against a subkit engine" },
@@ -116,7 +97,6 @@ const loginCommand = defineCommand({
     const apiKey = args["api-key"] as string | undefined;
     const portalToken = args["portal-token"] as string | undefined;
 
-    // Path 1: scripted API key.
     if (apiKey) {
       saveProfile({
         name: profileName,
@@ -130,7 +110,6 @@ const loginCommand = defineCommand({
         const [h, ready] = await Promise.all([client.health(), client.ready()]);
         process.stdout.write(`sk: engine health: live=${h.status} ready=${ready.status}\n`);
         await recordPersonaHint(client, profileName, engineUrl, apiKey, tenant);
-        // Best-effort leading-indicator risk line — never blocks login.
         const risk = await riskSummaryLine(client);
         if (risk) process.stdout.write(`sk: ${risk}\n`);
       } catch (err) {
@@ -141,7 +120,6 @@ const loginCommand = defineCommand({
       return;
     }
 
-    // Path 2: portal token.
     if (portalToken) {
       saveProfile({
         name: profileName,
@@ -194,8 +172,6 @@ const loginCommand = defineCommand({
   },
 });
 
-// ---------- `sk logout` ----------
-
 const logoutCommand = defineCommand({
   meta: { name: "logout", description: "Drop the active profile" },
   args: {
@@ -217,8 +193,6 @@ const logoutCommand = defineCommand({
     }
   },
 });
-
-// ---------- `sk status` ----------
 
 const statusCommand = defineCommand({
   meta: { name: "status", description: "Print the active profile + engine reachability" },
@@ -258,8 +232,6 @@ const statusCommand = defineCommand({
   },
 });
 
-// ---------- `sk tenants [use <id>]` ----------
-
 const tenantsCommand = defineCommand({
   meta: { name: "tenants", description: "List tenants you belong to or switch the active one" },
   args: {
@@ -289,8 +261,6 @@ const tenantsCommand = defineCommand({
   },
 });
 
-// ---------- `sk mcp` ----------
-
 const mcpCommand = defineCommand({
   meta: { name: "mcp", description: "Run a stdio MCP server proxied to the engine" },
   args: { ...commonArgs },
@@ -309,20 +279,6 @@ const mcpCommand = defineCommand({
   },
 });
 
-// ---------- Interactive onboarding (bare `sk`, no profile) ----------
-
-/**
- * When a bare `sk` is run with no usable profile AND stdout is a TTY,
- * offer the operator a picker over the auth paths that already exist
- * rather than printing a one-liner and exiting. Each option reuses an
- * existing handler — nothing here reimplements a login flow.
- *
- * Returns `true` when a profile was created (so the caller can resolve
- * it and continue into the REPL), `false` when the operator cancelled.
- *
- * Non-TTY callers must NOT reach this function — scripts/CI keep the
- * exact stderr + exit(2) contract from before.
- */
 async function runOnboarding(engineUrl: string): Promise<boolean> {
   prompts.intro("Welcome to sk — let's connect you to an engine.");
   const choice = await prompts.select({
@@ -351,8 +307,6 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
       prompts.cancel("Onboarding cancelled.");
       return false;
     }
-    // Reuse the scripted api-key path on loginCommand — identical to
-    // `sk login --api-key <key>`.
     await runCommand(loginCommand, {
       rawArgs: ["--api-key", String(key).trim(), "--engine-url", engineUrl],
     });
@@ -360,10 +314,6 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
   }
 
   if (choice === "init") {
-    // Reuse `sk init` for the engine-URL / bootstrap path. It needs the
-    // one-time token from the engine's first-boot banner; prompt for it
-    // (and an optional engine URL override) here, then delegate so the
-    // setup payload + profile save stay in the canonical handler.
     const url = await prompts.text({
       message: "Engine URL",
       placeholder: engineUrl,
@@ -387,12 +337,9 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
     return Boolean(resolveProfile().api_key);
   }
 
-  // Identity provider — discovery selects the configured direct OIDC device flow.
   await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
   return Boolean(resolveProfile().api_key);
 }
-
-// ---------- Top-level `sk` ----------
 
 const mainCommand = defineCommand({
   meta: {
@@ -443,11 +390,6 @@ const mainCommand = defineCommand({
     connector: { type: "string", description: "Bind the new conversation to a connector slug" },
     workflow: { type: "string", description: "Bind the new conversation to a workflow id" },
     attach: {
-      // Repeatable `--attach <path>` flag for `-p` headless mode.
-      // Each path is uploaded via `uploadPath` and linked to the
-      // (possibly resumed) ephemeral conversation BEFORE the prompt
-      // runs. Citty surfaces repeated string flags as
-      // `string | string[]`; the dispatcher below normalises.
       type: "string",
       description:
         "Upload a file and attach it to the conversation before the prompt runs (repeatable, headless -p only)",
@@ -476,7 +418,6 @@ const mainCommand = defineCommand({
     auth: authCommand,
     agent: agentCommand,
     learnings: learningsCommand,
-    // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
     chat: chatCommand,
@@ -500,7 +441,6 @@ const mainCommand = defineCommand({
     init: initCommand,
     install: installCommand,
     join: joinCommand,
-    // admin commands
     rbac: rbacCommand,
     audit: auditCommand,
     apikeys: apiKeysCommand,
@@ -518,20 +458,14 @@ const mainCommand = defineCommand({
       profile: args.profile as string | undefined,
     });
     if (!profile.api_key) {
-      // Non-TTY (scripts / CI / piped stdout) MUST keep the exact
-      // stderr + exit(2) contract so scripts and CI are unchanged.
       if (!process.stdout.isTTY) {
         process.stderr.write("sk: not logged in — run 'sk login --api-key <key>' first\n");
         process.exit(2);
       }
-      // Interactive TTY: drop into the onboarding picker over the
-      // existing auth paths instead of bailing out.
       const ok = await runOnboarding(profile.engine_url);
       if (!ok) {
         process.exit(2);
       }
-      // Re-resolve so the freshly saved profile (api_key/tenant) drives
-      // the rest of the run.
       profile = resolveProfile({
         engine_url: args["engine-url"] as string | undefined,
         api_key: args["api-key"] as string | undefined,
@@ -561,7 +495,6 @@ const mainCommand = defineCommand({
       maxTurns = parsed;
     }
 
-    // Resolve --resume / --session-id / -c → effective conversation id.
     const sessionIdFlag = args["session-id"] as string | undefined;
     const resumeFlag = args.r as string | undefined;
     const continueFlag = Boolean(args.c);
@@ -584,11 +517,6 @@ const mainCommand = defineCommand({
     }
 
     if (headlessPrompt) {
-      // Citty surfaces a repeated `--attach <path>` flag as either
-      // `string` (single occurrence) or `string[]` (≥2). Normalise so
-      // `runHeadless` always sees a `readonly string[]`. Empty strings
-      // are dropped so a stray `--attach=` doesn't fan into a phantom
-      // upload attempt.
       const attachRaw = args.attach as string | string[] | undefined;
       const attach: readonly string[] =
         attachRaw === undefined
@@ -613,11 +541,7 @@ const mainCommand = defineCommand({
       process.exit(result.exitCode);
     }
 
-    // Interactive REPL — runInkRepl renders an Ink rich UI when
-    // stdout is a TTY and falls back to the line-based readline loop
-    // for piped stdout / test harnesses. Loaded dynamically so the
-    // headless / piped path above doesn't pay for Ink + React import.
-    void renderHelp; // keep the import live for tests
+    void renderHelp;
     const runInkRepl = await loadInkRepl();
     const exit = await runInkRepl({
       profile,
@@ -629,25 +553,13 @@ const mainCommand = defineCommand({
   },
 });
 
-// ---------- Dispatch ----------
-
 const rawArgs = process.argv.slice(2);
 
-// `personaCanSee` + the persona/permission tier tables live in
-// `persona-probe.ts` — the persona vocabulary has one home, and tests can
-// import it without loading this entry module's full command graph.
-
 interface SubEntry {
-  /** citty's own sub-command value type — the commands carry heterogeneous
-   *  ArgsDef generics, and this is the type citty declares for a command map. */
   command: SubCommandsDef[string];
   requires?: string;
 }
 
-// All subcommands with their permission tier for help filtering.
-// Engine enforces permissions on every API call — this is UX-only.
-// Exported so `scripts/gen-cli-reference.ts` can render the
-// non-interactive command table without re-declaring the inventory.
 export const SUB_COMMANDS: Record<string, SubEntry> = {
   login: { command: loginCommand },
   logout: { command: logoutCommand },
@@ -671,7 +583,6 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   auth: { command: authCommand, requires: "connector:write" },
   agent: { command: agentCommand, requires: "skill:read" },
   learnings: { command: learningsCommand, requires: "skill:read" },
-  // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
   chat: { command: chatCommand, requires: "chat_workspace:read" },
@@ -692,18 +603,9 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   notifications: { command: notificationsCommand, requires: "notification:read" },
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
   stats: { command: statsCommand, requires: "stats:read" },
-  // `sk init` is the first command an operator runs against a fresh
-  // engine — it has no profile / api key yet, so it carries no
-  // permission requirement.  The engine route is rate-limited and
-  // single-use; that's the gating, not a tier check here.
   init: { command: initCommand },
   install: { command: installCommand, requires: "connector:write" },
-  // `sk join` redeems an invite UNAUTHENTICATED — like `sk init`, the
-  // invited user has no profile / api key yet, so it carries no
-  // permission requirement. The engine route is rate-limited and the
-  // token is single-use; that's the gating, not a tier check here.
   join: { command: joinCommand },
-  // admin
   rbac: { command: rbacCommand, requires: "rbac:read" },
   audit: { command: auditCommand, requires: "audit:read" },
   apikeys: { command: apiKeysCommand, requires: "api_key:read" },
@@ -722,21 +624,10 @@ async function dispatch(): Promise<void> {
     return;
   }
   if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
-    // If the user ran `sk <subcommand> [sub-subcommand] --help`, resolve
-    // the most-specific matching command and show its own help rather than
-    // the global help. Walk the tree at most two levels deep (top-level
-    // subcommand → its own subCommands) to cover both:
-    //   sk workflows --help
-    //   sk workflows list --help
-    //   sk apikeys --help
-    //   sk apikeys create --help
     const positionals = rawArgs.filter((a) => !a.startsWith("-"));
     const topName = positionals[0];
     const topEntry = topName ? SUB_COMMANDS[topName] : undefined;
     if (topEntry) {
-      // Every SUB_COMMANDS value is a plain CommandDef object (never the
-      // promise/thunk variants citty's Resolvable admits), so narrow to the
-      // resolved shape for the usage renderer.
       const topCmd = topEntry.command as CommandDef & {
         subCommands?: Record<string, CommandDef>;
       };
@@ -749,7 +640,6 @@ async function dispatch(): Promise<void> {
       }
       return;
     }
-    // No matching subcommand — show the persona-filtered global help.
     const personaHint = loadConfig().profiles[loadConfig().active_profile]?.persona_hint ?? null;
     const visible = Object.fromEntries(
       Object.entries(SUB_COMMANDS)
@@ -763,20 +653,12 @@ async function dispatch(): Promise<void> {
     await showUsage(filteredMain);
     return;
   }
-  // Dispatch known subcommands directly to prevent citty from also
-  // running mainCommand.run() (which starts the REPL).
   const first = rawArgs[0];
   const sub = first && !first.startsWith("-") ? SUB_COMMANDS[first] : undefined;
   if (sub) {
-    // Same narrowing as the --help path above: SUB_COMMANDS values are
-    // plain CommandDef objects, never citty's promise/thunk variants.
     await runCommand(sub.command as CommandDef, { rawArgs: rawArgs.slice(1) });
     return;
   }
-  // A near-miss of a known command (e.g. `sk conectors list`) must NOT
-  // fall through to the REPL with the typo as a prompt — fail fast with
-  // a suggestion instead. A quoted natural-language prompt arrives as
-  // one space-containing arg and is unaffected.
   if (first && !first.startsWith("-") && !first.includes(" ")) {
     const suggestion = suggestCommand(first, Object.keys(SUB_COMMANDS));
     if (suggestion) {
@@ -788,21 +670,8 @@ async function dispatch(): Promise<void> {
   await runCommand(mainCommand, { rawArgs });
 }
 
-// Only dispatch when run as the process entrypoint. Importing this
-// module (e.g. `scripts/gen-cli-reference.ts` reading SUB_COMMANDS)
-// must not start the CLI / REPL or require a logged-in profile.
 if (import.meta.main) {
   dispatch().catch((err: unknown) => {
-    // Subcommand handlers throw rather than calling `process.exit`. The
-    // typed exit code comes from `exitCodeFor`, which maps EngineError
-    // status codes (400/409/422 → 1, others → 2) and TransportError → 2.
-    // Setting `process.exitCode` lets the process drain stdout/stderr
-    // naturally.
-    //
-    // Rendering happens exactly once: handlers that route their catch
-    // through `reportCommandError` already printed the error (with the
-    // engine envelope's remediation hint + trace id), so the dispatcher
-    // only renders errors that never passed through it.
     if (!wasReported(err)) {
       const lines = [`sk: ${err instanceof Error ? err.message : String(err)}`];
       if (isEngineError(err)) {

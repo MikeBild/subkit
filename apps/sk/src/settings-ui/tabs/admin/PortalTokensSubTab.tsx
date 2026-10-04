@@ -1,6 +1,3 @@
-// Portal Tokens sub-tab — list with revoke (consent-gated). Issue is
-// CLI-only because the URL/QR-code flow is owned by `/session` (M12).
-
 import { osc52Copy } from "@cli-core/clipboard.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -11,11 +8,6 @@ import { AdminCreateForm } from "./AdminCreateForm.tsx";
 
 interface Props {
   client: EngineClient;
-  /**
-   * Fired when this sub-tab owns Esc — true while a revoke
-   * confirmation, the create form, or the "shown once" issued-secret
-   * panel is up.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 

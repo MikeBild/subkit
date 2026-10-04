@@ -1,12 +1,3 @@
-// Unit tests for the transient-DB-error classifier + retry wrapper.
-//
-// Pure logic — no DB, no Docker. Covers:
-//   - which error shapes count as transient (codes + codeless messages)
-//   - which must NOT (real query/logic errors)
-//   - retryTransient: retries transient up to `tries`, rethrows non-transient
-//     immediately, returns on first success, rethrows the last transient error
-//     once exhausted.
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   getMetrics,
@@ -162,7 +153,6 @@ describe("retryTransient — predictive metric", () => {
         { tries: 3, startMs: 1, maxMs: 2, label: "drift_scan" },
       ),
     ).rejects.toThrow("conn lost");
-    // 3 tries → 2 backoffs (the final try rethrows without a retry).
     const entry = getMetrics()
       .snapshot()
       .find((s) => s.name === METRIC_NAMES.DB_TRANSIENT_RETRIES_TOTAL);

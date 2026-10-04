@@ -17,18 +17,11 @@ import { CodeBlock } from "./code-block";
 import { formatBytes, parseCsv, previewKind } from "./file-kinds";
 import { Skeleton } from "./skeleton";
 
-/** The rows a CSV preview shows; the rest is the file's, not the preview's. */
 export const CSV_PREVIEW_ROWS = 20;
-/** The characters a text preview shows. */
 const TEXT_PREVIEW_CHARS = 20_000;
 
 type HeadingTag = "h3" | "h4" | "h5" | "h6";
 
-/**
- * A previewed document sits under the page's h1 and a section's h2, so its own
- * headings move two levels down: its `#` renders as an h3, and no document ever
- * adds an h1 or h2 to the page's outline.
- */
 function loweredHeading(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${Math.min(level + 2, 6)}` as HeadingTag;
   return function LoweredHeading({
@@ -59,15 +52,6 @@ const PREVIEW_COMPONENTS = {
   h6: loweredHeading(6),
 };
 
-/**
- * The one file preview (P21), for a picked file before upload and a stored
- * file after: an image as the image, Markdown rendered, text in a code block,
- * a CSV as a table of its first rows, a PDF (and anything else) as a card with
- * its name, size and a way to open it.
- *
- * Give it a `File` (a local pick: read in the browser, nothing is sent) or
- * the stored file's `url` and, for text kinds, its `text`.
- */
 export function FilePreview({
   name,
   mimeType,
@@ -82,7 +66,6 @@ export function FilePreview({
   size?: number;
   file?: File;
   url?: string;
-  /** The content of a stored text, Markdown or CSV file. */
   text?: string;
   testId?: string;
 }) {
@@ -156,7 +139,6 @@ export function FilePreview({
       </div>,
     );
   }
-  // A PDF and anything else: a card that says what the file is and opens it.
   return (
     <div
       data-slot="file-preview"
@@ -188,7 +170,6 @@ export function FilePreview({
   );
 }
 
-/** A local file's text, read in the browser; null until read. */
 function useFileText(file: File | undefined, wanted: boolean): string | null {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
@@ -204,7 +185,6 @@ function useFileText(file: File | undefined, wanted: boolean): string | null {
   return text;
 }
 
-/** An object URL for a local file, revoked when the file or the preview goes. */
 function useObjectUrl(file: File | undefined, wanted: boolean): string | undefined {
   const [url, setUrl] = useState<string>();
   useEffect(() => {

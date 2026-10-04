@@ -1,6 +1,3 @@
-// Managing a stored file in place: rename, replace under the same id, and
-// who uses it. Real Postgres via createHttpTestServer; in-memory object store.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -263,7 +260,6 @@ describe("the @attachment:<slug> reference", () => {
     await expect(
       walkAndResolve({ $file: "@attachment:no-such-file" }, authored, new Map()),
     ).rejects.toThrow();
-    // Anywhere else a guessable name is not a key to the file.
     await expect(
       walkAndResolve(
         { $file: "@attachment:by-ref" },
@@ -351,7 +347,6 @@ describe("the @attachment:<slug> reference", () => {
       expect(rewrite.text).toBe("zeig @attachment:gehalt");
       expect(rewrite.unresolved).toEqual(["gehalt"]);
     }
-    // A tool's `$file` arguments follow the same rule as the text.
     const { resolveAttachmentSlugsInArgs } = await import("../../conversations/attachments.ts");
     const args = { doc: { $file: "@attachment:gehalt" } };
     expect(await resolveAttachmentSlugsInArgs(args, { ...ctx, principal: portal })).toEqual(args);

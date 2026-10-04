@@ -1,12 +1,3 @@
-// Slug-or-UUID workflow resolver. Used by every place that accepts a
-// workflow reference from an LLM, a CLI argument, or the fast-path
-// matcher (chat `wf_<slug>` dispatcher, `run_workflow(workflow=…)`
-// fallback, fast-path "run <slug>" branch, `sk executions rerun`,
-// `sk workflows run`).
-//
-// Single source of truth so the slug vs uuid choice is made once at
-// the boundary instead of every callsite re-implementing the heuristic.
-
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
@@ -19,36 +10,16 @@ export interface WorkflowLookupResult {
   is_tool: boolean;
 }
 
-/**
- * Optional lookup behaviour flags.
- *
- * `require_published` (default `false`) hides workflows whose
- * `current_version_id` is null — i.e. drafts that have never been
- * committed. Execution-carrying call sites (chat run-verb branch,
- * synthetic `wf_<slug>` palette, `run_workflow` tool) should pass
- * `true` so a slug that resolves only to a draft is treated as
- * "not found" instead of silently bypassing the published filter.
- */
 export interface ResolveWorkflowOptions {
   require_published?: boolean;
 }
 
-// Loose UUID v4 / v7 check — drizzle's `eq(workflows.id, …)` would
-// otherwise produce a malformed SQL cast for non-UUID strings.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function looksLikeUuid(ref: string): boolean {
   return UUID_RE.test(ref);
 }
 
-/**
- * Resolve a workflow by id or slug, scoped to the tenant. Soft-deleted
- * rows are excluded. Returns null when nothing matches.
- *
- * When `opts.require_published` is true, draft workflows
- * (`current_version_id IS NULL`) are also excluded — the same filter
- * MCP's `wf_<slug>` catalog applies.
- */
 export async function resolveWorkflowByIdOrSlug(
   db: Db,
   tenant_id: string,

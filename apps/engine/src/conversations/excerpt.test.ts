@@ -1,8 +1,3 @@
-// The excerpt rules are shared by the conversation list and the auto-title.
-// These cases pin the two properties that a second copy would break first:
-// the same clipping behaviour at every length, and a file sentinel that never
-// survives into human-facing text.
-
 import { describe, expect, test } from "bun:test";
 import { stringifyConversationExcerpt, truncateExcerpt } from "./excerpt.ts";
 
@@ -12,8 +7,6 @@ describe("truncateExcerpt", () => {
   });
 
   test("marks a clipped string with an ellipsis at every length", () => {
-    // No spaces at all: the word-boundary preference has nothing to prefer, so
-    // the clip is hard and lands exactly on the budget.
     const text = "a".repeat(200);
     expect(truncateExcerpt(text, 50)).toHaveLength(50);
     expect(truncateExcerpt(text, 50).endsWith("…")).toBe(true);
@@ -27,7 +20,6 @@ describe("truncateExcerpt", () => {
   });
 
   test("stops at a word boundary rather than mid-word", () => {
-    // The case that shipped to production: a 50-char title cut "bound" to "b".
     const clipped = truncateExcerpt(
       "Reauthenticate the existing Anthropic connector bound to dev",
       50,
@@ -37,8 +29,6 @@ describe("truncateExcerpt", () => {
   });
 
   test("refuses a back-off that would spend more than half the budget", () => {
-    // One short word, then an unbroken run. Backing off to that space would
-    // return "go…" and throw away everything the reader came for.
     const clipped = truncateExcerpt(`go ${"x".repeat(80)}`, 40);
     expect(clipped.startsWith("go x")).toBe(true);
     expect(clipped).toHaveLength(40);

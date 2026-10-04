@@ -1,10 +1,3 @@
-// Budgeted-LLM primitive coverage. Pins the shipped
-// `openai.structured-extraction` recipe to a non-zero
-// `max_llm_tokens_per_run` declaration so the engine's per-run token
-// meter has a cap to enforce. Loud failure here catches accidental
-// removal of the budget — without it a runaway LLM call could quietly
-// blow past the operator's spend ceiling.
-
 import { getBuiltinTemplate } from "../../src/connectors/templates.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

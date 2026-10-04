@@ -1,11 +1,3 @@
-// update_subscription — patch an outbound webhook subscription's
-// event pattern, target URL, active flag, or signing secret. Generic
-// patch shape; send only the fields that should change.
-//
-// Pattern parity with update_workflow / update_connector /
-// update_knowledge_source / update_schedule. Audit funnels through
-// the existing `subscription.updated` action.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "../../index.ts";
 
@@ -69,7 +61,6 @@ export const updateSubscriptionTool: ConversationTool = {
         result: "success",
         metadata: {
           conversation_id: ctx.conversation_id,
-          // Never log the raw secret — only the fact that it changed.
           fields: Object.keys(args).filter((k) => k !== "id"),
         },
       });

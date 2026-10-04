@@ -1,8 +1,3 @@
-// E2E test suite for the `sk` CLI.
-//
-// Exercises headless mode, conversation continuation, output formats,
-// and profile management against a real engine.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, cli, type E2EEnv, expectSuccess, run, shutdown } from "./setup.ts";
 
@@ -14,9 +9,6 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// login + status
-// ---------------------------------------------------------------------------
 describe("login + status", () => {
   test("login with --api-key stores profile", async () => {
     const result = await cli(
@@ -34,9 +26,6 @@ describe("login + status", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// headless mode (--p)
-// ---------------------------------------------------------------------------
 describe("headless mode", () => {
   test("--output text returns plain text", async () => {
     const out = await run(["--p", "what is 2+2? reply with just the number", "--output", "text"], {
@@ -44,7 +33,6 @@ describe("headless mode", () => {
       persona: "admin",
       timeout: 60_000,
     });
-    // Mock provider returns "Acknowledged: [conv:...] what is 2+2..."
     expect(out.trim().length).toBeGreaterThan(0);
   });
 
@@ -65,7 +53,7 @@ describe("headless mode", () => {
     expect(data.session_id).toBeTruthy();
     expect(data.status).toBe("completed");
     expect(data.assistant_text.length).toBeGreaterThan(0);
-    expect(data.messages.length).toBeGreaterThanOrEqual(2); // user + assistant
+    expect(data.messages.length).toBeGreaterThanOrEqual(2);
   });
 
   test("--output stream-json emits one event per line", async () => {
@@ -77,20 +65,15 @@ describe("headless mode", () => {
     expectSuccess(result, "sk --p stream-json");
     const lines = result.stdout.trim().split("\n").filter(Boolean);
     expect(lines.length).toBeGreaterThanOrEqual(2);
-    // Each line should be valid JSON.
     for (const line of lines) {
       const ev = JSON.parse(line) as { type: string };
       expect(typeof ev.type).toBe("string");
     }
-    // Should contain a "completed" event.
     const types = lines.map((l) => (JSON.parse(l) as { type: string }).type);
     expect(types).toContain("completed");
   });
 });
 
-// ---------------------------------------------------------------------------
-// conversation continuation (--r)
-// ---------------------------------------------------------------------------
 describe("conversation continuation", () => {
   let sessionId: string;
 
@@ -117,14 +100,10 @@ describe("conversation continuation", () => {
       messages: Array<{ role: string; content: string }>;
     };
     expect(data.session_id).toBe(sessionId);
-    // Should have 4 messages: user1, assistant1, user2, assistant2.
     expect(data.messages.length).toBeGreaterThanOrEqual(4);
   });
 });
 
-// ---------------------------------------------------------------------------
-// tenants
-// ---------------------------------------------------------------------------
 describe("tenants", () => {
   test("lists current tenant", async () => {
     const out = await run(["tenants"], { env, persona: "admin" });
@@ -132,12 +111,8 @@ describe("tenants", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// profile management
-// ---------------------------------------------------------------------------
 describe("profile", () => {
   test("profile list shows saved profiles", async () => {
-    // First login to create a profile.
     await cli(["login", "--engine-url", env.baseUrl, "--api-key", env.personas.member.apiKey], {
       env,
       persona: "member",

@@ -1,28 +1,13 @@
-// Shared sandbox types for the QuickJS runtime.
-
 export interface SandboxLimits {
-  /** Hard WASM heap cap, in bytes. Default 128 MB. */
   memory_bytes?: number;
-  /**
-   * Interrupt-tick budget — a coarse runaway backstop, NOT an opcode
-   * count. QuickJS fires the interrupt handler on an internal counter at
-   * loop back-edges and function calls (not per opcode), so tight inner
-   * loops can elide it entirely; the wall-clock and memory caps are the
-   * real guards. Default 10_000_000.
-   */
   tick_budget?: number;
-  /** Wall-clock cap, the primary runaway guard. Default 30_000 ms. */
   wall_ms?: number;
-  /** Max stack size, in bytes. Default 2 MB. */
   stack_bytes?: number;
 }
 
 export interface SandboxStats {
-  /** Number of interrupt ticks consumed by the call (see tick_budget). */
   ticks: number;
-  /** Wall-clock time spent inside the VM, in milliseconds. */
   duration_ms: number;
-  /** Peak WASM memory reported by the runtime, in bytes, or null if unknown. */
   peak_memory_bytes: number | null;
 }
 
@@ -91,10 +76,6 @@ export class SandboxRuntimeError extends SandboxError {
   }
 }
 
-// Static fallback limits. The effective defaults are sourced from the
-// engine config (`sandbox.*`) at call time; these values are the schema
-// defaults and the fallback used before `loadConfig()` has run (e.g. unit
-// tests that call `runJs` directly). See `resolveDefaultLimits` in runtime.ts.
 export const DEFAULT_LIMITS: Required<SandboxLimits> = {
   memory_bytes: 128 * 1024 * 1024,
   tick_budget: 10_000_000,

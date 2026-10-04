@@ -1,16 +1,3 @@
-// A parked turn must announce itself, not masquerade as "working".
-//
-// Production, 21 hours: the LLM provider reported its monthly quota exhausted
-// and named 2026-08-01 as the reset. The engine did the right thing — it
-// re-enqueued the turn with a future `startAfter` instead of failing it — but
-// the task row stayed non-terminal and unchanged, so `conversation_get` kept
-// answering `working / phase: "starting" / last_action: null`.
-//
-// That silence is what cost the time: a careful reader concluded a worker was
-// hung and went hunting for it. Nothing was hung. Every fact needed to explain
-// the wait existed — in the engine log, where the waiting client could not see
-// it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversations, mcpTasks, tenants } from "../../db/schema/index.ts";
@@ -56,7 +43,6 @@ async function seedTurn(): Promise<{ conversation_id: string; task_id: string }>
 describe("a parked turn is legible to whoever is waiting", () => {
   test("parking records WHEN it resumes and WHY it stopped", async () => {
     const { conversation_id, task_id } = await seedTurn();
-    // Before: indistinguishable from an actively running turn.
     expect(await parkedStateForConversation(tenant_id, conversation_id, ctx.db)).toBeNull();
 
     const until = new Date(Date.now() + 6 * 24 * 60 * 60_000); // allow-wall-clock
@@ -76,7 +62,6 @@ describe("a parked turn is legible to whoever is waiting", () => {
       "provider_quota_exhausted",
       ctx.db,
     );
-    // The turn is due — claiming it is still parked would be its own lie.
     expect(await parkedStateForConversation(tenant_id, conversation_id, ctx.db)).toBeNull();
   });
 
@@ -109,8 +94,6 @@ describe("a parked turn is legible to whoever is waiting", () => {
     expect(await parkedStateForConversation(tenant_id, conversation_id, ctx.db)).not.toBeNull();
 
     await clearMcpTaskPark(tenant_id, task_id, ctx.db);
-    // Keeping a stale "parked until" on a running turn would mislead exactly
-    // as much as the original silence did.
     expect(await parkedStateForConversation(tenant_id, conversation_id, ctx.db)).toBeNull();
   });
 });

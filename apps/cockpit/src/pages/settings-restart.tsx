@@ -1,14 +1,3 @@
-// "Jetzt neu starten": the offer in the waiting-for-a-restart line and the one
-// confirmation that restarts SubKit and follows it back.
-//
-// The page code is bundled statically (no route chunk is loaded lazily), so
-// nothing has to be fetched before the engine goes away. The session lives in
-// PostgreSQL and is signed with a key that survives the restart; only a
-// pending `auth.session.secret` signs everyone out, and the dialog says so.
-// While the engine is down the polling below never touches the bootstrap
-// query, so the session gate cannot send the reader to the sign-in page
-// halfway through.
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -34,8 +23,6 @@ import {
 
 export const RESTART_STATUS_QUERY_KEY = ["system", "restart-status"] as const;
 
-/** Which offer the page makes, from the reader's permissions and the engine's
- * supervisor flag. Without settings:read the status is not asked for. */
 export function useRestartOffer(): { offer: RestartOffer; status: RestartStatus | undefined } {
   const session = useSession();
   const query = useQuery({
@@ -50,8 +37,6 @@ export function useRestartOffer(): { offer: RestartOffer; status: RestartStatus 
   };
 }
 
-/** What stands after "Wartet auf Neustart: …": the button, the manual way, or
- * the request to ask an admin. */
 export function SettingsRestartOffer({
   offer,
   onRestart,
@@ -88,7 +73,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Read the status once; null while the engine is away. */
 async function pollStatus(): Promise<RestartStatus | null> {
   try {
     return await apiRequest<RestartStatus>(RESTART_STATUS_PATH);
@@ -98,8 +82,6 @@ async function pollStatus(): Promise<RestartStatus | null> {
   }
 }
 
-/** The confirmation, the restart and its follow-up. Controlled, so both the
- * button in the status line and "Speichern, dann neu starten" open it. */
 export function SettingsRestartDialog({
   open,
   onOpenChange,
@@ -112,8 +94,6 @@ export function SettingsRestartDialog({
   const { t } = useI18n();
   const client = useQueryClient();
   const [restarting, setRestarting] = useState(false);
-  // A refusal or a restart that could not be confirmed is said once, as a
-  // toast: the confirmation holds one line, and that line is the consequence.
   const setError = (message: string) => toast.error(message);
 
   async function restart(): Promise<void> {
@@ -154,8 +134,6 @@ export function SettingsRestartDialog({
       }
       setError(t("settings.restartNow.notConfirmed"));
     } catch (failure) {
-      // A poll that fails for another reason than "still away" must say so —
-      // a 401 after a restart that changed the session secret included.
       setError(
         t(
           failure instanceof ApiError && failure.status === 401

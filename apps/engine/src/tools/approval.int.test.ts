@@ -1,20 +1,3 @@
-// Integration coverage for the approval store's DB-backed lifecycle.
-//
-// AN APPROVAL IS GRANTED BY A HUMAN, NEVER BY A MODEL. `requestApproval`
-// mints the row UNGRANTED — see the file header of approval.ts. Every test
-// below that needs a claimable approval calls `grantApproval` explicitly
-// (standing in for the human at the approval portal); the ones that don't
-// grant it prove the row stays inert until a human does.
-//
-// `requestApproval` (encrypt + insert + APPROVAL_REQUESTED audit),
-// `grantApproval` / `declineApproval` (the human decision CAS + its audit
-// row), and `consumeApproval` (the claim CAS + decrypt + APPROVAL_REJECTED
-// audit on every terminal outcome that names a REAL approval row) are not
-// meaningfully mockable — the CAS, the AES-256-GCM round trip, and the
-// args_hash re-check all need a real `tool_approvals` row. Real Postgres via
-// `createTestDb`, copied from
-// `apps/engine/src/operator/health-digest-risk.int.test.ts`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
@@ -32,8 +15,6 @@ import {
 } from "./approval.ts";
 import { makeTestPrincipal } from "./tests/_helpers.ts";
 
-// Deterministic replacement for crypto.randomUUID() — same seed, same
-// sequence, every run (determinism contract in apps/engine/AGENTS.md).
 const nextId = createDeterministicUuidFactory(1);
 
 let testDb: TestDb;
@@ -86,8 +67,6 @@ async function approvalRow(approval_id: string) {
   return rows[0] ?? null;
 }
 
-/** Open an approval, UNGRANTED. Defaults mirror an MCP `wf_<slug>` held
- *  preview: a dev-environment run of `run_workflow`. */
 async function seedApproval(p: {
   principal: ResolvedPrincipal;
   approval_id: string;
@@ -109,9 +88,6 @@ async function seedApproval(p: {
   });
 }
 
-/** Open an approval and immediately grant it — standing in for the human at
- *  the approval portal. Most consume-focused tests below need a claimable
- *  row; this is the one call that makes one. */
 async function seedGrantedApproval(p: {
   principal: ResolvedPrincipal;
   approval_id: string;
@@ -149,13 +125,11 @@ describe("approval.ts — a freshly minted approval is UNGRANTED", () => {
     expect(claim.ok).toBe(false);
     if (!claim.ok) expect(claim.code).toBe("approval_not_granted");
 
-    // Unburned: the row is exactly as requestApproval left it.
     const row = await approvalRow(approval_id);
     expect(row?.granted_at).toBeNull();
     expect(row?.consumed_at).toBeNull();
     expect(row?.declined_at).toBeNull();
 
-    // Once a human grants it, the SAME id becomes claimable.
     const granted = await grantApproval({
       db: testDb.db,
       approval_id,
@@ -182,7 +156,7 @@ describe("approval.ts — a freshly minted approval is UNGRANTED", () => {
     await seedApproval({ principal, approval_id });
 
     const before = await auditRowsFor(approval_id);
-    expect(before).toHaveLength(1); // only APPROVAL_REQUESTED
+    expect(before).toHaveLength(1);
 
     const claim = await consumeApproval({
       db: testDb.db,
@@ -195,7 +169,6 @@ describe("approval.ts — a freshly minted approval is UNGRANTED", () => {
     expect(claim.ok).toBe(false);
 
     const after = await auditRowsFor(approval_id);
-    // No new row: a claim against an ungranted approval changed nothing.
     expect(after).toHaveLength(1);
     expect(after[0]?.action).toBe(AuditAction.APPROVAL_REQUESTED);
   });
@@ -220,11 +193,8 @@ describe("approval.ts — grantApproval single-use", () => {
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("claim should have succeeded");
     expect(first.args).toEqual(args);
-    // The replay environment comes off the STORED row, not the claiming call.
     expect(first.execution_mode).toBe("prod");
 
-    // The claim alone is NOT the approval — nothing has authorized the call
-    // yet, so no APPROVAL_APPROVED row exists.
     const afterClaim = await auditRowsFor(approval_id);
     expect(afterClaim.some((r) => r.action === AuditAction.APPROVAL_APPROVED)).toBe(false);
 
@@ -238,7 +208,6 @@ describe("approval.ts — grantApproval single-use", () => {
       }),
     ).toBe(true);
 
-    // Single-use: a second claim of the same id must fail, terminally.
     const second = await consumeApproval({
       db: testDb.db,
       principal,
@@ -250,11 +219,6 @@ describe("approval.ts — grantApproval single-use", () => {
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.code).toBe("confirmation_already_used");
 
-    // APPROVAL_REQUESTED, APPROVAL_GRANTED, and APPROVAL_APPROVED all share
-    // resource_id — one lifecycle, one join key. The re-claim itself lost the
-    // CAS without changing anything (the handle was already spent), so it is
-    // NOT an audit row — see `DENIAL_BURNS_HANDLE`; it is a structured log line
-    // instead (`approval.claim_denied`, asserted by its absence here).
     const rows = await auditRowsFor(approval_id);
     const requested = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
     const grantedRow = rows.find((r) => r.action === AuditAction.APPROVAL_GRANTED);
@@ -280,7 +244,6 @@ describe("approval.ts — grantApproval single-use", () => {
     expect(secondGrant.ok).toBe(false);
     if (!secondGrant.ok) expect(secondGrant.code).toBe("approval_already_granted");
 
-    // Unaffected: the original grant still stands and is still claimable once.
     const claim = await consumeApproval({
       db: testDb.db,
       principal,
@@ -313,7 +276,6 @@ describe("approval.ts — grantApproval single-use", () => {
     expect(granted.ok).toBe(false);
     if (!granted.ok) expect(granted.code).toBe("approval_expired");
 
-    // Never granted, so the claim reads as expired, not ungranted.
     const claim = await consumeApproval({
       db: testDb.db,
       principal,
@@ -342,7 +304,6 @@ describe("approval.ts — declineApproval is terminal", () => {
     });
     expect(declined.ok).toBe(true);
 
-    // Terminal: a decline can never be undone by a later grant.
     const grantAfterDecline = await grantApproval({
       db: testDb.db,
       approval_id,
@@ -364,17 +325,10 @@ describe("approval.ts — declineApproval is terminal", () => {
     expect(claim.ok).toBe(false);
     if (!claim.ok) expect(claim.code).toBe("approval_declined");
 
-    // A declined claim is NOT a burning denial — the row is left exactly as
-    // declineApproval left it (declined, unconsumed).
     const row = await approvalRow(approval_id);
     expect(row?.declined_at).not.toBeNull();
     expect(row?.consumed_at).toBeNull();
 
-    // The declined CLAIM itself is not auditable (it changed nothing), but the
-    // grant attempt against a real, already-declined approval names a real
-    // approval and IS recorded — as a DENIED APPROVAL_GRANTED row, per
-    // `decideApproval`'s "every outcome against a real approval is recorded"
-    // rule. So the lifecycle here is exactly three rows.
     const rows = await auditRowsFor(approval_id);
     expect(rows.map((r) => r.action).sort()).toEqual(
       [
@@ -385,8 +339,6 @@ describe("approval.ts — declineApproval is terminal", () => {
     );
     const deniedGrant = rows.find((r) => r.action === AuditAction.APPROVAL_GRANTED);
     expect(deniedGrant?.reason).toBe("approval_already_declined");
-    // The claim attempt (which named the same real approval) did not add a
-    // fourth row: it lost the CAS and changed nothing.
     expect(rows).toHaveLength(3);
   });
 
@@ -437,10 +389,7 @@ describe("approval.ts — grant/decline audit rows record the HUMAN, not the req
     const rows = await auditRowsFor(approval_id);
     const requestedRow = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
     const grantedRow = rows.find((r) => r.action === AuditAction.APPROVAL_GRANTED);
-    // The request is attributed to the machine that asked...
     expect(requestedRow?.actor_id).toBe(requester.id);
-    // ...but the decision is attributed to the human who decided, never to
-    // the requesting principal.
     expect(grantedRow?.actor_id).toBe(humanApproverId);
     expect(grantedRow?.actor_id).not.toBe(requester.id);
   });
@@ -467,9 +416,6 @@ describe("approval.ts — grant/decline audit rows record the HUMAN, not the req
   });
 
   test("an in-band grant relayed by a system account records actor_type=system, not the machine's id as a human", async () => {
-    // `granted_by_user_id: null` is what a non-user (system account) answer
-    // produces — see approvalDecidingUserId. The decision is still audited,
-    // but it must not be attributed to a person who never decided.
     const requester = principalIn(tenant_id, { id: nextId(), kind: "system_account" });
     const approval_id = nextId();
     await seedApproval({ principal: requester, approval_id });
@@ -491,10 +437,6 @@ describe("approval.ts — grant/decline audit rows record the HUMAN, not the req
 
 describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surface) and the stored execution_mode", () => {
   test("wrong principal_id cannot consume another principal's approval — reads as unknown_confirmation", async () => {
-    // SECURITY PROPERTY: inside one tenant, principal A cannot consume
-    // principal B's approval. The denial is `unknown_confirmation`, not a
-    // more specific code — the approval's existence is not principal B's
-    // to learn.
     const owner = principalIn(tenant_id, { id: nextId() });
     const intruder = principalIn(tenant_id, { id: nextId() });
     expect(owner.id).not.toBe(intruder.id);
@@ -513,8 +455,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("unknown_confirmation");
 
-    // The rightful owner can still claim it — the intruder's attempt did
-    // not burn the CAS.
     const ownerClaim = await consumeApproval({
       db: testDb.db,
       principal: owner,
@@ -544,9 +484,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
   });
 
   test("a chat-minted approval is not claimable over MCP — the CAS binds the surface", async () => {
-    // SECURITY PROPERTY: the same principal holding a chat approval must not be
-    // able to spend it through the MCP transport, where the surrounding gates
-    // (permission mode, read-only mode, catalog visibility) are different.
     const principal = principalIn(tenant_id);
     const approval_id = nextId();
     await seedGrantedApproval({ principal, approval_id, surface: "chat" });
@@ -562,7 +499,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     expect(crossSurface.ok).toBe(false);
     if (!crossSurface.ok) expect(crossSurface.code).toBe("confirmation_surface_mismatch");
 
-    // Unburned: the rightful surface can still claim it.
     const sameSurface = await consumeApproval({
       db: testDb.db,
       principal,
@@ -575,9 +511,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
   });
 
   test("a dev preview cannot be confirmed into prod — the stored environment wins", async () => {
-    // SECURITY PROPERTY (the `_meta.environment` swap): the operator approved a
-    // preview whose `would_write` named DEV endpoints. A confirm carrying
-    // `environment: "prod"` must not replay against prod credentials.
     const principal = principalIn(tenant_id);
     const approval_id = nextId();
     await seedGrantedApproval({ principal, approval_id, tool: "wf_post_ledger_entries" });
@@ -594,8 +527,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     expect(swapped.ok).toBe(false);
     if (!swapped.ok) expect(swapped.code).toBe("confirmation_environment_mismatch");
 
-    // Terminal: the contradicting claim burned the handle rather than letting
-    // the client retry it against the other environment.
     const retry = await consumeApproval({
       db: testDb.db,
       principal,
@@ -636,9 +567,6 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     const approval_id = nextId();
     await seedGrantedApproval({ principal, approval_id });
 
-    // Tamper the ciphertext directly in the row, bypassing encryptSecret —
-    // simulates a compromised row rather than a client-side arg swap
-    // (nothing the caller sends participates in this check at all).
     const [row] = await testDb.db
       .select({ args_ciphertext: toolApprovals.args_ciphertext })
       .from(toolApprovals)
@@ -662,23 +590,16 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("confirmation_integrity_failed");
 
-    // Tampering at rest is the single most audit-worthy event this module
-    // knows about; it must not be a returned string only.
     const rejected = (await auditRowsFor(approval_id)).find(
       (r) => r.action === AuditAction.APPROVAL_REJECTED,
     );
     expect(rejected?.reason).toBe("confirmation_integrity_failed");
 
-    // The burn and its audit row committed together: the handle is spent.
     const after = await approvalRow(approval_id);
     expect(after?.consumed_at).not.toBeNull();
   });
 
   test("args_hash re-check catches a row whose stored hash no longer matches its plaintext", async () => {
-    // Distinct from ciphertext tamper: the ciphertext decrypts cleanly (so
-    // AES-GCM's own auth tag does not fire), but the persisted args_hash
-    // column was rewritten independently — the exact "rewritten between
-    // grant and claim" tamper the args_hash re-check exists to catch.
     const principal = principalIn(tenant_id);
     const approval_id = nextId();
     await seedGrantedApproval({ principal, approval_id });
@@ -722,14 +643,10 @@ describe("approval.ts — the CAS binds (id, tenant_id, principal_id, tool, surf
     expect(row?.action).toBe(AuditAction.APPROVAL_REQUESTED);
     const metadata = row?.metadata as Record<string, unknown>;
     expect(metadata.canonical_tool).toBe("run_workflow");
-    // `fast_path` is not a surface — without `via` the attribution is lost.
     expect(metadata.via).toBe("fast_path");
     expect(metadata.request_source).toBe("chat");
     expect(metadata.execution_mode).toBe("dev");
     expect(typeof metadata.args_hash).toBe("string");
-    // The rule the gate enforced, not a fixed label: an APPROVAL_REQUESTED row
-    // that always read "destructive_action" would describe a decision nothing
-    // made. Same key as the chat-side tool_policy.confirmation_required row.
     expect(metadata.resolver_reason).toBe("tool_default");
   });
 });

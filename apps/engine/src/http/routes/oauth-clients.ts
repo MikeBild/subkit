@@ -1,15 +1,3 @@
-// Admin surface for platform-global MCP OAuth clients.
-//
-// GET  /v1/oauth/clients          — list registered clients (no secrets)
-// DELETE /v1/oauth/clients/{client_id} — soft-disable a client and revoke its live tokens
-//
-// These are AUTHENTICATED admin-only routes. Unlike the bootstrap OAuth
-// routes in routes/oauth.ts, they require a bearer token and the
-// mcp_oauth_client:read / mcp_oauth_client:revoke permission.
-//
-// mcp_oauth_clients has no tenant_id (DCR registers clients pre-tenant).
-// Routes are platform-global and admin-gated for that reason.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -26,8 +14,6 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-// ── Zod schemas ──────────────────────────────────────────────────────────────
-
 const OAuthClientSchema = z
   .object({
     id: z.string().uuid(),
@@ -35,16 +21,9 @@ const OAuthClientSchema = z
     client_name: z.string().nullable(),
     redirect_uris: z.array(z.string()),
     registration_source: z.enum(["dcr", "manual"]),
-    /** Who approved this connection — the people whose live grant keeps it
-     *  working. Empty when nothing live points at the registration. */
     approved_by: z.array(z.string()),
-    /** Live connections for this client, one per approving person. */
     live_connections: z.number().int().nonnegative(),
     disabled_at: z.string().nullable(),
-    /** Set with `disabled_at` when housekeeping retired a dynamic registration
-     *  nobody held a grant for or used in a week. Retired is hidden, not
-     *  revoked: the next authorization a person completes brings it back.
-     *  `disabled_at` without it is an administrator's revocation. */
     retired_at: z.string().nullable(),
     created_at: z.string(),
   })
@@ -57,8 +36,6 @@ const OAuthClientListResponse = z
   .openapi("OAuthClientListResponse");
 
 const ClientIdParam = z.object({ client_id: z.string().min(1) });
-
-// ── Route definitions ────────────────────────────────────────────────────────
 
 const listRoute = createRoute({
   method: "get",
@@ -91,8 +68,6 @@ const revokeRoute = createRoute({
   },
 });
 
-// ── Registration ─────────────────────────────────────────────────────────────
-
 export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/oauth/clients", (c, next) => {
     if (c.req.method === "GET") return requirePermission("mcp_oauth_client:read")(c, next);
@@ -123,8 +98,6 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .from(mcpOauthClients);
 
-    // A connection is a person's decision. The list says whose, so revoking
-    // one is never a shot in the dark (tranche E, rule 4).
     const approvals = await listClientApprovals(db, new Date(now()));
 
     const items = rows.map((r) => {
@@ -182,17 +155,12 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!row) throw new NotFoundError("mcp_oauth_client");
 
     const now = new Date();
-    // Idempotent: if already revoked, return 204 without a second audit row.
-    // A RETIRED registration is disabled too, but only until someone
-    // authorizes it again — revoking it turns the retirement into a
-    // revocation, so no later authorization can bring it back.
     if (!row.disabled_at || row.retired_at) {
       await db
         .update(mcpOauthClients)
         .set({ disabled_at: now, retired_at: null })
         .where(eq(mcpOauthClients.client_id, client_id));
 
-      // Revoke all outstanding access and refresh tokens for this client.
       const revokedAccess = await db
         .update(mcpOauthAccessTokens)
         .set({ revoked_at: now })

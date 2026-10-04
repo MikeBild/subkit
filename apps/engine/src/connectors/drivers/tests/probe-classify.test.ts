@@ -1,22 +1,9 @@
-// Unit tests for per-driver probe classifiers in probe-classify.ts.
-//
-// Pure functions — no DB, no network, no Docker. Each classifier is
-// tested with:
-//   - credential_invalid trigger(s)
-//   - must-NOT-flag cases (network errors, resource-not-found, unrelated errors)
-//   - null / undefined / empty-object defensiveness (never throws, never guesses
-//     credential death on an unknown error shape)
-
 import { describe, expect, test } from "bun:test";
 import {
   classifyGraphqlProbe,
   classifyPgProbeError,
   classifyS3ProbeError,
 } from "../probe-classify.ts";
-
-// ---------------------------------------------------------------------------
-// classifyGraphqlProbe
-// ---------------------------------------------------------------------------
 
 describe("classifyGraphqlProbe — HTTP status signals", () => {
   test("401 → credential_invalid", () => {
@@ -27,8 +14,6 @@ describe("classifyGraphqlProbe — HTTP status signals", () => {
     expect(classifyGraphqlProbe(403, null)).toBe("credential_invalid");
   });
 
-  // Must NOT be flagged as credential or transient — the endpoint path is wrong
-  // (e.g. Supabase GraphQL lives at /graphql/v1, not /graphql).
   test("404 → remote_resource_not_found, not credential or upstream blip", () => {
     expect(classifyGraphqlProbe(404, null)).toBe("remote_resource_not_found");
   });
@@ -73,7 +58,6 @@ describe("classifyGraphqlProbe — 2xx + GraphQL errors array", () => {
     expect(classifyGraphqlProbe(200, ["access denied"])).toBe("credential_invalid");
   });
 
-  // False-flag guard: a real GraphQL validation error must NOT be classified as auth
   test('200 + ["Variable $x not defined"] → unknown_upstream_error (not auth)', () => {
     expect(classifyGraphqlProbe(200, ["Variable $x not defined"])).toBe("unknown_upstream_error");
   });
@@ -86,15 +70,10 @@ describe("classifyGraphqlProbe — 2xx + GraphQL errors array", () => {
     expect(classifyGraphqlProbe(200, [])).toBe("unknown_upstream_error");
   });
 
-  // Case-insensitive matching
   test('200 + ["FORBIDDEN by policy"] → credential_invalid (case-insensitive)', () => {
     expect(classifyGraphqlProbe(200, ["FORBIDDEN by policy"])).toBe("credential_invalid");
   });
 });
-
-// ---------------------------------------------------------------------------
-// classifyPgProbeError
-// ---------------------------------------------------------------------------
 
 describe("classifyPgProbeError — SQLSTATE codes", () => {
   test("28P01 (invalid_password) → credential_invalid", () => {
@@ -105,7 +84,6 @@ describe("classifyPgProbeError — SQLSTATE codes", () => {
     expect(classifyPgProbeError({ code: "28000" })).toBe("credential_invalid");
   });
 
-  // Must NOT be flagged as credential — database simply doesn't exist
   test("3D000 (invalid_catalog_name) → remote_resource_not_found, not credential", () => {
     expect(classifyPgProbeError({ code: "3D000" })).toBe("remote_resource_not_found");
   });
@@ -138,10 +116,6 @@ describe("classifyPgProbeError — defensive: null / undefined / empty", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// classifyS3ProbeError
-// ---------------------------------------------------------------------------
-
 describe("classifyS3ProbeError — statusCode (primary signal)", () => {
   test("statusCode 401 → credential_invalid", () => {
     expect(classifyS3ProbeError({ statusCode: 401 })).toBe("credential_invalid");
@@ -151,7 +125,6 @@ describe("classifyS3ProbeError — statusCode (primary signal)", () => {
     expect(classifyS3ProbeError({ statusCode: 403 })).toBe("credential_invalid");
   });
 
-  // Must NOT be flagged as credential
   test("statusCode 404 → remote_resource_not_found, not credential", () => {
     expect(classifyS3ProbeError({ statusCode: 404 })).toBe("remote_resource_not_found");
   });
@@ -174,7 +147,6 @@ describe("classifyS3ProbeError — named S3 error codes (fallback)", () => {
     expect(classifyS3ProbeError({ code: "AccessDenied" })).toBe("credential_invalid");
   });
 
-  // Must NOT be flagged as credential
   test("code NoSuchBucket (no statusCode) → remote_resource_not_found, not credential", () => {
     expect(classifyS3ProbeError({ code: "NoSuchBucket" })).toBe("remote_resource_not_found");
   });
@@ -184,7 +156,6 @@ describe("classifyS3ProbeError — named S3 error codes (fallback)", () => {
   });
 
   test("statusCode takes precedence over code: 403 + code NoSuchBucket → credential_invalid", () => {
-    // statusCode is the primary signal; code is only consulted when statusCode is absent.
     expect(classifyS3ProbeError({ statusCode: 403, code: "NoSuchBucket" })).toBe(
       "credential_invalid",
     );

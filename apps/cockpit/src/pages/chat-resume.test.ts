@@ -5,7 +5,6 @@ import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "@/pages/c
 const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);
 const en = (key: TranslationKey, values?: Record<string, string>) => translate("en", key, values);
 
-/** Every stage the engine's `computeStage` can return, with its own target. */
 const STAGES = [
   { stage: "awaiting_approval", kind: "connector", name: "Reporting API" },
   { stage: "connector_drafting", kind: "connector", name: "Reporting API" },
@@ -31,12 +30,10 @@ describe("cockpit chat resume", () => {
   test("speaks German in every state the engine can be in", () => {
     for (const entry of STAGES) {
       const line = summary(entry);
-      // A conversation that is only getting started has nothing to state yet.
       if (entry.stage === "onboarding") {
         expect(line).toBeNull();
         continue;
       }
-      // The seven English openings the engine composes its sentence from.
       expect(line, `${entry.stage} still reads as engine prose`).not.toMatch(
         /^You (were|have|saved)\b/,
       );
@@ -55,9 +52,6 @@ describe("cockpit chat resume", () => {
   });
 
   test("survives the sentence arriving without its appended next action", () => {
-    // The screenshot case: `one_sentence` reached the cockpit as bare prose, so
-    // the old equality test missed even the one state it covered. Nothing here
-    // reads `one_sentence`, so there is nothing left to miss.
     expect(resumeSummaryLine({ stage: "onboarding", active_target: null }, de)).toBeNull();
   });
 
@@ -104,8 +98,6 @@ describe("cockpit chat resume", () => {
   });
 
   test("a pending question is not said a second time under the title", () => {
-    // The header badge says "Wartet auf dich" and the card in the transcript
-    // is where the reader acts. The line names what the conversation is about.
     for (const tool_name of ["ask_user_text", "ask_user_confirm", "ask_user_choice"]) {
       const line = resumeSummaryLine(
         {

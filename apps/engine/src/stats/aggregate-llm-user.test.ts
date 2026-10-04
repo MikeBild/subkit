@@ -1,14 +1,3 @@
-// Integration tests for aggregateLlm — user dimension extensions.
-//
-// Covers:
-//   - groupBy:['user'] produces per-user group keys with correct token sums.
-//   - userId filter narrows results to that user's rows only.
-//   - Cross-tenant isolation: tenant predicate is FIRST; a row for the same
-//     user_id in another tenant is excluded even with userId filter active.
-//   - groupBy:['user'] empty key for rows with null user_id.
-//
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
@@ -21,7 +10,6 @@ let testDb: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 
-// Fixed window
 const FROM = new Date("2024-02-01T00:00:00.000Z");
 const TO = new Date("2024-02-02T00:00:00.000Z");
 const INSIDE_TS = new Date("2024-02-01T12:00:00.000Z");
@@ -148,7 +136,6 @@ describe.skipIf(skip)("aggregateLlm — groupBy:user", () => {
       groupBy: ["user"],
     });
 
-    // null user_id → key.user === "" per the keyOf helper.
     const nullGroup = result.groups.find((g) => g.key.user === "");
     const userAGroup = result.groups.find((g) => g.key.user === USER_A);
     expect(nullGroup).toBeDefined();
@@ -207,7 +194,6 @@ describe.skipIf(skip)("aggregateLlm — userId filter", () => {
   test("cross-tenant isolation with userId filter — other tenant's rows for same user_id excluded", async () => {
     const bucket = monthBucket(INSIDE_TS);
 
-    // Seed a row for USER_A under the other tenant.
     await testDb.db.insert(llmUsage).values({
       tenant_id: otherTenantId,
       flow: "converse",
@@ -225,13 +211,12 @@ describe.skipIf(skip)("aggregateLlm — userId filter", () => {
       month_bucket: bucket,
     });
 
-    // Seed one row for USER_A in the target tenant.
     await testDb.db
       .insert(llmUsage)
       .values(baseRow({ user_id: USER_A, actor_type: "user", total_tokens: 150 }));
 
     const result = await aggregateLlm(testDb.db, {
-      tenantId, // target tenant only
+      tenantId,
       bucket: "hour",
       from: FROM,
       to: TO,
@@ -240,13 +225,11 @@ describe.skipIf(skip)("aggregateLlm — userId filter", () => {
       userId: USER_A,
     });
 
-    // Only the one row from tenantId must appear.
     expect(result.totals.calls.total).toBe(1);
     expect(result.totals.tokens.total).toBe(150);
   });
 
   test("userId filter returns zero when user has no rows in window", async () => {
-    // Seed rows only for USER_B.
     await testDb.db.insert(llmUsage).values(baseRow({ user_id: USER_B, actor_type: "user" }));
 
     const result = await aggregateLlm(testDb.db, {

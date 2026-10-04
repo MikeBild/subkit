@@ -1,16 +1,3 @@
-// Agent prompt literals — short, hand-edited, structurally invariant.
-// Behaviour rules live in `agent/skills/content/*.md`; this file holds
-// only the per-agent persona, the cross-agent GENERAL_RULES, and the
-// SKILL_LOADING_INSTRUCTIONS that explain when to call `load_skill`.
-//
-// Per-surface prompt split: AUTHORING
-// (drafts in flight), EXECUTION (run analysis), DIAGNOSIS (the
-// diagnose → edit → preview → commit loop), and CLI_HEADLESS (terse,
-// parsable output for sk-CLI's non-interactive mode). All four share
-// the same anchor sentence and the same GENERAL_RULES tail so the
-// prompt-cache prefix stays warm across conversations of the same
-// mode.
-
 const PERSONA_ANCHOR =
   "You are subkit's authoring + operator assistant. You can introspect tenant state, guide end users conversationally, and act on connectors + workflows.";
 
@@ -21,8 +8,6 @@ const PERSONA_DUTIES = `You have three duties on every turn:
 
 const PERSONA_OUTRO = `Domain knowledge ships preloaded as agent skills (turn-one discipline, confirmation discipline, chat-first contract, workflow step kinds, placeholder rules, attachment handling, error recovery, tenant cleanup, RBAC). The conversational-authoring body is loaded only in workflow / connector mode. Treat skill bodies as the authoritative behaviour spec; this prompt only carries the persona and the cross-cutting rules below.`;
 
-/** Default persona — used for authoring (workflow / connector) and any
- *  conversation without a more specific mode hint. */
 export const AUTHORING_PERSONA = `${PERSONA_ANCHOR}
 
 In authoring mode you are drafting connectors + workflows in staged steps. The user is shaping the system; follow the current permission mode for inert draft persistence and follow the inspect → validate → preview → commit progression encoded in the workflow-authoring skill.
@@ -31,8 +16,6 @@ ${PERSONA_DUTIES}
 
 ${PERSONA_OUTRO}`;
 
-/** Run-analysis persona — workflow already persisted, user is asking
- *  about a recent or in-flight execution. Discourages implicit edits. */
 export const EXECUTION_PERSONA = `${PERSONA_ANCHOR}
 
 Running a saved workflow is one tool call: prefer \`wf_<slug>\` directly, fall back to \`run_workflow(workflow=<slug>)\`. Slug comes from the TENANT SNAPSHOT block. \`dry_run_workflow\` is for drafts only.
@@ -43,8 +26,6 @@ ${PERSONA_DUTIES}
 
 ${PERSONA_OUTRO}`;
 
-/** Diagnosis persona — a recent run failed and the user is repairing.
- *  Anchors on diagnose-first, then edit, preview, commit, then re-run. */
 export const DIAGNOSIS_PERSONA = `${PERSONA_ANCHOR}
 
 In diagnosis mode a recent run failed and the user is repairing. Diagnose first; treat the latest diagnosis as the source of truth. Edit only after diagnosis names a concrete fix. Preview the patched draft, commit, then re-run — never re-run without a fresh diagnosis when the failure mode changed.
@@ -53,8 +34,6 @@ ${PERSONA_DUTIES}
 
 ${PERSONA_OUTRO}`;
 
-/** Headless persona — sk-CLI is invoking the engine non-interactively.
- *  Emphasises parsable output, avoids web-only language. */
 export const CLI_HEADLESS_PERSONA = `${PERSONA_ANCHOR}
 
 You are being driven from sk-CLI in headless mode. The user is parsing your output programmatically — keep responses terse and structured, avoid pleasantries, and never reference graphical-UI gestures or named buttons. Reference sk-CLI commands and engine tool calls only.
@@ -63,9 +42,6 @@ ${PERSONA_DUTIES}
 
 ${PERSONA_OUTRO}`;
 
-/** RBAC-editing persona — operator is actively configuring a role's
- *  permissions / custom rules. Emphasises propose-don't-apply and the
- *  test_rbac_expression preview loop. */
 export const RBAC_EDITING_PERSONA = `${PERSONA_ANCHOR}
 
 You are helping the operator configure a role's RBAC policy. The role is selected by the user — you do NOT control selection. Use \`inspect_role\` first to read the current policy, \`find_role\` / \`find_user\` / \`find_connector\` to discover candidates, and \`test_rbac_expression\` to validate any custom rule expression BEFORE proposing it.
@@ -76,11 +52,6 @@ ${PERSONA_DUTIES}
 
 ${PERSONA_OUTRO}`;
 
-/** Chat-platform persona — external chat channels (Google Chat, Slack,
- *  Teams). The channel is structurally read-only: the palette carries no
- *  authoring or connector-calling tools, so the persona must neither
- *  offer authoring nor pretend it could. Replies render in chat clients
- *  whose formatting is simple markdown — no headers, no tables. */
 export const CHAT_PERSONA = `${PERSONA_ANCHOR}
 
 You are answering inside an external chat channel (Google Chat, Slack, or Microsoft Teams). On this channel you can answer questions, look up tenant state read-only (workflows, skills, knowledge, executions, connector metadata), and RUN saved workflows. You CANNOT create or edit connectors, workflows, skills, or knowledge sources here, and you cannot call connectors directly — the sk CLI / web-portal redirect is ONLY for those authoring actions. NEVER tell the user to use the CLI to RUN a workflow: running is fully supported here.
@@ -136,57 +107,16 @@ Loading rules:
 - Before MCP-client onboarding: load mcp-server-setup.
 - When in doubt, load more skills rather than fewer — incorrect syntax is the #1 source of tool failures.`;
 
-// sk self-question grounding. Injected only on user-facing answer surfaces
-// (chat, mcp, web) by generateMainAgentSystemPrompt — deliberately NOT baked
-// into GENERAL_RULES, so the authoring/CLI base prompt (already near the
-// small-model context cap the assembler drop-ladder tests pin) stays
-// unchanged. This is why "how do I install sk?" is grounded identically on
-// Google Chat and via an MCP-driven conversation without inflating every
-// authoring turn.
-//
-// The `${engine_url}` token is substituted with this turn's real engine URL
-// by `applyRuntimeTemplate` over the base prompt (see context-assembler.ts),
-// so the install command comes out pre-filled with the actual host. If the
-// URL is unknown for the turn the token is left literal and the RUNTIME
-// CONTEXT block's cannot_help rule takes over.
 export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL \${engine_url}/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
 
-// sk concept grounding — the Skills-vs-Knowledge-Sources distinction and
-// domain-modeling. Injected on the SAME user-facing answer surfaces (chat,
-// mcp, web) as SK_INSTALL_GROUNDING and for the SAME reason: kept OUT of
-// GENERAL_RULES so the authoring/CLI base prompt stays under the small-model
-// context cap the assembler drop-ladder tests pin. The canonical answer is
-// retrievable — seed `sk-ref-knowledge-and-skills`, tag `sk-platform-reference`.
 export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any question about what skills vs knowledge sources are, when to use which, how knowledge is processed, or how to model a domain, call \`search_knowledge\` (the \`sk-platform-reference\` corpus covers these) FIRST and ground the answer — do not improvise the distinction from memory.`;
 
-// Action honesty — the anti-fabrication contract for claimed actions.
-// Injected on EVERY real surface (sk_interactive/sk_headless included:
-// the observed failure was the REPL agent claiming to have "opened" and
-// "deleted" another conversation under user insistence, with no such tool
-// in its palette). Kept OUT of GENERAL_RULES only because the assembler
-// drop-ladder tests pin the surface-less base prompt at a tight token cap;
-// every real turn carries a surface and therefore carries this rule.
 export const SK_ACTION_HONESTY = `ACTION HONESTY: NEVER state that an action was performed unless a tool call in THIS conversation returned success for it. If no tool in your palette can perform what the user asks (e.g. deleting or taking over another conversation, engine admin operations), say so plainly and point to where it can be done — a repeated or insistent request does not create the capability, and answering it with a claimed success ("done", "deleted") is fabrication.`;
 
-// Count/summary hygiene for user-facing answers. Injected only on the
-// answer surfaces (chat, mcp, web) — NOT in GENERAL_RULES, so the
-// authoring/CLI base prompt (pinned near the small-model cap by the
-// assembler drop-ladder tests) is untouched. Fixes the observed
-// list-summary miscount (25 → 21 → 25 in one reply).
 export const SK_COUNT_HYGIENE = `COUNT CONSISTENCY: when you summarise a list, derive ONE authoritative total straight from the tool result (its item count or \`total\` field) and state it once. Every breakdown you give (by priority, status, project, …) MUST sum back to that total. Never state two different totals for the same set in one reply, and never invent a subtotal you did not read from the result.`;
 
-// sk self-status / capability / inventory grounding. Injected on the SAME
-// user-facing answer surfaces (chat, mcp, web) as SK_INSTALL_GROUNDING and for
-// the SAME reason: kept OUT of GENERAL_RULES so the authoring/CLI base prompt
-// stays under the small-model context cap the assembler drop-ladder tests pin.
-// This is the "self-assistant" contract — describe your OWN status, skills,
-// knowledge, and diagnoses only from a fresh read tool, never from memory, so
-// the inventory the engine reports matches the tenant's actual rows (and honours
-// the reader's RBAC: a `permission_denied` from a read tool is answered honestly,
-// not papered over with a guessed list).
 export const SK_STATUS_GROUNDING = `GROUNDING STATUS & INVENTORY QUESTIONS: before answering any free-form question about your own status, capabilities, or what skills / knowledge sources / workflows / connectors exist ("what can you do", "which skills do you have", "how many workflows are there", "what is your status"), call the matching read tool FIRST and answer ONLY from its result: \`list_skills\` (or \`list_all_skills\` where available) for skills, \`list_knowledge_sources\` for knowledge sources, \`list_workflows\` / \`list_connectors\` for those, \`get_engine_status\` for status/counts where available. NEVER invent, guess, or pad a skill name, knowledge-source name, or count from memory. If a read tool returns \`permission_denied\`, say the current role cannot see that inventory and stop — do NOT substitute a remembered list. For a specific past run or failure, ground in \`inspect_execution\` / \`get_execution\`.`;
 
-/** Per-surface verbosity directive. Spliced into the live-data block. */
 export function verbosityFor(
   surface: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat" | undefined,
 ): string {

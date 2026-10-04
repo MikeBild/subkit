@@ -97,28 +97,6 @@ export async function markConnectorNativeUrlElicitationsComplete(
   return rows.length;
 }
 
-/**
- * Stamp the conversation elicitation paired with a policy-confirmation approval
- * a human decided through the out-of-band approval portal.
- *
- * This marks the row as settled (`url_completed` / `url_failed`) and nudges any
- * polling MCP client, so a client that polls before the resume job runs replays
- * the settled interaction itself (`conversation-native-elicitation.ts` replay
- * arm). It does NOT resolve the row or resume the turn — that is
- * `completeApprovalBackedElicitation`, which the portal route drives durably in
- * the human's own request. Both are safe together: `resolveElicitation` is a CAS
- * and `consumeApproval` is single-use, so whichever path arrives second is a
- * no-op rather than a second execution.
- *
- * `approve` maps to `succeeded` (accept) and `decline` to `failed` (cancel).
- *
- * Matched by the `approval_id` in `commit_intent` ALONE. It previously also
- * required an `approval_url` in the input, which silently excluded every confirm
- * row whose gate minted a link it never persisted (`external-mcp-tools.ts`,
- * `synthetic-workflow-tools.ts`) — in production 4 of 5 approval-backed rows,
- * for which this bridge therefore matched nothing at all. The approval handle is
- * the relation; the URL is only one of the channels that can carry the decision.
- */
 export async function markApprovalElicitationsComplete(
   p: {
     tenant_id: string;

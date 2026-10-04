@@ -45,7 +45,6 @@ describe("docs-ingestion/llms-txt", () => {
       },
       ctx.testDb.db,
     );
-    // index + (overview + 1 op) + (1 section) = at least 4 chunks.
     expect(result.ingested_count).toBeGreaterThanOrEqual(4);
     expect(result.budget_exceeded).toBe(false);
   });

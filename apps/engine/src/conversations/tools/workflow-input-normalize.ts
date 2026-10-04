@@ -21,9 +21,6 @@ export function workflowInputRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-/** The workflow's input map is an object on the wire. Tolerate stringified
- * objects at ingress, then re-validate the normalized output so generated
- * schemas advertise an object, not an unconstrained or string union slot. */
 export const workflowInputSlot = z
   .union([z.record(z.string(), z.unknown()), z.string()])
   .transform((raw, ctx) => {
@@ -31,7 +28,6 @@ export const workflowInputSlot = z
     if (normalized !== null && typeof normalized === "object" && !Array.isArray(normalized)) {
       return normalized as Record<string, unknown>;
     }
-    // Empty text means no supplied values; non-JSON prose is not an input map.
     if (typeof normalized === "string" && normalized.trim() === "") return {};
     ctx.addIssue({
       code: "custom",

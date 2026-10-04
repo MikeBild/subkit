@@ -1,10 +1,3 @@
-// Registry contract tests.
-//
-// Active assertions exercise StaticToolProvider + ConversationToolProvider
-// catalog shape. Execution (dispatcher, adapters) is covered by
-// `dispatcher.test.ts` and the cross-surface parity tests — this file
-// stays narrowly focused on catalog visibility + provider contracts.
-
 import { describe, expect, test } from "bun:test";
 import { listTools } from "../../conversations/tools/index.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
@@ -19,10 +12,6 @@ describe("tools/registry — providers (active)", () => {
     expect(names).toContain("self_healing_scan");
     expect(names).toContain("subkit_settings");
     expect(names).toContain("subkit_update_setting");
-    // The following names exist on the conversation registry — the
-    // conversation version wins; the deleted mcp/tools/* duplicates
-    // are replaced by the conversation-side tool routed through the
-    // unified dispatcher.
     expect(names).not.toContain("test_connector");
     expect(names).not.toContain("match_connector_template_by_url");
     expect(names).not.toContain("inspect_recipe");
@@ -42,7 +31,6 @@ describe("tools/registry — providers (active)", () => {
   test("ConversationToolProvider mirrors listTools() on chat surface", () => {
     const expected = listTools().map((t) => t.name);
     const got = conversationToolProvider.list({ surface: "chat" }).map((d) => d.name);
-    // Every chat-visible conversation tool surfaces in the provider.
     for (const name of expected) {
       expect(got).toContain(name);
     }
@@ -51,13 +39,9 @@ describe("tools/registry — providers (active)", () => {
   test("ConversationToolProvider omits draft_write from the MCP catalog but resolve() keeps the disabled descriptor", () => {
     const filter = { surface: "mcp", mcpMode: "authoring" } as const;
     const descriptors = conversationToolProvider.list(filter);
-    // Catalog drops draft_write so badge-ignoring clients can't call+churn.
     expect(descriptors.find((d) => d.name === "save_workflow_draft")).toBeUndefined();
     expect(descriptors.find((d) => d.name === "dry_run_workflow")).toBeUndefined();
 
-    // resolve() still returns the disabled descriptor — the dispatcher
-    // short-circuits a forced/guessed call to not_available_on_surface
-    // with the actionable "use conversation_start" reason.
     const saveDraft = conversationToolProvider.resolve("save_workflow_draft", filter);
     expect(saveDraft?.descriptor.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
     const dryRun = conversationToolProvider.resolve("dry_run_workflow", filter);
@@ -68,13 +52,6 @@ describe("tools/registry — providers (active)", () => {
     const writes = conversationToolProvider
       .list({ surface: "mcp", mcpMode: "admin", readOnly: true })
       .filter((d) => d.category === "tenant_write");
-    // run_workflow is a workflow *run*, exempt from the readOnly hide (it
-    // behaves like the always-on wf_ palette; RBAC still gates execution).
-    // save_learning is an inert `proposed` candidate behind the human
-    // approve gate — the capture loop's explicit channel stays callable.
-    // propose_workflow_repair likewise files an inert gate-repair candidate
-    // that only a human can apply.
-    // Every other tenant_write stays hidden under readOnly.
     expect(writes.map((d) => d.name).sort()).toEqual([
       "approve_skill_candidate",
       "propose_workflow_repair",

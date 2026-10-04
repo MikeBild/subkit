@@ -1,4 +1,3 @@
-/** Exercise the built cockpit; HTTP integration tests separately prove no write is sent. */
 export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
   const requests = [];
   const history = (route) =>
@@ -66,8 +65,6 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
   try {
     await stand.visit(page, `workflows/${workflowId}`);
     const whole = page.getByTestId("workflow-test-run");
-    // "Zeitplan" in "Verwenden" names this workflow's schedule in words —
-    // never another workflow's.
     await page.getByTestId("workflow-invocation-tab-schedule").click();
     const rhythm = page.getByTestId("schedule-rhythm-fact");
     await page
@@ -78,7 +75,6 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (scheduleText.includes("foreign-fixture"))
       throw new Error("Cockpit presents another workflow's schedule as this one's");
     if (!(await rhythm.count())) throw new Error("The schedule's rhythm is not stated");
-    // The previews stand with the steps, in "Aufbau".
     await page.getByTestId("workflow-tabs-tab-aufbau").click();
     await whole.waitFor({ state: "visible" });
     await page
@@ -90,15 +86,12 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       .waitFor();
     const expected = locale === "de" ? "Als Vorschau ausführen" : "Run as preview";
     if ((await whole.innerText()) !== expected) throw new Error("Preview label is not localized");
-    // What the preview does is one sentence behind the help icon, not a
-    // paragraph beside the button.
     if (await page.getByText(/temporären Kopie|temporary copy: steps/).count())
       throw new Error("The preview's explanation stands on the page as a paragraph again");
     await whole.focus();
     await whole.press("Enter");
     await page.getByTestId("workflow-test-result").filter({ hasText: '"held": true' }).waitFor();
     if (requests[0]?.source !== "draft") throw new Error("Whole preview lost its definition");
-    // A step's own preview is offered where its configuration is: its sheet.
     const toggle = page
       .locator(
         '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',

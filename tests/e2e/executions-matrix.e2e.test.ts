@@ -1,12 +1,3 @@
-// Execution matrix — every run surface, deterministic (no LLM).
-//
-// Covers the discriminated `source` union the engine accepts plus the
-// stateless transform endpoint, driven over HTTP and the `sk executions`
-// CLI. All steps are pure JS/JSONata transforms so runs are hermetic and
-// fast — no connector reachability in the gating path. Async runs flow
-// through `waitForExecution` (poll, never sleep). Asserts on the
-// structured execution runtime logs (module=execution).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { defaultTransformSteps, seedWorkflow, waitForExecution } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
@@ -41,17 +32,14 @@ describe("source: saved", () => {
     expect([200, 201]).toContain(run.status);
     expect(run.body.execution_id).toBeTruthy();
     const output = run.body.output as { ok?: boolean; value?: unknown } | undefined;
-    // Default transform echoes the run input under `value`.
     expect(output?.ok).toBe(true);
 
-    // The execution was recorded in the runtime log under module=execution.
     await assertLogEvent(api, {
       module: "execution",
       where: (e) => e.fields.execution_id === run.body.execution_id,
       wait: true,
     });
 
-    // It is fetchable + listable.
     const got = await api.get<{ id: string; status: string }>(
       `/v1/executions/${run.body.execution_id}`,
     );
@@ -115,7 +103,6 @@ describe("source: draft (inline definition, no persisted workflow)", () => {
     const output = run.body.output as { ok?: boolean } | undefined;
     expect(output?.ok).toBe(true);
 
-    // Draft runs carry a null workflow_id on the row.
     const got = await api.get<{ workflow_id: string | null; source_kind: string }>(
       `/v1/executions/${run.body.execution_id}`,
     );

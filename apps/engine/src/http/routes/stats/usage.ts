@@ -1,6 +1,3 @@
-// GET /v1/stats/{http,chat,mcp,conversations} — semantic, privacy-safe
-// product usage reports over the shared tenant-scoped usage ledger.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";

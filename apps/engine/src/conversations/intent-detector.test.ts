@@ -1,13 +1,3 @@
-// Tests for the conversation loop's user-intent detector.
-//
-// Covers the specific failure modes from sessions ba4e8898 / f44bf9b4:
-//   • "führe ... aus" must force run_workflow, not narrate
-//   • a long narrative user message must NOT get hijacked
-//   • "approve" alone resolves a pending envelope
-//
-// The loop layer wires these signals — tests here only exercise the
-// pure classifier so failures are easy to pinpoint.
-
 import { describe, expect, test } from "bun:test";
 import {
   detectEnvelopeResolution,
@@ -201,7 +191,6 @@ describe("detectUserIntent", () => {
       expect(detectUserIntent("Zeig mir den Workflow customer-sync", named)).toEqual({
         reason: "enumeration_names_workflow",
       });
-      // Count wording about one workflow is not a catalog count: no no-tools pin.
       expect(
         detectUserIntent("wie viele Schritte hat der workflow customer-sync?", {
           ...complete,
@@ -306,10 +295,6 @@ describe("detectUserIntent", () => {
 });
 
 describe("detectUserIntent — build-new beats ambiguous/negated run", () => {
-  // A co-present "build new workflow" signal must win over an ambiguous "run"
-  // token in the same message, so the loop authors instead of running a
-  // lookalike. The run-intent check runs first, but yields to authoring when an
-  // authoring signal is also present (the negation-blind-hijack class).
   test("negated 'do NOT run' alongside a build request classifies as authoring", () => {
     const intent = detectUserIntent(
       'Build a NEW workflow called "Notion Page Reader". Do NOT run any existing essay workflow.',
@@ -335,15 +320,12 @@ describe("detectUserIntent — build-new beats ambiguous/negated run", () => {
   });
 
   test("genuine run phrasings (no authoring signal) still force run_workflow", () => {
-    // Over-correction guard: a plain run command must remain run-intent.
     expect(detectUserIntent("führe den invoice workflow aus").forceTool).toBe("run_workflow");
     expect(detectUserIntent("please run this workflow").forceTool).toBe("run_workflow");
     expect(detectUserIntent("run my-jira-tickets workflow now").forceTool).toBe("run_workflow");
   });
 
   test("weak 'retry to create from scratch now' stays no_strong_intent at the classifier", () => {
-    // No regex classifies this; the default-deny execution-tool gate (loop +
-    // authoring-palette), not the detector, is what protects this turn.
     const intent = detectUserIntent("retry to create from scratch now");
     expect(intent.forceTool).toBeUndefined();
     expect(intent.startNewWorkflow).toBeUndefined();

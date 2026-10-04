@@ -1,8 +1,3 @@
-// Unit tests for the LLM-judge harness. The harness must:
-//   - stay disabled when SUBKIT_EVAL_LLM_JUDGE is unset,
-//   - only invoke when validator says (pass=false, function_passed=true),
-//   - parse judge output deterministically into a structured verdict.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { invokeJudge, judgeEnabled, parseJudgeResponse, shouldInvokeJudge } from "../llm-judge.ts";
 

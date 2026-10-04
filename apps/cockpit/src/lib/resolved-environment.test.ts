@@ -1,6 +1,3 @@
-// When the dialog may correct the environment it asked about, and when it
-// must leave the reader alone.
-
 import { expect, test } from "bun:test";
 import { environmentToCorrectTo, type ReviewLike } from "./resolved-environment";
 
@@ -17,8 +14,6 @@ const review = (
 });
 
 test("every complaining step agrees on the other half", () => {
-  // The production case: a called child with no approval and no schedule of
-  // its own fell back to development, and all three steps said so.
   const found = environmentToCorrectTo(
     review(
       [
@@ -38,8 +33,6 @@ test("every complaining step agrees on the other half", () => {
 });
 
 test("a workflow whose steps live in both halves is not silently halved", () => {
-  // Picking one half here would hide the other half's steps behind a screen
-  // that looks correct.
   expect(
     environmentToCorrectTo(
       review(
@@ -73,15 +66,12 @@ test("a review that was accepted is left alone", () => {
 });
 
 test("already looking at the environment the steps name", () => {
-  // No switch, and therefore no loop: the caller acts only on a value.
   expect(
     environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", "prod"]]), "prod"),
   ).toBeNull();
 });
 
 test("a complaining step with no effect is a reason switching will not fix", () => {
-  // It refused for something else as well; moving the dropdown would hand back
-  // a screen that still refuses, with the reader now told nothing new.
   expect(
     environmentToCorrectTo(
       review(
@@ -94,7 +84,6 @@ test("a complaining step with no effect is a reason switching will not fix", () 
       "dev",
     ),
   ).toBeNull();
-  // And one whose effect names no environment at all.
   expect(
     environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", null]]), "dev"),
   ).toBeNull();

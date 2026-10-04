@@ -1,7 +1,3 @@
-// Unit coverage for the shared runtime-telemetry primitives. Logs are
-// captured by intercepting process.stdout.write (ndjson mode) so the test
-// sees the exact bytes an operator's log pipeline would.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
 import {
@@ -39,9 +35,7 @@ beforeEach(() => {
       if (!trimmed.startsWith("{")) continue;
       try {
         captured.push(JSON.parse(trimmed) as CapturedLog);
-      } catch {
-        /* not a json line */
-      }
+      } catch {}
     }
     return true;
   }) as typeof process.stdout.write;
@@ -87,7 +81,6 @@ describe("instrument", () => {
     expect(done[0]?.outcome).toBe("ok");
     expect(typeof done[0]?.duration_ms).toBe("number");
     expect(done[0]?.widget_id).toBe("w1");
-    // No failure line on the happy path.
     expect(byAction("widget.build.failed")).toHaveLength(0);
   });
 
@@ -131,7 +124,6 @@ describe("instrument", () => {
     const result = await instrument({
       module: "test",
       action: "fast.op",
-      // No real op exceeds this synchronously; the success log is suppressed.
       thresholdMs: 3_600_000,
       fn: () => "ok",
     });
@@ -186,7 +178,6 @@ describe("samplers", () => {
     const stopBeat = startBootHeartbeat({ intervalMs: 3_600_000 });
     expect(typeof stopLag).toBe("function");
     expect(typeof stopBeat).toBe("function");
-    // Stopping must never throw.
     expect(() => {
       stopLag();
       stopBeat();

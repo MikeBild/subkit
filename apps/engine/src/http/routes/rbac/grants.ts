@@ -1,8 +1,3 @@
-// Resource-grant endpoints:
-//   GET    /v1/rbac/grants
-//   POST   /v1/rbac/grants
-//   DELETE /v1/rbac/grants/:id
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
@@ -133,9 +128,6 @@ export function registerGrantsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return c.json(serializeGrant(grant), 201);
     } catch (err) {
-      // Application-state error: the permission name is not in the
-      // catalog. Stays a hand-rolled 400 — schema validation cannot
-      // know the catalog contents.
       if ((err as Error).message?.startsWith("permission_unknown:")) {
         throw new BadRequestError((err as Error).message);
       }

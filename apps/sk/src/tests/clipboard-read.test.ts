@@ -1,7 +1,3 @@
-// Unit tests for the clipboard classifier. We do NOT shell out in
-// tests (that would couple the suite to the host's clipboard); the
-// readClipboard path is covered by the E2E suite via a mock.
-
 import { describe, expect, test } from "bun:test";
 import { classifyAttachment } from "../repl/clipboard-read.ts";
 

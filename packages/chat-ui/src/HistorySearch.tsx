@@ -1,12 +1,3 @@
-// Ctrl-R history-search modal — fuzzy-filter prior prompts from an
-// in-memory ring, pick one with Enter. The host owns the history
-// array (the sk REPL keeps it in `historyRef`); this component is a
-// pure view over it.
-//
-// Keyboard: arrow keys to move, Enter to pick, Esc to dismiss, typing
-// filters. Multi-char paste chunks are folded in so ink-testing-
-// library's batched writes exercise the same path as real keystrokes.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
@@ -14,9 +5,7 @@ import { Pane } from "./Pane.tsx";
 import { useTheme } from "./theme/Provider.tsx";
 
 export interface HistorySearchProps {
-  /** Prior prompts, oldest first. Typical: the REPL's prompt-ring. */
   entries: readonly string[];
-  /** Called with the selected prompt when the user hits Enter. */
   onSelect: (prompt: string) => void;
   onDismiss?: () => void;
   title?: string;
@@ -44,7 +33,6 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
 
   const visible = useMemo(() => {
     const q = filter.toLowerCase();
-    // Most-recent-first — how users expect Ctrl-R to work.
     const ordered = [...entries].reverse();
     if (q.length === 0) return ordered;
     return ordered.filter((e) => e.toLowerCase().includes(q));

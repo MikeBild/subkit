@@ -1,28 +1,9 @@
 import type { TranslationKey } from "./i18n";
 
-// What a governed action is called, and how it ended.
-//
-// Every card in the transcript used to read the same three words. `ToolHeader`
-// destructured `toolName` and never used it, and no caller passed a `title`, so
-// a person watching an agent work saw a column of identical rows and could not
-// tell a catalogue lookup from a workflow that actually ran.
-//
-// Two tiers, because those two are not the same event. A read that costs
-// nothing and changes nothing is background noise and belongs on one line; a
-// call that runs something, spends something or asks for a decision deserves a
-// card. An unrecognised action defaults to a card: showing one action too
-// prominently is a smaller failure than hiding one that mattered.
-
 export type ToolTier = "background" | "action";
 
-/** Prefix the engine gives a saved workflow exposed as a callable action. */
 const WORKFLOW_TOOL_PREFIX = "wf_";
 
-/**
- * Reads and lookups. Each carries two words — one for while it runs, one for
- * afterwards — because "Searching knowledge…" and "Searched knowledge" are
- * different statements and a shimmering line has to make both.
- */
 interface BackgroundWords {
   active: TranslationKey;
   past: TranslationKey;
@@ -144,7 +125,6 @@ const BACKGROUND_TOOLS: Record<string, BackgroundWords> = {
   },
 };
 
-/** Actions worth a card of their own: they run, change or ask. */
 const ACTION_TOOLS: Record<string, TranslationKey> = {
   run_workflow: "tool.name.runWorkflow",
   dry_run_workflow: "tool.name.dryRunWorkflow",
@@ -198,14 +178,12 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   ask_user_confirm: "tool.name.askUserConfirm",
 };
 
-/** The saved workflow behind a `wf_<slug>` action, or null. */
 export function workflowSlugFromTool(toolName: string): string | null {
   if (!toolName.startsWith(WORKFLOW_TOOL_PREFIX)) return null;
   const slug = toolName.slice(WORKFLOW_TOOL_PREFIX.length);
   return slug.length > 0 ? slug : null;
 }
 
-/** Last-resort reading of a name nobody registered. */
 export function humaniseToolName(toolName: string): string {
   return toolName
     .replace(/_/g, " ")
@@ -225,14 +203,6 @@ export type ToolLabel =
   | { kind: "background"; words: BackgroundWords }
   | { kind: "literal"; text: string };
 
-/**
- * How this action should be named.
- *
- * A `wf_<slug>` slug is already a speaking name chosen by whoever saved the
- * workflow, so it is passed through rather than humanised — humanising it would
- * turn `ga4-daily-report` into "Ga4 Daily Report", which reads like a mangling
- * of a name rather than the name itself.
- */
 export function toolLabel(toolName: string): ToolLabel {
   const slug = workflowSlugFromTool(toolName);
   if (slug) return { kind: "workflow", slug };
@@ -243,35 +213,17 @@ export function toolLabel(toolName: string): ToolLabel {
   return { kind: "literal", text: humaniseToolName(toolName) };
 }
 
-/**
- * What a call that runs a workflow really was.
- *
- * "Ran a workflow" was the title of three different events: a real run, a
- * trial whose writes were all held back, and a call the engine refused before
- * anything started. A reader who had asked for nothing to be executed saw "ran
- * a workflow · found a problem" over a trial that sent nothing.
- *
- *   trial    the engine prepared the run with every write held
- *            (`hold_writes`): reads ran, nothing was sent or changed.
- *   refused  no run exists — the engine turned the call away and says why.
- *   live     a run with its writes dispatched.
- *
- * Null while the call has no result to read.
- */
 export type WorkflowRunKind = "live" | "trial" | "refused";
 
 function runPayload(output: unknown): Record<string, unknown> | null {
   if (output === null || typeof output !== "object" || Array.isArray(output)) return null;
   const outer = output as Record<string, unknown>;
   const inner = outer.data;
-  // `run_workflow` answers `{ ok, data }`; a saved workflow's own action
-  // answers flat. Both carry the same fields.
   return inner !== null && typeof inner === "object" && !Array.isArray(inner)
     ? { ok: outer.ok, ...(inner as Record<string, unknown>) }
     : outer;
 }
 
-/** Whether a tool is one that runs a saved workflow. */
 export function isWorkflowRunTool(toolName: string): boolean {
   return workflowSlugFromTool(toolName) !== null || toolName === "run_workflow";
 }
@@ -292,7 +244,6 @@ export function workflowRunKind(output: unknown): WorkflowRunKind | null {
   return null;
 }
 
-/** Why the engine turned a run away, where the cockpit has a word for it. */
 const REFUSAL_WORDS: Record<string, TranslationKey> = {
   workflow_activation_required: "tool.refusal.activationRequired",
   workflow_version_invalid: "tool.refusal.legacy",
@@ -307,7 +258,6 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
   execution_authority_changed: "tool.refusal.approval",
 };
 
-/** The reason beside "run refused", or null when the engine named none we word. */
 export function workflowRefusalKey(output: unknown): TranslationKey | null {
   const payload = runPayload(output);
   if (!payload) return null;
@@ -316,11 +266,6 @@ export function workflowRefusalKey(output: unknown): TranslationKey | null {
   return typeof code === "string" ? (REFUSAL_WORDS[code] ?? null) : null;
 }
 
-/**
- * The title of a card for a call that runs a workflow, or null for any other
- * action. `notRun`: a person or a permission stopped it before the engine was
- * asked — that outranks what the payload says.
- */
 export function workflowRunTitleKey(
   label: ToolLabel,
   notRun: boolean,
@@ -336,13 +281,6 @@ export function workflowRunTitleKey(
   return named ? "tool.name.runNamedWorkflow" : "tool.name.runWorkflow";
 }
 
-/**
- * How the engine says a call ended.
- *
- * `confirmation_state` is the persisted human decision; `outcome` is the
- * persisted machine result. Both come off the conversation detail, so a
- * reloaded transcript reports the same ending the live one did.
- */
 export type ToolOutcomeInput = {
   confirmationState?: string | null | undefined;
   outcome?: string | null | undefined;
@@ -368,12 +306,6 @@ const OUTCOME_WORDS: Record<string, TranslationKey> = {
   pending: "tool.outcome.waiting",
 };
 
-/**
- * The word for how a call ended, or null to fall back to the part's own state.
- *
- * A human decision outranks the machine result: an operator who declined a call
- * cares that they declined it, not that the engine then reported nothing ran.
- */
 export function toolOutcomeKey(input: ToolOutcomeInput): TranslationKey | null {
   if (input.stale) return "tool.outcome.didNotComplete";
   const confirmation = input.confirmationState
@@ -384,17 +316,8 @@ export function toolOutcomeKey(input: ToolOutcomeInput): TranslationKey | null {
   return outcome ?? null;
 }
 
-/** How long a call may sit without a result before it is presumed lost. */
 export const STALE_AFTER_MS = 5 * 60 * 1000;
 
-/**
- * True when a call will never report back.
- *
- * A stream that dies mid-call leaves a row with no result and no error, which
- * renders as a card that is permanently "running" — so the transcript claims
- * work is in progress days later. The anchor is the parent message's timestamp
- * because the persisted part carries none of its own.
- */
 export function isStaleCall(args: {
   messageCreatedAt: string | null | undefined;
   hasResult: boolean;

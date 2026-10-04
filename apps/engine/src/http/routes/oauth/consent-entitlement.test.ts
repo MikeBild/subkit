@@ -1,21 +1,3 @@
-// A no-longer-entitled account must not reach the MCP consent screen.
-//
-// The PROD deploy pipeline's verify probe caught this as "account without a
-// product grant reached the consent screen — SubKit no-grant SSO login was not
-// denied cleanly", and it reproduced on code that predates the approval work
-// entirely. Two independent holes fed it:
-//
-//   1. `deactivateUser` revoked api keys and invites but never `sessions`, so a
-//      disabled account kept a live `subkit_session` cookie.
-//   2. `GET /v1/oauth/authorize` selected the user with no `deleted_at` /
-//      `status` predicate, so that cookie still rendered a consent screen — and
-//      the role-based denial below it wrote no audit row at all, which is why
-//      the only way to observe the failure was to scrape the HTML.
-//
-// Both are covered here: the session is severed at deactivation, AND the
-// authorize endpoint independently refuses. Neither guard has to be perfect
-// alone.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, sessions, users } from "../../../db/schema/index.ts";
@@ -72,11 +54,8 @@ describe("deactivating a user severs their browser sessions", () => {
       .select({ revoked_at: sessions.revoked_at })
       .from(sessions)
       .where(eq(sessions.id, sessionId));
-    // The whole point: a disabled account keeps no live cookie. Login re-checks
-    // status, but an ALREADY-ISSUED session never passes back through login.
     expect(session?.revoked_at).not.toBeNull();
 
-    // And the cutoff is visible rather than silent.
     const revokedAudit = await server.db
       .select({ id: auditLog.id })
       .from(auditLog)
@@ -117,7 +96,6 @@ describe("deactivating a user severs their browser sessions", () => {
       server.db,
     );
 
-    // Scoped to the deactivated user only — deactivation is not a mass logout.
     const [other] = await server.db
       .select({ revoked_at: sessions.revoked_at })
       .from(sessions)

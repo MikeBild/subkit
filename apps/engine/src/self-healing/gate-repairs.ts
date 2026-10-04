@@ -1,16 +1,3 @@
-// Proposing deterministic repairs for steps an approval gate refused.
-//
-// Every fixable diagnosis becomes at most one reviewable patch candidate on
-// the version it was diagnosed against. Nothing here asks a model and nothing
-// applies itself: a gate repair is `unsafe` by classification and never
-// auto-applied (`shouldAutoApply`), so a person previews the exact operations
-// and approves them through the ordinary patch-candidate review.
-//
-// Idempotent by construction. The workflow row lock serializes concurrent
-// proposers (the repair queue and an explicit request), an open candidate for
-// the same block is returned instead of a second one, and a rejected one keeps
-// holding for that version — a person's "no" is not re-asked on every run.
-
 import { and, eq } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { workflowVersions } from "../db/schema/index.ts";
@@ -37,7 +24,6 @@ export interface GateRepairOutcome {
   step_id: string;
   fixer: GateFixer;
   status: string;
-  /** False when an existing candidate already covers this block. */
   created: boolean;
 }
 
@@ -57,12 +43,6 @@ interface Target {
   environment: "dev" | "prod";
 }
 
-/**
- * Propose a candidate for every diagnosis of `version_id` that a fixer can
- * repair. A version that is no longer current gets none: readiness, prepare
- * and apply all read the current version, so a candidate against another one
- * would be checked against a definition that was never diagnosed.
- */
 export async function proposeGateRepairs(db: Db, target: Target): Promise<GateRepairOutcome[]> {
   return db.transaction(async (tx) => {
     const locked = await lockCurrent(tx, target);
@@ -76,11 +56,6 @@ export async function proposeGateRepairs(db: Db, target: Target): Promise<GateRe
   });
 }
 
-/**
- * Propose the one repair a person asked for by step and fixer. Refused unless
- * the current version's diagnosis offers exactly that repair: the operations
- * are always computed here, never taken from the caller.
- */
 export async function proposeGateRepair(
   db: Db,
   params: {
@@ -172,9 +147,6 @@ async function proposeOne(
     base_version_id: target.version_id,
     workflow_step_id: plan.step_id,
   };
-  // The same block under the same gate code, through the drift dedup every
-  // candidate uses; then the same repair recorded under another code for this
-  // version — a rejection of it is the person's answer to this one too.
   const existing =
     (await findActiveEndpointCandidate(tx, anchor)) ??
     (await findMatchingTerminalEndpointCandidate(tx, { ...anchor, step_id: null })) ??

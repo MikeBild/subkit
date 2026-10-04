@@ -1,8 +1,3 @@
-// Outbound connections — the two calls this engine makes to the other side's
-// endpoints: register as a public client (RFC 7591) and post to the token
-// endpoint (RFC 6749). Plain requests and their answers, no rows, no secrets
-// stored; service.ts decides what the answers mean for a connection.
-
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { permissionScopes } from "./scopes.ts";
 import {
@@ -60,19 +55,8 @@ export async function registerClient(args: {
   return parsed.data.client_id;
 }
 
-/**
- * The engine's own wording when a token endpoint answered with a non-2xx. The
- * detail after it is the OAuth `error` code when the body carried one, else
- * the bare HTTP status — which is what tells a refusal from a failure.
- */
 const TOKEN_REFUSED_PREFIX = "token endpoint refused: ";
 
-/**
- * Whether a failed renewal was the other side saying no: its token endpoint
- * answered with an RFC 6749 §5.2 error code. Read off `last_error`, which only
- * the engine writes (`postTokenEndpoint`); an unreachable endpoint, a bare
- * status or an answer without a token is a failure, not a refusal.
- */
 export function refreshWasRefused(lastError: string | null): boolean {
   if (!lastError?.startsWith(TOKEN_REFUSED_PREFIX)) return false;
   return /^[a-z][a-z_]*$/.test(lastError.slice(TOKEN_REFUSED_PREFIX.length));
@@ -115,11 +99,6 @@ export function expiryOf(token: TokenResponse): Date | null {
     : null;
 }
 
-/**
- * The permissions the other side granted. Protocol scopes are dropped here, at
- * the one place a grant is read, so a server echoing `offline_access` on one
- * grant type and not the other never reads as a change of authority.
- */
 export function grantedScopes(token: TokenResponse): string[] | null {
   if (typeof token.scope !== "string") return null;
   return permissionScopes([token.scope]);

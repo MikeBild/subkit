@@ -1,11 +1,3 @@
-// Calendar heatmap of recent workflow-execution activity, sourced from
-// the tenant-scoped /v1/stats/executions endpoint at
-// `bucket=day`. Rows are weeks, columns are weekdays; intensity is one
-// of five glyphs based on count quintile. Toggle the window with `1`
-// (Last 7), `2` (Last 30), `3` (All time). Replaces the prior audit-log
-// scrape: stats pre-bucket by day server-side, so the heatmap reflects
-// actual run volume rather than a capped tail of recent audit rows.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -25,8 +17,6 @@ const WINDOW_LABEL: Record<WindowKey, string> = {
 
 const GLYPHS = ["·", "░", "▒", "▓", "█"] as const;
 
-// Day buckets keyed YYYY-MM-DD → execution count, from the per-bucket
-// series of the (single, ungrouped) executions stats response.
 type DayBuckets = Map<string, number>;
 
 function dayKey(iso: string): string {
@@ -59,7 +49,6 @@ export const ActivityHeatmap: React.FC<Props> = ({ client }) => {
     setError(null);
     (async () => {
       try {
-        // 366 days is the `day`-bucket window cap; request just under it.
         const from = new Date(Date.now() - 365 * 86_400_000).toISOString();
         const res = await client.statsExecutions({ bucket: "day", from });
         if (cancelled) return;

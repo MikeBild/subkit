@@ -1,14 +1,5 @@
 import type { ConversationDetail } from "@/api/client";
 
-/**
- * A pending free-text question (`ask_user_text`) as the reader answers it.
- *
- * The question comes from the engine's `prompt.question` — never from
- * `summary`, which is empty for these rows — and falls back to the call's own
- * input. A question the assistant only asked in prose and the harness parked
- * has no tool call at all (`toolCallId: null`): it has no tool part in the
- * transcript to stand beside, so the page shows it on its own.
- */
 export interface ChatText {
   id: string;
   toolCallId: string | null;
@@ -16,7 +7,6 @@ export interface ChatText {
   placeholder?: string;
   initialValue?: string;
   multiline: boolean;
-  /** Checked before submit; the engine checks it again on respond. */
   pattern?: string;
   expiresAt: string;
 }
@@ -45,25 +35,21 @@ export function chatText(detail: ConversationDetail | undefined): ChatText | nul
   };
 }
 
-/** False only when the answer is empty or the declared pattern rejects it. */
 export function textAnswerAcceptable(text: Pick<ChatText, "pattern">, value: string): boolean {
   if (!value.trim()) return false;
   if (!text.pattern) return true;
   try {
     return new RegExp(text.pattern).test(value);
   } catch {
-    // An invalid pattern is the engine's to judge; it re-validates on respond.
     return true;
   }
 }
 
-/** The question shortened for the one-line composer hint. */
 export function questionExcerpt(question: string, max = 120): string {
   const flat = question.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
 
-/** Whether a transcript message carries the tool part this question belongs to. */
 export function questionIsInTranscript(
   text: Pick<ChatText, "toolCallId">,
   messages: readonly { parts: readonly unknown[] }[],

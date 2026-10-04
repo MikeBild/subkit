@@ -1,12 +1,3 @@
-// Bundle upsert + chunk read — the directory-import surface of the
-// knowledge subsystem (REPL `/knowledge import`, `sk knowledge-sources
-// import`, `POST /v1/knowledge-sources/bundle`) and the full-content
-// retrieval it unlocks (chunks route, `read_knowledge` tool, MCP
-// `knowledge://` resource).
-//
-// Composes the canonical service functions (`createKnowledgeSource`,
-// `ingestKnowledgeSource`) verbatim — there is no third chunk-insert path.
-
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
@@ -28,8 +19,6 @@ import type {
   UpsertKnowledgeBundleParams,
 } from "./types.ts";
 
-/** The bundle slug is already taken by a non-bundle source — upserting would
- *  replace foreign chunks wholesale. Routes map this to 409. */
 export class KnowledgeSlugConflictError extends Error {
   constructor(
     readonly slug: string,
@@ -50,17 +39,10 @@ function toSlug(name: string): string {
     .slice(0, 100);
 }
 
-/** Compose a tag set with EVERY structural tag (`type:*`, `domain:*`)
- *  ahead of the topical remainder — the 20-tag `dedupeTags` cap must
- *  never drop a routing key in favor of topical filler, no matter how
- *  many caller-supplied or frontmatter tags compete. */
 function structuralFirst(tags: readonly string[]): string[] {
   return dedupeTags([...tags.filter(isStructuralTag), ...tags.filter((t) => !isStructuralTag(t))]);
 }
 
-/** Postgres unique-violation (23505) on the partial tenant+slug index —
- *  the check-then-insert race window when two first imports of the same
- *  slug run concurrently. Mirrors `workflows/slug-conflict.ts`. */
 function isUniqueViolation(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   const cause = (err as { cause?: { code?: string } }).cause;
@@ -73,14 +55,6 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
-/**
- * Upsert a knowledge bundle by `(tenant_id, slug)` — the same choreography
- * the boot seeder uses (`applyKnowledgeSeeds`): create when the slug is new,
- * re-ingest in place when the canonical content changed, no-op when the
- * version fingerprint matches. Re-imports are therefore idempotent; the
- * persisted upload buffer is the canonical serialization, so the raw bundle
- * stays retrievable via the source's `file_id`.
- */
 export async function upsertKnowledgeBundle(
   p: UpsertKnowledgeBundleParams,
   exec?: Executor,
@@ -96,9 +70,6 @@ async function upsertKnowledgeBundleInner(
   const parsed = parseBundle(p.files);
   const canonical = canonicalBundleSerialization(p.files);
   const version = createHash("sha256").update(canonical).digest("hex").slice(0, 32);
-  // Non-ASCII names slugify to "" — without a deterministic fallback two
-  // unrelated bundles would collide on slug "" and silently overwrite
-  // each other on upsert.
   const derivedSlug = p.input.slug ?? toSlug(p.input.name);
   const slug =
     derivedSlug || `bundle-${createHash("sha256").update(p.input.name).digest("hex").slice(0, 12)}`;
@@ -126,10 +97,6 @@ async function upsertKnowledgeBundleInner(
         db,
       );
     } catch (err) {
-      // Two concurrent FIRST imports of the same slug: both pass the
-      // check above, one insert wins, the loser lands here. Re-running
-      // once converges the loser onto the update/unchanged path — the
-      // documented upsert contract — instead of a raw 23505 → 500.
       if (isUniqueViolation(err) && !retriedAfterConflict) {
         return upsertKnowledgeBundleInner(p, db, true);
       }
@@ -144,20 +111,10 @@ async function upsertKnowledgeBundleInner(
     };
   }
 
-  // Refusing to silently swallow a slug that belongs to a different kind of
-  // source (a file upload, a seed) — that would replace its chunks wholesale.
   if (existing.source_type !== "bundle") {
     throw new KnowledgeSlugConflictError(slug, existing.source_type);
   }
 
-  // Metadata refresh — applied on BOTH the unchanged and the updated path
-  // (a re-import with new `--tags`/`--description`/`--scope`/name on
-  // identical content must still land them; the API validates these
-  // fields on every request, so silently dropping them would lie). Tags
-  // merge additively with structural routing keys ordered ahead of the
-  // cap; every other field follows the caller when EXPLICITLY supplied
-  // and different. Operator PATCH remains the one wholesale-replace path
-  // for tags.
   const mergedTags = structuralFirst([...existing.tags, ...tags]);
   const tagsChanged =
     mergedTags.length !== existing.tags.length || mergedTags.some((t, i) => t !== existing.tags[i]);
@@ -177,9 +134,6 @@ async function upsertKnowledgeBundleInner(
   if (p.input.name !== existing.name) patch.name = p.input.name;
   if (p.input.scope !== undefined && p.input.scope !== existing.scope) {
     patch.scope = p.input.scope;
-    // Re-homing workflow → global must also clear the binding — the input
-    // schema cannot express `workflow_id: null`, and a stale id would keep
-    // the source matching the old workflow's list filter.
     if (p.input.scope === "global" && existing.workflow_id !== null) {
       patch.workflow_id = null;
     }
@@ -238,11 +192,6 @@ async function upsertKnowledgeBundleInner(
   };
 }
 
-/**
- * List a source's chunks in ordinal order. Returns `null` when the source
- * does not exist for the tenant (callers map that to 404 / tool error).
- * `path` narrows to a single bundle file ("read me the runbook X").
- */
 export async function listKnowledgeChunks(
   p: ListKnowledgeChunksParams,
   exec?: Executor,
@@ -254,10 +203,6 @@ export async function listKnowledgeChunks(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 200);
   const offset = Math.max(0, p.offset ?? 0);
 
-  // The write side normalizes bundle paths (`runbooks/x.md` → `/runbooks/x.md`);
-  // accept both the caller's literal string and its normalized form so the
-  // exact path a client sent on import reads back. Non-bundle sources keep
-  // matching their stored literal path (`doc.pdf#page=3`).
   const pathForms =
     p.path !== undefined ? [...new Set([p.path, normalizeBundlePath(p.path)])] : undefined;
 

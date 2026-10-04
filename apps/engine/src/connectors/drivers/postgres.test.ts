@@ -1,15 +1,3 @@
-// Real-Postgres driver tests. The `pg` driver is a thin wrapper over the
-// `pg` client library, so mocking Postgres would just re-describe the
-// mock — these tests run against the compose Postgres instance instead
-// (mirrors the `REQUIRES_PG=0` skip pattern used across the repo for
-// environments without Docker/Postgres).
-//
-// Coverage focus: pool lifecycle (open/reuse/close/evict), probe success +
-// the two SQLSTATE-driven error classifications (28P01 bad password,
-// 3D000 missing database), parameterised query + row-count reporting,
-// multi-statement transactions (commit, rollback-on-error, the
-// `onStatement` guard hook), and the server-side cursor streaming path.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import type { ConnectorView } from "../types.ts";
@@ -28,9 +16,6 @@ const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let counter = 0;
 
-/** Build a minimal fixture ConnectorView pointing at the scratch database.
- *  Each call mints a fresh `id` so pool-cache tests never collide across
- *  test cases (the pool map is keyed by `id:environment`). */
 function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
   counter += 1;
   return {

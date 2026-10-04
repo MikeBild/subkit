@@ -1,10 +1,3 @@
-// Scriptable status line — rate-limited rebuild ticker.
-//
-// Assembles the `StatusLineInput` payload from persona + session +
-// engine snapshots on every tick and hands it to the (optionally
-// user-scripted) `buildStatusLine` renderer. Owns the resulting
-// one-line string so the app only renders it.
-
 import type { SkSessionState, ToolCallState } from "@cli-core/index.ts";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -42,8 +35,6 @@ export interface StatusLineDeps {
   connectionSnapshot: ConnectionSnapshot | null | undefined;
   activeMode: PermissionMode;
   resumeSummary: ResumeSummary | null | undefined;
-  /** Transient status-line message channel (upload progress etc.) —
-   *  read from `current` each tick so no state update per chunk. */
   transientStatusRef: React.MutableRefObject<string | null>;
 }
 
@@ -86,11 +77,6 @@ export function useStatusLine(deps: StatusLineDeps): string {
           null,
         tokens_today: statusSnapshot?.tokens_today ?? null,
         connectors_count: statusSnapshot?.connectors_count ?? null,
-        // Surface transient upload progress (and any other short-lived
-        // status messages) here. The ref is set by file-paste and
-        // knowledge uploads while a streamed PUT is in flight and cleared on
-        // completion or failure — matches the upload-progress callback
-        // cadence (per-chunk).
         status_message: transientStatusRef.current,
         permission_mode: activeMode,
         cwd: cwdValue,

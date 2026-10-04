@@ -1,28 +1,3 @@
-// Identity matrix-completion tests. Three named gaps in identity
-// coverage that the existing 713-line service.test.ts did not yet pin:
-//
-//   1. Portal-token revocation propagation — once revokePortalToken
-//      flips revoked_at, a subsequent provider.resolve() must reject
-//      the token even if it was valid moments earlier.
-//
-//   2. Concurrent JIT (first-login race) — two simultaneous
-//      `oidc-real` callbacks for the same `(tenant, sub)` must NOT
-//      double-create the user row. The provider's email-match
-//      pre-check + insert is the relevant code path; this test pins
-//      the post-condition (one row total, both callers see it).
-//
-//   3. JWKS rotation tolerance — when the IdP rotates its signing key
-//      mid-flight, the cached discovery doc must not pin the engine
-//      to the stale key. The existing oidc-discovery test pins cache
-//      shape; this one pins the operational expectation that two
-//      sequential `discover()` calls separated by an explicit cache
-//      flush do not surface the prior key set.
-//
-// The first two run as bun:test integration cases against a real
-// Postgres via testcontainers-equivalent harness. The third runs as
-// a unit assertion using the cache helpers exported by
-// oidc-discovery.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
@@ -34,8 +9,6 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { fetchDiscovery, flushDiscoveryCache } from "./oidc-discovery.ts";
 import { issuePortalToken, revokePortalToken } from "./service.ts";
-
-// ---------- harness ----------
 
 let testDb: TestDb;
 let db: Db;
@@ -55,8 +28,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await testDb.cleanup();
 }, 30_000);
-
-// ---------- 1. portal-token revocation propagation ----------
 
 describe("portal-token revocation propagation", () => {
   test("revoke flips the resolver decision on the next request", async () => {
@@ -82,7 +53,6 @@ describe("portal-token revocation propagation", () => {
     );
     const provider = createPortalTokenProvider({ db });
 
-    // Pre-revoke: resolver returns the principal.
     const okReq = new Request("https://engine/v1/whoami", {
       headers: { authorization: `Bearer ${issued.plaintext}` },
     });
@@ -92,7 +62,6 @@ describe("portal-token revocation propagation", () => {
 
     await revokePortalToken({ tenant_id: tenantId, id: issued.view.id, actor_id: null }, db);
 
-    // Post-revoke: resolver rejects the same bearer.
     const denyReq = new Request("https://engine/v1/whoami", {
       headers: { authorization: `Bearer ${issued.plaintext}` },
     });
@@ -129,8 +98,6 @@ describe("portal-token revocation propagation", () => {
     const firstRevokedAt = rowsAfter[0]?.revoked_at ?? null;
     expect(firstRevokedAt).not.toBeNull();
 
-    // Second revoke is a no-op (the WHERE filters on revoked_at IS NULL).
-    // The revoked_at timestamp must NOT change.
     await revokePortalToken({ tenant_id: tenantId, id: issued.view.id, actor_id: null }, db);
     const rowsAfter2 = await db
       .select()
@@ -139,8 +106,6 @@ describe("portal-token revocation propagation", () => {
     expect(rowsAfter2[0]?.revoked_at?.getTime()).toBe(firstRevokedAt?.getTime());
   });
 });
-
-// ---------- 2. concurrent JIT first-login ----------
 
 describe("concurrent JIT first-login", () => {
   test("two simultaneous resolutions of one provider subject produce one binding", async () => {
@@ -165,14 +130,8 @@ describe("concurrent JIT first-login", () => {
   });
 });
 
-// ---------- 3. JWKS rotation tolerance ----------
-
 describe("JWKS rotation tolerance", () => {
   test("flushing the discovery cache lets the next call see a rotated jwks_uri", async () => {
-    // Spin up a tiny in-process HTTP server playing the role of the
-    // IdP. Two sequential .well-known fetches return different
-    // jwks_uri values; after a cache flush, the second value must
-    // surface to the caller.
     const { createServer } = await import("node:http");
     let callIdx = 0;
     const server = createServer((req, res) => {
@@ -197,11 +156,9 @@ describe("JWKS rotation tolerance", () => {
       const first = await fetchDiscovery(issuerUrl);
       expect(first.jwks_uri).toBe(`http://127.0.0.1:${port}/jwks-v1`);
 
-      // No cache flush — the second call should hit the cache.
       const cached = await fetchDiscovery(issuerUrl);
       expect(cached.jwks_uri).toBe(`http://127.0.0.1:${port}/jwks-v1`);
 
-      // Flush, then the next discover must observe the rotated key.
       flushDiscoveryCache();
       const rotated = await fetchDiscovery(issuerUrl);
       expect(rotated.jwks_uri).toBe(`http://127.0.0.1:${port}/jwks-v2`);
@@ -216,11 +173,6 @@ describe("JWKS rotation tolerance", () => {
   });
 
   test("a freshly minted RS256 token with the new key would verify after a flush", async () => {
-    // This is a tighter sanity check: prove that the JWKS plumbing
-    // we depend on — jose.SignJWT + jose.exportJWK — round-trips the
-    // way our verifier expects. It documents the contract for the
-    // rotation case without standing up the full OIDC flow; the full
-    // integration is exercised by the existing oidc-real test.
     const { publicKey, privateKey } = await generateKeyPair("RS256");
     const jwt = await new SignJWT({ sub: "rotation-probe" })
       .setProtectedHeader({ alg: "RS256", kid: "rotated-key" })

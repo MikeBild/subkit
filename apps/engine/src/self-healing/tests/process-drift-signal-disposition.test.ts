@@ -1,19 +1,3 @@
-// Unit test for the proactive-disposition branch of processDriftSignal.
-//
-// The reactive path (loop.test.ts) covers `allowAutoApply: true` with
-// classification='safe' + dry-run passing + policy=safe-patches and
-// asserts the patch lands as `status='applied'`. This file covers
-// the proactive contract: calling processDriftSignal with the same
-// downstream conditions but `allowAutoApply: false` MUST park the
-// candidate as `status='proposed'` and emit NO new workflow_version
-// row, regardless of how clean the classification + policy come out.
-//
-// Without this test, a future refactor that accidentally treats
-// `allowAutoApply` as a hint rather than a hard gate would slip past
-// the test suite — the HTTP / MCP / scheduler integration tests all
-// run scans against tenants with no seeded drift, so they never
-// exercise the candidate-creation path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { patchCandidates, workflowVersions } from "../../db/schema/index.ts";
@@ -36,9 +20,6 @@ describe("processDriftSignal — allowAutoApply: false", () => {
   test("parks the candidate as 'proposed' even when classifier + policy would auto-apply", async () => {
     const db = ctx.testDb.db;
 
-    // Build a real DriftSignal from the seeded step snapshot so the
-    // bounded repair loop runs the same way the proactive scheduler
-    // would once it dispatches a synthesized signal.
     const lastShape = await getLatestShape(
       {
         tenant_id: ctx.tenant_id,
@@ -63,8 +44,6 @@ describe("processDriftSignal — allowAutoApply: false", () => {
     expect(signal).toBeTruthy();
     if (!signal) throw new Error("expected drift signal");
 
-    // Snapshot pre-state of workflow_versions so we can prove no new
-    // version was written.
     const versionsBefore = await db
       .select()
       .from(workflowVersions)
@@ -86,7 +65,6 @@ describe("processDriftSignal — allowAutoApply: false", () => {
           failing_step_id: `proactive:test:${ctx.step_id}`,
           response: snapshot.output_preview,
         },
-        // Intentionally NO dry_run_step — proactive callers omit it.
       },
       { allowAutoApply: false },
       db,
@@ -96,7 +74,6 @@ describe("processDriftSignal — allowAutoApply: false", () => {
     expect(result.auto_applied).toBe(false);
     expect(result.candidate_id).toMatch(/^[0-9a-f-]{36}$/);
 
-    // Row is parked, not applied.
     const candidateRows = await db
       .select()
       .from(patchCandidates)
@@ -108,11 +85,8 @@ describe("processDriftSignal — allowAutoApply: false", () => {
       );
     expect(candidateRows[0]?.status).toBe("proposed");
 
-    // No fixture_id stamped — the dry-run gate was skipped, so we
-    // must not pretend the candidate was validated against a fixture.
     expect(candidateRows[0]?.fixture_id).toBe(null);
 
-    // No new workflow_versions row landed.
     const versionsAfter = await db
       .select()
       .from(workflowVersions)

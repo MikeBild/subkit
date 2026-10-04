@@ -1,10 +1,3 @@
-// Fix 1 step 9 (plan review-last-login-thu-velvet-fiddle): the
-// `request_connector_reauth` tool result gets a dedicated card —
-// oauth2 authorization-code → "open in browser:" OSC 8 hyperlink line
-// + auto-open via the validated browser helper; client_credentials →
-// a short confirmation; errors / portal_setup → generic fallback.
-// Non-TTY test env, so OSC 8 is forced on.
-
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
 import type { ToolCallState } from "@cli-core/index.ts";
@@ -39,8 +32,6 @@ function oauthLinkData(overrides: Record<string, unknown> = {}): Record<string, 
     connector: "linkedin",
     method: "oauth2",
     reauth_url: GRANT_URL,
-    // Fixed far-future instant: deterministic, and unambiguously ahead of
-    // the component's real-clock expiry check.
     expires_at: "2999-01-01T00:00:00.000Z",
     single_use: true,
     instructions: "Present this URL verbatim on its own line as a bare URL.",
@@ -56,9 +47,6 @@ function strip(frame: string | undefined): string {
 
 const tick = (): Promise<void> => flush();
 
-/** The async chain behind a frame assertion (promise settle → React
- *  state update → ink re-render) needs more than one microtask on slow
- *  CI runners — poll deterministically instead of single-flushing. */
 const waitForFrame = (ui: { lastFrame: () => string | undefined }, text: string): Promise<true> =>
   waitFor(() => strip(ui.lastFrame()).includes(text) || undefined, {
     label: `frame contains ${JSON.stringify(text)}`,
@@ -88,12 +76,9 @@ describe("ReauthCard — oauth2 authorization-code link", () => {
     const frame = strip(raw);
     expect(frame).toContain("sign-in needed: linkedin");
     expect(frame).toContain("open in browser:");
-    // The URL renders as an OSC 8 hyperlink targeting the grant URL.
     expect(raw).toContain(`${OSC8_START}${GRANT_URL}${OSC8_END}`);
     expect(frame).toContain("single-use link");
     expect(frame).toContain("expires");
-    // Auto-open fired exactly once, with the grant URL, and the card
-    // reports the launch.
     expect(openBrowser).toHaveBeenCalledTimes(1);
     expect(openBrowser.mock.calls[0]?.[0]).toBe(GRANT_URL);
     await waitForFrame(ui, "browser opened — finish the sign-in there");

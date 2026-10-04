@@ -18,9 +18,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(dir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 describe("slash history ring", () => {
@@ -58,11 +56,7 @@ describe("slash history ring", () => {
     appendSlashHistory("/y", { path, tenant: "t2" });
     appendSlashHistory("/z", { path, tenant: null });
     const ring = loadSlashRing(path, { tenant: "t1" });
-    // Pre-R10-W1: ring was ["/x", "/z"] — untagged rows leaked across
-    // tenants on Ctrl+R fuzzy search. Strict filter now returns only
-    // rows tagged with the exact tenant.
     expect(ring).toEqual(["/x"]);
-    // No tenant filter still includes everything (e.g. headless dump).
     expect(loadSlashRing(path)).toEqual(["/x", "/y", "/z"]);
   });
 });

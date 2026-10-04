@@ -1,8 +1,3 @@
-// Skill CRUD + lifecycle. Skills are hand-authored and curated — the
-// engine never mutates them. Every write bumps `version` and writes an
-// audit entry. The retrieval helpers below are the canonical read path
-// used by the Context Enhancement pipeline.
-
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -254,8 +249,6 @@ export async function getSkill(
   id: string,
   exec?: Executor,
 ): Promise<Skill | null> {
-  // skills.id is uuid; passing a non-UUID makes Postgres throw before we
-  // can return null. Callers that have only a slug must use getSkillBySlug.
   if (!UUID_RE.test(id)) return null;
   const db = exec ?? getDb();
   const rows = await db
@@ -344,8 +337,6 @@ export async function updateSkill(
         resource_type: "skill",
         resource_id: id,
         result: "success",
-        // Full serialized skill view (the GET-route shape) so the audit
-        // trail doubles as restorable version history — see restoreSkill.
         before: rowToSkill(prior),
         after: rowToSkill(row),
         metadata: retired.length > 0 ? { retired_skill_ids: retired } : {},
@@ -373,19 +364,6 @@ export async function updateSkill(
   });
 }
 
-/**
- * A connector-capability skill describes ONE state of an MCP server's tool
- * catalog. When the catalog changes, a new candidate is proposed; once its
- * skill becomes active, the skills promoted from the SAME connector's earlier
- * connector-capability candidates are stale descriptions of the same server
- * and are archived — otherwise the model reads two contradicting catalogs.
- *
- * Lineage is the candidate row (`promoted_skill_id`), never the connector
- * alone: a hand-written or template-seeded skill for the connector is not a
- * catalog description and stays. Archived, not deleted: the retirement is
- * audited and restorable like any other archive. Runs inside the caller's
- * transaction, so the new skill and the retirement commit together.
- */
 export async function retireReplacedConnectorSkills(
   tx: Executor,
   tenant_id: string,
@@ -550,9 +528,6 @@ export async function deleteSkill(
   actor_id: string | null,
   exec?: Executor,
 ): Promise<boolean> {
-  // Docs say archive replaces deletion for operator-facing flows, but the
-  // route surface requires a DELETE for parity. A DELETE hard-deletes the
-  // row and writes an audit trail — operators should prefer archive.
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const existing = await tx
@@ -594,8 +569,6 @@ export async function deleteSkill(
   });
 }
 
-// ---- version history (read-time aggregation over audit_log) ---------------
-
 export interface SkillHistoryEntry {
   audit_entry_id: string;
   version: number | null;
@@ -603,8 +576,6 @@ export interface SkillHistoryEntry {
   lifecycle: string | null;
   updated_at: string;
   actor_id: string | null;
-  /** False for `skill.updated` rows written before snapshots were widened
-   *  to the full skill view — those entries are not restorable. */
   has_snapshot: boolean;
 }
 
@@ -635,8 +606,6 @@ export async function listSkillHistory(
     .limit(MAX_HISTORY_ROWS);
   return rows.map((row) => {
     const snapshot = snapshotFromAudit(row.after);
-    // Pre-snapshot rows carry the legacy thin {lifecycle, version, title}
-    // shape — surface those fields so the history view stays readable.
     const thin = (row.after ?? {}) as { lifecycle?: unknown; version?: unknown; title?: unknown };
     return {
       audit_entry_id: row.id,
@@ -650,11 +619,6 @@ export async function listSkillHistory(
   });
 }
 
-/**
- * Restores a skill to the `after` snapshot of a prior `skill.updated`
- * audit entry. Delegates the write to `updateSkill`, so the restore
- * itself bumps `version` and lands its own audit row + snapshot.
- */
 export async function restoreSkill(
   tenant_id: string,
   id: string,
@@ -710,22 +674,13 @@ export async function restoreSkill(
   );
 }
 
-// ---- retrieval helpers (used by Context Enhancement) ----------------------
-
 export interface RetrieveApplicableParams {
   tenant_id: string;
   connector_ids?: string[];
   workflow_ids?: string[];
-  /** When set, skills not offered to this audience are left out. */
   audience?: SkillAudience;
 }
 
-/**
- * Returns the active skills applicable to the given scope selectors, in
- * scope order (global → connector → workflow). Within each scope rows
- * are ordered by descending version. The ordering is deterministic —
- * the same inputs yield the same prompt section every time.
- */
 export async function retrieveApplicableSkills(
   p: RetrieveApplicableParams,
   exec?: Executor,
@@ -777,17 +732,6 @@ export async function retrieveApplicableSkills(
   return audience ? all.filter((s) => skillOfferedTo(s.applies_to, audience)) : all;
 }
 
-/**
- * Returns active stable skills whose `activates_when` rules contain
- * either a `kind:"baseline"` rule or a `kind:"intent_keyword"` rule
- * matching any of the supplied keywords (case-insensitive substring
- * via lowercased equality on the configured `word`).
- *
- * Used by `apps/engine/src/llm/core/context-assembler.ts` to surface
- * topical skills into the assembled prompt based on the user's intent
- * vocabulary on the current turn. `maturity:"experimental"` skills are
- * excluded — they are only reachable via explicit `load_skill(slug)`.
- */
 export async function listAutoLoadSkills(
   tenant_id: string,
   keywords: string[],
@@ -817,7 +761,5 @@ export async function listAutoLoadSkills(
     .map(rowToSkill);
 }
 
-// Touch isNull + sql so the biome unused-import pass does not reject them
-// if a future edit removes a call site.
 void isNull;
 void sql;

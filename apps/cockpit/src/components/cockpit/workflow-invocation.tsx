@@ -53,7 +53,6 @@ const SNIPPET_LANG: Record<SnippetLanguage, string> = {
   python: "python",
 };
 
-/** The read behind the call, under the key the automation state refreshes. */
 export function useWorkflowInvocation(workflowId: string) {
   return useQuery({
     queryKey: ["workflow-invocation", workflowId],
@@ -67,10 +66,6 @@ export function useWorkflowInvocation(workflowId: string) {
   });
 }
 
-/**
- * One copy action per value: every copy button stands in its own item, so the
- * same "Kopieren" beside two values is two actions, not one action twice.
- */
 function Copyable({ children }: { children: ReactNode }) {
   return (
     <div className="min-w-0" data-action-scope="copy">
@@ -89,14 +84,10 @@ function HttpMode({
   approvedEnvironment: Environment | null;
 }) {
   const { t } = useI18n();
-  // Production by default: it is where a call from an app belongs, and the
-  // header in the snippet says so either way.
   const [environment, setEnvironment] = useState<Environment>("prod");
   const [language, setLanguage] = useState<SnippetLanguage>("curl");
   const { http } = invocation;
   const snippet = http.snippets?.[environment][language] ?? null;
-  // What the call will be — from the strip's verdict, never from the stored
-  // approval alone.
   const verdict = callVerdict(invocation, environment, approvedEnvironment);
   return (
     <div className="flex flex-col gap-3">
@@ -170,8 +161,6 @@ function HttpMode({
           />
         </Copyable>
       )}
-      {/* What the call will be, as one line. The approval and its state stand
-          in the strip; a link from here would be a second trigger for it. */}
       {verdict === "live" ? null : (
         <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
           {t(
@@ -187,7 +176,6 @@ function HttpMode({
   );
 }
 
-/** How a delivery has to be signed, in one sentence. */
 function signingSentence(hook: InvocationHook, t: ReturnType<typeof useI18n>["t"]): string {
   if (!hook.signed) return t("invocation.hook.unsigned");
   const headers = hook.signing_headers.join(", ");
@@ -311,13 +299,6 @@ function CliMode({ invocation }: { invocation: Invocation }) {
   );
 }
 
-/**
- * The call, by kind (V4a): the address, the snippet, the hook and its
- * signature, the tool name, the schedule, the command — each copied as it is.
- * Only the kinds this workflow has are offered, and the one that really starts
- * it is chosen first. The one place on the page a command line stands, and the
- * workflow's identifier only inside the call it belongs to.
- */
 export function WorkflowInvocation({
   workflowId,
   workflowName,
@@ -328,16 +309,9 @@ export function WorkflowInvocation({
 }: {
   workflowId: string;
   workflowName: string;
-  /** A schedule is created, changed and removed here (R11). */
   canWrite: boolean;
   canChat: boolean;
-  /** What really starts the workflow — decides the kind a reader lands on. */
   effectiveTrigger: string | null;
-  /**
-   * The environment the strip shows as approved, or null. The engine's answer
-   * here only says that an approval is stored; the strip is where it is
-   * verified, so the call is said to run live only where the strip says so.
-   */
   approvedEnvironment: Environment | null;
 }) {
   const { t } = useI18n();
@@ -354,7 +328,6 @@ export function WorkflowInvocation({
         testId="workflow-invocation-failed"
       />
     );
-  // A schedule can always be set up here, so its kind is always offered.
   const found = invocationModes(invocation);
   const modes = INVOCATION_MODES.filter(
     (value) => found.includes(value) || (value === "schedule" && canWrite),
@@ -410,8 +383,6 @@ export function WorkflowInvocation({
       ) : (
         <CliMode invocation={invocation} />
       )}
-      {/* A list the reader may not see is not an empty one: without this
-          line a missing kind read as "this workflow has no webhook". */}
       {hiddenKey ? (
         <p className={line} data-testid="workflow-invocation-hidden">
           {t(hiddenKey)}

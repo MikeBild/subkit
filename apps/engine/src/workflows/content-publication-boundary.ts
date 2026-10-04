@@ -3,9 +3,6 @@ import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
 
-// Public ContentKit protocol: immutable markdown revisions and a release that
-// overlays exactly those revisions. Retiring existing content is not included.
-// These shapes describe a proposal, never establish human authority themselves.
 const identifier = z.string().uuid();
 const origin = z
   .string()
@@ -61,8 +58,6 @@ export const ContentPublicationBoundarySchema = z.union([
 ]);
 export type ContentPublicationBoundary = z.infer<typeof ContentPublicationBoundarySchema>;
 
-/** Supported authored shapes. Only markdown and a whole item identifier may
- * vary for revisions; only revision IDs may vary for a release. */
 export function contentPublicationShape(step: RequestStep, baseUrl: string | null) {
   const { body, path, url, ...fixed } = step;
   if (
@@ -137,9 +132,7 @@ export function contentPublicationShape(step: RequestStep, baseUrl: string | nul
         reason: payload.data.reason ?? null,
         target: target.href,
       };
-  } catch {
-    /* An unresolved target is not a supported profile. */
-  }
+  } catch {}
   return null;
 }
 
@@ -169,10 +162,6 @@ export function supportsContentPublication(
   );
 }
 
-/** A receipt must be captured by the driver from the successful raw response,
- * before authored selectors/transforms. Admission must load receipts only from
- * succeeded, non-held steps of this tenant and execution. Neither model output,
- * input data, a preview nor another execution can supply these receipts. */
 export const ContentRevisionReceiptSchema = z
   .object({
     step_id: z.string().min(1),
@@ -192,7 +181,6 @@ function deny(): never {
 function requestUrl(request: MaterializedRequest): URL | null {
   try {
     const url = new URL(request.url);
-    // URL normalization must not turn an ambiguous authored path into a match.
     if (
       !/^https?:\/\//.test(request.url) ||
       /[%\\]/.test(request.url) ||
@@ -273,8 +261,6 @@ export function assertContentRevision(
     deny();
 }
 
-/** Inspect only a successful, untransformed provider response. The optional
- * returned item identity must agree; ambiguous nested/flat IDs fail closed. */
 export function inspectContentRevisionResponse(input: {
   step_id: string;
   request: MaterializedRequest;
@@ -354,7 +340,6 @@ export function assertContentRelease(
     const receipt = ContentRevisionReceiptSchema.safeParse(raw);
     if (!receipt.success) deny();
     const value = receipt.data;
-    // Other unrelated operations in the run grant no publication permission.
     if (!scope.sources.some((source) => source.step_id === value.step_id)) continue;
     if (
       value.origin !== scope.origin ||

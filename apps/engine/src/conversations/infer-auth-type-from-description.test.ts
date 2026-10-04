@@ -1,13 +1,3 @@
-// `inferAuthTypeFromDescription` — the auth-shape guess made when the
-// operator describes a connector in prose and no template/URL match is
-// authoritative.
-//
-// Session 97679846: "API token" used to infer `bearer`, but the
-// dominant API-token-with-email providers (Atlassian Jira/Confluence,
-// Zendesk) are HTTP Basic — the probe 401'd until the operator gave up.
-// Bare "token"/"api key" is now deliberately ambiguous (null) so the
-// template's auth_options or the operator decides.
-
 import { describe, expect, it } from "bun:test";
 import { inferAuthTypeFromDescription } from "./connector-template-intelligence.ts";
 

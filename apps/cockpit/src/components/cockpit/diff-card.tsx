@@ -6,22 +6,16 @@ import { type DiffLine, selectChangeView, toDiffLines } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
 
 export interface DiffCardProps {
-  /** Object · version, resolved by the caller — never an id. */
   targetLabel: string;
   before: unknown;
   after: unknown;
-  /** Ready-made lines, e.g. the hunks a conversation streams while it works. */
   lines?: readonly DiffLine[];
   changedPaths?: readonly string[];
-  /** What the engine observed, when the proposal carries no step snapshot. */
   driftSummary?: string | null;
-  /** The proposed change itself — the substance when there is nothing to diff. */
   patch?: unknown;
-  /** False when no recorded response exists to replay the change against. */
   fixtureAvailable?: boolean;
   dryRun?: PatchCandidateDryRun | null;
   dryRunPending?: boolean;
-  /** Rendered inside another card. Drops the frame so cards do not nest. */
   embedded?: boolean;
   testId: string;
 }
@@ -59,14 +53,7 @@ export function DiffCard({
   const patchLines = view?.kind === "patch" ? view.lines : [];
 
   return (
-    <section
-      // Embedded inside a decision card or a tool card, this must NOT draw its
-      // own frame: a card inside a card reads as two separate things and is
-      // what made the queue look mis-spaced. A separator says "same thing,
-      // more detail" without a second border radius fighting the first.
-      className={embedded ? "mt-3 border-t pt-3" : "rounded-lg border"}
-      data-testid={testId}
-    >
+    <section className={embedded ? "mt-3 border-t pt-3" : "rounded-lg border"} data-testid={testId}>
       <header
         className={
           embedded

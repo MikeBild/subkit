@@ -7,12 +7,6 @@ import {
   withoutCallbackParams,
 } from "@/pages/connections-model";
 
-/**
- * The sign-in's way back: the other side sends the browser to the connectors
- * with its result in the query. Say it once — a success or the reason it
- * failed — then drop those words from the address, and only those, so a
- * reload does not repeat the sentence.
- */
 export function useConnectionCallback(enabled: boolean): void {
   const { t } = useI18n();
   useEffect(() => {

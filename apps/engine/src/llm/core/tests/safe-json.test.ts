@@ -1,8 +1,3 @@
-// Pure-function tests for the safe-json wrapper. The implementation
-// falls back to `jsonrepair` when raw JSON.parse fails — the most
-// common LLM failure mode (trailing commas, missing quotes, smart
-// quotes, unescaped newlines).
-
 import { describe, expect, test } from "bun:test";
 import { safeParseJson, safeParseJsonWithMeta } from "../safe-json.ts";
 
@@ -24,10 +19,6 @@ describe("safeParseJson", () => {
   });
 
   test("repairs garbage to a string literal (jsonrepair behavior)", () => {
-    // jsonrepair is intentionally aggressive — it coerces unrecognised
-    // input into a JSON string rather than refusing. Callers that want
-    // strict parsing should use `safeParseJsonWithMeta` and check
-    // `repaired === false`.
     const out = safeParseJson<string>("not json at all");
     expect(out).toBe("not json at all");
   });

@@ -1,55 +1,3 @@
-// Retention sweep for the mcp_oauth_* tables.
-//
-// Fires every hour from the scheduler reconciler. Five DELETE sweeps run
-// in dependency order so FK constraints are never violated:
-//
-//   1) mcp_oauth_access_tokens — expired or revoked rows older than 7 days.
-//      Access tokens hold a nullable FK to mcp_oauth_refresh_tokens; deleting
-//      them first removes the FK before its parent is swept.
-//
-//   2) mcp_oauth_refresh_tokens — expired or revoked rows older than 7 days.
-//
-//   3) mcp_oauth_authorization_codes — codes older than 1 day past their
-//      expires_at (consumed + expired codes are dead after the TTL + grace).
-//
-//   4) mcp_oauth_clients — DCR clients created more than 30 days ago that
-//      left no durable footprint: no refresh tokens, no access tokens, and
-//      no authorization codes. The "was this client ever used" signal must
-//      be a DURABLE record. Authorization codes are NOT durable — sweep 3
-//      above purges them ~1 day past expiry, so for any client older than
-//      30 days the codes are always gone; keying the guard on codes alone
-//      deletes every aged client, including ones in active daily use whose
-//      live refresh tokens still authenticate. The guard therefore checks
-//      all three proof-of-use tables via NOT EXISTS.
-//
-//   4b) mcp_oauth_clients — RETIRED (disabled, reversibly): a DCR registration created
-//      more than 7 days ago that nobody holds a valid grant for (no live
-//      access or refresh token — the same predicate the Cockpit's
-//      "Verbundene Anwendungen" reads) and that shows no use in the last 7
-//      days (no access token used, no refresh token minted, no authorization
-//      code issued). `disabled_at` and `retired_at` are set together; the
-//      registration leaves the list and comes back the moment a person
-//      completes an authorization for it (server-provider.ts). A client that
-//      registers on every run and never returns — a deploy verifier — would
-//      otherwise bury the real applications under hundreds of rows no one can
-//      use. Manual registrations are never retired. Retirement itself
-//      deletes nothing; sweep 4 above still removes, 30 days after
-//      registration, any client with no token or code rows left — a retired
-//      one included. After that the host has to register again, as before.
-//
-//   5) mcp_oauth_states — in-flight CLIENT-direction authorization rows
-//      (subkit acting as an OAuth client against an external MCP server)
-//      whose `expires_at` has passed. These are short-lived (10-min TTL);
-//      an expired row is a dead in-flight flow the callback can no longer
-//      claim, so it is swept immediately past expiry (no extra grace).
-//
-// After the sweeps a single summary audit row is emitted under
-// SYSTEM_TENANT_ID with the row counts from each sweep.
-//
-// Each sweep is wrapped in its own try/catch; a transient failure does not
-// abort the remaining sweeps. The cron is scheduled at hour resolution so
-// a failed tick costs at most one extra hour of table growth.
-
 import { and, eq, gt, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
@@ -64,29 +12,14 @@ import {
 } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-/** Grace window for expired / revoked tokens. 7 days gives any in-flight
- *  client or audit consumer time to notice the expiry before the row
- *  disappears from the DB. */
 const TOKEN_GRACE = sql`interval '7 days'`;
 
-/** Authorization codes are short-lived (typically minutes); one extra day
- *  of grace is enough to cover any clock skew or deferred exchange. */
 const CODE_GRACE = sql`interval '1 day'`;
 
-/** DCR clients that registered but never used their first auth code are
- *  garbage-collected after 30 days. */
 const CLIENT_GRACE = sql`interval '30 days'`;
 
-/** A DCR registration with no valid grant and no use for this long is retired. */
 const RETIRE_AFTER = sql`interval '7 days'`;
 
-/**
- * Run the four MCP OAuth retention sweeps.
- *
- * Deletes are ordered access_tokens → refresh_tokens → authorization_codes
- * → clients so FK constraints are satisfied without deferring. The clients
- * sweep has its own NOT EXISTS guard to avoid removing active clients.
- */
 export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   const tickId = started.toISOString();
   let access_tokens_deleted = 0;
@@ -98,7 +31,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
   let connector_oauth_start_grants_deleted = 0;
   let connector_oauth_states_deleted = 0;
 
-  // ── Sweep 1: access tokens ─────────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
   try {
     const deleted = await db
@@ -123,7 +55,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 2: refresh tokens ────────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
   // Runs after access token sweep to avoid FK violations (access tokens
   // hold an optional refresh_token_id FK pointing here).
@@ -148,7 +79,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 3: authorization codes ───────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
   try {
     const deleted = await db
@@ -166,7 +96,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 4: unused DCR clients ────────────────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep
   // Only removes clients with NO durable proof-of-use: no refresh tokens, no
   // access tokens, and no authorization codes. Authorization codes alone are
@@ -215,7 +144,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 4b: retire dead DCR registrations ───────────────────────────────
   // tenant-filter:exempt — mcp_oauth_clients has no tenant_id; the NOT EXISTS
   // subqueries guard over the client's own token rows, across tenants. One
   // statement, so a token minted between "is it dead?" and "retire it" cannot
@@ -230,8 +158,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
           eq(mcpOauthClients.registration_source, "dcr"),
           isNull(mcpOauthClients.disabled_at),
           lt(mcpOauthClients.created_at, sql`now() - ${RETIRE_AFTER}`),
-          // A valid grant (a live access token — listClientApprovals), or an
-          // access token used within the window.
           notExists(
             db
               .select({ id: mcpOauthAccessTokens.id })
@@ -249,8 +175,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
                 ),
               ),
           ),
-          // A valid grant (a live refresh token), or one minted within the
-          // window — a rotation is use.
           notExists(
             db
               .select({ id: mcpOauthRefreshTokens.id })
@@ -268,7 +192,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
                 ),
               ),
           ),
-          // An authorization in flight, or one just completed.
           notExists(
             db
               .select({ id: mcpOauthAuthorizationCodes.id })
@@ -297,8 +220,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // One row per sweep that retired anything, naming what it retired — the
-  // Cockpit's count of hidden registrations has its reason in the trail.
   if (retired.length > 0) {
     try {
       await auditAwait(
@@ -332,7 +253,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     }
   }
 
-  // ── Sweep 5: expired client-direction in-flight authorization states ──────
   // tenant-filter:exempt — cross-tenant retention sweep
   // CLIENT direction (subkit → external MCP server). 10-min TTL rows; an
   // expired row is a dead in-flight flow the callback can no longer claim
@@ -354,7 +274,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 6: expired connector OAuth start grants ─────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep.
   // Short-lived (10-min TTL); an expired row is unclaimable (the atomic
   // DELETE WHERE expires_at > now() guard would never match), so sweep
@@ -375,7 +294,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Sweep 7: expired connector OAuth states ────────────────────────────────
   // tenant-filter:exempt — cross-tenant retention sweep.
   // The callback route atomically claims (DELETE) live rows; expired rows
   // are dead-flows that the callback will never claim. Sweep immediately
@@ -396,10 +314,6 @@ export async function runMcpOAuthCleanup(started: Date, db: Db): Promise<void> {
     });
   }
 
-  // ── Summary audit row ──────────────────────────────────────────────────────
-  // The counts (incl. states_deleted) intentionally aggregate across ALL
-  // tenants under SYSTEM_TENANT_ID — SIEM authors should not expect
-  // per-tenant rows for this action.
   try {
     await auditAwait(
       {

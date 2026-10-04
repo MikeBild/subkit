@@ -11,11 +11,7 @@ describe("<OAuthWaitView>", () => {
           authUrl="https://login.example.com/oauth?state=abc"
           poll={async () => ({ status: "pending" })}
           onConnected={() => undefined}
-          openBrowser={() =>
-            // Returns a promise that never resolves so we stay in
-            // `launching` state. No wall-clock timer required.
-            new Promise<void>(() => undefined)
-          }
+          openBrowser={() => new Promise<void>(() => undefined)}
         />
       </ThemeProvider>,
     );
@@ -45,10 +41,6 @@ describe("<OAuthWaitView>", () => {
       </ThemeProvider>,
     );
     try {
-      // The poll loop schedules ticks via setTimeout, which is a
-      // macrotask — flush() alone (microtasks) won't advance it.
-      // ui.waitFor's `sleepMs` opts into wall-clock progress for
-      // exactly this case (backoff schedule).
       await ui.waitFor(() => credential !== null, { tries: 100, sleepMs: 10 });
       expect(credential).not.toBeNull();
       expect((credential as unknown as { id: string } | null)?.id).toBe("cred-1");
@@ -71,7 +63,6 @@ describe("<OAuthWaitView>", () => {
       </ThemeProvider>,
     );
     try {
-      // Walk a few flushes for the effect chain to settle.
       for (let i = 0; i < 20; i++) {
         await flush();
         if (ui.text().includes("browser launch failed")) break;
@@ -95,8 +86,6 @@ describe("<OAuthWaitView>", () => {
       </ThemeProvider>,
     );
     try {
-      // Same backoff caveat as the complete-poll test above —
-      // setTimeout-based ticks need wall-clock progress.
       await ui.waitFor((t) => t.includes("user_denied"), { tries: 100, sleepMs: 10 });
       expect(ui.text()).toContain("user_denied");
     } finally {

@@ -1,24 +1,3 @@
-// Shared helper for the `ask_user_*` tool family.
-//
-// Two paths:
-//
-//   1. DB-pause (HTTP/SSE portal surface, or MCP clients without the
-//      `elicitation` capability) — insert-persist an elicitation row
-//      and return a `pause` payload the loop surfaces as an
-//      `awaiting_input` completion. Resume via `respondElicitation`.
-//
-//   2. MCP-native form elicitation (MCP surface, client advertises
-//      `elicitation`, tool input maps to flat primitives) — still
-//      insert the elicitation row (audit + single-pending invariant)
-//      marked `protocol_native`, then issue a server→client
-//      `elicitation/create` request and await the operator's answer
-//      IN-PROCESS. On accept, resolve the row, run the credential-cache
-//      + auto-persist sequence, flip the conversation back to `active`,
-//      and return WITHOUT a `pause` so the loop continues this turn.
-//
-// The loop treats any `ToolResult.pause` the same way it treats the
-// existing approval pause, so the pause contract stays compatible.
-
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
@@ -54,7 +33,6 @@ import { validateElicitationAnswer } from "./validate-answer.ts";
 
 type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
 
-/** `null` when the reader's form card can show every field of this form. */
 export function unrenderableFormResult(input: unknown): ToolResult | null {
   const fields =
     input && typeof input === "object" && !Array.isArray(input)
@@ -71,33 +49,10 @@ export function unrenderableFormResult(input: unknown): ToolResult | null {
   };
 }
 
-/**
- * Pattern-only secret scrub over an `ask_user_*` payload — the single
- * chokepoint ahead of every downstream copy of the payload (native
- * bridge message, DB-pause `pause` payloads, persisted elicitation
- * rows). `scrubStringsDeep` walks string LEAVES only, so nested
- * `fields[]` labels/placeholders/defaults and select option labels are
- * covered while structural key names (`token`, `credential`) and
- * Mustache values like `Bearer {{token}}` in `commit_intent.payload`
- * survive untouched.
- */
 export function scrubAskUserPayload<T extends { summary: string; input: unknown }>(p: T): T {
   return { ...p, summary: scrubString(p.summary), input: scrubStringsDeep(p.input) };
 }
 
-/**
- * D7 — the reference integration-authoring architecture NEVER asks for a
- * secret in chat: sensitive credential entry always routes to a secure UI
- * (portal / OAuth). Over MCP, a paused `ask_user_*` elicitation is
- * surfaced to the client as an in-chat "awaiting input" prompt — there is
- * no in-band portal UI — so eliciting a secret-shaped field here would
- * collect the raw API key / token / password as free chat text. Refuse it
- * and point the model at the secure flow instead.
- *
- * The directive is a structured `ok: false` result (never a `pause`), so
- * the loop folds `next_best_actions` into `prior_failures` and the model
- * re-routes without ever surfacing the secret prompt to the user.
- */
 async function secretElicitationBlockedOverMcp(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string },
@@ -137,8 +92,6 @@ async function secretElicitationBlockedOverMcp(
           `Enter the ${authType} credential for ${label}. ` +
           "After submission the connector draft will be probed before it is saved.",
         setup_url: grant.url,
-        // Model-facing relay instruction, mirroring the approval_url note so
-        // a UI-less MCP client surfaces the link instead of paraphrasing it.
         note:
           `Present this secure setup link to the operator verbatim, as a bare URL on its own line: ${grant.url} ` +
           `It expires at ${grant.expires_at.toISOString()} and is single-use. ` +
@@ -197,48 +150,23 @@ export async function pauseForUserInput(
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
   engineAuthorization?: { authorizationUrl: string },
 ): Promise<ToolResult> {
-  // The model occasionally echoes a user-pasted secret back into the
-  // question/summary it asks with — scrub the whole payload before any
-  // path (bridge, DB pause, elicitation row) can persist or render it.
   p = scrubAskUserPayload(p);
-  // A form the reader cannot render is a dead end: the conversation would
-  // wait on input nobody can give. Refuse it before anything is persisted.
   if (p.tool_name === "ask_user_form") {
     const unrenderable = unrenderableFormResult(p.input);
     if (unrenderable) return unrenderable;
   }
-  // This argument is supplied only by the engine's OAuth starter, never by a
-  // model tool schema. State and PKCE are protocol data, not prose to redact.
   if (engineAuthorization && p.input && typeof p.input === "object" && !Array.isArray(p.input)) {
     p = { ...p, input: { ...p.input, authorization_url: engineAuthorization.authorizationUrl } };
   }
-  // ── D7: no secret is ever elicited as chat text over MCP ───────────
-  // Scoped to `surface === "mcp"`: sk-cli (sk_headless/sk_interactive)
-  // and the web portal are secure input surfaces — a local operator may
-  // paste a secret into the CLI — so those paths are untouched. Over MCP
-  // there is no secure in-band UI, so a secret-shaped elicitation is
-  // refused and routed to the secure flow (portal-setup URL / OAuth).
   if (ctx.surface === "mcp") {
     const secret = detectSecretElicitation(p.tool_name, p.input);
     if (secret) return await secretElicitationBlockedOverMcp(ctx, p, secret);
   }
-  // ── MCP-native form elicitation ────────────────────────────────────
-  // Take the in-process bridge when: the client advertised the
-  // elicitation capability AND the tool input maps to flat primitives.
   const bridge = ctx.elicitationBridge;
   if (bridge?.capabilities.form) {
     const mapped = mapAskUserToPrimitiveSchema(p.tool_name as FormBridgeToolName, p.input);
 
-    // ── Sensitive-field guard ───────────────────────────────────────────
-    // Spec MUST: form-mode elicitation MUST NOT request passwords/API
-    // keys/secrets. The mapper returns { degrade: true; sensitive: true }
-    // when a sensitive field is detected — `degrade: true` keeps the
-    // existing `if (!mapped.degrade)` block from running, and `sensitive`
-    // lets us distinguish this arm from an ordinary schema-mapping failure
-    // so we can raise the right signal.
     if (mapped.degrade && "sensitive" in mapped) {
-      // Open the governance row (APPROVAL_REQUESTED audit) so the audit
-      // trail has a paired entry regardless of which path we take.
       const sensitiveRow = await createNativeElicitation(
         {
           tenant_id: ctx.tenant_id,
@@ -254,8 +182,6 @@ export async function pauseForUserInput(
       );
 
       if (bridge.capabilities.oob) {
-        // Cancel the governance row (APPROVAL_REJECTED) before raising
-        // the error so APPROVAL_REQUESTED stays paired — no orphan row.
         await resolveElicitationAndReactivate(
           {
             tenant_id: ctx.tenant_id,
@@ -269,17 +195,12 @@ export async function pauseForUserInput(
           },
           ctx.db,
         );
-        // Raise the SDK's canonical signal: the client MUST use URL/oob
-        // mode to collect a secret — form-mode is not permitted.
         throw new McpError(
           ErrorCode.UrlElicitationRequired,
           "Secret/password fields must be collected via URL-mode elicitation (oob/url), not form-mode. Re-issue the request using elicitation mode: url.",
         );
       }
 
-      // No oob capability: demote the native row to portal so the operator
-      // can submit the secret through the portal DB-pause path. The
-      // ELICITATION_DEMOTED_TO_PORTAL audit row is emitted inside demote.
       await demoteElicitationToPortal(ctx.tenant_id, sensitiveRow.id, ctx.db);
       logger.warn({
         module: "conversation",
@@ -303,10 +224,6 @@ export async function pauseForUserInput(
     }
 
     if (!mapped.degrade) {
-      // ── Normal form-mode path ───────────────────────────────────────
-      // Still persist the row — audit trail + single-pending-elicitation
-      // invariant — but mark it protocol_native so observability can
-      // distinguish a wire elicitation from a DB-pause one.
       const row = await createNativeElicitation(
         {
           tenant_id: ctx.tenant_id,
@@ -335,10 +252,6 @@ export async function pauseForUserInput(
                 result.content,
               )
             : null;
-        // Server-side answer validation (same contract as the DB-pause
-        // respond path). On failure: ONE bridge retry with the field
-        // errors appended to the message; a second invalid answer
-        // collapses to the invalid-accept path below.
         if (result.action === "accept" && mappedOutput !== null) {
           const verdict = validateElicitationAnswer(p.tool_name, p.input, mappedOutput);
           if (!verdict.ok) {
@@ -363,21 +276,8 @@ export async function pauseForUserInput(
             }
           }
         }
-        // A protocol-violating `accept` — the client returned an
-        // `accept` action but an answer that breaks the requested
-        // schema (an out-of-enum `ask_user_choice`, a non-boolean
-        // `ask_user_confirm`), so `mapElicitResultToAskUserOutput`
-        // returned `null`. Honouring the `accept` would resolve the row
-        // `resolved` / audit `APPROVAL_APPROVED` while the real decision
-        // is a non-answer. Collapse it into the decline/cancel path
-        // instead: resolve `cancelled` with `invalid_elicit_response`.
         if (result.action === "accept" && mappedOutput !== null) {
           const output = mappedOutput;
-          // Resolve the row AND flip the conversation back to `active`
-          // as one atomic unit (see `resolveElicitationAndReactivate`).
-          // A concurrent `respondElicitation` may have resolved this row
-          // first (lost race) — that must not be treated as a fresh
-          // accept.
           const acceptResolution = await resolveElicitationAndReactivate(
             {
               tenant_id: ctx.tenant_id,
@@ -393,20 +293,10 @@ export async function pauseForUserInput(
           if (acceptResolution.kind !== "resolved") {
             return alreadyResolved(row.id);
           }
-          // Credential-cache + auto-persist runs AFTER the transition
-          // commits — same ordering as the DB-pause resume path
-          // (`service/elicit.ts`). Each internal write it dispatches is
-          // already individually atomic and idempotent; nesting it
-          // inside the transition tx would diverge from that path and
-          // change the dispatched writes' isolation semantics.
           await applyElicitationOutcome({
             tenant_id: ctx.tenant_id,
             conversation_id: ctx.conversation_id,
             actor_id: ctx.actor_id,
-            // The client returned an `accept` to an `elicitation/create` prompt,
-            // which it can only do by putting the question in front of a person.
-            // That is the in-band grant channel — the optimization on top of the
-            // portal, not a substitute for it.
             answer_actor: humanInBandAnswer(ctx.principal),
             ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
             ...(ctx.surface ? { surface: ctx.surface } : {}),
@@ -414,21 +304,8 @@ export async function pauseForUserInput(
             elicitation: { id: row.id, tool_name: p.tool_name, input: p.input },
             db: ctx.db,
           });
-          // No `pause` — the loop continues with the answer in hand. The
-          // credential cache + auto-persist above already consumed the RAW
-          // `output`; the value returned as tool-call `data` (persisted at
-          // invoke.ts) must not carry a masked secret, so redact it the
-          // same way the elicitation row is (#304). Replay prefers the
-          // redacted elicitation row anyway; this closes the at-rest
-          // tool-call-output copy.
           return { ok: true, data: redactElicitationOutput(p.tool_name, p.input, output) };
         }
-        // decline / cancel / protocol-violating-accept — resolve as
-        // cancelled, no continuation. `resolveAndError` runs the same
-        // atomic transition unit (and same lost-race guard) as the accept
-        // path. An `accept` whose mapped output is `null` lands here as
-        // `invalid_elicit_response`. The form round-trip completed in all
-        // three cases — the operator answered — so `transport: "succeeded"`.
         const invalidAccept = result.action === "accept";
         if (invalidAccept) {
           return resolveAndError(ctx, row.id, {
@@ -442,12 +319,6 @@ export async function pauseForUserInput(
             data: { elicitation_id: row.id },
           });
         }
-        // A `cancel` that came back faster than a human could have read
-        // the form is the client auto-cancelling without rendering it — a
-        // transport verdict, not a decision. Demote to the portal DB-pause
-        // (row stays pending, draft survives) instead of recording a
-        // cancellation nobody made. `decline` is always honored: every
-        // client UI renders it as an explicit human "no".
         if (result.action === "cancel" && roundtripMs < FORM_FAST_CANCEL_MS) {
           await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
           logger.warn({
@@ -484,15 +355,6 @@ export async function pauseForUserInput(
         });
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
-          // Capability raced away between the constructor probe and the
-          // call — fall back to DB-pause. The row already exists and is
-          // pending; surface it as a normal pause.
-          //
-          // The row was opened via `createNativeElicitation`
-          // (`protocol_native: true`), but it will now be satisfied by a
-          // portal POST to `respondElicitation`. Demote it so
-          // `resolveElicitation`'s `surface` audit metadata resolves to
-          // `portal`, not `mcp_elicitation`.
           await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
           logger.warn({
             module: "conversation",
@@ -514,14 +376,6 @@ export async function pauseForUserInput(
             },
           };
         }
-        // Non-`ElicitationUnsupportedError` — a generic transport /
-        // timeout failure (client disconnected, never answered). A
-        // transport break is NOT a decision: the operator never saw or
-        // answered anything, so destroying the row would throw away their
-        // in-flight work (the draft) over a network hiccup. Demote the
-        // row to the portal DB-pause instead — it stays `pending`, the
-        // conversation stays `awaiting_input`, and the answer can still
-        // arrive via the portal or a later poll re-delivery.
         await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
         logger.warn({
           module: "conversation",
@@ -547,7 +401,6 @@ export async function pauseForUserInput(
     }
   }
 
-  // ── DB-pause path (unchanged) ──────────────────────────────────────
   const row = await createElicitation(
     {
       tenant_id: ctx.tenant_id,

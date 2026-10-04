@@ -1,10 +1,3 @@
-// GET /v1/attention — one truth on three surfaces, and a pure read.
-//
-// The MCP connect line, the endpoint and the digest's decision block used to be
-// three renderings of three predicates. They now render one list: the same
-// items, the same count, for the same reader — an admin, and a reader who sees
-// one workflow through a grant.
-
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -38,7 +31,6 @@ let patchedId: string;
 let scopedKey: string;
 let scopedPrincipal: ResolvedPrincipal;
 
-// Deterministic literal — randomBytes is banned in tests; one key per file DB.
 const SCOPED_KEY = "wf_live_attention_scoped_0001";
 
 beforeAll(async () => {
@@ -64,8 +56,6 @@ beforeAll(async () => {
     })),
   );
 
-  // A non-admin: operator posture (stats:read) tenant-wide, but workflows only
-  // through one grant — on the held workflow.
   const role = await createRole(srv.db, srv.tenantId, "attention-observer");
   await grantPermissionToRole(srv.db, srv.tenantId, role.id, "stats:read");
   const [user] = await srv.db
@@ -136,7 +126,6 @@ async function auditRows(): Promise<number> {
 
 const itemLine = /^- \[(stopped|failing|decide)\]/;
 
-/** The three surfaces, read as one reader; returns their item ids and lines. */
 async function threeSurfaces(key: string, principal: ResolvedPrincipal) {
   invalidateAttention();
   const endpoint = await get<AttentionV1>("/v1/attention", key);
@@ -202,7 +191,6 @@ test("a decided fix leaves the list at once — not after the cache runs out", a
     .from(patchCandidates)
     .where(eq(patchCandidates.workflow_id, patchedId));
   for (const row of rows) await post(`/v1/patch-candidates/${row.id}/reject`);
-  // No invalidation by the test: the decision itself must clear the cache.
   const after = await get<AttentionV1>("/v1/attention");
   expect(after.items.map((i) => i.id)).not.toContain(`workflow:${patchedId}`);
 });

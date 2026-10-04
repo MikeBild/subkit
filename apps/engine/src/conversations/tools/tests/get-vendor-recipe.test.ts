@@ -1,10 +1,3 @@
-// Unit tests for the get_vendor_recipe conversation tool.
-//
-// The tool is intentionally read-only and free of side effects, so no
-// DB, no engine client — we invoke `execute` with a stub context and
-// assert the shape of the returned data. This is the same shape the
-// LLM sees on the tool_result message.
-
 import { describe, expect, test } from "bun:test";
 import { listVendorRecipes } from "../../../llm/manifests/vendor-recipes.ts";
 import { getVendorRecipeTool } from "../get-vendor-recipe.ts";

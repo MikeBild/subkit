@@ -1,30 +1,5 @@
-// Minimal prompt builder for the model-fallback path of next-message
-// suggestion. The whole file exists to enforce ONE invariant by
-// construction: this prompt assembler MUST NOT load skills, knowledge,
-// docs, runtime context, or anything else the converse pipeline pulls
-// in for a real turn. Regressing this re-introduces the 1M-token
-// empty-turn class of bug we already fought once (see the converse
-// pipeline note in repo memory).
-//
-// The output is intentionally small:
-//   - a static system prompt that tells the model to predict the user's
-//     next message in 2–12 words, or stay silent;
-//   - the last N message turns of the conversation, text-only,
-//     trimmed to keep the call cheap.
-//
-// The shape is `SubkitLlmMessage` so the service can hand the result
-// straight to the engine's existing `generateText` helper without any
-// adapter layer.
-
 import type { SubkitLlmMessage } from "./base-types.ts";
 
-/**
- * The system prompt is adapted from Claude Code's `SUGGESTION_PROMPT`
- * (PromptSuggestion service). The rules match — what differs is the
- * branding: we say "sk" instead of "Claude Code", and we explicitly
- * call out slash-command predictions because sk has more first-class
- * slash surface than Claude Code.
- */
 export const SUGGESTION_SYSTEM_PROMPT = [
   "[SUGGESTION MODE: predict what the user is most likely to type next into sk.]",
   "",
@@ -64,11 +39,8 @@ export interface RecentMessage {
 }
 
 export interface AssembleSuggestionPromptInput {
-  /** Most-recent-last conversation messages, already sanitized to text-only. */
   recent_messages: ReadonlyArray<RecentMessage>;
-  /** Hard cap on history turns included in the prompt. Defaults to 8. */
   max_history?: number;
-  /** Hard cap per-message character length; defaults to 1200. Trims preserve the tail. */
   max_chars_per_message?: number;
 }
 
@@ -82,8 +54,6 @@ const DEFAULT_PER_MESSAGE_CHARS = 1200;
 
 function trimToTail(text: string, max: number): string {
   if (text.length <= max) return text;
-  // Tail-preserving trim: the model cares more about the LATEST content of
-  // a long message (recent assistant prose) than its opener.
   const tail = text.slice(-max);
   return `…${tail.replace(/^\S*\s+/, "")}`;
 }
@@ -100,17 +70,6 @@ export function assembleSuggestionPrompt(input: AssembleSuggestionPromptInput): 
       content: trimToTail(m.text.trim(), perMsg),
     }));
 
-  // Anthropic and some other providers reject `messages` arrays that end
-  // with an assistant turn — they treat it as an attempt to prefill the
-  // assistant's response. Suggest-next runs immediately after an
-  // assistant turn, so without this guard every model call ends with
-  // assistant role and the provider returns "This model does not support
-  // assistant message prefill. The conversation must end with a user
-  // message." (production session 16:09:50 against v4.10.0). The
-  // suggestion's job is to predict what the USER would type next, so we
-  // append a synthetic user nudge that frames the prediction explicitly.
-  // The system prompt already tells the model to reply with only the
-  // suggestion, so the nudge stays terse.
   const messages: SubkitLlmMessage[] =
     built.length > 0 && built[built.length - 1]!.role === "assistant"
       ? [...built, { role: "user", content: "What would I type next?" }]

@@ -1,14 +1,3 @@
-// Sanity that the build-time macro shipped a journal + SQL set that
-// agrees with the on-disk migration files. A regression here means the
-// embedded bundle is stale w.r.t. the source tree (e.g. someone added a
-// .sql but the macro's hash set still reflects the prior state).
-//
-// We re-read the source files at test time and compare against the
-// macro-inlined data. Bun executes macros at module-load, so the
-// embedded bundle reflects whatever the FS looked like when this test
-// suite started — which is the same FS the next `bun build --compile`
-// would see.
-
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";

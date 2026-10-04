@@ -6,10 +6,6 @@ export interface SegmentedOption {
   testId?: string;
 }
 
-/**
- * Two to five mutually exclusive views of the same thing (P17): a time window,
- * a call type, a filter mode, an approval duration. Never a page action.
- */
 export function SegmentedControl({
   options,
   value,
@@ -29,7 +25,6 @@ export function SegmentedControl({
       variant="outline"
       size="sm"
       value={value}
-      // A second click on the chosen option would clear it; one is always chosen.
       onValueChange={(next) => {
         if (next) onValueChange(next);
       }}

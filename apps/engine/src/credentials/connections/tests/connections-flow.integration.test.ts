@@ -1,12 +1,3 @@
-// The whole "Verbinden" flow against the in-repo OAuth 2.1 server — the
-// isolation probe: nothing here knows any product but this one, and the
-// server on the other side verifies what a real one verifies.
-//
-//   discover → start (registration + PKCE) → the other side approves →
-//   callback → tokens are secret versions → a connector uses the connection →
-//   the sweep refreshes before expiry → a refused refresh reads "expired" →
-//   "Erneuern" repeats the flow → "Trennen" revokes and forgets.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { setConfigKey } from "../../../config/loader.ts";
@@ -48,7 +39,6 @@ function api(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${server.baseUrl}${path}`, { ...init, headers });
 }
 
-/** Play the browser: visit the authorization URL, follow the one redirect back, return where the Cockpit lands. */
 async function approveInBrowser(authorizationUrl: string): Promise<URL> {
   const consent = await fetch(authorizationUrl, { redirect: "manual" });
   expect(consent.status).toBe(302);
@@ -59,7 +49,6 @@ async function approveInBrowser(authorizationUrl: string): Promise<URL> {
   return new URL(landed.headers.get("location") ?? "");
 }
 
-/** The token a connector would send, or "" when the credential resolves to nothing. */
 function accessTokenOf(resolved: Awaited<ReturnType<typeof getCredentialForConnector>>): string {
   const value = resolved?.value;
   return value && "access_token" in value ? value.access_token : "";
@@ -137,7 +126,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     expect(url.searchParams.get("scope")).toBe("read write");
     expect(url.searchParams.get("redirect_uri")).toBe(`${server.baseUrl}/v1/connections/callback`);
 
-    // What the other side stored about us: a public client with our address.
     const registered = [...fake.clients.values()];
     expect(registered).toHaveLength(1);
     expect(registered[0]).toMatchObject({
@@ -152,7 +140,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     ]);
 
     const landed = await approveInBrowser(body.authorization_url);
-    // A sign-in belongs to its connector; the callback lands on the connector list.
     expect(landed.pathname).toBe("/cockpit/connectors");
     expect(landed.searchParams.get("section")).toBeNull();
     expect(landed.searchParams.get("connected")).toBe("probe");
@@ -177,7 +164,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     expect(item?.expires_at).not.toBeNull();
     connectionId = item?.id ?? "";
 
-    // The tokens are runtime secret versions — nothing on the row.
     const names = secretNames(server.tenantId, "probe");
     const registry = await listSecretVersions(server.db);
     expect(registry.find((s) => s.name === names.access)?.versions).toHaveLength(1);
@@ -237,7 +223,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       token_type: "Bearer",
       access_token: fake.accessTokens.at(-1),
     });
-    // The token the connector would send is one the other side accepts.
     const probe = await fetch(`${fake.baseUrl}/api/whoami`, {
       headers: { authorization: `Bearer ${accessTokenOf(resolved)}` },
     });
@@ -344,11 +329,9 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       const [item] = await listConnections();
       expect(item).toMatchObject({
         state: "expired",
-        // The fake server answers the renewal with `invalid_grant`: a refusal.
         state_reason: "refresh_refused",
         last_error: expect.stringContaining("invalid_grant"),
       });
-      // The connector that sends this grant says so on its own page, on both reads.
       const summary = await api(`/v1/connectors/${connectorId}/credential`);
       expect(await summary.json()).toMatchObject({
         connection: { id: connectionId, name: "probe", state: "expired" },
@@ -360,7 +343,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
         { id: connectionId, name: "probe", state: "expired" },
       ]);
       expect(item?.refresh_failed_at).not.toBeNull();
-      // A failed grant is not retried on every request; it waits for "Erneuern".
       expect(await readAccessToken(server.db, server.tenantId, connectionId)).toMatchObject({
         access_token: fake.accessTokens.at(-1),
       });
@@ -411,8 +393,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   });
 
   test("a refresh response with broader permissions changes the authority binding", async () => {
-    // Model the stored prior grant as read-only; the IdP's next response
-    // explicitly grants read + write. This is not an ordinary token renewal.
     const beforeAuthority = await authorityRevision();
     await server.db
       .update(outboundConnections)
@@ -503,8 +483,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
         ),
       );
     }
-    // The foreign provider already consumed its refresh token; local rollback
-    // cannot undo that external action. A fresh human login repairs the grant.
     const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
     expect(res.status).toBe(200);
     await approveInBrowser(((await res.json()) as { authorization_url: string }).authorization_url);
@@ -559,7 +537,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       expect(where.pathname).toBe("/cockpit/connectors");
       expect(where.searchParams.get("failed")).toBe("denied");
       expect(where.searchParams.get("name")).toBe("refused");
-      // Replaying the same callback cannot do anything: the state is gone.
       const replay = await fetch(callback, { redirect: "manual" });
       expect(new URL(replay.headers.get("location") ?? "").searchParams.get("failed")).toBe(
         "state_invalid",
@@ -615,10 +592,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   });
 });
 
-// An OpenID Connect server issues a refresh token only when the authorization
-// asked for `offline_access`. A client that requests only the person's
-// permissions gets a grant that ends after one access-token lifetime and can
-// never renew itself — and renewing it the same way changes nothing.
 describe("a server that issues refresh tokens only for offline_access", () => {
   let oidc: FakeOAuthServer;
 
@@ -667,7 +640,6 @@ describe("a server that issues refresh tokens only for offline_access", () => {
     expect(item).toMatchObject({
       state: "valid",
       auto_renew: true,
-      // What the person granted — the protocol scope is not a permission.
       scopes: ["read"],
       granted_scopes: ["read"],
     });
@@ -675,7 +647,6 @@ describe("a server that issues refresh tokens only for offline_access", () => {
 
   test("Erneuern asks for offline_access again, even for a row that never had it", async () => {
     const item = await view("oidc");
-    // A connection made before this engine asked for it: no refresh token.
     await server.db
       .update(outboundConnections)
       .set({ refresh_token_version: null })
@@ -696,7 +667,6 @@ describe("a server that issues refresh tokens only for offline_access", () => {
     fake.clients.clear();
     const res = await api("/v1/connections/start", {
       method: "POST",
-      // Even when a person sends it, it is not a permission to request.
       body: JSON.stringify({
         name: "plain",
         base_url: fake.baseUrl,
@@ -739,8 +709,6 @@ describe("a server that issues refresh tokens only for offline_access", () => {
     expect(JSON.stringify(warning)).not.toContain(oidc.accessTokens.at(-1) ?? "never");
 
     const after = await view("oidc");
-    // Honest: usable until it ends, and it will not renew itself — not a
-    // stale refresh token of a client this engine no longer is.
     expect(after).toMatchObject({ state: "expiring", auto_renew: false, state_reason: null });
     const names = secretNames(server.tenantId, "oidc");
     const registry = await listSecretVersions(server.db);

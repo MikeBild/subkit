@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { updateCommand } from "../update.ts";
 
-// Cast through unknown to avoid citty's complex generics in test assertions.
 const cmd = updateCommand as unknown as {
   meta: { name: string; description: string };
   args: Record<string, { type: string; default?: unknown; description?: string }>;

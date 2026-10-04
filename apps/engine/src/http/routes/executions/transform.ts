@@ -1,10 +1,3 @@
-// Stateless transform pipeline — POST /v1/executions/transform.
-//
-// Same `workflow:run` permission as a full execution because a malicious
-// transform can leak data via `response_filters` decisions or transform
-// output. Does NOT create an `executions` row but DOES audit-log under
-// EXECUTION_COMPLETED so the trail is consistent with full runs.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
@@ -60,8 +53,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
     const startedAt = Date.now();
     const timeoutMs = body.timeout_ms ?? 30_000;
 
-    // Optional pre-validation against `input_schema`. Mirrors the
-    // workflow pipeline's pre-step input check.
     if (body.input_schema) {
       const required = (body.input_schema as { required?: unknown }).required;
       if (Array.isArray(required) && body.payload && typeof body.payload === "object") {
@@ -80,7 +71,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
     let output: unknown = body.payload;
     let error: { code: string; message: string } | null = null;
 
-    // Apply transform — either JSONata or QuickJS-sandboxed JS.
     try {
       if (body.output_transform) {
         output = await evaluateJsonata(body.output_transform, output);
@@ -88,8 +78,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
         const result = await runJs<unknown>({
           code: body.output_transform_function,
           input: output,
-          // Ad-hoc transform preview endpoint — no execution context,
-          // intentionally constant clock.
           clock: null,
         });
         if (result.output !== undefined) output = result.output;
@@ -101,8 +89,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
       };
     }
 
-    // Apply workflow-level response filters AFTER the transform —
-    // matches the order in `engine.ts` for full-workflow runs.
     if (!error && body.response_filters && body.response_filters.length > 0) {
       try {
         output = applyResponseFilters(body.response_filters, output);
@@ -114,7 +100,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Optional output-schema gate after transform + filters.
     if (!error && body.output_schema) {
       const required = (body.output_schema as { required?: unknown }).required;
       if (Array.isArray(required) && output && typeof output === "object") {
@@ -132,9 +117,6 @@ export function registerTransformRoute(app: OpenAPIHono<AppEnv>): void {
 
     const duration_ms = Date.now() - startedAt;
 
-    // Audit trail — same EXECUTION_COMPLETED action the full pipeline
-    // emits so operators can correlate transform-only runs in the
-    // audit table without a special action.
     await auditAwait(
       {
         tenant_id: principal.tenant_id,

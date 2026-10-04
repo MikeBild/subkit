@@ -1,20 +1,3 @@
-// Schedule trigger calendar-gate executor.
-//
-// Walks the workflow-schedule fan-out through one fire window plus a
-// weekend plus a skip-date and asserts:
-//   - exactly ONE execution row is created over the four firings
-//   - `last_enqueued_at` is bumped only on the firing pass
-//   - the audit log carries the `schedule.trigger.fired` row with the
-//     execution id stitched in
-//   - the calendar-gate keys never leak into the workflow's `input`
-//     payload
-//
-// Uses a stubbed pg-boss to keep the test deterministic. The
-// reconciler's enqueue path goes through `boss.send`, which we record;
-// the execution.run worker is NOT registered here because the contract
-// being verified is the scheduler's enqueue dedup + calendar gating —
-// the worker behaviour is covered by `schedule.test.ts`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -59,16 +42,12 @@ function createStubBoss(calls: SendCall[]): PgBoss {
 
 describe("calendar gate helpers", () => {
   test("localDateInTz formats Berlin midnight", () => {
-    // 2026-03-13 00:30 in Berlin (CET, UTC+1) is 2026-03-12 23:30 UTC.
-    // The local-tz date in Berlin is "2026-03-13", in UTC it would be
-    // "2026-03-12". The skip-date comparison must use the local date.
     const utc = new Date(Date.UTC(2026, 2, 12, 23, 30, 0));
     expect(localDateInTz(utc, "Europe/Berlin")).toBe("2026-03-13");
     expect(localDateInTz(utc, "UTC")).toBe("2026-03-12");
   });
 
   test("calendarGateSkipReason returns weekend on Saturday in tz", () => {
-    // 2026-05-02 is a Saturday in Berlin.
     const sat = new Date("2026-05-02T08:00:00Z");
     expect(calendarGateSkipReason(sat, "Europe/Berlin", { business_days_only: true })).toBe(
       "weekend",
@@ -98,11 +77,6 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     });
     await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
 
-    // The schedule is identical to what `bindFromWorkflow` would have
-    // produced for a `trigger: { kind: "schedule", cron: "0 9 * * *",
-    // tz: "Europe/Berlin", business_days_only: true,
-    // skip_dates: ["2026-12-25"] }` block — calendar gates ride
-    // inside the `input` jsonb.
     const [scheduleRow] = await ctx.testDb.db
       .insert(workflowsSchedules)
       .values({
@@ -115,8 +89,6 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
           business_days_only: true,
           skip_dates: ["2026-12-25"],
         },
-        // Seed `last_enqueued_at` 25h before the first tick so the
-        // dedup gate is open and we exercise the calendar gate alone.
         last_enqueued_at: new Date(Date.UTC(2026, 4, 14, 7, 0, 0)),
       })
       .returning();
@@ -129,42 +101,26 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
       intervalMs: 60_000,
     });
 
-    // Tick 1 — Friday 2026-05-15 09:00 Berlin = 07:00 UTC.
-    // Business day, not in skip_dates → fires.
     const friday = new Date(Date.UTC(2026, 4, 15, 7, 0, 0));
     await reconciler.reconcileWorkflowSchedules(friday);
 
-    // Tick 2 — Saturday 2026-05-16 09:00 Berlin = 07:00 UTC.
-    // Weekend → must skip without bumping `last_enqueued_at`.
     const saturday = new Date(Date.UTC(2026, 4, 16, 7, 0, 0));
     await reconciler.reconcileWorkflowSchedules(saturday);
 
-    // Tick 3 — Sunday 2026-05-17 09:00 Berlin = 07:00 UTC.
-    // Weekend → must also skip.
     const sunday = new Date(Date.UTC(2026, 4, 17, 7, 0, 0));
     await reconciler.reconcileWorkflowSchedules(sunday);
 
-    // Tick 4 — fast-forward to 2026-12-25 09:00 Berlin = 08:00 UTC
-    // (winter, CET = UTC+1). Christmas is a Friday in 2026 — business
-    // day, but explicitly in `skip_dates`. Must skip.
     const xmas = new Date(Date.UTC(2026, 11, 25, 8, 0, 0));
     await reconciler.reconcileWorkflowSchedules(xmas);
 
-    // Only the Friday firing should have produced an execution row +
-    // a `boss.send` call.
     const callsForWorkflow = calls.filter(
       (c) => (c.payload as { workflow_id?: string })?.workflow_id === workflow_id,
     );
     expect(callsForWorkflow.length).toBe(1);
 
-    // The payload that goes to the worker must NOT carry the
-    // calendar-gate keys — they are scheduler-internal.
     const payload = callsForWorkflow[0]?.payload as { input: unknown };
     expect(payload.input).toBeNull();
 
-    // `last_enqueued_at` was bumped to the Friday tick and was NOT
-    // pushed forward by the weekend or skip-date passes (otherwise a
-    // recovery firing would be silently lost).
     const refreshed = (
       await ctx.testDb.db
         .select()
@@ -173,7 +129,6 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     )[0];
     expect(refreshed?.last_enqueued_at?.getTime()).toBe(friday.getTime());
 
-    // Exactly one execution row, in the queued state.
     const execRows = await ctx.testDb.db
       .select()
       .from(executions)
@@ -181,9 +136,6 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     expect(execRows.length).toBe(1);
     expect(execRows[0]?.request_source).toBe("scheduler");
 
-    // The fire emitted `schedule.trigger.fired` keyed on the schedule
-    // row, with the execution id stitched into metadata — so a SOC2
-    // auditor can answer "what woke this workflow at 09:00 Berlin".
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)

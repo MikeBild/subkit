@@ -1,15 +1,8 @@
-// Migration 0006 — operator_notes → operator_quirks rewrite verified
-// against a real Postgres container. Pins:
-//   - the legacy `operator_notes` column is GONE (no shim left over)
-//   - the new `operator_quirks` column exists with `'{}'::jsonb` default
-//   - any in-flight `template_snapshot` rewrite is idempotent
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { connectors, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
@@ -80,7 +73,6 @@ describe.skipIf(skip)("migration 0006 — connectors.operator_quirks", () => {
   });
 
   test("template_snapshot rewrite is idempotent — running the UPDATE again is a no-op", async () => {
-    // Simulate a row that already went through migration 0006 once.
     await ctx.db.insert(connectors).values({
       tenant_id,
       slug: "snap-rewrite",
@@ -95,7 +87,6 @@ describe.skipIf(skip)("migration 0006 — connectors.operator_quirks", () => {
     const before = await ctx.db.execute(
       sql`SELECT template_snapshot FROM connectors WHERE tenant_id = ${tenant_id} AND slug = 'snap-rewrite'`,
     );
-    // Re-run the migration's rewrite UPDATE as a SQL string.
     await ctx.db.execute(sql`
       UPDATE "connectors"
       SET "template_snapshot" =

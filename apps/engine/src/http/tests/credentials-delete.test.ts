@@ -1,6 +1,3 @@
-// DELETE /v1/credentials/:id — route wiring over the (already unit-tested)
-// credentials service: tenant-scoped 404s, hard delete, and the
-// { deleted: true } envelope.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/index.ts";

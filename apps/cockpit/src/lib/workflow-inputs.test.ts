@@ -94,7 +94,6 @@ describe("input fields", () => {
       ["depth", "options.depth", true],
       ["nested", "options.nested", false],
     ]);
-    // The second level is one JSON value, not a further table.
     expect(options.children[1]?.children).toEqual([]);
   });
 
@@ -225,7 +224,6 @@ describe("required fields", () => {
 });
 
 describe("a field that allows several types", () => {
-  // Typed through `anyOf`, `oneOf` or a list — none of which is "text".
   const fields = inputFields({
     type: "object",
     properties: {
@@ -263,7 +261,6 @@ describe("a field that allows several types", () => {
     expect(buildInput(fields, { target: "42" })).toEqual({ target: 42 });
     expect(buildInput(fields, { filter: '{"a":1}' })).toEqual({ filter: { a: 1 } });
     expect(buildInput(fields, { filter: "[1,2]" })).toEqual({ filter: [1, 2] });
-    // Plain text is text only where the field allows text.
     expect(buildInput(fields, { target: "north" })).toEqual({ target: "north" });
     expect(buildInput(fields, { target: '"42"' })).toEqual({ target: "42" });
   });
@@ -296,9 +293,7 @@ describe("an input schema that names no fields", () => {
     expect(buildFormInput(object, { input: '{"id":"a"}' })).toEqual({ id: "a" });
     const list = inputForm({ type: "array", items: { type: "string" } });
     expect(buildFormInput(list, { input: '["a","b"]' })).toEqual(["a", "b"]);
-    // Left empty: no input is sent, rather than an empty one.
     expect(buildFormInput(object, {})).toBeUndefined();
-    // A list where an object belongs is refused, as for any field.
     expect(buildFormInput(object, { input: "[1]" })).toBeUndefined();
     expect(invalidInputs(formFields(object), { input: "[1]" })).toEqual(["input"]);
   });

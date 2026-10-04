@@ -8,20 +8,12 @@ const STEP = /^\*\/(\d{1,2})$/;
 const clock = (hour: string, minute: string) =>
   `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
 
-/** A weekday's name in the reader's language; cron counts Sunday as 0 and 7. */
 function weekday(day: number, localeTag: string): string {
-  // The first of June 2025 was a Sunday; only the weekday of the date is read.
   return new Intl.DateTimeFormat(localeTag, { weekday: "long", timeZone: "UTC" }).format(
     Date.UTC(2025, 5, 1 + (day % 7)),
   );
 }
 
-/**
- * A schedule's expression in words — "daily at 07:00", "every 15 minutes" —
- * for the shapes people actually write. An expression this does not recognise
- * is returned as it stands: a wrong sentence about when something runs is
- * worse than the expression itself.
- */
 export function cronWords(cron: string, t: Translate, localeTag: string): string {
   const expression = cron.trim();
   const every = /^every:(\d+)$/.exec(expression);

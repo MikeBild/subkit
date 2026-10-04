@@ -1,12 +1,3 @@
-// Bridges conversation attachments to runDocumentAnalysisFlow.
-//
-// Conversation tools (save_connector_draft, build_workflow) call this
-// when an authoring step crosses a boundary that benefits from
-// extracted endpoint metadata. The helper reads files linked to the
-// conversation via the unified `files` + `file_links` resource, then
-// delegates to runDocumentAnalysisFlow which writes to the endpoint
-// registry and emits the DOCUMENT_ANALYZED audit row.
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
@@ -23,11 +14,8 @@ export interface AnalyzeConversationAttachmentsParams {
   tenant_id: string;
   conversation_id: string;
   db: Db;
-  /** Persist endpoint registry rows under this connector when set. */
   connector_id?: string;
-  /** Optional list of slugs to limit analysis to. */
   slugs?: string[];
-  /** Free-form goal forwarded to runDocumentAnalysisFlow. */
   goal?: string;
 }
 

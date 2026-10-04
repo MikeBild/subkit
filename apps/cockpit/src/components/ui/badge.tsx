@@ -34,7 +34,6 @@ function Badge({
 }: React.ComponentProps<"span"> &
   VariantProps<typeof badgeVariants> & {
     asChild?: boolean;
-    /** A real state only (StatusBadge); a category or a count draws no dot. */
     dot?: boolean;
   }) {
   const Comp = asChild ? Slot.Root : "span";

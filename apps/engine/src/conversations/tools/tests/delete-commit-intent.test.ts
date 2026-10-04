@@ -1,23 +1,7 @@
-// Policy-gate commit-intent for delete_connector / delete_workflow.
-// Pre-fix (session 975a64b0): the policy gate paused these tools
-// with NO commit_intent attached. The user clicked approve,
-// `maybeAutoPersistFromElicitation` found no intent, logged
-// `auto_persist.skipped`, and the delete silently never executed.
-// The LLM hallucinated "Connector deleted" and moved on, leaving
-// the row alive — which then caused the next save_connector_draft
-// for the same slug to crash with 23505 unique-violation.
-//
-// We assert the source-level wiring of the new commit-intent
-// builders. The integration path (auto-persist dispatcher already
-// has `case "delete_connector"` / `case "delete_workflow"` since
-// wave-3) consumes these intents and calls the appropriate atomic
-// helper.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// The commit-intent helpers live in `tools/sdk-wrap/policy-helpers.ts`.
 const SRC = join(import.meta.dir, "..", "sdk-wrap", "policy-helpers.ts");
 
 describe("policy-gate commit-intent · policy-gated writes", () => {

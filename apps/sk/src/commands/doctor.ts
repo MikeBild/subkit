@@ -1,26 +1,3 @@
-// `sk doctor` — first-line operator diagnostic.
-//
-// Aggregates the checks an operator hits when "something is wrong":
-//
-//   1. Profile         — does the resolved profile have an engine_url + api_key?
-//   2. Reachability    — do GET /health and GET /ready agree that the engine can serve?
-//   3. Authn           — does the api_key resolve to a principal?
-//   4. Setup           — what does /v1/diagnostics/setup say overall + per-section?
-//   5. Schema drift    — does this engine binary's embedded migration set
-//                        match the rows in `drizzle.__drizzle_migrations`?
-//   6. Version match   — does the CLI version match the engine's version?
-//                        Mismatches usually surface as missing routes or
-//                        wire-shape drift.
-//
-// Output is one block per check, color-coded. Exit code:
-//
-//   0 = everything ok
-//   1 = at least one check warned
-//   2 = at least one check blocked (operator must act)
-//
-// Designed to drop into shell scripts: `sk doctor --json` emits a single
-// JSON object so a CI gate can parse it.
-
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
@@ -51,10 +28,6 @@ function worst(results: CheckResult[]): CheckStatus {
 }
 
 function exitCodeFromStatus(s: CheckStatus): number {
-  // Warnings are advisory, not failures — a freshly-bootstrapped, correctly
-  // configured engine routinely warns (e.g. no public_base_url on localhost),
-  // and gating CI/onboarding scripts on a non-zero exit for that is noise.
-  // Only a hard blocker is a non-zero exit.
   if (s === "blocked") return 2;
   return 0;
 }
@@ -79,7 +52,6 @@ export const doctorCommand = defineCommand({
     });
     const results: CheckResult[] = [];
 
-    // -------- 1. Profile --------
     const profileStatus: CheckStatus = !profile.api_key
       ? "blocked"
       : !profile.engine_url
@@ -107,7 +79,6 @@ export const doctorCommand = defineCommand({
       tenant: profile.active_tenant_id,
     });
 
-    // -------- 2. Reachability --------
     let reachability: CheckResult;
     let engineVersion: string | undefined;
     try {
@@ -135,8 +106,6 @@ export const doctorCommand = defineCommand({
     }
     results.push(reachability);
 
-    // -------- 3. Authn + 4. Setup --------
-    // setupValidation requires a principal, so it doubles as the authn check.
     if (reachability.status === "blocked" || profileStatus === "blocked") {
       results.push({
         name: "authn",
@@ -193,7 +162,6 @@ export const doctorCommand = defineCommand({
       }
     }
 
-    // -------- 5. Schema drift --------
     if (reachability.status === "blocked" || profileStatus === "blocked") {
       results.push({
         name: "schema_drift",
@@ -201,14 +169,6 @@ export const doctorCommand = defineCommand({
         detail: "skipped — fix profile + reachability first",
       });
     } else {
-      // The `audit:read`-gated `/v1/diagnostics/drift` is the
-      // canonical source of the actionable drift detail (the public
-      // `/health` deliberately omits it to avoid leaking
-      // operational posture to unauthenticated callers), so always
-      // pull it. Every `sk doctor` run writes one
-      // `DIAGNOSTICS_DRIFT_READ` audit row, even on a clean DB —
-      // intentional, so operators searching `audit_log` for drift
-      // reads see doctor invocations alongside any genuine probes.
       try {
         const report = await client.driftReport();
         const unknown = report.unknown_in_db.length;
@@ -242,16 +202,7 @@ export const doctorCommand = defineCommand({
                   "Pick a resolution path: (a) port the missing migration " +
                   "files into this binary's source and ship a new release, or " +
                   "(b) reset the DB from the embedded set during a maintenance window."
-                : // missing_in_db > 0 with the engine running means the
-                  // boot-time `runMigrations(db)` already ran (otherwise
-                  // boot would have aborted) AND still observed embedded
-                  // migrations the DB doesn't have. That is a silent
-                  // failure of the migrator, not a stale binary — restarting
-                  // does not clear it.  Operator should inspect the
-                  // engine's `migrate.applied` log entries (sk logs
-                  // --module db --action migrate.applied) and the
-                  // missing migration's SQL for a runtime apply error.
-                  "boot-time migrate ran but the DB is still missing embedded migrations — " +
+                : "boot-time migrate ran but the DB is still missing embedded migrations — " +
                   "check `sk logs --module db --action migrate.applying` for the per-tag " +
                   "apply entries; restarting will not clear this on its own.",
           });
@@ -275,7 +226,6 @@ export const doctorCommand = defineCommand({
       }
     }
 
-    // -------- 6. Version match --------
     if (engineVersion) {
       const matches = engineVersion === CLI_VERSION;
       results.push({
@@ -300,11 +250,6 @@ export const doctorCommand = defineCommand({
       });
     }
 
-    // -------- 7. Integrations health (connectors / workflows) --------
-    // The find-out-early surface: a connector pointing at a removed or
-    // deprecated endpoint, a dead credential, or a workflow flagged
-    // needs_attention shows up HERE — before an unattended run returns
-    // "0 results".
     try {
       const integ = await client.integrationsHealth();
       const attention = integ.connectors.filter((c) => c.effective_health !== "ok");
@@ -370,7 +315,6 @@ export const doctorCommand = defineCommand({
       process.exit(exitCodeFromStatus(overall));
     }
 
-    // Human output.
     process.stdout.write(`\n${pc.bold("sk doctor")} · profile ${pc.cyan(profile.name)}\n`);
     process.stdout.write(`engine_url ${pc.dim(profile.engine_url)}\n\n`);
     for (const r of results) {

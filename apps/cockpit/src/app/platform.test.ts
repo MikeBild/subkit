@@ -64,7 +64,6 @@ describe("live invalidation table", () => {
   });
 
   test("every key in the table is a key the Cockpit reads", () => {
-    // A renamed query key would leave its rule refreshing nothing, silently.
     const sources = readdirSync(SRC, { recursive: true, encoding: "utf8" })
       .filter((file) => /\.(ts|tsx)$/.test(file) && !file.includes(".test."))
       .filter((file) => !file.endsWith("live-invalidation.ts") && !file.endsWith("schema.d.ts"))
@@ -123,7 +122,6 @@ describe("endless lists", () => {
   test("the next page follows the paging the endpoint answered with", () => {
     expect(nextPageParam([{ items: [1], next_cursor: "c1" }])).toBe("c1");
     expect(nextPageParam([{ items: [1], next_cursor: null, total: 9 }])).toBeNull();
-    // Offset-paged catalogues: the loaded count is the next offset until the total.
     expect(nextPageParam([{ items: [1, 2], total: 3 }])).toBe(2);
     expect(
       nextPageParam([
@@ -174,7 +172,6 @@ describe("route transitions", () => {
       updates += 1;
     };
     await runViewTransition(update, ["route"], doc, true);
-    // A second navigation while the first still runs updates without a transition.
     await runViewTransition(update, ["route"], doc, true);
     expect(started).toBe(1);
     expect(updates).toBe(2);

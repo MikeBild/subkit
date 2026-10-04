@@ -15,24 +15,10 @@ const safePrefix = z
         .slice(0, -1)
         .every((part) => /^[A-Za-z0-9_+=.-]+$/.test(part) && part !== "." && part !== ".."),
   );
-/** An authored proposal. Only a separate human-approved manifest grants access. */
 export const StorageScopeSchema = z
   .object({
     key_prefix: safePrefix,
     max_bytes: z.number().int().positive().max(10_000_000),
-    // Opt-in ceiling for removal. Its absence is what keeps DELETE ineligible,
-    // so an author has to name a number before a recurring run may delete
-    // anything. `.optional()` (not `.nullable()`) matters: Zod omits an absent
-    // optional key entirely, and the manifest digest is taken over the key SET
-    // — `canonicalWorkflowJson` serialises a present-but-undefined key as null,
-    // which would move the digest of every live authority that has a storage
-    // boundary and revoke those grants. Absent must stay absent.
-    //
-    // Honest scope: this is a reviewed ceiling shown to the human, enforced per
-    // call as prefix containment and a bodyless DELETE. It is NOT a per-run call
-    // count — nothing counts dispatches across a run yet (see
-    // `authority-execution-shape.ts`, `run_limit_is_request_limit: false`), so a
-    // `for_each` still issues one bounded delete per item.
     max_deletes: z.number().int().positive().max(10_000).optional(),
   })
   .strict();
@@ -48,16 +34,11 @@ export const StorageBoundarySchema = z
     max_deletes: z.number().int().positive().max(10_000).optional(),
   })
   .strict()
-  // The coupling lives on the schema rather than in `assertStorageRequest`,
-  // because that function re-parses the boundary before trusting it. A
-  // hand-assembled `{operation: "DELETE"}` with no ceiling therefore cannot
-  // parse anywhere — at compile time, at admission, or at dispatch.
   .refine((boundary) => boundary.operation !== "DELETE" || boundary.max_deletes !== undefined, {
     message: "a DELETE storage boundary requires max_deletes",
   });
 export type StorageBoundary = z.infer<typeof StorageBoundarySchema>;
 
-/** Mirrors the S3 connector's endpoint, path-style and region defaults. */
 export function storageBaseUrl(config: unknown): string | null {
   const parsed = z
     .object({
@@ -95,13 +76,6 @@ export function storageBaseUrl(config: unknown): string | null {
   }
 }
 
-/**
- * Why a step compiled no storage boundary. A bare `null` told the reviewer's
- * tooling only THAT a step is unbounded, never why — so a model repairing a
- * workflow was told to "add s3.scope" on steps that already had one, while the
- * actual cause (a body on a DELETE, an empty `query: {}` left by generation)
- * went unnamed and the repair looped. The reason travels with the refusal.
- */
 export type StorageBoundaryRefusal =
   | "base_unresolved"
   | "no_scope"
@@ -114,9 +88,6 @@ export type StorageBoundaryRefusal =
   | "scope_invalid";
 
 function hasEntries(value: unknown): boolean {
-  // An empty object is not a query and not a header set. Generated steps carry
-  // `query: {}` / `headers: {}` routinely; treating those as "present" refused
-  // a boundary for a request that sends neither.
   if (value === undefined || value === null) return false;
   if (typeof value !== "object") return true;
   return Object.keys(value as Record<string, unknown>).length > 0;
@@ -132,9 +103,6 @@ export function compileStorageBoundary(
   if (!step.s3?.scope) return { refusal: "no_scope" };
   if (!["GET", "HEAD", "LIST", "PUT", "DELETE"].includes(step.method))
     return { refusal: "unsupported_method" };
-  // A DELETE carrying a body is refused here rather than at dispatch: the
-  // reviewer would otherwise be shown a boundary for a request the runtime is
-  // going to reject anyway. `null` is "no body" — generation writes it out.
   if (step.method === "DELETE" && step.body !== undefined && step.body !== null)
     return { refusal: "delete_with_body" };
   const { body: _body, path: _path, url: _url, s3, ...fixed } = step;
@@ -235,19 +203,12 @@ export function assertStorageRequest(
   if (storageKeyViolation(boundary, key, request.body) !== null) deny();
 }
 
-/** Why an object key or its content is outside a folder boundary. The key and sizes, never content. */
 export type StorageKeyViolation =
   | { kind: "outside_folder"; key_prefix: string; key: string }
   | { kind: "key_invalid" }
   | { kind: "body_size"; bytes: number; max_bytes: number }
   | { kind: "body_not_text" | "body_forbidden" };
 
-/**
- * The part of the judgement that needs no URL: the key (or, for a LIST, the
- * listed prefix) and the written size. The approval's own check ends in it, and
- * a run of a step that merely DECLARES `s3.scope` uses it directly, so a green
- * preview means the step stays inside the folder a human is asked to approve.
- */
 export function storageKeyViolation(
   boundary: StorageBoundary,
   key: string,
@@ -270,7 +231,6 @@ export function storageKeyViolation(
     : null;
 }
 
-/** One sentence an author can act on. */
 export function describeStorageKeyViolation(violation: StorageKeyViolation): string {
   switch (violation.kind) {
     case "outside_folder":

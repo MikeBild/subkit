@@ -1,11 +1,3 @@
-// MCP tool surface E2E.
-//
-// Confirms that a live engine's MCP endpoint advertises the conversation
-// tools under their bare names with populated input schemas, that the
-// `conversation_*` helper set is present, and that destructive writes go
-// through the unified dispatcher's confirm gate. The legacy `tenant_*`
-// prefix aliases were removed — every tool surfaces under its bare name.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { issueBrowserSession } from "../../apps/engine/src/auth/browser-session.ts";
@@ -18,9 +10,6 @@ const MCP_PROTOCOL_VERSION = "2025-11-25";
 
 let env: E2EEnv;
 beforeAll(async () => {
-  // The mode-split MCP catalog hides conversation tools + tenant writes
-  // from the default product surface; this suite validates the combined
-  // authoring+admin surface, so opt in explicitly.
   process.env.SK_MCP_MODE = "admin";
   env = await boot("mcp-surface", { llm: "mock" });
 }, 90_000);
@@ -29,9 +18,6 @@ afterAll(async () => {
   delete process.env.SK_MCP_MODE;
 }, 30_000);
 
-// MCP streamable-http requires a persistent session — the first
-// `initialize` returns an `mcp-session-id` response header that every
-// subsequent call must echo back.
 class McpSession {
   public sessionId: string | null = null;
 
@@ -57,7 +43,6 @@ class McpSession {
         params,
       }),
     });
-    // Capture the session id on the initialize response.
     const sid = r.headers.get("mcp-session-id");
     if (sid && !this.sessionId) this.sessionId = sid;
     const text = await r.text();
@@ -179,25 +164,17 @@ describe("MCP tool surface", () => {
     expect(Array.isArray(tools)).toBe(true);
 
     const names = new Set(tools.map((t) => t.name));
-    // Must expose the conversation_* helpers.
     for (const n of ["conversation_start", "conversation_append", "conversation_commit"]) {
       expect(names.has(n)).toBe(true);
     }
-    // Read family surfaces under bare names (admin mode).
     const bareReads = ["list_workflows", "list_connectors", "get_engine_status"].filter((n) =>
       names.has(n),
     ).length;
     expect(bareReads).toBeGreaterThan(2);
-    // The legacy tenant_* alias surface is gone.
     expect([...names].filter((n) => n.startsWith("tenant_")).length).toBe(0);
 
-    // Input schema conversion is real — list_workflows has a populated
-    // object schema via zodToMcpSchema.
     const listWorkflows = tools.find((t) => t.name === "list_workflows");
     expect(listWorkflows).toBeDefined();
-    // `title` is the human-readable label derived Title-Case from the
-    // snake_case `name` (titleFromName in adapter.ts) — MCP clients render
-    // `title` and fall back to `name` only when it is absent.
     expect(listWorkflows?.title).toBe("List Workflows");
     expect(listWorkflows?.execution?.taskSupport).toBe("forbidden");
     const schema = listWorkflows?.inputSchema as {
@@ -219,8 +196,6 @@ describe("MCP tool surface", () => {
     });
     const tools = await session.listAllTools();
     const byName = new Map(tools.map((t) => [t.name, t]));
-    // Writes visible (SK_MCP_READ_ONLY unset); destructive tenant_write
-    // tools advertise confirm_required via _meta.subkit.
     expect(byName.has("delete_workflow")).toBe(true);
     expect(byName.get("delete_workflow")?._meta?.subkit).toEqual({
       category: "tenant_write",
@@ -235,8 +210,6 @@ describe("MCP tool surface", () => {
   }, 30_000);
 
   test("destructive call waits for a local human decision and replays the exact call once", async () => {
-    // Seed a workflow so the delete has a real target. Driving the full
-    // authoring surface is out of scope here, so create one via the API.
     const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {
       method: "POST",
       headers: {
@@ -268,8 +241,6 @@ describe("MCP tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
 
-    // A transport hint is not a human decision. The real endpoint must preserve
-    // the target until the separate browser session submits its bound form.
     const call = await session.call("tools/call", {
       name: "delete_workflow",
       arguments: { id: workflowId },
@@ -302,8 +273,6 @@ describe("MCP tool surface", () => {
     expect(JSON.stringify(premature.result)).toContain("approval_not_granted");
     expect((await readTarget()).status).toBe(200);
 
-    // The fixture replaces only upstream login; the page, CSRF, decision CAS
-    // and subsequent MCP replay all use the live engine and real database.
     const login = await issueBrowserSession({
       db: env.db,
       tenantId: env.tenantId,

@@ -1,10 +1,7 @@
-// Unit tests for the loop→for_each rewriter (pure data, no I/O).
-
 import { describe, expect, test } from "bun:test";
 import { rewriteLoopsToForEach } from "../migrate-loop-to-for-each.ts";
 import type { WorkflowDef } from "../types.ts";
 
-// Minimal valid workflow factory.
 function mkDef(overrides: Partial<WorkflowDef> & { steps: WorkflowDef["steps"] }): WorkflowDef {
   return {
     name: "test",
@@ -61,7 +58,6 @@ describe("rewriteLoopsToForEach", () => {
     expect(change.for_each).toBe("(sourceData) => sourceData.fetch_items.data.items");
     expect(change.selector_source).toBe("data_selector");
 
-    // Loop step removed; process_item now has for_each.
     const stepIds = result.def.steps.map((s) => s.id);
     expect(stepIds).not.toContain("iterate_items");
     expect(stepIds).toContain("process_item");
@@ -140,7 +136,6 @@ describe("rewriteLoopsToForEach", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.changed).toBe(false);
-    // Loop step still present.
     expect(result.def.steps.some((s) => s.id === "iter")).toBe(true);
   });
 
@@ -166,7 +161,6 @@ describe("rewriteLoopsToForEach", () => {
           expression: "(input) => input.$item",
         },
         {
-          // Downstream step reads iter_items.data — migration would break this.
           kind: "transform",
           id: "summarize",
           language: "javascript",
@@ -178,7 +172,6 @@ describe("rewriteLoopsToForEach", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.changed).toBe(false);
-    // iter_items must still be in the definition.
     expect(result.def.steps.some((s) => s.id === "iter_items")).toBe(true);
   });
 
@@ -194,7 +187,6 @@ describe("rewriteLoopsToForEach", () => {
         {
           kind: "loop",
           id: "iter",
-          // Contains $ — cannot trivially wrap as JS arrow fn.
           over: "$fetch.data.items",
           body: ["do_item"],
         },
@@ -232,7 +224,6 @@ describe("rewriteLoopsToForEach", () => {
           id: "do_item",
           language: "javascript",
           expression: "(input) => input.$item",
-          // Already migrated.
           for_each: "(sourceData) => sourceData.fetch.data",
         },
       ],
@@ -252,7 +243,6 @@ describe("rewriteLoopsToForEach", () => {
           method: "GET",
           url: "https://api.example.com/items",
         },
-        // Eligible: single body, data_selector, no downstream ref.
         {
           kind: "loop",
           id: "loop_a",
@@ -265,7 +255,6 @@ describe("rewriteLoopsToForEach", () => {
           language: "javascript",
           expression: "(input) => input.$item",
         },
-        // Ineligible: multi-body.
         {
           kind: "loop",
           id: "loop_b",
@@ -293,7 +282,6 @@ describe("rewriteLoopsToForEach", () => {
     expect(result.changes).toHaveLength(1);
     expect(result.changes[0]!.loop_step_id).toBe("loop_a");
 
-    // loop_a removed; loop_b still present.
     const ids = result.def.steps.map((s) => s.id);
     expect(ids).not.toContain("loop_a");
     expect(ids).toContain("loop_b");

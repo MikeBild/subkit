@@ -1,10 +1,3 @@
-// End-to-end keystroke tests for `TextPrompt`. Mirrors the single-
-// owner input model introduced alongside FormPrompt / ConfirmPrompt.
-// Before the rewrite, `@inkjs/ui`'s embedded TextInput was the sole
-// keystroke owner and Esc/backspace/regex-validation-error behavior
-// was inconsistent with the rest of the ask-user family. These tests
-// lock the new behavior in.
-
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { TextPrompt } from "@chat-ui/index.ts";
 import { cleanup, render } from "ink-testing-library";
@@ -76,14 +69,12 @@ describe("TextPrompt — regex validation", () => {
       <TextPrompt question="?" validationRegex={"^\\d+$"} onResponse={onResponse} />,
     );
     await type(instance, "abc");
-    await writeKeys(instance, [KEY.enter]); // blocked
-    // After the regex-block, the error line is visible and value is still "abc".
+    await writeKeys(instance, [KEY.enter]);
     expect(instance.lastFrame() ?? "").toContain("must match");
     expect(instance.lastFrame() ?? "").toContain("abc");
     await writeKeys(instance, [KEY.backspace]);
     await writeKeys(instance, [KEY.backspace]);
     await writeKeys(instance, [KEY.backspace]);
-    // Value should now be empty.
     expect(instance.lastFrame() ?? "").not.toContain("abc");
     await type(instance, "123");
     expect(instance.lastFrame() ?? "").toContain("123");

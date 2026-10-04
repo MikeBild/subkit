@@ -3,9 +3,6 @@ import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowsSchedules } from "../db/schema/index.ts";
 
-/** Only explicit held preparation may inherit an unambiguous saved schedule.
- * An explicit input (including {}) and every live-run request keep their meaning.
- */
 export async function workflowPreparationInput(
   db: Executor,
   tenant_id: string,

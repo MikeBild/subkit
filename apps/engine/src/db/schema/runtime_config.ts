@@ -28,11 +28,6 @@ export const runtimeConfigReplicaAckStatusEnum = pgEnum("runtime_config_replica_
   "nack",
 ]);
 
-/**
- * Immutable, complete runtime-configuration documents. A revision includes
- * the global document and its tenant overlays so one pointer switch exposes
- * a coherent snapshot to every request path.
- */
 export const runtimeConfigRevisions = pgTable(
   "runtime_config_revisions",
   {
@@ -49,12 +44,6 @@ export const runtimeConfigRevisions = pgTable(
   (t) => [index("runtime_config_revisions_digest_idx").on(t.digest)],
 );
 
-/**
- * A restart someone asked for through `POST /v1/system/restart`. The asking
- * process writes it before it drains; the process that boots next reads it
- * and records whether the waiting revision became active. Kept after the
- * outcome so a second request inside the minimum interval is refused.
- */
 export interface EngineRestartRequest {
   request_id: string;
   audit_id: string;
@@ -69,7 +58,6 @@ export interface EngineRestartRequest {
   to_boot_id?: string;
 }
 
-/** Singleton pointer and activation request. */
 export const runtimeConfigState = pgTable("runtime_config_state", {
   key: text("key").primaryKey(),
   active_revision: bigint("active_revision", { mode: "number" }),
@@ -77,22 +65,12 @@ export const runtimeConfigState = pgTable("runtime_config_state", {
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/**
- * The last requested engine restart (one row, key "engine"). Its own table,
- * not a column of runtime_config_state: the preflight and host commands read
- * that table against the PREVIOUS release's schema, where a new column would
- * crash every query naming it.
- */
 export const engineRestartRequests = pgTable("engine_restart_requests", {
   key: text("key").primaryKey(),
   request: jsonb("request").$type<EngineRestartRequest>().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/**
- * Lease plus prepare/ACK state for every live replica. A replica is healthy
- * while last_seen_at is within the coordinator lease window.
- */
 export const runtimeConfigReplicas = pgTable(
   "runtime_config_replicas",
   {
@@ -110,7 +88,6 @@ export const runtimeConfigReplicas = pgTable(
   (t) => [index("runtime_config_replicas_lease_idx").on(t.last_seen_at)],
 );
 
-/** Immutable encrypted secret versions referenced as secret://name/version. */
 export const runtimeSecretVersions = pgTable(
   "runtime_secret_versions",
   {
@@ -122,15 +99,8 @@ export const runtimeSecretVersions = pgTable(
     created_by: uuid("created_by"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
-    // A PREPARED version: written (by `engine --vault-set --pending` or by a
-    // connection) but not yet approved by a person in the Cockpit. While set,
-    // the version is not the current one, cannot be bound, and `--vault-check`
-    // does not see it. Approval clears it and re-pins `pending_bindings`;
-    // rejection revokes it.
     pending_since: timestamp("pending_since", { withTimezone: true }),
-    /** Who or what prepared it, in words the Cockpit shows ("Host-Kommando", "Verbindung wiki"). */
     prepared_by: text("prepared_by"),
-    /** Dotted settings paths to re-point at this version on approval. */
     pending_bindings: jsonb("pending_bindings").$type<string[] | null>(),
   },
   (t) => [

@@ -31,7 +31,6 @@ export function evaluatePatchReadiness(input: {
   step_key: string | null;
   version_id: string | null;
   dag: unknown;
-  /** The drift kind the candidate recorded; a `gate_fix` needs `gate_block`. */
   drift_kind?: string | null;
 }): PatchReadiness {
   const proposal = PatchProposalSchema.safeParse(input.proposal);
@@ -66,7 +65,6 @@ export function evaluatePatchReadiness(input: {
   };
 }
 
-/** Readiness is derived from the current artifact, never from a model's safety label. */
 export async function readPatchReadiness(
   tenant_id: string,
   candidate: typeof patchCandidates.$inferSelect,
@@ -103,7 +101,6 @@ export async function readPatchReadiness(
   });
 }
 
-/** Resolve an entire queue with two tenant-scoped reads instead of per-card queries. */
 export async function readPatchReadinessBatch(
   tenant_id: string,
   candidates: (typeof patchCandidates.$inferSelect)[],

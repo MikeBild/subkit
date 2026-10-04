@@ -1,69 +1,17 @@
-// conversation_start idempotency — resume a mid-authoring conversation
-// instead of spawning a duplicate.
-//
-// One user intent ("create workflow load-jira-issue-full-details") that
-// gets re-issued (the client lost track, retried, or the user typed it
-// twice) used to call createConversation unconditionally and fragment the
-// authoring state across several conversations — the user could not tell
-// which one held the result. This helper closes that gap: before creating,
-// the start handler asks whether THIS principal already has a RECENT,
-// NON-TERMINAL conversation authoring the SAME workflow slug, and if so
-// resumes it.
-//
-// The match is deliberately TIGHT to avoid a false-positive resume
-// attaching an intent to the wrong conversation:
-//   - same principal (tenant_id + owner_id),
-//   - non-terminal status only (active | awaiting_input — a committed or
-//     abandoned conversation is never resumed; re-authoring after commit
-//     legitimately starts fresh),
-//   - inside a short recency window (RESUMABLE_AUTHORING_WINDOW_MS),
-//   - the incoming message names an EXPLICIT kebab-case slug token
-//     (two+ segments, e.g. `load-jira-issue-full-details`) that matches
-//     the candidate's AUTHORED identity — its draft workflow slug/name or
-//     the draft summary's active target — OR the incoming message is a
-//     byte-identical retry of the candidate's opening message (the
-//     pre-draft window, before the first turn has populated the draft).
-//
-// The candidate's opening-message PROSE is deliberately NOT a match
-// source. Kebab tokens extracted from free text are not slug references:
-// German (and hyphenated English) prose is full of compounds like
-// `http-connector`, `api-key`, or `authorization-header`, and matching
-// prose-against-prose turned every subsequent start that shared one such
-// compound into a resume of an unrelated conversation — a trap the user
-// could not escape, observed live as every conversation_start funnelling
-// into one stuck conversation. Authored slugs are chosen identifiers;
-// prose overlap is coincidence.
-//
-// No DB unique constraint: that would block legitimate re-authoring of the
-// same slug. This is a soft, read-side dedup scoped to the live window.
-
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { conversationMessages, conversations } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import type { ConversationStatus, DraftDocument } from "./types.ts";
 
-/**
- * How far back a conversation still counts as "mid-authoring" for the
- * idempotency check. Short on purpose: a re-issued intent lands within
- * minutes (an authoring turn itself runs 68-160s), and a stale window
- * would resume a conversation the user has mentally moved on from.
- */
 export const RESUMABLE_AUTHORING_WINDOW_MS = 30 * 60 * 1000;
 
-/** Non-terminal statuses — the only ones a start may resume. */
 const NON_TERMINAL: ConversationStatus[] = ["active", "awaiting_input"];
 
-/** Cap on recent candidates scanned. Bounded so the pass stays cheap. */
 const CANDIDATE_SCAN = 20;
 
 export interface ResumableAuthoringMatch {
   conversation_id: string;
-  /**
-   * What matched — the authored slug token, or the literal
-   * `"(identical-opening-message)"` marker for a pre-draft retry.
-   * Logged so the resume is auditable.
-   */
   matched_slug: string;
 }
 
@@ -72,7 +20,6 @@ export interface ResumableAuthoringTarget {
   workflow_id?: string;
 }
 
-/** Marker logged when the match was an exact opening-message retry. */
 export const IDENTICAL_MESSAGE_MARKER = "(identical-opening-message)";
 
 function slugify(name: string): string {
@@ -83,14 +30,6 @@ function slugify(name: string): string {
     .slice(0, 64);
 }
 
-/**
- * Extract explicit kebab-case slug tokens (two or more `-`-joined
- * segments) from free text. A single bare word is NOT a slug reference —
- * only a multi-segment kebab token counts, which is exactly how a user or
- * client names a workflow slug ("create workflow load-jira-issue-full-details").
- * Keeping this tight is what prevents a vague prompt from resuming an
- * unrelated conversation.
- */
 export function extractSlugTokens(text: string): Set<string> {
   const out = new Set<string>();
   const matches = text.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)+/g);
@@ -98,7 +37,6 @@ export function extractSlugTokens(text: string): Set<string> {
   return out;
 }
 
-/** Read the plain text of a `conversation_messages.content` jsonb value. */
 function messageText(content: unknown): string {
   if (typeof content === "string") return content;
   if (content && typeof content === "object") {
@@ -108,13 +46,6 @@ function messageText(content: unknown): string {
   return "";
 }
 
-/**
- * The set of slug tokens a candidate conversation is AUTHORING, assembled
- * from cheap, already-loaded sources (no full draft hydration): the
- * draft's authored workflow slug / name and the draft summary's active
- * target (which also covers connector authoring). Deliberately NOT the
- * opening message's prose — see the module docblock.
- */
 function candidateSlugTokens(draft: unknown): Set<string> {
   const tokens = new Set<string>();
   if (draft && typeof draft === "object") {
@@ -138,23 +69,10 @@ function candidateSlugTokens(draft: unknown): Set<string> {
   return tokens;
 }
 
-/** Whitespace-insensitive equality key for the exact-retry fallback. */
 function normalizeMessage(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-/**
- * Find a recent, non-terminal authoring conversation OWNED by this
- * principal that is already authoring the same workflow/connector slug
- * named in `message_or_slug`, or whose opening message is an identical
- * retry of it. Returns the match (most-recent first) or `null` when
- * nothing in the live window matches — in which case the caller creates
- * a fresh conversation as before.
- *
- * Tenant-scoped: every query is filtered by `tenant_id`, and results are
- * further scoped to `owner_id` so a resume can only ever attach to the
- * caller's own conversation.
- */
 export async function findResumableAuthoringConversation(
   tenant_id: string,
   owner_id: string,
@@ -165,11 +83,6 @@ export async function findResumableAuthoringConversation(
   if (!owner_id) return null;
   const incoming = extractSlugTokens(message_or_slug);
   const hasExplicitTarget = Boolean(target.workflow_id || target.connector_id);
-  // No explicit slug token in the prompt → cannot tightly identify a
-  // target, so never resume — not even via the identical-retry fallback:
-  // short token-less prompts ("list users", "status?") are legitimately
-  // re-used across genuinely separate conversations. An explicit resource
-  // id is a stronger identity than prose and can safely resume without one.
   if (incoming.size === 0 && !hasExplicitTarget) return null;
   const incomingNormalized = normalizeMessage(message_or_slug);
 
@@ -197,8 +110,6 @@ export async function findResumableAuthoringConversation(
     .limit(CANDIDATE_SCAN);
   if (rows.length === 0) return null;
 
-  // The query already proved tenant, owner, recency, status, and exact
-  // resource identity. Do not let slug prose override that durable binding.
   if (hasExplicitTarget) {
     const row = rows[0];
     if (!row) return null;
@@ -217,9 +128,6 @@ export async function findResumableAuthoringConversation(
   }
 
   const ids = rows.map((r) => r.id);
-  // Opening user message per candidate — fetched ascending so the first
-  // row seen for each conversation is its earliest (the intent that
-  // opened it).
   const messages = await db
     .select({
       conversation_id: conversationMessages.conversation_id,
@@ -240,7 +148,6 @@ export async function findResumableAuthoringConversation(
     firstMessageByConversation.set(m.conversation_id, messageText(m.content));
   }
 
-  // rows are already most-recent-first → the first match wins.
   for (const row of rows) {
     let matched: string | null = null;
     const candidate = candidateSlugTokens(row.draft);
@@ -250,9 +157,6 @@ export async function findResumableAuthoringConversation(
         break;
       }
     }
-    // Pre-draft retry window: the first turn has not populated the draft
-    // yet, so the only reliable duplicate signal is the message itself
-    // being an identical re-issue of the candidate's opening message.
     if (!matched) {
       const firstMessage = firstMessageByConversation.get(row.id) ?? "";
       if (incomingNormalized.length > 0 && normalizeMessage(firstMessage) === incomingNormalized) {

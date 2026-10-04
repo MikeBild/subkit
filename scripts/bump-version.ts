@@ -1,24 +1,4 @@
 #!/usr/bin/env bun
-//
-// Bump the release version — and everything the version is baked into.
-//
-//   bun run bump 5.10.0
-//
-// The root `package.json` version is not the only place a release number
-// lives: `gen-openapi-client.ts` copies it into the committed
-// `packages/cli-core/src/engine-api/openapi.json` so the checked-in contract
-// names the release rather than whatever a running binary reports. Editing
-// package.json alone therefore leaves the repo in a state where
-// `check:openapi-drift` fails — and it fails at `git push`, after the commit
-// is already written, which is the worst possible moment to discover it.
-//
-// This script makes the bump atomic in the only sense that matters: when it
-// exits 0, every artifact derived from the version has been regenerated in the
-// working tree, so the commit that follows carries them. Note that
-// `check:openapi-drift` compares the generated output against the COMMITTED
-// artifact — between this script and your commit it is red by construction,
-// and green immediately after. Nothing here talks to a network or a deploy
-// target.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -41,7 +21,6 @@ function parseVersion(v: string): [number, number, number] {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
-/** True when `next` sorts strictly after `current`. */
 function isAscending(current: string, next: string): boolean {
   const a = parseVersion(current);
   const b = parseVersion(next);
@@ -76,9 +55,6 @@ if (next === current) die(`already at ${current} — a released tag must never b
 if (!isAscending(current, next)) die(`${next} does not sort after the current ${current}`);
 if (tagExists(`v${next}`)) die(`tag v${next} already exists — pick the next unused version`);
 
-// Rewrite only the top-level "version" key, preserving byte-for-byte
-// formatting everywhere else. A JSON round-trip would reformat the whole file
-// and bury the one-line change in noise.
 const replaced = pkgText.replace(
   new RegExp(`("version":\\s*")${current.replace(/\./g, "\\.")}(")`),
   `$1${next}$2`,
@@ -87,15 +63,6 @@ if (replaced === pkgText) die(`could not locate "version": "${current}" in packa
 writeFileSync(PKG, replaced);
 console.log(`bump: package.json ${current} → ${next}`);
 
-// Regenerate every artifact the version is copied into. Today that is the
-// OpenAPI contract; if another generator starts embedding the version, add it
-// here rather than to a release checklist a human has to remember.
-
-// docker-compose.yml pins the engine image, and since 6.23.0 every running
-// engine SERVES that file at GET /docker-compose.yml. A stale tag there is not
-// a cosmetic lag: it hands a newcomer the topology of the previous release
-// while claiming to describe this one. The bump owns it for the same reason it
-// owns the OpenAPI artifact — a release checklist is not a mechanism.
 {
   const composePath = join(REPO, "docker-compose.yml");
   const compose = readFileSync(composePath, "utf8");
@@ -117,7 +84,6 @@ console.log(`bump: package.json ${current} → ${next}`);
 console.log("bump: regenerating the OpenAPI client …");
 execFileSync("bun", ["run", "gen:openapi-client"], { cwd: REPO, stdio: "inherit" });
 
-// Prove it rather than assume it — this is the exact check that runs on push.
 try {
   execFileSync("git", ["diff", "--exit-code", "packages/cli-core/src/engine-api"], {
     cwd: REPO,

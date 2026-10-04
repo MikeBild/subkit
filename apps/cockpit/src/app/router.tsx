@@ -26,10 +26,6 @@ import { guardRouteTransitions } from "./view-transition";
 
 const rootRoute = createRootRoute({ component: AppShell, notFoundComponent: NotFoundPage });
 
-// One component behind all three chat paths: a conversation is chosen from the
-// path, not from a different page. The paths are read off the table by
-// position rather than mapped over it — a mapped tuple loses its literal types,
-// and with them every `<Link to="/chat">` in the product.
 const [CHAT_PATH, NEW_CHAT_PATH, CONVERSATION_PATH] = CHAT_ROUTES;
 
 const chatRoutes = [
@@ -38,13 +34,6 @@ const chatRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: CONVERSATION_PATH, component: ChatPage }),
 ];
 
-// Every page is its own module (CUI-PAGE-2). There is no generic resource
-// renderer any more: a list that cannot say which columns it has cannot say
-// which relations matter either.
-//
-// The map is exhaustive over PAGE_ROUTES, so a page route that exists only
-// here — invisible to the navigation and to the conformity sweep — cannot be
-// added: it has to be in the table first, and then it is swept.
 const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/": OverviewPage,
   "/audit": AuditPage,
@@ -58,17 +47,6 @@ const dedicatedRoutes = PAGE_ROUTES.map((path) =>
   createRoute({ getParentRoute: () => rootRoute, path, component: PAGE_COMPONENTS[path] }),
 );
 
-// A moved page keeps its old address as a redirect, query included: an OAuth
-// callback issued before the move still lands with its result.
-//
-// The query is read from `window.location.search` and the browser is sent on
-// with `location.replace`, never through the router. Both of the router's own
-// paths run the query through its JSON search serialiser: `location.searchStr`
-// is `stringify(parse(raw))`, and a `redirect({ href })` is parsed again on
-// commit — so `connected=1e5` arrived as `100000`, a long all-digit name lost
-// precision, and `to` + `search` would quote `renewed=1`. A moved address is
-// rare enough that a full load is the honest price for its query arriving
-// exactly as it was sent.
 const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   createRoute({
     getParentRoute: () => rootRoute,
@@ -79,8 +57,6 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
   }),
 );
 
-// Wissen's three pages are their own modules: sources and skills open a
-// record page, a file opens as a sheet over its list at the file's address.
 const knowledgeRoutes = [
   createRoute({
     getParentRoute: () => rootRoute,
@@ -113,7 +89,6 @@ const filesRoutes = [
   }),
 ];
 
-/** The catalogue renders the lists that share it: workflows and connectors. */
 const CATALOG_PAGES = ["workflows", "connectors"] as const satisfies readonly DetailResource[];
 
 const catalogRoutes = CATALOG_PAGES.flatMap((resource) => [
@@ -144,8 +119,6 @@ const routeTree = rootRoute.addChildren([
   ...filesRoutes,
 ]);
 
-// One catch-all for every route: a render fault keeps the shell, the language
-// and a way out, instead of the router's own English default.
 export const router = createRouter({
   routeTree,
   basepath: "/cockpit",
@@ -153,7 +126,6 @@ export const router = createRouter({
   defaultErrorComponent: RouteErrorPage,
 });
 
-// Page changes crossfade; a skipped crossfade is caught, never thrown.
 guardRouteTransitions(router);
 
 declare module "@tanstack/react-router" {

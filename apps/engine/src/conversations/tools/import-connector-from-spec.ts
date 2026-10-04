@@ -1,9 +1,3 @@
-// import_connector_from_spec — parse an API request collection, HAR
-// recording, OpenAPI document, GraphQL SDL, GraphQL introspection JSON,
-// or curl command into a connector draft. If the detected base URL matches a
-// built-in template via `matchTemplateByUrl`, we enrich from that
-// template; otherwise we fall back to a manual HTTP connector draft.
-
 import { z } from "@hono/zod-openapi";
 import {
   fetchGoogleDiscoverySpec,
@@ -36,15 +30,7 @@ const SourceEnum = z.enum([
 const inputSchema = z
   .object({
     source: SourceEnum,
-    /**
-     * Raw body, URL, or a curl command depending on `source`. For
-     * `openapi` and `google_discovery` this may be either inline content
-     * or an https:// URL — a URL triggers a live fetch (spec-fetchers,
-     * SSRF-guarded). For
-     * `graphql_introspection`, this is the endpoint URL.
-     */
     content: z.string().min(1),
-    /** Optional request headers used for URL-fetch variants. */
     headers: z.record(z.string(), z.string()).optional(),
     name: z.string().min(1).optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
@@ -145,7 +131,6 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
     const eps = parseGraphQL(content);
     return { endpoints: eps, base_url: "" };
   }
-  // graphql_introspection — `content` is the endpoint URL.
   const fetched = await fetchGraphQLIntrospection(content, headers);
   const eps = parseGraphQLIntrospection(fetched.content);
   return {
@@ -179,28 +164,8 @@ export const importConnectorFromSpecTool: ConversationTool = {
   },
 };
 
-/** What the import produces. Nothing here is persisted.
- *
- *  Either a `CreateConnectorSchema`-shaped `draft` for the caller to review and
- *  save, or — when an equivalent connector is already saved for this base URL —
- *  the reuse envelope pointing at it, so an import never quietly produces a
- *  second connector against the same upstream. */
 export type ImportConnectorDraftResult = ReusedConnectorEnvelope | Record<string, unknown>;
 
-/**
- * Parse a specification into a connector draft.
- *
- * The shared core behind the `import_connector_from_spec` tool and
- * `POST /v1/connectors/import`, so the CLI and the authoring loop cannot drift
- * on what a given spec turns into.
- *
- * PERSISTS NOTHING. The draft is returned for a person (or the CLI's create
- * pipeline) to look at first — importing and saving in one step would put a
- * definition into the tenant that nobody read.
- *
- * `tenant_id`/`db` are optional: without them the dedup against already-saved
- * connectors is skipped, which keeps the parser testable without a database.
- */
 export async function importConnectorDraftFromSpec(p: {
   args: z.infer<typeof inputSchema>;
   tenant_id?: string;
@@ -209,12 +174,6 @@ export async function importConnectorDraftFromSpec(p: {
   const { args } = p;
   const parsed = await parseSource(args);
   const baseUrl = parsed.base_url;
-  // Reuse-existing-saved-connector: same dedup as
-  // start_connector_from_description so two imports against the same
-  // upstream URL never produce two saved connectors. Stateless
-  // callers (smoke tests that exercise the parser only) may pass no
-  // tenant/db — skip the dedup in that case so the parser stays
-  // testable without a DB stub.
   const reuseEnvelope =
     p.tenant_id && p.db
       ? await findReusableConnectorByUrl({
@@ -222,7 +181,6 @@ export async function importConnectorDraftFromSpec(p: {
           environment: args.environment,
           base_url: baseUrl,
           driver: "http",
-          // Explicit operator request for a separate connector on this URL.
           ...(args.force_new ? { force_new: true } : {}),
           db: p.db,
         })
@@ -239,8 +197,6 @@ export async function importConnectorDraftFromSpec(p: {
       match.template,
       args.base_url_environment ? { environment: args.base_url_environment } : undefined,
     );
-    // Attach the sample endpoints to config so the LLM can reuse them
-    // during workflow authoring without re-parsing.
     enriched.config = {
       ...(enriched.config ?? {}),
       imported_sample_endpoints: parsed.endpoints.slice(0, 25),
@@ -257,7 +213,6 @@ export async function importConnectorDraftFromSpec(p: {
     };
   }
 
-  // Manual fallback — no template matched.
   const authType = parsed.auth_hint?.type ?? "none";
   return {
     draft: {
@@ -277,7 +232,6 @@ export async function importConnectorDraftFromSpec(p: {
   };
 }
 
-/** The request shape `POST /v1/connectors/import` and the tool share. */
 export const importConnectorFromSpecInputSchema = inputSchema;
 
 function baseUrlDomain(url: string): string | null {

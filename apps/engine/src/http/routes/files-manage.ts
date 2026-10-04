@@ -1,15 +1,3 @@
-// Managing a stored file in place: the acts a person takes on a file they
-// already have, as opposed to bringing one in (`files.ts`).
-//
-//   PATCH  /v1/files/{id}           — rename
-//   POST   /v1/files/{id}/replace   — new content, same id
-//   GET    /v1/files/{id}/usage     — who holds a reference to it
-//
-// The file id is the reference (`{ "$file": "fid_<uuid>" }`) workflows and
-// conversations keep. Replacing writes new bytes under a fresh object key and
-// points the same row at them, so every reference follows the new content
-// without being rewritten.
-
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, ne } from "drizzle-orm";
@@ -80,14 +68,8 @@ async function scanBytes(
 }
 
 export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
-  // PATCH /v1/files/{id} is gated by the `/v1/files/:id` middleware in
-  // `files.ts` (PATCH → file:write); the two sub-paths are gated here.
   app.use("/v1/files/:id/replace", requireAnyPermission(["file:write"]));
   app.use("/v1/files/:id/usage", requireAnyPermission(["file:read"]));
-
-  // ---------------------------------------------------------------------
-  // PATCH /v1/files/{id}
-  // ---------------------------------------------------------------------
 
   const renameRoute = createRoute({
     method: "patch",
@@ -140,10 +122,6 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(toFileWire(updated ?? row), 200);
   });
 
-  // ---------------------------------------------------------------------
-  // POST /v1/files/{id}/replace
-  // ---------------------------------------------------------------------
-
   const replaceRoute = createRoute({
     method: "post",
     path: "/v1/files/{id}/replace",
@@ -195,7 +173,6 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       );
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    // The same content again changes nothing but the name it was sent under.
     if (sha256 === row.sha256) {
       const [same] = await db
         .update(files)
@@ -204,7 +181,6 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
         .returning();
       return c.json(toFileWire(same ?? row), 200);
     }
-    // Content is deduplicated per tenant: the same bytes cannot be two files.
     const twin = await db
       .select({ id: files.id, filename: files.filename })
       .from(files)
@@ -227,13 +203,9 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       filename: body.filename,
     });
     if (scan.verdict !== "clean") {
-      // The old content stays in place: a replacement that did not pass the
-      // scan never becomes what the references resolve to.
       try {
         await getObjectStore().delete(key);
-      } catch {
-        /* best-effort */
-      }
+      } catch {}
       return c.json(
         {
           code: "scan_rejected",
@@ -300,10 +272,6 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(toFileWire(updated ?? row), 200);
   });
 
-  // ---------------------------------------------------------------------
-  // GET /v1/files/{id}/usage
-  // ---------------------------------------------------------------------
-
   const usageRoute = createRoute({
     method: "get",
     path: "/v1/files/{id}/usage",
@@ -327,8 +295,6 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json(notFound, 404);
     }
-    // A workflow uses a file when its current version holds its id or its
-    // `@attachment:` reference.
     const usedBy = await db
       .select({ id: workflows.id, name: workflows.name })
       .from(workflows)

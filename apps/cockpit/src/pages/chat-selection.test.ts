@@ -19,9 +19,7 @@ describe("where a send goes", () => {
   });
 
   test("an automatic page is pinned at send time, so a list arriving later cannot retarget it", () => {
-    // Sent before the list loaded: the send creates, and stays a creation.
     expect(pinSelectionForSend({ kind: "automatic" }, null)).toEqual({ kind: "new" });
-    // Sent after: it continues the conversation that is on screen.
     expect(pinSelectionForSend({ kind: "automatic" }, "c1")).toEqual({
       kind: "existing",
       id: "c1",

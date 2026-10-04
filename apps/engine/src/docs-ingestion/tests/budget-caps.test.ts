@@ -1,6 +1,3 @@
-// Budget enforcement test — covers the per-chunk 3 MB cap (with
-// truncation marker) and the 20 link-follow cap on llms.txt.
-
 import { describe, expect, test } from "bun:test";
 import { createBudgetState, MAX_LINKS, PER_PAGE_BYTES } from "../budgets.ts";
 import { fingerprintChunks } from "../chunker.ts";
@@ -8,10 +5,6 @@ import { ingestLlmsTxt } from "../sources/llms-txt.ts";
 
 describe("docs-ingestion/budget-caps", () => {
   test("a 4 MB single chunk is trimmed and marked truncated", () => {
-    // Build a 4 MB string with no paragraph breaks so splitByBudget
-    // can't subdivide it under the per-page cap. We use a budget bigger
-    // than the per-page cap so the splitter emits one piece, which the
-    // chunker then trims.
     const oversized = "a".repeat(4 * 1024 * 1024);
     const truncates: string[] = [];
     const out = fingerprintChunks([{ title: "huge", content: oversized }], {

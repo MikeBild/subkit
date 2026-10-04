@@ -1,21 +1,3 @@
-// User-invite provisioning routes.
-//
-//   POST   /v1/identity/users/{id}/invites  — admin issues a single-use
-//          invite for an existing user (identity:write). Returns the
-//          plaintext invite token ONCE.
-//   GET    /v1/identity/invites             — list invites (admin only).
-//   DELETE /v1/identity/invites/{id}        — revoke an invite
-//          (identity:write).
-//   POST   /v1/identity/invites/redeem      — UNAUTHENTICATED. The invited
-//          user redeems their token to mint their OWN personal API key.
-//          Rate-limited per-IP like POST /v1/setup. The admin never sees
-//          this key.
-//
-// The redeem endpoint follows the public-redeem pattern of `setup.ts`: no
-// `requireAuth`, the token in the body IS the proof, and a per-IP budget
-// gates brute force. Every other route is gated by `requirePermission`
-// middleware below.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
@@ -28,38 +10,20 @@ import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { InviteRedeemedSchema, UserInviteIssuedSchema, UserInviteSchema } from "./schemas.ts";
 
-// -------- per-IP rate limit (redeem only) --------
-//
-// Mirrors the bootstrap/setup budget: 5 attempts per IP per 15-minute
-// window. In-process — a single binary owns the redeem surface, and a
-// brute-force loop hits one engine. Every redeem attempt (success or
-// failure) costs against the budget so varying the payload can't bypass
-// it. (setup.ts runs its own budget inside `onboarding/consume`, not a
-// shared helper, so there is nothing to centralise here.)
-//
-// The map is bounded: a spray of distinct source IPs must not grow it
-// without limit. We sweep windows that have fully expired on each write,
-// and if the map is still at its cap we drop the single oldest entry
-// before inserting. An evicted attacker simply restarts at a fresh budget
-// — acceptable, because the cap is far larger than any single client's
-// legitimate footprint and the per-IP budget still throttles each source.
 const REDEEM_MAX_ATTEMPTS = 5;
 const REDEEM_WINDOW_MS = 15 * 60 * 1000;
 const REDEEM_MAX_TRACKED_IPS = 10_000;
 const redeemAttempts = new Map<string, { count: number; window_started_at: number }>();
 
-/** Reset the in-process IP tracker. Tests call this between cases. */
 export function _resetInviteRedeemRateLimitForTests(): void {
   redeemAttempts.clear();
 }
 
-/** Drop entries whose window has fully expired, then enforce the size cap. */
 function evictRedeemAttempts(at: number): void {
   for (const [ip, entry] of redeemAttempts) {
     if (at - entry.window_started_at > REDEEM_WINDOW_MS) redeemAttempts.delete(ip);
   }
   while (redeemAttempts.size >= REDEEM_MAX_TRACKED_IPS) {
-    // Map iteration is insertion-ordered, so the first key is the oldest.
     const oldest = redeemAttempts.keys().next().value;
     if (oldest === undefined) break;
     redeemAttempts.delete(oldest);
@@ -79,22 +43,11 @@ function checkRedeemRateLimit(ip: string): boolean {
   return true;
 }
 
-/**
- * Resolve the client IP for rate-limit bucketing. TRUSTED-PROXY ASSUMPTION:
- * `x-forwarded-for` / `x-real-ip` are attacker-controllable unless a trusted
- * reverse proxy overwrites them. The engine is expected to run behind such a
- * proxy (the deploy topology); a direct-to-engine exposure lets a client
- * forge a fresh IP per request and sidestep the per-IP budget. We take the
- * left-most XFF hop deliberately and fall back to `x-real-ip`, matching
- * setup.ts's identical resolver.
- */
 function clientIp(headers: Headers): string {
   const fwd = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   if (fwd) return fwd;
   return headers.get("x-real-ip") ?? "unknown";
 }
-
-// -------- schemas --------
 
 const CreateInviteBody = z
   .object({
@@ -119,8 +72,6 @@ const RedeemInviteBody = z
 const InviteListResponse = z
   .object({ items: z.array(UserInviteSchema) })
   .openapi("UserInviteListResponse");
-
-// -------- routes --------
 
 const createInviteRoute = createRoute({
   method: "post",
@@ -203,8 +154,6 @@ const redeemInviteRoute = createRoute({
   },
 });
 
-// -------- serializer --------
-
 function serialize(v: identity.InviteView) {
   return {
     id: v.id,
@@ -223,9 +172,6 @@ function serialize(v: identity.InviteView) {
 }
 
 export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating. The redeem route is deliberately NOT gated: it carries
-  // no principal. The `:id` middleware only fires on DELETE so the POST
-  // redeem path (id === "redeem") falls through unauthenticated.
   app.use("/v1/identity/users/:id/invites", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("identity:write")(c, next);
     return next();
@@ -252,8 +198,6 @@ export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
       { resource_type: "user_invite", resource_id: id },
       db,
     );
-    // The invited user must already exist in the caller's tenant — the
-    // tenant-scoped lookup is the isolation boundary for the invite.
     const user = await identity.getUser(principal.tenant_id, id, db);
     if (!user) throw new NotFoundError("user");
 

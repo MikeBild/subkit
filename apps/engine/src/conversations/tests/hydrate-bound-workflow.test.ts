@@ -1,17 +1,3 @@
-// Integration tests for RC2 + RC3: hydrateBoundWorkflow in draft.ts.
-//
-// RC2: loadDraft hydrates a bound workflow from its persisted version —
-//      the draft's `workflow` document (name, slug, steps) is loaded
-//      from `workflow_versions.dag` so incremental edit tools operate on
-//      a populated draft, and the authoring summary reflects the
-//      persisted resource (lifecycle_state="persisted", stage
-//      "workflow_persisted", persisted_resources populated).
-//
-// RC3: loadDraft seeds `draft.latest_preview` from the most recent
-//      status='succeeded' execution's step traces so the transform /
-//      loop authoring gates have real upstream shape evidence on a
-//      freshly-bound workflow that has executed before.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -36,7 +22,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// Seed a persisted workflow with ≥2 steps and a current version.
 async function seedWorkflow(opts: {
   slug: string;
   name: string;
@@ -69,7 +54,6 @@ async function seedWorkflow(opts: {
   return { workflow_id: wf.id, version_id: ver.id };
 }
 
-// Seed an execution with the given status + step rows.
 async function seedExecution(opts: {
   workflow_id: string;
   version_id: string;
@@ -109,7 +93,6 @@ async function seedExecution(opts: {
   return { execution_id: ex.id };
 }
 
-// Seed an empty conversation bound to a workflow via target_workflow_id.
 async function seedConversation(workflow_id: string): Promise<{ conversation_id: string }> {
   const [conv] = await ctx.testDb.db
     .insert(conversations)
@@ -117,8 +100,6 @@ async function seedConversation(workflow_id: string): Promise<{ conversation_id:
       tenant_id: ctx.tenant_id,
       status: "active",
       target_workflow_id: workflow_id,
-      // Empty draft — no conversationDrafts row. hydrateBoundWorkflow
-      // fires from the conversations.draft column fallback in loadDraft.
       draft: { workflow: { name: "", steps: [] } },
     })
     .returning();
@@ -222,10 +203,6 @@ test("authoring loads the inert version and retains its observed base across con
   ).toBe("draft_conflict");
 });
 
-// ---------------------------------------------------------------------------
-// RC2: binding identity hydrated from the workflow table
-// ---------------------------------------------------------------------------
-
 describe("loadDraft — RC2: persisted workflow binding (identity + summary)", () => {
   test("summary active_target reflects the persisted workflow identity", async () => {
     const { workflow_id } = await seedWorkflow({
@@ -237,7 +214,6 @@ describe("loadDraft — RC2: persisted workflow binding (identity + summary)", (
 
     const draft = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
 
-    // The active_target must reflect the persisted workflow's identity.
     expect(draft.summary?.active_target?.kind).toBe("workflow");
     expect(draft.summary?.active_target?.id).toBe(workflow_id);
     expect(draft.summary?.active_target?.slug).toBe("hydrate-test-wf");
@@ -290,9 +266,6 @@ describe("loadDraft — RC2: persisted workflow binding (identity + summary)", (
 
     const draft = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
 
-    // RC2 core: editing a saved workflow loads its steps into the draft
-    // so update_param / propose_step operate on a populated workflow
-    // instead of reporting "unknown_step" against an empty draft.
     expect(draft.workflow.steps.length).toBe(2);
     expect(draft.workflow.steps.map((s) => (s as { id?: string }).id)).toEqual([
       "fetch",
@@ -303,10 +276,6 @@ describe("loadDraft — RC2: persisted workflow binding (identity + summary)", (
     expect(draft.summary?.missing_fields).not.toContain("workflow.steps");
   });
 });
-
-// ---------------------------------------------------------------------------
-// RC3: latest_preview seeded from the most recent succeeded execution
-// ---------------------------------------------------------------------------
 
 describe("loadDraft — RC3: latest_preview seeded from succeeded execution", () => {
   test("step_traces populated when a succeeded execution with step outputs exists", async () => {
@@ -356,7 +325,6 @@ describe("loadDraft — RC3: latest_preview seeded from succeeded execution", ()
       name: "Hydrate No Exec WF",
       steps: STEPS_TWO,
     });
-    // Seed only a failed execution — should NOT seed latest_preview.
     await seedExecution({
       workflow_id,
       version_id,
@@ -366,7 +334,6 @@ describe("loadDraft — RC3: latest_preview seeded from succeeded execution", ()
     const { conversation_id } = await seedConversation(workflow_id);
 
     const draft = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
-    // No succeeded execution → no latest_preview.
     expect(draft.latest_preview).toBeUndefined();
   });
 
@@ -376,8 +343,6 @@ describe("loadDraft — RC3: latest_preview seeded from succeeded execution", ()
       name: "Hydrate Multi Exec WF",
       steps: STEPS_TWO,
     });
-    // Insert two succeeded executions — the newer one should win.
-    // Older succeeded execution.
     await seedExecution({
       workflow_id,
       version_id,
@@ -391,7 +356,6 @@ describe("loadDraft — RC3: latest_preview seeded from succeeded execution", ()
         },
       ],
     });
-    // Newer succeeded execution.
     await seedExecution({
       workflow_id,
       version_id,
@@ -411,16 +375,11 @@ describe("loadDraft — RC3: latest_preview seeded from succeeded execution", ()
 
     const traces = draft.latest_preview?.step_traces;
     const fetchTrace = traces?.find((t) => t.step_id === "fetch");
-    // The most recent succeeded execution's preview wins.
     expect(fetchTrace?.output_preview).toEqual({
       version: "new",
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// Idempotency: re-calling loadDraft on an already-bound draft does not re-hydrate
-// ---------------------------------------------------------------------------
 
 describe("loadDraft — idempotency: re-hydrate does not clobber", () => {
   test("second loadDraft call on an already-bound draft preserves the binding identity", async () => {
@@ -432,7 +391,6 @@ describe("loadDraft — idempotency: re-hydrate does not clobber", () => {
     const { conversation_id } = await seedConversation(workflow_id);
 
     const draft1 = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
-    // Persist the hydrated draft so the next loadDraft reads it back.
     await ctx.testDb.db.insert(conversationDrafts).values({
       tenant_id: ctx.tenant_id,
       conversation_id,
@@ -442,13 +400,10 @@ describe("loadDraft — idempotency: re-hydrate does not clobber", () => {
 
     const draft2 = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
 
-    // The binding identity and the hydrated steps are preserved on both
-    // loads — the second load must not re-hydrate over the snapshot.
     expect(draft2.summary?.active_target?.id).toBe(workflow_id);
     expect(draft2.summary?.active_target?.slug).toBe("hydrate-idem-wf");
     expect(draft2.summary?.active_target?.lifecycle_state).toBe("persisted");
     expect(draft2.workflow.steps.length).toBe(2);
-    // persisted_resources still carries the workflow ref.
     expect(draft2.summary?.persisted_resources).toEqual([
       expect.objectContaining({ kind: "workflow", id: workflow_id }),
     ]);
@@ -470,8 +425,6 @@ describe("loadDraft — idempotency: re-hydrate does not clobber", () => {
       snapshot: draft1 as unknown as Record<string, unknown>,
     });
 
-    // If re-hydration fired, it would reset the binding.
-    // Verify that summary.stage is still workflow_persisted (not reset to idle).
     const draft2 = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
     expect(draft2.summary?.stage).toBe("workflow_persisted");
   });
@@ -525,7 +478,6 @@ test("an earlier chat observes only an empty draft slot without losing local edi
     ctx.testDb.db,
   );
   expect(other.draft).toBeDefined();
-  // A concurrent draft cannot be overwritten with the observed empty base.
   const conflict = await saveWorkflowDraft(
     {
       tenant_id: ctx.tenant_id,
@@ -543,7 +495,6 @@ test("an earlier chat observes only an empty draft slot without losing local edi
   );
   expect(conflict.draft).toBeUndefined();
   expect(conflict.code).toBe("draft_conflict");
-  // Reopening an unobserved earlier chat never silently adopts that draft.
   await storeEarlier();
   const blocked = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
   expect(blocked.workflow.steps[0]?.expression).toBe("return 2;");

@@ -1,13 +1,3 @@
-// Pure-function tests for the credential form contract — the canonical
-// field-name table enforced at `ask_user_form` creation time, the
-// seed-mode resolution shared with the cache/capture paths, and the
-// mode↔auth_type compatibility check used by the probe + save gates.
-//
-// Repro anchor (session 97679846): the LLM authored a single form field
-// named `basic_auth` for a basic-auth Jira draft. No extractor alias
-// matched at submit time → `credential_required` AFTER the operator had
-// typed the secret. The contract moves the failure to form creation.
-
 import { describe, expect, it } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import {
@@ -17,9 +7,6 @@ import {
   validateCredentialFormFields,
 } from "./credential-form-contract.ts";
 
-// The seed-mode resolver only touches the DB for oauth2/aws_sigv4 drafts
-// that carry a template_slug — and tolerates the lookup failing. A stub
-// keeps every test here db-free.
 const stubDb = {} as unknown as Db;
 
 describe("validateCredentialFormFields — per-mode contracts", () => {
@@ -221,9 +208,6 @@ describe("resolveDraftCredentialSeedMode — db-free paths", () => {
   });
 
   it("tolerates a failing template lookup — falls back to the plain auth_type mapping", async () => {
-    // template_slug set on an oauth2 draft triggers the template lookup;
-    // the stub executor throws inside listResolvedConnectorTemplates.
-    // The resolver must swallow that and use the draft's own config.
     const res = await resolveDraftCredentialSeedMode({
       connector: {
         auth_type: "oauth2",
@@ -234,7 +218,6 @@ describe("resolveDraftCredentialSeedMode — db-free paths", () => {
       tenant_id: "t-1",
     });
     expect(res.seedMode).toBe("oauth2");
-    // aws_sigv4 with a template_slug: lookup fails, plain mapping wins.
     const sigv4 = await resolveDraftCredentialSeedMode({
       connector: { auth_type: "aws_sigv4", template_slug: "some-template" },
       db: stubDb,

@@ -1,20 +1,3 @@
-// Characterization parity test — MCP tools/list + tools/call shape.
-//
-// Pins the current MCP catalog and envelope shape so the cutover in
-// MCP cutover can be verified non-destructively. Two halves:
-//
-//   1. tools/list catalog — every name we expect to find today must be
-//      reachable; this is the "we did not drop a tool" oracle.
-//   2. tools/call envelope — one representative call per major branch
-//      (named MCP tool, tenant.<name> proxy, conversation.<name> proxy,
-//      wf.<slug> dynamic) — pins the response shape contract.
-//
-// The prefix-proxied names (tenant.preview_attachment,
-// conversation.<name>) intentionally disappear and are replaced by
-// bare names — those assertions belong to the new-behavior tests
-// (preview-attachment-flat-name.test.ts). This file's job is to lock
-// the CURRENT shape so we can prove what was preserved.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { workflowsSchedules } from "../../db/schema/index.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
@@ -38,11 +21,6 @@ describe("mcp tools — catalog characterization", () => {
     const result = await client.listTools();
     const names = new Set(result.tools.map((t) => t.name));
 
-    // Product-tier read tools must remain reachable through the unified
-    // dispatcher. self_healing.scan is admin-only and import_connector_from_spec
-    // is tenant_write — both correctly excluded from product-mode catalog
-    // by the unified write-gating (the legacy code surfaced the latter
-    // inconsistently; the new path applies the gate uniformly).
     const expected = [
       "authenticate",
       "match_connector_template_by_url",
@@ -56,9 +34,6 @@ describe("mcp tools — catalog characterization", () => {
   });
 
   test("tools/list omits self_healing.scan in the default principal's product mode", () => {
-    // Locks the mode-gate: only admin principals see this tool.
-    // Cutover may not regress this — the visibility filter belongs in
-    // StaticToolProvider (visibleInMcpModes: ["admin"]).
     return suite.connect().then(async (client) => {
       const result = await client.listTools();
       const names = new Set(result.tools.map((t) => t.name));
@@ -111,7 +86,6 @@ describe("mcp tools — call envelope characterization", () => {
   });
 
   test("get_attention returns the same list as GET /v1/attention", async () => {
-    // Something to list: a held schedule. An empty list would match anything.
     const wf = await seedPatchableWorkflow(suite.http.db, suite.http.tenantId, "attn-held");
     await suite.http.db.insert(workflowsSchedules).values({
       tenant_id: suite.http.tenantId,
@@ -123,7 +97,6 @@ describe("mcp tools — call envelope characterization", () => {
       },
     });
 
-    // Each read builds fresh — neither may be served the other's cached facts.
     invalidateAttention();
     const rest = await fetch(`${suite.http.baseUrl}/v1/attention`, {
       headers: { authorization: `Bearer ${suite.http.apiKey}` },
@@ -138,7 +111,6 @@ describe("mcp tools — call envelope characterization", () => {
     expect(result.isError).not.toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
     const attention = JSON.parse(content[0]!.text) as { generated_at: string };
-    // Built per request: only the timestamp may differ.
     expect({ ...attention, generated_at: "" }).toEqual({ ...expected, generated_at: "" });
   });
 
@@ -148,10 +120,6 @@ describe("mcp tools — call envelope characterization", () => {
       name: "match_connector_template_by_url",
       arguments: { url: "https://api.example.test/v1" },
     });
-    // Pin: envelope must always be { isError, content: [{type:"text", text}] }
-    // regardless of dispatch path. The cutover may not change this shape.
-    // We don't assert isError=false because the URL is fake — we only
-    // assert the SHAPE survives.
     expect(typeof result.isError).toBeOneOf(["boolean", "undefined"]);
     expect(Array.isArray(result.content)).toBe(true);
     const content = result.content as Array<{ type: string; text: string }>;
@@ -163,10 +131,6 @@ describe("mcp tools — call envelope characterization", () => {
 
   test("tools/call an unknown tool returns isError=true (current shape)", async () => {
     const client = await suite.connect();
-    // The MCP SDK throws on a transport error for unknown tools rather
-    // than returning isError. Either response shape is acceptable but
-    // exactly ONE of them must hold — and the cutover must preserve
-    // whichever it is. This test pins the current branch.
     let threw = false;
     let isError = false;
     try {

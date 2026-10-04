@@ -1,26 +1,3 @@
-// Tier 1 — Conversation lifecycle E2E. REAL gateway-backed or direct-provider LLM.
-//
-// What's exercised end-to-end (no mocks):
-//   * POST/GET /v1/conversations + /messages + /elicitations (Hono + Postgres)
-//   * Engine LLM dispatch through the configured real-provider path
-//   * Real tool palette — start_connector_from_description, propose_step, validate_draft,
-//     save_workflow_draft — all running through the actual Zod validators,
-//     workflow validator, and connector persistence layer
-//   * RBAC (admin persona), audit log, conversation_drafts snapshots
-//
-// What we deliberately DON'T assert:
-//   * Exact tool sequence (LLMs are non-deterministic; the model might
-//     call list_skills 0–3 times, may or may not pause at confirm).
-//   * Exact text in assistant messages.
-// Assertions are outcome-based: after a run, does the resulting state
-// match what the user asked for? (a connector with a sensible slug
-// exists, a workflow with at least one step exists, etc.)
-//
-// Why this file exists: a regression shipped where every conversation
-// 500'd in production because the only "E2E" suite forced LLM_PROVIDER
-// =mock and never touched the real dispatch path. This file fixes
-// that gap permanently.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   boot,
@@ -31,32 +8,8 @@ import {
   shutdown,
 } from "./setup.ts";
 
-// Skip the whole suite when no real API credentials are available. The
-// tier-1 assertions expect actual tool calls coming out of a real LLM; the
-// mock provider emits an empty plan, so the tests would always fail with
-// `Expected >=1, Received 0`.
-//
-// The condition is asked of `realProviderConfigured()` rather than restated
-// here. It used to read `process.env.LLM_PROVIDER` directly, which the
-// nightly stopped setting when the engine moved to the config loader's
-// `SK_OVERRIDE_*` import. All six tests then skipped, `bun test` exited 0 on
-// an all-skipped file, and the job reported "passed" — the real-LLM tier was
-// dark and looked healthy. A gate is only as good as the thing it consults.
 const SHOULD_RUN = realProviderConfigured();
 
-// This one never skips.
-//
-// Skipping the suite is correct when nobody supplied credentials — on a pull
-// request there is no key and there is nothing to measure. What is not correct
-// is a run that NAMED a real provider and then measured nothing, which is how
-// this file spent its nights: six skips, exit 0, "passed on attempt 1".
-//
-// So the contradiction itself is the assertion. If the environment names a
-// real provider, the gate must have opened. It reads the raw variables rather
-// than calling `realProviderConfigured()` again — an assertion that consults
-// the same function it is guarding proves only that the function equals
-// itself, and this defect was precisely two readers disagreeing about where
-// the answer lives.
 test("a named provider is never silently skipped", () => {
   const named = providerFromEnv();
   const namesReal =
@@ -69,13 +22,7 @@ test("a named provider is never silently skipped", () => {
 let env: E2EEnv;
 beforeAll(async () => {
   if (!SHOULD_RUN) return;
-  // Default mode = real LLM from .env. Throws clearly if misconfigured.
   env = await boot("tier1-real");
-  // Fail LOUDLY if the engine resolved the mock provider anyway — for a
-  // month the nightly silently tested the mock (config-default
-  // `llm.provider: "mock"` shadowed process.env; see setup.ts boot()).
-  // Every assertion below is meaningless against the mock, so refuse to
-  // run rather than produce a confusing tier-level failure.
   const { detectConfiguredProvider } = await import("../../apps/engine/src/llm/core/model-init.ts");
   const resolved = detectConfiguredProvider();
   if (resolved === "mock" || resolved === "unconfigured") {
@@ -157,13 +104,6 @@ async function getConversation(id: string): Promise<{
   };
 }
 
-/**
- * Drive an authoring conversation that may pause on ask_user_confirm.
- * On pause, automatically approve and continue. Returns the final
- * conversation state. Caps at `maxApprovals` to prevent infinite loops
- * if the LLM keeps re-asking. Each pause is independent — the engine
- * resumes the loop after each respond() call.
- */
 async function runWithApprovals(
   initial_message: string,
   maxApprovals = 6,
@@ -176,25 +116,15 @@ async function runWithApprovals(
   return { conversation_id: id, final: outcome };
 }
 
-// ---------------------------------------------------------------------------
-// 1. Simple prompt round-trip
-// ---------------------------------------------------------------------------
-
 describe.skipIf(!SHOULD_RUN)("Tier 1.1 — simple conversation (real LLM)", () => {
   test("POST /v1/conversations with `hello` returns 201 + a completed turn", async () => {
     const out = await createConversation("hello, who are you?");
     expect(out.conversation.id).toBeTruthy();
     const types = out.events.map((e) => e.type);
-    // The dispatch path is proven by a `completed` event arriving — we
-    // do NOT assert on the assistant text content.
     expect(types).toContain("completed");
     expect(types).toContain("message");
   }, 90_000);
 });
-
-// ---------------------------------------------------------------------------
-// 2. Multi-turn — append a follow-up, history accumulates
-// ---------------------------------------------------------------------------
 
 describe.skipIf(!SHOULD_RUN)("Tier 1.2 — multi-turn (real LLM)", () => {
   test("appendMessage grows the message list and preserves conversation_id", async () => {
@@ -209,10 +139,6 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.2 — multi-turn (real LLM)", () => {
     expect(asstMsgs.length).toBeGreaterThanOrEqual(2);
   }, 120_000);
 });
-
-// ---------------------------------------------------------------------------
-// 3. Connector created via chat (real LLM, outcome-based)
-// ---------------------------------------------------------------------------
 
 describe.skipIf(!SHOULD_RUN)(
   "Tier 1.3 — connector authoring engages the real tool palette (real LLM)",
@@ -234,17 +160,6 @@ describe.skipIf(!SHOULD_RUN)(
 
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
-      // Floor: the LLM dispatch reached one of the connector-creation
-      // entry-point tools — the engine's tool palette + Zod validators
-      // + draft snapshotting all ran. We accept either tool because
-      // `apps/engine/src/conversations/agent/skills/content/conversational-authoring.md`
-      // lists them as peers (`start_connector_from_template` /
-      // `start_connector_from_description`); the model legitimately
-      // picks `from_template` when a matching template exists, and the
-      // engine guarantees both paths converge on `connectors` row
-      // creation. Asserting one specific tool name was a brittle proxy
-      // that broke when the skill expanded the palette (commit 629bb82,
-      // 2026-04-26).
       const CONNECTOR_ENTRY_TOOLS = [
         "start_connector_from_description",
         "start_connector_from_template",
@@ -252,16 +167,6 @@ describe.skipIf(!SHOULD_RUN)(
       const usedEntry = CONNECTOR_ENTRY_TOOLS.find((t) => tools.includes(t));
       expect(usedEntry).toBeDefined();
 
-      // Connector-existence gate. The floor above enforces that a
-      // draft-creation tool was dispatched; the prompt then tells the
-      // LLM to "continue through the normal probe/save path", so a
-      // fresh row in `connectors` must exist by end-of-conversation.
-      // The previous gate (`save_workflow_draft` ∈ tools) was
-      // incoherent for a connector test — it deferred the existence
-      // check to whether the LLM happened to also build a workflow on
-      // top, which let an actual no-op connector save (the failure
-      // mode we're guarding) go undetected on every run where the
-      // model skipped the workflow.
       if (usedEntry) {
         const after = await fetch(`${env.baseUrl}/v1/connectors?limit=200`, {
           headers: adminAuth(),
@@ -272,10 +177,6 @@ describe.skipIf(!SHOULD_RUN)(
     }, 180_000);
   },
 );
-
-// ---------------------------------------------------------------------------
-// 4. Workflow created via chat (real LLM, outcome-based)
-// ---------------------------------------------------------------------------
 
 describe.skipIf(!SHOULD_RUN)(
   "Tier 1.4 — workflow authoring engages the real tool palette (real LLM)",
@@ -293,27 +194,9 @@ describe.skipIf(!SHOULD_RUN)(
       const detail = await getConversation(conversation_id);
       const tools = detail.tool_calls.map((t) => t.tool);
 
-      // Engine assertion: the LLM dispatch path actually exercised the
-      // draft tool palette. We accept either `propose_step` (the
-      // step-at-a-time path) or `build_workflow` (the whole-draft
-      // path) — the
-      // `apps/engine/src/conversations/agent/skills/content/conversational-authoring.md`
-      // skill lists them as peers, and `build_workflow`'s own tool
-      // description ("Write an entire workflow draft in a single
-      // call") is a strong steer toward the one-call path for a
-      // 1-step workflow like this test's prompt. The engine
-      // guarantees both routes flow through the same validator +
-      // draft snapshotting. Asserting only `propose_step` was a
-      // brittle proxy that broke when the skill expanded the palette
-      // (commit 629bb82, 2026-04-26).
       const STEP_AUTHORING_TOOLS = ["propose_step", "build_workflow"] as const;
       expect(STEP_AUTHORING_TOOLS.some((t) => tools.includes(t))).toBe(true);
 
-      // Functional assertion (best effort): if the LLM completed the
-      // approval round-trip and called save_workflow_draft, a workflow row
-      // exists. We don't FAIL when the LLM stops short — that's an LLM
-      // capability question, not an engine bug. We DO fail if commit
-      // was attempted but no row landed.
       if (tools.includes("save_workflow_draft")) {
         const wfRes = await fetch(`${env.baseUrl}/v1/workflows?limit=200`, {
           headers: adminAuth(),
@@ -330,10 +213,6 @@ describe.skipIf(!SHOULD_RUN)(
     }, 240_000);
   },
 );
-
-// ---------------------------------------------------------------------------
-// 5. Resume — `sk -r <id>` continues an existing conversation
-// ---------------------------------------------------------------------------
 
 describe.skipIf(!SHOULD_RUN)("Tier 1.5 — resume (real LLM)", () => {
   test("sk -r <id> appends a turn to a pre-existing conversation", async () => {
@@ -362,10 +241,6 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.5 — resume (real LLM)", () => {
   }, 180_000);
 });
 
-// ---------------------------------------------------------------------------
-// 6. Elicitation REJECT — declined response leaves draft uncommitted
-// ---------------------------------------------------------------------------
-
 describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () => {
   test("declining ask_user_confirm leaves the conversation un-committed", async () => {
     const out = await createConversation(
@@ -374,9 +249,6 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () =>
     );
     const id = out.conversation.id;
 
-    // The model may either pause (good — we decline) OR finish
-    // without pausing (also fine — nothing to decline). What we
-    // assert is the post-condition: the conversation never committed.
     if (out.pending_elicitation_id) {
       await respondElicitation(
         id,

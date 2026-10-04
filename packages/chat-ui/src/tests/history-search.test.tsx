@@ -1,7 +1,3 @@
-// Unit tests for <HistorySearch> — the Ctrl-R prompt-ring pane.
-// Verifies reverse-chronological rendering, arrow navigation,
-// Enter selection, and type-to-filter.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { HistorySearch } from "../HistorySearch.tsx";
@@ -24,12 +20,7 @@ describe("HistorySearch", () => {
   test("renders newest first and shows the full count", async () => {
     const instance = render(
       <ThemeProvider>
-        <HistorySearch
-          entries={ENTRIES}
-          onSelect={() => {
-            /* noop */
-          }}
-        />
+        <HistorySearch entries={ENTRIES} onSelect={() => {}} />
       </ThemeProvider>,
     );
     await tick();
@@ -37,7 +28,6 @@ describe("HistorySearch", () => {
     expect(frame).toContain("history");
     expect(frame).toContain("3 / 3");
     expect(frame).toContain("draft a webhook workflow");
-    // Highlight marker is on the most-recent prompt.
     expect(frame).toMatch(/▶ draft a webhook workflow/);
     instance.unmount();
   });
@@ -59,12 +49,7 @@ describe("HistorySearch", () => {
   test("typing narrows the list to matching prompts", async () => {
     const instance = render(
       <ThemeProvider>
-        <HistorySearch
-          entries={ENTRIES}
-          onSelect={() => {
-            /* noop */
-          }}
-        />
+        <HistorySearch entries={ENTRIES} onSelect={() => {}} />
       </ThemeProvider>,
     );
     await tick();
@@ -83,9 +68,7 @@ describe("HistorySearch", () => {
       <ThemeProvider>
         <HistorySearch
           entries={ENTRIES}
-          onSelect={() => {
-            /* noop */
-          }}
+          onSelect={() => {}}
           onDismiss={() => {
             dismissed = true;
           }}

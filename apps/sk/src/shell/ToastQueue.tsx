@@ -1,18 +1,3 @@
-// Auto-dismiss toast / notice queue. Replaces ad-hoc inline notices
-// scattered through the REPL: connection drops, persona-probe progress,
-// background save success, etc. — every operator-visible signal that
-// is *not* part of the conversation transcript flows through here.
-//
-// Render contract:
-//   - At most `maxVisible` toasts (default 3) on screen at once.
-//   - Older toasts at the top, newest at the bottom (FIFO).
-//   - Severities order errors above warns above info above success.
-//   - `id` allows dedupe + manual dismissal; if a push reuses an id,
-//     the existing toast is replaced rather than stacked.
-//
-// The queue logic is split into a pure reducer so it can be unit-tested
-// without mounting Ink.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import {
@@ -37,10 +22,8 @@ export interface Toast {
   level: ToastLevel;
   title: string;
   body?: string;
-  /** Auto-dismiss after this many milliseconds. 0 = sticky. */
   ttlMs?: number;
   action?: ToastAction;
-  /** Internal — set on push, used to compute time elapsed. */
   pushedAt?: number;
 }
 
@@ -96,7 +79,6 @@ export interface ToastQueueAPI {
   push: (t: ToastInput) => string;
   dismiss: (id: string) => void;
   clear: () => void;
-  /** Read-only snapshot of currently visible toasts. */
   toasts: Toast[];
 }
 
@@ -105,7 +87,6 @@ const ToastQueueContext = createContext<ToastQueueAPI | null>(null);
 export interface ToastQueueProps {
   maxVisible?: number;
   defaultTtlMs?: number;
-  /** Inject a clock for tests. Defaults to Date.now. */
   clock?: () => number;
   children: React.ReactNode;
 }
@@ -150,8 +131,6 @@ export function ToastQueue({
   const dismiss = useCallback((id: string) => dispatch({ type: "dismiss", id }), []);
   const clear = useCallback(() => dispatch({ type: "clear" }), []);
 
-  // Periodic prune. 250ms is fine: TTLs are 4s typical, so up to one
-  // frame of staleness is invisible to the operator.
   useEffect(() => {
     const interval = setInterval(() => dispatch({ type: "tick", now: clock() }), 250);
     return () => clearInterval(interval);
@@ -185,9 +164,6 @@ export function ToastQueue({
 export function useToast(): ToastQueueAPI {
   const ctx = useContext(ToastQueueContext);
   if (!ctx) {
-    // Soft fallback so components rendered outside the provider (e.g.
-    // unit tests for a leaf component) don't crash. The toast just
-    // becomes a no-op.
     return {
       push: () => "",
       dismiss: () => undefined,

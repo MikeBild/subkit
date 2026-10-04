@@ -1,22 +1,7 @@
-// ask_user_* ←→ MCP elicitation form-mode mapping.
-//
-// The MCP `elicitation/create` form mode accepts ONLY a flat
-// JSON-Schema object of primitive properties (string / number / boolean
-// / enum / string-array). Each `ask_user_*` tool has a richer input
-// shape; this module maps that shape down to a primitive schema for the
-// request, and maps the client's accepted answer back to the output
-// shape `respondElicitation` / auto-persist expects.
-//
-// `mapAskUserToPrimitiveSchema` returns `{ degrade: true }` when a tool
-// input cannot be expressed as flat primitives — the caller then falls
-// back to the DB-pause path for that one elicitation. The per-tool
-// degrade decision lives HERE so there is one place to reason about it.
-
 import { logger } from "../../../logging/logger.ts";
 import type { ElicitRequestedSchema } from "../../elicitation-bridge.ts";
 import type { FormFieldDefinition } from "./form.ts";
 
-/** Tool names that take the form-mode elicitation bridge. */
 export type FormBridgeToolName =
   | "ask_user_text"
   | "ask_user_choice"
@@ -27,18 +12,6 @@ export type FormBridgeToolName =
 export type MapToPrimitiveResult =
   | { degrade: true }
   | { degrade: false; requestedSchema: ElicitRequestedSchema; message: string }
-  /**
-   * The tool input contains a sensitive field (password / sensitive:true).
-   * Form-mode MUST NOT expose secrets as form properties — the caller must
-   * use URL/oob elicitation instead (or portal DB-pause when the client has
-   * no oob capability).
-   *
-   * `degrade: true` so the existing `if (r.degrade)` guards in callers still
-   * exclude this arm when they only want a fully-mapped schema. The
-   * `sensitive: true` discriminant lets the `pauseForUserInput` handler
-   * distinguish a secret field from an ordinary schema-mapping failure and
-   * route it to URL/portal handling before any form-mode elicitation.
-   */
   | { degrade: true; sensitive: true; message: string };
 
 interface SelectOption {
@@ -47,17 +20,10 @@ interface SelectOption {
   description?: string;
 }
 
-/** A property entry inside the elicitation `requestedSchema`. */
 type SchemaProperty = ElicitRequestedSchema["properties"][string];
 
-/** `opt_<value>` keying for ask_user_multi boolean properties. */
 const MULTI_OPT_PREFIX = "opt_";
 
-/**
- * Map an `ask_user_*` tool input to a flat primitive `requestedSchema`
- * for an MCP form-mode elicitation. Returns `{ degrade: true }` when the
- * input cannot be expressed flatly (the caller falls back to DB-pause).
- */
 export function mapAskUserToPrimitiveSchema(
   toolName: FormBridgeToolName,
   input: unknown,
@@ -137,7 +103,6 @@ export function mapAskUserToPrimitiveSchema(
       const question = typeof obj.question === "string" ? obj.question : null;
       const options = readSelectOptions(obj.options);
       if (!question || !options || options.length < 1) return { degrade: true };
-      // One flat boolean property per option — `opt_<value>` keyed.
       const properties: Record<string, SchemaProperty> = {};
       for (const o of options) {
         properties[`${MULTI_OPT_PREFIX}${o.value}`] = {
@@ -157,18 +122,11 @@ export function mapAskUserToPrimitiveSchema(
       const question = typeof obj.question === "string" ? obj.question : null;
       const fields = Array.isArray(obj.fields) ? (obj.fields as FormFieldDefinition[]) : null;
       if (!question || !fields || fields.length < 1) return { degrade: true };
-      // Spec MUST: form-mode elicitation MUST NOT request passwords/API keys/secrets.
-      // Detect sensitive fields BEFORE any mapping so no secret can reach the
-      // form-schema path regardless of what `mapFormFieldToPrimitive` does.
       const hasSensitive = fields.some((f) => f.type === "password" || f.sensitive === true);
       if (hasSensitive) return { degrade: true, sensitive: true, message: question };
       const properties: Record<string, SchemaProperty> = {};
       const required: string[] = [];
       for (const field of fields) {
-        // Degrade on nested / non-primitive field types — `json` is a
-        // free-form object buffer and `multi` is a string[] subset,
-        // neither maps to a single flat primitive cleanly enough to
-        // round-trip through the elicitation form. DB-pause handles them.
         if (field.type === "json" || field.type === "multi") return { degrade: true };
         const prop = mapFormFieldToPrimitive(field);
         if (!prop) return { degrade: true };
@@ -190,10 +148,6 @@ export function mapAskUserToPrimitiveSchema(
 
 function mapFormFieldToPrimitive(field: FormFieldDefinition): SchemaProperty | null {
   const base = { title: field.label } as const;
-  // `default` is emitted only when its runtime type matches the
-  // property type. password/sensitive fields never carry one (the
-  // input schema rejects it) — the type checks keep that invariant
-  // even on hand-built inputs.
   switch (field.type) {
     case "text":
       return {
@@ -201,11 +155,6 @@ function mapFormFieldToPrimitive(field: FormFieldDefinition): SchemaProperty | n
         ...base,
         ...(typeof field.default === "string" ? { default: field.default } : {}),
       };
-    // "password" is intentionally absent: the sensitive-field guard in
-    // mapAskUserToPrimitiveSchema catches password fields before this
-    // function is ever called, returning the { sensitive: true } arm.
-    // Removing the case here is defence-in-depth: no code path can
-    // silently emit a password field as a form property.
     case "number":
       return {
         type: "number",
@@ -262,26 +211,10 @@ function readSelectOptions(raw: unknown): SelectOption[] | null {
   return out;
 }
 
-/**
- * Is `v` a JSON primitive the elicitation form contract permits — a
- * string, number, boolean, or null? An `elicitation/create` form
- * `requestedSchema` only ever declares primitive properties, so a
- * returned object/array is a protocol violation the mapper rejects.
- */
 function isElicitationPrimitive(v: unknown): v is string | number | boolean | null {
   return v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
 }
 
-/**
- * Map an accepted elicitation `result.content` back to the output shape
- * the `ask_user_*` tool's resolve / auto-persist path expects.
- *
- * Returns `null` when the client's answer is a protocol violation that
- * cannot be honoured (see `ask_user_choice` below). `null` is the
- * decline-equivalent `checkDecline` reads as a non-answer
- * (`operator_dismissed_elicitation`), so the loop treats a bogus answer
- * the same as a dismissal rather than persisting a partial.
- */
 export function mapElicitResultToAskUserOutput(
   toolName: FormBridgeToolName,
   input: unknown,
@@ -298,15 +231,7 @@ export function mapElicitResultToAskUserOutput(
         input && typeof input === "object" ? (input as Record<string, unknown>).options : undefined,
       );
       const optionIndex = options ? options.findIndex((o) => o.value === value) : -1;
-      // A `value` outside the original options is a protocol violation:
-      // the elicitation `requestedSchema` pinned `enum` to exactly these
-      // values, so a client returning anything else broke the contract.
-      // Returning `{ value }` would silently persist an option the user
-      // never had — instead return `null`, the decline-equivalent
-      // non-answer (`checkDecline` maps null → user_declined).
       if (optionIndex < 0) {
-        // Surface the misbehaving client in observability — otherwise an
-        // out-of-enum answer resolves as a silent decline with no signal.
         logger.warn({
           module: "conversation",
           action: "elicitation.choice_out_of_enum",
@@ -319,14 +244,7 @@ export function mapElicitResultToAskUserOutput(
     }
 
     case "ask_user_confirm": {
-      // The elicitation `requestedSchema` pinned `confirmed` to a
-      // boolean. A non-boolean answer is a protocol violation — mirror
-      // `ask_user_choice` and return `null` (the decline-equivalent
-      // non-answer) rather than silently coercing it to `false`, which
-      // would negative-assert a decision the user never made.
       if (typeof c.confirmed !== "boolean") {
-        // Surface the misbehaving client in observability — otherwise a
-        // non-boolean answer resolves as a silent decline with no signal.
         logger.warn({
           module: "conversation",
           action: "elicitation.confirm_not_boolean",
@@ -341,7 +259,6 @@ export function mapElicitResultToAskUserOutput(
     }
 
     case "ask_user_multi": {
-      // Reassemble the `opt_<value>` booleans into the `string[]` subset.
       const values: string[] = [];
       for (const [key, raw] of Object.entries(c)) {
         if (raw === true && key.startsWith(MULTI_OPT_PREFIX)) {
@@ -352,16 +269,6 @@ export function mapElicitResultToAskUserOutput(
     }
 
     case "ask_user_form": {
-      // The `requestedSchema` only ever declared primitive properties
-      // (json/multi fields degraded to DB-pause earlier in
-      // `mapAskUserToPrimitiveSchema`). A compliant client therefore
-      // returns only primitives. A non-compliant MCP client could return
-      // a nested object/array where a primitive was declared; passing
-      // that straight through would let the engine persist it onto the
-      // elicitation `output` (feeding `maybeAutoPersistFromElicitation`).
-      // Mirror the `ask_user_choice` / `ask_user_confirm` branches:
-      // a contract violation collapses to `null`, the decline-equivalent
-      // non-answer.
       const out: Record<string, unknown> = {};
       for (const [key, raw] of Object.entries(c)) {
         if (!isElicitationPrimitive(raw)) {

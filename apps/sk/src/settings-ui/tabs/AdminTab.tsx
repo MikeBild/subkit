@@ -1,18 +1,3 @@
-// Admin tab — role-gated landing pad with seven sub-tabs over admin
-// resources. Mounted via `/admin` → `AdminCommand` (SinglePane) since
-// the /settings 5-tab refactor; AdminCommand probes skBootstrap and
-// renders a "no admin permissions" message in-pane for non-admins.
-// Server-side RBAC enforces every mutation independently.
-//
-// Sub-tabs render list views via existing engine endpoints. Where the
-// engine supports a single-shot mutation (revoke API key, revoke portal
-// token) it is wired here behind a ConsentPrompt; create/edit forms
-// remain CLI-only (`sk apikeys create`, `sk rbac role create`, …).
-// The sub-tab carries an explicit CLI hint to make the deviation visible.
-//
-// Press 1–7 to jump to a sub-tab directly. Esc cascades to the outer
-// modal once any inner search input is empty.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -23,13 +8,6 @@ import { PortalTokensSubTab } from "./admin/PortalTokensSubTab.tsx";
 
 interface Props {
   client: EngineClient;
-  /**
-   * Fired when the active sub-tab owns Esc — true while any
-   * AdminCreateForm, revoke-consent, or issued-secret panel is up
-   * inside the current sub-tab. Threaded up to AdminCommand so the
-   * outer SinglePane's Esc handler stays suppressed until the inner
-   * state closes.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -54,17 +32,12 @@ const SUB_TABS: SubTabName[] = [
 
 export const AdminTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [idx, setIdx] = useState(0);
-  // The active sub-tab reports its own inner-Esc state here; AdminTab
-  // forwards the latest value to the outer shell. Switching sub-tabs
-  // resets to `false` (the next sub-tab fires its own initial effect).
   const [subInner, setSubInner] = useState(false);
 
   useEffect(() => {
     onInnerEscape?.(subInner);
   }, [subInner, onInnerEscape]);
 
-  // Reset on sub-tab change — the previous sub-tab unmounts and its
-  // cleanup effect doesn't fire `(false)` reliably across all sub-tabs.
   useEffect(() => {
     setSubInner(false);
   }, []);

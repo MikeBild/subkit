@@ -1,10 +1,3 @@
-// Thin instrumentation helpers wrapping the metrics registry.
-//
-// Call sites import these instead of poking the registry directly so the
-// surface stays small and the label vocabulary is enforced in one place.
-// Every helper is a no-throw operation; failures are swallowed to keep
-// observability code from ever taking down a request path.
-
 import { errorFields, logger } from "../logging/logger.ts";
 import {
   boundedConnectorSlug,
@@ -27,11 +20,6 @@ function safe(fn: () => void): void {
 }
 
 export function recordEngineUpdate(args: {
-  /** Outcome label — kept in lockstep with the `engine.update.*` audit
-   *  action vocabulary so an operator joining
-   *  `engine_update_total{result="failed"}` to
-   *  `audit_log.action='engine.update.failed'` doesn't have to remember
-   *  an off-by-one. */
   result: "success" | "failed" | "rollback";
   channel: "stable" | "beta";
 }): void {
@@ -142,7 +130,6 @@ export type SuggestNextOutcome =
 export function recordSuggestNextOutcome(args: {
   tenant_id: string;
   outcome: SuggestNextOutcome;
-  /** "text" | "slash" | "" — empty when no suggestion was produced. */
   kind?: string;
 }): void {
   safe(() => {
@@ -160,11 +147,6 @@ export function setQueueDepth(queue: string, depth: number): void {
   });
 }
 
-// --- Phase 2: predictive-maintenance helpers ---------------------------------
-
-/** Set the three Postgres-pool gauges to their current absolute values.
- *  Called from the memory-sampler tick (60s) so the leading saturation
- *  signal (`waiting`) rides an existing ticker rather than a new timer. */
 export function setDbPoolStats(args: { total: number; idle: number; waiting: number }): void {
   safe(() => {
     const reg = getMetrics();
@@ -174,10 +156,6 @@ export function setDbPoolStats(args: { total: number; idle: number; waiting: num
   });
 }
 
-/** Increment the transient-retry counter once per backoff inside
- *  `retryTransient`. `label` carries the caller's pass name (empty when the
- *  caller did not supply one), collapsed to "other" off the allow-list in
- *  metric-label-allowlists.ts. */
 export function recordDbTransientRetry(args: { label?: string }): void {
   safe(() => {
     const raw = args.label ?? "";
@@ -187,29 +165,21 @@ export function recordDbTransientRetry(args: { label?: string }): void {
   });
 }
 
-/** Set the per-DLQ depth gauge. Called from the queue-depth poller (15s)
- *  for every queue whose name ends in `.dlq`. */
 export function setDlqJobCount(queue: string, count: number): void {
   safe(() => {
     getMetrics().set(METRIC_NAMES.DLQ_JOB_COUNT, count, { queue });
   });
 }
 
-/** Increment the connector-call counter once per `call_connector` invocation
- *  that reached the wire, partitioned by connector slug + response health. */
 export function recordConnectorCall(args: { slug: string; health: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CONNECTOR_CALL_TOTAL, {
-      // `slug` is tenant-controlled; bound its cardinality (overflow → "other")
-      // so connector churn can't blow up the Prometheus series count.
       slug: boundedConnectorSlug(args.slug),
       health: CONNECTOR_HEALTH_VALUES.has(args.health) ? args.health : "other",
     });
   });
 }
 
-/** Observe one LLM invoke() round-trip duration, partitioned by provider +
- *  model + flow. */
 export function recordLlmCallDuration(args: {
   provider: string;
   model: string;
@@ -226,8 +196,6 @@ export function recordLlmCallDuration(args: {
   });
 }
 
-/** Increment the LLM-fallback counter on the fallback branch, partitioned by
- *  from-model, to-model, and the provider-error reason. */
 export function recordLlmFallbackInvocation(args: {
   from: string;
   to: string;
@@ -242,9 +210,6 @@ export function recordLlmFallbackInvocation(args: {
   });
 }
 
-/** Update the RSS high-water gauge if `rss` exceeds the previous maximum.
- *  Stateful across the process lifetime (the max-ever value), driven by the
- *  memory sampler. */
 let _rssHighWaterBytes = 0;
 export function recordProcessRssHighWater(rss: number): void {
   safe(() => {
@@ -254,8 +219,6 @@ export function recordProcessRssHighWater(rss: number): void {
   });
 }
 
-/** Test-only — reset the in-memory RSS high-water mark so a case can assert
- *  the climb-only behaviour from a known baseline. */
 export function _resetRssHighWaterForTests(): void {
   _rssHighWaterBytes = 0;
 }
@@ -420,12 +383,6 @@ export function recordProactiveDriftUnanchored(args: {
   });
 }
 
-// --- Run → Drift → Patch → Skill loop closure (docs/concepts/workflows.md) ---------
-
-/** Closing edge: catalog/candidate skills that entered an authoring LLM
- *  context. `source` distinguishes promoted Skills (`catalog`) from proposed
- *  Skill Candidates (`candidate`). Incremented by the assembled-skill count, so
- *  the counter measures skill-uses, not turns; a zero count is a no-op. */
 export function recordAuthoringContextSkillsUsed(args: {
   tenant_id: string;
   source: "catalog" | "candidate";
@@ -441,9 +398,6 @@ export function recordAuthoringContextSkillsUsed(args: {
   });
 }
 
-/** Opening edge: a drift signal became a Patch Candidate. `classifier` is the
- *  safety classification (`safe` / `unsafe`). Tenant-scoped sibling of the
- *  global `patch_candidates_total`. */
 export function recordLoopDriftToPatchCandidate(args: {
   tenant_id: string;
   classifier: string;
@@ -456,8 +410,6 @@ export function recordLoopDriftToPatchCandidate(args: {
   });
 }
 
-/** Middle edge: a Patch Candidate became a Skill Candidate (repair-pattern
- *  detector; evidence carries a `patch_candidate_id`). */
 export function recordLoopPatchToSkillCandidate(args: { tenant_id: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL, {
@@ -466,10 +418,6 @@ export function recordLoopPatchToSkillCandidate(args: { tenant_id: string }): vo
   });
 }
 
-/** Promotion edge: a Skill Candidate became a Skill. `source` is
- *  `auto-suggested` (detector-born) or `manual` (reserved). When the candidate
- *  carries patch evidence, `lag_seconds` records the drift→skill journey into
- *  the lag histogram; omit it for failure/success-pattern candidates. */
 export function recordLoopSkillCandidatePromoted(args: {
   tenant_id: string;
   source: "auto-suggested" | "manual";
@@ -507,10 +455,6 @@ export function recordExecutionWarningsEmitted(args: {
   });
 }
 
-/** Count loop iterations whose body payload was offloaded to durable
- *  storage (the in-memory scope holds an `OffloadRef` rather than the
- *  full envelope). Emitted at the loop's `productiveIterations`
- *  short-circuit so big-loop memory pressure is observable. */
 export function recordLoopIterationsOffloaded(args: { tenant_id: string; count: number }): void {
   safe(() => {
     if (!Number.isFinite(args.count) || args.count <= 0) return;
@@ -522,11 +466,6 @@ export function recordLoopIterationsOffloaded(args: { tenant_id: string; count: 
   });
 }
 
-/** Allow-list for `code` label values on AUTHORING_GATE_BLOCKS_TOTAL.
- *  Cardinality control: any code outside this list collapses to
- *  "other" so a typo or new-but-unannounced gate can't blow up the
- *  metric backend's cardinality budget. Update this list (and the
- *  metric help text) when adding a new gate. */
 const AUTHORING_GATE_CODES = new Set<string>([
   "workflow_cycle_detected",
   "workflow_unresolved_step_reference",
@@ -538,7 +477,6 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "critic_rejected",
   "principal_required",
 ]);
-/** Allow-list for `tool` label values. */
 const AUTHORING_GATE_TOOLS = new Set<string>([
   "author_workflow",
   "edit_workflow_patch",
@@ -551,20 +489,9 @@ const TOOL_CIRCUIT_REASONS = new Set<string>([
   "consecutive_failures_cap",
   "turn_loop_budget_exhausted",
   "validation_fingerprint_repeat",
-  // Per-tool same-`error_code` streak breaker (sdk-wrap/invoke.ts). Must
-  // be allow-listed so the circuit-open this change adds is attributable
-  // in metrics instead of collapsing into the "other" bucket — the
-  // breaker exists for exactly the dashboards an operator reads to triage
-  // an authoring-gate thrash.
   "error_code_repeat",
 ]);
 
-/**
- * Counter for per-tool circuit-breaker opens. Fired by sdk-wrap
- * when a tool's repeat-args detector or the global
- * consecutive-failures cap short-circuits a call. Both labels are
- * allow-listed; unknown reasons collapse to "other".
- */
 export function recordToolCircuitOpen(args: { tool: string; reason: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.TOOL_CIRCUIT_OPEN_TOTAL, {
@@ -574,13 +501,6 @@ export function recordToolCircuitOpen(args: { tool: string; reason: string }): v
   });
 }
 
-/**
- * Counter for LLM hallucinated tool-absence claims (Root D defence-
- * in-depth). Fired by the conversation loop when the assistant's
- * text denies a tool that IS in the resolved palette. `tool` is the
- * specific tool name the model named; high counts on the same tool
- * indicate the seed-skill palette teaching is failing for that tool.
- */
 export function recordToolHallucinatedAbsence(args: { tool: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL, {
@@ -591,12 +511,6 @@ export function recordToolHallucinatedAbsence(args: { tool: string }): void {
 
 const TRIGGER_KINDS = new Set<string>(["request", "webhook", "schedule"]);
 
-/**
- * Counter for cadence-phrased workflows that committed with a
- * `request` trigger (Root A defence-in-depth). The matched-phrase
- * names also land in the audit row metadata so operators have
- * forensic context, but the counter is the per-tenant trend signal.
- */
 export function recordWorkflowScheduleNotBound(args: { tenant_id: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL, {
@@ -605,13 +519,6 @@ export function recordWorkflowScheduleNotBound(args: { tenant_id: string }): voi
   });
 }
 
-/**
- * Per-kind workflow-commit counter. Allow-listed against the three
- * trigger variants; unknown values collapse to "other" so a producer
- * regression never blows up label cardinality. Labelled by `tenant_id`
- * for parity with WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL so operators can
- * slice cohort behaviour per tenant.
- */
 export function recordWorkflowTriggerKind(args: { tenant_id: string; kind: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.WORKFLOW_TRIGGER_KIND_TOTAL, {
@@ -621,13 +528,6 @@ export function recordWorkflowTriggerKind(args: { tenant_id: string; kind: strin
   });
 }
 
-/**
- * Counter for authoring-time gate refusals (reference / cycle / loop-
- * inspect / repair-loop). High counts per (code, tool) indicate the
- * skill or prompt isn't teaching the rule effectively. Both labels
- * are validated against an allow-list — unknown values collapse to
- * "other" to keep cardinality bounded.
- */
 export function recordAuthoringGateBlock(args: { code: string; tool: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.AUTHORING_GATE_BLOCKS_TOTAL, {
@@ -637,18 +537,8 @@ export function recordAuthoringGateBlock(args: { code: string; tool: string }): 
   });
 }
 
-/** Allow-list for `result` label on subkit_critic_runs_total. */
 const CRITIC_RUN_RESULTS = new Set<string>(["passed", "rejected", "fail_open"]);
 
-/**
- * Counter for authoring-critic runs. Three buckets:
- *   - passed: critic ran and approved the draft.
- *   - rejected: critic ran and returned passed:false; tool emits critic_rejected.
- *   - fail_open: critic call errored or returned no structured object; treated as passed.
- *
- * Operators compare passed:rejected ratio to estimate signal quality, and
- * compare (passed+rejected):fail_open to spot provider instability.
- */
 export function recordCriticRun(args: { result: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.CRITIC_RUNS_TOTAL, {
@@ -657,16 +547,8 @@ export function recordCriticRun(args: { result: string }): void {
   });
 }
 
-/** Allow-list for `verdict` on subkit_preview_judge_verdicts_total. */
 const PREVIEW_JUDGE_VERDICTS = new Set<string>(["passes", "partial", "failed", "skipped"]);
 
-/**
- * Counter for instruction-grounded preview-judge verdicts (Fix C).
- * `blocked` records whether the verdict actually stopped the
- * auto-commit — false for `passes`, for skips (no goal / judge
- * unavailable), and for advisory verdicts after the per-definition
- * circuit-breaker tripped.
- */
 export function recordPreviewJudgeVerdict(args: { verdict: string; blocked: boolean }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.PREVIEW_JUDGE_VERDICTS_TOTAL, {
@@ -762,22 +644,6 @@ export function recordConversationTurnDuration(args: {
   });
 }
 
-/** Record one context-assembly invocation. The metric ladder gives operators
- *  visibility into how often each LLM flow runs and which sections the
- *  trimmer is dropping; the structured log line carries the full breakdown
- *  (token counts per section, included ids, dropped section names) so the
- *  same record can be searched in log storage.
- *
- *  Per-id 8-char hashes (`included_skill_id_hashes`,
- *  `included_candidate_id_hashes`) let an operator grep "did this turn
- *  see X?" by hashing X locally and looking for the resulting 8-char
- *  prefix. Each hash list is capped at 12 entries upstream so the log
- *  line stays bounded; no metric labels carry hashes — keeps cardinality
- *  bounded. The hashes are correlation-grade obfuscation, NOT a security
- *  boundary. Recipe slugs are low-cardinality and already
- *  operator-visible in connector templates, so `included_recipe_slugs`
- *  is logged in raw form (also capped at 12) to save the
- *  hash-and-grep round trip. */
 export function recordLlmContextAssembled(args: {
   tenant_id: string;
   flow: string;
@@ -864,18 +730,8 @@ export function recordLlmContextAssembled(args: {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Unified files resource
-// ---------------------------------------------------------------------------
-
-/** Allow-list for `status` label on FILES_TOTAL — keeps cardinality
- *  bounded if a future status string sneaks in. */
 const FILES_STATUS_VALUES = new Set<string>(["pending", "uploading", "ready", "failed", "expired"]);
 
-/** Allow-list for `outcome` label on FILES_UPLOAD_DURATION_SECONDS.
- *  `scan_timeout` covers the case where `scanner.scan(...)` exceeded
- *  `SCANNER_TIMEOUT_SECONDS` — the row lands in `status='scanning'` and
- *  the cleanup cron eventually reaps it. */
 const FILES_UPLOAD_OUTCOMES = new Set<string>([
   "success",
   "scan_infected",
@@ -884,16 +740,8 @@ const FILES_UPLOAD_OUTCOMES = new Set<string>([
   "error",
 ]);
 
-/** Allow-list for `verdict` label on FILES_SCAN_RESULTS_TOTAL.
- *  `timeout` is recorded when the scanner exceeded its per-call budget. */
 const FILES_SCAN_VERDICTS = new Set<string>(["clean", "infected", "timeout"]);
 
-/**
- * Set the live `subkit_files_total{tenant_id,status}` gauge to an
- * absolute value. Called by the cleanup cron (which already sweeps every
- * row) with reconciled counts; route handlers don't need to touch the
- * gauge — the cron's hourly cadence is fast enough for an SLO panel.
- */
 export function setFilesTotal(args: { tenant_id: string; status: string; value: number }): void {
   safe(() => {
     getMetrics().set(METRIC_NAMES.FILES_TOTAL, args.value, {
@@ -903,9 +751,6 @@ export function setFilesTotal(args: { tenant_id: string; status: string; value: 
   });
 }
 
-/** Set `subkit_files_bytes_total{tenant_id}` to the reconciled live byte
- *  sum. Same call site as `setFilesTotal` — the cleanup cron computes
- *  both in one pass. */
 export function setFilesBytesTotal(args: { tenant_id: string; value: number }): void {
   safe(() => {
     getMetrics().set(METRIC_NAMES.FILES_BYTES_TOTAL, args.value, {
@@ -914,17 +759,12 @@ export function setFilesBytesTotal(args: { tenant_id: string; value: number }): 
   });
 }
 
-/** Increment `subkit_files_dedup_hits_total` once per dedup short-circuit
- *  (inline sha256-match or finalize sibling-dedup). */
 export function recordFileDedupHit(): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.FILES_DEDUP_HITS_TOTAL, {});
   });
 }
 
-/** Observe `subkit_files_upload_duration_seconds{outcome}`. The caller
- *  is the inline-upload + finalize handlers; `duration_ms` covers the
- *  whole server-side path (decode → store.put → scan → row insert). */
 export function observeFileUploadDuration(args: { outcome: string; duration_ms: number }): void {
   safe(() => {
     if (!Number.isFinite(args.duration_ms)) return;
@@ -934,10 +774,6 @@ export function observeFileUploadDuration(args: { outcome: string; duration_ms: 
   });
 }
 
-/** Increment `subkit_files_llm_inline_bytes_total{tenant_id}` by the
- *  bytes the file-context assembler shipped via the `file_part`
- *  strategy. This is the runtime backstop on the per-turn token
- *  blowup risk — operators chart it against the 250 KiB hard cap. */
 export function recordFileLlmInlineBytes(args: { tenant_id: string; bytes: number }): void {
   safe(() => {
     if (!Number.isFinite(args.bytes) || args.bytes <= 0) return;
@@ -949,10 +785,6 @@ export function recordFileLlmInlineBytes(args: { tenant_id: string; bytes: numbe
   });
 }
 
-/** Increment `subkit_files_llm_cap_downgrades_total{tenant_id}` per
- *  file force-routed to `text_extract` because the per-turn inline
- *  budget was exhausted. Companion signal to
- *  `recordFileLlmInlineBytes`. */
 export function recordFileLlmCapDowngrade(args: { tenant_id: string; count: number }): void {
   safe(() => {
     if (!Number.isFinite(args.count) || args.count <= 0) return;
@@ -964,10 +796,6 @@ export function recordFileLlmCapDowngrade(args: { tenant_id: string; count: numb
   });
 }
 
-/** Increment `subkit_files_scan_results_total{verdict}` per scanner
- *  result. Unknown verdicts collapse to `infected` (the safer side of
- *  the allow-list — surfaces an alert rather than silently swallowing
- *  a new verdict). */
 export function recordFileScanResult(args: { verdict: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.FILES_SCAN_RESULTS_TOTAL, {
@@ -976,17 +804,8 @@ export function recordFileScanResult(args: { verdict: string }): void {
   });
 }
 
-/** Allow-list for `source` label on
- *  `subkit_files_cleanup_pgboss_scan_missing_total`. Mirrors the three
- *  pg-boss tables the cleanup runner queries inside the in-flight
- *  fid-set scan (`pgboss.job`, `pgboss.schedule`, `pgboss.archive`). */
 const FILES_CLEANUP_PGBOSS_SOURCES = new Set<string>(["job", "schedule", "archive"]);
 
-/** Increment `subkit_files_cleanup_pgboss_scan_missing_total{source}`
- *  once per failed pg-boss in-flight scan. Operators wire an alert on
- *  this counter — non-zero in production means the pg-boss schema is
- *  absent (deploy regression) and the cleanup cron has degraded to
- *  skip the unlinked-TTL soft-delete pass. */
 export function recordFilesCleanupPgbossScanMissing(args: { source: string }): void {
   safe(() => {
     getMetrics().inc(METRIC_NAMES.FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL, {

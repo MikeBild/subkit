@@ -1,8 +1,3 @@
-// Integration tests for GET /v1/agent/briefing — the SessionStart
-// grounding surface for external coding agents. Boots the shared http
-// scaffold (real Postgres) so auth + RBAC + Zod validation + the
-// skills/knowledge domain filter run end-to-end.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -40,7 +35,6 @@ beforeAll(async () => {
   if (skillRes.status !== 201 && skillRes.status !== 200) {
     throw new Error(`seed skill failed: ${skillRes.status} ${await skillRes.text()}`);
   }
-  // An off-domain skill that must never leak into the briefing.
   await post("/v1/skills", {
     scope: "global",
     title: "Unrelated",

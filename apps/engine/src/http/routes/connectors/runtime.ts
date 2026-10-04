@@ -1,17 +1,3 @@
-// A connector's runtime and its operator trust settings:
-//   GET /v1/connectors/{id}/runtime                  — `connector:read`
-//   PUT /v1/connectors/{id}/mcp/tool-confirmation    — `connector:write`
-//
-// The runtime is read-only and derived: the newest successful and failed call
-// from `audit_log`, and an mcp connector's negotiated session row. It is a
-// separate resource rather than more fields on `Connector` because it is a
-// read over the audit trail, not state of the connector row — a list of
-// connectors must not pay for it.
-//
-// The tool-confirmation route is the ONE writer of
-// `config.mcp.tools_without_confirmation` (connectors/mcp-tool-trust.ts). Its
-// RBAC gate lives in ./index.ts with every other per-path gate.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
@@ -34,8 +20,6 @@ const ConnectorRuntimeSchema = z
           description:
             "Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error.",
         }),
-        // Inline, not the named `FailureCauseClass`: the engine's own
-        // classification of the failure, never the remote's text.
         cause_class: z.enum(PREVIEW_CLASSIFICATIONS),
       })
       .nullable()

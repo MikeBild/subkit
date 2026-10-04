@@ -1,22 +1,15 @@
-// Markdown-style table renderer with dynamic column widths and
-// ANSI-aware wrapping. Replaces the ad-hoc padded-string tables
-// strewn across the operator CLI commands.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { useTheme } from "../theme/Provider.tsx";
 
 export interface TableColumn {
-  /** Header label shown at the top of the column. */
   header: string;
-  /** Maximum width in columns; content wraps (hard-wrapped) beyond this. */
   maxWidth?: number;
 }
 
 export interface TableProps {
   columns: TableColumn[];
   rows: Array<Array<string | number>>;
-  /** Max rendered rows before a "+N more" footer line appears. */
   maxRows?: number;
 }
 

@@ -1,5 +1,3 @@
-// Unit tests for the deterministic critic rubrics.
-
 import { describe, expect, it } from "bun:test";
 import { runCritic } from "../index.ts";
 
@@ -170,9 +168,6 @@ describe("chat rubric", () => {
   });
 
   it("does not flag prose without UUIDs", async () => {
-    // The pre-fix pattern matched 'connector_xyz' literals which are
-    // not actual subkit ids; this test asserts the new UUID-only
-    // pattern is silent on such prose.
     const v = await runCritic({
       artifact: {
         kind: "chat",

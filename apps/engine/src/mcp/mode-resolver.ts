@@ -1,23 +1,8 @@
-// MCP catalog mode resolver.
-//
-// The product-level MCP surface in subkit shows two kinds of tools only:
-//   • saved workflow tools (`wf.<slug>`)
-//   • the generic `authenticate` tool
-//
-// Conversation-authoring tools (`conversation.*`) and tenant-admin tools
-// (`tenant.*`) are opt-in and only appear when the caller's principal
-// carries the right scope. This keeps the default MCP experience clean
-// and keeps the rich authoring/admin surface available for callers that
-// explicitly ask for it.
-
 import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 
 export type McpMode = "product" | "authoring" | "admin";
 
-/** Env override used in tests and local dev where attaching scopes to
- *  every principal is annoying. Accepts `product` / `authoring` / `admin`
- *  and forces every MCP session into that mode regardless of scope. */
 const ENV_OVERRIDE_NAME = "SK_MCP_MODE";
 
 function readEnvOverride(): McpMode | null {
@@ -26,37 +11,6 @@ function readEnvOverride(): McpMode | null {
   return null;
 }
 
-// Note (mcp-spec): MCP scopes here gate tool VISIBILITY only — a lower-scope
-// principal simply sees a smaller catalog, it is never denied a call it could
-// otherwise make. So the 2025-11-25 `insufficient_scope` step-up challenge
-// (SEP-835) has no trigger point in this model and is intentionally NOT
-// implemented; adding a 403 WWW-Authenticate challenge would be dead code.
-//
-// AUTHORING IS OPT-IN, AND THE WILDCARD IS NOT AN OPT-IN.
-//
-// `product` is the read-and-execute tier: read the tenant, run what is already
-// there. `authoring` adds the tools that BUILD definitions — the conversation
-// cluster and the authoring helpers. That step is deliberate, so it takes a
-// deliberate scope.
-//
-// The wildcard `*` asserts "no narrowing — full role-derived access"
-// (auth/scopes.ts), and it is the default minted key scope, the admin-key
-// scope, and the OIDC session scope. It once resolved to `authoring` on the
-// reasoning that the least-narrowed credential should not get the smallest
-// catalogue. That reasoning held while the alternative was an 8-tool floor;
-// it does not hold now that `product` carries every read plus the run tools.
-// What it produced instead was authoring-on-by-default for every credential
-// ever minted — including the ones pasted into browser clients that cannot
-// carry a human through an authoring turn.
-//
-// So the wildcard resolves to `product`. Breadth of ROLE is not consent to
-// author: a credential authors when someone wrote `mcp:authoring` on it.
-//
-// `modeFlags` below is where the rest of the promise is kept — authoring pins
-// `showTenantWrites: false` unconditionally, so no credential widens it. Verify
-// the shape through `modeFlags` → `listToolsViaRegistry`, never by listing the
-// conversation provider directly: the provider does not see this flag, so it
-// reports authoring and admin as identical when they are not.
 export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   const env = readEnvOverride();
   if (env) return env;
@@ -66,15 +20,10 @@ export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   return "product";
 }
 
-/** The `tools/list` payload is shaped by the resolved mode. */
 export interface McpModeFlags {
-  /** saved workflows + authenticate tool */
   showProductTools: true;
-  /** conversation.* tools */
   showConversationTools: boolean;
-  /** tenant.* read tools */
   showTenantReads: boolean;
-  /** tenant.* write tools */
   showTenantWrites: boolean;
 }
 
@@ -103,12 +52,6 @@ export function modeFlags(mode: McpMode, readOnly: boolean): McpModeFlags {
   };
 }
 
-/** The search-first floor of the `tools/list` catalog. These tools must be
- *  present in every mode, regardless of catalog size, so that every client can
- *  always discover and run the full workflow library on demand
- *  (`find_workflow` → `run_workflow(slug)`), authenticate a connector, and
- *  inspect recipes. The per-workflow `wf_` palette (capped to its Top-N) rides
- *  alongside this floor. */
 export const MCP_CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "confirm_tool_call",
   "find_workflow",

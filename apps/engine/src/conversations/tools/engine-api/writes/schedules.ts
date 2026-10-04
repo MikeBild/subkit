@@ -1,9 +1,3 @@
-// Schedule CRUD tools — create, list, update, delete entries in the
-// `workflows_schedules` table that the SchedulerReconciler reads on a
-// 60s cadence. Each mutation audits and returns the canonical row.
-//
-// MCP clients see these as `tenant.create_schedule` / `tenant.list_schedules` / etc.
-
 import { z } from "@hono/zod-openapi";
 import { inspectScheduleAutomation } from "../../../../scheduler/automation-status.ts";
 import {
@@ -16,10 +10,6 @@ import {
 } from "../../../../scheduler/repo.ts";
 import type { ConversationTool } from "../../index.ts";
 
-// Cron + every-shorthand are documented in the scheduler module. We
-// keep the Zod schema permissive (single string, minLength 1) and let
-// the repo layer validate via parseCronExpression — it has the richer
-// error messaging.
 const CronString = z
   .string()
   .min(1)
@@ -125,13 +115,8 @@ export const listSchedulesTool: ConversationTool = {
     "Inspect schedules and their current execution permission. Before claiming automatic operation, inspect automation.state: repair_required needs supported fixed effects, approval_required needs the human review dialog. Keeping a cadence is not granting permission. Use review_workflow_automation to show the real recurring-run review in chat; never use ask_user_confirm for recurring authority. This read never runs or authorizes anything.",
   inputSchema: ListInput,
   category: "tenant_read",
-  // Symmetric with the typed fast-path (`schedule:read`): the read is
-  // tenant-scoped only, so gate it here so the LLM-mediated path does not
-  // leak schedules to a principal lacking schedule:read.
   permission: { action: "schedule:read", resourceType: "schedule" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    // Schedules are a bounded catalog — the result is the COMPLETE set
-    // and the envelope says so explicitly (self-describing cardinality).
     const { rows, total } = await listSchedules(
       ctx.db,
       ctx.tenant_id,
@@ -206,7 +191,6 @@ export const deleteScheduleTool: ConversationTool = {
   category: "tenant_write",
   requires_persisted_workflow: true,
   async execute(ctx, args: z.infer<typeof DeleteInput>) {
-    // Fetch before delete so the audit entry carries the workflow id.
     const before = await getSchedule(ctx.db, ctx.tenant_id, args.id);
     const ok = await deleteSchedule(ctx.db, ctx.tenant_id, args.id);
     if (!ok) return { ok: false, data: { error: "schedule_not_found", id: args.id } };

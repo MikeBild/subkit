@@ -1,10 +1,3 @@
-// Schedule-trigger primitive coverage. Pins the shipped
-// `stripe.daily-charges-digest` recipe to the cron + tz + business-days
-// contract the scheduler reconciler enforces. Loud failure here catches
-// the case where a future edit drops the schedule trigger (which would
-// silently revert the recipe to needing an external `sk run` loop) or
-// downgrades the timezone / business-day discipline.
-
 import { getBuiltinTemplate } from "../../src/connectors/templates.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

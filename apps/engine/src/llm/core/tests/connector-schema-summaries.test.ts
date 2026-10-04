@@ -1,15 +1,3 @@
-// OPT-E: `loadConnectorSchemaSummaries` — surfaces a connector's KNOWN
-// operations (from its cached discovery/introspection index) into the authoring
-// context, so the model uses real operation + argument names without a
-// discover_connector_endpoints round-trip.
-//
-// Verifies against a real Postgres database:
-//   - operations are projected as `op(arg: Type, …)` from the discovery index;
-//   - tenant isolation: tenant B's index NEVER loads for tenant A;
-//   - a connector with no cached index yields [] (no throw);
-//   - non-UUID ids are filtered.
-// Plus a pure-render assertion on `formatConnectorSchemaSummaries`.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
@@ -98,7 +86,6 @@ beforeAll(async () => {
   connectorA = ca!.id;
   connectorB = cb!.id;
 
-  // Warm tenant A's discovery index for that base_url (spy avoids real network).
   const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(GQL_INDEX);
   try {
     await runDiscoveryCached(
@@ -125,8 +112,6 @@ describe.skipIf(skip)("loadConnectorSchemaSummaries (OPT-E)", () => {
   });
 
   test("tenant isolation: tenant B's connector yields nothing for tenant A's index lookup", async () => {
-    // Tenant B has no warmed index (only A was warmed). Same base_url, but the
-    // index read is tenant-scoped, so B sees nothing.
     const out = await loadConnectorSchemaSummaries(tenantB, [connectorB], ctx.db);
     expect(out).toEqual([]);
   });

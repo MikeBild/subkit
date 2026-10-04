@@ -1,11 +1,8 @@
-// Tests for H2 knowledge chunk integration in the context enhancement pipeline.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: LlmTestCtx;
@@ -14,7 +11,6 @@ beforeAll(async () => {
   if (skip) return;
   ctx = await createLlmTestCtx("ctx-knowledge");
 
-  // Seed a global knowledge source
   await createKnowledgeSource(
     {
       tenant_id: ctx.tenant_id,
@@ -49,7 +45,6 @@ describe.skipIf(skip)("llm/context — knowledge integration", () => {
       ctx.testDb.db,
     );
 
-    // Knowledge fields are always present (even if 0 chunks matched the FTS query)
     expect(typeof prompt.token_counts.knowledge).toBe("number");
     expect(prompt.token_counts.knowledge).toBeGreaterThanOrEqual(0);
     expect(Array.isArray(prompt.included_knowledge_chunk_ids)).toBe(true);
@@ -68,7 +63,6 @@ describe.skipIf(skip)("llm/context — knowledge integration", () => {
       ctx.testDb.db,
     );
 
-    // Knowledge tokens should not exceed 15% of cap (8000 * 0.15 = 1200)
     expect(prompt.token_counts.knowledge).toBeLessThanOrEqual(1200);
   });
 
@@ -84,7 +78,6 @@ describe.skipIf(skip)("llm/context — knowledge integration", () => {
       ctx.testDb.db,
     );
 
-    // Verify all new fields exist
     expect(typeof prompt.token_counts.knowledge).toBe("number");
     expect(Array.isArray(prompt.included_knowledge_chunk_ids)).toBe(true);
     expect(Array.isArray(prompt.included_knowledge_chunks)).toBe(true);

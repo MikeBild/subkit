@@ -22,11 +22,6 @@ function useTypeWord() {
   };
 }
 
-/**
- * A schema as facts a reader can scan: one per field, an object's own fields
- * indented under it. The value says the type, whether it is required and an
- * example; the description and the allowed values stand behind its (?).
- */
 function useFieldFacts(fields: readonly InputField[], withRequired: boolean, testId: string) {
   const { t } = useI18n();
   const typeWord = useTypeWord();
@@ -55,17 +50,11 @@ function useFieldFacts(fields: readonly InputField[], withRequired: boolean, tes
   });
 }
 
-/**
- * "Eingabe & Ausgabe": what the workflow takes and what it hands back, as the
- * schema says it. The input is the same reading of the schema the run dialog
- * fills in (`lib/workflow-inputs.ts`).
- */
 export function WorkflowInputOutput({
   workflowId,
   byWebhook,
 }: {
   workflowId: string;
-  /** A hook starts this workflow: the caller's body arrives wrapped. */
   byWebhook: boolean;
 }) {
   const { t } = useI18n();
@@ -82,7 +71,6 @@ export function WorkflowInputOutput({
     "workflow-output-table",
   );
   if (query.isPending) return <DataState state="loading" />;
-  // The call above already says the read failed, and offers the retry.
   if (query.error || !query.data)
     return <DataState state="error" line={t("input.loadFailed")} testId="workflow-io-failed" />;
   const note = "text-sm text-muted-foreground";
@@ -94,7 +82,6 @@ export function WorkflowInputOutput({
             {t("input.none")}
           </p>
         ) : form.kind === "whole" ? (
-          // A schema that names no fields still takes input: say what.
           <p className={note} data-testid="workflow-input-whole">
             {t("input.whole", { type: t(inputTypeKey(form.field)) })}
           </p>

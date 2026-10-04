@@ -1,16 +1,3 @@
-// The overview counts what the decisions queue counts.
-//
-// It did not. The overview asked its own SQL — `finished_at`, `failed` and
-// `timed_out`, 24 hours — while the queue read the digest — `created_at`,
-// `failed` only, 500 rows, seven days. On one production installation the
-// overview therefore said "production incidents: 0" while the badge counted
-// two failing workflows, and nothing on either screen could reconcile them.
-//
-// This holds the two together on one seeded history: whatever the digest
-// reports as a failing scheduled workflow is what the overview's tile says.
-// It would have failed on the old code for the plainest reason — there was no
-// tile, and the numbers came from two different queries.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -35,13 +22,11 @@ let tenant_id: string;
 let workflow_id: string;
 let workflow_version_id: string;
 
-/** One failed run and the step that stopped it. */
 async function seedFailure(args: {
   source_kind: string;
   request_source: string;
   step_key: string;
   code: string;
-  /** How long ago it failed. The old overview looked back 24 hours only. */
   hoursAgo: number;
 }) {
   const at = new Date(getTestNow() - args.hoursAgo * 60 * 60 * 1000);
@@ -70,7 +55,6 @@ async function seedFailure(args: {
   });
 }
 
-/** One successful run. `request_source` decides whether it can resolve anything. */
 async function seedSuccess(args: { request_source: string; hoursAgo: number }) {
   const at = new Date(getTestNow() - args.hoursAgo * 60 * 60 * 1000);
   await testDb.db.insert(executions).values({
@@ -110,8 +94,6 @@ beforeAll(async () => {
     .returning();
   workflow_version_id = ver!.id;
 
-  // Two runs of one cause, four days back: inside the queue's window and
-  // outside the 24 hours the overview used to look at. One group, not two.
   await seedFailure({
     source_kind: "saved",
     request_source: "scheduler",
@@ -126,7 +108,6 @@ beforeAll(async () => {
     code: "http_4xx",
     hoursAgo: 95,
   });
-  // A second cause in the same workflow — a separate decision.
   await seedFailure({
     source_kind: "saved",
     request_source: "scheduler",
@@ -134,11 +115,6 @@ beforeAll(async () => {
     code: "storage_refused",
     hoursAgo: 30,
   });
-  // Someone trying it out by hand, and an authoring trial. Neither is an
-  // operational decision, and counting them here is how a real one gets buried.
-  // Both carry causes of their own: a group is keyed by workflow, step and
-  // error code, so reusing a scheduled cause here would merge the origins
-  // instead of testing that these two are excluded.
   await seedFailure({
     source_kind: "saved",
     request_source: "cli",
@@ -165,21 +141,14 @@ test("the overview tile and the decision queue report the same failing workflows
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
   });
   const queue = failingScheduledGroups(digest.failure_groups);
-  // Two scheduled causes; the manual run and the authoring trial are not
-  // decisions, and the two runs of one cause are one.
   expect(queue.map((group) => group.step_key).sort()).toEqual(["fetch", "store"]);
   expect(queue.find((group) => group.step_key === "fetch")?.count).toBe(2);
 
   const overview = await getOperationalOverview(testDb.db, tenant_id);
   expect(overview.core.failing.value).toBe(queue.length);
-  // Named and reachable: a number that says nothing about what it counts is
-  // what sent people to a list of eleven thousand runs.
   expect(overview.core.failing.drilldown.path).toBe("/cockpit");
   expect(overview.core.failing.severity).toBe("urgent");
 
-  // Each failing group is a cause a surface can word itself: the workflow it
-  // is about, the reason, the classifier's class — and the engine's English
-  // sentence only as `detail`, never as the whole of what the cause says.
   const failingCauses = overview.core.health.causes.filter((c) => c.kind === "failing_group");
   expect(failingCauses).toHaveLength(queue.length);
   for (const cause of failingCauses) {
@@ -197,21 +166,11 @@ test("the overview tile and the decision queue report the same failing workflows
 
 test("a failure four days old still counts — the window is the queue's, not a day", async () => {
   const overview = await getOperationalOverview(testDb.db, tenant_id);
-  // The oldest seeded cause is 96 hours back. Under the overview's former
-  // 24-hour SQL this tile would read 1 instead of 2, and the badge beside it
-  // would still say 2.
   expect(overview.core.failing.value).toBe(2);
   expect(DECISION_FAILURE_WINDOW_HOURS).toBe(168);
 });
 
 test("retrying it by hand does not delete the record that it broke", () => {
-  // The shape that made this a bug: an operator sees a scheduled step failing
-  // and runs it once from the CLI to look at it. The group is keyed by
-  // workflow, step and error code, so that retry lands in the SAME group and
-  // merges its origin to "mixed" — and filtering on `origin === "scheduled"`
-  // dropped the row from the queue and the tile at once, while the schedule
-  // went on failing every hour. What decides is whether the scheduler ever
-  // started one of these runs.
   return (async () => {
     await seedFailure({
       source_kind: "saved",
@@ -236,8 +195,6 @@ test("retrying it by hand does not delete the record that it broke", () => {
 });
 
 test("a group that never ran unattended is still not a decision", async () => {
-  // Mixed for the other reason: tried by hand and tried in the editor, never on
-  // a schedule. Widening the filter to "mixed" would have counted this one.
   await seedFailure({
     source_kind: "saved",
     request_source: "cli",
@@ -264,11 +221,6 @@ test("a group that never ran unattended is still not a decision", async () => {
 });
 
 test("a manual success does not close a scheduled failure", async () => {
-  // Ordered before the scheduled-recovery test on purpose: this is the
-  // over-correction guard. Re-running it by hand is how an operator checks
-  // whether a fix took. It proves the workflow CAN work when driven by hand —
-  // not that the thing which fires it unattended has recovered. Accepting it
-  // would close the decision on the strength of the operator's own probe.
   await seedSuccess({ request_source: "cli", hoursAgo: 1 });
   invalidateOperationalOverview(tenant_id);
   const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
@@ -285,42 +237,26 @@ test("a manual success does not close a scheduled failure", async () => {
 });
 
 test("a workflow that has run clean on its schedule since stops being a decision", async () => {
-  // The production shape: the grant was re-issued and the schedule has run
-  // clean since, but the tile went on counting the old cause — an open
-  // decision with no action left that could close it. A group knows
-  // `last_seen` and, until now, nothing about what happened afterwards.
   await seedSuccess({ request_source: "scheduler", hoursAgo: 0 });
   invalidateOperationalOverview(tenant_id);
   const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id), {
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
   });
 
-  // It leaves the queue and the tile together — the parity this file exists
-  // for holds through the recovery, not only through the failure.
   expect(failingScheduledGroups(digest.failure_groups)).toHaveLength(0);
   const overview = await getOperationalOverview(testDb.db, tenant_id);
   expect(overview.core.failing.value).toBe(0);
 
-  // And it is still in the history, saying when it recovered. Dropping the
-  // group entirely would have replaced one silence with another: nobody could
-  // then see what had broken, or that it was over.
   const fetchGroup = digest.failure_groups.find((group) => group.step_key === "fetch");
   expect(fetchGroup).toBeDefined();
   expect(fetchGroup?.resolved_at).not.toBeNull();
   expect(digest.rendered).toContain("last ran clean on its schedule");
 
-  // The trial runs never had a schedule to recover on, and must not be
-  // stamped as though they did.
   const probe = digest.failure_groups.find((group) => group.step_key === "probe");
   expect(probe?.resolved_at).toBeNull();
 });
 
 test("a busy neighbour cannot bury another workflow's recovery", async () => {
-  // The shape a capped, time-ordered list of successes gets wrong: two failing
-  // workflows, one of them chatty. Reading runs oldest-first fills the cap from
-  // the global floor, so the chatty workflow's successes evict the one row that
-  // proves the quiet one recovered — and it stays counted forever on exactly
-  // the installations busy enough to need the answer.
   const [noisy] = await testDb.db
     .insert(workflows)
     .values({ tenant_id, slug: "chatty", name: "Chatty", lifecycle: "active" })
@@ -331,7 +267,6 @@ test("a busy neighbour cannot bury another workflow's recovery", async () => {
     .returning();
   const at = (hoursAgo: number) => new Date(getTestNow() - hoursAgo * 60 * 60 * 1000);
 
-  // The quiet workflow: one failure, then one clean scheduled run.
   const [quietFail] = await testDb.db
     .insert(executions)
     .values({
@@ -367,8 +302,6 @@ test("a busy neighbour cannot bury another workflow's recovery", async () => {
     finished_at: at(2),
   });
 
-  // The loud neighbour: far more clean scheduled runs, all OLDER, on the
-  // workflow the rest of this file already seeded as failing.
   await testDb.db.insert(executions).values(
     Array.from({ length: 40 }, (_, index) => ({
       tenant_id,
@@ -393,13 +326,6 @@ test("a busy neighbour cannot bury another workflow's recovery", async () => {
 });
 
 test("a workflow that was deleted stops asking to be decided about", async () => {
-  // "It keeps failing and cannot be fixed here" has exactly one remedy that is
-  // always available: remove the thing. On production that did not work — the
-  // runs that failed are still in the history, so the group outlived its own
-  // subject and sat in the queue with no action left that could close it.
-  //
-  // The mirror image of a cause that healed: the group knew what failed and
-  // nothing about whether the workflow still exists.
   const [gone] = await testDb.db
     .insert(workflows)
     .values({ tenant_id, slug: "retired", name: "Retired", lifecycle: "active" })
@@ -440,8 +366,6 @@ test("a workflow that was deleted stops asking to be decided about", async () =>
     failingScheduledGroups(before.failure_groups).some((g) => g.workflow_id === gone!.id),
   ).toBe(true);
 
-  // Soft-deleted, the way the product deletes: the history stays readable, and
-  // only the open decision goes.
   await testDb.db
     .update(workflows)
     .set({ deleted_at: new Date(getTestNow()) })
@@ -451,10 +375,6 @@ test("a workflow that was deleted stops asking to be decided about", async () =>
     window_hours: DECISION_FAILURE_WINDOW_HOURS,
   });
   expect(after.failure_groups.some((g) => g.workflow_id === gone!.id)).toBe(false);
-  // And ONLY that one went. Guarding against over-correction by counting the
-  // queue would be wrong here: earlier tests in this file legitimately empty
-  // it, so the check is that every other group survived, not that some
-  // remain.
   const survivors = (list: typeof after.failure_groups) =>
     list
       .filter((g) => g.workflow_id !== gone!.id)

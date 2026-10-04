@@ -38,11 +38,11 @@ describe("spanAtCursor", () => {
     const buf = "/help me";
     expect(spanAtCursor(buf, 0)?.name).toBe("help");
     expect(spanAtCursor(buf, 3)?.name).toBe("help");
-    expect(spanAtCursor(buf, 5)?.name).toBe("help"); // at end of token is OK
+    expect(spanAtCursor(buf, 5)?.name).toBe("help");
   });
 
   test("returns null when cursor is outside any slash token", () => {
-    expect(spanAtCursor("/help me", 7)).toBeNull(); // past the slash token
-    expect(spanAtCursor("hello", 2)).toBeNull(); // no slash anywhere
+    expect(spanAtCursor("/help me", 7)).toBeNull();
+    expect(spanAtCursor("hello", 2)).toBeNull();
   });
 });

@@ -15,7 +15,6 @@ import {
 } from "./workflow-steps";
 
 const UUID = "457df8bc-2fe7-4a44-8dba-0acfa31821c5";
-/** A workflow placeholder as an author writes it — text, not a template. */
 const PLACEHOLDER = ["$", "{input.name}"].join("");
 const reference = (path: string) => ["$", `{${path}}`].join("");
 const de: Parameters<typeof stepEssenceText>[1] = (key, values) => translate("de", key, values);
@@ -122,7 +121,6 @@ describe("request steps", () => {
       `X-Api-Key: ${reference("input.key")}`,
       `X-Signature: sha256=${reference("steps.sign.data.digest")}`,
       "X-Request-Token: {{input.id}}",
-      // No reference in it: a literal credential stays masked.
       "Cookie: •••",
     ]);
   });
@@ -134,7 +132,6 @@ describe("request steps", () => {
       { labelKey: "workflow.fact.timeout", value: "30 s" },
       { labelKey: "workflow.fact.onError", valueKey: "workflow.fact.onErrorContinue" },
     ]);
-    // The default — fail on error, no retries — is not worth a row.
     expect(read({ id: "a", kind: "request", path: "/x", on_error: "fail" }).facts).toEqual([]);
   });
 
@@ -151,7 +148,6 @@ describe("request steps", () => {
     expect(block(blocks, "workflow.block.sql")?.language).toBe("sql");
     expect(block(blocks, "workflow.block.sql")?.code).toBe(sql.sql.query);
     expect(block(blocks, "workflow.block.sqlParams")?.code).toBe("[\n  42\n]");
-    // There is no HTTP request line for a statement.
     expect(block(blocks, "workflow.block.request")).toBeUndefined();
   });
 
@@ -243,7 +239,6 @@ describe("control-flow steps", () => {
     expect(selector.facts).toEqual([
       { labelKey: "workflow.fact.failFast", valueKey: "common.yes" },
     ]);
-    // The loop's own source is not repeated as an output selector.
     expect(block(selector.blocks, "workflow.block.selector")).toBeUndefined();
   });
 
@@ -299,7 +294,6 @@ describe("control-flow steps", () => {
     });
     expect(essence(step)).toBe("wartet auf invoice.approved, höchstens 2 h");
     expect(block(read(step).blocks, "workflow.block.match")?.code).toContain('"outcome"');
-    // The limit is in the sentence; it is not a second fact below it.
     expect(read(step).facts).toEqual([]);
   });
 
@@ -309,7 +303,6 @@ describe("control-flow steps", () => {
     expect(essence(step)).toBe("JavaScript");
     const code = block(read(step).blocks, "workflow.block.expression");
     expect(code?.language).toBe("javascript");
-    // Payload: byte for byte, identifiers and instants included.
     expect(code?.code).toBe(expression);
     expect(essence({ id: "md", kind: "transform", language: "html-to-markdown" })).toBe(
       "HTML → Markdown",
@@ -423,8 +416,6 @@ describe("the connector a step uses", () => {
 });
 
 describe("step kinds", () => {
-  // Read from the engine's own schema, so a step kind added there fails here
-  // until this reader knows what it does.
   const source = readFileSync(
     new URL("../../../engine/src/workflows/types.ts", import.meta.url).pathname,
     "utf8",
@@ -452,8 +443,6 @@ describe("step kinds", () => {
 });
 
 describe("extractor transforms", () => {
-  // The names of the extractors' config blocks, read from the engine's schema:
-  // a renamed or misspelled one here shows nothing, silently.
   const source = readFileSync(
     new URL("../../../engine/src/workflows/types.ts", import.meta.url).pathname,
     "utf8",

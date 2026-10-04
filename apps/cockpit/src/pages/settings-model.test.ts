@@ -1,7 +1,3 @@
-// The settings page's model: which section a setting lives in, how the
-// sections are grouped, what the address carries and when the page asks
-// something of the reader.
-
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { settingsHref } from "@/app/links";
@@ -39,8 +35,6 @@ const query = (href: string) => href.slice(href.indexOf("?"));
 const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
 
-// A computed specifier: the cockpit's type-check does not follow it into the
-// engine's sources, and bun runs it as the engine does.
 const WALK = resolve(import.meta.dir, "../../../engine/src/config/walk.ts");
 const { listConfigLeaves } = (await import(WALK)) as {
   listConfigLeaves(): Array<{ path: string[] }>;
@@ -56,7 +50,6 @@ describe("the section list", () => {
     const placed = SETTING_GROUPS.flatMap((group) => group.sections);
     expect(ENGINE_SECTIONS.filter((section) => !placed.includes(section))).toEqual([]);
     expect(new Set(placed).size).toBe(placed.length);
-    // Nothing placed that the engine does not have.
     expect(placed.filter((section) => !ENGINE_SECTIONS.includes(section))).toEqual([]);
   });
 
@@ -209,7 +202,6 @@ describe("where a ?leaf= address lands", () => {
 
   test("only a path nothing lives under is missing", () => {
     expect(settingLeafTarget(paths, "llm.providers.frob")).toBeNull();
-    // A prefix of a word is not a group.
     expect(settingLeafTarget(paths, "llm.prov")).toBeNull();
   });
 });
@@ -267,13 +259,11 @@ describe("the Geändert filter", () => {
     expect(settingIsChanged(setting("log.level", "info", { kind: "enum", default: "info" }))).toBe(
       false,
     );
-    // Key order is no change.
     expect(
       settingIsChanged(
         setting("tokens.prices", [{ b: 1, a: 2 }], { kind: "json", default: [{ a: 2, b: 1 }] }),
       ),
     ).toBe(false);
-    // A nullable default of null is a default.
     expect(
       settingIsChanged(setting("llm.fallback_provider", null, { kind: "enum", default: null })),
     ).toBe(false);
@@ -298,7 +288,6 @@ describe("Geändert · Standard · Zurücksetzen", () => {
 
   test("shows while the value on screen differs from the default", () => {
     expect(settingDiffersFromDefault(budget, undefined)).toBe(true);
-    // A draft back to the default clears it — that is what Zurücksetzen does.
     expect(settingDiffersFromDefault(budget, "0")).toBe(false);
     expect(settingDiffersFromDefault({ ...budget, value: 0 }, undefined)).toBe(false);
     expect(settingDiffersFromDefault({ ...budget, value: 0 }, "12")).toBe(true);

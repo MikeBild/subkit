@@ -1,10 +1,3 @@
-// Conversation-quality: sampleToSchema produces a schema whose
-// `required` list captures every key of a flat object sample. This
-// gates the sample-derived input-contract tier
-// (`resolveWorkflowInputContract` in workflows/input-schema-synth.ts),
-// which consults `sampleToSchema(input_schema_sample)` when the draft
-// declares no explicit `input_schema`.
-
 import { sampleToSchema } from "../../src/workflows/sample-to-schema.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

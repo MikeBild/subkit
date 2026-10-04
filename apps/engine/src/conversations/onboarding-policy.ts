@@ -1,9 +1,3 @@
-// Onboarding policy — deterministic state machine that decides the single
-// best next action and, when useful, the single best next clarifying
-// question. Consumed by the authoring context block renderer so the model
-// sees a concrete "ask this now" hint instead of re-deriving one from the
-// free-form system prompt every turn.
-
 import { extractTemplatePlaceholders } from "./connector-template-intelligence.ts";
 import type { DraftDocument } from "./types.ts";
 
@@ -31,7 +25,6 @@ export interface NextAction {
   kind: NextActionKind;
   summary: string;
   rationale: string;
-  /** Advisory tool names the LLM should consider first. */
   tool_hints?: string[];
 }
 
@@ -51,11 +44,9 @@ export interface PolicyInput {
     summary: string | null;
   } | null;
   expertise?: ExpertiseHint;
-  /** Current user message — used for URL/spec detection hints at classification time. */
   user_message?: string | null;
 }
 
-/** Derive tool hints from a raw user message at intent-classification time. */
 function intentClassificationToolHints(msg: string): string[] {
   const hints: string[] = [];
   if (/\bhttps?:\/\/\S+/.test(msg)) hints.push("match_connector_template_by_url");

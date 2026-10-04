@@ -1,5 +1,3 @@
-// Unit tests for apps/sk/src/settings.ts.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,7 +42,6 @@ describe("sk settings loader", () => {
     writeFileSync(join(tmp, ".sk", "settings.local.json"), JSON.stringify({ model: "from-local" }));
     const r = loadSettings(tmp);
     expect(r.merged.model).toBe("from-local");
-    // additionalDirectories survives from the project layer.
     expect(r.merged.additionalDirectories).toEqual(["src"]);
   });
 

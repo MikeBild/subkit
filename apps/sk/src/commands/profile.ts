@@ -1,8 +1,3 @@
-// `sk profile` — manage named profiles for different environments.
-//
-// Same UX as `subkit profile` for consistency. Uses sk's own config
-// at ~/.sk/config.json.
-
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -38,7 +33,6 @@ const useCommand = defineCommand({
 
     let target = args.name as string | undefined;
 
-    // Interactive selection when no name provided
     if (!target) {
       if (names.length === 0) {
         process.stdout.write("no profiles configured — run 'sk profile add' to create one\n");
@@ -82,7 +76,6 @@ const addCommand = defineCommand({
 
     prompts.intro(pc.cyan("sk profile add"));
 
-    // Interactive prompts for missing values
     if (!name) {
       const v = await prompts.text({
         message: "Profile name",
@@ -128,7 +121,6 @@ const addCommand = defineCommand({
 
     prompts.log.success(`Profile "${name}" saved to ${configPath()}`);
 
-    // Health check
     if (apiKey) {
       try {
         const client = new EngineClient({ engine_url: engineUrl, api_key: apiKey, tenant: null });

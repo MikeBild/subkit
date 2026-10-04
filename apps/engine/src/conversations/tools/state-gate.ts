@@ -1,46 +1,6 @@
-// State-gate helpers — return a structured "tool_unavailable_in_state"
-// envelope when a tool is invoked at the wrong authoring stage.
-//
-// The palette no longer hides tools by state. Loading a
-// skill exposes a fixed tool set; calling a tool against the wrong
-// state returns the structured envelope below so the LLM has an
-// explicit signal — and a `next_best_actions` list — instead of a
-// silent disappearance. This is the contract that prevents dead-end
-// turns like session 00b93a52, where the agent gave up because
-// `save_connector_draft` was filtered out of the palette and asked
-// the user to restart.
-//
-// All helpers return `null` when the precondition is met (caller
-// proceeds normally) or a `ToolResult` with `ok: false` and a
-// `tool_unavailable_in_state` error code otherwise.
-//
-// Auto-persist contract (session 0ac7593c follow-up):
-//   - A green `probe_connector_draft` is consent to persist. The probe
-//     tool calls `saveConnectorAtomic` inline with
-//     `reason: "auto_persist_on_green_probe"`; the probe envelope
-//     returns the saved-connector shape directly. There is no
-//     intermediate `connector_probed` lifecycle visible to the user.
-//   - A clean `dry_run_workflow` (status=succeeded, no requires_repair)
-//     is consent to commit. The dry-run tool calls
-//     `commitWorkflowAtomic({ skipPriorApprovalCheck: true })` inline
-//     with `reason: "auto_persist_on_green_dry_run"`; the envelope
-//     returns the committed-workflow shape directly. There is no
-//     intermediate `workflow_previewed` lifecycle visible to the user.
-//   - Anything that is not a green path still surfaces a structured
-//     error envelope with `next_best_actions` so the LLM picks the
-//     typed recovery move.
-//   - This is the only flow; there is no opt-out and no env-var
-//     escape hatch. Tests assert against this contract directly.
-
 import type { AuthoringStage, AuthoringSummary, DraftDocument } from "../types.ts";
 import type { ToolResult } from "./index.ts";
 
-/**
- * Recommended progression. For any (current_stage, required_stage)
- * pair the value is the ordered list of tools that move the draft
- * forward. Used as the `next_best_actions` payload on a state-gate
- * miss so the LLM has explicit recovery guidance.
- */
 const CONNECTOR_STAGE_PROGRESSION: Readonly<
   Partial<Record<AuthoringStage, Partial<Record<AuthoringStage, string[]>>>>
 > = {
@@ -110,9 +70,6 @@ function progressionFor(current: AuthoringStage, required: AuthoringStage): stri
   const map = isConnectorRequired ? CONNECTOR_STAGE_PROGRESSION : WORKFLOW_STAGE_PROGRESSION;
   const next = map[current]?.[required];
   if (next) return [...next];
-  // No explicit progression mapped — emit a generic recovery hint that
-  // points at the inspection / validation tools for the requested
-  // resource so the LLM still has a deterministic next move.
   if (isConnectorRequired) {
     return ["inspect_connector_draft", "validate_connector_draft", "probe_connector_draft"];
   }
@@ -141,19 +98,6 @@ function unavailableEnvelope(params: {
   };
 }
 
-/**
- * Require the authoring summary to be at (or past) `requiredStage`.
- * Returns null when the precondition is met, else a structured
- * `tool_unavailable_in_state` envelope with `next_best_actions` that
- * point the LLM at the tools that move from the current stage to the
- * required one.
- *
- * Stage ordering is approximate — checkpoints (`hasFreshCheckpoint`)
- * are the authoritative readiness signal for tools like
- * `save_connector_draft` / `save_workflow_draft`. This helper is the cheap
- * structural gate that catches obvious mismatches (e.g. asking to
- * save before any connector is even targeted).
- */
 export function requireAuthoringStage(
   summary: AuthoringSummary | null | undefined,
   requiredStage: AuthoringStage,
@@ -180,10 +124,6 @@ export function requireAuthoringStage(
   });
 }
 
-/**
- * Require the active draft to carry a connector (draft-only or
- * persisted). Returns null when present, else a structured envelope.
- */
 export function requireConnectorDraft(draft: DraftDocument, toolName: string): ToolResult | null {
   const connector = draft.connector;
   if (connector) return null;
@@ -195,10 +135,6 @@ export function requireConnectorDraft(draft: DraftDocument, toolName: string): T
   });
 }
 
-/**
- * Require a persisted connector — either the active target is
- * persisted, or the draft references a saved connector id.
- */
 export function requirePersistedConnector(
   summary: AuthoringSummary | null | undefined,
   toolName: string,
@@ -223,10 +159,6 @@ export function requirePersistedConnector(
   });
 }
 
-/**
- * Require the workflow draft to carry at least a name + a step.
- * Returns null when the draft is structurally a workflow draft.
- */
 export function requireWorkflowDraft(draft: DraftDocument, toolName: string): ToolResult | null {
   const wf = draft.workflow;
   if (wf && (wf.steps?.length ?? 0) > 0) return null;
@@ -238,24 +170,6 @@ export function requireWorkflowDraft(draft: DraftDocument, toolName: string): To
   });
 }
 
-/**
- * Require a persisted workflow.
- */
-/**
- * True when a commit from this conversation would REPLACE a workflow that is
- * already persisted, rather than create a new one.
- *
- * The distinction decides whether an automatic commit is safe: creating costs
- * nothing to get wrong (there is nothing to lose), replacing can destroy work
- * someone verified. `latest_execution` is deliberately NOT part of it — having
- * run some workflow says nothing about whether THIS draft targets a persisted
- * one, and folding it in (as `requirePersistedWorkflow` does, for its own and
- * different question) would over-report.
- *
- * Boolean on purpose: `requirePersistedWorkflow` answers "may this tool run at
- * all" with an envelope; callers that need the plain fact should not have to
- * inspect a rejection object to learn it.
- */
 export function replacesPersistedWorkflow(summary: AuthoringSummary | null | undefined): boolean {
   if (!summary) return false;
   const persistedActive =
@@ -309,8 +223,6 @@ const STAGE_ORDER: Readonly<AuthoringStage[]> = [
 ];
 
 function isStageAtLeast(current: AuthoringStage, required: AuthoringStage): boolean {
-  // Stage progression is not strictly linear (connector vs workflow
-  // axes), so we only treat it as "at least" within the same axis.
   const currentConnector = current.startsWith("connector_") || current === "idle";
   const requiredConnector = required.startsWith("connector_");
   if (requiredConnector && !currentConnector) return false;

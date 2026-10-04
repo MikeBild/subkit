@@ -1,51 +1,14 @@
-// Mock OIDC provider fixture used by `oidc-real.test.ts` (Pass 2 A1).
-//
-// Stands up a disposable OpenID Connect Provider on a random loopback
-// port using `node:http` + `jose`. Implements the four endpoints the
-// real engine touches through `openid-client`:
-//
-//   GET  /.well-known/openid-configuration  — discovery document
-//   GET  /jwks                              — RS256 public JWKS
-//   GET  /authorize                         — auto-302 back to client
-//                                             with an issued code
-//   POST /token                             — swaps the code for an
-//                                             id_token + access_token
-//   GET  /userinfo                          — returns the most-recently
-//                                             issued claims
-//
-// The fixture is intentionally tiny: it does not persist anything,
-// keeps exactly one outstanding authorization code at a time, and
-// relies on the `state` round-trip to bind the callback back to the
-// client. The real engine is responsible for enforcing state, nonce,
-// and PKCE — the fixture simply echoes the values back so validation
-// succeeds on the happy path.
-
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 
 export interface MockOidcHandle {
-  /** Issuer URL — use as `OIDC_ISSUER_URL`. */
   url: string;
-  /** Stop the server. Idempotent. */
   stop: () => Promise<void>;
-  /**
-   * Stage claims that the next `POST /token` call will sign into the
-   * id_token. Returns the callback query the engine expects back on
-   * the `GET /v1/identity/login/callback` route. The caller supplies
-   * the `state` + `redirect_uri` so the test can reuse them without
-   * mutating the fixture's internals.
-   */
   issueFor: (
     claims: Record<string, unknown>,
     params: { state: string; redirect_uri: string },
   ) => { code: string; callbackUrl: string };
-  /**
-   * Directly sign an id_token with the provider's key. Used by flows that
-   * accept an identity assertion at `POST /v1/identity/sessions` instead
-   * of running the full code exchange. `issuer`/`audience` default to this
-   * provider's issuer and `mock-client`; override to forge mismatches.
-   */
   signIdToken: (
     claims: Record<string, unknown>,
     opts?: { issuer?: string; audience?: string; expiresInSec?: number },
@@ -59,10 +22,6 @@ interface PendingAuth {
   claims: Record<string, unknown>;
 }
 
-/**
- * Start a disposable OIDC provider. Callers should `await handle.stop()`
- * from an `afterAll` to free the port.
- */
 export async function startMockOidc(): Promise<MockOidcHandle> {
   const keys: KeyPairLike = await generateKeyPair("RS256", { extractable: true });
   const jwk: JWK = await exportJWK(keys.publicKey);
@@ -72,9 +31,6 @@ export async function startMockOidc(): Promise<MockOidcHandle> {
 
   let pending: PendingAuth | null = null;
   let lastClaims: Record<string, unknown> | null = null;
-  // Authorize-time stash of the nonce the client supplied. `issueFor`
-  // merges it into the next id_token so openid-client's nonce check
-  // passes without the test harness having to observe the value.
   let lastAuthorizeNonce: string | null = null;
 
   const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -121,7 +77,6 @@ export async function startMockOidc(): Promise<MockOidcHandle> {
       }
 
       if (url.pathname === "/token" && req.method === "POST") {
-        // Body is application/x-www-form-urlencoded from openid-client.
         const body = await readFormBody(req);
         const code = body.get("code") ?? "";
         if (!pending || pending.code !== code) {

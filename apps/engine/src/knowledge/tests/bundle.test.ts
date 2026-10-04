@@ -1,8 +1,3 @@
-// Unit tests for the knowledge-bundle parser — the tolerance matrix is the
-// contract: nothing is ever rejected (OKF v0.1 "never reject"), reserved
-// files are skipped, and the canonical serialization is deterministic
-// regardless of input order.
-
 import { describe, expect, test } from "bun:test";
 import {
   canonicalBundleSerialization,

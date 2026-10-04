@@ -1,8 +1,3 @@
-// findSimilarActive — stage-1 in-process ranker over active workflows.
-// Pins the score formula's ordering contract (connector overlap > keyword
-// overlap > step overlap > step-count affinity; slug-ascending tiebreak)
-// and the exclusion + cap behaviour the assembler relies on.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -56,7 +51,6 @@ describe("findSimilarActive · stage-1 ranking", () => {
   test("connector overlap dominates keyword overlap", async () => {
     const tenant_id = await newTenant("connector-overlap");
 
-    // Workflow A: matches via Stripe connector, generic name.
     await seed(tenant_id, {
       name: "Generic payment handler",
       slug: "wf-connector-match",
@@ -70,9 +64,6 @@ describe("findSimilarActive · stage-1 ranking", () => {
         },
       ],
     });
-    // Workflow B: matches via name keywords ("stripe webhook"), DIFFERENT
-    // connector. Connector boost (weight 4) must beat name+desc boost
-    // (weight 2 × token-overlap).
     await seed(tenant_id, {
       name: "Stripe webhook documentation index",
       slug: "wf-keyword-match",
@@ -106,8 +97,6 @@ describe("findSimilarActive · stage-1 ranking", () => {
   test("slug ascending tiebreak when scores are equal", async () => {
     const tenant_id = await newTenant("slug-tiebreak");
 
-    // Identical-shape workflows: same connector (no overlap with the
-    // intent), same trivial steps, no keyword matches → equal score.
     await seed(tenant_id, {
       name: "Bravo",
       slug: "wf-bravo",
@@ -267,19 +256,11 @@ describe("findSimilarActive · stage-1 ranking", () => {
         action: "POST https://slack.com/api/chat.postMessage",
       },
     ]);
-    // Postgres jsonb storage sorts object keys at the binary level, so
-    // `properties` order is alphabetical by the time it round-trips —
-    // assert as a set, not an ordered list.
     expect(new Set(ref?.output_keys)).toEqual(new Set(["channel", "message_ts", "amount"]));
     expect(ref?.description).toBe("Notify #ops when a Stripe charge succeeds.");
   });
 
   test("never surfaces another tenant's workflows (cross-tenant isolation)", async () => {
-    // Load-bearing pin against silent regressions in the read path. If
-    // anyone refactors `listWorkflows`' tenant predicate, this test is
-    // the new ranker's last line of defence — without it the leak would
-    // only surface in the prompt-assembly integration test, which is
-    // less obviously about tenant scoping.
     const tenant_a = await newTenant("iso-a");
     const tenant_b = await newTenant("iso-b");
 
@@ -308,10 +289,6 @@ describe("findSimilarActive · stage-1 ranking", () => {
   });
 
   test("k=0 honours caller intent and returns []", async () => {
-    // S1: `Math.max(0, k)` lets callers disable the section via the
-    // existing `k` knob (e.g. an A/B flag) without unwiring the loader.
-    // The previous `Math.max(1, k)` floor silently returned a single
-    // ref instead.
     const tenant_id = await newTenant("k-zero");
     await seed(tenant_id, {
       name: "Some workflow",
@@ -330,11 +307,6 @@ describe("findSimilarActive · stage-1 ranking", () => {
   });
 
   test("output_keys returns [] for a JSON-schema-shaped object without `.properties`", async () => {
-    // S5: `deriveOutputKeys` falls back to top-level keys only when the
-    // schema looks like a loose property map. A schema with `type:
-    // "object"` but no `.properties` is JSON-schema-shaped and would
-    // otherwise leak reserved keywords (`type`, `required`,
-    // `additionalProperties`) as if they were workflow output keys.
     const tenant_id = await newTenant("output-keys-strict");
     await seed(tenant_id, {
       name: "Schema-without-properties",

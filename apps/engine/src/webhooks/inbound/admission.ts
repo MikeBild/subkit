@@ -18,8 +18,6 @@ const PayloadSchema = z
   .strict();
 
 function stablePayload(input: z.infer<typeof PayloadSchema>) {
-  // Each retry is signature-verified first. Delivery proofs may be refreshed;
-  // they never replace the immutable input of an already reserved execution.
   const headers = Object.fromEntries(
     Object.entries(input.headers).filter(
       ([key]) =>
@@ -39,8 +37,6 @@ export async function admitWebhookExecution(
   const eventDigest = createHash("sha256").update(payload.id).digest("hex");
   const idempotency_key = `webhook:${binding.id}:${eventDigest}`;
   return db.transaction(async (tx) => {
-    // Match the admission service's lock so concurrent delivery retries compare
-    // against the committed first input before reserving any additional run.
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${binding.tenant_id}:${idempotency_key}`}, 0))`,
     );

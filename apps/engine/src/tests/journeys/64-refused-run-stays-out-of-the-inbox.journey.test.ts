@@ -1,17 +1,3 @@
-// User story: As an operator, a run the engine refused before it started — its
-// connector must be reconnected — does not land in my inbox as a failed run:
-// I was told at the moment I started it, and nothing ran. The refusal is still
-// on record, and a run that really failed still reaches my inbox.
-// Acceptance criteria:
-//   - AC1: The refused run emits no `execution.failed` event; its row closes
-//     with a terminal `execution.refused` event instead.
-//   - AC2: Under the default sk CLI inbox rule the refusal produces no sent
-//     delivery and no inbox row.
-//   - AC3: The refusal is audited.
-//   - AC4: A run that fails in its step still emits `execution.failed` and
-//     reaches the inbox.
-// Spec refs: docs/operators/notifications.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
@@ -182,8 +168,6 @@ describe("journey 64: a refused run stays out of the inbox", () => {
     expect(await inboxEventTypes()).toEqual(["execution.failed"]);
   });
   test("AC5: a queued run refused in the worker still reaches the inbox", async () => {
-    // The caller already got its 202; nobody else learns of the refusal unless
-    // it is announced as a failure.
     const res = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       headers: { "x-subkit-environment": "dev" },
@@ -191,7 +175,6 @@ describe("journey 64: a refused run stays out of the inbox", () => {
     });
     expect(res.status).toBe(202);
     const { execution_id } = (await res.json()) as { execution_id: string };
-    // Exactly the call the execution.run worker makes for a queued row.
     await expect(
       runExecution({
         db: ctx.db,

@@ -1,17 +1,3 @@
-// How to call a saved workflow — every way there is, in one read.
-//
-//   GET /v1/workflows/{id}/invocation   — workflow:read
-//
-// The answer a person opening a workflow asks first and the representation
-// never gave: where to post, which headers, what input, which hook, which
-// tool, which schedule. Read-only, and it carries no credential: header NAMES
-// only, the API key as a placeholder, never a hook's signing secret.
-//
-// Assembled here from the subsystems that own each part. Schedules and hooks
-// are projected by what the caller may read elsewhere (`schedule:read`,
-// `inbound_hook:read`) and are absent — not empty — without it, so this route
-// never widens what the sibling routes show.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   INVOKE_ENVIRONMENTS,
@@ -62,23 +48,17 @@ const WorkflowInvocationSchema = z
       .describe(
         "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_invalid` until the workflow is saved again.",
       ),
-    /** The configured public address of this engine; null when
-     *  `server.public_base_url` is unset. Never derived from the request. */
     base_url: z.string().nullable(),
     http: z.object({
       method: z.literal("POST"),
       path: z.string(),
-      /** `base_url` + `path`; null without a configured public address. */
       url: z.string().nullable(),
-      /** Header NAMES the call carries. Values are never returned. */
       headers: z.array(z.string()),
       body: z.object({
         source: z.literal("saved"),
         workflow_id: z.string().uuid(),
         input: JsonObject,
       }),
-      /** Ready-to-paste calls per environment, rendered by the same function
-       *  as `sk workflows invoke-snippet`. Null without a public address. */
       snippets: z.object({ dev: Snippets, prod: Snippets }).nullable(),
     }),
     visibility: z
@@ -86,7 +66,6 @@ const WorkflowInvocationSchema = z
       .describe(
         "Whether this caller may read the workflow's inbound hooks (`inbound_hook:read`) and schedules (`schedule:read`). When false the list is ABSENT, which is not the same as empty: the workflow may well have hooks or schedules this caller cannot see, so nothing about them — that there are none, or that all are approved — can be concluded.",
       ),
-    /** Absent when the caller may not read inbound hooks. */
     hooks: z
       .array(
         z.object({
@@ -94,7 +73,6 @@ const WorkflowInvocationSchema = z
           path: z.string(),
           url: z.string().nullable(),
           verifier: z.string(),
-          /** False when the binding accepts unsigned deliveries. */
           signed: z.boolean(),
           signing_headers: z.array(z.string()),
           hmac: z
@@ -106,7 +84,6 @@ const WorkflowInvocationSchema = z
             })
             .nullable(),
           state: z.enum(["active", "inactive", "held"]),
-          /** Deliveries always run in production. */
           environment: z.literal("prod"),
         }),
       )
@@ -120,21 +97,17 @@ const WorkflowInvocationSchema = z
         .describe(
           "The name this workflow's own tool has WHEN the MCP catalog publishes it. Not every saved workflow is published to every client: the catalog depends on the caller's permissions and mode and lists a bounded number of workflow tools. `fallback` works either way.",
         ),
-      /** Runs any saved workflow by slug — the way in when the client's tool
-       *  list does not carry `tool_name`. */
       fallback: z.object({
         tool_name: z.string(),
         arguments: z.object({ workflow: z.string(), input: JsonObject }),
       }),
     }),
-    /** Absent when the caller may not read schedules. */
     schedules: z
       .array(
         z.object({
           cron: z.string(),
           timezone: z.string(),
           environment: Environment,
-          /** The input every scheduled run starts with. */
           input: z.unknown(),
           state: z.enum(["active", "paused", "held", "activation_required"]),
           next_fire_at: z.string().nullable(),
@@ -146,7 +119,6 @@ const WorkflowInvocationSchema = z
       ),
     cli: z.object({
       command: z.string(),
-      /** Where the command runs: it sends no environment header. */
       environment: Environment,
     }),
     input: z.object({
@@ -155,11 +127,7 @@ const WorkflowInvocationSchema = z
       sample: JsonObject,
     }),
     output: z.object({ schema: JsonObject.nullable() }),
-    /** What a hook delivery looks like as the workflow's `input`. */
     webhook_input_shape: z.record(z.string(), z.string()),
-    /** Per environment: whether an approval for the running version exists.
-     *  Advisory — read from the stored approvals alone; admission, which also
-     *  checks the approval against the workflow's current effects, decides. */
     authority: z.object({ dev: RunAuthority, prod: RunAuthority }),
   })
   .openapi("WorkflowInvocation");
@@ -182,18 +150,13 @@ const invocationRoute = createRoute({
   },
 });
 
-/** The configured public address, without a trailing slash; null when unset. */
 function publicBaseUrl(): string | null {
   const configured = getConfig().server.public_base_url?.trim();
   return configured ? configured.replace(/\/+$/, "") : null;
 }
 
-// A slug that is safe as a bare shell word and cannot be read as an option.
-// A slug has no enforced shape, so anything else is not printed into a command
-// a reader pastes: the workflow id names the same workflow and is always safe.
 const PLAIN_SLUG = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-/** The command that runs this workflow, as a line a shell reads as intended. */
 function cliRunCommand(
   workflow: { id: string; slug: string },
   input: Record<string, unknown>,
@@ -215,8 +178,6 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
     const workflow = await getWorkflow(tenant, c.req.valid("param").id, db);
     if (!workflow) throw new NotFoundError("workflow");
 
-    // A reader without these sees the workflow but not its bindings — routine,
-    // and the same projection `automation-status` makes.
     const may = async (permission: "inbound_hook:read" | "schedule:read") =>
       (await can(db, { tenant_id: tenant, principal, permission, quiet: true })).allow;
     const [mayHooks, maySchedules] = await Promise.all([

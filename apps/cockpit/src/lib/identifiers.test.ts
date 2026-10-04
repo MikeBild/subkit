@@ -1,8 +1,3 @@
-// The rule this pins: a payload survives, a sentence gets a name.
-//
-// Every case here was taken from an answer on a running installation, where
-// masking every identifier turned request bodies into text that cannot work.
-
 import { describe, expect, test } from "bun:test";
 import { nameIdentifiers, splitCodeAndProse } from "./identifiers";
 
@@ -92,9 +87,6 @@ describe("nameIdentifiers", () => {
   });
 });
 
-// The case that reached production: a model sets a bare identifier in
-// backticks mid-sentence, and treating every code span as a payload put a raw
-// identifier back on a surface that bans them.
 describe("nameIdentifiers — a bare identifier in backticks", () => {
   test("a span that is only an identifier is named, backticks and all", () => {
     const out = nameIdentifiers(`Connector-ID: \`${ID}\` (prod)`, known, HIDDEN);

@@ -21,8 +21,6 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
     "Suggest optional connector templates that match the user's system or vendor. Use this when a template might accelerate setup, but do not force the user to pick one.",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
@@ -52,9 +50,6 @@ export const suggestConnectorTemplatesTool: ConversationTool = {
         score,
       };
     });
-    // Retrieval-quality signal for the evidence process — the third
-    // (template-matching) retrieval path. No FTS/stemming here, so this
-    // is the channel the probe set most expects to miss on morphology.
     log.connectorTemplates.suggested({
       tenant_id: ctx.tenant_id,
       query_length: args.query.length,

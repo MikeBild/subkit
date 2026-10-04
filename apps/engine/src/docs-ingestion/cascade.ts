@@ -1,25 +1,3 @@
-// KnowledgeIngressStack — cascading cold-start for unknown APIs.
-//
-// Given only a base URL, try a prioritized list of documentation shapes
-// until one yields non-empty chunks. The assistant calls this when a user
-// says "point me at https://api.example.com" and expects the engine to
-// figure out what's there on its own.
-//
-// Order:
-//   1. OpenAPI  — probe common spec paths; if HTML comes back, scan it for
-//                 spec links and retry. Handles most commercial APIs.
-//   2. GraphQL  — POST an introspection query against /graphql.
-//   3. llms.txt — standardized hint file at /llms-full.txt or /llms.txt (root,
-//                 or mirrored under /.well-known/); full-content variant first.
-//   4. Markdown — classic README-style paths (/README.md, /docs.md, etc.).
-//   5. Raw-HTTP — final fallback: fetch the base URL, treat as plain text.
-//
-// Every probe routes through the same BudgetState so combined byte/link/spec
-// caps hold across strategies. Headless-browser HTML crawl is deliberately
-// not part of this cascade — the cost (playwright pull + browser launch +
-// JS-rendered indeterminism) outweighs the marginal coverage over the four
-// shapes above.
-
 import { load as loadYaml } from "js-yaml";
 import { canConsumeBytes, consumeBytes, createBudgetState, markBudgetExceeded } from "./budgets.ts";
 import { byteLen } from "./chunker.ts";
@@ -37,25 +15,17 @@ export interface CascadeAttempt {
 }
 
 export interface CascadeResult {
-  /** Which strategy produced the chunks (if any). */
   winning_source: DocSourceType | null;
-  /** The URL that actually served content. */
   source_uri: string | null;
-  /** Accumulated chunks across the winning strategy only. */
   chunks: RawChunk[];
-  /** Ordered log of every probe — success, 404, or error. */
   attempts: CascadeAttempt[];
   budget_state: BudgetState;
 }
 
 export interface CascadeInput {
-  /** Base URL, e.g. "https://api.example.com". Trailing slash optional. */
   base_url: string;
-  /** Injectable for tests. */
   fetchImpl?: typeof fetch;
-  /** Share budget across multiple cascades on the same run. */
   state?: BudgetState;
-  /** Opt-out subset — useful when a user knows the API has GraphQL only, etc. */
   allowed_sources?: DocSourceType[];
 }
 
@@ -73,7 +43,6 @@ const OPENAPI_CANDIDATE_PATHS = [
 
 const GRAPHQL_CANDIDATE_PATHS = ["/graphql", "/api/graphql", "/query"];
 
-// Richest-first: full-content before index, root before `.well-known` mirror.
 const LLMS_TXT_CANDIDATE_PATHS = [
   "/llms-full.txt",
   "/.well-known/llms-full.txt",
@@ -89,13 +58,9 @@ const MARKDOWN_CANDIDATE_PATHS = [
   "/docs/README.md",
 ];
 
-// Upper bound for the raw-http fallback. If the fetched body is smaller than
-// this we still treat the cascade as exhausted — a 50-byte error page is not
-// useful, a 500-byte landing page probably isn't either.
 const RAW_HTTP_MIN_USEFUL_BYTES = 512;
 
 function joinUrl(base: string, path: string): string {
-  // Preserve the query / port of the base; path always replaces base's path.
   const u = new URL(path, base);
   return u.toString();
 }
@@ -133,9 +98,6 @@ async function tryOpenAPI(
       recordAttempt(attempts, "openapi", uri, status, msg);
     }
   }
-  // HTML-link-extractor sub-cascade: fetch the base URL, look for obvious
-  // spec links in the returned HTML body, retry. Intentionally bounded —
-  // we only follow the first two candidate links.
   const discovered = await discoverOpenApiLinks(input.base_url, input.fetchImpl ?? fetch);
   for (const uri of discovered.slice(0, 2)) {
     try {
@@ -153,25 +115,15 @@ async function tryOpenAPI(
   return null;
 }
 
-// Match strings that smell like a spec link — must contain openapi /
-// swagger / api-docs AND look URL-shaped (absolute, root-relative, or
-// path-with-extension). Filters out version numbers like "3.0.3" sitting
-// inside a top-level `openapi` field of an already-fetched spec.
 const SPEC_LINK_RE = /openapi|swagger|api-docs/i;
 
 function looksUrlLike(value: string): boolean {
   if (value.startsWith("http://") || value.startsWith("https://")) return true;
   if (value.startsWith("/")) return true;
-  // Relative path with a known doc-ish extension.
   if (/\.(json|ya?ml|html?)(\?|$)/i.test(value)) return true;
   return false;
 }
 
-/**
- * Walk a parsed JSON/YAML tree and yield every string value that smells
- * like a spec URL. Iterative DFS to avoid stack overflow on pathological
- * inputs. Bounded by `MAX_NODES` so a malicious doc can't pin the worker.
- */
 function walkForSpecLinks(root: unknown): string[] {
   const MAX_NODES = 5_000;
   const out: string[] = [];
@@ -195,18 +147,6 @@ function walkForSpecLinks(root: unknown): string[] {
   return out;
 }
 
-/**
- * Scan the body of a base URL for links that smell like OpenAPI / Swagger
- * specs. Tries three readers, in order:
- *   1. JSON parse — walk the tree for string values matching the pattern.
- *      Handles e.g. `{"swaggerUrl": "/spec.json"}`, ReadMe.io discovery
- *      payloads, Apigee-style listings.
- *   2. YAML parse — same walk, for YAML-shaped indices.
- *   3. HTML href regex — final fallback, the original behaviour.
- *
- * The function never throws — failure modes return `[]`. Caller is
- * responsible for trying each candidate.
- */
 export async function discoverOpenApiLinks(
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
@@ -232,12 +172,9 @@ export async function discoverOpenApiLinks(
         seen.add(abs);
         candidates.push(abs);
       }
-    } catch {
-      // Skip malformed URLs.
-    }
+    } catch {}
   };
 
-  // 1. JSON walk.
   if (
     contentType.includes("json") ||
     body.trimStart().startsWith("{") ||
@@ -246,23 +183,16 @@ export async function discoverOpenApiLinks(
     try {
       const parsed = JSON.parse(body);
       for (const v of walkForSpecLinks(parsed)) push(v);
-    } catch {
-      // not valid JSON — fall through
-    }
+    } catch {}
   }
 
-  // 2. YAML walk (when JSON parse missed it). Skip if we already found
-  // candidates via JSON to avoid duplicating effort on pure JSON bodies.
   if (candidates.length === 0 && (contentType.includes("yaml") || /\.ya?ml(\?|$)/i.test(baseUrl))) {
     try {
       const parsed = loadYaml(body);
       for (const v of walkForSpecLinks(parsed)) push(v);
-    } catch {
-      // not valid YAML — fall through
-    }
+    } catch {}
   }
 
-  // 3. HTML href regex — covers landing pages and Swagger-UI shells.
   if (candidates.length === 0) {
     const hrefRe = /href\s*=\s*["']([^"']+)["']/gi;
     let m: RegExpExecArray | null = hrefRe.exec(body);
@@ -399,13 +329,6 @@ async function tryRawHttp(
   }
 }
 
-/**
- * Attempt each strategy in order. Returns the first non-empty chunk set.
- *
- * The caller gets a full audit trail via `attempts` even when something
- * succeeds — operators want to see that /openapi.json 404'd before the
- * cascade fell through to GraphQL, so freshness dashboards have context.
- */
 export async function cascadeIngest(input: CascadeInput): Promise<CascadeResult> {
   const state = input.state ?? createBudgetState();
   const attempts: CascadeAttempt[] = [];
@@ -440,7 +363,6 @@ export async function cascadeIngest(input: CascadeInput): Promise<CascadeResult>
           : null;
         break;
       default:
-        // html/postgres/file_upload are not part of the URL-based cascade.
         break;
     }
     if (chunks && chunks.length > 0) {
@@ -454,7 +376,6 @@ export async function cascadeIngest(input: CascadeInput): Promise<CascadeResult>
     }
   }
 
-  // Last-ditch: fetch base_url and shove the body in as a single chunk.
   const raw = await tryRawHttp(input, state, attempts);
   if (raw) {
     return {

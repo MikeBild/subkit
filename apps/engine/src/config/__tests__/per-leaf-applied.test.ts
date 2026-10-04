@@ -1,21 +1,3 @@
-// Per-leaf application + observability sweep.
-//
-// For every leaf in ConfigSchema, this test asserts FOUR
-// invariants in a single round-trip:
-//
-//   1. setConfigKey returns the leaf path it claims to have written.
-//   2. The in-memory getConfig() view reflects the new value.
-//   3. The on-disk subkit.config.json file carries the new value.
-//   4. The structured `setting.applied` log line fires once with
-//      the correct scope, sensitive flag, and changed=true. Sensitive
-//      values NEVER appear in the log.
-//
-// Plus, for every sensitive leaf:
-//   5. The /v1/settings list response shape's `meta.source` flips to
-//      "global" (or "tenant" when written under a tenant overlay).
-//
-// This is the canonical "every setting was applied correctly" test.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,9 +33,7 @@ function attachStdoutCapture(buf: CapturedLog[]): () => void {
       if (!trimmed.startsWith("{")) continue;
       try {
         buf.push(JSON.parse(trimmed) as CapturedLog);
-      } catch {
-        /* not a JSON line */
-      }
+      } catch {}
     }
     return orig(chunk);
   }) as typeof process.stdout.write;
@@ -84,15 +64,10 @@ afterEach(() => {
 });
 
 function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
-  // Try a plain tagged string first. If the leaf's schema rejects it
-  // (e.g. optionalUrl unions or session.secret min(32) refinements)
-  // walk a small candidate list until one passes. Keeps the sweep
-  // deterministic without baking path-name knowledge into the test.
   const candidates: string[] = [
     tag,
     `https://example.com/${tag.replaceAll("_", "-")}`,
     tag.padEnd(32, "x").slice(0, 32),
-    // HH:MM-shaped value for the notifications.push.quietHours* regex.
     "00:00",
     "",
   ];
@@ -109,11 +84,6 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string":
       return pickStringCandidate(leaf, tag);
     case "number": {
-      // Avoid 100 (matches the default for errors.ring_size). Pick
-      // (salt mod 45) + 5 → 5..49, in-range for both high-min leaves
-      // (via the ladder below) and tight-max leaves like
-      // min_runs_before_proposing (max 50).
-      // `0.5` covers fractional leaves (memory_cap_fraction, min 0.1 / max 1).
       const candidates = [((salt + 5) % 45) + 5, 0.5, 200, 1_000, 60_000, 100_000, 3_600_000];
       for (const c of candidates) {
         if (leaf.schema.safeParse(c).success) return c;
@@ -121,14 +91,10 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
       return candidates[0]!;
     }
     case "boolean":
-      // Always flip from the schema default. All boolean leaves in
-      // the schema default to `false`, so write `true` here.
       return true;
     case "enum": {
       const values = leaf.enumValues ?? [];
       if (values.length < 2) return values[0] ?? null;
-      // Pick a value different from the schema's first entry (which
-      // is the default for every enum in the schema).
       return values[1 + (salt % (values.length - 1))];
     }
     case "string-list":
@@ -136,13 +102,6 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string-array":
       return [tag];
     case "json": {
-      // A structural leaf is validated as one whole value, so its sample has
-      // to have that leaf's shape. This used to return the auth-provider list
-      // unconditionally — correct while `auth.providers` was the only json
-      // leaf in the schema, and silently wrong for the second one, which got
-      // handed an array of OIDC providers and failed as "expected array,
-      // received ...". A new structural leaf now fails with an instruction
-      // rather than a puzzle.
       const samples: Record<string, unknown> = {
         "auth.providers": [
           { protocol: "api_key", id: "api-key", label: "SubKit API key" },
@@ -192,16 +151,6 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
 
 const LEAVES = listConfigLeaves();
 
-/**
- * The one leaf whose applied value is deliberately NOT what was written.
- *
- * `auth.mcp_oauth.scopes_supported` carries scopes an installation may not
- * drop (`config/non-removable-scopes.ts`): what the operator wrote is kept, in
- * their order, and a missing non-removable scope is appended. Written as
- * "written is a prefix of applied" rather than a skip, so this sweep still
- * proves the leaf round-trips — it just stops demanding equality where the
- * product deliberately adds.
- */
 const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
 
 function expectApplied(leaf: ConfigLeaf, actual: unknown, written: unknown, where: string): void {
@@ -221,36 +170,22 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
     let salt = 0;
     for (const leaf of LEAVES) {
       const written = valueFor(leaf, salt++);
-      // Skip enum leaves with no values (defensive) — none today.
       if (leaf.kind === "enum" && (leaf.enumValues?.length ?? 0) === 0) continue;
 
-      // 1) setConfigKey returns the dotted path.
       const result = await setConfigKey(leaf.path, written, { force: true });
       expect(result.leafPath, `${dottedPath(leaf)} returned path`).toBe(dottedPath(leaf));
 
-      // 2) in-memory getConfig() reflects the value.
       expectApplied(leaf, readDeep(getConfig(), leaf.path), written, "in-memory");
 
-      // 3) on-disk file carries the value.
       const onDisk = JSON.parse(readFileSync(cfgPath, "utf8")) as unknown;
       expectApplied(leaf, readDeep(onDisk, leaf.path), written, "on-disk");
     }
   });
 
   test(`every applied setting emits exactly one setting.applied log with correct meta`, async () => {
-    // log.level / log.format hot-reload the live logger inside
-    // setConfigKey, but the setting.applied log is emitted BEFORE
-    // the reconfigure (see loader.ts), so flipping log.* to a
-    // restrictive value (e.g. error) cannot retroactively suppress
-    // the line documenting the change. We can therefore include
-    // log.* leaves in this sweep — but we still reset the logger to
-    // info+ndjson at the top of every iteration so a previous
-    // iteration's flip cannot mask the current iteration's emit.
     const { reconfigureLogger } = await import("../../logging/logger.ts");
     let salt = 100;
     for (const leaf of LEAVES) {
-      // Reset the logger threshold every iteration — defends against
-      // any leaf write that might have flipped it.
       reconfigureLogger({ level: "info", format: "ndjson" });
       const written = valueFor(leaf, salt++);
       captured.length = 0;
@@ -264,7 +199,6 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
       expect(entry.scope).toBe("global");
       expect(entry.sensitive).toBe(!!leaf.meta.secret);
       expect(entry.requires_restart).toBe(!!leaf.meta.requiresRestart);
-      // Sensitive values must never appear in any log line.
       if (leaf.meta.secret && typeof written === "string" && written.length > 0) {
         const allLines = JSON.stringify(captured);
         expect(allLines, `${dottedPath(leaf)} secret leak check`).not.toContain(written);
@@ -273,7 +207,6 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
   });
 
   test("source_map flips per-leaf as writes accumulate", async () => {
-    // Pick five canonical leaves spanning every section.
     const spotChecks = [
       "log.level",
       "server.port",
@@ -304,10 +237,8 @@ describe("per-leaf application sweep — every leaf in ConfigSchema", () => {
         tenantId: "tenant-x",
         force: true,
       });
-      // Tenant view sees the new value.
       const tenantView = readDeep(getConfig("tenant-x"), leaf.path);
       expect(tenantView, `tenant view ${dottedPath(leaf)}`).toEqual(written);
-      // Global view remains the schema default.
       const globalView = readDeep(getConfig(), leaf.path);
       expect(globalView).not.toEqual(written);
     }

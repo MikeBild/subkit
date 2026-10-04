@@ -1,5 +1,3 @@
-// Unit tests for the SettingsModal `pickInitialOuter` helper.
-
 import { describe, expect, test } from "bun:test";
 import { ALL_TABS, pickInitialOuter } from "../SettingsModal.tsx";
 
@@ -22,7 +20,6 @@ describe("pickInitialOuter", () => {
   });
 
   test("unknown / removed tab names fall back to 0 (Status)", () => {
-    // Tabs that used to exist:
     expect(pickInitialOuter("Settings", ALL_TABS)).toBe(0);
     expect(pickInitialOuter("Stats", ALL_TABS)).toBe(0);
     expect(pickInitialOuter("Permissions", ALL_TABS)).toBe(0);

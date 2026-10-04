@@ -35,7 +35,6 @@ describe("/v1/identity/api-keys", () => {
       "content-type": "application/json",
     };
 
-    // 1. Issue a fresh key for the seeded system account.
     const issueRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
       method: "POST",
       headers,
@@ -56,18 +55,15 @@ describe("/v1/identity/api-keys", () => {
 
     expect(await countAudit("api_key.issued", issued.id)).toBe(1);
 
-    // 2. List should now include both the seed key and the new one.
     const listRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, { headers });
     expect(listRes.status).toBe(200);
     const list = (await listRes.json()) as { items: Array<{ id: string }> };
     expect(list.items.find((k) => k.id === issued.id)).toBeDefined();
     expect(list.items.find((k) => k.id === ctx.apiKeyId)).toBeDefined();
-    // List response must not include plaintext.
     for (const item of list.items) {
       expect((item as Record<string, unknown>).plaintext_key).toBeUndefined();
     }
 
-    // 3. Rotate the new key with a 5-minute overlap.
     const rotateRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys/${issued.id}/rotate`, {
       method: "POST",
       headers,
@@ -80,8 +76,6 @@ describe("/v1/identity/api-keys", () => {
     };
     expect(rotated.old.id).toBe(issued.id);
     expect(rotated.old.rotating_out_at).not.toBeNull();
-    // expires_at is preserved untouched — null because the issue call did
-    // not supply one. Rotation must not repurpose it.
     expect(rotated.old.expires_at).toBeNull();
     expect(rotated.new.rotated_from_id).toBe(issued.id);
     expect(rotated.new.plaintext_key).toMatch(/^wf_live_/);
@@ -89,7 +83,6 @@ describe("/v1/identity/api-keys", () => {
     expect(await countAudit("api_key.rotated", issued.id)).toBe(1);
     expect(await countAudit("api_key.issued", rotated.new.id)).toBe(1);
 
-    // 4. Revoke the new (rotated-in) key.
     const revokeRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys/${rotated.new.id}`, {
       method: "DELETE",
       headers,
@@ -105,7 +98,6 @@ describe("/v1/identity/api-keys", () => {
       "content-type": "application/json",
     };
 
-    // Issue a fresh key for the seeded system account.
     const issueRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
       method: "POST",
       headers,
@@ -120,8 +112,6 @@ describe("/v1/identity/api-keys", () => {
     const oldKey = issued.plaintext_key;
     const oldKeyHeaders = { authorization: `Bearer ${oldKey}` };
 
-    // Rotate with a 1-minute overlap. The old key must continue to
-    // resolve while inside the overlap window.
     const rotateRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys/${issued.id}/rotate`, {
       method: "POST",
       headers,
@@ -129,15 +119,11 @@ describe("/v1/identity/api-keys", () => {
     });
     expect(rotateRes.status).toBe(200);
 
-    // Inside the overlap window the old key should still authenticate.
-    // Hit the authenticated `list api keys` route as a smoke check.
     const insideRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
       headers: oldKeyHeaders,
     });
     expect(insideRes.status).toBe(200);
 
-    // Force the rotating_out_at into the past — the provider must now
-    // reject the old key as `rotated_out`.
     await ctx.db
       .update(apiKeys)
       .set({ rotating_out_at: new Date(TEST_NOW_MS - 1_000) })

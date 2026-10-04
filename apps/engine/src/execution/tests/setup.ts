@@ -1,15 +1,3 @@
-// Engine test scaffolding.
-//
-// Each test that needs the engine builds:
-//   - a disposable Postgres database (P1 helper)
-//   - a tenant + workflow row referencing a hand-crafted dag
-//   - optionally, a local mock HTTP server on a random port
-//
-// The mock HTTP server (`createMockServer` / `jsonResponse`) now lives in
-// the shared `test-helpers/mock-http.ts` so the journey layer can import
-// it too — re-exported here so existing `execution/` call sites keep
-// working unchanged.
-
 import { tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
@@ -47,7 +35,6 @@ export async function createWorkflowRow(
   ctx: EngineTestCtx,
   rawDef: unknown,
 ): Promise<{ workflow_id: string; version_id: string }> {
-  // Parse to fill in defaults so the engine sees the canonical shape.
   const def: WorkflowDef = WorkflowDefSchema.parse(rawDef);
   const [wf] = await ctx.testDb.db
     .insert(workflows)

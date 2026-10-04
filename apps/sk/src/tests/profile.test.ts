@@ -1,6 +1,3 @@
-// E2E tests for `sk profile` — multi-profile CRUD, switching,
-// resolution precedence, and slash command handler.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,10 +18,6 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
-
-// ---------------------------------------------------------------------------
-// Config shape & persistence
-// ---------------------------------------------------------------------------
 
 describe("sk config shape", () => {
   test("defaultConfig returns multi-profile shape", () => {
@@ -63,10 +56,6 @@ describe("sk config shape", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Config fallbacks
-// ---------------------------------------------------------------------------
-
 describe("sk config fallbacks", () => {
   test("flat config shape falls back to the default profile set", () => {
     writeFileSync(
@@ -92,10 +81,6 @@ describe("sk config fallbacks", () => {
     expect(loadConfig(join(dir, "nope.json"))).toEqual(defaultConfig());
   });
 });
-
-// ---------------------------------------------------------------------------
-// Profile CRUD
-// ---------------------------------------------------------------------------
 
 describe("sk profile CRUD", () => {
   test("saveProfile creates named profile and sets it active", () => {
@@ -154,10 +139,6 @@ describe("sk profile CRUD", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Profile resolution precedence
-// ---------------------------------------------------------------------------
-
 describe("sk resolveProfile", () => {
   test("flags override disk", () => {
     saveProfile(
@@ -202,12 +183,7 @@ describe("sk resolveProfile", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// /profile slash command handler
-// ---------------------------------------------------------------------------
-
 describe("/profile slash handler", () => {
-  // Minimal mock context for slash handler tests
   function mockCtx(configPath: string) {
     return {
       client: {} as unknown as EngineClient,
@@ -233,13 +209,9 @@ describe("/profile slash handler", () => {
       },
       path,
     );
-    // Set SK_HOME to use our temp config
     const _origHome = process.env.HOME;
-    // The handler calls loadConfig() which reads from ~/.sk/config.json
-    // We need to test the handler output format
     const result = await handleSlash("profile", [], {
       ...mockCtx(path),
-      // Override the config path by providing a switchProfile that uses our path
     });
     expect(result).toBeDefined();
     expect(result).toContain("profiles:");
@@ -302,10 +274,6 @@ describe("/profile slash handler", () => {
     expect(result).toContain("switched");
   });
 });
-
-// ---------------------------------------------------------------------------
-// Edge cases
-// ---------------------------------------------------------------------------
 
 describe("sk edge cases", () => {
   test("persona_hint and portal_locked preserved", () => {

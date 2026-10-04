@@ -66,9 +66,6 @@ function plainIntent(intent: AnyIntent): string {
   return `${out.join("\n")}\n`;
 }
 
-// Plain-text twin of the Ink `UsageBlock` — renders the engine-provided
-// `usage` payload. No hardcoded command fallback: when `usage` is absent
-// the summary ends after its core lines.
 function pushPlainUsage(out: string[], usage: ResourceUsage): void {
   out.push("");
   if (usage.inputs.length > 0) {
@@ -188,11 +185,6 @@ export async function renderSummary(summary: AnySummary, opts: RenderOptions = {
   process.stderr.write(plainSummary(summary));
 }
 
-// Renders an ordered list of pre-flight phases — used both for the
-// hard-failure path (one phase = failed, the rest = pending) and the
-// warnings-but-proceed path (preview = warning, save = pending then
-// succeeded). The renderer takes whatever status mix it is given; the
-// caller decides whether to also `process.exit(1)`.
 export async function renderTaskList(
   phases: ReadonlyArray<PlanStep>,
   opts: RenderOptions = {},

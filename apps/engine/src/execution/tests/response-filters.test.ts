@@ -1,11 +1,3 @@
-// Tenant DLP tests.
-//
-// Two surfaces:
-//   1. applyDlpFilters (pure) — path matching, action semantics, audit
-//      trail. No DB.
-//   2. loadDlpRules + cache — DB-backed rule retrieval, cache TTL, default
-//      rule fusion. Uses testcontainer.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenantDlpRules, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -60,7 +52,6 @@ describe("applyDlpFilters — path matching", () => {
         pattern_regex: "^[^@]+@[^@]+\\.[^@]{2,}$",
       },
     ]);
-    // Only `email` key, and its value doesn't match → not redacted.
     expect(redacted).toEqual([]);
   });
 });
@@ -143,8 +134,6 @@ describe("DEFAULT_DLP_RULES — shipped patterns", () => {
   test("applied via loadDlpRules to any tenant", async () => {
     resetDlpCache();
     const rules = await loadDlpRules(tenant_id, ctx.db);
-    // Default set is unioned in — no tenant-specific rows have been
-    // inserted yet so we get only the defaults.
     expect(rules.length).toBe(DEFAULT_DLP_RULES.length);
   });
 });
@@ -167,8 +156,6 @@ describe("loadDlpRules — DB + cache", () => {
   });
 
   test("cache returns the previous ruleset until reset (no DB trip)", async () => {
-    // The previous test seeded a row. Reset, load, insert another, load
-    // again without reset — second load must NOT see the new row.
     resetDlpCache();
     const first = await loadDlpRules(tenant_id, ctx.db);
     await ctx.db.insert(tenantDlpRules).values({

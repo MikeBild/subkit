@@ -1,19 +1,3 @@
-// Byte-counter wrapper for authenticated streamed uploads.
-//
-// Two surfaces:
-//   - TTY (human): a single status line that overwrites in place,
-//       ↑ <filename> 45.2 MB / 100 MB · 32 MB/s · ETA 1.6s
-//   - JSON / scripted: one structured event per chunk on stdout,
-//       {"uploading": "fid_...", "sent": 47185920, "total": 104857600}
-//
-// The caller chooses the mode (TTY default, JSON when `--json` /
-// `--output stream-json` / `--quiet`). The wrapper is mode-agnostic —
-// it counts bytes and calls back per chunk. The actual rendering lives
-// in the command surfaces that consume the events.
-
-/** One progress observation. Cumulative `sent` against a known
- *  `total`, plus a monotonic elapsed millisecond timer the renderer can
- *  use to compute throughput + ETA without reaching for `Date.now()`. */
 export interface UploadProgressEvent {
   filename: string;
   fid: string;
@@ -24,10 +8,6 @@ export interface UploadProgressEvent {
 
 export type UploadProgressSink = (event: UploadProgressEvent) => void;
 
-/** Wrap a `Uint8Array` payload as a `ReadableStream<Uint8Array>` that
- *  reports cumulative bytes through `onProgress` once per chunk. Chunk
- *  size is fixed at 256 KiB — a balance between syscall overhead and
- *  visible progress cadence on a 10 GbE LAN. */
 export function readableFromBytes(
   bytes: Uint8Array,
   filename: string,
@@ -61,9 +41,6 @@ export function readableFromBytes(
   });
 }
 
-/** Format an `UploadProgressEvent` as a single-line TTY status string.
- *  Carries no terminal control codes — the caller wraps in `\r…` if it
- *  wants overwrite-in-place behaviour. */
 export function renderProgressLine(ev: UploadProgressEvent): string {
   const pct = ev.total > 0 ? Math.min(100, Math.round((ev.sent / ev.total) * 100)) : 0;
   const sentH = humanBytes(ev.sent);
@@ -77,10 +54,6 @@ export function renderProgressLine(ev: UploadProgressEvent): string {
   return `↑ ${ev.filename} ${sentH} / ${totalH} (${pct}%) · ${rateH} · ETA ${etaH}`;
 }
 
-/** Compact byte-count formatter — keeps two significant digits up to
- *  TB scale, identical to the convention `sk` uses elsewhere
- *  (executions, audit). Local copy avoids dragging the heavier
- *  `formatBytes` from cli-core into the upload hot path. */
 export function humanBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n < 1024) return `${Math.round(n)} B`;

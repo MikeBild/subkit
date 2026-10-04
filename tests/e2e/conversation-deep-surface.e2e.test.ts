@@ -1,18 +1,3 @@
-// Deep-surface E2E — exercises every gap-fix surface end-to-end so a
-// regression lands as a test failure, not a silent drift. Each suite
-// boots its own engine via docker-compose, so runs are hermetic.
-//
-// Covers:
-//   1. sk --p stream-json emits text_delta frames + a final completed
-//   2. conversation tool-call row carries audit_type=user (direct chat)
-//      while the API-key-driven /v1/audit-log entries carry system_account
-//   3. interaction_log + confirmation_state columns populate on
-//      tenant_write tools; patch_candidates outcome_* columns exist
-//   4. mentions (@workflow / @connector / @api-key / @user / @audit)
-//      resolve against the correct HTTP paths
-//   5. /v1/conversations returns populated rows for the tenant after a turn
-//   6. /metrics exposes every new counter registered in observability
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
@@ -38,9 +23,6 @@ describe("deep-surface E2E", () => {
   });
 
   test("sk -p --output stream-json emits typed events in order", async () => {
-    // stream-json writes one JSON-encoded TurnEvent per line. We must
-    // see a conversation id, at least one tool_result, and a terminal
-    // completed frame. The mock provider path is deterministic.
     const r = await cli(["--p", "hello world", "--output", "stream-json"], {
       env,
       persona: "admin",
@@ -51,8 +33,6 @@ describe("deep-surface E2E", () => {
     expect(lines.length).toBeGreaterThan(0);
     const events = lines.map((l) => JSON.parse(l) as { type: string });
     const types = new Set(events.map((e) => e.type));
-    // We always see at least a final `completed` event; `message` rows
-    // appear whenever the mock emits text.
     expect(types.has("completed")).toBe(true);
   }, 60_000);
 
@@ -61,9 +41,6 @@ describe("deep-surface E2E", () => {
       ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
       { env, persona: "admin", timeout: 120_000 },
     );
-    // expectSuccess (not a bare exit-code assert) so an intermittent
-    // hang/kill surfaces the CLI's stderr tail + timeout flag instead
-    // of an opaque "expected 0, received 2".
     expectSuccess(r, "weather canned plan");
     const body = JSON.parse(r.stdout) as { session_id?: string };
     expect(body.session_id).toBeDefined();
@@ -75,8 +52,6 @@ describe("deep-surface E2E", () => {
       tool_calls: Array<{ tool: string; confirmation_state?: string | null }>;
     };
 
-    // start_connector_from_description seeds the connector draft on the
-    // first turn. The later steps land after the next authoring turn.
     const names = detail.tool_calls.map((c) => c.tool);
     for (const t of ["get_engine_status", "list_connectors", "start_connector_from_description"]) {
       expect(names).toContain(t);
@@ -92,11 +67,7 @@ describe("deep-surface E2E", () => {
       items: Array<{ actor_type: string; action: string }>;
     };
     const actorTypes = new Set(body.items.map((x) => x.actor_type));
-    // The admin key provider writes system/audit entries via api_key.used.
-    // A conversation.created runs with actor_type=user (the admin user
-    // that owns the API key). Both must appear.
     expect(actorTypes.size).toBeGreaterThan(0);
-    // At least one of {user, system_account, system} is in use.
     const hasKnownActor = ["user", "system_account", "system"].some((t) => actorTypes.has(t));
     expect(hasKnownActor).toBe(true);
   }, 30_000);
@@ -128,7 +99,6 @@ describe("deep-surface E2E", () => {
     const r = await fetch(`${env.baseUrl}/v1/patch-candidates?limit=5`, {
       headers: auth(env),
     });
-    // Either 200 with [] (no patches yet) or 200 with items — both fine.
     expect(r.status).toBe(200);
     const body = (await r.json()) as {
       items: Array<{
@@ -137,7 +107,6 @@ describe("deep-surface E2E", () => {
       }>;
     };
     expect(Array.isArray(body.items)).toBe(true);
-    // If any rows exist, the outcome fields are present (default 0).
     for (const row of body.items) {
       expect(typeof row.outcome_successes_after).toBe("number");
       expect(typeof row.outcome_failures_after).toBe("number");
@@ -145,7 +114,6 @@ describe("deep-surface E2E", () => {
   }, 30_000);
 
   test("conversation tool_policies column round-trips via PATCH", async () => {
-    // Create a conversation, PATCH tool_policies, read back.
     const create = await fetch(`${env.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: { ...auth(env), "content-type": "application/json" },
@@ -155,14 +123,10 @@ describe("deep-surface E2E", () => {
     const conv = (await create.json()) as { conversation: { id: string } };
     const id = conv.conversation.id;
 
-    // PATCH: some engines only accept model/title/memory on conversations.
-    // Confirm the tool_policies column is readable from the detail shape.
     const detail = await fetch(`${env.baseUrl}/v1/conversations/${id}`, {
       headers: auth(env),
     });
     expect(detail.status).toBe(200);
-    // Just assert the endpoint roundtrips — the columns default to
-    // empty and are exercised properly by sdk-wrap's runtime path.
     const body = (await detail.json()) as { conversation?: { id: string } };
     expect(body.conversation?.id).toBe(id);
   }, 30_000);

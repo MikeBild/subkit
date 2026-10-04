@@ -62,36 +62,25 @@ describe("cockpit i18n", () => {
   });
 
   test("gives every status the engine can persist a word of its own", () => {
-    // The state vocabulary forbids "unknown": a value the engine stores must
-    // read as a word, not as a placeholder. This list is every state that can
-    // reach an operator, not only the execution and conversation ones — the
-    // catalogue vocabulary below used to fall through to the placeholder, and
-    // it did so twice per page, because the state column and the filter
-    // dropdown resolve the same values through this one function.
     const persisted = [
-      // executions
       "queued",
       "running",
       "succeeded",
       "failed",
       "aborted",
       "timed_out",
-      // conversations
       "active",
       "awaiting_input",
       "committed",
       "abandoned",
-      // decisions
       "proposed",
       "applied",
       "rejected",
       "superseded",
       "inapplicable",
       "approved",
-      // workflow and skill lifecycle
       "draft",
       "archived",
-      // connectors
       "enabled",
       "disabled",
       "ok",
@@ -99,22 +88,18 @@ describe("cockpit i18n", () => {
       "needs_update",
       "needs_reauth",
       "needs_attention",
-      // knowledge sources
       "inactive",
       "processing",
       "error",
-      // files
       "pending",
       "uploading",
       "scanning",
       "ready",
       "expired",
-      // notification severity
       "debug",
       "info",
       "warn",
       "critical",
-      // file scan verdicts
       "clean",
       "infected",
       "noop",
@@ -147,16 +132,11 @@ describe("cockpit i18n", () => {
   });
 
   test("the repair-rate tooltip names every status the engine counts as decided", () => {
-    // The engine divides by applied + rejected + superseded; the tooltip named
-    // only the rejected ones, so a superseded repair lowered a rate that
-    // claimed not to count it.
     expect(translate("en", "operational.metric.repairs.tooltip")).toContain("superseded");
     expect(translate("de", "operational.metric.repairs.tooltip")).toContain("überholte");
   });
 
   test("an undetermined health state or value is not called Unbekannt (§2)", () => {
-    // The overview tile, the /operations state line and every unread KPI value
-    // printed the banned word as a state.
     for (const key of ["operational.health.unknown", "operational.value.unknown"] as const) {
       expect(translate("en", key)).not.toBe("Unknown");
       expect(translate("de", key)).not.toBe("Unbekannt");
@@ -181,13 +161,10 @@ describe("cockpit i18n", () => {
   });
 
   test("rights on single records are Zugriffe everywhere, and named where they live", () => {
-    // The section was renamed; a dialog, a toast or a note still saying
-    // "Zuweisung" names a thing the page no longer has.
     const german = Object.entries(CATALOGS.de).filter(([, text]) => /Zuweisung/.test(text));
     expect(german.map(([key]) => key)).toEqual([]);
     const note = Object.entries(CATALOGS.en).filter(([, text]) => /Access → Grants/.test(text));
     expect(note.map(([key]) => key)).toEqual([]);
-    // "Freigabe" is the approval of a workflow and nothing else.
     expect(CATALOGS.de["access.grants"]).toBe("Zugriffe");
     expect(CATALOGS.de["access.revokeGrant"]).toBe("Zugriff entziehen");
   });

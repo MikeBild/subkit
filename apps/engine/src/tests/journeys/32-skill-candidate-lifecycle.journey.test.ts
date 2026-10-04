@@ -1,11 +1,3 @@
-// Journey 32: Skill candidate lifecycle via REST API.
-//
-// Seeds applied patch_candidates with the real diff shape (proposal nested
-// under diff.proposal) and execution_fixtures so the repair-pattern detector
-// can inner-join on fixture_id → connector_id/endpoint_key. Runs pattern
-// analysis, verifies a connector-scoped candidate is proposed, approves it,
-// and verifies the skill was created.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -21,16 +13,14 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch }
 let ctx: JourneyCtx;
 let connectorId: string;
 
-// A timestamp well within the 30-day lookback window used by the detector.
 // allow-wall-clock: anchor for patch created_at — the detector computes its
 // cutoff via now() (falls back to Date.now() with no override installed), so
 // tests must stay within the real 30-day window.
-const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
+const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("skill-candidate");
 
-  // Seed a connector — the repair-pattern detector groups by connector_id.
   const [conn] = await ctx.db
     .insert(connectors)
     .values({
@@ -43,7 +33,6 @@ beforeAll(async () => {
   if (!conn) throw new Error("seed connector failed");
   connectorId = conn.id;
 
-  // Seed 3 workflows — patches on DIFFERENT workflows must still form one group.
   const seedWorkflowIds: string[] = [];
   for (let i = 0; i < 3; i++) {
     const [wf] = await ctx.db
@@ -59,9 +48,6 @@ beforeAll(async () => {
     seedWorkflowIds.push(wf.id);
   }
 
-  // For each workflow, seed an execution_fixture and a matching applied
-  // patch_candidate with the REAL diff shape (proposal nested under diff.proposal).
-  // This lets the detector inner-join to execution_fixtures for connector context.
   for (let i = 0; i < seedWorkflowIds.length; i++) {
     const [fix] = await ctx.db
       .insert(executionFixtures)
@@ -114,9 +100,6 @@ describe("journey: skill candidate lifecycle", () => {
 
   test("AC1: pattern analysis proposes exactly 1 repair_pattern candidate from the one connector/endpoint group", async () => {
     const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
-    // The seed creates exactly 3 patches on one connector + one endpoint_key
-    // ("get_customers"). The repair-pattern detector groups by
-    // (connector_id, endpoint_key, kind), so exactly 1 candidate is proposed.
     expect(result.candidates_proposed).toBe(1);
   });
 
@@ -134,18 +117,15 @@ describe("journey: skill candidate lifecycle", () => {
       }>;
       total: number;
     };
-    // There is exactly one proposed repair_pattern candidate.
     const repairCandidates = body.items.filter((c) => c.pattern_kind === "repair_pattern");
     expect(repairCandidates).toHaveLength(1);
     const candidate = repairCandidates[0]!;
     expect(candidate.scope).toBe("connector");
     expect(candidate.connector_id).toBe(connectorId);
-    // No workflow_id on a connector-scoped signal.
     expect(candidate.workflow_id).toBeNull();
     candidateId = candidate.id;
     expect(body.total).toBe(body.items.length);
 
-    // `total` is the true matching count, independent of the page cap.
     const capped = await journeyFetch(ctx, "/v1/skill-candidates?status=proposed&limit=1");
     expect(capped.status).toBe(200);
     const cappedBody = (await capped.json()) as { items: unknown[]; total: number };
@@ -165,7 +145,6 @@ describe("journey: skill candidate lifecycle", () => {
     };
     expect(body.scope).toBe("connector");
     expect(body.connector_id).toBe(connectorId);
-    // Exactly 3 applied patches were seeded for one endpoint — evidence_count must be 3.
     expect(body.evidence_count).toBe(3);
   });
 
@@ -179,14 +158,12 @@ describe("journey: skill candidate lifecycle", () => {
     expect(body.skill_id).toBeDefined();
     expect(body.candidate.status).toBe("approved");
 
-    // Verify skill exists.
     const skillRes = await journeyFetch(ctx, `/v1/skills/${body.skill_id}`);
     expect(skillRes.status).toBe(200);
   });
 
   test("AC5: re-analysis does not re-propose an already-approved pattern", async () => {
     const result = await runPatternAnalysis({ tenant_id: ctx.tenantId }, ctx.db);
-    // The fingerprint is already approved, so no new candidate is proposed.
     expect(result.candidates_proposed).toBe(0);
   });
 

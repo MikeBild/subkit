@@ -1,9 +1,3 @@
-// Shared render helpers — trigger-line formatter, type guards, and the
-// pure formatters used by both `intent-card.tsx` / `summary-card.tsx`
-// (TTY) and `index.ts` (plain-text fallback). Centralised so a new
-// variant (e.g. adding a `KnowledgeSourceSummary` shape) is touched in
-// exactly one place instead of three.
-
 import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
 import type {
@@ -18,10 +12,6 @@ import type {
   WorkflowTrigger,
 } from "./types.ts";
 
-// The dashed separator the workflow `create` flow draws above its
-// task-list. Lives here so both the TTY card (`task-list.tsx`) and the
-// plain-text fallback (`index.ts`) draw the identical glyph instead of
-// drifting on width or character class.
 export const SEPARATOR = "─────────────────────────────";
 
 export function humanBytes(n: number): string {
@@ -56,32 +46,15 @@ export function isConnectorIntent(i: AnyIntent): i is ConnectorIntent {
   return i.kind === "connector";
 }
 
-/**
- * Headline for a connector intent, for both the TTY card and the plain
- * fallback.
- *
- * Three shapes, because a connector may be authored from a template, from a
- * definition file (no template at all), or from a template before its name is
- * known. Interpolating `template_slug` unconditionally printed
- * `Loop MCP (undefined)` for the file path.
- */
 export function connectorHeading(intent: ConnectorIntent): string {
   if (intent.name && intent.template_slug) return `${intent.name} (${intent.template_slug})`;
   return intent.name ?? intent.template_slug ?? "(unnamed)";
 }
 
-/** Trailing ` · template=<slug>` for a connector summary, empty when the
- *  connector was authored from a file and has no template. */
 export function connectorTemplateSuffix(summary: ConnectorSummary): string {
   return summary.template_slug ? ` · template=${summary.template_slug}` : "";
 }
 
-/**
- * Defensive parse of the engine's `data.usage` persist-envelope payload
- * into the render shape. Returns null when the shape doesn't match — the
- * summary card then renders without the usage block (degenerate envelope,
- * not a compat path).
- */
 export function parseResourceUsage(raw: unknown): ResourceUsage | null {
   if (!raw || typeof raw !== "object") return null;
   const u = raw as Record<string, unknown>;

@@ -11,36 +11,17 @@ import {
 import { readSseStream, SseHttpError } from "@/lib/sse-stream";
 import { keyId, keysForEvent } from "./live-invalidation";
 
-// One live connection per Cockpit session.
-//
-// The engine streams what changed — an event type and the ids it concerns,
-// never a payload — and this provider turns each frame into the query
-// invalidations `live-invalidation.ts` names. Nothing in the Cockpit polls:
-// a list is as fresh as the last event that touched it.
-//
-//   - Reconnects with backoff, resuming at the last event seen
-//     (`Last-Event-ID`), so a dropped connection loses nothing.
-//   - Closes while the tab is hidden and resumes on return; the replay of
-//     what happened meanwhile is the catch-up.
-//   - A resume the engine could not replay in full (`truncated`) refreshes
-//     every read once instead of trusting a partial replay.
-//   - The `hello` frame names the engine's version. A different version than
-//     the one this bundle booted against means a new release is live.
-
 export const LIVE_STREAM_PATH = "/v1/cockpit/events/stream";
 
-/** Live connection state, for the one dot in the sidebar footer. */
 export type LiveStatus = "connecting" | "live" | "reconnecting" | "offline";
 
 interface LiveContextValue {
   status: LiveStatus;
-  /** The engine version the stream last announced, or null before the first hello. */
   serverVersion: string | null;
 }
 
 const LiveContext = createContext<LiveContextValue>({ status: "offline", serverVersion: null });
 
-/** How long a burst of events is gathered into one refresh per key. */
 export const COALESCE_MS = 300;
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
 
@@ -108,9 +89,6 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
             setStatus("live");
             const hello = parseJson(frame.data) as HelloFrame | null;
             if (typeof hello?.version === "string") setServerVersion(hello.version);
-            // The tail the stream starts at is the resume point even before
-            // the first change arrives: a tab hidden right after connecting
-            // still catches up on what happened meanwhile.
             if (
               typeof hello?.cursor === "number" &&
               hello.cursor > Number(lastEventId.current ?? 0)
@@ -126,8 +104,6 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       })
         .then(() => retry(current))
         .catch((error: unknown) => {
-          // A refused session will not be accepted on the next try either;
-          // the session gate takes it from here.
           if (error instanceof SseHttpError && (error.status === 401 || error.status === 403)) {
             if (controller === current) controller = null;
             setStatus("offline");
@@ -138,7 +114,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
     };
 
     const retry = (ended: AbortController) => {
-      if (controller !== ended) return; // closed on purpose (hidden tab, unmount)
+      if (controller !== ended) return;
       controller = null;
       if (disposed) return;
       setStatus("reconnecting");
@@ -173,17 +149,10 @@ export function useLiveStatus(): LiveContextValue {
   return useContext(LiveContext);
 }
 
-/** The Cockpit refreshes from the event stream; nothing polls while it is live. */
 export const LIVE = true;
 
-/** The safety net while the stream is down: a slow refresh, and only then. */
 const OFFLINE_REFRESH_MS = 60_000;
 
-/**
- * Query options for a read the live stream keeps fresh. While the stream is
- * live there is no interval at all; while it is down the read falls back to a
- * slow refresh so a lost connection never leaves a page frozen.
- */
 export function useLiveQueryOptions(): { refetchInterval: number | false } {
   const { status } = useLiveStatus();
   return { refetchInterval: status === "live" ? false : OFFLINE_REFRESH_MS };

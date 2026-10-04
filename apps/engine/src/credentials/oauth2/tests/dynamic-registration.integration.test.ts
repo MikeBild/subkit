@@ -1,10 +1,3 @@
-// Integration tests for dynamicallyRegisterClient + credential persistence.
-//
-// Uses a disposable Postgres database per the testing-skill pattern.
-// A tiny in-process HTTP server acts as the mock IdP.
-// Covers: crypto roundtrip + AAD binding, tenant isolation, audit success
-// and audit failure paths.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -19,10 +12,6 @@ import {
   upsertCredential,
 } from "../../service.ts";
 import { __resetOAuth2CacheForTests, dynamicallyRegisterClient } from "../client.ts";
-
-// ---------------------------------------------------------------------------
-// Shared IdP factory
-// ---------------------------------------------------------------------------
 
 async function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -101,10 +90,6 @@ async function startMockIdP(initialStatus = 201): Promise<MockIdPHandle> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Suite setup
-// ---------------------------------------------------------------------------
-
 let ctx: TestDb;
 let idp: MockIdPHandle;
 
@@ -119,10 +104,6 @@ afterAll(async () => {
   __resetOAuth2CacheForTests();
   await ctx.cleanup();
 });
-
-// ---------------------------------------------------------------------------
-// Helper: seed a connector for a tenant
-// ---------------------------------------------------------------------------
 
 async function seedConnector(tenantId: string, slug: string): Promise<string> {
   const [row] = await ctx.db
@@ -141,10 +122,6 @@ async function seedConnector(tenantId: string, slug: string): Promise<string> {
   if (!row) throw new Error(`seed connector failed for ${slug}`);
   return row.id;
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe("dynamic registration + credential persistence — crypto roundtrip + AAD binding", () => {
   test("credential row is written with mode=oauth2_client and can be decrypted", async () => {
@@ -177,19 +154,12 @@ describe("dynamic registration + credential persistence — crypto roundtrip + A
       ctx.db,
     );
 
-    // The oauth2_client credential is a registration slot, not user-facing
-    // auth material — `getCredentialForConnector` filters it out so callers
-    // who want primary auth never get back an identity row. The dedicated
-    // accessor `getOAuth2ClientCredential` returns it.
     const primary = await getCredentialForConnector(tenantId, connectorId, "dev", ctx.db);
     expect(primary).toBeNull();
     const dynamic = await getOAuth2ClientCredential(tenantId, connectorId, "dev", ctx.db);
     expect(dynamic).not.toBeNull();
     expect(dynamic!.client_id).toBe(reg.clientId);
 
-    // AAD binding check: lift the ciphertext to a synthetic row id and
-    // assert decryption fails — proving aadFor(tenant_id, credential_id)
-    // is enforced.
     const rows = await ctx.db
       .select()
       .from(credentials)
@@ -205,8 +175,6 @@ describe("dynamic registration + credential persistence — crypto roundtrip + A
   });
 
   test("same-tenant plaintext re-encrypted under a different row id fails decryption", async () => {
-    // This test specifically verifies the AAD is credential_id–bound,
-    // not just tenant_id–bound.
     const [t] = await ctx.db
       .insert(tenants)
       .values({ slug: "dr-aad2-tenant", display_name: "AAD Binding Tenant 2" })
@@ -218,7 +186,6 @@ describe("dynamic registration + credential persistence — crypto roundtrip + A
     const realAad = `credential:${tenantId}:${realId}`;
     const payload = encryptSecret(plain, realAad);
 
-    // Try decrypting with a different credential_id under the same tenant.
     const otherId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
     const otherAad = `credential:${tenantId}:${otherId}`;
     expect(() =>
@@ -246,7 +213,6 @@ describe("dynamic registration + credential persistence — tenant isolation", (
     const connectorIdA = await seedConnector(tenantIdA, "dr-iso-connector-a");
     const connectorIdB = await seedConnector(tenantIdB, "dr-iso-connector-b");
 
-    // Register and persist for tenant A.
     const regA = await dynamicallyRegisterClient({
       issuerUrl: idp.baseUrl,
       clientMetadata: { redirect_uris: ["https://app-a.example.com/callback"] },
@@ -264,7 +230,6 @@ describe("dynamic registration + credential persistence — tenant isolation", (
       ctx.db,
     );
 
-    // Register and persist for tenant B.
     const regB = await dynamicallyRegisterClient({
       issuerUrl: idp.baseUrl,
       clientMetadata: { redirect_uris: ["https://app-b.example.com/callback"] },
@@ -282,11 +247,9 @@ describe("dynamic registration + credential persistence — tenant isolation", (
       ctx.db,
     );
 
-    // Tenant B cannot see tenant A's credential by asking for connector A.
     const crossRead = await getOAuth2ClientCredential(tenantIdB, connectorIdA, "dev", ctx.db);
     expect(crossRead).toBeNull();
 
-    // Each tenant sees their own.
     const aView = await getOAuth2ClientCredential(tenantIdA, connectorIdA, "dev", ctx.db);
     expect(aView).not.toBeNull();
     const bView = await getOAuth2ClientCredential(tenantIdB, connectorIdB, "dev", ctx.db);
@@ -296,11 +259,6 @@ describe("dynamic registration + credential persistence — tenant isolation", (
 
 describe("dynamic registration — coexistence with oauth2 access token credential", () => {
   test("oauth2_client and oauth2 credentials coexist; refresh path keeps secret readable", async () => {
-    // The refresh-token grant for a confidential RFC 7591 client must send
-    // client_secret to the token endpoint. Before the per-mode unique index,
-    // a subsequent `upsertCredential({mode: "oauth2"})` from the OAuth
-    // callback would overwrite the oauth2_client row and the client_secret
-    // would be lost, breaking every future refresh. Lock that contract in.
     const [t] = await ctx.db
       .insert(tenants)
       .values({ slug: "dr-coexist-tenant", display_name: "Coexistence Tenant" })
@@ -331,7 +289,6 @@ describe("dynamic registration — coexistence with oauth2 access token credenti
       ctx.db,
     );
 
-    // Simulate the OAuth callback writing the user-facing access token.
     await upsertCredential(
       {
         tenant_id: tenantId,
@@ -346,7 +303,6 @@ describe("dynamic registration — coexistence with oauth2 access token credenti
       ctx.db,
     );
 
-    // Both credentials are queryable independently.
     const dynamic = await getOAuth2ClientCredential(tenantId, connectorId, "dev", ctx.db);
     expect(dynamic).not.toBeNull();
     expect(dynamic!.client_id).toBe(reg.clientId);
@@ -360,8 +316,6 @@ describe("dynamic registration — coexistence with oauth2 access token credenti
       expect(primary!.value.refresh_token).toBe("refresh-xyz");
     }
 
-    // Re-upserting the oauth2 credential (e.g. after a successful refresh)
-    // must NOT touch the oauth2_client slot.
     await upsertCredential(
       {
         tenant_id: tenantId,
@@ -409,8 +363,6 @@ describe("dynamic registration — audit success path", () => {
       ctx.db,
     );
 
-    // Call the recorder directly to simulate the route path (the recorder
-    // is pure — it just writes to audit_log via auditAwait).
     const { recordOAuthClientRegistered } = await import("../../../audit/recorders/credential.ts");
     await recordOAuthClientRegistered({
       tenant_id: tenantId,
@@ -433,7 +385,6 @@ describe("dynamic registration — audit success path", () => {
     const meta = row.metadata as Record<string, unknown>;
     expect(typeof meta.issuer_url_host).toBe("string");
     expect(typeof meta.registration_endpoint_host).toBe("string");
-    // Must store only the host, not a full URL.
     expect(meta.issuer_url_host).not.toContain("://");
     expect(meta.registration_endpoint_host).not.toContain("://");
   });
@@ -479,7 +430,6 @@ describe("dynamic registration — audit failure path", () => {
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.error_code).toBe("registration_http_401");
 
-    // Reset for subsequent tests.
     idp.setRegisterStatus(201);
   });
 });

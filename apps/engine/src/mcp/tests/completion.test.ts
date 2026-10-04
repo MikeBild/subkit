@@ -6,11 +6,6 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
-// Local result schema that mirrors the MCP CompleteResult shape so we can
-// drive the request through the lower-level `client.request` helper. We
-// can't use `client.complete()` because its TypeScript signature pins the
-// ref to prompt/resource, but the on-the-wire schema accepts anything our
-// custom server-side handler decodes.
 const CompletionResultSchema = z
   .object({
     completion: z
@@ -37,9 +32,6 @@ describe("mcp completion/complete", () => {
       title: "Bake bread",
       body: "Use the oven.",
     });
-    // Patch the skill row to give it argument descriptors. The seed helper
-    // doesn't expose the new column yet — that's fine, the route still
-    // owns the table.
     await suite.http.db
       .update(skills)
       .set({
@@ -52,8 +44,6 @@ describe("mcp completion/complete", () => {
       .where(eq(skills.id, id));
 
     const client = await suite.connect();
-    // Cast through `unknown` because the SDK's ClientRequest union pins ref
-    // to prompt|resource. Our server-side handler uses a custom schema.
     const res = await client.request(
       {
         method: "completion/complete",
@@ -100,7 +90,6 @@ describe("mcp completion/complete", () => {
       } as unknown as Parameters<typeof client.request>[0],
       CompletionResultSchema,
     );
-    // Only `limit` starts with "l".
     expect(res.completion.values).toEqual(["limit"]);
     expect(res.completion.total).toBe(3);
   });

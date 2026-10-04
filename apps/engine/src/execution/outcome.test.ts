@@ -22,7 +22,6 @@ describe("pickStoppingStep", () => {
 
   test("a tolerated failure earlier in the run is not the step that stopped it", () => {
     expect(pickStoppingStep(rows, null)?.step_key).toBe("send");
-    // Row order must not matter — the read order of the rows is not the run order.
     expect(pickStoppingStep([...rows].reverse(), null)?.step_key).toBe("send");
   });
 
@@ -84,7 +83,6 @@ describe("deriveExecutionOutcome", () => {
     expect(refused({ code: "execution_authority_changed", reason: "recipient_differs" })).toBe(
       "recipient_differs",
     );
-    // A reason no rule defines, or one carried by another code, names nothing.
     expect(refused({ code: "execution_authority_changed", reason: "made_up" })).toBeNull();
     expect(refused({ code: "http_4xx", reason: "not_utf8" })).toBeNull();
     expect(refused({ code: "execution_authority_changed" })).toBeNull();
@@ -106,7 +104,6 @@ describe("deriveExecutionOutcome", () => {
       [],
       def,
     );
-    // The slug contains "auth": the exact code wins over the message matcher.
     expect(outcome.cause_class).toBe("connector_unavailable");
     expect(outcome.connector).toEqual({ connector_id: "c-dev", reason: "needs_reauth" });
   });

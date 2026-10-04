@@ -1,17 +1,3 @@
-// Wait-for-event step. Signal-driven HITL pause. Polls the
-// `workflow_signals` table at a 1s cadence until a matching row arrives
-// (status: succeeded with `output: { event, payload }`) or the
-// per-step `timeout_ms` elapses (status: succeeded with
-// `output: { timed_out: true }` so the workflow can branch on it).
-//
-// The step honors `signal.aborted` for graceful engine shutdown. On
-// abort the row in `workflow_waits` is cleaned up and the result is
-// `aborted` — same contract as the wait step.
-//
-// Restart safety: the same `workflow_waits` table tracks an inflight
-// wait-for-event. Engine boot's reaper resumes the poll for any row
-// whose `sleep_until_ts` (here: timeout deadline) is in the future.
-
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { consumeMatchingSignal } from "../../workflow-signals/service.ts";

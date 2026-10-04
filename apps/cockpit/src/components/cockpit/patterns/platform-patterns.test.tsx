@@ -1,6 +1,3 @@
-// The platform layer of the patterns: loading shapes, endless lists, row
-// motion and responsive columns.
-
 import { describe, expect, test } from "bun:test";
 import type { SortingState } from "@tanstack/react-table";
 import { renderAction } from "./action-button";

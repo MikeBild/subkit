@@ -1,17 +1,3 @@
-// Glue between the turn loop and the next-message suggestion service.
-// Lives outside loop.ts because the loop is already 1700+ LOC and the
-// only thing this helper needs is a finished events array — no
-// turn-loop internals.
-//
-// Contract:
-//   - Called exactly once per turn, AFTER `events.push({ type:
-//     "completed", ... })` and BEFORE the SSE outcome envelope.
-//   - Builds the suggestion-service params from the buffered events
-//     plus the default suggestion-model invoker on the tenant route.
-//   - Returns the `next_suggestion` TurnEvent for the loop to push.
-//   - NEVER throws — a swallowed failure becomes `{ suggestion: null,
-//     reason: "error" }` so the parent turn always closes cleanly.
-
 import { and, desc, eq } from "drizzle-orm";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
@@ -36,38 +22,17 @@ export interface EmitSuggestNextFrameParams {
   tenant_id: string;
   conversation_id: string;
   events: ReadonlyArray<TurnEvent>;
-  /**
-   * When provided, the emitter loads the last N persisted messages from
-   * the conversation store instead of scanning the per-turn events
-   * buffer. Production callers (loop.ts) pass this so the model
-   * fallback's prompt actually has multi-turn history; unit tests omit
-   * it and the events buffer is used as a fallback.
-   */
   db?: Db;
   client_suppress?: boolean;
-  /**
-   * Skill hints that drive the offer-skill slash variant of offer-parse.
-   * Production loop.ts does NOT pass this today — Skill records carry
-   * slugs but no `verbs[]` field, so resolving an offered action to a
-   * slash invocation isn't possible yet. Unit tests use this seam
-   * directly to validate the offer-skill code path.
-   */
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
-  /** Optional override for the model invoker (used by integration tests). */
   model_invoker?: SuggestNextModelInvoker;
-  /** Optional budget guard (true = allow). Default: always allow. */
   budget_guard?: () => Promise<boolean> | boolean;
 }
 
-// The suggestion model is resolved from tenant-aware runtime configuration
-// per request, so a Cockpit/HTTP/MCP change applies to the next turn.
 const SUGGEST_MAX_OUTPUT_TOKENS = 30;
 const SUGGEST_TEMPERATURE = 0.2;
 const SUGGEST_HISTORY_TURNS = 8;
 
-/** Turn a missing-capability slug into a ready-to-send next prompt that
- *  closes the gap. Mirrors the slug shapes cannot_help documents
- *  (connector.* / vendor_recipe.* / workflow*). */
 function suggestionForCapability(slug: string): string {
   const tail = slug
     .replace(/^[a-z_]+\./, "")
@@ -80,10 +45,6 @@ function suggestionForCapability(slug: string): string {
   return `Add support for ${tail || slug}`;
 }
 
-/** Deterministic capability-gap suggestion: when the turn abstained via
- *  cannot_help, the most useful next prompt is the gap-closing path. Prefer
- *  the model's own suggest_alternative (already a concrete step); otherwise
- *  derive one from the missing_capability slug. No model call. */
 function capabilityGapSuggestion(events: ReadonlyArray<TurnEvent>): string | null {
   for (const ev of events) {
     if (ev.type !== "tool_result" || ev.tool !== "cannot_help") continue;
@@ -103,28 +64,14 @@ function capabilityGapSuggestion(events: ReadonlyArray<TurnEvent>): string | nul
   return null;
 }
 
-/**
- * Build the next_suggestion frame for the buffered events array.
- * Always returns a frame — `suggestion: null` plus a reason tag when
- * the suggestion is suppressed, filtered, or generation failed.
- */
 export async function buildNextSuggestionFrame(
   params: EmitSuggestNextFrameParams,
 ): Promise<TurnEvent> {
   try {
-    // Prove-helpful: if the turn honestly abstained (cannot_help), surface
-    // the gap-closing path as the next prompt — deterministically, ahead of
-    // the model fallback, so an honest "I can't" always comes with a way
-    // forward. Respects client suppression.
     if (!params.client_suppress) {
       const gap = capabilityGapSuggestion(params.events);
       if (gap) return nextSuggestion({ suggestion: gap, reason: "capability-gap", kind: "text" });
     }
-    // Production path: pull the last 8 persisted messages from the
-    // conversation store. The just-completed assistant message has
-    // already been persisted by the loop before the emitter runs, so
-    // this returns N user+assistant turns (not just the current one).
-    // Tests omit `db` and the events-buffer fallback is used.
     const { recent, lastAssistantText } = params.db
       ? await loadPersistedHistory(
           params.db,
@@ -171,16 +118,6 @@ interface ExtractedHistory {
   lastAssistantText: string;
 }
 
-/**
- * Production history loader: targeted single-query select against
- * `conversation_messages` for the most recent N user+assistant rows.
- * Lighter than calling `getConversation` (which also pulls tool calls
- * + drafts + elicitations + resume summaries — all irrelevant to
- * suggestion generation) AND bounded — `ORDER BY desc LIMIT (maxTurns
- * * 3)` keeps the query constant-time even on a 10k-message
- * conversation. The `* 3` factor accommodates tool / system rows that
- * get filtered out of the user/assistant pair we actually want.
- */
 async function loadPersistedHistory(
   db: Db,
   tenant_id: string,
@@ -202,19 +139,10 @@ async function loadPersistedHistory(
     )
     .orderBy(desc(conversationMessages.created_at))
     .limit(maxTurns * 3);
-  // Reverse in-memory so the caller sees oldest-first, matching the
-  // events-buffer fallback path's ordering contract.
   const rows = rowsDesc.slice().reverse();
   return collectFromRows(rows, maxTurns, { tenant_id, conversation_id });
 }
 
-/**
- * Shared collector: filters user/assistant rows, runs the content
- * shape extractor, warns on assistant rows that yield no text, and
- * returns the trailing N. Used by both the production
- * (`loadPersistedHistory`) and the unit-test (`extractRecentMessages`)
- * paths so they cannot drift.
- */
 function collectFromRows(
   rows: ReadonlyArray<{ role: string; content: unknown }>,
   maxTurns: number,
@@ -226,12 +154,6 @@ function collectFromRows(
     if (r.role !== "user" && r.role !== "assistant") continue;
     const text = extractText(r.content);
     if (!text) {
-      // A persisted tool-only assistant turn is stored as an object
-      // with no `text` key (`{}` or `{ _violations: [...] }`) — that
-      // is a structurally valid turn, not an unrecognized shape, so
-      // skip it silently. Only warn for genuinely unexpected content:
-      // a non-string, non-array, non-object value (or null), which the
-      // extractor truly does not know how to read.
       if (r.role === "assistant" && !isBenignNoTextContent(r.content)) {
         logger.warn({
           module: "conversations",
@@ -251,16 +173,6 @@ function collectFromRows(
   return { recent, lastAssistantText };
 }
 
-/**
- * True when an assistant turn's content yields no text but is still a
- * structurally valid shape the extractor knows: a string (incl. the
- * empty string), an array (multi-part content), or a plain object
- * (`{}` / `{ _violations: [...] }` — a persisted tool-only turn). The
- * `content_shape_unrecognized` warn is reserved for genuinely
- * unexpected content — `null`, numbers, booleans, `undefined` — so it
- * stays meaningful for real regressions instead of firing on every
- * normal tool-only turn.
- */
 function isBenignNoTextContent(content: unknown): boolean {
   if (typeof content === "string") return true;
   if (Array.isArray(content)) return true;
@@ -272,9 +184,6 @@ function extractRecentMessages(
   maxTurns: number,
   ctx: { tenant_id: string; conversation_id: string },
 ): ExtractedHistory {
-  // Project events to the `{ role, content }` shape `collectFromRows`
-  // expects; this keeps both history-loaders going through the same
-  // extractor so the content-shape contract has one home.
   const rows: Array<{ role: string; content: unknown }> = [];
   for (const ev of events) {
     if (ev.type !== "message") continue;
@@ -283,35 +192,7 @@ function extractRecentMessages(
   return collectFromRows(rows, maxTurns, ctx);
 }
 
-/**
- * Pulls the human-readable text out of the loop's persisted message
- * `content` shape. Today there are three known shapes:
- *
- *   1. plain string                              — legacy / synthetic frames
- *   2. `{ text, _violations? }`                  — loop.ts:1128
- *   3. AI SDK 6 multi-part content array         — assistant turns where
- *      `{ role: "assistant", content: [{ type: "text", text: ... },
- *                                       { type: "tool_use", ... }, ...] }`
- *      is the natural shape. Session 0498925e fired
- *      `suggest_next.content_shape_unrecognized` 16× because the
- *      previous extractor only handled (1) and (2) and silently
- *      dropped the array — the next-suggestion chip never populated
- *      on turns that emitted a tool_use. Polish B flattens the array
- *      and concatenates every `{ type: "text", text }` part so the
- *      offer-parser sees the visible assistant prose.
- *
- * The contract is intentionally narrow — adding a new shape requires
- * updating this function AND keeping the
- * `suggest_next.content_shape_unrecognized` warning live so a silent
- * regression stays loud.
- */
 function extractText(content: unknown): string {
-  // Strip `[file:fid_<uuid>]` sentinels before the suggestion prompt
-  // sees the text. The suggestion model never re-resolves file refs
-  // through `buildUserContentParts` (the prompt is intentionally
-  // minimal, no DB-roundtrip allowed — see the design note below); a
-  // literal sentinel in the prompt would either confuse the model or
-  // leak the raw fid into the suggestion preview text.
   const raw = extractTextRaw(content);
   return stripFileSentinelsForDisplay(raw);
 }
@@ -328,9 +209,6 @@ function extractTextRaw(content: unknown): string {
         parts.push(p.text);
         continue;
       }
-      // AI SDK 6 tool-use parts surface either `toolName` (input-streaming
-      // shape) or `name` (call shape). Capture both — they're equivalent
-      // for the synthetic-summary use case.
       if (p.type === "tool-call" || p.type === "tool_use" || p.type === "tool-input") {
         const name =
           typeof p.toolName === "string" ? p.toolName : typeof p.name === "string" ? p.name : null;
@@ -338,11 +216,6 @@ function extractTextRaw(content: unknown): string {
       }
     }
     if (parts.length > 0) return parts.join("");
-    // Tool-only assistant turn: surface a synthetic summary so the
-    // offer-parser / suggest-next has something to read AND the
-    // `content_shape_unrecognized` warn does not fire for what is
-    // structurally a valid turn. Production traffic showed 348× this
-    // warn over a 7-day window — every one was a tool-only turn.
     if (toolNames.length > 0) {
       const unique = Array.from(new Set(toolNames)).slice(0, 3);
       return `(called ${unique.join(", ")})`;
@@ -356,29 +229,8 @@ function extractTextRaw(content: unknown): string {
   return "";
 }
 
-/**
- * Default model invoker — the small `suggestion_model` with a 30-token
- * output cap, on the tenant's route: the same provider and key as the main
- * turn, and the same fallback model and provider. A refused primary (usage
- * limit, overload) is retried on the fallback inside `AiSdkModel` under the
- * one rule every LLM caller shares, so the suggestion survives exactly the
- * outages the turn itself survives. Provider misconfiguration collapses to
- * `text: null` so the suggestion service emits `reason: "empty"` and the
- * turn closes cleanly.
- *
- * Design note: do NOT route this through `core/invoke.ts` /
- * `assembleContext`. That path pulls in skills, knowledge, docs,
- * runtime context, and a full system prompt — exactly the wiring the
- * `suggestion-prompt.ts` assembler is designed to avoid. Re-routing
- * would re-introduce the 1M-token empty-turn class of bug we already
- * fought once. `AiSdkModel` is the model call alone, without that
- * assembly.
- */
 function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
   return async (call: SuggestNextModelInvocation): Promise<SuggestNextModelResult> => {
-    // Tenant-scoped resolution throughout: without the tenant the provider
-    // and key came from global config and threw `invalid x-api-key` on every
-    // turn (conversation 661e7ad1) while the main turn's call succeeded.
     if (detectConfiguredProvider({ tenantId: call.tenant_id }) === "mock") return { text: null };
     let model: AiSdkModel;
     try {
@@ -408,8 +260,6 @@ function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
         { temperature: SUGGEST_TEMPERATURE, maxOutputTokens: SUGGEST_MAX_OUTPUT_TOKENS },
       );
     } catch (err) {
-      // The model resolves on first use, so a misconfigured provider
-      // surfaces here rather than at construction.
       if (err instanceof ProviderMisconfiguredError) return modelInitFailed(err);
       throw err;
     }

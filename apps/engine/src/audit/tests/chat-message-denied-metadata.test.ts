@@ -1,9 +1,3 @@
-// `ChatMessageDeniedMetadataSchema` is applied at the enriched
-// workspace_not_installed writer but MUST stay a superset-compatible
-// pin: the two new fields are optional/nullable so the pre-existing
-// deny shape (no sender / display name) still parses, and the enriched
-// shape round-trips the fields the pending-space query reads.
-
 import { describe, expect, test } from "bun:test";
 import { ChatMessageDeniedMetadataSchema } from "../types.ts";
 

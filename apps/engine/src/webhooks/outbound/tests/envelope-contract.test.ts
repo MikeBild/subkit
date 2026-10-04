@@ -1,14 +1,3 @@
-// Contract test: pins the outbound webhook wire envelope — the exact
-// HTTP headers and JSON body wrapper a subscriber actually receives —
-// so a change to header names, the signature scheme, or the envelope
-// shape fails loudly instead of only being caught by a payload-field
-// diff. Header capture uses `fetchImpl` (the same test seam the
-// delivery worker already exposes) rather than a real HTTP server, so
-// the assertion pins the *application-controlled* header set the code
-// constructs, not incidental transport headers (Host, Connection,
-// Accept-Encoding, Content-Length) added by the underlying fetch
-// client — those are not part of subkit's envelope contract.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Job } from "pg-boss";
@@ -30,7 +19,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** Captures exactly the (url, headers, body) triple the worker hands to `fetch`. */
 interface CapturedRequest {
   url: string;
   headers: Record<string, string>;
@@ -63,14 +51,12 @@ describe("outbound: wire envelope contract", () => {
     const job = jobs?.[0];
     if (!job) throw new Error("expected exactly one enqueued webhook.deliver job");
 
-    // --- body envelope wrapper: exact top-level key set + stable fields ---
     const envelope = JSON.parse(job.data.body) as Record<string, unknown>;
     expect(Object.keys(envelope).sort()).toEqual(["data", "timestamp", "type"]);
     expect(envelope.type).toBe("execution.succeeded");
     expect(typeof envelope.timestamp).toBe("number");
     expect(envelope.data).toEqual(payload);
 
-    // --- deliver it, capturing exactly what the worker hands to fetch() ---
     let captured: CapturedRequest | null = null;
     const fetchImpl = (async (url, init) => {
       captured = {
@@ -101,7 +87,6 @@ describe("outbound: wire envelope contract", () => {
     if (!captured) throw new Error("delivery worker never called fetchImpl");
     const req: CapturedRequest = captured;
 
-    // --- header set: exact names, sorted ---
     expect(Object.keys(req.headers).sort()).toEqual([
       "content-type",
       "user-agent",
@@ -114,15 +99,10 @@ describe("outbound: wire envelope contract", () => {
     expect(req.headers["webhook-id"]).toBe(job.data.webhook_id);
     expect(req.headers["webhook-timestamp"]).toBe(String(job.data.timestamp));
     expect(req.headers["webhook-timestamp"]).toMatch(/^\d+$/);
-    // Signature scheme: `v1,<base64(HMAC-SHA256)>` — one token (no
-    // rotating secret configured for this subscription), 44-char base64
-    // digest with the standard single trailing `=` pad.
     expect(req.headers["webhook-signature"]).toMatch(/^v1,[A-Za-z0-9+/]{43}=$/);
 
-    // --- body on the wire is passed through byte-for-byte ---
     expect(req.bodyText).toBe(job.data.body);
 
-    // --- state mutation is audited ---
     const rows = await ctx.db
       .select()
       .from(deliveries)

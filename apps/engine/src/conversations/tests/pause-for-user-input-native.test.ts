@@ -1,24 +1,3 @@
-// pauseForUserInput — MCP-native form elicitation integration tests.
-//
-// Three paths exercised against a real disposable Postgres:
-//
-//   1. Capable client → in-process resolution: no `pause`, the
-//      conversation status flips awaiting_input → active, the
-//      elicitation row is marked protocol_native AND resolved.
-//   2. Capable client, decline/cancel → row resolved cancelled, no
-//      continuation, structured error_code.
-//   3. No bridge → DB-pause fallback (returns a `pause`, row pending).
-//   4. Bridge present, non-ElicitationUnsupportedError transport
-//      failure → NON-DESTRUCTIVE demote to the portal DB-pause: row
-//      stays pending (protocol_native flipped false), conversation
-//      stays awaiting_input, and the tool returns the same
-//      pause envelope the DB-pause path does.
-//   5. Fast-cancel heuristic: a `cancel` arriving faster than
-//      FORM_FAST_CANCEL_MS is the client auto-cancelling without
-//      rendering the form → demote to portal (non-destructive). A
-//      cancel at/after the threshold is a genuine human cancel
-//      (destructive, unchanged); `decline` is ALWAYS honored.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -48,8 +27,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** Fresh conversation in `active` state — pauseForUserInput will move it
- *  to `awaiting_input` via createElicitation. */
 async function freshConversation(): Promise<string> {
   const [conv] = await ctx.db
     .insert(conversations)
@@ -58,11 +35,6 @@ async function freshConversation(): Promise<string> {
   return conv!.id;
 }
 
-/**
- * A structural `ElicitationBridge` stub. Only `.capabilities` and
- * `.elicitForm` are reached by `pauseForUserInput`; `elicitOob` is
- * present for the type but unused here.
- */
 function makeBridge(
   behaviour:
     | { kind: "accept"; content: Record<string, unknown> }
@@ -129,10 +101,6 @@ async function readElicitation(conversation_id: string) {
   return rows;
 }
 
-/** The resolve audit row for an elicitation carrier — `APPROVAL_APPROVED`
- *  or `APPROVAL_REJECTED`, keyed on the elicitation id as `resource_id`.
- *  Filtered by action so the paired `APPROVAL_REQUESTED` open row (same
- *  `resource_id`) is excluded. */
 async function readResolveAudit(elicitation_id: string, action: string) {
   const [row] = await ctx.db
     .select()
@@ -157,16 +125,12 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
       input: { question: "What is your name?" },
     });
 
-    // The loop continues this turn — no pause envelope.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.pause).toBeUndefined();
       expect(result.data).toEqual({ value: "my-answer" });
     }
 
-    // The conversation was flipped back to `active` (createElicitation
-    // moved it to awaiting_input; the in-process accept transition
-    // restores it).
     expect(await readConversationStatus(conversation_id)).toBe("active");
 
     const rows = await readElicitation(conversation_id);
@@ -175,9 +139,6 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
     expect(rows[0]!.status).toBe("resolved");
     expect(rows[0]!.output).toEqual({ value: "my-answer" });
 
-    // The resolve audit row carries the tri-state discriminators
-    // (docs/developers/tool-palette.md): a bridge-delivered accept records
-    // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
     const audit = await readResolveAudit(rows[0]!.id, "approval.approved");
     expect(audit).toBeDefined();
     const meta = audit!.metadata as Record<string, unknown>;
@@ -207,9 +168,6 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
 
   test("cancel (after the fast-cancel window) → row resolved cancelled (user_cancelled), structured error", async () => {
     const conversation_id = await freshConversation();
-    // A genuine human cancel takes longer than FORM_FAST_CANCEL_MS — an
-    // instant cancel would be treated as the client never rendering the
-    // form (see the fast-cancel describe below).
     const bridge = makeBridge({ kind: "cancel", delayMs: FORM_FAST_CANCEL_MS + 100 });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
       tool_name: "ask_user_text",
@@ -225,12 +183,6 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
   });
 
   test("accept with a contract-violating answer → row cancelled (invalid_elicit_response), structured error", async () => {
-    // The client returns an `accept` action but an `ask_user_choice`
-    // answer outside the requested enum. `mapElicitResultToAskUserOutput`
-    // maps it to `null`, so the bridge path collapses the bogus accept
-    // into the decline/cancel path: the row resolves `cancelled` with
-    // `decision_reason: invalid_elicit_response` and the tool result
-    // carries `error_code: invalid_elicit_response`.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "accept", content: { value: "not-in-enum" } });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
@@ -245,16 +197,13 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
       },
     });
 
-    // (b) the returned tool result reports the structured error code.
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error_code).toBe(INVALID_ELICIT_RESPONSE);
       expect(result.pause).toBeUndefined();
     }
-    // The conversation is unwedged — no longer awaiting input.
     expect(await readConversationStatus(conversation_id)).toBe("active");
 
-    // (a) the elicitation row ends `cancelled` with the matching reason.
     const rows = await readElicitation(conversation_id);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("cancelled");
@@ -276,7 +225,6 @@ describe("pauseForUserInput — DB-pause fallback (no bridge)", () => {
       expect(result.pause).toBeDefined();
       expect(result.pause?.tool_name).toBe("ask_user_text");
     }
-    // The DB-pause path leaves the conversation awaiting input.
     expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
     const rows = await readElicitation(conversation_id);
     expect(rows).toHaveLength(1);
@@ -287,10 +235,6 @@ describe("pauseForUserInput — DB-pause fallback (no bridge)", () => {
 
 describe("pauseForUserInput — bridge transport failure", () => {
   test("non-ElicitationUnsupportedError throw → NON-DESTRUCTIVE demote: row stays pending, conversation stays awaiting_input, pause returned", async () => {
-    // A transport break is NOT a decision — the operator never saw or
-    // answered anything. Destroying the row would throw away their
-    // in-flight work over a network hiccup, so the row is demoted to the
-    // portal DB-pause instead and stays answerable.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "throw", error: new Error("client disconnected") });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
@@ -299,7 +243,6 @@ describe("pauseForUserInput — bridge transport failure", () => {
       input: { question: "What is your name?" },
     });
 
-    // Same shape as the ElicitationUnsupportedError arm: an ok pause.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.pause).toBeDefined();
@@ -309,21 +252,16 @@ describe("pauseForUserInput — bridge transport failure", () => {
         elicitation_id: result.pause!.elicitation_id,
       });
     }
-    // The conversation STAYS awaiting_input — the answer can still
-    // arrive via the portal or a later poll re-delivery.
     expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
     const rows = await readElicitation(conversation_id);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("pending");
-    // Demoted in place: it now resumes via a portal POST.
     expect(rows[0]!.protocol_native).toBe(false);
     if (result.ok) expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
 
-    // Audit honesty: the demote emits ELICITATION_DEMOTED_TO_PORTAL …
     const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
     expect(demoteAudit).toBeDefined();
     expect(demoteAudit!.tenant_id).toBe(tenant_id);
-    // … and does NOT record a governance rejection nobody made.
     const rejectedAudit = await readResolveAudit(rows[0]!.id, "approval.rejected");
     expect(rejectedAudit).toBeUndefined();
   });
@@ -340,27 +278,15 @@ describe("pauseForUserInput — bridge transport failure", () => {
       input: { question: "What is your name?" },
     });
 
-    // Capability raced away mid-call — the row already exists and is
-    // pending; surface it as a normal pause.
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pause).toBeDefined();
     expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
     const rows = await readElicitation(conversation_id);
     expect(rows[0]!.status).toBe("pending");
-    // The row was opened on the bridge path (protocol_native), but the
-    // capability raced away and it now resumes via a portal POST. The
-    // fallback demotes it so the `surface` audit metadata resolves to
-    // `portal`, not `mcp_elicitation`.
     expect(rows[0]!.protocol_native).toBe(false);
   });
 
   test("ElicitationUnsupportedError mid-call demotes the SAME row — no second elicitation minted", async () => {
-    // The `elicitForm` call raises `ElicitationUnsupportedError` AFTER
-    // `createNativeElicitation` already wrote the `protocol_native: true`
-    // carrier row. The fallback must NOT mint a second row: it demotes
-    // the original to a portal carrier and the pause references its id —
-    // so the one-row APPROVAL_REQUESTED → APPROVAL_* audit lifecycle is
-    // preserved.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({
       kind: "throw",
@@ -372,28 +298,19 @@ describe("pauseForUserInput — bridge transport failure", () => {
       input: { question: "What is your name?" },
     });
 
-    // Exactly ONE `conversation_elicitations` row for this conversation —
-    // the demote reuses the row `createNativeElicitation` opened.
     const rows = await readElicitation(conversation_id);
     expect(rows).toHaveLength(1);
     const originalRowId = rows[0]!.id;
 
-    // The original row was demoted in place: protocol_native flipped to
-    // false, still pending (it now resumes via a portal POST).
     expect(rows[0]!.protocol_native).toBe(false);
     expect(rows[0]!.status).toBe("pending");
 
-    // The returned pause references the SAME row id, both on the pause
-    // envelope and the `data` payload — not a freshly-minted second row.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.pause?.elicitation_id).toBe(originalRowId);
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(originalRowId);
     }
 
-    // The demote leaves a forensic `elicitation.demoted_to_portal` audit
-    // row keyed on the elicitation id — without it an audit reader cannot
-    // tell the carrier ever attempted the MCP bridge.
     const demoteAudit = await readResolveAudit(originalRowId, "elicitation.demoted_to_portal");
     expect(demoteAudit).toBeDefined();
     expect(demoteAudit!.resource_id).toBe(originalRowId);
@@ -403,9 +320,6 @@ describe("pauseForUserInput — bridge transport failure", () => {
 
 describe("pauseForUserInput — fast-cancel heuristic", () => {
   test("instant cancel (< FORM_FAST_CANCEL_MS) → NON-DESTRUCTIVE demote to portal DB-pause", async () => {
-    // A cancel that comes back faster than a human could have read the
-    // form is the client auto-cancelling without rendering it — a
-    // transport verdict, not a decision.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "cancel" });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
@@ -428,7 +342,6 @@ describe("pauseForUserInput — fast-cancel heuristic", () => {
     expect(rows[0]!.status).toBe("pending");
     expect(rows[0]!.protocol_native).toBe(false);
 
-    // The demote audit exists; no governance rejection was recorded.
     const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
     expect(demoteAudit).toBeDefined();
     const rejectedAudit = await readResolveAudit(rows[0]!.id, "approval.rejected");
@@ -456,8 +369,6 @@ describe("pauseForUserInput — fast-cancel heuristic", () => {
   });
 
   test("instant decline is STILL honored — decline is always a human decision", async () => {
-    // Every client UI renders decline as an explicit human "no", so the
-    // fast-cancel heuristic must never apply to it.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "decline" });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
@@ -491,8 +402,6 @@ describe("pauseForUserInput — degrade-to-DB-pause for non-flat tool input", ()
       },
     });
 
-    // The json field cannot map to a flat primitive — `mapAskUserToPrimitiveSchema`
-    // degrades, so the bridge is never called and the DB-pause path runs.
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pause).toBeDefined();
     const rows = await readElicitation(conversation_id);
@@ -501,15 +410,9 @@ describe("pauseForUserInput — degrade-to-DB-pause for non-flat tool input", ()
   });
 });
 
-// ---------------------------------------------------------------------------
-// D7 — no secret is elicited as chat text over MCP. The guard is scoped to
-// `surface === "mcp"`; sk-cli / web input surfaces are untouched.
-// ---------------------------------------------------------------------------
 describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", () => {
   test("password form without an active connector draft → directive and no row", async () => {
     const conversation_id = await freshConversation();
-    // Capable bridge present — the guard must still preempt it: the secret
-    // must never reach the wire, and no DB elicitation row may be opened.
     const bridge = makeBridge({ kind: "accept", content: { token: "s3cr3t" } });
     const result = await pauseForUserInput(
       { ...buildCtx(conversation_id, bridge), surface: "mcp" },
@@ -529,9 +432,7 @@ describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", ()
       expect(result.next_best_actions).toContain("request_connector_reauth");
       expect(result.pause).toBeUndefined();
     }
-    // No row opened — the elicitation never happened.
     expect(await readElicitation(conversation_id)).toHaveLength(0);
-    // Conversation stays active (never flipped to awaiting_input).
     expect(await readConversationStatus(conversation_id)).toBe("active");
   });
 
@@ -577,8 +478,6 @@ describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", ()
         },
       },
     );
-    // On sk-cli the operator can paste into the masked field — the DB-pause
-    // proceeds and an elicitation row is opened, exactly as before.
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pause?.tool_name).toBe("ask_user_form");
     expect(await readElicitation(conversation_id)).toHaveLength(1);

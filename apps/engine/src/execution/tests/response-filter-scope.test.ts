@@ -1,6 +1,3 @@
-// Pure unit tests for the FIELD / ITEM / ENTRY scope semantics.
-// No DB, no engine bootstrap — just the applyResponseFilters function.
-
 import { describe, expect, test } from "bun:test";
 import type { ResponseFilter } from "../../workflows/types.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../response-filter.ts";
@@ -37,8 +34,6 @@ describe("response-filter scope", () => {
         { id: 2, user: "bob" },
       ],
     }) as { team: unknown[] };
-    // Alice has a password field, so the whole object is dropped.
-    // Bob stays because his subtree has no matching key.
     expect(out.team).toHaveLength(1);
     expect(out.team[0]).toEqual({ id: 2, user: "bob" });
   });
@@ -74,7 +69,6 @@ describe("response-filter scope", () => {
       { id: 3, profile: { email: "carol@example.com" } },
     ];
     const out = applyResponseFilters([filter], rows) as unknown[];
-    // Bob's entire top-level row is dropped because his nested profile has ssn.
     expect(out).toHaveLength(2);
     expect((out[0] as { id: number }).id).toBe(1);
     expect((out[1] as { id: number }).id).toBe(3);

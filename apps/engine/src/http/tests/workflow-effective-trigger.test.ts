@@ -1,13 +1,3 @@
-// What starts a workflow, as the HTTP surface reports it.
-//
-// A schedule created through `POST /v1/schedules` exists only as a
-// `workflows_schedules` row; the definition keeps no trigger. The workflow
-// representation used to echo the definition alone (`trigger: null`), so a
-// workflow firing every hour was listed as "on request". These tests pin the
-// bound row as the answer, the paused/held/declared-but-unbound states, and
-// that reading the bindings costs the same number of queries for a page of 1
-// and a page of 50.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -16,8 +6,6 @@ import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts"
 import { getSchedule } from "../../scheduler/repo.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
-// Counts every query the app issues through its db handle. The app is built
-// before the test db exists, so the proxy resolves its target lazily.
 let target: Db | null = null;
 let queryCount = 0;
 const COUNTED = new Set(["select", "selectDistinct", "selectDistinctOn", "execute", "$count"]);
@@ -162,8 +150,6 @@ describe("effective trigger on the workflow representation", () => {
   test("a schedule on a draft workflow does not fire, and agrees with the automation status", async () => {
     const wf = await createWorkflow("et-draft");
     const scheduleId = await bindSchedule(wf.id);
-    // The metadata route does not demote to draft; a workflow saved but never
-    // activated is exactly this row.
     await ctx.db
       .update(workflows)
       .set({ lifecycle: "draft" })
@@ -210,8 +196,6 @@ describe("effective trigger on the workflow representation", () => {
     const wf = await createWorkflow("et-unbound", {
       trigger: { kind: "schedule", cron: "0 6 * * *", tz: "UTC" },
     });
-    // The save path binds the declared schedule; removing the row leaves the
-    // declaration with nothing that fires it.
     expect(wf.effective_trigger.source).toBe("binding");
     await ctx.db
       .delete(workflowsSchedules)
@@ -236,7 +220,6 @@ describe("effective trigger on the workflow representation", () => {
       const wf = await createWorkflow(`et-page-${String(i).padStart(2, "0")}`);
       await bindSchedule(wf.id);
     }
-    // Warm-up: middleware caches (auth, config) must not skew the comparison.
     await listWorkflows("limit=1");
 
     queryCount = 0;

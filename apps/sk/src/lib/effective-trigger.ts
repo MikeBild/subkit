@@ -1,9 +1,3 @@
-// One line naming what really starts a workflow, read from the engine's
-// `effective_trigger` + `schedule` fields — never from the definition's
-// `trigger`, which says only what was declared. A schedule created with
-// `sk schedules create` lives in the binding alone; a declared schedule with
-// no binding fires nothing.
-
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];

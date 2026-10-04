@@ -57,40 +57,23 @@ import { DataState, LOADING_ROWS } from "./data-state";
 import { useRowMotion } from "./row-motion";
 import { Skeleton } from "./skeleton";
 
-/** A column states its own width; that is what keeps the table `table-fixed`. */
 export interface CockpitColumnMeta {
   width?: string;
-  /** The cell renders `<RowName>` itself instead of being wrapped whole in the row's link. */
   ownsRowLink?: boolean;
-  /** The cell holds links or controls of its own (relations, chips). */
   interactive?: boolean;
-  /**
-   * `low`: a column a narrower table can do without. It is left out while the
-   * list itself is narrower than 56rem — measured on the list, not the window,
-   * because the sidebar takes a third of a tablet — so the columns that matter
-   * fit; the column picker still lists it. Below 42rem the list shows cards.
-   */
   priority?: "high" | "low";
 }
 
-/** The class a column's head and cells take for its priority. */
 export function priorityClass(priority: CockpitColumnMeta["priority"]): string | undefined {
   return priority === "low" ? "hidden @4xl:table-cell" : undefined;
 }
 
-/** The next page of an endless list: what `useInfiniteQuery` hands back. */
 export interface InfiniteRows {
   fetchNextPage(): unknown;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
 }
 
-/**
- * Loads the next page as the end of the list comes near: a sentinel row just
- * past the last one, watched by an IntersectionObserver on the list's own
- * scroll container. A button stays for the keyboard and for a page too short
- * to scroll.
- */
 function InfiniteSentinel({
   infinite,
   testId,
@@ -148,14 +131,6 @@ function InfiniteSentinel({
 
 const SKELETON_WIDTHS = ["w-3/4", "w-1/2", "w-2/3", "w-1/3", "w-2/5"] as const;
 
-/**
- * Which visible column names the row and carries its link.
- *
- * The preferred column while it is shown. A reader can hide it; the link then
- * moves only to a column that holds no link of its own — wrapping a relation
- * chip in the row's link would nest one link in another, which no browser can
- * follow. With no such column the row has no link, and still opens on click.
- */
 export function rowLinkColumn(
   visible: readonly { id: string; interactive?: boolean; ownsRowLink?: boolean }[],
   preferred?: string,
@@ -182,13 +157,7 @@ export interface TableErrorState {
 }
 
 export interface TableEmptyState {
-  /**
-   * Nothing exists yet. The description is the concrete next step where one
-   * exists and absent otherwise — a sentence that only restates the title
-   * ("records appear here") is filler, not guidance.
-   */
   zero: { title: string; description?: string; action?: ReactNode };
-  /** Things exist, the current filters exclude them all. */
   filtered: {
     title: string;
     description: string;
@@ -197,7 +166,6 @@ export interface TableEmptyState {
   };
 }
 
-/** The naming cell: wrapped whole in the row's link, or handing the link to its `<RowName>`. */
 function LinkedCell({
   owns,
   target,
@@ -214,12 +182,6 @@ function LinkedCell({
   );
 }
 
-/**
- * Whether a click on a row was meant for something inside it. The whole row
- * opens its record as a convenience; a click on a link, a button or a field in
- * one of its cells belongs to that control, and opening the record on top of
- * it would do two things at once.
- */
 const INTERACTIVE =
   'a, button, input, select, textarea, label, summary, [role="menuitem"], [role="checkbox"], [role="combobox"]';
 
@@ -230,7 +192,6 @@ function fromInteractive(event: MouseEvent<HTMLElement>): boolean {
   return control !== null && event.currentTarget.contains(control);
 }
 
-/** A plain left click stays in the page; a modified or middle click is the browser's. */
 function isPlainClick(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
@@ -239,35 +200,16 @@ interface RowLinkTarget {
   href: string | null;
   onOpen: () => void;
   testId: string;
-  /** The accessible name, where the cell's text alone does not say which record. */
   label?: string;
 }
 
 const RowLinkContext = createContext<RowLinkTarget | null>(null);
 
-/**
- * The row's name as its link, for a cell that holds more than the name (a
- * workflow's name above its health line, which links to its failed runs). A
- * link inside a link is not a link a browser can follow, so such a cell says
- * which part names the row. Outside a row that opens anything it is the name.
- */
 export function RowName({ children }: { children: ReactNode }) {
   const target = useContext(RowLinkContext);
   return target ? <RowLink {...target}>{children}</RowLink> : children;
 }
 
-/**
- * The one way into a row's record: its name, as a real link.
- *
- * A link, not a button, and not a named "Öffnen" beside the row: the name is
- * what a reader looks for, a link is what the keyboard, a screen reader and
- * "open in new tab" already understand, and a second control beside it that
- * leads to the same place is the duplicate this replaces. A plain click stays
- * in the single-page app (`onOpen`); anything else is the browser's.
- *
- * A record without an address of its own (an audit entry opens in place)
- * keeps the same place and the same keyboard reach, as a button.
- */
 function RowLink({
   href,
   onOpen,
@@ -348,59 +290,31 @@ export function DataTable<TData extends RowData>({
   data: TData[];
   sorting: SortingState;
   onSortingChange(value: SortingState): void;
-  /** Omitted where a row has nowhere to go: no link, no cursor, no row click. */
   onOpen?(row: TData): void;
-  /**
-   * The row's own address (router-relative, from a `links.ts` builder), which
-   * makes its name cell a real link. Null or absent where the record opens in
-   * place and has no address; the name is then a button.
-   */
   rowHref?(row: TData): string | null;
-  /**
-   * The link's accessible name, where the naming cell alone does not say which
-   * record it is — an audit entry's cell is its time.
-   */
   rowLabel?(row: TData): string;
-  /** The column whose cell names the row and carries its link. Defaults to the first. */
   linkColumn?: string;
-  /** Search, filters and the column picker in one strip above the table. */
   toolbar?: ReactNode;
-  /** Refreshing is an action on the rows, so it lives in the row-action column. */
   onRefresh?(): void;
   refreshing?: boolean;
   refreshLabel?: string;
-  /** Row-level actions — further acts on the row, never a second way into it. */
   rowActions?: (row: TData, index: number) => ReactNode;
   pending?: boolean;
   error?: TableErrorState | null;
   emptyState: TableEmptyState;
   hasActiveFilters: boolean;
-  /**
-   * An endless list: the next page loads as the reader nears the end of the
-   * rows (`useInfiniteList`). Without it the list shows every row it is given;
-   * there is no pager.
-   */
   infinite?: InfiniteRows;
-  /**
-   * A row's stable identity. With it, a row that arrives through a live update
-   * washes in with the accent and a row that goes fades out where it stood.
-   */
   getRowId?(row: TData): string;
-  /** How many placeholder rows stand in while the first rows load. */
   skeletonRows?: number;
-  /** The number of records the filters match, where the engine counts them. */
   total?: number;
-  /** Called with 0 when the built-in search changes what the list shows. */
   onPageChange?(page: number): void;
   columnsLabel: string;
-  /** The result count's label, for assistive technology. */
   recordsLabel?: string;
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
   searchLabel?: string;
   searchText?: (row: TData) => string;
-  /** Use the shared search unless the page toolbar already owns a domain search. */
   showDefaultSearch?: boolean;
 }) {
   const searchInputId = useId();
@@ -413,8 +327,6 @@ export function DataTable<TData extends RowData>({
   const { t } = useI18n();
   const phase = useLoadingPhase(Boolean(pending));
   const arrivedContent = useArrived(phase);
-  // Rows that just left stay a moment for their fade; they are part of the
-  // table's data until then, flagged so they render inert.
   const motion = useRowMotion(filteredData, getRowId, !pending && !error);
   const tableData = useMemo(() => motion.display.map((entry) => entry.row), [motion.display]);
   const leavingAt = (index: number) => motion.display[index]?.leaving === true;
@@ -440,23 +352,15 @@ export function DataTable<TData extends RowData>({
     }),
   );
   const visibleColumns = table.getAllLeafColumns().filter((column) => column.getIsVisible());
-  // "Spalten" only where there is a choice (two or more named columns a reader
-  // can hide), only on a page's primary list, and only once per page.
   const hideableColumns = table
     .getAllLeafColumns()
     .filter((column) => column.getCanHide() && typeof column.columnDef.header === "string");
   const showColumnPicker = useColumnToggleClaim(
     collectionTier === "primary" && hideableColumns.length > 1,
   );
-  // The action column exists only for something to put in it: row actions, or
-  // the refresh in its head. A column that held a lone "Öffnen" per row is gone.
   const hasActionColumn = Boolean(rowActions) || Boolean(onRefresh && refreshLabel);
-  // A row that opens something ends in a chevron (P6): the name is the link,
-  // the chevron says the whole row leads on. There is no "Öffnen" button.
   const hasChevron = Boolean(onOpen);
   const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (hasChevron ? 1 : 0);
-  // A reader can hide the naming column; the link then moves to the first
-  // column still shown rather than leaving the row without one.
   const linkColumnId = rowLinkColumn(
     visibleColumns.map((column) => ({
       id: column.id,
@@ -466,17 +370,12 @@ export function DataTable<TData extends RowData>({
     linkColumn ?? visibleColumns[0]?.id,
   );
   const rows = table.getRowModel().rows;
-  // The result count is stated for assistive technology, not drawn: a list
-  // shows its rows, and a footer counting them was noise. Where the engine
-  // counts the matches it says that number; otherwise the rows shown.
   const resultCount = queryText.trim() ? filteredData.length : (total ?? data.length);
   const showSkeleton = phase !== "content";
   const empty = !showSkeleton && !error && rows.length === 0;
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
 
-  // One line and one action (P12). The descriptions the states still carry
-  // are not shown: a second paragraph under an empty list was the text wall.
   const stateBlock = pending ? null : error ? (
     <DataState
       state="error"
@@ -667,8 +566,6 @@ export function DataTable<TData extends RowData>({
             className={arrivedContent ? "sk-fade-in" : undefined}
           >
             {showSkeleton ? (
-              // The final rows' shape: one bar per column at the row's height,
-              // invisible for the first moments so a fast answer never flashes.
               Array.from({ length: skeletonRows }, (_, rowIndex) => (
                 <TableRow
                   key={rowIndex}
@@ -715,9 +612,6 @@ export function DataTable<TData extends RowData>({
                       rowMotionClass(row.original, index),
                     )}
                     data-testid={leaving ? undefined : `${collectionId}-row-${index}`}
-                    // The whole row is a convenience for the pointer. The
-                    // keyboard and the screen reader reach the record through
-                    // the link in its name cell, so the row is no tab stop.
                     onClick={
                       open
                         ? (event) => {
@@ -776,7 +670,6 @@ export function DataTable<TData extends RowData>({
         data-testid={`${collectionId}-mobile`}
       >
         {showSkeleton ? (
-          // A card's shape: three label/value lines, as many cards as rows.
           <div
             className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
             data-family-slot="data-state"
@@ -806,9 +699,6 @@ export function DataTable<TData extends RowData>({
             {rows.map((row, index) => {
               const leaving = leavingAt(index);
               const open = onOpen && !leaving ? () => onOpen(row.original) : null;
-              // Three facts fit a 390px card; a seven-column table does not.
-              // The naming cell leads the card and carries its link; the card
-              // itself is not a button, because it holds links of its own.
               const all = row.getVisibleCells();
               const named = open ? all.find((cell) => cell.column.id === linkColumnId) : undefined;
               const cells = (named ? [named, ...all.filter((cell) => cell !== named)] : all).slice(
@@ -822,10 +712,6 @@ export function DataTable<TData extends RowData>({
                       ? cell.column.columnDef.header
                       : cell.column.id}
                   </span>
-                  {/* The value wraps rather than running off the card. A 390px
-                      card cannot hold a long workflow name on one line, and
-                      `truncate` alone clipped it mid-word with no ellipsis
-                      because the span had no width to truncate against. */}
                   <span
                     className={cn(
                       "min-w-0 flex-1 break-words text-right",
@@ -852,9 +738,6 @@ export function DataTable<TData extends RowData>({
               ));
               const actions = rowActions?.(row.original, index);
               return (
-                // The keyboard and the screen reader reach the record through
-                // the link in the card's title; the click on the rest of the
-                // card is a pointer convenience, as on the desktop row.
                 <div
                   key={row.id}
                   className={cn(

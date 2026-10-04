@@ -1,13 +1,3 @@
-// Every reason the engine can refuse a report for has a sentence, in both
-// languages — read from the engine's source, so a reason added there and not
-// here fails this test instead of reaching a reader as a bare code.
-//
-// The engine's lists are read from its source text rather than imported: this
-// project's compiler does not resolve the engine's module aliases (see
-// authority-request.classes.test.ts). Each parse asserts it found entries, so
-// a rename that breaks the pattern fails here instead of passing on an empty
-// set.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { diagnosisCauseKey } from "./gate-diagnosis";
@@ -42,8 +32,6 @@ function engineRequestRefusals(): string[] {
 
 describe("refusal reasons", () => {
   test("the engine's reasons and the cockpit's table are the same set", () => {
-    // The refusal is `{ code: "execution_authority_changed", ...refusal }`;
-    // the union of both lists is every `reason` it can carry.
     expect(REPORT_SOURCE).toContain('{ code: "execution_authority_changed", ...refusal }');
     expect([...ENGINE_REASONS].sort()).toEqual(Object.keys(REFUSAL_REASON_KEYS).sort());
   });
@@ -75,7 +63,6 @@ describe("refusal reasons", () => {
       machine: true,
     });
     expect(refusalReasonLabel(null, t)).toBeNull();
-    // Inherited object keys are not reasons.
     expect(refusalReasonKey("toString")).toBeUndefined();
   });
 });

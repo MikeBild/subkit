@@ -1,5 +1,3 @@
-// Unit tests for the derived catalog categories. Pure functions — no DB.
-
 import { describe, expect, test } from "bun:test";
 import {
   deriveCategories,
@@ -8,11 +6,6 @@ import {
   UNCATEGORIZED,
 } from "./categorize.ts";
 
-/**
- * A slice of the real tenant catalog — the corpus that motivated the feature.
- * Kept verbatim so the regression it guards (a dozen single-item blocks) stays
- * pinned to the names that actually produced it.
- */
 const REAL_SLUGS = [
   "mission-control-content-analysis-weekly",
   "mission-control-growth-weekly",
@@ -62,21 +55,16 @@ describe("deriveCategories", () => {
   });
 
   test("keeps the meaningful family name over an equally-large fragment", () => {
-    // `mission` and `mission-control` both match all 7 — the longer, meaningful
-    // one must win. This is the tie-break that makes the whole rule readable.
     const categories = deriveCategories(REAL_SLUGS);
     expect(categories.get("mission-control-growth-weekly")).toBe("mission-control");
   });
 
   test("does not split a family into a narrower sub-block", () => {
-    // `mission-control-reporting-rollup` matches 4 — real, but narrower than the
-    // 7-member family. The wider family wins so the catalog stays few blocks.
     const categories = deriveCategories(REAL_SLUGS);
     expect(categories.get("mission-control-reporting-rollup-daily")).toBe("mission-control");
   });
 
   test("sends a prefix below the threshold to the catch-all", () => {
-    // Only two `berlin-weather-*` exist, so they must not form a block of two.
     const categories = deriveCategories(REAL_SLUGS);
     expect(categories.get("berlin-weather-by-date")).toBe(UNCATEGORIZED);
     expect(categories.get("berlin-weather-tomorrow")).toBe(UNCATEGORIZED);
@@ -96,9 +84,6 @@ describe("deriveCategories", () => {
   });
 
   test("misses a shared concept that is not a shared prefix", () => {
-    // Documents a real limit rather than pretending it away: the three
-    // dogfood workflows carry the concept mid-slug, so prefix derivation
-    // cannot see them. Renaming them is the (user-driven) fix.
     const categories = deriveCategories(REAL_SLUGS);
     expect(categories.get("capture-dogfood-observation")).toBe(UNCATEGORIZED);
     expect(categories.get("dogfooding-daily-review")).toBe(UNCATEGORIZED);
@@ -120,7 +105,6 @@ describe("deriveCategories", () => {
   });
 
   test("splits only on dash boundaries, never mid-word", () => {
-    // `report` must not be pulled out of `reporting`.
     const slugs = ["reporting-a", "reporting-b", "reporting-c"];
     expect(deriveCategories(slugs).get("reporting-a")).toBe("reporting");
   });

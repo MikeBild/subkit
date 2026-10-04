@@ -1,7 +1,3 @@
-// HTTP-layer coverage for `DELETE /v1/conversations/:id`: an administrator
-// or the owner deletes, anyone else gets 403, a running turn gets 409, and a
-// deleted conversation is gone (404).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";

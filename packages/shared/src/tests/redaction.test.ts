@@ -1,12 +1,3 @@
-// Unit tests for the secret-redaction core — the new vendor patterns
-// (Atlassian ATATT, Stripe, npm), the generic high-entropy pattern's
-// positive/negative envelope, `findSecretSpans` offsets, the
-// pattern-only `scrubStringsDeep` walk, and the logger-boundary lock
-// (`redactWithMaxDepth` must inherit the new patterns).
-//
-// All fixtures are obviously fake — shaped to match the regexes, never
-// real-token entropy.
-
 import { describe, expect, test } from "bun:test";
 import {
   findSecretSpans,
@@ -20,7 +11,6 @@ const ATLASSIAN_TOKEN = "ATATTexampleexampleexample123Aa456";
 const STRIPE_LIVE = "sk_live_examplefake12345678";
 const STRIPE_RESTRICTED_TEST = "rk_test_examplefake12345678";
 const NPM_TOKEN = "npm_examplefakeexamplefake1234567890";
-// 40 chars, token charset, mixed case, >=2 digits — generic-positive.
 const GENERIC_BLOB = "Xy9KqLm2NpRsTuVwAbCdEfGhJkMnPqRsTuVwXyZ1";
 
 describe("scrubString — vendor pattern positives", () => {
@@ -46,14 +36,6 @@ describe("scrubString — vendor pattern positives", () => {
 });
 
 describe("scrubString — generic high-entropy pattern (code-context-suppressed)", () => {
-  // The generic matcher redacts a high-entropy run on SHAPE by default: a
-  // pasted credential carries no vendor prefix and no keyword, so shape is
-  // the only signal. Suppression is narrow and CODE-context-based — only a
-  // known codec alphabet (an ordered base64/base32/hex sequence) or the
-  // full value of a non-secret `var/const/let = "..."` assignment survives.
-  // This is the validated v7.5 outage fix: over-redaction of a quoted
-  // alphabet literal corrupted an authored workflow into a malformed body,
-  // WITHOUT reopening redaction on standalone pasted secrets.
   test("bare 40-char mixed-case blob IS redacted (shape-only, no code framing)", () => {
     const out = scrubString(`the value ${GENERIC_BLOB} leaked`);
     expect(out).toBe("the value ***REDACTED:generic*** leaked");
@@ -84,7 +66,6 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
   });
 
   test("a SECRET-named var holding a high-entropy literal IS redacted", () => {
-    // `const apiKey = "<token>"` is a credential in source, not codec data.
     const out = scrubString(`const apiKey = "${GENERIC_BLOB}";`);
     expect(out).toContain("***REDACTED:generic***");
     expect(out).not.toContain(GENERIC_BLOB);
@@ -116,10 +97,6 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
   });
 
   test("file path with mixed-case segments is NOT matched (`/` not in charset)", () => {
-    // Regression: with `/` in the token charset, adjacent path segments
-    // fused into one ≥32-char span that satisfied the mixed-case +
-    // two-digit lookaheads, redacting whole temp paths in structured
-    // logs (config.loaded's config_path).
     const text =
       "wrote /var/folders/k8/z_zlllnn46l7vt1s8b209mv80000gn/T/sk-cfg-logs-AVTtuq/subkit.config.json ok";
     expect(scrubString(text)).toBe(text);
@@ -152,8 +129,6 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
 });
 
 describe("scrubString — bearer pattern over prose", () => {
-  // The bearer pattern also runs over assistant prose via the
-  // output-guard secret pre-pass — common phrases must survive.
   test('prose "bearer auth" / "Bearer tokens" is NOT matched (operand < 16 chars)', () => {
     const text = "proceed with bearer auth — most vendors accept Bearer tokens here";
     expect(scrubString(text)).toBe(text);
@@ -197,8 +172,6 @@ describe("findSecretSpans", () => {
     const spans = findSecretSpans(text);
     expect(spans.map((s) => s.kind)).toEqual(["pat", "generic"]);
     expect(spans[0]!.start).toBeLessThan(spans[1]!.start);
-    // The Stripe token also has mixed case + digits; the earlier pat
-    // pattern owns that span — generic must not double-report it.
     expect(spans.filter((s) => s.match.includes("sk_live"))).toHaveLength(1);
   });
 
@@ -224,9 +197,8 @@ describe("scrubStringsDeep — pattern-only walk", () => {
       ],
     }) as { summary: string; fields: Array<{ name: string; label: string; default: string[] }> };
     expect(out.summary).toBe("token ***REDACTED:pat***");
-    expect(out.fields[0]!.name).toBe("token"); // key-named value survives
+    expect(out.fields[0]!.name).toBe("token");
     expect(out.fields[0]!.label).toBe("paste ***REDACTED:pat***");
-    // Keyword-anchored generic blob is redacted.
     expect(out.fields[0]!.default).toEqual(["***REDACTED:generic***"]);
   });
 
@@ -258,10 +230,6 @@ describe("redactWithMaxDepth — logger boundary inherits the new patterns", () 
 });
 
 describe("presentable tokens — OAuth start grants stay visible", () => {
-  // Single-use connector re-auth grants (skog_…) exist to be SHOWN to
-  // the user; redacting one bricks the sign-in link on every surface.
-  // Caught live in 6.18.1: the reauth_url reached the model as
-  // `?grant=***REDACTED:generic***`.
   const GRANT = "skog_Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z";
   const GRANT_URL = `https://engine.example.com/v1/connectors/0a1b2c3d-4e5f-6789-abcd-ef0123456789/oauth/start?grant=${GRANT}`;
 
@@ -282,9 +250,6 @@ describe("presentable tokens — OAuth start grants stay visible", () => {
   });
 
   test("a skog-PREFIXED but non-conforming run is still scanned (prefix is not a blank check)", () => {
-    // Trailing '!' splits the run: 'skog_x' alone is too short for the
-    // generic envelope, and the remainder must still be caught when it
-    // is itself secret-shaped.
     const sneaky = "skog_x Bearer abc.def-123456";
     const out = scrubString(sneaky);
     expect(out).toContain("***REDACTED:bearer***");
@@ -292,13 +257,7 @@ describe("presentable tokens — OAuth start grants stay visible", () => {
 });
 
 describe("presentable tokens — org/model identifiers stay visible", () => {
-  // Public `org/model` ids (HuggingFace-style) are presentable NAMES, not
-  // credentials. The model half is a long mixed-case run with digits, so the
-  // generic matcher used to clobber it — caught live as
-  // `"model":"Xenova/***REDACTED:generic***"`. Generalized by SHAPE: no
-  // vendor name is encoded.
   const MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
-  // 37-char bare blob, same length as the model-name half — must still redact.
   const BARE_SECRET = "Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr9St0Uv1Wx2";
 
   test("an org/model id survives in a JSON-ish field value", () => {
@@ -319,22 +278,12 @@ describe("presentable tokens — org/model identifiers stay visible", () => {
   });
 
   test("a secret in a multi-segment URL path is NOT exempted by the org/ rule", () => {
-    // `dl/<token>` is preceded by another `/`, so it is not a standalone
-    // `org/model` slug — the path-embedded secret must still redact.
     const text = `https://host.tld/dl/${BARE_SECRET}`;
     expect(scrubString(text)).toBe("https://host.tld/dl/***REDACTED:generic***");
   });
 });
 
-// ---------------------------------------------------------------------------
-// Generic-scan parity: `scrubString` (user-text) and `findSecretSpans`
-// (assistant-text) now share one `scanGenericTokens` helper, so they must
-// redact the SAME generic runs. This is the permanent guard that replaced the
-// "kept byte-identical by comment" duplication (the redaction-corruption class).
-// ---------------------------------------------------------------------------
 describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
-  // Generic-only inputs (no vendor-prefixed secrets) so the only redactions in
-  // play are generic — lets us compare the two code paths directly.
   const corpus = [
     "plain prose with a bare token Xk9Qw3Zr7Lm2Vt8Yb4Nc6Hd1Pf5Sg0 inside",
     "two tokens Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8 and Qr9St0Uv1Wx2Yz3Ab4Cd5Ef6",
@@ -346,8 +295,6 @@ describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
 
   for (const text of corpus) {
     test(`generic redactions align for: ${text.slice(0, 40)}…`, () => {
-      // Apply findSecretSpans' generic spans manually (right-to-left) and
-      // assert the result equals scrubString's output.
       const spans = findSecretSpans(text).filter((s) => s.kind === "generic");
       let viaSpans = text;
       for (let i = spans.length - 1; i >= 0; i--) {
@@ -360,15 +307,6 @@ describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
   }
 });
 
-// The prompt-key net's edge, both directions.
-//
-// LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — `body` had to join the net because
-// `Skill.body` IS the assembled prompt and `update_skill` audits whole Skill
-// rows. Added unanchored, it also swallowed `body_step_id` in the
-// loop→for_each migration audit row: a step IDENTIFIER, not prose. A net that
-// eats identifiers destroys the evidence an append-only trail exists for, so
-// `body` is anchored where its neighbours are not. Both halves are pinned
-// here; loosening the anchor turns the second case red.
 describe("prompt-key net — what collapses and what must survive", () => {
   const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
 
@@ -390,7 +328,6 @@ describe("prompt-key net — what collapses and what must survive", () => {
     const out = scrubSecrets({
       body_step_id: "process_row",
       bodyweight: "72kg",
-      // Counters share the word but carry no prose — the value-type gate.
       prompt_tokens: 1234,
       message_count: 3,
     }) as Record<string, unknown>;
@@ -401,20 +338,6 @@ describe("prompt-key net — what collapses and what must survive", () => {
   });
 });
 
-// The prompt-key net is a POLICY, not a law — `ScrubOptions.promptKeys`
-// decides where it runs.
-//
-// LOCAL-SK-SAEUBERER-FRISST-HISTORIE — the audit writer runs it on
-// `metadata` / `reason` (caller-minted prose that exists nowhere else) and
-// NOT on the `before` / `after` snapshot columns (copies of rows already
-// stored unredacted in their own tables, and the source `restoreSkill`
-// reads back). With the net on there, a skill snapshot came back as
-// `***REDACTED:prompt***` and the restore wrote that marker in as the live
-// body — the trail destroyed the history it was supposed to preserve.
-//
-// The flag turns off exactly ONE of the three nets. The two credential nets
-// are not hers to switch off, and the cases below pin that: flipping the
-// flag must change the prose and nothing else.
 describe("prompt-key net — promptKeys: false exempts prose, never credentials", () => {
   const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
   const PAT = "dop_v1_e5791346abcdefabcdefabcdefabcdefabcdef";
@@ -465,19 +388,6 @@ describe("prompt-key net — promptKeys: false exempts prose, never credentials"
   });
 });
 
-// The `body` half of the net collapses PROSE, not STRUCTURE.
-//
-// LOCAL-SK-BODY-NETZ-FRISST-STRUKTUR — adding `body` to the net cost a third
-// field after `body_step_id`: `request_body` in the sk debug trace and in the
-// structured log record holds an HTTP payload OBJECT, and the net deleted the
-// whole object. An operator opening `~/.sk/debug.log` to see what was sent got
-// `***REDACTED:prompt***` where the request had been — including the proof
-// that `api_key` inside it HAD been redacted.
-//
-// `body` is the one word in the net that is also a common structural name.
-// Prose is a string; a body that is an object is structure. The prose half
-// (`prompt` / `messages` / `instructions`) keeps collapsing both shapes,
-// because no structural field answers to those names.
 describe("prompt-key net — the body half collapses strings, not carriers", () => {
   const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
 

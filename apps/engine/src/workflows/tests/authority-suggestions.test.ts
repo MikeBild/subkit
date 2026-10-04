@@ -32,7 +32,6 @@ test("a schedule names itself as the basis of its suggestion", () => {
 
 test("a hook-started workflow gets thirty days sized from its recent deliveries", () => {
   const now = new Date(FROZEN_NOW);
-  // 140 deliveries in 14 days = 10 a day; thirty days of that, doubled.
   const bounds = suggestAuthorityBounds(now, [], { deliveries: 140, window_days: 14 });
   expect(Date.parse(bounds.valid_until) - now.getTime()).toBe(THIRTY_DAYS_MS);
   expect(bounds.max_runs).toBe(10 * 30 * HOOK_RUN_HEADROOM);
@@ -53,7 +52,6 @@ test("a hook that was barely called still gets the floor, and says so", () => {
     expect(Date.parse(bounds.valid_until) - now.getTime()).toBe(THIRTY_DAYS_MS);
     expect(bounds.basis).toMatchObject({ kind: "hook", minimum_applied: true });
   }
-  // A window that observed nothing cannot be projected; the floor stands.
   expect(suggestAuthorityBounds(now, [], { deliveries: 5, window_days: 0 }).max_runs).toBe(
     HOOK_MINIMUM_RUNS,
   );

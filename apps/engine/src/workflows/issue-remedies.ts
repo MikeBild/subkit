@@ -1,22 +1,3 @@
-// What to DO about a manifest issue.
-//
-// `ManifestIssueCode` names what is wrong. On its own it is a token: a reader —
-// human or model — is left to infer the fix from prose somewhere else. That gap
-// is not theoretical. Asked to bound a retention workflow's removals, the
-// authoring model diagnosed `dynamic_request` correctly and then invented a
-// remedy out of `s3.max_keys`, a field that exists but is DERIVED from the step
-// rather than authored. It never reached for `s3.scope`, because nothing it was
-// holding connected the code to the field.
-//
-// So the remedy travels with the diagnosis. This table is the one place that
-// mapping lives, in `workflows/` so the scheduler, the conversation tools and
-// the cockpit can share it without a layering inversion.
-//
-// Text is written for whoever has to act: it names the exact field, the patch
-// shape, and the traps that produced real mistakes. It deliberately does NOT
-// say "explain this to the user" — it is a tool-result string, and the skills
-// own the conversation.
-
 import type { ManifestIssueCode } from "./effect-manifest.ts";
 import type { GateDiagnosis, GateDiagnosisCode, WorkflowDiagnosis } from "./gate-diagnosis.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
@@ -24,7 +5,6 @@ import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
 type Driver = "http" | "graphql" | "postgres" | "s3" | "mcp";
 
-/** The one fixed target whose report profile has its own long-standing remedy. */
 const GMAIL_SEND_TARGET = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
 const STORAGE_SCOPE_REMEDY =
@@ -36,12 +16,6 @@ const STORAGE_SCOPE_REMEDY =
   "author-set per-prefix limits. If one prefix cannot cover every key the step touches, split " +
   "the step into narrower per-folder steps rather than widening the prefix.";
 
-/**
- * A storage step that ALREADY declares `s3.scope` and still compiled no
- * boundary. Telling its author to "add s3.scope" again is worse than saying
- * nothing: it is confidently wrong, and a repair loop forms around it. Each
- * refusal names the one thing to change.
- */
 const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = {
   delete_with_body:
     "This step already has `s3.scope`; the folder boundary is refused because the DELETE carries a " +
@@ -72,12 +46,6 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
   unsupported_method: "Only GET, HEAD, LIST, PUT and DELETE can be bounded by a storage folder.",
 };
 
-/**
- * The general remedy for an HTTP step with a runtime placeholder. Written so a
- * reader holding ONLY this string can author the boundary: past repairs invented
- * fields from the wrong layer, guessed selector syntax, and re-authored whole
- * workflows instead of patching one step.
- */
 const REQUEST_BOUNDARY_REMEDY =
   'Patch ONLY this step: `edit_workflow_patch` `step_patches: [{step_id, op: "add", path: ' +
   '"/boundary", value: {variables, max_body_bytes, max_calls}}]`. Do not re-author the workflow ' +
@@ -108,11 +76,6 @@ const REQUEST_BOUNDARY_REMEDY =
   "coverable at all yet: a placeholder " +
   "in `headers`, a query KEY that varies, and `pagination`.";
 
-/**
- * A step that ALREADY carries `boundary` (or can never carry one) and still
- * compiled none. Each entry names the one thing to change, or says plainly that
- * nothing the author can do covers it yet — never "add a boundary" again.
- */
 const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = {
   variables_mismatch:
     "This step already has `boundary`, but `boundary.variables` does not match the step: it needs " +
@@ -265,11 +228,6 @@ const REMEDIES: Partial<Record<ManifestIssueCode, Partial<Record<Driver, string>
   },
 };
 
-/**
- * Remedies for issues on steps that have no driver. A `call` step never becomes
- * an effect, so a remedy keyed by driver could not be reached for it: the issue
- * arrived bare, which is how a reader ends up proposing a one-off run instead.
- */
 const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
   boundary_contradicted_by_history:
     "The folder this step declares does not contain a key the step itself has already written. " +
@@ -295,8 +253,6 @@ const DRIVERLESS_REMEDIES: Partial<Record<ManifestIssueCode, string>> = {
     "the call and scheduling the child on its own is the simpler answer.",
 };
 
-/** How a child's own issue is introduced, so the reader does not try to repair
- *  it in the wrong workflow. */
 export function calledWorkflowPrefix(call_step_id: string, workflow_slug: string | null): string {
   return (
     `This step is inside the called workflow \`${workflow_slug ?? "it starts"}\` (started by ` +
@@ -304,13 +260,6 @@ export function calledWorkflowPrefix(call_step_id: string, workflow_slug: string
     "workflow can change it. After the child is saved and activated, review this workflow again. "
   );
 }
-/**
- * The concrete remedy for one issue, or null when none is known.
- *
- * `target` lets a driver carry more than one profile: an http `dynamic_request`
- * means something different on the report-send endpoint than it does anywhere
- * else, and only the endpoint distinguishes them.
- */
 export function remedyFor(
   code: ManifestIssueCode,
   driver: Driver | null | undefined,
@@ -324,18 +273,13 @@ export function remedyFor(
   return REMEDIES[code]?.[driver] ?? null;
 }
 
-/** One remedy, joined with what the gate diagnosis knows about the step. */
 export interface RepairGuidance {
   step_id: string;
   code: GateDiagnosisCode;
   instruction: string;
-  /** The report gate's own refusal reason, when it named one. */
   reason?: GateDiagnosis["reason"];
   remedy_kind?: GateDiagnosis["remedy_kind"];
-  /** A deterministic repair exists for the ACTIVE version:
-   *  `propose_workflow_repair` files it. Never set on a draft's guidance. */
   fixer?: GateDiagnosis["fixer"];
-  /** That repair is already waiting for review. */
   candidate_id?: string;
 }
 
@@ -353,9 +297,6 @@ const FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = {
     "inspection of this step, as a patch candidate a person reviews.",
 };
 
-/** The same repairs on a version that is not the active one. The proposal
- *  path files against the active version only, so a draft is told the change
- *  to make in the draft itself — or to activate it and diagnose again. */
 const DRAFT_FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = {
   use_utf8_encoder:
     "The report message is encoded one byte per character, so a non-ASCII character in it is " +
@@ -372,20 +313,6 @@ const DRAFT_FIXER_REMEDY: Record<NonNullable<GateDiagnosis["fixer"]>, string> = 
     "diagnose the active version again.",
 };
 
-/**
- * Guidance for every issue that has a known remedy, in issue order, joined
- * with the gate diagnosis of the same step.
- *
- * A diagnosis of a version that is not the active one (a draft) keeps its
- * remedy but loses `fixer` and `candidate_id`: the proposal path repairs the
- * active version only, so offering it here would repair the wrong version.
- *
- * A step with `missing_binding` never reaches `effects` at all (the compiler
- * skips it), so the driver is looked up leniently and an unknown one simply
- * yields no entry rather than a wrong one. A diagnosis with a fixer that no
- * issue covers — a granted run refused at the wire while the version itself
- * reviews clean — still gets an entry: it is the one block a person can act on.
- */
 export function repairGuidanceForIssues(
   issues: ReadonlyArray<{ step_id: string; code: ManifestIssueCode }>,
   effects: ReadonlyArray<{ step_id: string; driver: Driver; target: string | null }>,
@@ -406,10 +333,7 @@ export function repairGuidanceForIssues(
   const guidance: RepairGuidance[] = [];
   for (const issue of issues) {
     const effect = byStep.get(issue.step_id);
-    // The specific refusal wins over the generic storage remedy. `no_scope`
-    // has no entry on purpose: that IS the generic case.
     const refusal = refusalByStep.get(issue.step_id);
-    // `no_boundary` has no entry on purpose: that IS the generic http case.
     const requestRefusal = requestRefusalByStep.get(issue.step_id);
     const matched = diagnosisFor(diagnoses, issue.step_id, [issue.code, requestRefusal, refusal]);
     const instruction =
@@ -420,8 +344,6 @@ export function repairGuidanceForIssues(
         : undefined) ??
       remedyFor(issue.code, effect?.driver, effect?.target);
     if (!instruction) continue;
-    // The compiler can report the same code twice for one step (two failing
-    // predicates); the reader needs the remedy once.
     const key = `${issue.step_id}:${issue.code}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -445,8 +367,6 @@ export function repairGuidanceForIssues(
   return guidance;
 }
 
-/** The diagnosis of a step that explains one of these codes; failing that,
- *  the step's fixable one. */
 function diagnosisFor(
   diagnoses: ReadonlyArray<GateDiagnosis>,
   step_id: string,

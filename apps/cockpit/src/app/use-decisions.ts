@@ -29,11 +29,6 @@ import {
 import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
 import { useLiveQueryOptions } from "./live-events";
 
-/**
- * The ids two of the decision sources name their target with, as names. The
- * catalogue is small and cached; a target that stays unresolved renders as
- * nothing rather than as a UUID.
- */
 export function useNameIndex(permissions: readonly string[], enabled: boolean): NameIndex {
   const canWorkflows = permissions.includes("workflow:read");
   const canConnectors = permissions.includes("connector:read");
@@ -52,7 +47,6 @@ export function useNameIndex(permissions: readonly string[], enabled: boolean): 
   return names.data ?? EMPTY_NAME_INDEX;
 }
 
-/** Schedules held for an approval — what the chat's hand-off asks about. */
 export function useHeldSchedules(permissions: readonly string[]): HeldSchedule[] {
   const live = useLiveQueryOptions();
   const query = useQuery({
@@ -71,22 +65,12 @@ export interface ReviewDecisions {
   failed: boolean;
   decisions: DecidableItem[];
   held: HeldSchedule[];
-  /** The workflow's hooks whose deliveries are refused — held like a schedule. */
   heldHooks: InboundHookAutomation[];
   names: NameIndex;
   canReadRuns: boolean;
   refetch: () => void;
 }
 
-/**
- * The decisions ONE review sheet holds, and nothing else.
- *
- * A workflow's sheet reads that workflow's proposed fixes and its held
- * schedule; the skills sheet reads the proposed skills. Nothing the sheet does
- * not show is fetched, so a failure of an unrelated read cannot turn a fix into
- * an error — and a reader who may not read the target is told so rather than
- * left in front of a loading state that never ends.
- */
 export function useReviewDecisions(
   target: ReviewTarget,
   permissions: readonly string[],
@@ -112,8 +96,6 @@ export function useReviewDecisions(
       const [patches, held, heldHooks] = await Promise.all([
         listProposedPatchCandidates(target.workflowId),
         listHeldSchedules(),
-        // The automation status is read with `schedule:read`; without it the
-        // sheet shows what it may, rather than failing as a whole.
         permissions.includes("schedule:read")
           ? listHeldInboundHooks(target.workflowId)
           : ([] as InboundHookAutomation[]),
@@ -128,9 +110,6 @@ export function useReviewDecisions(
   });
   const items = [
     ...(query.data?.patches ?? []).map((candidate) => {
-      // The engine passes the repair model's English change note straight
-      // through. It stays as the card's summary; the title is the German line
-      // derived from what the decision is about.
       const kinds = patchChangeKind(candidate);
       const changeKey = proposalKindKey(kinds.proposalKind) ?? driftKindKey(kinds.driftKind);
       const title = patchTitle({
@@ -143,14 +122,12 @@ export function useReviewDecisions(
       skillDecision(candidate, skillTargetName(names, candidate)),
     ),
   ];
-  // One position is one decision, however often a source hands it out.
   const decisions = [...new Map(items.map((item) => [decisionKey(item), item])).values()].filter(
     isDecidable,
   ) as DecidableItem[];
   return {
     access,
     isPending: access === "readable" && query.isPending,
-    // React Query retries before `error` is final; the failure shows at once.
     failed: Boolean(query.error ?? query.failureReason),
     decisions,
     held: query.data?.held ?? [],

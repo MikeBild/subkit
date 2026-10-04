@@ -1,24 +1,3 @@
-// Smoke tier for the sk CLI overhaul.
-//
-// The 9 smoke assertions that ride on top of
-// the binary itself. Each test runs in its own spawnSync invocation
-// to keep state isolated. Tests are skipped when dist/sk doesn't
-// exist (the CI script builds it before this file runs).
-//
-//   1. sk --help exits 0 + prints every top-level subcommand
-//   2. sk -p "ping" --json — skipped when no engine reachable; spec
-//      contract verified at integration layer instead
-//   3. sk login --portal-token <fake> writes a profile
-//   4. cold-start under 200ms (sk --version) — skipped under CI_NO_PERF
-//   5. non-TTY readline fallback exits clean on EOF (covered by piping
-//      `echo`'s output into the binary; no engine boot)
-//   6. sk doctor passes against a healthy machine — best-effort
-//      (the doctor command's own internal checks decide pass/fail)
-//   7. bracketed-paste round-trip: covered by unit-level tests in
-//      apps/sk/src/tests/bracketed-paste-indent.test.ts
-//   8. sk --no-color writes zero ANSI escape sequences
-//   9. sk -p "" exits with usage hint (non-zero), no crash
-
 import { describe, expect, test } from "bun:test";
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -51,8 +30,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
     const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
     expect(out).toContain("login");
     expect(out).toContain("logout");
-    // Citty prints "USAGE" not "Usage:" so we just check that one of
-    // them is there.
     expect(out.toLowerCase()).toContain("usage");
   });
 
@@ -85,10 +62,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
       const elapsed = performance.now() - t0;
       expect(r.status).toBe(0);
       expect(r.stdout).toContain(PACKAGE_VERSION);
-      // 1500ms is generous on cold starts; the plan asked for 200ms
-      // but that requires the binary cache to be warm + the runtime
-      // already booted. We assert the upper-bound — failures here
-      // signal a real regression in startup time.
       expect(elapsed).toBeLessThan(1500);
     },
   );
@@ -97,11 +70,9 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
     const r = spawnSync(BINARY, [], {
       encoding: "utf8",
       env: { ...process.env, NO_COLOR: "1", NO_UPDATE_CHECK: "1" },
-      input: "", // empty stdin → readline-fallback EOF
+      input: "",
       timeout: 5_000,
     });
-    // A clean readline EOF should resolve quickly; status may be 0 or
-    // 2 (no profile configured), but it should NOT time out.
     expect(r.status).not.toBe(null);
     if (r.signal != null) {
       throw new Error(`sk hung on EOF; killed by ${r.signal}`);
@@ -110,9 +81,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
 
   test.skipIf(!skipUnless())("(6) `sk doctor` exits with a real exit code (never crashes)", () => {
     const r = run(["doctor"], { NO_COLOR: "1" });
-    // 0 = healthy, 1 = doctor reports issues, 2 = blocked
-    // (e.g. authn-failed setup probe). All three are valid; what we
-    // care about is that the binary doesn't segfault or hang.
     expect([0, 1, 2]).toContain(r.status);
   });
 
@@ -125,9 +93,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
   test.skipIf(!skipUnless())(
     '(9) `sk -p ""` does not crash (empty prompt falls through to REPL)',
     () => {
-      // Empty -p falls through to the interactive REPL; without a TTY
-      // the readline fallback resolves on EOF. Spawn with empty stdin so
-      // the EOF arrives immediately.
       const r = spawnSync(BINARY, ["-p", ""], {
         encoding: "utf8",
         env: { ...process.env, NO_COLOR: "1", NO_UPDATE_CHECK: "1" },
@@ -137,7 +102,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
       expect(r.status).not.toBe(null);
       if (r.signal) throw new Error(`sk -p hung; killed by ${r.signal}`);
       const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-      // Stack traces include TypeError; the binary should not throw.
       expect(out).not.toMatch(/TypeError/);
     },
   );
@@ -145,8 +109,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
   test.skipIf(!skipUnless())(
     "(2) `sk -p ping --output json` is parseable JSON when no engine is reachable",
     () => {
-      // Without a profile we expect a non-zero exit + stderr text;
-      // verifying the contract is "no crash, no half-printed JSON".
       const tmpHome = mkdtempSync(path.join(tmpdir(), "sk-smoke-jsonp-"));
       try {
         const r = spawnSync(
@@ -176,13 +138,8 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
         expect(r.status).not.toBe(null);
         if (r.signal != null) throw new Error(`sk -p hung; killed by ${r.signal}`);
         const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-        // No TypeError stack — orderly exit.
         expect(out).not.toMatch(/TypeError/);
-        // If the engine is unreachable, stdout should NOT contain a
-        // half-formed JSON payload that downstream pipes would choke on.
         if ((r.status ?? 0) !== 0 && (r.stdout ?? "").length > 0) {
-          // Whatever was emitted on stdout must parse — partial JSON
-          // is the regression we'd surface here.
           expect(() => JSON.parse(r.stdout as string)).not.toThrow();
         }
       } finally {
@@ -194,14 +151,6 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
   test.skipIf(!skipUnless())(
     "(7) bracketed-paste round-trip: indentation preserved through stdin",
     () => {
-      // Verify the bracketed-paste handler in apps/sk/src/repl/
-      // bracketed-paste.ts preserves leading whitespace verbatim
-      // through the binary path. This is the binary-level twin of
-      // apps/sk/src/tests/bracketed-paste-indent.test.ts (unit).
-      //
-      // The binary in non-TTY mode runs the readline fallback. We
-      // pipe a bracketed-paste sequence and immediately EOF; the
-      // binary should exit cleanly without mangling the input.
       const PASTE_START = "\x1b[200~";
       const PASTE_END = "\x1b[201~";
       const indented = "    function foo() {\n\treturn 42;\n}\n";

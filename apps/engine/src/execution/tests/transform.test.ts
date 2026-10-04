@@ -85,12 +85,6 @@ describe("request + transform", () => {
   });
 
   test("loop with N iterations but no productive body emits loop_body_empty warning", async () => {
-    // Reproduces the session-79bf2cca pattern: the loop driver resolves
-    // 3 items, every body step "succeeds", but each body produces an
-    // empty array — so the user sees "succeeded" with no rows. The
-    // engine must surface a structured `loop_body_empty` warning so
-    // the run_workflow tool downgrades to partial_success and the LLM
-    // gets the actual scope shape.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "empty-loop-body",
       steps: [
@@ -101,7 +95,6 @@ describe("request + transform", () => {
           expression: "return ['a', 'b', 'c'];",
         },
         { kind: "loop", id: "iter", over: "items.data", body: ["empty"] },
-        // Body step returns an empty array — body succeeds, but no row.
         { kind: "transform", id: "empty", language: "javascript", expression: "return [];" },
       ],
     });
@@ -131,11 +124,6 @@ describe("request + transform", () => {
   });
 
   test("step_output_fixtures short-circuits the upstream and feeds downstream from cached envelope", async () => {
-    // Regression: session fb930dcb burned 12 identical 128 KB Jira
-    // fetches because there was no way to skip an unchanged upstream
-    // step when iterating a downstream transform. `step_output_fixtures`
-    // lets the dry-run wrapper feed a recorded envelope back into the
-    // engine so the same request never fires twice.
     let fetchCount = 0;
     const counterMock = await createMockServer((_, res) => {
       fetchCount++;
@@ -157,7 +145,6 @@ describe("request + transform", () => {
           },
         ],
       });
-      // First run: real fetch.
       const r1 = await runExecution({
         db: ctx.testDb.db,
         tenant_id: ctx.tenantId,
@@ -166,10 +153,6 @@ describe("request + transform", () => {
       });
       expect(r1.status).toBe("succeeded");
       expect(fetchCount).toBe(1);
-      // Build an envelope from the step summary. `output_preview` is
-      // the raw step output; the dry-run wrapper has to wrap it with
-      // `{ data, status_code?, headers? }` before handing it to the
-      // engine via `step_output_fixtures`.
       const usersStep = r1.steps.find((s) => s.step_key === "users");
       expect(usersStep?.output_preview).toBeDefined();
       const rm = usersStep?.request_meta as { status?: number } | null | undefined;
@@ -179,7 +162,6 @@ describe("request + transform", () => {
         error: usersStep?.error ?? null,
         ...(typeof rm?.status === "number" ? { status_code: rm.status } : {}),
       };
-      // Second run: with the fixture, the engine must NOT hit the mock.
       const r2 = await runExecution({
         db: ctx.testDb.db,
         tenant_id: ctx.tenantId,
@@ -188,9 +170,7 @@ describe("request + transform", () => {
         options: { step_output_fixtures: { users: envelope } },
       });
       expect(r2.status).toBe("succeeded");
-      // Downstream transform must still see the fixture data.
       expect(r2.output).toEqual(["from_origin", "second_row"]);
-      // No new upstream call.
       expect(fetchCount).toBe(1);
     } finally {
       await counterMock.close();
@@ -208,7 +188,6 @@ describe("request + transform", () => {
           expression: "return ['a', 'b', 'c'];",
         },
         { kind: "loop", id: "iter", over: "items.data", body: ["pick"] },
-        // Returns a real value for every iteration → no warning.
         {
           kind: "transform",
           id: "pick",

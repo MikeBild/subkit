@@ -1,13 +1,3 @@
-// Role CRUD + role-permission management + user-role assignment:
-//   GET    /v1/rbac/roles
-//   GET    /v1/rbac/roles/:id
-//   POST   /v1/rbac/roles
-//   PATCH  /v1/rbac/roles/:id
-//   DELETE /v1/rbac/roles/:id
-//   POST   /v1/rbac/roles/:id/permissions
-//   DELETE /v1/rbac/roles/:id/permissions/:permission
-//   POST   /v1/rbac/users/:user_id/role
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -23,7 +13,6 @@ import { mapRoleError, RbacRoleDetailSchema, RbacRoleSchema, serializeRole } fro
 
 const RolePermissionParams = z.object({
   id: z.string().uuid(),
-  // Permission names carry a `:` (e.g. `workflow:read`) — plain string.
   permission: z.string(),
 });
 
@@ -386,14 +375,11 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 204);
   });
 
-  // ----- user role assignment -----
   app.openapi(assignUserRoleRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { user_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // Application-state check: the role must belong to this tenant or
-    // be a built-in. Schema validation cannot decide this.
     const role = await rolesSvc.getRole(db, principal.tenant_id, body.role_id);
     if (!role) throw new BadRequestError("role_id not found");
     const rows = await db
@@ -404,8 +390,6 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
           .where(and(eq(usersTable.tenant_id, principal.tenant_id), eq(usersTable.id, user_id)))
           .limit(1);
         if (current) {
-          // Admin-only routes read the role NAME; a custom role with every
-          // permission is still not "admin". The last one may not leave.
           await identity.assertAdminRemains(tx, {
             tenant_id: principal.tenant_id,
             user_id,

@@ -28,7 +28,6 @@ describe("extractMention", () => {
   });
 
   test("returns the mention at the cursor, not the end", () => {
-    // Cursor in the middle of `@foo` — should still pick up the query.
     expect(extractMention("see @foo and @bar", 8)).toEqual({ query: "foo", start: 4 });
   });
 

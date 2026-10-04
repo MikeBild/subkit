@@ -1,16 +1,10 @@
-// Execution read tools.
-
 import { z } from "@hono/zod-openapi";
 import { executionStatusEnum } from "../../../db/schema/index.ts";
 import type { ConversationTool } from "../index.ts";
 
-// The same filter surface `GET /v1/executions` takes, read through the same
-// list service: a window counted by `GET /v1/stats/executions` (and the
-// Übersicht's runs figure) lists the same runs here.
 const ListInput = z
   .object({
     limit: z.number().int().min(1).max(200).optional(),
-    /** Opaque `next_cursor` of the previous page, passed back verbatim. */
     cursor: z.string().min(1).max(128).optional(),
     workflow_id: z.string().uuid().optional(),
     status: z.enum(executionStatusEnum.enumValues).optional(),

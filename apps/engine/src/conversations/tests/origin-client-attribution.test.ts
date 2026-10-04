@@ -1,16 +1,3 @@
-// Per-client attribution of elicitation outcomes.
-//
-// The claim this pins: an elicitation can be attributed to the client that
-// opened its conversation, by joining `conversation_elicitations.conversation_id`
-// to `conversations.origin_client`. That join is the whole reason the column
-// exists — it is what turns an aggregate like "0 of 29 elicitations were ever
-// fulfilled" into a per-client matrix, which is the evidence a per-channel
-// decision has to rest on.
-//
-// Without a test, the column is only a claim: it would keep persisting nulls,
-// or the join would silently return one bucket, and the resulting matrix would
-// read as "every client behaves identically" — the exact wrong conclusion.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
@@ -28,7 +15,6 @@ afterAll(async () => {
   await ctx?.cleanup();
 }, 30_000);
 
-/** Open a conversation attributed to `origin`, then pause it on an elicitation. */
 async function seedPausedConversation(origin: string | null): Promise<string> {
   const created = await svc.createConversation(
     {
@@ -75,14 +61,10 @@ describe("elicitation outcomes are attributable to the originating client", () =
     expect(byConversation.get(browserB)).toBe("mcp_oauth:client-browser-b");
     expect(byConversation.get(codingAgent)).toBe("api_key:key-coding-agent");
 
-    // The property that makes the matrix meaningful: two clients that a single
-    // person authorised do NOT collapse into one row.
     expect(byConversation.get(browserA)).not.toBe(byConversation.get(browserB));
   });
 
   test("a conversation opened without a channel credential records null, not a placeholder", async () => {
-    // A REPL or internal caller has no registered client. Inventing a value
-    // would put a channel into the matrix that never connected.
     const id = await seedPausedConversation(null);
     const [row] = await ctx.testDb.db
       .select({ origin_client: conversations.origin_client })

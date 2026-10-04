@@ -1,6 +1,3 @@
-// Promotion-rule tests: which HTTP response bodies become engine-managed
-// files instead of being UTF-8-decoded. Pure decision matrix, no I/O.
-
 import { describe, expect, test } from "bun:test";
 import {
   filenameFromResponse,
@@ -64,10 +61,10 @@ describe("shouldPromoteToFile", () => {
 
   test("size threshold promotes oversized text", () => {
     const big = Buffer.alloc(PROMOTE_SIZE_THRESHOLD_BYTES + 1, 65);
-    expect(promote({ content_type: "text/plain", bytes: big })).toBe(false); // text type is trusted
-    expect(promote({ content_type: null, bytes: big })).toBe(true); // unknown + oversized
+    expect(promote({ content_type: "text/plain", bytes: big })).toBe(false);
+    expect(promote({ content_type: null, bytes: big })).toBe(true);
     const atLimit = Buffer.alloc(PROMOTE_SIZE_THRESHOLD_BYTES, 65);
-    expect(promote({ content_type: null, bytes: atLimit })).toBe(false); // boundary: not over
+    expect(promote({ content_type: null, bytes: atLimit })).toBe(false);
   });
 });
 

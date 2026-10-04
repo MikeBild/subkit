@@ -1,26 +1,3 @@
-// User story: As an enduser (portal user with the `enduser` built-in
-// role), I can chat against approved workflows and read skills, but I
-// cannot commit drafts or read the audit log.
-//
-// Acceptance criteria:
-//
-//   AC1. An enduser can POST /v1/conversations — conversation:write
-//        is in the enduser role grant.
-//   AC2. An enduser can GET /v1/skills — skill:read joined the enduser
-//        grant when the read-only chat channel shipped: skills are
-//        read-only reference material, and enduser-facing surfaces
-//        answer "which skills exist / what does <skill> say" directly.
-//        (Historically this AC asserted the inverse; deliberate product
-//        reversal, not a drift.)
-//   AC3. An enduser is denied POST /v1/audit-log/... (audit:read not
-//        granted).
-//   AC4. An enduser cannot PATCH another member's conversation
-//        because the route enforces conversation:write + the service
-//        layer checks tenant_id (no cross-tenant surface).
-//   AC5. Endusers do NOT get conversation:commit, so a
-//        `POST /v1/rbac/can` probe for (enduser_user_id,
-//        conversation:commit) returns allow=false.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
@@ -92,7 +69,6 @@ describe("journey: sk-cli enduser dashboard", () => {
   });
 
   test("AC4: enduser can PATCH their own conversation (conversation:write)", async () => {
-    // Create a new conversation owned by the enduser.
     const create = await endFetch("/v1/conversations", {
       method: "POST",
       body: JSON.stringify({ initial_message: "for patching" }),

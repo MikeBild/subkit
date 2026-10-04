@@ -1,5 +1,3 @@
-// Shared helpers, constants, and schemas for MCP OAuth 2.1 route files.
-
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
@@ -14,8 +12,6 @@ import { PayloadTooLargeError } from "../../errors.ts";
 
 export const SESSION_COOKIE = "subkit_session";
 export const CSRF_ALG = "HS256";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 export function parseCookies(header: string | null): Record<string, string> {
   if (!header) return {};
@@ -34,9 +30,7 @@ export function deriveSessionSecret(): Uint8Array {
   let fromConfig = "";
   try {
     fromConfig = (getConfig().auth.session.secret ?? "").trim();
-  } catch {
-    /* loader not initialised */
-  }
+  } catch {}
   if (fromConfig.length > 0) {
     return new TextEncoder().encode(fromConfig);
   }
@@ -76,8 +70,6 @@ export async function resolveSession(req: Request): Promise<SessionPrincipal | n
   const payload = await verifySessionCookie(secret, jwt);
   if (!payload) return null;
 
-  // Quick validity check on session row (revoked / expired).
-  // We do a lightweight read here — the full sliding-TTL logic lives in oidc.ts.
   return payload;
 }
 
@@ -104,20 +96,12 @@ export async function verifyCsrfToken(
   }
 }
 
-// Compute intersection of requested scopes vs supported scopes.
-// Returns "" for an empty intersection — callers must handle that case.
 export function intersectScopes(requested: string, supported: string[]): string {
   const parts = requested.split(" ").filter(Boolean);
   const valid = parts.filter((s) => supported.includes(s));
   return [...new Set(valid)].join(" ");
 }
 
-// The OAuth scope strings are 1:1 with RBAC permission names.
-//
-// `metrics:read` is a full member of the vocabulary, not an afterthought: a
-// person connecting a monitoring system must be able to grant "read the
-// operational counters" and nothing else. It is read-only — it gates
-// `GET /metrics` and no other route.
 export const MCP_SCOPE_PERMISSIONS = [
   "mcp:read",
   "mcp:authoring",
@@ -127,10 +111,6 @@ export const MCP_SCOPE_PERMISSIONS = [
 
 export { METRICS_SCOPE } from "../../../auth/index.ts";
 
-// MCP scopes the principal is permitted to hold — a token can never
-// carry a scope its owner lacks. Derived from the RBAC catalog via
-// `can()` so a custom role granted `mcp:*` permissions behaves exactly
-// like the built-in roles; the rbac seed is the single source of truth.
 export async function permittedMcpScopes(
   db: Db,
   tenantId: string,
@@ -147,20 +127,12 @@ export async function permittedMcpScopes(
   };
   const allowed: string[] = [];
   for (const permission of MCP_SCOPE_PERMISSIONS) {
-    // `quiet: true` — this loop probes every offerable scope purely
-    // to enumerate which the role holds. Every "no" is an expected,
-    // routine outcome (a `mcp:read` role legitimately lacks `mcp:admin`)
-    // and must not WARN-log as if it were an enforcement failure. The
-    // deny metric still fires.
     const decision = await can(db, { tenant_id: tenantId, principal, permission, quiet: true });
     if (decision.allow) allowed.push(permission);
   }
   return allowed;
 }
 
-// A session JWT only proves the cookie was issued by us. Revocation
-// cannot be carried in the stateless JWT, so every consent-flow step
-// (authorize render AND decision submit) must re-read the session row.
 export async function sessionIsLive(db: Db, sessionId: string, tenantId: string): Promise<boolean> {
   const rows = await db
     .select({
@@ -180,8 +152,6 @@ export async function sessionIsLive(db: Db, sessionId: string, tenantId: string)
   if (row.last_seen_at && now - row.last_seen_at.getTime() > 8 * 60 * 60 * 1000) return false;
   if (!row.last_seen_at && row.expires_at.getTime() <= now) return false;
 
-  // Keep the sliding window alive only after the persisted session has passed
-  // every revocation and expiry check. The absolute cap is never extended.
   await db
     .update(sessions)
     .set({ last_seen_at: new Date(now), expires_at: new Date(now + 8 * 60 * 60 * 1000) })
@@ -198,7 +168,6 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-// OAuth error redirect helper
 export function buildErrorRedirect(
   redirectUri: string,
   error: string,
@@ -210,14 +179,12 @@ export function buildErrorRedirect(
   return Response.redirect(url.toString(), 302);
 }
 
-// Form-encoded body parser — rejects bodies over 64KB
 export const FORM_BODY_MAX_BYTES = 64 * 1024;
 export async function parseFormBody(req: Request): Promise<URLSearchParams> {
   const contentLength = req.headers.get("content-length");
   if (contentLength !== null && parseInt(contentLength, 10) > FORM_BODY_MAX_BYTES) {
     throw new PayloadTooLargeError("request body too large");
   }
-  // Read with a byte cap to guard against missing/spoofed Content-Length
   const buf = await req.arrayBuffer();
   if (buf.byteLength > FORM_BODY_MAX_BYTES) {
     throw new PayloadTooLargeError("request body too large");
@@ -225,10 +192,6 @@ export async function parseFormBody(req: Request): Promise<URLSearchParams> {
   const text = new TextDecoder().decode(buf);
   return new URLSearchParams(text);
 }
-
-// ── Request body schemas ──────────────────────────────────────────────────────
-// Form-encoded endpoints are raw Hono handlers (not @hono/zod-openapi), but
-// their bodies are still Zod-validated at the boundary per AGENTS.md.
 
 export const AuthorizeQuerySchema = z.object({
   client_id: z.string().min(1),
@@ -249,11 +212,9 @@ export const TokenRequestSchema = z.object({
   client_id: z.string().optional(),
   refresh_token: z.string().max(512).optional(),
   scope: z.string().optional(),
-  // RFC 8693 token exchange (API key → short-lived Bearer token).
   subject_token: z.string().max(512).optional(),
   subject_token_type: z.string().max(256).optional(),
   requested_token_type: z.string().max(256).optional(),
-  // SubKit extension: requested lifetime in seconds (capped at 3600).
   ttl: z.union([z.string().max(8), z.number()]).optional(),
 });
 
@@ -269,9 +230,5 @@ export const DecisionRequestSchema = z.object({
   redirect_uri: z.string().default(""),
   resource: z.string().default(""),
   state: z.string().default(""),
-  // The consent form posts one `scope` field per selected checkbox. The handler
-  // reads the authoritative multi-value list via URLSearchParams.getAll("scope");
-  // this entry exists so building the schema object from a collapsed map (which
-  // keeps only the last value) does not reject the body when scope is present.
   scope: z.union([z.string(), z.array(z.string())]).optional(),
 });

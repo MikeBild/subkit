@@ -1,13 +1,3 @@
-// HTTP-layer coverage for the
-// `POST /v1/conversations/:id/fork-from-message/:message_id` route:
-//
-//   - admin api key with conversation:write → 200 + audit row written
-//     under CONVERSATION_FORKED with metadata
-//   - member api key without conversation:write/workflow:write → 403
-//     + audit denied
-//   - cross-tenant source conversation → 404
-//   - anchor message that doesn't exist → 404
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -41,7 +31,6 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 beforeAll(async () => {
   srv = await createHttpTestServer("conv-fork");
 
-  // Seed a conversation with two messages so we have a valid anchor.
   const [c] = await srv.db
     .insert(conversations)
     .values({ tenant_id: srv.tenantId, status: "active", title: "fork-source" })
@@ -57,11 +46,6 @@ beforeAll(async () => {
       content: { text: "first" },
     })
     .returning();
-  // Yield two macrotask ticks so the second message lands with a
-  // strictly-later created_at than the first. Postgres' defaultNow()
-  // resolves at insert-time per row; we don't care about the
-  // wall-clock magnitude, only that ordering is stable. Avoids a
-  // wall-clock setTimeout (flagged by check:determinism).
   await new Promise<void>((r) => setImmediate(r));
   await new Promise<void>((r) => setImmediate(r));
   const [m1] = await srv.db
@@ -73,16 +57,9 @@ beforeAll(async () => {
       content: { text: "second" },
     })
     .returning();
-  // Anchor at message 1 (the assistant turn). Fork should copy 2 rows.
   anchor_message_id = m1!.id;
   void m0;
 
-  // A principal whose role does NOT grant conversation:write or
-  // workflow:write — used to verify the 403 RBAC denial. Built-in
-  // `member` / `enduser` / `portal_token_user` all carry
-  // conversation:write, so we use the `metrics_scraper` role
-  // (METRICS_SCRAPER_PERMISSIONS = ["metrics:read"] in rbac/seed.ts).
-  // System accounts can be assigned any role directly via role_id.
   const [scraperRole] = await srv.db
     .select({ id: roles.id })
     .from(roles)
@@ -107,7 +84,6 @@ beforeAll(async () => {
   });
   memberKey = key.plaintext;
 
-  // A second tenant + conversation for the cross-tenant test.
   const [otherTenant] = await srv.db
     .insert(tenants)
     .values({ slug: "t-fork-other", display_name: "other" })
@@ -177,10 +153,6 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   });
 
   test("cross-tenant source conversation → 404", async () => {
-    // Admin from the primary tenant tries to fork a conversation that
-    // belongs to a different tenant. The route handler reads
-    // principal.tenant_id, so the lookup is naturally tenant-scoped
-    // and returns NotFound regardless of caller perms.
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${otherTenantConvId}/fork-from-message/${anchor_message_id}`,
       { method: "POST", headers: adminHeaders() },
@@ -196,16 +168,7 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     expect(res.status).toBe(404);
   });
 
-  // The service-layer test at
-  // `apps/engine/src/conversations/service/fork.test.ts` covers the
-  // memory + loaded_skills carry-over, but the HTTP route is the
-  // operator-facing surface. Pin the same contract here so a route-
-  // layer regression that drops either field can't slip past.
   test("admin → fork carries memory and loaded_skills from the source row", async () => {
-    // Seed a fresh source conversation tagged with both the memory
-    // text and the loaded_skills array. Use a dedicated row so the
-    // earlier "fork-source" conversation's empty defaults aren't
-    // observed.
     const [src] = await srv.db
       .insert(conversations)
       .values({
@@ -250,9 +213,6 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
   });
 
   test("admin → fork audit row records tool_calls_omitted + elicitations_omitted", async () => {
-    // The audit row carries the
-    // documented side-effect omissions so log-only incident readers
-    // can reconstruct what the fork did NOT bring across.
     const res = await fetch(
       `${srv.baseUrl}/v1/conversations/${conversation_id}/fork-from-message/${anchor_message_id}`,
       { method: "POST", headers: adminHeaders() },
@@ -269,7 +229,6 @@ describe("POST /v1/conversations/:id/fork-from-message/:message_id (RBAC + tenan
     const meta = audits[0]!.metadata as Record<string, unknown>;
     expect(meta.tool_calls_omitted).toBe(true);
     expect(meta.elicitations_omitted).toBe(true);
-    // HTTP entry tags request_source: "api".
     expect(meta.request_source).toBe("api");
   });
 });

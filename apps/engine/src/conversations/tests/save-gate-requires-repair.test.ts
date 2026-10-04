@@ -1,11 +1,3 @@
-// Regression: the commit gate must distinguish informational
-// warnings (transform_dropped_fields on an intentional projection) from
-// real bugs (requires_repair: true). Pre-fix the gate counted ANY
-// warning as "unacknowledged" and refused auto-persist, forcing the
-// LLM to re-issue save_workflow_draft manually — producing the misleading
-// `audit approval.approved result:denied reason:auto_persist_on_confirmation`
-// row plus a fragile recovery path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -57,8 +49,6 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    // The commit gate authorizes on `commit_intent.kind` — the
-    // authoritative field — not the cosmetic top-level `kind`.
     input: {
       kind: "save_workflow_draft",
       summary: "commit",
@@ -75,10 +65,6 @@ function makeDraft(opts: {
   previewRequiresRepair: boolean;
   warningsCount: number;
 }): DraftDocument {
-  // Single transform step — no connector required, so the validation
-  // gate passes and the requires_repair gate is the next thing the
-  // commit logic evaluates. Slug is unique per call so consecutive
-  // tests don't trip the slug-conflict gate.
   draftCounter += 1;
   const slug = `gate-test-${draftCounter}`;
   const base: DraftDocument = {
@@ -126,9 +112,6 @@ function makeDraft(opts: {
 
 describe("commit gate · requires_repair", () => {
   test("commit succeeds when execution requires_repair is FALSE even with warnings", async () => {
-    // The session 16d6e46a scenario: run produced 2 informational
-    // warnings (transform_dropped_fields), which we now classify as
-    // NOT requiring repair. The gate should let auto-persist through.
     const [conv] = await ctx.testDb.db
       .insert(conversations)
       .values({ tenant_id: ctx.tenant_id, status: "active" })
@@ -144,9 +127,6 @@ describe("commit gate · requires_repair", () => {
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
       {},
     );
-    // Gate is open: any failure here is from downstream (e.g. the
-    // commit-actually-runs path) — but the partial_success /
-    // warnings_unacknowledged gates must NOT be the failure cause.
     if (!result.ok) {
       const data = result.data as { error_code?: string };
       expect(data.error_code).not.toBe("partial_success_not_acknowledged");
@@ -172,8 +152,6 @@ describe("commit gate · requires_repair", () => {
     );
     expect(result.ok).toBe(false);
     const data = result.data as { error_code?: string };
-    // First gate hit is the partial_success one — it has the same
-    // require-repair predicate now and fires earlier.
     expect(["partial_success_not_acknowledged", "warnings_unacknowledged"]).toContain(
       data.error_code ?? "",
     );
@@ -188,7 +166,7 @@ describe("commit gate · requires_repair", () => {
     await seedApprovedConfirm(conv.id);
     const draft = makeDraft({
       executionRequiresRepair: true,
-      previewRequiresRepair: false, // fresher preview cleared the flag
+      previewRequiresRepair: false,
       warningsCount: 0,
     });
     const result = await saveWorkflowDraftTool.execute(

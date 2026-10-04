@@ -1,13 +1,3 @@
-// Pins that the top-level `workflows.description` column is seeded/synced
-// from the DAG's `description` on create + update.
-//
-// v6.4.0 made the column *settable* via update_workflow, but the COMMIT path
-// (build_workflow → createWorkflow / updateWorkflow) never copied
-// def.description into the column — so every freshly built workflow had a NULL
-// top-level description and authors had to fix it up with a manual
-// edit_workflow_patch (SUBKIT_BUGS follow-up: "description constantly missing").
-// These tests lock the auto-sync.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

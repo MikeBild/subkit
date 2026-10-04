@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Thin wrapper installed as `engine` and `sk` on PATH. Docker exec inherits
-# the configured env directly; optional *_FILE bindings are resolved without
-# ever persisting their plaintext in the container filesystem.
-#
-# It dispatches to the real compiled binary by the name it was invoked as
-# (engine -> engine.bin, sk -> sk.bin).
 set -euo pipefail
 
 if [ -n "${DATABASE_URL_FILE:-}" ] && [ -r "$DATABASE_URL_FILE" ]; then

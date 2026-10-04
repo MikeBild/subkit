@@ -1,10 +1,3 @@
-// `sk schedules` — manage scheduled workflow runs.
-//
-// Full lifecycle from the CLI: list, create (upserts the workflow's
-// single schedule), update, pause/resume, delete. Thin wrappers over
-// the /v1/schedules HTTP surface; the reconciler picks up any change
-// within its 60s pass.
-
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, emitOne } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -34,7 +27,6 @@ const listCommand = defineCommand({
         args.workflow ? { workflow_id: args.workflow } : {},
       );
       emitList(!!args.json, SCHEDULE_COLUMNS, schedules as unknown as Record<string, unknown>[]);
-      // Schedules are a bounded catalog — the list IS complete; say so.
       if (!args.json) {
         process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
       }
@@ -176,7 +168,6 @@ export const schedulesCommand = defineCommand({
     resume: pauseResumeCommand(false),
     delete: deleteCommand,
   },
-  // Bare `sk schedules` behaves like `sk schedules list` — the common ask.
   async run(ctx) {
     if (ctx.args._.length === 0) {
       await listCommand.run?.({ args: { workflow: undefined, json: false, _: [] } } as never);

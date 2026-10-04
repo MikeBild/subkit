@@ -12,37 +12,14 @@ import {
 
 export type ReportDeliveryBoundaries = Record<string, ReportDeliveryBoundary>;
 
-/**
- * What the profile found, and — when it found nothing for a step — enough to
- * say WHY.
- *
- * One refusal code used to answer three different situations: no preparation
- * run exists, one exists and reached the step without a usable observation, and
- * one exists that never reached the step at all. The third is the case a person
- * cannot act on without being told, because the advice for it ("run a
- * preparation") is the one thing that cannot work: the step sits behind a
- * branch whose condition depends on the writes a preparation holds back.
- *
- * Absent when the boundaries came from a granted authority — there is no gap to
- * explain, and inventing one would report a refusal on a healthy step.
- */
-/** One held capture's verdict, with the boundary it observed when it was ok. */
 export type ReportDeliveryObservation =
   | { ok: true; boundary: ReportDeliveryBoundary }
   | { ok: false; reason: ReportMessageRefusal };
 
 export interface ReportDeliveryEvidence {
   boundaries: ReportDeliveryBoundaries;
-  /** False when no preparation run exists for this version and environment. */
   prepared?: boolean;
-  /** Step ids the preparation run actually ran, iteration suffix stripped. */
   reached?: ReadonlySet<string>;
-  /**
-   * What the preparation run's held captures of each step found, one entry per
-   * capture (a loop body captures once per iteration). A capture that predates
-   * the recording contributes nothing, which is no evidence either way. Absent
-   * altogether when the boundaries came from a granted authority.
-   */
   inspections?: ReadonlyMap<string, ReadonlyArray<ReportDeliveryObservation>>;
 }
 
@@ -51,7 +28,6 @@ const InspectionRecordSchema = z.union([
   z.object({ ok: z.literal(false), reason: z.enum(REPORT_MESSAGE_REFUSALS) }).strict(),
 ]);
 
-/** The verdict a held capture recorded, or null when it recorded none. */
 function recordedInspection(extras: unknown): ReportDeliveryInspectionRecord | null {
   const parsed = InspectionRecordSchema.safeParse(
     (extras as { report_delivery_inspection?: unknown } | undefined)?.report_delivery_inspection,
@@ -59,8 +35,6 @@ function recordedInspection(extras: unknown): ReportDeliveryInspectionRecord | n
   return parsed.success ? parsed.data : null;
 }
 
-/** Evidence for repair diagnosis, without credentials or message contents.
- * A succeeded held run can still contain unexecuted dependent steps. */
 export async function inspectHeldPreviewEvidence(
   input: {
     tenant_id: string;
@@ -110,18 +84,12 @@ export async function inspectHeldPreviewEvidence(
         report_boundary_observed: ReportDeliveryBoundarySchema.safeParse(
           extras?.report_delivery_proposal,
         ).success,
-        // The held step's own verdict under the same name it is stored with,
-        // so a repair starts at the rule the message broke instead of at a
-        // guess about the MIME.
         ...(inspection ? { report_delivery_inspection: inspection } : {}),
       };
     }),
   };
 }
 
-/** Existing human-approved boundaries survive changing report content and
- * preview retention. Without a grant, derive a proposal from an exact-version
- * successful held run. This read never executes or authorizes anything. */
 export async function proposeReportDeliveryBoundaries(
   input: {
     tenant_id: string;
@@ -154,11 +122,6 @@ export async function proposeReportDeliveryBoundaries(
         eq(executions.workflow_id, input.workflow_id),
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
-        // Deliberately NOT `status = 'succeeded'`. A preparation run whose
-        // LATER step failed still observed the steps it reached, and those
-        // observations are exactly as good — the evidence is per step, so the
-        // filter belongs per step. Requiring the whole run to succeed threw
-        // away the only evidence a partially-reaching run ever produces.
         eq(executions.hold_writes, true),
       ),
     )
@@ -180,7 +143,6 @@ export async function proposeReportDeliveryBoundaries(
   const reached = new Set<string>();
   const inspections = new Map<string, ReportDeliveryObservation[]>();
   for (const step of steps) {
-    // A loop body records `send[0]`, `send[1]`, … — the same step.
     const key = step.key.replace(/\[[0-9]+\]$/, "");
     if (step.status === "succeeded") reached.add(key);
     const metadata = step.meta as {

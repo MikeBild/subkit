@@ -13,12 +13,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { type ChatText, textAnswerAcceptable } from "./chat-text";
 
-/**
- * A free-text question, shown where the reader reads: the question itself, a
- * field for the answer and one action. It used to be a collapsed tool row and
- * a placeholder in the composer — the question was never on screen, and the
- * reader's next message, written without seeing it, was taken as the answer.
- */
 export function ChatTextCard({
   text,
   busy,

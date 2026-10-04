@@ -1,15 +1,3 @@
-// Integration: headless --attach flow via runHeadless.
-//
-// Calls runHeadless directly (no process spawn) with a controlled
-// fetch mock that simulates: create conversation, upload file, link
-// file, append message, stream SSE done frame.
-//
-// Asserts:
-//   - exit 0 when all steps succeed
-//   - stream-json output emits {"file_attached": fid, "filename": ...}
-//   - unreadable path → exitCode 1 with ATTACH_FAILED in stream-json
-//   - text mode: attaches silently, assistant response present in stdout
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -107,15 +95,12 @@ describe("runHeadless --attach", () => {
       fetchCount++;
       const url = String(_input);
 
-      // 1. POST /v1/conversations (create, no initial_message because we attach)
       if (fetchCount === 1) return makeConvResponse();
-      // 2. POST /v1/files/inline
       if (url.includes("/v1/files/inline"))
         return new Response(JSON.stringify(makeFileRow()), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
-      // 3. POST /v1/files/<fid>/links
       if (url.includes("/links"))
         return new Response(
           JSON.stringify({
@@ -129,7 +114,6 @@ describe("runHeadless --attach", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
-      // 4. POST /v1/conversations/<id>/messages streams the turn after attach.
       if (url.includes("/messages")) return makeStreamResponse("File received!");
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof globalThis.fetch;
@@ -156,7 +140,6 @@ describe("runHeadless --attach", () => {
       .filter(Boolean)
       .map((l) => JSON.parse(l) as Record<string, unknown>);
 
-    // First output line must be the file_attached event.
     const fileAttached = lines.find((l) => "file_attached" in l);
     expect(fileAttached).toBeDefined();
     expect(fileAttached?.file_attached).toBe(FID);
@@ -238,7 +221,6 @@ describe("runHeadless --attach", () => {
 
     expect(result.exitCode).toBe(0);
     expect(stdout.join("")).toContain("Quiet success!");
-    // In text mode the file_attached event is NOT emitted to stdout.
     expect(stdout.join("")).not.toContain("file_attached");
   });
 });

@@ -1,15 +1,3 @@
-// `sk chat` — register external chat spaces (Google Chat / Slack) with
-// the engine, replacing raw curl to POST /v1/chat/workspaces.
-//
-// The star verb is `install-space`: in a TTY with no args it lists the
-// spaces you just added the app to (GET /v1/chat/spaces/pending) and
-// installs the picked one with your verified platform id auto-filled —
-// zero typed ids. Google Chat is live; Slack degrades to a manual
-// `<platform> <workspace_id> --bot-token …` path (its per-workspace
-// token model carries no pre-install discovery signal). This surface is
-// distinct from `sk install slack|teams`, which wires OUTBOUND
-// notification webhooks — a different resource.
-
 import * as prompts from "@clack/prompts";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
@@ -77,20 +65,14 @@ const installSpaceCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     try {
-      // Pending candidates key the friendly path: they carry the space
-      // AND the caller's verified installer id. Fetched once; used both
-      // to power the no-args picker and to auto-fill `--as`.
       let pending: PendingChatSpaceWire[] = [];
       try {
         pending = (await client.listPendingChatSpaces()).items;
       } catch {
-        // Discovery is best-effort (e.g. caller lacks chat_workspace:read
-        // or nothing pending) — fall through to the manual path.
         pending = [];
       }
       const byWorkspace = new Map(pending.map((c) => [c.workspace_id, c]));
 
-      // Resolve the target space id: explicit arg, else pick a pending one.
       let workspaceId = args.workspace_id;
       if (!workspaceId) {
         if (pending.length === 0) {
@@ -112,7 +94,6 @@ const installSpaceCommand = defineCommand({
 
       const candidate = byWorkspace.get(workspaceId);
 
-      // Platform: candidate wins; else the arg; else prompt.
       let platform = candidate?.platform ?? (args.platform as ChatPlatform | undefined);
       if (!platform) {
         const picked = await prompts.select({
@@ -126,7 +107,6 @@ const installSpaceCommand = defineCommand({
         platform = picked as ChatPlatform;
       }
 
-      // Installer id: candidate (verified) or the --as override.
       const installer = args.as ?? candidate?.installer_platform_user_id;
       if (!installer) {
         throw new Error(
@@ -135,7 +115,6 @@ const installSpaceCommand = defineCommand({
         );
       }
 
-      // Slack needs a per-workspace bot token; Google omits it.
       let botToken = args["bot-token"];
       if (platform === "slack" && !botToken) {
         const entered = await prompts.text({

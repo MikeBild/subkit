@@ -1,14 +1,3 @@
-// HTTP integration tests for GET /v1/patch-candidates list semantics.
-//
-// Proves the decisions-queue contract:
-//   - `total` is the exact matching-row count, not the capped page length
-//   - `workflow_name` joins from workflows (null when the row is gone)
-//   - `order=asc` puts the oldest candidate first inside the page
-//   - `connector_id` / `endpoint_key` — columns on `patch_candidates` that
-//     were never serialized — round-trip on both the list AND the
-//     single-get, and are explicit `null` (not omitted) when the signal
-//     is workflow-scoped
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { connectors, patchCandidates, workflows } from "../../db/schema/index.ts";
@@ -60,7 +49,6 @@ beforeAll(async () => {
   alphaId = alpha!.id;
   betaId = beta!.id;
 
-  // Five staggered candidates on Alpha — index 4 is the oldest.
   const rows = await srv.db
     .insert(patchCandidates)
     .values(
@@ -76,10 +64,6 @@ beforeAll(async () => {
     .returning();
   oldestId = rows[4]!.id;
 
-  // One candidate on Beta whose workflow row we then remove to prove the
-  // LEFT JOIN degrades to a null name. The FK is ON DELETE CASCADE, so a
-  // dangling workflow_id is unreachable through normal writes — drop the
-  // constraint in this disposable per-suite DB to manufacture the state.
   const [dangling] = await srv.db
     .insert(patchCandidates)
     .values({
@@ -97,10 +81,6 @@ beforeAll(async () => {
   );
   await srv.db.delete(workflows).where(eq(workflows.id, betaId));
 
-  // An endpoint-scoped candidate — the drift signal's anchor endpoint —
-  // carries both `connector_id` and `endpoint_key`. Alpha's other rows
-  // above set neither, so they double as the "workflow-scoped, no
-  // endpoint anchor" fixture.
   const [connector] = await srv.db
     .insert(connectors)
     .values({
@@ -123,9 +103,6 @@ beforeAll(async () => {
       endpoint_key: "POST /v1/widgets",
       classification: "safe",
       status: "proposed",
-      // Newer than every alpha row above (whose oldest sits at
-      // now - 300_000) so it never displaces `oldestId` — this fixture is
-      // only about connector_id/endpoint_key round-tripping, not ordering.
       created_at: new Date(now - 10_000),
       diff: { proposal: { description: "Endpoint-anchored fix" } },
     })
@@ -167,7 +144,6 @@ describe("GET /v1/patch-candidates", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
     expect(body.items.length).toBe(2);
-    // 5 alpha + 1 dangling(beta) + 1 endpoint-scoped(alpha) = 7.
     expect(body.total).toBe(7);
     expect(body.total).toBeGreaterThan(body.items.length);
   });
@@ -178,7 +154,6 @@ describe("GET /v1/patch-candidates", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
-    // 5 original alpha candidates + the endpoint-scoped one, also on alpha.
     expect(body.total).toBe(6);
   });
 
@@ -201,8 +176,6 @@ describe("GET /v1/patch-candidates", () => {
     expect(ascBody.items[0]?.id).toBe(oldestId);
     expect(ascBody.total).toBe(7);
 
-    // limit=7 covers every seeded row so the oldest is guaranteed to be
-    // the last element of the default (desc) page.
     const desc = await fetch(`${srv.baseUrl}/v1/patch-candidates?limit=7`, { headers: headers() });
     const descBody = (await desc.json()) as ListBody;
     expect(descBody.items.at(-1)?.id).toBe(oldestId);
@@ -237,9 +210,6 @@ describe("GET /v1/patch-candidates", () => {
   });
 
   test("a workflow-scoped candidate with neither returns explicit null, not an omitted field", async () => {
-    // The oldest alpha candidate never set connector_id/endpoint_key —
-    // a client distinguishing "no endpoint" from "field absent" needs the
-    // keys to be present with a null value, not missing from the payload.
     const getRes = await fetch(`${srv.baseUrl}/v1/patch-candidates/${oldestId}`, {
       headers: headers(),
     });

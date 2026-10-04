@@ -1,6 +1,3 @@
-// list_skills — returns the applicable skills for the conversation
-// scope (global + current connector + current workflow).
-
 import { z } from "@hono/zod-openapi";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { skillAudienceForAuthoringMode } from "../../skills/types.ts";
@@ -13,8 +10,6 @@ export const listSkillsTool: ConversationTool = {
   description: "List applicable skills for the current conversation scope.",
   inputSchema,
   category: "tenant_read" as const,
-  // Chat-surface sibling of list_all_skills; gate identically so a
-  // principal without skill:read cannot enumerate skills via either tool.
   permission: { action: "skill:read", resourceType: "skill" },
   async execute(ctx, _args): Promise<ToolResult> {
     const skills = await retrieveApplicableSkills(

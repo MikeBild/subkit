@@ -1,28 +1,9 @@
-// Unit tests for `OAuthApprovalInputSchema` — the shared `ask_user_confirm`
-// elicitation `input` carrier shape for the OAuth authorization case.
-//
-// The schema is a contract pinned between two sides:
-//   - the engine producer (`authenticate-oauth.ts#oauthApprovalInput`),
-//     which builds the carrier `input`, and
-//   - the CLI consumer (`apps/sk/src/repl.ts#extractOAuthUrl`), which
-//     keys on it to auto-open the browser.
-//
-// These tests assert the schema accepts the exact producer output and
-// — via `.passthrough()` — does not reject an unrelated `ask_user_confirm`
-// payload outright (a non-OAuth confirm flows through `extractOAuthUrl`
-// too; it must fail the `kind` / URL-field checks, not blow up parsing).
-
 import { describe, expect, test } from "bun:test";
 import {
   OAUTH_AUTHORIZATION_URL_FIELD,
   OAuthApprovalInputSchema,
 } from "../elicitation-constants.ts";
 
-/**
- * Reproduce the exact object `authenticate-oauth.ts#oauthApprovalInput`
- * hands to `OAuthApprovalInputSchema.parse`. If the producer's shape
- * drifts, this fixture must drift with it — that is the contract.
- */
 function producerOutput(): Record<string, unknown> {
   return {
     kind: "external_write",
@@ -64,11 +45,6 @@ describe("OAuthApprovalInputSchema — accepts the producer output", () => {
     ).toBe(false);
   });
 
-  // Defence in depth at the producer: a connector with a hostile
-  // `oauth.issuer_url` could make the engine synthesize a non-http(s)
-  // `authorization_url`. The `^https?://` refinement rejects it before
-  // `oauthApprovalInput` writes the elicitation row — the CLI's
-  // `BrowserUrlSchema` is the second line, not the only one.
   test("a javascript: authorization_url is rejected", () => {
     const r = OAuthApprovalInputSchema.safeParse({
       ...producerOutput(),
@@ -88,10 +64,6 @@ describe("OAuthApprovalInputSchema — accepts the producer output", () => {
 });
 
 describe("OAuthApprovalInputSchema — rejects a non-OAuth ask_user_confirm shape", () => {
-  // A plain `ask_user_confirm` pause (no OAuth) carries neither the
-  // `external_write` kind nor an `authorization_url` field. It must fail
-  // the `kind` discriminator — `extractOAuthUrl` relies on this to
-  // distinguish an OAuth pause from any other confirm.
   test("a generic confirm payload fails the kind discriminator", () => {
     const generic = {
       kind: "tool_confirmation",

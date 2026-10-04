@@ -1,6 +1,3 @@
-// /config and /usage deep-link into the SettingsModal Config / Usage
-// tab. The legacy 4-field /config form moved to /config-form.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../config.ts";
@@ -88,7 +85,6 @@ describe("/config-form — the 4-field settings prompt is reachable", () => {
     expect(spec?.kind).toBe("config-form");
     if (spec?.kind === "config-form") {
       expect(spec.title).toBe("config-form");
-      // The 4 fields stay intact.
       expect(spec.fields.map((f) => f.name)).toEqual([
         "model",
         "includeMemoryFile",
@@ -106,7 +102,6 @@ describe("/profile — opens the ProfileCommand SinglePane when no positional ar
     expect(out).toBeNull();
     expect(panes.length).toBe(1);
     expect(panes[0]?.kind).toBe("profile");
-    // Not a deep-link into the (gone) Profile tab.
     expect(panes[0]).not.toEqual({ kind: "settings", initialTab: "Profile" });
   });
 });

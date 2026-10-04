@@ -6,23 +6,12 @@ export type WorkflowAuthority = components["schemas"]["WorkflowExecutionAuthorit
 export type WorkflowAuthorityList = components["schemas"]["WorkflowExecutionAuthorityList"];
 export type WorkflowAuthorityPreview = components["schemas"]["WorkflowAuthorityPreview"];
 
-/** What one review request asked about. */
 export type AuthorityReviewIdentity = {
   workflowId: string;
   versionId: string;
   environment: "dev" | "prod";
 };
 
-/**
- * Whether a review answer may be shown.
- *
- * `stale`: a newer request was started (or the dialog closed) after this one —
- * its answer is for a question nobody is asking any more, and showing it would
- * put a review on screen that the confirm button then refuses forever.
- * `mismatch`: the latest request, but the answer is about a different workflow,
- * version or environment than it asked. Never approvable (`authorityGrantInput`
- * refuses it); the dialog shows it with the re-check as the way out.
- */
 export function acceptReview(
   latestToken: number,
   token: number,
@@ -42,9 +31,7 @@ export function acceptReview(
 export function authorityGrantInput(
   preview: WorkflowAuthorityPreview,
   expected: { workflowId: string; versionId: string; environment: "dev" | "prod" },
-  /** Null: no run limit. */
   runs: string | null,
-  /** Null: no end date. Both null: the approval stands until it is revoked. */
   hours: string | null,
   now: number,
 ) {
@@ -97,10 +84,8 @@ export const AUTHORITY_EFFECT_KEYS = {
   TranslationKey
 >;
 
-/** A local clock may narrow an observed grant, but must never extend it. */
 export function observedAuthorityState(authority: WorkflowAuthority, now: number) {
   if (authority.state !== "approved") return authority.state;
-  // No end date and no run limit are not "unknown": they are unlimited.
   const until = authority.valid_until === null ? null : Date.parse(authority.valid_until);
   const from = Date.parse(authority.valid_from);
   if ((until !== null && !Number.isFinite(until)) || !Number.isFinite(from)) return "unavailable";
@@ -112,12 +97,6 @@ export function observedAuthorityState(authority: WorkflowAuthority, now: number
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-/**
- * A workflow version as a reader names it: `v8`, when the page knows the
- * number; otherwise the shortened identifier (the caller hangs the whole one
- * on `title`). The page knows the running and the prepared version, which are
- * the two an approval is ever about.
- */
 export function authorityVersionLabel(
   versionId: string,
   versions: ReadonlyMap<string, number>,
@@ -128,12 +107,6 @@ export function authorityVersionLabel(
   return { text: short, full: short === versionId ? null : versionId };
 }
 
-/**
- * What a reader decides an approval by, as its heading: where it runs, until
- * when, and how often — "Produktion · gültig bis 28.09., 18:00 · bis zu 24
- * Läufe". The card used to be headed by the approval's UUID, which is the one
- * fact about it nobody decides anything by.
- */
 export function authorityHeadline(
   authority: Pick<WorkflowAuthority, "execution_environment" | "valid_until" | "max_runs">,
   t: Translate,
@@ -142,8 +115,6 @@ export function authorityHeadline(
   timeZone?: string,
 ): string {
   const until = authority.valid_until === null ? Number.NaN : Date.parse(authority.valid_until);
-  // The year only when it is not this one, and always the zone: "bis 18:00"
-  // read by someone in another zone, or next year, is a different moment.
   const sameYear =
     Number.isFinite(until) &&
     new Intl.DateTimeFormat("en", { year: "numeric", timeZone }).format(until) ===
@@ -181,13 +152,10 @@ export function authorityHeadline(
     .join(" · ");
 }
 
-/** How long an approval stands: until revoked, or within a run count and a window. */
 export type GrantLimit = "until_revoked" | "limited";
 
-/** An approval stands until it is revoked unless the reader chooses limits. */
 export const DEFAULT_GRANT_LIMIT: GrantLimit = "until_revoked";
 
-/** What `authorityGrantInput` receives for the chosen limit: null is "no limit". */
 export function grantLimitBounds(
   limit: GrantLimit,
   runs: string,
@@ -196,7 +164,6 @@ export function grantLimitBounds(
   return limit === "limited" ? { runs, hours } : { runs: null, hours: null };
 }
 
-/** The plain grant button follows the choice: "Approve" or "Allow N runs". */
 export function grantConfirmKey(limit: GrantLimit, runs: string): TranslationKey {
   if (limit === "until_revoked") return "authority.grantConfirmUntilRevoked";
   return Number(runs) === 1 ? "authority.grantConfirmOne" : "authority.grantConfirm";

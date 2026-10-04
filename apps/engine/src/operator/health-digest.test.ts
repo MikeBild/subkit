@@ -1,7 +1,3 @@
-// Operator health digest — grouping, origin tagging, and the
-// open-patch-decision bucket. Seeds failed executions from three origins and
-// asserts they collapse by root-cause signature and tag correctly.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   connectors,
@@ -66,7 +62,6 @@ beforeAll(async () => {
     })
     .returning();
 
-  // Helper to seed a failed execution + a failed step.
   async function seedFailure(args: {
     source_kind: string;
     request_source: string;
@@ -98,7 +93,6 @@ beforeAll(async () => {
     });
   }
 
-  // Two scheduled failures with the SAME signature → one group, count 2.
   await seedFailure({
     source_kind: "saved",
     request_source: "scheduler",
@@ -111,14 +105,12 @@ beforeAll(async () => {
     step_key: "fetch",
     error: { code: "http_4xx", message: "http 404", guidance: "The path is wrong." },
   });
-  // A manual test run missing an input → separate group, manual origin.
   await seedFailure({
     source_kind: "saved",
     request_source: "cli",
     step_key: "list",
     error: { code: "placeholder_unresolved", message: "unresolved placeholder for input org" },
   });
-  // An authoring draft trial-run → authoring origin.
   await seedFailure({
     source_kind: "draft",
     request_source: "chat",
@@ -127,7 +119,6 @@ beforeAll(async () => {
     workflow: false,
   });
 
-  // One open patch decision — proposed and reviewable on the current version.
   const patchable = await seedPatchableWorkflow(db, tenant_id, "messages-sync");
   await db.insert(patchCandidates).values({
     tenant_id,
@@ -149,7 +140,7 @@ describe("buildOperatorHealthDigest", () => {
     const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
 
     expect(digest.all_clear).toBe(false);
-    expect(digest.failure_groups.length).toBe(3); // scheduled(2), manual(1), authoring(1)
+    expect(digest.failure_groups.length).toBe(3);
 
     const scheduled = digest.failure_groups.find((g) => g.error_code === "http_4xx");
     expect(scheduled?.origin).toBe("scheduled");
@@ -189,10 +180,6 @@ describe("buildOperatorHealthDigest", () => {
   });
 
   test("history and trends do not make a digest need attention; the attention list does", async () => {
-    // The main fixture holds an authoring trial and a manual run that failed —
-    // worth reading, nothing to act on — next to a failing scheduled workflow
-    // and an open fix. Only the last two are items, and the headline counts
-    // items, not the rows behind them.
     const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
     const ids = digest.attention.items.map((item) => item.id).sort();
     expect(ids).toEqual(
@@ -202,7 +189,6 @@ describe("buildOperatorHealthDigest", () => {
       ].sort(),
     );
     expect(digest.headline).toBe("Needs attention: 2 items (1 failing, 1 to decide).");
-    // Every item is one rendered line — the decision block IS the attention list.
     const lines = digest.rendered
       .split("\n")
       .filter((line) => /^- \[(stopped|failing|decide)\]/.test(line));
@@ -230,9 +216,6 @@ describe("buildOperatorHealthDigest", () => {
       .returning();
 
     const now = getTestNow();
-    // A fresh safe patch and an old unsafe patch. The old one must surface
-    // first even though it was inserted first (older created_at) and is the
-    // one the operator has been unknowingly ignoring.
     await testDb.db.insert(patchCandidates).values([
       {
         tenant_id: t!.id,
@@ -264,7 +247,6 @@ describe("buildOperatorHealthDigest", () => {
     expect(first?.stuck).toBe(true);
     expect(first?.age_days).toBeGreaterThanOrEqual(5);
     expect(digest.patch_candidates.items[1]?.stuck).toBe(false);
-    // Two fixes on one workflow are one thing to decide, waiting since the older.
     expect(digest.attention.items).toHaveLength(1);
     expect(digest.attention.items[0]?.counts.patches).toBe(2);
     expect(digest.attention.items[0]?.since).toBe(
@@ -281,9 +263,6 @@ describe("buildOperatorHealthDigest", () => {
     const wf = { id: (await seedPatchableWorkflow(testDb.db, t!.id, "bulk", "Bulk")).workflow_id };
 
     const now = getTestNow();
-    // 60 open decisions against a cap of 50. The headline, the rendered
-    // block and `open` must all say 60 — the headline used to count the capped
-    // list and said 50 while `pending` said 60.
     const backlog = 60;
     expect(backlog).toBeGreaterThan(MAX_PENDING_PATCHES);
     await testDb.db.insert(patchCandidates).values(
@@ -296,7 +275,6 @@ describe("buildOperatorHealthDigest", () => {
         diff: reviewableDiff(`Fix ${i}`),
       })),
     );
-    // Undecidable rows are not open and must not be counted anywhere.
     await testDb.db.insert(patchCandidates).values({
       tenant_id: t!.id,
       workflow_id: wf.id,
@@ -308,7 +286,6 @@ describe("buildOperatorHealthDigest", () => {
     const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(t!.id));
     expect(digest.patch_candidates.open).toBe(backlog);
     expect(digest.patch_candidates.items.length).toBe(MAX_PENDING_PATCHES);
-    // The attention item counts the uncapped total, never the capped list.
     expect(digest.attention.items[0]?.counts.patches).toBe(backlog);
     expect(digest.rendered).toContain(`(${backlog} fixes)`);
     expect(digest.rendered).not.toContain(`(${MAX_PENDING_PATCHES} fixes)`);

@@ -1,16 +1,3 @@
-// Integration tests for stats aggregation correctness.
-//
-// Seeds a controlled set of rows in executions, audit_log, and llm_usage
-// within a fixed window. Verifies:
-//   - Window totals match Σ of seeded rows.
-//   - duration_ms.total = Σ(finished_at - started_at) in milliseconds.
-//   - Per-bucket sums equal window totals (no double-counting).
-//   - Σ group totals = window totals for a single group_by axis.
-//   - Token sums for LLM usage.
-//   - request_source="wait_reaper" is accepted (open set).
-//   - Connector status-class mapping (200→2xx, 401/403→4xx_auth,
-//     429→4xx_rate_limited, error+no-status→network_error).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   auditLog,
@@ -26,17 +13,13 @@ const uuid = createDeterministicUuidFactory(0x01);
 
 let srv: HttpTestServer;
 
-// Window: 2026-01-15, hour bucket, UTC
 const FROM = "2026-01-15T00:00:00.000Z";
 const TO = "2026-01-15T23:59:59.999Z";
 const WIN = `bucket=hour&from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`;
 
-// Connector id used in audit rows.
 const CONNECTOR_ID = uuid();
 const CONNECTOR_ID_2 = uuid();
 
-// Execution durations seeded (ms): 10000, 20000, 30000
-// Total: 60000ms
 const EXEC_DURATIONS_MS = [10_000, 20_000, 30_000];
 const TOTAL_EXEC_DURATION_MS = EXEC_DURATIONS_MS.reduce((a, b) => a + b, 0);
 
@@ -46,7 +29,6 @@ beforeAll(async () => {
   srv = await createHttpTestServer("stats-agg");
   const db = srv.db;
 
-  // Seed a workflow for the FK.
   const [wf] = await db
     .insert(workflows)
     .values({ tenant_id: srv.tenantId, slug: "wf-agg", name: "Agg", lifecycle: "active" })
@@ -75,9 +57,6 @@ beforeAll(async () => {
   }));
   await db.insert(executions).values(execValues);
 
-  // Seed audit rows for connector stats.
-  // Status codes: 200 (2xx), 401 (4xx_auth), 403 (4xx_auth), 429 (4xx_rate_limited)
-  // Plus one result='error' + no status_code (network_error)
   const auditBase = new Date("2026-01-15T08:00:00.000Z");
   await db.insert(auditLog).values([
     {
@@ -161,7 +140,6 @@ beforeAll(async () => {
       resource_type: "connector",
       resource_id: CONNECTOR_ID_2,
       result: "error",
-      // No status_code → network_error
       metadata: {
         connector_id: CONNECTOR_ID_2,
         connector_slug: "api-b",
@@ -172,8 +150,6 @@ beforeAll(async () => {
     },
   ]);
 
-  // Seed LLM usage rows.
-  // Three rows: prompt=100, completion=50 each. Total tokens: 150 × 3 = 450.
   const llmBase = new Date("2026-01-15T08:00:00.000Z");
   await db.insert(llmUsage).values([
     {
@@ -202,7 +178,7 @@ beforeAll(async () => {
       latency_ms: 600,
       result: "success",
       month_bucket: 202601,
-      created_at: new Date(llmBase.getTime() + 3_600_000), // +1h
+      created_at: new Date(llmBase.getTime() + 3_600_000),
     },
     {
       tenant_id: srv.tenantId,
@@ -216,7 +192,7 @@ beforeAll(async () => {
       latency_ms: 1200,
       result: "success",
       month_bucket: 202601,
-      created_at: new Date(llmBase.getTime() + 2 * 3_600_000), // +2h
+      created_at: new Date(llmBase.getTime() + 2 * 3_600_000),
     },
   ]);
 });
@@ -230,8 +206,6 @@ function authedFetch(path: string): Promise<Response> {
     headers: { authorization: `Bearer ${srv.apiKey}` },
   });
 }
-
-// ---- Executions aggregation ------------------------------------------------
 
 describe("executions aggregation", () => {
   test("window total = 3 executions", async () => {
@@ -251,7 +225,6 @@ describe("executions aggregation", () => {
     const body = (await res.json()) as {
       totals: { duration_ms: { total: number } };
     };
-    // Allow ±1ms rounding from float→int.
     expect(Math.abs(body.totals.duration_ms.total - TOTAL_EXEC_DURATION_MS)).toBeLessThanOrEqual(3);
   });
 
@@ -290,12 +263,9 @@ describe("executions aggregation", () => {
     const body = (await res.json()) as {
       totals: { executions: { count: number } };
     };
-    // Only the 3rd execution uses wait_reaper.
     expect(body.totals.executions.count).toBe(1);
   });
 });
-
-// ---- Connector aggregation + status-class mapping --------------------------
 
 describe("connector status-class mapping", () => {
   test("200 maps to 2xx, count=1", async () => {
@@ -359,8 +329,6 @@ describe("connector status-class mapping", () => {
   });
 });
 
-// ---- LLM aggregation -------------------------------------------------------
-
 describe("LLM aggregation", () => {
   test("window total = 3 calls", async () => {
     const res = await authedFetch(`/v1/stats/llm?${WIN}`);
@@ -382,11 +350,11 @@ describe("LLM aggregation", () => {
         };
       };
     };
-    expect(body.totals.tokens.prompt).toBe(400); // 100+100+200
-    expect(body.totals.tokens.completion).toBe(200); // 50+50+100
-    expect(body.totals.tokens.total).toBe(600); // 150+150+300
-    expect(body.totals.tokens.cache_read).toBe(15); // 10+5+0
-    expect(body.totals.tokens.cache_creation).toBe(20); // 0+0+20
+    expect(body.totals.tokens.prompt).toBe(400);
+    expect(body.totals.tokens.completion).toBe(200);
+    expect(body.totals.tokens.total).toBe(600);
+    expect(body.totals.tokens.cache_read).toBe(15);
+    expect(body.totals.tokens.cache_creation).toBe(20);
   });
 
   test("group_by=model: Σ group totals = window total", async () => {

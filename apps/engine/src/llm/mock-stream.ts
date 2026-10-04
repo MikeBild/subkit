@@ -1,12 +1,3 @@
-// MockLanguageModelV4 factory for the conversations loop.
-//
-// Keeps the existing `setConversePlan(conversation_id, plan)` public API
-// while moving off the `nextConverseStep()` polling path the old loop
-// used. `streamText` drives this model via `doStream`; each call reads
-// the canned plan cursor keyed by the `[conv:<id>]` envelope in the
-// latest user turn and emits either a `tool-call` part or a
-// `text-delta` + `finish` to end the run.
-
 import type {
   LanguageModelV4CallOptions,
   LanguageModelV4StreamPart,
@@ -44,7 +35,6 @@ function findLastUserText(prompt: LanguageModelV4CallOptions["prompt"]): string 
 }
 
 function countPromptTextTokens(prompt: LanguageModelV4CallOptions["prompt"]): number {
-  // Rough token estimate — used only for the MockCall bookkeeping.
   let chars = 0;
   for (const m of prompt) {
     if (m.role === "system") {
@@ -120,21 +110,12 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${callCounter}`;
 }
 
-/**
- * Build a fresh MockLanguageModelV4 for one conversation turn. State
- * (plans, cursors, failureByModel, recorded calls) lives on the
- * singleton `getMockProvider()` — multiple instances share it so tests
- * that poke at the singleton keep working.
- */
 export function createMockLanguageModel(modelId = "mock-converse"): MockLanguageModelV4 {
   const singleton = getMockProvider();
   return new MockLanguageModelV4({
     modelId,
     provider: "mock-provider",
     doStream: async (options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> => {
-      // Simulate provider failure injection (same semantics as the
-      // old MockProvider.maybeFail — fires exactly once so the
-      // fallback test is deterministic).
       const primed = singleton.failureByModel.get(modelId);
       if (primed) {
         singleton.failureByModel.delete(modelId);
@@ -189,9 +170,6 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
         );
         chunks.push(finishPart("tool-calls", promptTokens, 8));
       } else {
-        // Plan exhausted (or no plan at all) — emit a brief ack so the
-        // model produces a stop finish; the loop picks this up as a
-        // normal end-of-turn.
         const id = nextId("text");
         const ack = `Acknowledged: ${lastUser.slice(0, 200)}. (mock)`;
         chunks.push(textStartPart(id));

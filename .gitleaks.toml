@@ -1,23 +1,6 @@
-# Extend the default gitleaks ruleset rather than replacing it.
-# Only narrow allowlists for known-fake canary tokens shipped as test
-# fixtures live here.
 [extend]
 useDefault = true
 
-# Diagnostics leak-canary test fixtures.
-#
-# `apps/engine/src/http/tests/diagnostics.test.ts` is the engine's
-# secret-leak regression net for the `/v1/diagnostics/setup` route. It
-# seeds deliberate, recognizable fakes (with `FAKE` and `LEAK`/`CANARY`
-# markers in the literal string) into the config and asserts that the
-# response body never echoes them back at any prefix length. Without an
-# allowlist, gitleaks's default `aws-access-token` rule flags the seed
-# values themselves on every push because they start with `AKIA` and
-# match the canonical AWS access-key-id shape.
-#
-# The allowlist is scoped by both path AND regex so it cannot mask a
-# real leak: only strings that contain the canary markers in this one
-# test file are exempted.
 [[allowlists]]
 description = "diagnostics leak-canary fakes — intentional, self-labelled test fixtures"
 targetRules = ["aws-access-token"]
@@ -28,19 +11,6 @@ regexes = [
   '''AKIA(FAKE|TEST)[A-Z0-9]*(LEAK|CANARY)[A-Z0-9]*''',
 ]
 
-# MCP OAuth test-fixture tokens.
-#
-# The OAuth test suites under `apps/engine/src/auth/oauth/` exercise the
-# token parser and the resource-server reject paths with obviously-fake
-# tokens: `wf_mcp_` / `wf_mcr_` literals (subkit's own MCP-OAuth token
-# prefixes) and an `sk_test_` decoy that proves `parseMcpToken` rejects
-# non-MCP prefixes. Every fixture uses the literal sequential alphabet
-# `abcdefghijklmnopqrstuvwxyz` as its random segment — no real
-# credential ever does — so gitleaks's `stripe-access-token` /
-# `generic-api-key` rules flag them on push.
-#
-# Scoped by path AND the sequential-alphabet regex: a real leak in these
-# files (which would not carry the ordered alphabet) is still caught.
 [[allowlists]]
 description = "MCP OAuth test-fixture tokens — sequential-alphabet fakes"
 targetRules = ["stripe-access-token", "generic-api-key"]
@@ -51,23 +21,6 @@ regexes = [
   '''[a-z_]+abcdefghijklmnopqrstuvwxyz[0-9]+''',
 ]
 
-# Fake secrets in test fixtures.
-#
-# The repo's secret-redaction / scrubbing / secret-shape test suites
-# (e.g. `logging/scrub-secrets.test.ts`, `shared/.../redaction.test.ts`,
-# `sk/.../secret-shape.test.ts`, the audit metadata-scrub and tool-policy
-# suites) seed deliberately-fake credentials of every shape — `ghp_…`,
-# `sk_live_examplefake…`, `glpat-…`, `xoxb-…`, JWTs, `AKIA…`, etc. —
-# precisely to assert they get redacted. gitleaks' default ruleset flags
-# these literals.
-#
-# This allowlist exempts those secret rules ONLY inside `*.test.ts(x)`
-# files. Production code stays fully scanned — a credential is only ever
-# exempt when it lives in a test file (where secrets are fixtures by
-# design; real ones belong in CI env, never in source). Scoped to test
-# paths rather than commit-SHA fingerprints so it survives the single
-# root-commit baseline (a `.gitleaksignore` fingerprint references a
-# commit SHA that changes the moment this file is committed).
 [[allowlists]]
 description = "fake secrets in *.test.ts(x) fixtures — production code stays fully scanned"
 targetRules = [
@@ -87,12 +40,6 @@ paths = [
   '''.*\.test\.tsx?$''',
 ]
 
-# `engine --smoke` redaction self-test.
-#
-# `apps/engine/src/index.ts` emits one log line carrying a fake
-# `wf_live_…` token in smoke mode, to prove the logger redacts secrets in
-# free-form strings. Scoped by path AND the exact fake literal so a real
-# credential anywhere else in this production file is still caught.
 [[allowlists]]
 description = "engine --smoke redaction self-test fake token"
 targetRules = ["generic-api-key"]
@@ -103,13 +50,6 @@ regexes = [
   '''wf_live_abcdef1234567890''',
 ]
 
-# Fixture ids in the cockpit's visual stands.
-#
-# The stand scripts under `scripts/lib/cockpit-*.mjs` name their fixture
-# resources with constants, and a constant such as `API_CONNECTOR` assigned
-# a UUID reads to the `generic-api-key` rule like a key. Scoped by path AND
-# to a finding that is exactly a UUID, so anything else in these scripts —
-# a real token of any other shape — is still caught.
 [[allowlists]]
 description = "fixture UUIDs in the cockpit visual stand scripts"
 targetRules = ["generic-api-key"]

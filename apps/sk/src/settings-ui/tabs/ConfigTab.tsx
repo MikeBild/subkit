@@ -1,10 +1,3 @@
-// Config tab — flat searchable list of every setting leaf, across all
-// engine sections. Filter narrows on path or description; Enter opens
-// the existing FieldEditor; two-step Esc clears the filter, then the
-// outer Esc closes the modal.
-//
-// Reuses SearchInput, SettingItem, FieldEditor from settings-ui/components.
-
 import { isEngineError } from "@cli-core/errors.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -24,12 +17,6 @@ import { resolveAction } from "../keybindings/useKeybinding.ts";
 import { labelForPath, sectionLabel } from "../lib/config-labels.ts";
 import { type FormField, leafToFormField } from "../lib/zod-to-form-fields.ts";
 
-// Single registry mapping a setting path to the Ink picker component
-// that renders it. Adding a row here is the *only* hook needed to
-// surface a value picker; the picker writes via the same setSetting
-// path the FieldEditor uses. A separate `PICKER_PATHS` list plus a
-// parallel switch statement would drift between the
-// two was a future-bug waiting to happen.
 type PickerProps = {
   initial: string;
   onCommit: (value: string) => void;
@@ -46,14 +33,6 @@ interface Props {
   fields: FormField[];
   tenant?: string;
   client: EngineClient;
-  /**
-   * Fired whenever this tab "owns Esc" — i.e. has an inner state that
-   * the next Esc keystroke should clear instead of dismissing the
-   * outer shell. The outer SettingsModal / SinglePane suppresses its
-   * own Esc handler while this is `true`. States that own Esc: an
-   * active search query, an open FieldEditor (`editing`), or a
-   * pending-restart confirmation (`pendingRestart`).
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -70,12 +49,6 @@ function isRestartRequiredError(err: unknown): { message: string } | null {
   return null;
 }
 
-// Number of rows visible in the leaf list at a time. The selected row
-// always remains visible: when listIdx is below the window we anchor
-// the window at the start; once listIdx pushes past the bottom we
-// scroll so the selected row sits roughly two rows above the floor.
-// 12 rows leaves headroom for the description footer, the search bar,
-// and the outer modal chrome on a typical 30-row terminal.
 const WINDOW_ROWS = 12;
 
 function pickWindow(total: number, idx: number, size: number): { start: number; end: number } {
@@ -87,10 +60,6 @@ function pickWindow(total: number, idx: number, size: number): { start: number; 
   return { start, end };
 }
 
-// Default-route a fallback description when the engine schema didn't
-// supply one. Keeps the footer from showing an empty body for legacy
-// leaves; phrased as a hint, not a label, so the operator knows the
-// canonical metadata is missing upstream.
 function pickDescription(field: FormField): string {
   return field.description ?? "(no description in engine schema)";
 }
@@ -125,7 +94,6 @@ export const ConfigTab: React.FC<Props> = ({
     });
   }, [fields, searchQuery]);
 
-  // Keep listIdx in bounds when the filter shrinks the visible list.
   useEffect(() => {
     if (listIdx > Math.max(0, filtered.length - 1)) setListIdx(0);
   }, [filtered.length, listIdx]);
@@ -232,15 +200,8 @@ export const ConfigTab: React.FC<Props> = ({
     return <FieldEditor field={field} onCommit={(_f, v) => commit(v)} onCancel={cancel} />;
   };
 
-  // Window the list so the visible row count stays bounded. When the
-  // operator scrolls past the bottom of the window, the slice shifts
-  // forward; the selected row stays visible.
   const { start: winStart, end: winEnd } = pickWindow(filtered.length, listIdx, WINDOW_ROWS);
   const visible = filtered.slice(winStart, winEnd);
-  // Section dividers render a faint "── <section> ──" row each time
-  // the leaf prefix changes — but only when no search filter is
-  // active. A filtered list mixes sections and the divider stops being
-  // a useful boundary.
   const sectionForRow = (row: FormField): string => row.path.split(".")[0] ?? "";
   const showSections = !searchQuery;
   const selected = filtered[listIdx];

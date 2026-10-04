@@ -1,11 +1,3 @@
-// Masked secret input.
-//
-// Renders bullet glyphs instead of the raw value. Ctrl+E toggles
-// reveal. The component never logs the plaintext value; the parent
-// owns persistence and is responsible for any redaction in audit
-// trails. See `apps/sk/src/lib/secret-shape.ts` for the canonical
-// "this looks like a secret" classifier.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
@@ -16,9 +8,7 @@ export interface SecretFieldProps {
   onChange: (next: string) => void;
   onSubmit?: (final: string) => void;
   onCancel?: () => void;
-  /** Placeholder rendered when value is empty. */
   placeholder?: string;
-  /** Render the bullet form initially. Defaults to true. */
   startMasked?: boolean;
 }
 
@@ -48,7 +38,6 @@ export function SecretField({
       setFocused(false);
       return;
     }
-    // Ctrl+E toggles reveal.
     if (key.ctrl && (input === "e" || input === "E")) {
       setMasked((m) => !m);
       return;

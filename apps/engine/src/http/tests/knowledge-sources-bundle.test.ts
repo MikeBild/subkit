@@ -1,17 +1,3 @@
-// Integration tests for the knowledge-bundle surface:
-//
-//   POST /v1/knowledge-sources/bundle       — upsert by slug (create /
-//                                             update / unchanged), 409 on
-//                                             slug conflicts, 422 on Zod
-//                                             failure, knowledge:write gate
-//   GET  /v1/knowledge-sources/{id}/chunks  — full-content read, path
-//                                             filter, pagination,
-//                                             knowledge:read gate
-//
-// Boots an in-process Hono server + real Postgres via the shared http
-// test scaffold so auth + RBAC + Zod + parsing + persistence + audit are
-// exercised end-to-end.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -32,8 +18,6 @@ function sha256Hex(v: string): string {
 beforeAll(async () => {
   srv = await createHttpTestServer("kb-bundle");
 
-  // enduser role carries knowledge:read but NOT knowledge:write — the
-  // deny principal for the bundle write gate.
   const [enduser] = await srv.db
     .insert(users)
     .values({
@@ -131,7 +115,6 @@ describe("POST /v1/knowledge-sources/bundle — upsert lifecycle", () => {
     expect(body.outcome).toBe("created");
     expect(body.knowledge_source.source_type).toBe("bundle");
     expect(body.knowledge_source.slug).toBe("team-wiki");
-    // index.md + log.md skipped; deploy.md + plain.md ingested.
     expect(body.ingested_count).toBe(2);
     expect([...body.skipped_files].sort()).toEqual(["/index.md", "/log.md"]);
     expect(body.knowledge_source.tags).toContain("type:runbook");
@@ -181,7 +164,6 @@ describe("POST /v1/knowledge-sources/bundle — upsert lifecycle", () => {
     };
     expect(body.outcome).toBe("updated");
     expect(body.ingested_count).toBe(2);
-    // Existing tags survive; the new type tag joins.
     expect(body.knowledge_source.tags).toContain("type:runbook");
     expect(body.knowledge_source.tags).toContain("type:decision");
   });
@@ -282,9 +264,6 @@ describe("POST /v1/knowledge-sources/bundle — review-verified edge cases", () 
   });
 
   test("no cross-path dedup holds on the RE-INGEST path too (outcome=updated)", async () => {
-    // Pins the skip-dedup ternary in ingestKnowledgeSource — the create-side
-    // twin test above survives a regression there (mutation-verified), so the
-    // updated path needs its own twin assertion.
     const same = "# Template\n\nIdentical boilerplate body.";
     const res = await postBundle({
       name: "Twin Wiki",
@@ -451,7 +430,6 @@ describe("GET /v1/knowledge-sources/{id}/chunks — full-content read", () => {
     expect(body.items.map((i) => i.ordinal)).toEqual([0, 1]);
     const deploy = body.items.find((i) => i.path === "/runbooks/deploy.md");
     expect(deploy).toBeDefined();
-    // Raw file content including frontmatter — verbatim, nothing rewritten.
     expect(deploy!.content).toContain("type: Runbook");
     expect(deploy!.content).toContain("Run the deploy script.");
   });
@@ -512,7 +490,6 @@ describe("cross-tenant isolation on the full-content read", () => {
     });
     const { knowledge_source } = (await created.json()) as { knowledge_source: { id: string } };
 
-    // Second tenant + admin key in the same test DB.
     const { tenants } = await import("../../db/schema/index.ts");
     const [tenantB] = await srv.db
       .insert(tenants)
@@ -545,11 +522,8 @@ describe("cross-tenant isolation on the full-content read", () => {
   });
 });
 
-// Runs LAST: the seeded budget-filler row would fail every earlier create.
 describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
   test("tenant budget exceeded → 413 content_too_large (typed-error mapping)", async () => {
-    // A metadata-only filler row consumes the whole 500 MB tenant budget —
-    // no real bytes needed, the guard sums `bytes_total`.
     const { knowledgeSources } = await import("../../db/schema/knowledge_sources.ts");
     const [filler] = await srv.db
       .insert(knowledgeSources)
@@ -581,14 +555,12 @@ describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
 
   test("tenant budget also gates the RE-IMPORT (outcome=updated) path → 413", async () => {
     const { knowledgeSources } = await import("../../db/schema/knowledge_sources.ts");
-    // Existing small bundle...
     const first = await postBundle({
       name: "Grow Wiki",
       slug: "grow-wiki",
       files: [{ path: "a.md", content: "small" }],
     });
     expect(first.status).toBe(200);
-    // ...then the tenant budget fills up elsewhere...
     const [filler] = await srv.db
       .insert(knowledgeSources)
       .values({
@@ -602,7 +574,6 @@ describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
       })
       .returning({ id: knowledgeSources.id });
     try {
-      // ...and a grown re-import must hit the same 413 the create path enforces.
       const res = await postBundle({
         name: "Grow Wiki",
         slug: "grow-wiki",
@@ -622,15 +593,9 @@ describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
     const first = await postBundle({
       name: "Exclusion Wiki",
       slug: "exclusion-wiki",
-      // Old and new content have IDENTICAL byte size so the pass/fail window
-      // below is exact.
       files: [{ path: "a.md", content: `content v1 ${"x".repeat(300)}` }],
     });
     expect(first.status).toBe(200);
-    // Filler sized against the WHOLE tenant's current usage so that the
-    // naive sum (all sources + filler + new bytes) exceeds the cap while
-    // the correct sum (old bytes excluded) stays under it — a dropped or
-    // inverted exclude_source_id predicate would falsely 413 this re-import.
     const { sql } = await import("drizzle-orm");
     const [usage] = await srv.db
       .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
@@ -698,7 +663,6 @@ describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
       files: [{ path: "a.md", content: "rehome me" }],
     });
     expect(created.status).toBe(200);
-    // Seed a workflow to scope to.
     const { workflows } = await import("../../db/schema/index.ts");
     const [wf] = await srv.db
       .insert(workflows)

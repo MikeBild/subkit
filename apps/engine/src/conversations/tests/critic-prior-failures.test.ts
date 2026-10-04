@@ -1,30 +1,8 @@
-// Cross-component contract test: authoring producer ↔ loop consumer.
-//
-// `author_workflow` SUCCEEDS (the draft is stashed + repaired in-pipeline)
-// yet may carry a `critic_rejection` advisory `{repairs, rationale,
-// gating_reason}` when the gated semantic critic rejected the draft. The
-// conversation loop scans recent tool calls and re-uses the same shape to
-// assemble `prior_failures` for the next LLM turn — and flips
-// `priorCriticFail` so the router escalates. Both sides reference
-// `CriticRejectedDetailsSchema` from `authoring-critic/types.ts`, but the
-// SHAPE coupling can only be regression-tested by running the full
-// producer output through the consumer helper.
-//
-// The advisory rides an OK result (not an `error_code`) — the tool did
-// not fail — so it must NOT trip the ok:false/error_code humanizer.
-//
-// This test is a journey-level smoke test for the rejected → re-authored
-// flow at the contract layer — no DB, no LLM, no full runLoop required.
-
 import { describe, expect, test } from "bun:test";
 import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
 import type { CriticRejectedDetails } from "../authoring-critic/types.ts";
 
 function makeCriticRejectedToolCallRow(critic_rejection: CriticRejectedDetails) {
-  // Exact shape `author_workflow` produces when the pipeline critic
-  // rejects: a SUCCESSFUL draft-mutation payload carrying the advisory.
-  // The loop sees this object verbatim via the
-  // `conversation_tool_calls.output` jsonb column.
   return {
     tool: "author_workflow",
     output: {
@@ -54,10 +32,6 @@ describe("authoring-critic — producer/consumer contract", () => {
   });
 
   test("malformed critic_rejection advisory does NOT crash, does NOT inject hints, AND suppresses the signal", () => {
-    // Producer drift: the loop tolerates the row (fail-open) and
-    // ALSO suppresses `priorCriticFail`. A bare escalation with no
-    // hint just pushes the model to retry without context — worse
-    // than no escalation. Suppression is logged at the source.
     const row = {
       tool: "author_workflow",
       output: {
@@ -90,18 +64,15 @@ describe("authoring-critic — producer/consumer contract", () => {
 
   test("mix of critic + standard rejections sums correctly and caps at 5", () => {
     const rows = [
-      // Critic advisory emits 3 repairs.
       makeCriticRejectedToolCallRow({
         repairs: ["a", "b", "c"],
         rationale: "three",
         gating_reason: "step_count",
       }),
-      // Standard rejection adds one more.
       {
         tool: "dry_run_workflow",
         output: { ok: false, error_code: "timeout", message: "step deadline" },
       },
-      // Another critic advisory emits 4 more but should clip at 5 total.
       makeCriticRejectedToolCallRow({
         repairs: ["d", "e", "f", "g"],
         rationale: "four more",
@@ -128,10 +99,6 @@ describe("authoring-critic — producer/consumer contract", () => {
   });
 
   test("critic_rejection advisory with empty repairs[] suppresses the priorCriticFail signal", () => {
-    // Well-formed advisory but zero repairs (schema permits it). With
-    // no hint to inject, the escalation has no content for the next
-    // turn — suppress the signal so the router doesn't push to the
-    // top tier without a reason the model can act on.
     const row = makeCriticRejectedToolCallRow({
       repairs: [],
       rationale: "empty repairs",

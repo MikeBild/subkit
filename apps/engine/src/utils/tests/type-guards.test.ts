@@ -1,7 +1,3 @@
-// Type-guard smoke tests. The guards are tiny one-liners but their
-// type-narrowing semantics matter — `isRecord` rejects arrays + null,
-// for instance, which a naive `typeof === "object"` check accepts.
-
 import { describe, expect, test } from "bun:test";
 import { isRecord } from "../type-guards.ts";
 

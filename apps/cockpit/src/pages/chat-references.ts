@@ -1,6 +1,5 @@
 import type { ConversationReference } from "@/api/client";
 
-/** Every kind of object an `@`-mention can name. */
 const REFERENCE_TYPES: readonly ConversationReference["type"][] = [
   "workflow",
   "connector",

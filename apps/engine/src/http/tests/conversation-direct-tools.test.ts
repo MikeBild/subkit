@@ -1,15 +1,3 @@
-// Direct draft tool invocation over HTTP — the user-driven fast path:
-//   POST /v1/conversations/:id/preview
-//   POST /v1/conversations/:id/probe
-//   POST /v1/conversations/:id/draft/patch
-//   GET  /v1/conversations/:id/draft/snapshots
-//   POST /v1/conversations/:id/draft/snapshots/restore
-//
-// The endpoints run the same conversation-tool implementations the
-// model dispatches; these tests assert the wiring — arg validation,
-// persistence parity (tool-call row + tool-role message + draft
-// snapshot), the pending-elicitation guard, and tenant scoping.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
@@ -112,13 +100,11 @@ describe("conversation direct tool routes", () => {
     expect(body.ok).toBe(true);
     expect(body.tool).toBe("edit_workflow_patch");
 
-    // The draft mutation actually landed.
     const draft = await loadDraft(srv.tenantId, conversation_id, srv.db);
     const steps =
       (draft as unknown as { workflow?: { steps?: Array<{ id: string }> } }).workflow?.steps ?? [];
     expect(steps[0]?.id).toBe("load");
 
-    // Loop parity: tool-call row (replay source for the next model turn)…
     const calls = await srv.db
       .select()
       .from(conversationToolCalls)
@@ -133,7 +119,6 @@ describe("conversation direct tool routes", () => {
     expect(calls[0]?.tool).toBe("edit_workflow_patch");
     expect(calls[0]?.output).not.toBeNull();
 
-    // …a tool-role audit message…
     const msgs = await srv.db
       .select()
       .from(conversationMessages)
@@ -146,7 +131,6 @@ describe("conversation direct tool routes", () => {
       );
     expect(msgs.length).toBeGreaterThanOrEqual(1);
 
-    // …and a rollback snapshot for the successful draft write.
     const snapshots = await srv.db
       .select()
       .from(conversationDraftSnapshots)

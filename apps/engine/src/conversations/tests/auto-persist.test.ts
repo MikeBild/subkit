@@ -1,11 +1,3 @@
-// Auto-persist on confirmation.
-//
-// When the LLM emits `ask_user_form` or `ask_user_confirm` with a
-// `commit_intent`, the harness applies the proposed write atomically
-// after `respondElicitation` resolves the carrier. The LLM's next
-// turn sees a synthetic tool result with `source: "harness_auto_persist"`,
-// so the loop never has to call `save_connector_draft` itself.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -310,13 +302,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
   });
 
   test("run_workflow auto-dispatch with a REQUIRED field missing returns a directive error (not input_schema_violation)", async () => {
-    // The form collected only `filename`; the workflow requires
-    // {markdown, filename}. Pre-fix the merged input reached the driver
-    // and threw the opaque `input_schema_violation` ("required field
-    // 'markdown' is missing") from inside runExecution — surfaced to the
-    // LLM as a generic dispatch.threw. Now the guard fails BEFORE
-    // dispatch with a directive error naming the missing field(s) + how
-    // to supply them.
     const [conv] = await ctx.db
       .insert(conversations)
       .values({ tenant_id, status: "awaiting_input" })
@@ -338,7 +323,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
           description: "Run render-upload-slides.",
         },
       },
-      // Operator submitted only `filename` — `markdown` left blank.
       output: { values: { filename: "slides.html" } },
     });
 
@@ -362,8 +346,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(dispatch.dispatched).toBe(true);
     expect(dispatch.synthetic_result?.ok).toBe(false);
     expect(dispatch.synthetic_result?.error_code).toBe("missing_workflow_input");
-    // The directive message must name the missing field and steer the
-    // model back to a full ask_user_form (never a free-text ask).
     expect(dispatch.synthetic_result?.message).toContain("markdown");
     expect(dispatch.synthetic_result?.message).toContain("ask_user_form");
     expect(dispatch.synthetic_result?.message).not.toContain("input_schema_violation");
@@ -463,14 +445,12 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
     expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
 
-    // Connector row exists.
     const conn = await ctx.db
       .select()
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, "ap-bearer")));
     expect(conn).toHaveLength(1);
 
-    // Credential row exists.
     const cred = await ctx.db
       .select()
       .from(credentials)
@@ -478,7 +458,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(cred).toHaveLength(1);
     expect(cred[0]!.mode).toBe("bearer");
 
-    // Audit row tagged with reason=auto_persist_on_confirmation.
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
     const autoPersistRows = audit.filter((r) =>
       (r.reason ?? "").includes("auto_persist_on_confirmation"),
@@ -492,7 +471,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     );
     expect(harnessAudit).toBeDefined();
 
-    // Synthetic tool-call row injected with source=harness_auto_persist.
     const calls = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -503,7 +481,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(callOutput.source).toBe("harness_auto_persist");
     expect(callOutput.ok).toBe(true);
 
-    // Synthetic tool message in the timeline.
     const msgs = await ctx.db
       .select()
       .from(conversationMessages)
@@ -515,19 +492,8 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
   });
 
   test("ask_user_form submit with oauth2 BYO commit_intent persists connector + writes client_id/client_secret to config.oauth (gmail flow)", async () => {
-    // Reproduces the gmail/google-* BYO authorization_code flow that
-    // pre-fix returned `credential_required` for every retry (session
-    // 48eb113f-fe3b-48b6-a640-68836ec1e05e). The fix wires the
-    // extractor + cache so a single form submit lands the connector
-    // with client_id/client_secret in config.oauth and no
-    // credential row — ready for authenticate_oauth.
     _resetDraftCredentialCacheForTests();
 
-    // Build a gmail-shape draft. Note: probe checkpoint is intentionally
-    // green (latest_probe.ok=true) because gmail's template has
-    // probe_endpoint=null in production; the auto-persist path would
-    // otherwise hit the probe gate. The integration test focuses on the
-    // credential-extraction → persistCredential contract.
     const slug = "google-gmail";
     const [conv] = await ctx.db
       .insert(conversations)
@@ -594,9 +560,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
           payload: {
             credential: {
               mode: "oauth2",
-              // LLM-authored mustache placeholders — the form output
-              // must win. SECRET_SEED_FIELDS strips client_secret, and
-              // seedString rejects the mustache pattern for client_id.
               client_id: "{{client_id}}",
               client_secret: "{{client_secret}}",
             },
@@ -627,31 +590,24 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
     expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
 
-    // Connector row exists exactly once.
     const conn = await ctx.db
       .select()
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, slug)));
     expect(conn).toHaveLength(1);
 
-    // config.oauth populated with the operator-typed values.
     const savedConfig = (conn[0]!.config ?? {}) as {
       oauth?: { client_id?: string; client_secret?: string };
     };
     expect(savedConfig.oauth?.client_id).toBe("my-google-client");
     expect(savedConfig.oauth?.client_secret).toBe("GOCSPX-real");
 
-    // ZERO credential rows — the credential lands later via OAuth callback.
     const cred = await ctx.db
       .select()
       .from(credentials)
       .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
     expect(cred).toHaveLength(0);
 
-    // Audit row exists with `result: "success"` and metadata source
-    // tagged. The metadata MUST NOT carry the literal client_secret —
-    // scrubSecrets in audit.ts strips it; this assertion locks that
-    // contract in.
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
     const approval = audit.find(
       (r) =>
@@ -665,15 +621,9 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(approvalMeta.commit_intent_kind).toBe("save_connector_draft");
     expect(approvalMeta.tool).toBe("save_connector_draft");
     expect(approvalMeta.ok).toBe(true);
-    // Secret redaction safety net — neither the audit row itself nor
-    // any other audit row for this tenant should carry the literal
-    // client_secret string. Pre-PR the LLM-authored commit_intent
-    // (with `{{client_secret}}` placeholder) would have been the
-    // closest leak risk; this guard locks the contract in.
     const auditAsJson = JSON.stringify(audit);
     expect(auditAsJson).not.toContain("GOCSPX-real");
 
-    // Synthetic tool-call row.
     const calls = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -684,11 +634,8 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
     expect(callOutput.source).toBe("harness_auto_persist");
     expect(callOutput.ok).toBe(true);
 
-    // Draft cache cleared by saveConnectorAtomic on success.
     expect(getDraftCredential(conversation_id)).toBeNull();
 
-    // connector_authenticated checkpoint MUST stay open until
-    // authenticate_oauth — saving the seed does not bind a credential.
     const liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
     const checkpoints = liveDraft.summary?.checkpoints ?? [];
     const authCheckpoint = checkpoints.find((cp) => cp.key === "connector_authenticated");
@@ -700,17 +647,6 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
 describe("auto-persist on confirmation — save_connector_draft basic-auth", () => {
   test("ask_user_form with canonical username + password fields persists connector + basic credential atomically", async () => {
-    // Regression for session 97679846 (Jira Cloud GraphQL): the LLM
-    // authored a form with a single field named `basic_auth` for a
-    // basic-auth draft. That field matched no extractor alias → the
-    // submit-time extraction returned null → auto-persist failed with
-    // `credential_required` AFTER the operator had already typed the
-    // secret. The form-creation gate (credential-form-contract.ts)
-    // now blocks mis-named fields at creation time. This test exercises
-    // the full resume path: canonical `username` + `password` form
-    // fields → elicitation resolved → credential cached with
-    // mode "basic" → saveConnectorAtomic persists connector row +
-    // credential row in the basic shape.
     _resetDraftCredentialCacheForTests();
 
     const slug = "ap-basic-jira";
@@ -797,14 +733,12 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
     expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
     expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
 
-    // Connector row exists.
     const conn = await ctx.db
       .select()
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, slug)));
     expect(conn).toHaveLength(1);
 
-    // Credential row exists with mode "basic".
     const cred = await ctx.db
       .select()
       .from(credentials)
@@ -812,8 +746,6 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
     expect(cred).toHaveLength(1);
     expect(cred[0]!.mode).toBe("basic");
 
-    // Audit row tagged reason=auto_persist_on_confirmation with
-    // commit_intent_kind=save_connector_draft.
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
     const autoPersistRows = audit.filter((r) =>
       (r.reason ?? "").includes("auto_persist_on_confirmation"),
@@ -827,7 +759,6 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
     );
     expect(harnessAudit).toBeDefined();
 
-    // Synthetic tool-call row with source=harness_auto_persist.
     const calls = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -837,14 +768,11 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
     const callOutput = calls[0]!.output as Record<string, unknown>;
     expect(callOutput.source).toBe("harness_auto_persist");
     expect(callOutput.ok).toBe(true);
-    // credential_persisted flag lives inside data (from buildPersistencePayload).
     const callData = callOutput.data as Record<string, unknown> | undefined;
     expect(callData?.credential_persisted).toBe(true);
 
-    // Draft credential cache cleared after save.
     expect(getDraftCredential(conversation_id)).toBeNull();
 
-    // connector_persisted checkpoint must be fresh after the save.
     const liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
     const checkpoints = liveDraft.summary?.checkpoints ?? [];
     const persistedCheckpoint = checkpoints.find((cp) => cp.key === "connector_persisted");
@@ -854,15 +782,7 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
 
 describe("auto-persist on confirmation — oauth_completed credential gate", () => {
   test("confirming the OAuth prompt with NO minted credential returns authenticated:false (not a false success)", async () => {
-    // Regression for the LinkedIn session (connector d462743a): the
-    // operator confirmed "Have you completed the authorization?" but the
-    // provider never called back (zero oauth.callback hits / zero
-    // credential.created). Pre-fix the oauth_completed dispatcher reported
-    // authenticated:true unconditionally, so the LLM retried the connector
-    // and hit an auth failure while the operator was told it was active.
-    // Now it verifies a credential actually exists first.
     const { conversation_id } = await seedConversationWithDraft("ap-oauth-nocred");
-    // A connector id with no credential row — the pre-token state.
     const connectorId = "11111111-1111-4111-8111-111111111111";
     const elicitation = await createCarrierElicitation({
       conversation_id,

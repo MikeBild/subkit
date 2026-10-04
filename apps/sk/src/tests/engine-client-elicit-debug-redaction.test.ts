@@ -1,10 +1,3 @@
-// #304 — the sk CLI must never write the elicitation-respond POST body to
-// ~/.sk/debug.log, even in verbose mode. The operator's answer can be a
-// connector secret typed into a masked form; the shared redact() only catches
-// known key names / value shapes, so a generic-keyed low-entropy password
-// would otherwise land raw. The client drops the body wholesale for the
-// respond endpoint.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import fs, { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,21 +11,16 @@ beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "sk-elicit-redact-"));
   logPath = join(tmpDir, "debug.log");
   originalEnv = { ...process.env };
-  process.env.SK_DEBUG = "1"; // verbose: request bodies are logged
+  process.env.SK_DEBUG = "1";
   process.env.SK_DEBUG_FILE = logPath;
 });
 
 afterEach(() => {
   process.env = originalEnv;
-  // `debug.ts` only. Evicting `engine-client.ts` would drop any `mock.module`
-  // override another test file installed for it in this process, leaving the
-  // next importer with the real client and a live socket.
   delete require.cache[require.resolve("../debug.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -45,7 +33,7 @@ function jsonResponse(status: number, body: unknown): Response {
 describe("EngineClient — elicitation-respond body never hits debug.log", () => {
   test("a secret typed into the respond body is absent from the verbose debug log", async () => {
     const { EngineClient } = await import("../engine-client.ts");
-    const secret = "plainlowentropypw"; // generic key, no vendor prefix — redact() misses it
+    const secret = "plainlowentropypw";
     const outcome = {
       conversation: {
         id: "c1",
@@ -72,10 +60,8 @@ describe("EngineClient — elicitation-respond body never hits debug.log", () =>
     await client.respondElicitation("c1", "elicit-1", { values: { api_token: secret } });
 
     const log = readFileSync(logPath, "utf8");
-    // The respond request was logged (verbose), but its body is the marker.
     expect(log).toContain("http.request");
     expect(log).toContain("elicitation_respond_body");
-    // The secret value never reached disk.
     expect(log).not.toContain(secret);
   });
 

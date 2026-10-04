@@ -1,13 +1,3 @@
-// Workflow-edit verb hygiene + honest conversation_commit.
-//
-// Covers the shared `classifyDraftVsPersisted` predicate and its two consumers:
-//   - RC2: conversation_commit reports honestly (error when the draft has
-//     uncommitted STEP edits, success when clean).
-//   - B3: update_workflow refuses a structural-dirty draft (anti silent
-//     step-loss) but allows a metadata edit on a clean/committed draft.
-//   - B2: an approved confirm carrying commit_intent{kind:update_workflow_metadata}
-//     auto-persists the description via the update_workflow tool.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -96,9 +86,6 @@ async function freshConversation(): Promise<string> {
   return row.id;
 }
 
-/** Commit a clean workflow. Returns its id and the post-commit BOUND draft
- *  (carries the `persisted_resources` ref, so a later in-place edit survives
- *  loadDraft's bound-workflow hydration instead of being clobbered clean). */
 async function seedCommittedWorkflow(
   conversationId: string,
   slug: string,
@@ -143,7 +130,6 @@ describe("classifyDraftVsPersisted", () => {
     const { workflowId } = await seedCommittedWorkflow(convId, "wf-classify-reason");
     const { db, tenant_id } = { db: ctx.testDb.db, tenant_id: ctx.tenant_id };
 
-    // Corrupt the persisted dag: a version row exists but fails schema parse.
     await db
       .update(workflowVersions)
       .set({ dag: { not_a: "workflow" } })
@@ -152,7 +138,6 @@ describe("classifyDraftVsPersisted", () => {
       await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify-reason"), workflowId),
     ).toEqual({ state: "no_target", reason: "unreadable_dag" });
 
-    // Detach the current version pointer entirely.
     await db
       .update(workflows)
       .set({ current_version_id: null, draft_version_id: null })
@@ -289,8 +274,6 @@ describe("RC2 — conversation_commit reports honestly", () => {
       args: { conversation_id: convId },
     });
     expect(ok.isError).toBe(false);
-    // Acceptance (#302): the reply is derived from the persisted rows — pin
-    // response == persisted state after a REAL commit (commitWorkflowAtomic).
     const okBody = JSON.parse(ok.content[0]?.text ?? "{}") as {
       committed?: {
         workflow_version_id: string;
@@ -345,10 +328,6 @@ describe("RC2 — conversation_commit reports honestly", () => {
     expect(okBody.draft_state).toBe("clean");
     expect(okBody.verified_against_draft).toBe(true);
 
-    // Make the working draft diverge from the live version (uncommitted step
-    // edit). Derive from the BOUND draft so it keeps `persisted_resources` and
-    // survives loadDraft's bound-workflow hydration (an unbound dirty draft
-    // would be re-hydrated clean).
     const dirtyBound = withWorkflowDraft(boundDraft, {
       ...boundDraft.workflow!,
       steps: [
@@ -372,7 +351,6 @@ describe("RC2 — conversation_commit reports honestly", () => {
     expect(dirty.content[0]?.text ?? "").toContain("NOT COMMITTED");
   });
 
-  // Clean workflows live behind the same slug → exactly one row (no churn from the metadata write).
   test("metadata write did not fork the workflow row", async () => {
     const rows = await ctx.testDb.db
       .select({ id: workflows.id })

@@ -1,7 +1,3 @@
-// Recipe-clone unit tests. Exercises the pure helper used by the
-// `start_workflow_from_recipe` conversation tool — without spinning up
-// a conversation, a DB, or a tool context.
-
 import { describe, expect, test } from "bun:test";
 import {
   validateStepReferences,
@@ -172,8 +168,6 @@ describe("Jira recipes (Fix #7)", () => {
   });
 
   test("every Jira recipe parses standalone through ConnectorRecipeSchema", () => {
-    // Mirrors the existing global loop — ensures the new recipes satisfy
-    // the same schema contract that every other recipe must meet.
     for (const r of jira.recipes) {
       const cloned = JSON.parse(JSON.stringify(r));
       expect(ConnectorRecipeSchema.safeParse(cloned).success).toBe(true);
@@ -195,11 +189,6 @@ describe("catalog totals", () => {
   });
 });
 
-// In an AI-authored model, a primitive without a recipe is a primitive the
-// LLM never emits cleanly on first attempt (repair loop is `maxRetries: 0`).
-// This gate enforces that every workflow step kind has ≥1 demonstrating
-// recipe in `templates.json`. Add the kind to `KNOWN_UNCOVERED` only with a
-// TODO citation pointing at the issue that will land its first recipe.
 describe("recipe-coverage gate (A1)", () => {
   const DECLARED_STEP_KINDS = [
     "request",
@@ -212,9 +201,6 @@ describe("recipe-coverage gate (A1)", () => {
     "loop",
   ] as const;
 
-  // Step kinds without a shipped recipe today. Empty set = full coverage.
-  // The seven supported kinds (request, transform, call, wait, branch,
-  // parallel, loop) all ship with a demonstrating recipe.
   const KNOWN_UNCOVERED = new Set<string>([]);
 
   function collectStepKinds(steps: unknown): Set<string> {
@@ -262,15 +248,10 @@ describe("recipe-coverage gate (A1)", () => {
     for (const kind of KNOWN_UNCOVERED) {
       if (used.has(kind)) stale.push(kind);
     }
-    // If this fails: a recipe added the kind. Remove it from KNOWN_UNCOVERED.
     expect(stale).toEqual([]);
   });
 
   test("DECLARED_STEP_KINDS matches the actual StepSchema discriminator", () => {
-    // Hand-rolled list above matches WorkflowDef StepSchema discriminator.
-    // If StepSchema gains a kind, this assertion fails by design — update the
-    // list AND add KNOWN_UNCOVERED entry pointing at the issue that ships
-    // the first recipe.
     const declared = new Set<string>(DECLARED_STEP_KINDS);
     const expected = new Set<string>([
       "request",
@@ -287,13 +268,6 @@ describe("recipe-coverage gate (A1)", () => {
 });
 
 describe("all builtin recipes — placeholder resolvability (regression for the LinkedIn create-post bug)", () => {
-  // The runtime placeholder grammar only substitutes the kinds
-  // cred|connector|input|scope|item|state (llm/substitution/parser.ts).
-  // A prior step's response body is addressable ONLY as
-  // `${scope.<step_id>.data.<path>}`. Recipes that used the bare
-  // `${<step_id>.body.<path>}` / `${steps.<id>...}` form shipped a literal
-  // `${...}` at runtime — silently broken. WorkflowDefSchema does not
-  // catch this; the substitution validators do. Gate every recipe.
   test("every recipe.workflow has zero unsupported placeholders and zero bad step refs", () => {
     const offenders: string[] = [];
     for (const t of loadBuiltinTemplates()) {

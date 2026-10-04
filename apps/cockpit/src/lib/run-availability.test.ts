@@ -125,7 +125,6 @@ describe("the fix for a blocked connector", () => {
   });
 
   test("a run refused for a lost sign-in offers 'Neu verbinden' on the connector's sign-in card", () => {
-    // The outcome of a refused run: no step ran, the refusal names the connector.
     const remedy = remedyFor({
       workflowId: "wf",
       executionId: "run",

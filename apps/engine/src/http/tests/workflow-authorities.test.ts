@@ -197,8 +197,6 @@ test("an approval until revoked reads as open-ended; the next preview names no g
     inherited_from: null,
     superseded_by: null,
   });
-  // A second version with the same boundary: compared with that approval,
-  // nothing is new. The approved version itself has no other to compare with.
   const [next] = await ctx.db
     .insert(workflowVersions)
     .values({
@@ -220,7 +218,6 @@ test("an approval until revoked reads as open-ended; the next preview names no g
     headers: browserHeaders,
   });
   expect(await preview.json()).toMatchObject({ boundary_growth: [] });
-  // The approved version is not active, so nothing would carry over yet.
   await ctx.db
     .update(workflows)
     .set({ current_version_id: f.version.id, lifecycle: "active" })
@@ -228,7 +225,6 @@ test("an approval until revoked reads as open-ended; the next preview names no g
   const again = await app.request(`${f.base}/versions/${next.id}/authority-preview`, {
     headers: browserHeaders,
   });
-  // Active with a live approval and an equal boundary: activating carries it.
   expect(await again.json()).toMatchObject({ boundary_growth: [], approval_carries_over: true });
 });
 
@@ -282,7 +278,6 @@ test("the normal run API consumes a human grant and binds replay to the exact in
   });
   expect(granted.status).toBe(201);
   const authority = (await granted.json()) as { id: string };
-  // Activation is separate from granting and is not performed by the run API.
   await ctx.db
     .update(workflows)
     .set({ lifecycle: "active", current_version_id: f.version.id })
@@ -696,8 +691,6 @@ test("history cursors preserve PostgreSQL microseconds and same-timestamp id ord
     "10000000-0000-4000-8000-000000000002",
     "10000000-0000-4000-8000-000000000001",
   ];
-  // History-only fixtures share a timestamp with precision beyond a JS Date.
-  // Grant/session proof is exercised above; no fixture execution is admitted.
   for (const id of ids)
     await ctx.db.insert(workflowExecutionAuthorities).values({
       ...original,
@@ -897,18 +890,12 @@ test("held report preparation works for a saved draft and cannot grant, activate
       })
     ).status,
   ).toBe(401);
-  // No supplied input means the MIME recipient cannot be prepared; this must
-  // never turn a held or failed preparation into an execution grant.
   const prepared = await app.request(preparePath, {
     method: "POST",
     headers: browserHeaders,
     body: JSON.stringify({ environment: "dev" }),
   });
   expect(prepared.status).toBe(200);
-  // The answer says which of the two happened. It used to be a flat
-  // `prepared: true` either way: five production workflows were "prepared",
-  // not one of them produced a run, and the derivation that depends on those
-  // runs then reported their steps as never executed.
   const preparedBody = (await prepared.json()) as { prepared: boolean; reason?: string };
   expect(typeof preparedBody.prepared).toBe("boolean");
   if (!preparedBody.prepared) expect(typeof preparedBody.reason).toBe("string");
@@ -927,9 +914,6 @@ test("held report preparation works for a saved draft and cannot grant, activate
   expect(await status.json()).toEqual({ schedules: [], inbound_hooks: [] });
 });
 
-// A caller who reads schedules does not thereby read the workflow's hooks, and
-// a refusal's reason is audit-log content. Each narrower reader sees exactly
-// what its permissions already cover elsewhere.
 test("automation-status shows hooks and refusal reasons only to readers of each", async () => {
   const slug = `authority-hooks-${++counter}`;
   const [workflow] = await ctx.db
@@ -979,16 +963,17 @@ test("automation-status shows hooks and refusal reasons only to readers of each"
     result: "denied",
     reason,
   });
-  await ctx.db.insert(auditLog).values([
-    refusal(
-      "00000000-0000-4000-8000-00000000a001",
-      active.id,
-      "1 hour",
-      "execution_authority_required",
-    ),
-    // Outside the lookback: the newest refusal the view reports is bounded.
-    refusal("00000000-0000-4000-8000-00000000a002", inactive.id, "40 days", "signature_mismatch"),
-  ]);
+  await ctx.db
+    .insert(auditLog)
+    .values([
+      refusal(
+        "00000000-0000-4000-8000-00000000a001",
+        active.id,
+        "1 hour",
+        "execution_authority_required",
+      ),
+      refusal("00000000-0000-4000-8000-00000000a002", inactive.id, "40 days", "signature_mismatch"),
+    ]);
 
   const reader = async (name: string, permissions: string[]) => {
     const role = await createRole(ctx.db, ctx.tenantId, `${slug}-${name}`);
@@ -1045,7 +1030,6 @@ test("automation-status shows hooks and refusal reasons only to readers of each"
     null,
   ]);
   expect(full[1]?.last_refused_at).toBeNull();
-  // A deactivated hook receives nothing, so it holds nothing.
   expect(full.map((hook) => hook.admission_hold)).toEqual([hold, null]);
 });
 
@@ -1075,13 +1059,14 @@ test("a hook-started workflow is offered thirty days sized from its recent deliv
     result: "denied",
     reason,
   });
-  await ctx.db.insert(auditLog).values([
-    refusal("00000000-0000-4000-8000-00000000b001", "1 hour", "execution_authority_required"),
-    refusal("00000000-0000-4000-8000-00000000b002", "2 days", "execution_authority_unavailable"),
-    // Not a call an approval would cover: never authentic, or too long ago.
-    refusal("00000000-0000-4000-8000-00000000b003", "3 hours", "signature_mismatch"),
-    refusal("00000000-0000-4000-8000-00000000b004", "40 days", "execution_authority_required"),
-  ]);
+  await ctx.db
+    .insert(auditLog)
+    .values([
+      refusal("00000000-0000-4000-8000-00000000b001", "1 hour", "execution_authority_required"),
+      refusal("00000000-0000-4000-8000-00000000b002", "2 days", "execution_authority_unavailable"),
+      refusal("00000000-0000-4000-8000-00000000b003", "3 hours", "signature_mismatch"),
+      refusal("00000000-0000-4000-8000-00000000b004", "40 days", "execution_authority_required"),
+    ]);
   const bounds = async (environment: "dev" | "prod") => {
     const res = await app.request(`${f.previewPath}?environment=${environment}`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
@@ -1097,7 +1082,6 @@ test("a hook-started workflow is offered thirty days sized from its recent deliv
     Date.parse(prod.suggested_bounds.valid_until) - Date.parse(prod.suggested_bounds.valid_from),
   ).toBe(30 * 24 * 60 * 60_000);
   expect(prod.suggested_bounds.max_runs).toBe(100);
-  // The bounds stay exactly what a grant accepts; the explanation sits beside them.
   expect(Object.keys(prod.suggested_bounds).sort()).toEqual([
     "max_runs",
     "valid_from",
@@ -1110,7 +1094,6 @@ test("a hook-started workflow is offered thirty days sized from its recent deliv
     observed_days: 14,
     minimum_applied: true,
   });
-  // Hooks deliver to production only: a development review keeps one run.
   const dev = await bounds("dev");
   expect(dev.suggested_bounds.max_runs).toBe(1);
   expect(dev.suggested_bounds_basis).toEqual({ kind: "manual" });

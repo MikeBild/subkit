@@ -1,8 +1,3 @@
-// Integration test for the create_api_key conversation tool — uses
-// the real engine-client + identity service against a testcontainer
-// Postgres so we exercise the audit + plaintext-key surfacing exactly
-// as the LLM would see it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog } from "../../../db/schema/index.ts";
@@ -43,10 +38,6 @@ function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
 }
 
 describe("create_api_key — tool description contract", () => {
-  // The description is the prompt surface the model reads when deciding
-  // whether to call this tool. After the "jump to action on a 'how do
-  // I…' question" regression, the wording must gate the call behind
-  // explicit user confirmation. Loosening these strings re-opens the bug.
   test("description requires explicit user confirmation before minting", () => {
     expect(createApiKeyTool.description).toMatch(/explicit(ly)? confirm/i);
   });
@@ -126,9 +117,6 @@ describe("create_api_key", () => {
   });
 
   test("rejects malformed expires_at via the input schema", () => {
-    // The dispatcher (and, on chat, the SDK tool boundary) parses `inputSchema`
-    // before `execute` runs, so the `.datetime()` rule is enforced there — this
-    // executor takes the parsed value as-is. Assert the rule where it is enforced.
     const parsed = createApiKeyTool.inputSchema.safeParse({
       name: "bad",
       expires_at: "2026-13-99T99:99:99Z",

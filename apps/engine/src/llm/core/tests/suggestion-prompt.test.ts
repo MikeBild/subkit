@@ -29,8 +29,6 @@ describe("assembleSuggestionPrompt", () => {
         text: `msg-${i}`,
       }),
     );
-    // Tail of length 4 ends with "msg-11" (assistant) → user nudge
-    // appended to make the array end with a user message.
     const out = assembleSuggestionPrompt({ recent_messages: recent, max_history: 4 });
     expect(out.messages.map((m) => m.content)).toEqual([
       "msg-8",
@@ -70,13 +68,6 @@ describe("assembleSuggestionPrompt", () => {
   });
 
   test("regression — provider-rejected assistant prefill: messages always end with user", () => {
-    // Production warn `suggest_next.model_invoker_threw` at v4.10.0:
-    //   "This model does not support assistant message prefill. The
-    //    conversation must end with a user message."
-    // Suggest-next runs immediately after an assistant turn, so without
-    // the user-nudge appender every model call ended with assistant
-    // role. This test pins the invariant: the tail role is always user
-    // (when there is any history at all).
     const fixtures: Array<Array<{ role: "user" | "assistant"; text: string }>> = [
       [{ role: "assistant", text: "ok" }],
       [
@@ -98,7 +89,7 @@ describe("assembleSuggestionPrompt", () => {
   });
 
   test("tail-trims oversized messages with an ellipsis prefix", () => {
-    const long = "abcdefghij".repeat(200); // 2000 chars
+    const long = "abcdefghij".repeat(200);
     const out = assembleSuggestionPrompt({
       recent_messages: [{ role: "assistant", text: long }],
       max_chars_per_message: 50,

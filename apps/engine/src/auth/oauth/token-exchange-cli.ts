@@ -1,16 +1,3 @@
-// `engine --token-exchange --key-file <path> [--scope …] [--ttl <seconds>]`
-//
-// Host-side twin of the RFC 8693 grant at POST /v1/oauth/token: reads an
-// API key from a FILE (never from an argument — argv is visible to every
-// process on the host), mints the same short-lived token the endpoint would,
-// prints it on stdout and exits. Deploy verify scripts and metrics scrapes
-// on the host do `TOKEN=$(engine --token-exchange --key-file …)` once per
-// run and put only the token into their curl lines.
-//
-// Runs against the database directly (same key checks, same audit row with
-// request_source=cli) — no HTTP round trip, so it works before the listener
-// is up and behind any edge.
-
 import { readFileSync } from "node:fs";
 import { SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import { closeDb, getDb } from "../../db/client.ts";
@@ -41,7 +28,6 @@ function valueAfter(argv: string[], flag: string): string | undefined {
   return next;
 }
 
-/** Parse argv (after the binary name). Throws on a malformed invocation. */
 export function parseTokenExchangeArgs(argv: string[]): TokenExchangeCliArgs {
   const keyFile = valueAfter(argv, "--key-file");
   if (!keyFile) {
@@ -74,7 +60,6 @@ export function parseTokenExchangeArgs(argv: string[]): TokenExchangeCliArgs {
   };
 }
 
-/** Read the key: first non-empty line, surrounding whitespace stripped. */
 export function readKeyFile(path: string): string {
   const raw = readFileSync(path, "utf8");
   const line = raw
@@ -89,7 +74,6 @@ export async function runTokenExchangeCli(
   argv: string[],
   loadConfig: () => Promise<unknown>,
 ): Promise<void> {
-  // stdout carries exactly one line: the token. Every log line goes to stderr.
   routeLogsToStderr();
   await withContext(
     {

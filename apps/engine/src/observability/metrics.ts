@@ -1,37 +1,14 @@
-// Metric CATALOG — the canonical series definitions (`METRIC_NAMES`),
-// `buildRegistry()` that registers them, and the process-scoped singleton
-// accessor. The registry ENGINE (the `MetricsRegistry` class + label
-// normalization + Prometheus render) lives in ./metrics-registry.ts; this file
-// was split out of it to keep each under the 1000-LOC ceiling. The catalog
-// grows by a few lines per new metric — the engine does not.
-//
-// Why hand-rolled?
-//   - Avoids pulling in `prom-client` (or any equivalent) as a runtime
-//     dep — keeps the engine binary lean and drift-free.
-//   - The set of series we emit is small + bounded; a real client would
-//     be overkill.
-
-// Re-export MetricsRegistry so existing `import { MetricsRegistry } from
-// "./metrics.ts"` callers are unaffected by the split.
 import { MetricsRegistry } from "./metrics-registry.ts";
 import { registerRuntimeTelemetryMetrics } from "./runtime-metrics.ts";
 
 export { MetricsRegistry } from "./metrics-registry.ts";
 
-// -----------------------------------------------------------------------
-// Process-scoped registry + canonical series definitions
-// -----------------------------------------------------------------------
-
 const HISTOGRAM_DURATION_BUCKETS_MS = [10, 50, 250, 1000, 5000, 30000, 300000, 3600000] as const;
 
 const HTTP_DURATION_BUCKETS_MS = [5, 25, 100, 500, 2500, 10000] as const;
 
-// Drift→skill-promotion lag, in SECONDS (not ms): the loop spans human-review
-// latency, so buckets stretch from 1 min to 1 week — 1m / 5m / 30m / 1h / 6h /
-// 1d / 1w. Surfaces the compounding learning loop (docs/concepts/workflows.md).
 const LOOP_LAG_BUCKETS_SECONDS = [60, 300, 1800, 3600, 21600, 86400, 604800] as const;
 
-/** Every value the `decision` label of `patch_candidates_total` can take. */
 export type PatchCandidateDecision =
   | "auto_applied"
   | "parked"
@@ -70,20 +47,10 @@ export const METRIC_NAMES = {
   LLM_QUOTA_EXHAUSTED_TOTAL: "llm_quota_exhausted_total",
   PATCH_CANDIDATES_TOTAL: "patch_candidates_total",
   PROCESS_UPTIME_SECONDS: "process_uptime_seconds",
-  // Runtime-telemetry series (registered in runtime-metrics.ts, emitted by
-  // runtime-telemetry.ts): in-process memory, event-loop lag, boot-phase
-  // and generic-operation durations. Fill the gap that left memory/timing
-  // invisible outside systemd's post-mortem `memory peak`.
   PROCESS_MEMORY_RSS_BYTES: "process_memory_rss_bytes",
   PROCESS_MEMORY_HEAP_USED_BYTES: "process_memory_heap_used_bytes",
   PROCESS_MEMORY_HEAP_TOTAL_BYTES: "process_memory_heap_total_bytes",
   PROCESS_MEMORY_EXTERNAL_BYTES: "process_memory_external_bytes",
-  // Phase 2 — predictive-maintenance series. These feed the operator's
-  // leading indicators (pool saturation, DLQ growth, transient-retry rate,
-  // RSS high-water vs. the configured cap) rather than recording a fault
-  // after it lands. Sampled on the EXISTING tickers (memory 60s for the
-  // pool gauges + RSS high-water, queue-depth 15s for the DLQ gauge); the
-  // counters fire inline at the contract boundary they describe.
   DB_POOL_TOTAL_CONNECTIONS: "db_pool_total_connections",
   DB_POOL_IDLE_CONNECTIONS: "db_pool_idle_connections",
   DB_POOL_WAITING_CONNECTIONS: "db_pool_waiting_connections",
@@ -121,246 +88,43 @@ export const METRIC_NAMES = {
   LLM_CONTEXT_ASSEMBLED_TOTAL: "llm_context_assembled_total",
   LLM_CONTEXT_DROPPED_SECTIONS_TOTAL: "llm_context_dropped_sections_total",
   LLM_CONTEXT_TOTAL_TOKENS: "llm_context_total_tokens",
-  /**
-   * Wall-clock duration (ms) of `listProposedForAuthoring` — the
-   * authoring-time fan-out that loads proposed Skill Candidates for
-   * the assembler. Up to three indexed queries + `getEvidenceCounts`
-   * batch per converse turn; this histogram surfaces the cost so a
-   * future fan-out → single-query refactor has measured ground truth.
-   */
   LLM_LIST_PROPOSED_FOR_AUTHORING_DURATION_MS: "llm_list_proposed_for_authoring_duration_ms",
-  /**
-   * Section-load failures during context assembly, partitioned by
-   * section name. Currently emitted by the proposed-candidates loader
-   * when the DB fan-out throws. A non-zero rate is operational signal:
-   * candidates have silently vanished from the prompt.
-   */
   LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL: "llm_context_section_load_failures_total",
   AUTHORING_GATE_BLOCKS_TOTAL: "subkit_authoring_gate_blocks_total",
-  // Per-tool circuit-breaker open events. Fired when the
-  // sdk-wrap layer short-circuits a tool call due to repeated
-  // identical args (`tool_loop_detected`) or the global
-  // consecutive-failures cap (`consecutive_failures_cap`). Lets a
-  // dashboard show flapping tools the same way the connector
-  // circuit metric shows flapping connectors.
   TOOL_CIRCUIT_OPEN_TOTAL: "subkit_tool_circuit_open_total",
-  // Detected hallucinated tool-absence claims. Fires when the LLM's
-  // assistant text denies the availability of a tool that IS in the
-  // resolved palette this turn. Operators chart by `tool` to see
-  // which tools the model is most likely to forget — usually a
-  // signal that the schema-normaliser regressed or the cleanup
-  // palette diverged from the seed-skill teaching.
   CONVERSATION_TOOL_HALLUCINATED_ABSENCE_TOTAL:
     "subkit_conversation_tool_hallucinated_absence_total",
-  // Defence-in-depth for unbound-schedule drift: counts workflow
-  // commits where the name+description carries cadence phrasing but
-  // `trigger.kind` remained `request`. Any non-zero count is a
-  // regression signal — the seed skill instructs the LLM to carry the
-  // schedule trigger inline with `build_workflow`.
   WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL: "subkit_workflow_schedule_not_bound_total",
-  // Per-kind workflow trigger counter. Recorded at every successful
-  // commit so operators can chart the mix of request / webhook /
-  // schedule over time. A sudden drop in `schedule` kind is the
-  // canary for the chat-authoring flow regressing.
   WORKFLOW_TRIGGER_KIND_TOTAL: "subkit_workflow_trigger_kind_total",
-  // Authoring-time LLM critic runs. `result` is one of
-  // passed / rejected / fail_open. Operators chart passed:rejected
-  // to estimate signal quality, and (passed+rejected):fail_open to
-  // spot provider instability.
   CRITIC_RUNS_TOTAL: "subkit_critic_runs_total",
-  // Instruction-grounded preview-judge verdicts (Fix C). `verdict` is
-  // passes / partial / failed / skipped; `blocked` says whether the
-  // verdict actually blocked the auto-commit (false for advisory
-  // verdicts after the circuit-breaker tripped, and for skips).
   PREVIEW_JUDGE_VERDICTS_TOTAL: "subkit_preview_judge_verdicts_total",
-  // Best-effort `workflows.last_executed_at` write failures from the
-  // saved-execution finaliser. The catalog LRU degrades silently when
-  // this drifts; a non-zero rate is operational signal.
   WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL:
     "subkit_workflows_last_executed_at_write_failed_total",
-  // G15 (lock the LLM-token-accountant lead): the token accountant
-  // reconciles tiktoken estimates against SDK-reported usage already;
-  // exporting the absolute drift percentage as a histogram surfaces
-  // estimate quality at provider granularity. Operators can chart it
-  // to spot a drift regression after a model swap before it shows up
-  // as a billing surprise.
   LLM_TOKEN_DRIFT_PCT: "llm_token_drift_pct",
 
-  // Deprecated compatibility metric. Runtime env overrides were retired;
-  // canonical settings win and the loader emits no active samples.
   SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
-  // Engine self-update + rollback outcomes. Cardinality is
-  // intentionally bounded: `result` is one of `success` / `failed` /
-  // `rollback` (kept in lockstep with the `engine.update.*` audit
-  // action names so SREs don't have to remember an off-by-one),
-  // `channel` is `stable` / `beta`. Version labels are NOT included —
-  // semver is unbounded over time and would explode the series.
   ENGINE_UPDATE_TOTAL: "engine_update_total",
-  // Next-message suggestion outcomes — `outcome` is one of `generated`,
-  // `accepted`, `dismissed`, `typed_over`, `suppressed`, `budget_pressure`,
-  // `error`. The single counter covers both the generation side (engine
-  // emits `generated` / `suppressed` / `error`) and the acceptance side
-  // (sk-cli posts feedback that lands as `accepted` / `dismissed` /
-  // `typed_over`). Cardinality is bounded — no suggestion text label.
   SK_SUGGEST_NEXT_TOTAL: "sk_suggest_next_total",
-  // Proactive self-healing drift scan instrumentation. The scheduler /
-  // admin HTTP / MCP entry points share this label set so dashboards
-  // can compare cadence:
-  //   * proactive_drift_scans_total      — one per scan invocation,
-  //     labelled by source (scheduler / admin_http / mcp) and
-  //     terminal status (succeeded / failed). Cardinality bounded
-  //     by tenant_id × 3 × 2.
-  //   * proactive_drift_signals_total    — one per emitted signal,
-  //     labelled by drift kind. Operators chart this against
-  //     candidates_total to see how many signals got promoted.
-  //   * proactive_drift_candidates_total — one per Patch Candidate
-  //     created from a proactive scan, labelled by classification.
-  //     Distinct from the existing PATCH_CANDIDATES_TOTAL counter
-  //     (which mixes reactive + proactive) so dashboards can split
-  //     the funnel.
-  //   * proactive_drift_scan_duration_seconds — histogram of scan
-  //     wall-clock duration, labelled by source. Lets SREs spot a
-  //     scan that has started running long (e.g. an unbounded LLM
-  //     retry loop) without trawling logs.
   PROACTIVE_DRIFT_SCANS_TOTAL: "proactive_drift_scans_total",
   PROACTIVE_DRIFT_SIGNALS_TOTAL: "proactive_drift_signals_total",
   PROACTIVE_DRIFT_CANDIDATES_TOTAL: "proactive_drift_candidates_total",
   PROACTIVE_DRIFT_SCAN_DURATION_SECONDS: "proactive_drift_scan_duration_seconds",
-  /**
-   * Drift the scanner detected but could not promote to a Patch
-   * Candidate because no workflow anchor exists (hook surface, or a
-   * connector no workflow references). Operators chart this against
-   * `proactive_drift_signals_total` to see how much of detected
-   * drift the current candidate model can act on — high unanchored
-   * counts point at follow-up work to land hook-level candidates.
-   */
   PROACTIVE_DRIFT_UNANCHORED_TOTAL: "proactive_drift_unanchored_total",
 
-  // ----- Unified files resource ---------------------------------
-  // The files surface owns its own metric ladder so an operator can see at
-  // a glance how the storage substrate is behaving without grepping the
-  // execution / LLM ladders.
-  /**
-   * Per-tenant live row count, partitioned by status (`pending` /
-   * `uploading` / `ready` / `failed` / `expired`). Updated on every
-   * create / finalize / delete transition and reconciled by the cleanup
-   * cron. Operators chart `ready` vs. `pending` to spot a stuck upload
-   * pipeline (rising `pending` with flat `ready`) and total row count
-   * against the storage backend's object count to spot orphan leaks.
-   */
   FILES_TOTAL: "subkit_files_total",
-  /**
-   * Per-tenant sum of `size_bytes` across `files WHERE deleted_at IS
-   * NULL`. Drives a "bytes-on-disk per tenant" panel; spikes here paired
-   * with a flat row count point at a single very large upload that may
-   * need a TTL or quota nudge.
-   */
   FILES_BYTES_TOTAL: "subkit_files_bytes_total",
-  /**
-   * Counts every dedup short-circuit — both the inline path
-   * (sha256-match on POST /v1/files/inline) and the finalize sibling-
-   * dedup branch. Operators chart this against `subkit_files_total` to
-   * gauge how much storage cost the dedup index is saving.
-   */
   FILES_DEDUP_HITS_TOTAL: "subkit_files_dedup_hits_total",
-  /**
-   * Histogram of inline-upload + finalize wall-clock duration, labelled
-   * by terminal outcome (`success` / `scan_infected` / `sha_mismatch` /
-   * `error`). p95 of `success` tracks user-perceived upload latency;
-   * a rising `error` bucket points at a degraded storage backend.
-   */
   FILES_UPLOAD_DURATION_SECONDS: "subkit_files_upload_duration_seconds",
-  /**
-   * Per-tenant counter of bytes shipped inline to the LLM via the
-   * `file_part` strategy. A runaway inline channel can blow the
-   * per-turn token budget — chart this against
-   * `subkit_files_llm_cap_downgrades_total` to see how often the
-   * 250 KiB per-turn cap is biting.
-   */
   FILES_LLM_INLINE_BYTES_TOTAL: "subkit_files_llm_inline_bytes_total",
-  /**
-   * Per-tenant counter of files force-downgraded from `file_part` to
-   * `text_extract` because the per-turn 250 KiB inline budget was
-   * exhausted. Non-zero values mean the model is seeing parser-extracted
-   * text instead of the raw bytes — which is the safe fallback but
-   * worse signal for image / PDF input.
-   */
   FILES_LLM_CAP_DOWNGRADES_TOTAL: "subkit_files_llm_cap_downgrades_total",
-  /**
-   * Counter of scanner verdicts (`clean` / `infected`). Any non-zero
-   * `infected` value is operator-actionable: the scanner caught
-   * malware before it became readable to a workflow, but the upload
-   * source still warrants follow-up.
-   */
   FILES_SCAN_RESULTS_TOTAL: "subkit_files_scan_results_total",
-  /**
-   * Counter of pg-boss in-flight scans that failed because the
-   * `pgboss` schema was absent. In production this is a serious
-   * deploy regression — pg-boss is the queue substrate; missing
-   * schema means migrations didn't apply. The cleanup cron skips
-   * the unlinked-TTL soft-delete pass for the tick when any scan
-   * fails (so a file referenced by an in-flight job that is
-   * unreachable through the failed scan path is NOT reaped).
-   * `source` is one of `job`, `schedule`, `archive`.
-   */
   FILES_CLEANUP_PGBOSS_SCAN_MISSING_TOTAL: "subkit_files_cleanup_pgboss_scan_missing_total",
-  /**
-   * Counter of binary parse attempts in the docs-ingestion subsystem
-   * (`pdf` / `docx` / `xlsx` / `xls` / `pptx`), partitioned by terminal
-   * result (`success` / `error`). Chart against
-   * `subkit_docs_binary_parse_input_bytes_total` to see input volume per
-   * format; a sudden spike in `error` for one format usually points at
-   * a library regression or a malformed-file upload campaign.
-   */
   DOCS_BINARY_PARSE_TOTAL: "subkit_docs_binary_parse_total",
-  /**
-   * Counter of input bytes attempted by the docs-ingestion binary
-   * parsers, partitioned by format. Increments BEFORE the parser runs
-   * — name carries `_input_bytes_` (not `_parsed_bytes_`) so an
-   * operator reading the metric knows it includes failures. To chart
-   * successfully-parsed volume divide by the success rate from
-   * `subkit_docs_binary_parse_total{result="success"}`.
-   */
   DOCS_BINARY_PARSE_INPUT_BYTES_TOTAL: "subkit_docs_binary_parse_input_bytes_total",
-  // ----- Run → Drift → Patch → Skill loop closure (docs/concepts/workflows.md) -----
-  // The self-improvement loop runs today but emitted no metric proving it
-  // compounds. These four counters + one histogram instrument each stage so
-  // "each drift makes the next workflow better" becomes concretely measurable.
-  /**
-   * Loop-originated skills that entered an authoring LLM context, partitioned
-   * by `source`. `catalog` counts ONLY Skills promoted from a Skill Candidate
-   * (skills.source === "candidate") — engine-shipped seed/template/manual
-   * skills are deliberately excluded so the series isn't drowned by always-on
-   * skills. `candidate` counts proposed Skill Candidates surfaced for review.
-   * The closing edge of the loop: proves a loop-promoted skill influenced a
-   * later authoring turn. Incremented by the assembled-skill count, so the
-   * counter measures skill-uses, not turns.
-   */
   AUTHORING_CONTEXT_SKILLS_USED_TOTAL: "sk_authoring_context_skills_used_total",
-  /**
-   * Drift signals promoted to a Patch Candidate, partitioned by `classifier`
-   * (`safe` / `unsafe`). Tenant-scoped sibling of the global
-   * `patch_candidates_total` — kept separate so the loop funnel carries
-   * `tenant_id` without mutating the existing counter's cardinality.
-   */
   LOOP_DRIFT_TO_PATCH_CANDIDATE_TOTAL: "sk_loop_drift_to_patch_candidate_total",
-  /**
-   * Patch Candidates that became a Skill Candidate via the repair-pattern
-   * detector (evidence carries ≥1 `patch_candidate_id`). The middle edge of
-   * the loop. Multiple sources may feed this counter.
-   */
   LOOP_PATCH_TO_SKILL_CANDIDATE_TOTAL: "sk_loop_patch_to_skill_candidate_total",
-  /**
-   * Skill Candidates promoted to a Skill, partitioned by `source`
-   * (`auto-suggested` = detector-born; `manual` reserved for a future
-   * hand-authored proposal path). Paired with the lag histogram below.
-   */
   LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL: "sk_loop_skill_candidate_promoted_total",
-  /**
-   * Wall-clock lag, in seconds, from the earliest patch-link (drift
-   * detection) to skill promotion. Only observed for candidates with patch
-   * evidence, so the histogram reflects true drift→skill journeys.
-   */
   LOOP_DRIFT_TO_SKILL_LAG_SECONDS: "sk_loop_drift_to_skill_lag_seconds",
 } as const;
 
@@ -473,10 +237,8 @@ function buildRegistry(): MetricsRegistry {
     help: "Engine process uptime in seconds.",
     labels: [],
   });
-  // Runtime-telemetry series live in runtime-metrics.ts.
   registerRuntimeTelemetryMetrics(reg);
 
-  // ----- Phase 2: predictive-maintenance series -----------------------
   reg.registerGauge({
     name: METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS,
     help: "Total connections in the shared Postgres pool (sampled every 60s).",
@@ -758,9 +520,6 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.LLM_TOKEN_DRIFT_PCT,
     help: "Absolute percentage drift between tiktoken-estimated tokens and SDK-reported usage, per provider.",
     labels: ["provider", "model", "kind"],
-    // 0% to 50% in five-percent steps — drift in the high single
-    // digits is normal; anything past ~15% is a strong signal that a
-    // tokenizer assumption is stale.
     buckets: [0, 1, 2, 5, 10, 15, 20, 30, 50],
   });
   reg.registerGauge({
@@ -769,7 +528,6 @@ function buildRegistry(): MetricsRegistry {
     labels: ["key"],
   });
 
-  // ----- Unified files resource ---------------------------------
   reg.registerGauge({
     name: METRIC_NAMES.FILES_TOTAL,
     help: "Live `files` rows per tenant, partitioned by status (pending / uploading / ready / failed / expired). Refreshed on transitions and reconciled by the cleanup cron.",
@@ -789,7 +547,6 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.FILES_UPLOAD_DURATION_SECONDS,
     help: "Wall-clock duration of inline upload + finalize, labelled by terminal outcome (success / scan_infected / sha_mismatch / error).",
     labels: ["outcome"],
-    // p50 ~50ms inline; p95 ~5s for finalize on a slow scanner.
     buckets: [0.05, 0.25, 1, 5, 30, 120],
   });
   reg.registerCounter({
@@ -836,12 +593,10 @@ export function getMetrics(): MetricsRegistry {
   return _registry;
 }
 
-/** Reset the singleton — tests only. */
 export function resetMetricsRegistryForTests(): void {
   _registry = buildRegistry();
 }
 
-/** Compute current process uptime in seconds (used right before render()). */
 export function refreshProcessUptime(): void {
   getMetrics().set(
     METRIC_NAMES.PROCESS_UPTIME_SECONDS,

@@ -1,13 +1,3 @@
-// Cardinality guard tests. We declare a metric with a small allow-list
-// and confirm:
-//
-//   1. A write that includes a label outside the allow-list still
-//      records the sample, but the rogue label is silently dropped.
-//   2. Multiple writes that vary on the rogue label collapse onto a
-//      single series (no cardinality explosion).
-//   3. Missing allow-listed labels are filled in with the empty string
-//      so the series shape stays consistent.
-
 import { describe, expect, it } from "bun:test";
 import { MetricsRegistry } from "../metrics.ts";
 
@@ -20,8 +10,6 @@ describe("MetricsRegistry label allow-list", () => {
       labels: ["status"],
     });
 
-    // Three writes with the same allow-listed label but different
-    // rogue labels. They must all collapse onto one series.
     reg.inc("scoped_total", { status: "ok", request_id: "a" });
     reg.inc("scoped_total", { status: "ok", request_id: "b" });
     reg.inc("scoped_total", { status: "ok", request_id: "c" });

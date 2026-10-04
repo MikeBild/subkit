@@ -1,20 +1,3 @@
-// Per-tool wrapping logic. Each in-repo `ConversationTool` becomes a
-// Vercel-AI-SDK `Tool` whose `execute` performs the side-effect
-// sequence the old hand-rolled loop did:
-//
-//   1. insert the `conversation_tool_calls` row
-//   2. emit `tool_call_start` / `tool_call_end` events
-//   3. log `conversation.tool.called`
-//   4. evaluate policy gates / dedupe / loop-breakers
-//   5. run the inner tool
-//   6. update the row with the output
-//   7. emit `tool_result` + optional `validation_error` / `elicit_request`
-//   8. stash any pause / committed markers on the shared `TurnSignals`
-//
-// Pause and commit are NOT thrown — the SDK must see a real tool-result
-// so the model can plan its next step. The loop halts via the
-// `stopWhen` conditions evaluated between steps.
-
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
@@ -97,33 +80,10 @@ import {
   type WrappedToolOutput,
 } from "./state.ts";
 
-// Freshness window for a durable prior save-workflow approval. Beyond
-// this, the pre-confirm gate re-pauses (asks again) rather than reusing
-// a stale approval — the safe direction.
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
-// One heap snapshot per process (SUBKIT_HEAP_DIAG=1 only) — the spike
-// recurs every step, so the first capture is representative and repeat
-// snapshots would just hammer /tmp with ~hundreds-of-MB JSON files.
 let heapSnapshotWritten = false;
 
-// The `inputExamples` SDK channel was emitted from this helper
-// alongside the tool's `<example>` description block. AI SDK 6 /
-// Anthropic now strict-validates each example against the projected
-// JSON Schema, and the projection reflexively seals every object with
-// `additionalProperties: false` (including `z.record(...)` values,
-// which legitimately accept any string key). That mismatch breaks
-// every conversation turn with
-// `tools.N.custom: Example at index 0 is invalid: False schema does
-// not allow <value>`. The model already reads the same example from
-// the `<example>` block compileDescription appends to the description,
-// so the `inputExamples` channel is redundant for us today and the
-// safe move is to stop emitting it. We keep the helper (returning an
-// empty object) so the call-site stays one statement; a future fix in
-// either zod-to-json-schema's record handling or the SDK's projection
-// pass can flip this back on after the regression test below proves
-// every tool's example_input survives the strict JSON-Schema
-// validation. Exported for the test suite (propose-skill-strict.test.ts).
 export function toInputExamples(
   _example: Readonly<Record<string, unknown>> | undefined,
 ): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
@@ -141,13 +101,6 @@ function committedWorkflowIdFromResult(result: ToolResult): string | null {
   return workflowId;
 }
 
-/**
- * Result-driven skill autoload. The before-dispatch matcher sees only the
- * tool and its input; a refusal a RESULT names (`repair_guidance[].code` /
- * `.reason`) is the moment the skill explaining it pays for itself. Re-reads
- * `loaded_skills` because the tool itself may have changed them (`load_skill`).
- * Best-effort, like the pre-dispatch autoload: it never fails the tool call.
- */
 async function autoloadForResultDiagnoses(
   db: Db,
   ctx: ToolContext,
@@ -211,43 +164,15 @@ export function wrapOne(
   permissionMode: PermissionMode | null,
   loadedSkills: ReadonlyArray<string>,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
-  // The tool's own schema, verbatim. No confirm marker: the operator — not the
-  // model — clears the policy gate, through the `ask_user_confirm` this wrapper
-  // raises, and the HARNESS performs the call once they answer
-  // (`persistence/auto-persist.ts` → `execute_confirmed_tool_call`). A
-  // model-settable approval slot is an escape hatch, not a gate: one tool call
-  // carrying it would have performed a live write with no elicitation, no
-  // approval row, and no human. `sealSchema` (tools/index.ts) makes every
-  // object schema `.strict()`, so a marker the model volunteers anyway is
-  // rejected at the SDK boundary before `execute` ever runs.
-  //
-  // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the two
-  // packages ship their own Zod re-exports and the variances do not reconcile
-  // at the type level, but the runtime `parse` contract is identical.
   const inputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>>;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     description: compileDescription(inner),
     inputSchema,
-    // AI SDK 7 rejects Date/undefined in tool outputs when validating the
-    // next step's ModelMessage[]; coerce to JSON-safe for the model. The
-    // loop's stop conditions still read the raw `output`. See json-safe-output.ts.
     toModelOutput: jsonSafeModelOutput,
-    // Opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
-    // toInputExamples is intentionally a no-op since v4.6.0 — see the
-    // helper's header for the AI SDK 6 / Anthropic strict-validation
-    // regression that motivated suppressing this channel. The model
-    // still receives the example via the `<example>` block
-    // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
     async execute(modelArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
-      // A model sometimes double-encodes non-ASCII in an ask_user_* question
-      // (`hei\u00dfen`). Decode its human-facing text once, here where the
-      // arguments enter, so the tool-call row, the elicitation row and every
-      // frame built from them read the same readable text.
       const rawArgs = decodeAskUserPromptEscapes(inner.name, modelArgs);
-      // Serialize against other tool executions in this turn — see
-      // TurnSignals.toolChain for rationale.
       const prevChain = signals.toolChain;
       let release!: () => void;
       signals.toolChain = new Promise<void>((resolve) => {
@@ -255,15 +180,6 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
-        // Skill prerequisite gate. Some tools (author_workflow,
-        // edit_workflow_patch) declare a
-        // required skill in `tool-policies.ts#prerequisites`. If the
-        // skill is not loaded, return a structured error instead of
-        // running the tool — the model receives a clear "load
-        // workflow-authoring first" hint and can recover in the next
-        // turn. We surface the gate AFTER the model has chosen the
-        // tool (rather than hiding it) so the failure mode teaches
-        // the right next step instead of leaving the model guessing.
         const needed = prerequisitesForTool(inner.name);
         const missingSkills = needed.filter((slug) => !loadedSkills.includes(slug));
         if (missingSkills.length > 0) {
@@ -278,31 +194,10 @@ export function wrapOne(
           };
         }
 
-        // Global consecutive-failures cap ("no more than 5 failed tool
-        // calls in a row"). Checked
-        // before the per-tool cap because it overrides — when the
-        // model has hit the cap on ANY mix of tools, the next dispatch
-        // returns a structured "ask the user" envelope instead of
-        // running the tool. The model is then forced to emit
-        // `ask_user_choice` / `ask_user_text` to break the loop.
-        // Exception: ask_user_* tools always run (those are how the
-        // model recovers). Read-only inspection tools also pass so the
-        // model can call inspect_workflow to read scope shape after
-        // the cap fires.
         const isAskUser = inner.name.startsWith("ask_user_");
         const isInspect =
           inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
         if (!isAskUser && !isInspect && signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          // Count this short-circuit against the SAME turn-loop budget as
-          // the identical-args loop detector below. Pre-fix the cap only
-          // blocked the tool call and returned an "ask the user" envelope
-          // without ending the turn — a model that ignored it re-emitted
-          // the blocked call every step (observed ~60× / 3.5 min of
-          // `consecutive_failures_block` before the step budget finally
-          // ran out). Mirroring `loop_detected`: once the turn budget is
-          // exhausted, return `reason: "turn_loop_budget_exhausted"`,
-          // which `turnLoopBudgetStopCondition` (loop.ts stopWhen) detects
-          // to halt the stream and end the turn.
           signals.totalLoopWarnings += 1;
           const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
           recordToolCircuitOpen({
@@ -344,17 +239,6 @@ export function wrapOne(
             };
           }
           const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
-          // G3 (runtime-logs review plan): give the model a ready-made
-          // option set to drop straight into `ask_user_choice`. Pre-fix
-          // the cap envelope told the model "emit ask_user_choice with
-          // concrete options" but offered no concrete options — the
-          // model fell back to prose ("I hit the consecutive failure
-          // cap. Let me ask how you'd like to proceed.") and the user
-          // typed "restart_simple" as a free-text guess (session
-          // ed20f48d). Promoting the three universal recovery actions
-          // to first-class options here means the model has a typed
-          // drop-in even when the per-error hints in `alternatives`
-          // are empty.
           const recommendedOptions = [
             {
               value: "restart_simple",
@@ -379,20 +263,6 @@ export function wrapOne(
           };
         }
 
-        // Same-error_code breaker. Sits between the global
-        // consecutive-failures cap (reset by ANY successful tool) and
-        // the identical-args repeat detector below (reset when args
-        // change). Neither catches a tool that keeps returning the SAME
-        // structured `error_code` with FRESH args while successful reads
-        // are interleaved — the exact shape of the authoring-gate thrash
-        // (`transform_authoring_requires_inspect` repeated past a 240k-
-        // token, 30-minute turn that ended in `worker_expired`). The
-        // post-execution accounting below increments
-        // `toolErrorCodeRepeat` per tool/code and clears it when this
-        // tool succeeds or returns a different code; here we refuse the
-        // next call once it has already failed the same way
-        // `MAX_ERROR_CODE_REPEAT` times. ask_user_* and inspect_* always
-        // pass — those are how the model recovers and reads the shape.
         const errorCodeStreak = signals.toolErrorCodeRepeat.get(inner.name);
         if (
           !isAskUser &&
@@ -441,29 +311,7 @@ export function wrapOne(
           };
         }
 
-        // Adaptive loop-breaker. A single global step cap that trusts
-        // the model is too coarse — but plain per-tool counters fire
-        // even on legitimate iterative authoring where the model applies
-        // several distinct edit_workflow_patch calls in sequence.
-        //
-        // Adaptive shape:
-        //   - tenant_read tools have NO repeat cap. Reads are
-        //     idempotent — the model needs them.
-        //   - draft_write / tenant_write tools trip ONLY when the
-        //     SAME args are submitted REPEAT_THRESHOLD times in a
-        //     row. Five edit_workflow_patch calls with five different
-        //     patch sets = fine. Three edit_workflow_patch calls with
-        //     the same args = repair spiral, halt.
-        //   - The global step ceiling lives in the outer loop's
-        //     `stopWhen: stepCountIs(N)` (matches reference's
-        //     stopWhen contract). Per-tool repeat detection here
-        //     short-circuits before that ceiling fires.
         const REPEAT_THRESHOLD = 3;
-        // Recursive stable serialiser: sort object keys at every
-        // depth so { a: { x: 1, y: 2 } } and { a: { y: 2, x: 1 } }
-        // hash the same. JSON.stringify's replacer-array only
-        // applies at the top level and silently drops keys at
-        // deeper levels — we need a deep-stable hash.
         const stableStringify = (v: unknown): string => {
           if (v === null || typeof v !== "object") return JSON.stringify(v);
           if (Array.isArray(v)) {
@@ -483,21 +331,6 @@ export function wrapOne(
             return "";
           }
         })();
-        // Exempt-by-name list: tools whose meaningful state lives
-        // in the conversation's DRAFT, not in args. Re-running them
-        // with identical args after editing the draft is the
-        // canonical "iterate the workflow" pattern — flagging it
-        // as a repeat spiral is a false positive.
-        // Pre-fix (session 8d152b9f 16:00:59): dry_run_workflow
-        // capped after 3 previews of the SAME draft args even
-        // though each preview ran against a DIFFERENT draft state.
-        // `validate_draft` used to live here too. It was removed once
-        // the authoring-context-block started inlining the current
-        // validation state on every turn (apps/engine/src/llm/core/
-        // authoring-context-block.ts#renderValidationStateLines): the
-        // LLM now sees errors continuously and never needs to repeat
-        // the same `validate_draft({})` call to re-check. If it does,
-        // that's the loop spiral the repeat cap is meant to catch.
         const REPEAT_EXEMPT_TOOLS = new Set<string>([
           "dry_run_workflow",
           "dry_run_step",
@@ -525,10 +358,6 @@ export function wrapOne(
           signals.toolArgsRepeat.set(inner.name, { hash: argsHash, count: repeatCount });
         }
         const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
-        // Execution-shaped tools have tenant-visible side effects. Once an
-        // identical call already succeeded in this turn, the second call is
-        // not a useful retry: return the prior result instead of running the
-        // workflow again and creating duplicate execution/audit rows.
         const priorSuccess =
           signals.lastExecutionSuccess &&
           signals.lastExecutionSuccess.tool === inner.name &&
@@ -546,9 +375,6 @@ export function wrapOne(
             tool: inner.name,
             step: signals.step,
           });
-          // Structured engine-log warning so the short-circuit is
-          // visible in Docker / stdout without reading the response
-          // tool_log events.
           recordToolCircuitOpen({
             tool: inner.name,
             reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
@@ -600,21 +426,9 @@ export function wrapOne(
         }
         signals.toolInvocationCount.set(inner.name, priorCount + 1);
 
-        // One-shot memory bracket at the FIRST tool invocation of the turn.
-        // Splits the opaque step-0 window: the local probes measured the
-        // execution lane at ~23MB external peak, so if external is already
-        // high HERE, the ~750MB transient belongs to the provider
-        // request/stream segment that ran before this tool call.
         if (signals.step === 0) {
           const m = readMemoryUsage();
           const external_mb = Math.round(m.external / (1024 * 1024));
-          // SUBKIT_HEAP_DIAG=1 (set via a systemd drop-in, never on by
-          // default): name WHO holds the step-0 external transient. The
-          // knob-perfect standalone replica of the streamText invocation
-          // peaks at 9MB external on the same host, so the retainer is
-          // engine-resident — only an in-process heap snapshot at the
-          // spike moment can identify it. One snapshot per process; the
-          // ~1GB-heap JSON lands in /tmp for offline analysis.
           let heapDiag: Record<string, unknown> = {};
           if (process.env.SUBKIT_HEAP_DIAG === "1") {
             try {
@@ -667,20 +481,9 @@ export function wrapOne(
           conversation_id: ctx.conversation_id,
           parent_message_id: assistantMessageId,
           tool: inner.name,
-          // #304: persist a credential-scrubbed projection of the args so a
-          // secret in a connector-credential slot never lands at rest in the
-          // tool-call row or replays into LLM context. Execution below uses
-          // the untouched `rawArgs` via `walkAndResolve`; auto-persist reads
-          // the elicitation output / draft cache, not this row — so the raw
-          // credential still reaches the store.
           input: redactToolArgsForPersist(inner.name, rawArgs),
           approval_required: inner.name.startsWith("ask_user_"),
         });
-        // Option-B worker heartbeat: stamp the live `mcp_tasks` row with
-        // this tool's phase/last_action/step + a fresh `heartbeat_at` as
-        // the tool starts executing. For a backgrounded MCP turn this is
-        // what `conversation_get` reports as accurate, monotonic progress;
-        // for an inline sk-REPL turn (no `mcp_tasks` row) it no-ops.
         await stampMcpTaskProgress(ctx.tenant_id, ctx.conversation_id, inner.name, rawArgs, db);
         signals.pendingChildToolCallIds.push(toolCallId);
         events.push({
@@ -696,10 +499,6 @@ export function wrapOne(
           input: rawArgs,
           parent_message_id: assistantMessageId,
         });
-        // Single-line activity ticker: tell the operator WHAT the
-        // engine is doing right now. The transcript already shows the
-        // tool-call card; this just keeps the ticker accurate when
-        // the card scrolls out of view. Throttled in EventSink.
         events.push({
           type: "activity",
           phase: "tool",
@@ -713,10 +512,6 @@ export function wrapOne(
           step,
         });
 
-        // Per-call correlated log callback. Tools that want to emit
-        // progress updates during long-running work call
-        // `ctx.onLog("info", "...")` — each emission becomes a
-        // `tool_log` TurnEvent the client can render live.
         const perCallCtx: ToolContext = {
           ...ctx,
           tool_call_id: toolCallId,
@@ -731,32 +526,15 @@ export function wrapOne(
               ts: new Date().toISOString(),
             });
           },
-          // Inline diff emitter — tools that mutate the draft call this
-          // with canonical before/after JSON; we compute the unified
-          // line-diff once on the engine side and ship pre-built hunks
-          // over the wire.
           emitDiff: ({ title, language, before, after }) => {
             try {
               const hunks = computeLineDiff(before, after, { context: 3 });
               if (hunks.length === 0) return;
               events.push({ type: "diff", title, language, hunks });
-            } catch {
-              // Best-effort — never block the tool on a diff failure.
-            }
+            } catch {}
           },
         };
 
-        // Resolve the effective execution mode (secret safeguards →
-        // permission_mode → per-conversation override → dynamic
-        // compute-from-input → category default). The resolved mode is
-        // recorded in the interaction_log's `proposed` transition so
-        // operators / observability see it, and a `policy_confirm_required`
-        // elicit_request is emitted when the mode demands confirmation
-        // before execution.
-        //
-        // Everything downstream — the gate, the log line, the audit row —
-        // reads THIS decision. There is no second resolver whose verdict
-        // could be recorded while a different one is enforced.
         const policyDecision = decideToolMode({
           tool: inner.name,
           category: inner.category,
@@ -765,9 +543,6 @@ export function wrapOne(
           permission_mode: permissionMode,
         });
         const resolvedMode = policyDecision.mode;
-        // The environment the caller named, when it named one. Recorded on
-        // the audit row so an operator can tell a prod-gated confirm from
-        // a dev one.
         const policyEnvironment =
           typeof (rawArgs as { environment?: unknown }).environment === "string"
             ? (rawArgs as { environment: string }).environment
@@ -783,7 +558,6 @@ export function wrapOne(
           rule: policyDecision.rule,
         });
         if (resolvedMode === "confirm_before_execution") {
-          // Best-effort audit; never blocks dispatch on a failed insert.
           await recordToolPolicyConfirmationRequired({
             tenant_id: ctx.tenant_id,
             actor_id: ctx.actor_id ?? null,
@@ -805,27 +579,7 @@ export function wrapOne(
             });
           });
         }
-        // Retained purely for the forensic gate log below — it is no
-        // longer a gate INPUT. `buildPolicyGateCommitIntent` (below)
-        // still routes on `mapToolToCommitIntentKind` when it attaches
-        // the auto-persist carrier.
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
-        // Durable prior-approval lookup — ONLY for the save-workflow
-        // path, and ONLY via the SHARED `findPriorSaveWorkflowApproval`
-        // predicate that `commitWorkflowAtomic` also authorizes on
-        // (`persistence/commit-workflow.ts`). Keying the pre-confirm gate
-        // and the commit backstop on the same predicate is what makes
-        // them impossible to disagree: if the pre-confirm skips on an
-        // approval, the commit gate would have accepted the same one.
-        //
-        // Every OTHER write tool has NO shortcut here: the deterministic
-        // `decideConfirm` rule pauses, the pause emits an `ask_user_confirm`
-        // carrying a `commit_intent`, and the harness auto-persist path
-        // performs the call on approve. There is no marker the model can set to
-        // clear the gate. The fuzzy natural-language heuristics (a generic
-        // 20-row elicitation scan keyed on the cosmetic `kind` bucket, plus a
-        // prose-affirmation regex over recent messages) were deleted: they
-        // guessed at operator intent over a security-critical write.
         let priorApproval = false;
         if (inner.name === "save_workflow_draft") {
           try {
@@ -840,16 +594,8 @@ export function wrapOne(
             ) {
               priorApproval = true;
             }
-          } catch {
-            // DB blip: fall back to gating. Better to ask twice than
-            // silently elide a security-critical confirm.
-          }
+          } catch {}
         }
-        // The ONE confirm-gate decision — the same pure rule `policyDecide`
-        // (`tools/policy.ts`) evaluates for the dispatcher surfaces, so all
-        // of them pause or proceed IDENTICALLY for the same tool/args.
-        // Resolved preparation auto-runs. A required confirm proceeds only on
-        // a fresh durable `priorApproval`, even for a read-visible connector.
         const confirmDecision = decideConfirm({
           resolvedMode,
           priorApproval,
@@ -859,13 +605,6 @@ export function wrapOne(
           ...(ctx.surface !== undefined ? { surface: ctx.surface } : {}),
         });
         const needsPreConfirmation = confirmDecision.pause;
-        // Forensic log when the gate was evaluated for a
-        // confirm_before_execution tool but skipped, so the next "tool
-        // ran without confirmation" investigation can read WHY directly
-        // from engine logs instead of bisecting the wrapper. Pre-fix
-        // this exact failure mode silently swallowed a save_workflow_draft
-        // call (session dca36b29 — `paused: false, committed: false,
-        // error: no_prior_approval`).
         if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
           logger.info({
             module: "conversation_tool",
@@ -879,12 +618,6 @@ export function wrapOne(
             ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
           });
         }
-        // yolo audit: when the resolver short-circuits a dangerous
-        // tool because the operator armed yolo, emit a forensic-grade
-        // log line so an operator can later answer "did anyone click
-        // before this delete?". Lives next to the existing
-        // `recordTransition` so the trail also surfaces in the
-        // confirmation-state machine.
         const bypassedConfirmation = permissionMode === "yolo" && isDangerousTool(inner.name);
         if (bypassedConfirmation) {
           logger.warn({
@@ -900,10 +633,6 @@ export function wrapOne(
           });
         }
 
-        // Confirmation-state machine entry: tenant_write tools stage a
-        // `proposed` state before execution. On success we transition
-        // to `confirmed`, on failure to `declined`. Read-only tools
-        // skip this entirely — the state columns stay null.
         if (inner.category === "tenant_write") {
           await recordTransition(db, {
             tool_call_id: toolCallId,
@@ -919,23 +648,7 @@ export function wrapOne(
           });
         }
 
-        // Policy-gated pre-execution confirmation: emit an elicitation
-        // without invoking the tool. The operator answers it and the HARNESS
-        // claims the approval and performs the call (`persistence/auto-persist.ts`
-        // → `execute_confirmed_tool_call`). The model re-issues nothing:
-        // `decideConfirm` reads no marker, and no wrapped tool publishes one.
         if (needsPreConfirmation) {
-          // Same-turn dedupe — defense in depth against parallel tool
-          // calls. Anthropic's `disableParallelToolUse` (loop.ts) keeps
-          // this to a single tool_use per turn at the provider layer;
-          // if a future provider or model variant slips a parallel call
-          // through anyway, the second call refuses with a structured
-          // error that points to the first elicitation. Without this,
-          // a single user turn could stage N pending elicitations and
-          // exhaust the loop-warning budget (session d34e5858 regression
-          // — "starte mit übermorgen" produced 5 parallel run_workflow
-          // pre-confirmations and surfaced the synthesised "I stopped
-          // this turn early" fallback).
           if (signals.pendingElicitation) {
             const dupOutput = {
               error: "duplicate_pending_elicitation_in_turn",
@@ -959,16 +672,7 @@ export function wrapOne(
             });
             return { ok: false, data: dupOutput };
           }
-          // Structured pending-output preview so the confirm UI shows
-          // first-class fields (target id, environment, key shape)
-          // instead of a raw arg blob the user has to parse.
           const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
-          // Per-tool summary so the confirmation card can show the
-          // operator what they're about to approve. For `run_workflow`,
-          // include the workflow's display name + the last preview's
-          // step count + summary so the operator sees concrete
-          // context, not just the policy mode — the confirm UX
-          // surfaces the test payload + last output.
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
@@ -997,56 +701,12 @@ export function wrapOne(
             return `Confirm ${inner.name} (policy: ${resolvedMode})`;
           };
           const policyGateSummary = buildPolicyGateSummary();
-          // Top-level kind matters: `save_workflow_draft` MUST stamp
-          // `kind: "save_workflow_draft"` so the inner prior-approval gate in
-          // commit-workflow.ts:54-89 finds the resolved row that clears the
-          // save path's `priorApproval` shortcut.
           const topLevelKind = topLevelElicitationKindForTool(inner.name);
-          // The commit_intent is what `maybeAutoPersistFromElicitation`
-          // (auto-persist.ts) dispatches the moment the operator confirms. It
-          // is the ONLY resume path: no wrapped tool publishes a confirm marker,
-          // so a model re-issue cannot clear the gate.
-          //
-          // Tools with a shape-specific carrier (save/delete/create_api_key/
-          // run_workflow) keep it. Everything else gets the universal
-          // `execute_confirmed_tool_call` carrier: a single-use approval over
-          // the exact args this call paused on, encrypted and hash-bound, which
-          // the harness claims and replays. A tool whose resume depended on the
-          // model re-issuing had no gate at all.
           let policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
-          // The one-shot browser link a human opens to grant this pause when
-          // their MCP client cannot render an in-band confirmation form. Minted
-          // by `requestApproval` below; stays null for the shape-specific
-          // carriers (save/delete/…) whose approval the commit path mints, and
-          // when the engine has no configured `server.public_base_url`.
           let policyApprovalUrl: string | null = null;
-          // Mint the approval for EVERY gated confirm, not just the universal
-          // carrier. A shape-specific carrier used to skip this entirely, so
-          // `save_workflow_draft`, `delete_*`, `create_api_key` and the
-          // `run_workflow` commit paused with NO out-of-band channel at all: on a
-          // client that cannot render an in-band form the human simply had no way
-          // to answer. Observed on claude.ai, where the only remaining route was
-          // an operator hand-running a curl against `/respond` with their API key.
-          //
-          // What the approval MEANS differs by carrier, and that difference is
-          // deliberate:
-          //   - universal (`execute_confirmed_tool_call`) — a claimable capability
-          //     over encrypted args the harness replays byte-exactly.
-          //   - shape-specific — the portal CHANNEL plus the decision record (who
-          //     approved, when, `granted_via`). The resume re-dispatches the tool
-          //     with a prior-approval marker rather than claiming, so this handle
-          //     is never consumed; `elicitation-expiry-runner.ts` knows that and
-          //     does not report it as an abandoned grant.
           {
-            // Same principal `checkToolPermission` gates on, resolved the same
-            // way — so the id this approval is bound to is the id the harness
-            // claims it with (`auto-persist.ts` resolves it identically).
             const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
             if (!principal) {
-              // Fail closed: an unattended system actor has no operator to bind
-              // the single-use approval to, so no handle can be minted and no
-              // resume can run. The gate still pauses — it never degrades into
-              // "run it anyway".
               logger.warn({
                 module: "conversation_tool",
                 action: "policy.gate_no_principal",
@@ -1063,15 +723,8 @@ export function wrapOne(
                   principal,
                   approval_id: approvalId,
                   tool: inner.name,
-                  // `surface`/`via` stay "chat" on EVERY conversation surface,
-                  // including MCP: the harness — not the MCP client — performs the
-                  // gated call on resume, and `auto-persist.ts` claims the approval
-                  // with `surface: "chat"`. `consumeApproval` matches surface in its
-                  // CAS, so minting any other surface here would make the claim miss
-                  // and the approved write silently never run.
                   surface: "chat",
                   via: "chat",
-                  // The rule the resolver actually enforced, verbatim.
                   reason: policyDecision.rule,
                   execution_mode:
                     policyEnvironment === "prod" || policyEnvironment === "dev"
@@ -1084,9 +737,6 @@ export function wrapOne(
                   ? withApprovalHandle(policyCommitIntent, approvalId)
                   : buildConfirmedToolCallIntent(inner.name, approvalId);
               } catch (err) {
-                // A handle we could not persist is a handle nobody can claim.
-                // Surface it instead of pausing on an approval that will never
-                // resolve.
                 logger.error({
                   module: "conversation_tool",
                   action: "policy.gate_approval_failed",
@@ -1122,12 +772,6 @@ export function wrapOne(
               }
             }
           }
-          // Connector-delete dependency surface: when the target
-          // connector is still bound by live workflows, list them in the
-          // confirm card so the operator sees what will break before
-          // approving. The dispatcher backstop (dispatchDeleteConnector)
-          // refuses the auto-persist unless `confirm_orphan: true`, so
-          // this is the operator-facing half of the same guard.
           let connectorDeleteDependents: Array<{ id: string; slug: string; name: string }> = [];
           if (inner.name === "delete_connector") {
             const connectorId = typeof rawArgs.id === "string" ? rawArgs.id : null;
@@ -1149,13 +793,6 @@ export function wrapOne(
             ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
-            // The out-of-band approval link. Unlike `commit_intent`, this is a
-            // bare browser URL the human is meant to open — not an approval
-            // handle — so it stays in `operatorInput` and reaches every
-            // envelope that leaves this process. It routes url-capable MCP
-            // clients to `elicitation/create` url-mode (see `pendingUrlElicitation`)
-            // and is the only channel a client with no elicitation UI has to
-            // reach the confirmation at all.
             ...(policyApprovalUrl ? { approval_url: policyApprovalUrl } : {}),
             ...(hasConnectorDeleteDependents
               ? {
@@ -1178,14 +815,7 @@ export function wrapOne(
             db,
           );
           signals.pendingChildElicitationIds.push(elicitation.id);
-          // The approval handle stays on the persisted row the harness reads.
-          // Every envelope that leaves this process — the SDK tool-result the
-          // model is shown, the `elicit_request` frame, the pause `conversation_get`
-          // relays — carries the same prompt minus the capability.
           const operatorInput = withoutApprovalHandle(elicitationInput);
-          // Forensic log: confirmation event was emitted with full
-          // payload context so an operator triaging "did the gate
-          // actually pause?" can answer it from logs alone.
           logger.info({
             module: "conversation_tool",
             action: "policy.gate_paused",
@@ -1202,12 +832,6 @@ export function wrapOne(
               ? { commit_intent_kind: policyCommitIntent.kind as string }
               : {}),
           });
-          // Stamp `status: "awaiting_confirmation"` so any CLI card that
-          // dispatches on `tool: "run_workflow" | "save_workflow_draft"` and
-          // reads `data.status` shows a meaningful pending state instead
-          // of falling into the "Execution status missing" branch.
-          // Pre-fix this output was status-less and the ExecutionDiagnosisCard
-          // briefly rendered `× bug, not a state` for the operator.
           const output = {
             pending: true,
             status: "awaiting_confirmation" as const,
@@ -1222,7 +846,6 @@ export function wrapOne(
                 }`
               : `policy_confirm_required — nothing ran, and this turn has no way to release ${inner.name}: no approval handle could be opened for it. Tell the user the action must be performed from an authenticated session.`,
           };
-          // Awaiting the operator's decision — nothing ran and nothing was refused.
           await updateToolCallOutput(db, toolCallId, output, "pending");
           events.push({
             type: "tool_result",
@@ -1267,18 +890,9 @@ export function wrapOne(
           };
         }
 
-        // Resolve `{ "$file": "fid_..." }` refs inside rawArgs before
-        // handing them to the tool. The canonical resolver lives at
-        // `files/resolver.ts` — `walkAndResolve` replaces every ref
-        // leaf with a `ResolvedFile` whose `openRead()` returns the
-        // bytes stream. Unknown / cross-tenant fids throw
-        // `FileNotFoundError`; we surface that as a typed error
-        // exactly like the legacy attachment-slug failure mode.
         const resolveCache = new Map<string, ResolvedFile>();
         let resolvedArgs: Record<string, unknown>;
         try {
-          // A slug leaf names a file only as chat text would let this writer
-          // name it; the resolver itself never trusts a guessable name.
           const pinnedArgs = await resolveAttachmentSlugsInArgs(rawArgs, {
             db,
             tenant_id: ctx.tenant_id,
@@ -1314,12 +928,6 @@ export function wrapOne(
           throw err;
         }
 
-        // Tool-driven skill autoload. Before dispatch, ask the
-        // data-driven matcher (skill-autoload.ts) which active skills'
-        // `activates_when` rules match the about-to-run tool and the
-        // conversation's connector scope, then append any missing
-        // slugs to `loaded_skills` so the next context assembly sees
-        // their bodies. Idempotent — already-loaded slugs are filtered.
         try {
           const convRow = await db
             .select({
@@ -1345,26 +953,18 @@ export function wrapOne(
               raw,
             }),
           );
-          // The loop increments `turn_count` at turn start, before any tool
-          // runs, so the persisted value is the current turn — stamp both
-          // new additions and tool-driven re-touches with it.
           const currentTurn = convRow[0]?.turn_count ?? 0;
           const membership = currentEntries.map((e) => e.slug);
           const [catalog, scope] = await Promise.all([
             loadActivationCatalog(ctx.tenant_id, db),
             resolveScopeFactsForConversation(db, ctx.tenant_id, ctx.conversation_id, rawArgs),
           ]);
-          // New slugs this tool unlocks (skip already-loaded — that path is
-          // re-affirmed below).
           const audience = skillAudienceForAuthoringMode(ctx.getDraft().summary?.mode);
           const additions = autoloadForToolCall(
             { tool: inner.name, input: rawArgs, ...scope, audience },
             catalog,
             membership,
           );
-          // Already-loaded slugs whose `activates_when` still matches this
-          // tool call — refresh their recency so a tool-driven re-touch
-          // keeps the body alive.
           const reaffirmed = new Set(
             reaffirmLoadedForTurn(
               { mode: "tool_call", tool: inner.name, input: rawArgs, ...scope, audience },
@@ -1399,9 +999,6 @@ export function wrapOne(
             });
           }
         } catch (err) {
-          // Autoload is best-effort: a DB blip must never block tool
-          // execution. The next turn will retry from the persisted
-          // state.
           logger.warn({
             module: "conversations.skill_autoload",
             action: "skill_autoload.failed",
@@ -1411,10 +1008,6 @@ export function wrapOne(
           });
         }
 
-        // Langfuse trace span around the tool execution. Inert no-op
-        // when LANGFUSE_PUBLIC_KEY/SECRET_KEY are unset; redacts any
-        // ${cred.*} placeholders + sensitive-looking values in input
-        // and output before they leave the process.
         const langfuseSpan = await startToolSpan({
           name: inner.name,
           input: resolvedArgs,
@@ -1428,12 +1021,6 @@ export function wrapOne(
         });
 
         let result: ToolResult;
-        // Central RBAC gate: enforce the tool's declarative `permission`
-        // descriptor before execution (replaces the per-tool inline can()
-        // checks). Runs at the same point the inline checks did — inside
-        // execute, after the confirm gate — so ordering is unchanged; a deny
-        // flows through the normal ok:false handling below (declined
-        // transition, row update, tool_result event).
         const permCheck: ToolPermissionResult = inner.permission
           ? await checkToolPermission(perCallCtx, inner.permission, rawArgs)
           : { allow: true };
@@ -1495,18 +1082,7 @@ export function wrapOne(
           });
         }
 
-        // Persist the FULL output to the conversation_tool_calls row
-        // (for audit / replay), but feed only a TRUNCATED view back to
-        // the model so a 200-row list doesn't blow subsequent context
-        // budgets. `raw_ref` carries a handle the model can fetch via
-        // `get_raw_result` when it actually needs the rest. Projection
-        // shared with the direct invocation path — see result-payload.ts.
         const resultPayload: unknown = normalizeToolResultPayload(result);
-        // Close the Langfuse span with the post-tool payload. `success`
-        // mirrors the structured `ok` flag: a tool that returns
-        // `{ ok: false }` is a recoverable result, not an error,
-        // but it lights up `level: WARNING` so operators can spot
-        // a high rate of `ok:false` returns in the dashboard.
         await langfuseSpan.finish({
           output: resultPayload,
           status: result.ok ? "success" : "error",
@@ -1514,11 +1090,6 @@ export function wrapOne(
         await updateToolCallOutput(db, toolCallId, resultPayload, toolCallOutcome(result));
         await autoloadForResultDiagnoses(db, ctx, inner.name, resultPayload);
 
-        // Draft snapshot after every successful draft_write tool. Gives
-        // the operator a rollback target if the next edit goes wrong;
-        // LRU-capped at 10 per conversation so the table can't grow
-        // unbounded. Best-effort — a failure here logs but does not
-        // block the tool result from reaching the LLM.
         if (result.ok && inner.category === "draft_write") {
           try {
             const draftAfter = ctx.getDraft();
@@ -1543,32 +1114,10 @@ export function wrapOne(
           }
         }
 
-        // get_raw_result exists to drain a stored `raw_ref` back into the
-        // model's context — its whole purpose is to bypass the truncator.
-        // If we re-run its output through truncateForLlm, the truncator
-        // mints a NEW raw_ref and tells the model "full payload available
-        // via get_raw_result(ref=...)" — and the model follows the
-        // breadcrumb forever (session 0498925e: 10 consecutive calls,
-        // each output growing by 8 chars = the length of the fresh ref).
-        // Skip the truncator for this single tool; if the payload exceeds
-        // context, the model already accepted that cost by asking for it.
         const skipTruncate = inner.name === "get_raw_result";
         const truncated = skipTruncate
           ? ({ truncated: false, data: resultPayload } as const)
           : truncateForLlm(resultPayload);
-        // The model-visible view of this result. This is what the SDK
-        // return below carries as `data` — honoring the header contract
-        // ("persist the FULL output, feed only a TRUNCATED view back to
-        // the model"). Pre-fix only the CLI events stream got the
-        // truncated view while the SDK return shipped the full payload:
-        // every large output then rode the cumulative prompt on EVERY
-        // subsequent step of the turn (plus the SDK's response-message
-        // clone), which is the within-step multi-GB transient the heap
-        // brackets localized. Control-flow markers survive truncation:
-        // `pause`/`committed_workflow_id` stay on the wrapper, scalars
-        // (`requires_repair`, `classification`, `already_persisted`,
-        // `version_changed`) pass both truncation passes untouched, and
-        // `judge`/`warnings` are pass-2-protected root keys.
         const modelVisibleOutput = truncated.truncated
           ? truncated.data !== null &&
             typeof truncated.data === "object" &&
@@ -1593,10 +1142,6 @@ export function wrapOne(
           output: modelVisibleOutput,
           parent_message_id: assistantMessageId,
         });
-        // Activity ticker: tool ended → switch to idle so the CLI
-        // ticker stops showing the tool name. `last_completed` lets
-        // the operator see what just finished (prefer visibility over
-        // silence) even after the call card scrolls.
         const completedDurationMs = Date.now() - startedAt;
         events.push({
           type: "activity",
@@ -1619,8 +1164,6 @@ export function wrapOne(
           committed: Boolean(committedWorkflowId),
           duration_ms: Date.now() - startedAt,
           ...dataSummary,
-          // Lift a structured `ok:false` reason (top-level error_code/message)
-          // into the log so tool.failed carries WHY, not just data_keys.
           ...summarizeToolFailure(result),
         };
         if (result.ok) log.conversation.tool.succeeded(logCtx);
@@ -1632,23 +1175,11 @@ export function wrapOne(
           duration_ms: Date.now() - startedAt,
         });
 
-        // Track the last error shape so repeated identical failures
-        // can break out of a loop. A "shape" is the (reason, error)
-        // pair — same reason + same first ~80 chars of error counts
-        // as a repeat.
         if (result.ok) {
           signals.toolLastErrorHash.delete(inner.name);
           signals.toolValidationFingerprint.delete(inner.name);
-          // This tool succeeded — clear its same-error_code streak so a
-          // recovered tool is not penalised for earlier refusals.
           signals.toolErrorCodeRepeat.delete(inner.name);
-          // First success resets the global consecutive-failures counter.
           signals.consecutiveFailures = 0;
-          // Remember the last successful execution result keyed by args
-          // hash. If the model re-issues the IDENTICAL call and trips the
-          // loop guard, the abort envelope hands this back as
-          // `prior_success_output` instead of hiding the finished run
-          // behind "no output".
           if (argsHash && (inner.name === "run_workflow" || inner.name.startsWith("wf_"))) {
             signals.lastExecutionSuccess = {
               tool: inner.name,
@@ -1674,24 +1205,11 @@ export function wrapOne(
                   : "";
           const shape = `${reason}|${err.slice(0, 120)}`;
           signals.toolLastErrorHash.set(inner.name, shape);
-          // Same-error_code streak: track the STABLE code (`reason` ??
-          // `error_code`) independently of the volatile message tail.
-          // Read pre-dispatch on the NEXT call to short-circuit a tool
-          // that keeps refusing the same way even as its args change.
-          // Not reset by other tools succeeding (only by THIS tool
-          // succeeding or returning a different code), so it survives
-          // the interleaved read-tool successes that reset
-          // `consecutiveFailures`.
           if (reason) {
             const priorCode = signals.toolErrorCodeRepeat.get(inner.name);
             const nextCount = priorCode?.code === reason ? priorCode.count + 1 : 1;
             signals.toolErrorCodeRepeat.set(inner.name, { code: reason, count: nextCount });
           }
-          // Validation-fingerprint tracker: catches the case where
-          // args differ but the engine keeps returning the same
-          // validation error shape. Args-hash repeat detection won't
-          // fire there because each call has unique args; this
-          // detector watches the OUTPUT shape instead.
           if (Array.isArray(errObj.errors)) {
             const fingerprint = computeValidationFingerprint(
               errObj.errors as Array<{ path?: unknown; message?: unknown }>,
@@ -1728,9 +1246,6 @@ export function wrapOne(
               }
             }
           }
-          // Global cap: every ok=false tool result anywhere increments
-          // the running counter. The next dispatch tick reads this
-          // and short-circuits if the model has not asked the user yet.
           signals.consecutiveFailures += 1;
           if (signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             logger.warn({
@@ -1753,10 +1268,6 @@ export function wrapOne(
           }
         }
 
-        // Mirror the old loop: a `tool` role message keeps the audit
-        // trail of the turn self-contained in `conversation_messages`.
-        // The persisted message carries the full output (not truncated)
-        // for faithful replay.
         await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
           tool: inner.name,
           output: resultPayload,
@@ -1775,8 +1286,6 @@ export function wrapOne(
         }
 
         if (result.pause) {
-          // Prefer the full input payload; fall back to reconstructing
-          // from legacy {kind, diff, target} fields.
           const inputPayload =
             result.pause.input !== undefined
               ? result.pause.input
@@ -1793,9 +1302,6 @@ export function wrapOne(
                 }
               : inputPayload;
           signals.pendingChildElicitationIds.push(result.pause.elicitation_id);
-          // Tool-emitted pause may carry its own pending_output; if
-          // not, derive one from the wrapping tool's policy hook so
-          // the confirm UI gets a structured preview either way.
           const pauseInputRecord =
             inputPayload && typeof inputPayload === "object"
               ? (inputPayload as { pending_output?: Record<string, unknown> })
@@ -1836,17 +1342,6 @@ export function wrapOne(
           signals.committed = { workflow_id: committedWorkflowId };
         }
 
-        // Post-execution review pause (`confirm_after_execution`).
-        // When the resolved mode says the
-        // tool's RESULT must be reviewed before the loop continues,
-        // and the tool body succeeded (ok=true) and didn't already
-        // emit its own pause, synthesise an `ask_user_confirm`
-        // elicitation carrying the captured result. The operator
-        // accepts → loop resumes; declines → loop receives a
-        // `result_review_declined` envelope (subkit's tenant_write
-        // tools are mostly idempotent / non-rollbackable, so we don't
-        // attempt automatic rollback — declining is logged + surfaced
-        // and the model decides on the next turn).
         if (
           resolvedMode === "confirm_after_execution" &&
           result.ok &&

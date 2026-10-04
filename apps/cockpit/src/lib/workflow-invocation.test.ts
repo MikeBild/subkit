@@ -139,7 +139,6 @@ describe("schedule rows", () => {
     const rows = [
       { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "dev" },
       { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "prod" },
-      // Even two rows that agree on everything are two rows.
       { cron: "0 7 * * *", timezone: "Europe/Berlin", environment: "prod" },
     ];
     const keys = rows.map(scheduleRowKey);
@@ -201,7 +200,6 @@ describe("what a call will be", () => {
   });
 
   test("a stored approval the panel does not confirm promises nothing", () => {
-    // The panel says repair, approval needed, not verified — or approves another environment.
     expect(callVerdict(invocation, "prod", null)).toBe("unconfirmed");
     expect(callVerdict(invocation, "prod", "dev")).toBe("unconfirmed");
   });

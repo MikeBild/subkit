@@ -66,7 +66,6 @@ async function dropLease(instanceId: string): Promise<void> {
 describe("boot with a restart-required revision and a fresh foreign lease", () => {
   test("waits until the previous process's lease runs out, then promotes", async () => {
     await waitForRestart(3201);
-    // The previous process ended without its drain: its lease is still fresh.
     await holdLease("previous-process");
     const sleeps: number[] = [];
     const state = await initializeRuntimeConfig(tdb.db, getConfig(), {
@@ -74,7 +73,6 @@ describe("boot with a restart-required revision and a fresh foreign lease", () =
       maxWaitMs: 10_000,
       sleep: async (ms) => {
         sleeps.push(ms);
-        // The lease window passes while boot waits.
         if (sleeps.length === 2) await dropLease("previous-process");
       },
     });
@@ -82,8 +80,6 @@ describe("boot with a restart-required revision and a fresh foreign lease", () =
     expect(sleeps[1]).toBeGreaterThan(sleeps[0] ?? 0);
     expect(state.active_revision).toBe(state.saved_revision);
     expect(getConfig().server.port).toBe(3201);
-    // Once the waiting revision is the active one, nothing waits for a restart
-    // any more — the settings page must not keep saying so.
     const after = await getRuntimeConfigState(tdb.db);
     expect(after.active_revision).toBe(after.saved_revision);
     expect(after.pending_restart_fields).toEqual([]);
@@ -113,8 +109,6 @@ describe("boot with a restart-required revision and a fresh foreign lease", () =
   });
 
   test("its own replica id is no foreign lease: a restarted container promotes at once", async () => {
-    // Same hostname and pid 1 after a container restart: the lease left behind
-    // under this very id cannot belong to another live process.
     await holdLease("container-pid-1");
     let slept = false;
     const state = await initializeRuntimeConfig(tdb.db, getConfig(), {

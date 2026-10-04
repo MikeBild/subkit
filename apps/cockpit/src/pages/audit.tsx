@@ -66,18 +66,6 @@ const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
   metadata: "audit.detail.metadata",
 };
 
-/**
- * One record, whole.
- *
- * The row that opened this sheet already holds everything the engine records,
- * so this fetch refreshes rather than fills — and an answer that is not an
- * audit record is therefore dropped instead of substituted. A failed refresh
- * is said out loud rather than swallowed: the page would otherwise pass off a
- * stale copy as the log's current word.
- *
- * Who, when and with what result lead; the identifiers an operator quotes into
- * a ticket follow, collapsed.
- */
 function AuditDetail({
   entry,
   directory,
@@ -89,8 +77,6 @@ function AuditDetail({
   const detail = useQuery({
     queryKey: ["audit-entry", entry.id],
     queryFn: () => apiRequest<unknown>(`/v1/audit-log/${encodeURIComponent(entry.id)}`),
-    // Asked once: the reader already sees the whole record, so silent retries
-    // only delay the one sentence the failure has to produce.
     retry: false,
   });
   const current = isAuditEntry(detail.data) ? detail.data : entry;
@@ -102,8 +88,6 @@ function AuditDetail({
       fact.value === null ? (
         MISSING
       ) : fact.mono ? (
-        // An identifier is the content here, yet never printed whole: the
-        // prefix is shown, the whole value is in the title (`shortIdentifier`).
         <span className="font-mono text-xs break-all" title={fact.value}>
           {shortIdentifier(fact.value)}
         </span>
@@ -128,9 +112,6 @@ function AuditDetail({
         />
       ) : null}
 
-      {/* Byte-exact, deliberately: an audit snapshot IS the record. An id
-          rewritten out of `before` leaves a document that can no longer answer
-          what changed — the only question these blocks exist for. */}
       {evidence.map((block) => (
         <CodeBlock
           key={block.kind}
@@ -148,43 +129,24 @@ function AuditDetail({
   );
 }
 
-/**
- * The audit log (V9), newest first, loaded endlessly by the engine's cursor.
- * It has no `total`, so the summary line counts what is loaded and says "more"
- * while the engine has another page — never a count it was not given.
- */
 export function AuditPage() {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("audit:read");
   const title = t("resource.audit.title");
-  // A failure count arrives with `?result=error`: it opens the failures it
-  // counted, and the outcome filter shows that narrowing as its own choice.
   const [result, setResult] = useState<string>(
     () => auditResultFromUrl(window.location.search) ?? "all",
   );
-  // What a link narrowed the log to. A correlation key or a record arrives
-  // from the surface that showed it — a run, a step, a workflow's page — and
-  // is never typed from memory, so each part is a chip the reader can lift.
   const [linked, setLinked] = useState(() => auditFilterFromUrl(window.location.search));
-  // Decisions by default: the page exists for what a person answered for, and
-  // the engine's housekeeping arrives fast enough to bury it. A link that
-  // names a record or a request means everything that happened to it, so it
-  // opens on every scope unless it says otherwise.
   const [scope, setScope] = useState<AuditScope>(
     () =>
       linked.scope ??
       (linked.resourceType || linked.traceId || linked.actions.length > 0 ? "all" : "decisions"),
   );
   const [search, setSearch] = useState("");
-  // The row a reader opened: the sheet shows the fields the table leaves out,
-  // including the before/after snapshots that say what a change changed.
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const debouncedSearch = useDebouncedValue(search);
-  // Who each actor id is. Names come from the directory the reader may
-  // already see; without that right the kind is still said, and an id is
-  // never printed.
   const directoryReadable = canReadDirectory(session);
   const people = useQuery({
     queryKey: ["audit-directory", "people"],
@@ -215,8 +177,6 @@ export function AuditPage() {
     return byId;
   }, [people.data, accounts.data]);
 
-  // Narrowed server-side: the scope is a list of verbs, and a link's trace,
-  // record and window are matched exactly by the engine.
   const params = useMemo<ListParams>(
     () => ({
       ...(result !== "all" ? { result } : {}),
@@ -228,8 +188,6 @@ export function AuditPage() {
   const list = useInfiniteList<AuditEntry>("/v1/audit-log", params, { enabled: allowed });
   const query = list.query;
   const items = list.items;
-  // The engine matches `action` exactly, so the free-text box narrows the rows
-  // already on screen — by the words displayed and by the engine's token.
   const rows = useMemo(() => {
     const needle = debouncedSearch.trim().toLowerCase();
     if (!needle) return items;
@@ -247,8 +205,6 @@ export function AuditPage() {
   const columns = useMemo<CockpitColumn<AuditEntry>[]>(() => {
     const column = tableColumns<AuditEntry>({ t, dateTime });
     return [
-      // What happened, to what kind of record. The engine's own verb stays
-      // reachable as the cell's title, because that is what an operator quotes.
       column.custom(
         "action",
         (entry) => entry.action,
@@ -301,10 +257,7 @@ export function AuditPage() {
     ];
   }, [t, dateTime, directory]);
 
-  // What the open record is ABOUT, in the same two shapes the cell uses: a
-  // named verb as prose, an unnamed one as the engine's token in a machine face.
   const selectedAction = selected ? auditActionLabel(selected.action) : null;
-  // Where the record leads: the run it names, or the record it changed.
   const selectedHref = selected
     ? auditResourceHref(selected.resource_type, selected.resource_id)
     : null;
@@ -318,8 +271,6 @@ export function AuditPage() {
     linked.actions.length > 0 ||
     linked.tsFrom !== null ||
     linked.tsTo !== null;
-  // A narrowing the reader lifted also leaves the address, or a reload brings
-  // back exactly what they had taken away.
   const forgetInAddress = useCallback((keys: readonly string[]) => {
     const params = new URLSearchParams(window.location.search);
     for (const key of keys) params.delete(key);
@@ -341,8 +292,6 @@ export function AuditPage() {
     setSearch("");
     setResult("all");
     setScope("decisions");
-    // A narrowing that arrives from a link must be liftable, or a reader is
-    // stuck on one request with no sign of why the log looks almost empty.
     setLinked(NO_AUDIT_LINK);
     forgetInAddress([
       ...AUDIT_LINK_KEYS.resource,
@@ -368,9 +317,6 @@ export function AuditPage() {
 
   return (
     <Page kind="list" surface="audit" testId="resource-audit" scroll="content" header={header}>
-      {/* What a complete-looking log does NOT hold: without it a short page
-          reads as "nothing happened" rather than "nothing of this kind was
-          recorded here". */}
       <div className="shrink-0 pb-3">
         <SummaryLine
           testId="audit-summary"
@@ -404,8 +350,6 @@ export function AuditPage() {
                 testId: "audit-search",
               }}
               selects={[
-                // §8.5: the decision history is reachable by a filter, not
-                // only by knowing the engine's verbs by heart.
                 {
                   value: scope,
                   label: t("audit.filterScope"),
@@ -431,7 +375,6 @@ export function AuditPage() {
                 },
               ]}
             />
-            {/* The narrowing a link brought, said out loud and removable. */}
             {linked.resourceType ? (
               <Button
                 variant="secondary"
@@ -541,7 +484,6 @@ export function AuditPage() {
         testId="audit-detail"
         closeTestId="audit-detail-close"
         titleTestId="audit-detail-title"
-        // The operation, never an id: the ids sit below it, each labelled.
         title={
           selectedAction === null ? (
             title

@@ -1,9 +1,3 @@
-// A global counter increments on every tool result
-// with `ok: false` and resets on the first success. When it reaches
-// MAX_CONSECUTIVE_FAILURES (5) the next non-ask_user / non-inspect tool
-// dispatch is short-circuited with a structured "ask the user"
-// envelope ("no more than 5 failed tool calls in a row").
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
@@ -90,10 +84,6 @@ describe("consecutive-failures cap", () => {
       ["workflow-authoring"],
       {},
     );
-    // edit_workflow_patch is a workflow-authoring tool the LLM can
-    // hammer in a repair loop. Once the cap is reached, the next call
-    // returns the structured "ask the user" envelope without running the
-    // tool body.
     const editPatch = wrapped.edit_workflow_patch;
     expect(editPatch).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
@@ -106,17 +96,8 @@ describe("consecutive-failures cap", () => {
   });
 
   test("cap participates in the turn-loop budget — exhausting it ends the turn", async () => {
-    // Regression for the runaway loop observed in prod (session
-    // dbf22a08): the cap blocked run_workflow but did NOT end the turn,
-    // so the model re-emitted the blocked call ~60×/3.5min until the step
-    // budget ran out. The cap must now mirror `loop_detected`: once the
-    // shared turn-loop-warning budget is reached it returns
-    // `reason: "turn_loop_budget_exhausted"`, which
-    // turnLoopBudgetStopCondition (loop.ts stopWhen) detects to end the
-    // turn.
     const signals = freshSignals();
     signals.consecutiveFailures = MAX_CONSECUTIVE_FAILURES;
-    // One short of the budget — this cap fire pushes it over.
     signals.totalLoopWarnings = MAX_TURN_LOOP_WARNINGS - 1;
     const events: TurnEvent[] = [];
     const engineClient = new EngineClient({
@@ -151,7 +132,6 @@ describe("consecutive-failures cap", () => {
       { patches: [{ op: "replace", path: "/steps/0/method", value: "POST" }] },
       { toolCallId: "t1", messages: [] },
     );
-    // Turn-ending signal the SDK stopWhen condition watches for.
     expect(result.data?.error_code ?? result.error_code).toBe("turn_loop_budget_exhausted");
     expect(result.data?.reason).toBe("turn_loop_budget_exhausted");
     expect(signals.totalLoopWarnings).toBe(MAX_TURN_LOOP_WARNINGS);
@@ -188,9 +168,6 @@ describe("consecutive-failures cap", () => {
     );
     const askUserChoice = wrapped.ask_user_choice;
     expect(askUserChoice).toBeDefined();
-    // The tool body runs (returns its normal pause shape with an
-    // elicitation). The cap envelope must NOT fire here — otherwise
-    // the model would have no way to break the loop.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (askUserChoice!.execute as any)(
       {
@@ -202,7 +179,6 @@ describe("consecutive-failures cap", () => {
       },
       { toolCallId: "t1", messages: [] },
     );
-    // Whatever ask_user_choice returns, it should NOT be the cap envelope.
     expect(result.data?.error_code ?? result.error_code).not.toBe("consecutive_failures_cap");
   });
 

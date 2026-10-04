@@ -1,40 +1,3 @@
-// Embedded skill seeding.
-//
-// The skill-seed Markdown library is **embedded** at build time via the
-// `embed-seeds.macro.ts` Bun macro — every compiled `engine` binary
-// carries the seed contents inline. There is no runtime fs.readdir,
-// no /usr/local/share/subkit/skills directory copy, and no fallback
-// search path.  The seeds ship with the binary, period.
-//
-// Upsert strategy: `(tenant_id, slug)` is unique when slug is non-null. We
-// look up an existing row by that pair; if the SHA-256 content-hash of the
-// current body differs from the stored body, we UPDATE (bumping `version`).
-// Otherwise we skip.
-//
-// Per-tenant overrides live in `tenant_skill_overrides`. Seed rows are never
-// overwritten by operators directly — an operator who wants to override
-// inserts/updates a `tenant_skill_overrides` row with `hidden=true` or a
-// `body_override`. That keeps the seed channel clean and patchable.
-//
-// Front-matter contract (migration 0006 — replaces the legacy `gates_tools`
-// / `auto_load` / `trigger_keywords` trio):
-//
-//     ---
-//     slug: foo
-//     scope: global
-//     title: Foo
-//     description: One-liner.
-//     activates_when: [{"kind":"baseline"},{"kind":"tool","tool":"probe_connector"}]
-//     side_effects: read              # default: read
-//     idempotency: none               # default: none
-//     maturity: stable                # default: stable
-//     tags: [stripe, payments]        # default: []
-//     input_schema: {"type":"object","properties":{...}}    # optional JSONSchema
-//     output_schema: {"type":"object","properties":{...}}   # optional JSONSchema
-//     version: 1
-//     ---
-//     <markdown body>
-
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { type Db, getDb } from "../db/client.ts";
@@ -57,8 +20,6 @@ export interface SeededSkill {
   title: string;
   description: string;
   body: string;
-  /** Tools that become invisible to the LLM until this skill loads —
-   *  consumed by `conversations/tools/gated.ts`. */
   gates_tools: string[];
   activates_when: SkillActivation[];
   side_effects: SkillSideEffects;
@@ -68,7 +29,6 @@ export interface SeededSkill {
   input_schema: Record<string, unknown> | null;
   output_schema: Record<string, unknown> | null;
   version: number;
-  /** sha256 of body; used to detect drift without re-writing the row. */
   body_hash: string;
 }
 
@@ -91,7 +51,6 @@ export interface ParseError {
 export interface LoadResult {
   skills: SeededSkill[];
   errors: ParseError[];
-  /** Number of `*.md` files embedded in the binary at build time. */
   embedded_count: number;
 }
 
@@ -102,38 +61,17 @@ export interface ApplyOutcome {
   unchanged: number;
 }
 
-// Front-matter keys removed in migration 0006. A seed file that still
-// carries any of these fails parse with a typed `legacy_field` error so
-// operators discover the rename loudly during the next boot.
-// `gates_tools` is NOT in this set — it is the inverse of activation
-// (which tools are invisible until the skill loads) and remains a
-// first-class field on every skill row.
 const LEGACY_KEYS = new Set(["auto_load", "trigger_keywords"]);
 
 export interface SeedSource {
-  /** Reference passed back in `ParseError.file` so an operator can
-   *  trace failures back to the on-disk source. */
   file: string;
-  /** Full file contents — frontmatter + body. */
   content: string;
 }
 
-/**
- * Parse every Markdown seed embedded in the binary.
- *
- * Replaces the previous disk-walk loader. The seed library is now part
- * of the engine binary (via `embed-seeds.macro.ts`), so this function
- * never touches the filesystem at runtime.
- */
 export function loadEmbeddedSkillSeeds(): LoadResult {
   return loadSkillSeedsFromContent(EMBEDDED_SKILL_SEEDS);
 }
 
-/**
- * Parse a caller-supplied list of seed sources.  Used by tests to feed
- * synthetic Markdown without touching the filesystem; production code
- * should call `loadEmbeddedSkillSeeds()` instead.
- */
 export function loadSkillSeedsFromContent(files: readonly SeedSource[]): LoadResult {
   const out: SeededSkill[] = [];
   const errors: ParseError[] = [];
@@ -196,9 +134,6 @@ export async function applySkillSeeds(
       inserted++;
       continue;
     }
-    // Hash-based drift detection — we only UPDATE when the body or
-    // metadata actually changed, so boots stay cheap and audit logs
-    // aren't spammed.
     if (
       row.seed_source === s.body_hash &&
       row.title === s.title &&
@@ -237,7 +172,6 @@ export async function applySkillSeeds(
   return { tenant_id, inserted, updated, unchanged };
 }
 
-/** Apply seeded skills to every tenant in the system. Intended for boot. */
 export async function applySkillSeedsForAllTenants(
   seeds: SeededSkill[],
   db: Db = getDb(),
@@ -251,19 +185,10 @@ export async function applySkillSeedsForAllTenants(
   return outcomes;
 }
 
-// ---------------------------------------------------------------------------
-
 type ParseOk = { skill: SeededSkill };
 type ParseFail = { error: ParseError };
 
 function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
-  // Front-matter contract: see header docstring. Hand-written parser over
-  // a narrow subset of YAML — accepts single-line scalars, flow arrays
-  // `[a, b]`, and inline JSON `{...}` / `[{...}]` for fields that need
-  // structured shapes (`activates_when`, `input_schema`, `output_schema`).
-  // Multi-line values, nested block-style maps, anchors, and references
-  // are intentionally rejected; their parsing-attack surface isn't worth
-  // the dependency on a full YAML library.
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
   if (!match) {
     return {
@@ -437,23 +362,16 @@ function z_array_parse(
 
 function parseScalar(raw: string): unknown {
   if (raw === "") return "";
-  // Quoted string:
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return raw.slice(1, -1);
   }
-  // JSON object literal — used for input_schema / output_schema and any
-  // nested map. Detected by `{...}` envelope.
   if (raw.startsWith("{") && raw.endsWith("}")) {
     try {
       return JSON.parse(raw);
     } catch {
-      // fall through to literal-string return so the caller can decide
-      // whether the field needed to be JSON.
       return raw;
     }
   }
-  // JSON array of objects — used for activates_when. Detected by `[{...`
-  // prefix; falls back to flow-array when the inner items are scalars.
   if (raw.startsWith("[{")) {
     try {
       return JSON.parse(raw);
@@ -461,7 +379,6 @@ function parseScalar(raw: string): unknown {
       return raw;
     }
   }
-  // Flow array of scalars: `[a, b, c]`.
   if (raw.startsWith("[") && raw.endsWith("]")) {
     const inner = raw.slice(1, -1).trim();
     if (inner === "") return [];
@@ -473,10 +390,8 @@ function parseScalar(raw: string): unknown {
       return t;
     });
   }
-  // Number:
   const n = Number(raw);
   if (!Number.isNaN(n) && /^-?\d+(\.\d+)?$/.test(raw)) return n;
-  // Boolean:
   if (raw === "true") return true;
   if (raw === "false") return false;
   return raw;
@@ -494,8 +409,6 @@ function sameStringArray(a: unknown, b: string[]): boolean {
 function sameUnknownArray(a: unknown, b: unknown[]): boolean {
   if (!Array.isArray(a)) return false;
   if (a.length !== b.length) return false;
-  // Activation rules are small JSON objects; stable JSON.stringify is the
-  // simplest correct comparator without taking on a deep-equal dep.
   for (let i = 0; i < a.length; i++) {
     if (JSON.stringify(a[i]) !== JSON.stringify(b[i])) return false;
   }

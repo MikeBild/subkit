@@ -44,7 +44,6 @@ describe("<TranscriptPager>", () => {
       const text = ui.text();
       expect(text).toContain("transcript pager");
       expect(text).toContain("2 entries");
-      // VirtualTranscript renders rows; both should surface.
       expect(text).toContain("first");
       expect(text).toContain("second");
     } finally {
@@ -68,8 +67,6 @@ describe("<TranscriptPager>", () => {
     );
     try {
       await flush();
-      // Ink debounces ESC to disambiguate from escape sequences;
-      // ui.waitFor's sleepMs opts into wall-clock progress.
       await ui.press("esc");
       await ui.waitFor(() => closed, { tries: 50, sleepMs: 10 });
       expect(closed).toBe(true);

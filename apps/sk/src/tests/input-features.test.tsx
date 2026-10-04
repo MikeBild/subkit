@@ -1,11 +1,3 @@
-// End-to-end feature tests for the shell-ergonomics upgrade:
-// persistent history + cursor-aware buffer + readline-style
-// shortcuts + paste refs + busy-turn queue + @mention picker +
-// inline reverse-i-search + /paste + file-path paste.
-//
-// Every test mounts <InkApp> via ink-testing-library with a tmp
-// history path so runs don't touch ~/.sk.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,8 +8,6 @@ import { EngineClient } from "../engine-client.ts";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import { appendHistory } from "../repl/history-store.ts";
 import type { PersonaProbe } from "../slash.ts";
-
-// ---------- Helpers ----------
 
 async function* framesOf(...events: TurnEvent[]): AsyncIterable<TurnEvent> {
   for (const ev of events) yield ev;
@@ -94,14 +84,10 @@ afterEach(() => {
     if (d) {
       try {
         rmSync(d, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 });
-
-// ---------- 1. Persistent history ----------
 
 describe("features: persistent history", () => {
   test("prior prompts from the history file are loaded on mount", async () => {
@@ -110,7 +96,6 @@ describe("features: persistent history", () => {
     appendHistory("second run command", { path, tenant: "acme" });
     const instance = renderApp({ historyPath: path });
     await tick();
-    // Ctrl-R opens the inline search — expect both prior prompts to appear.
     instance.stdin.write("\x12");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
@@ -156,8 +141,6 @@ describe("features: persistent history", () => {
   });
 });
 
-// ---------- 2. Arrow-key history cycling with draft preservation ----------
-
 describe("features: ↑/↓ history cycling", () => {
   test("↑ cycles back through prior prompts", async () => {
     const instance = renderApp();
@@ -169,7 +152,6 @@ describe("features: ↑/↓ history cycling", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Arrow Up = `\x1b[A`. Single press: newest. Second press: older.
     instance.stdin.write("\x1b[A");
     await tick(20);
     let frame = instance.lastFrame() ?? "";
@@ -188,16 +170,14 @@ describe("features: ↑/↓ history cycling", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Start typing a fresh draft, then cycle up and back down — the
-    // draft should be restored.
     await type(instance, "my-draft");
     let frame = instance.lastFrame() ?? "";
     expect(frame).toContain("my-draft");
-    instance.stdin.write("\x1b[A"); // up → shows "history entry"
+    instance.stdin.write("\x1b[A");
     await tick(20);
     frame = instance.lastFrame() ?? "";
     expect(frame).toContain("history entry");
-    instance.stdin.write("\x1b[B"); // down past newest → restore draft
+    instance.stdin.write("\x1b[B");
     await tick(20);
     frame = instance.lastFrame() ?? "";
     expect(frame).toContain("my-draft");
@@ -205,19 +185,15 @@ describe("features: ↑/↓ history cycling", () => {
   });
 });
 
-// ---------- 3. Cursor navigation + readline shortcuts ----------
-
 describe("features: cursor + readline shortcuts", () => {
   test("left arrow moves the cursor left without deleting", async () => {
     const instance = renderApp();
     await tick();
     await type(instance, "hello");
-    instance.stdin.write("\x1b[D"); // left
+    instance.stdin.write("\x1b[D");
     await tick(10);
     await type(instance, "X");
     const frame = instance.lastFrame() ?? "";
-    // Cursor marker (▊ / ·) is rendered between the before / after
-    // slices — strip it and assert on the logical buffer contents.
     const stripped = stripAnsi(frame).replace(/[▊·]/g, "");
     expect(stripped).toContain("hellXo");
     instance.unmount();
@@ -227,10 +203,10 @@ describe("features: cursor + readline shortcuts", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "middle");
-    instance.stdin.write("\x01"); // Ctrl-A
+    instance.stdin.write("\x01");
     await tick(10);
     await type(instance, "[");
-    instance.stdin.write("\x05"); // Ctrl-E
+    instance.stdin.write("\x05");
     await tick(10);
     await type(instance, "]");
     const frame = instance.lastFrame() ?? "";
@@ -242,10 +218,9 @@ describe("features: cursor + readline shortcuts", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "kill this");
-    instance.stdin.write("\x15"); // Ctrl-U
+    instance.stdin.write("\x15");
     await tick(10);
     const frame = stripAnsi(instance.lastFrame() ?? "");
-    // Composer should show an empty `❯` prompt.
     expect(frame).not.toContain("kill this");
     expect(frame).toMatch(/❯\s+▊/);
     instance.unmount();
@@ -255,7 +230,7 @@ describe("features: cursor + readline shortcuts", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "delete this word");
-    instance.stdin.write("\x17"); // Ctrl-W
+    instance.stdin.write("\x17");
     await tick(10);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("delete this ");
@@ -267,12 +242,11 @@ describe("features: cursor + readline shortcuts", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "keep me | and drop me");
-    // Move back to the pipe: 12 chars from end.
     for (let i = 0; i < 12; i++) {
       instance.stdin.write("\x1b[D");
     }
     await tick(10);
-    instance.stdin.write("\x0b"); // Ctrl-K
+    instance.stdin.write("\x0b");
     await tick(10);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("keep me");
@@ -284,7 +258,7 @@ describe("features: cursor + readline shortcuts", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "line one");
-    instance.stdin.write("\x0a"); // Ctrl-J → newline
+    instance.stdin.write("\x0a");
     await tick(10);
     await type(instance, "line two");
     const frame = instance.lastFrame() ?? "";
@@ -307,8 +281,6 @@ describe("features: cursor + readline shortcuts", () => {
     await tick();
     await type(instance, "first\\");
     await pressEnter(instance);
-    // First Enter on a backslash terminus should NOT submit; it should
-    // strip the backslash and insert a newline.
     expect(received.text).toBeNull();
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("first");
@@ -332,19 +304,12 @@ describe("features: cursor + readline shortcuts", () => {
     });
     await tick();
     await type(instance, "first");
-    // CSI u sequence for Shift+Enter: ESC [ 13 ; 2 u
     instance.stdin.write("\x1b[13;2u");
     await tick(20);
-    // Plain Enter on its own should NOT have submitted yet.
     expect(received.text).toBeNull();
     await type(instance, "second");
     await pressEnter(instance);
     await tick(40);
-    // On terminals where Ink's keypress parser doesn't decode CSI u,
-    // shift+enter falls back to plain enter and the first line submits
-    // alone. Either case must produce a deterministic submit; assert
-    // that the second segment did reach onPrompt — proving the
-    // composer didn't get stuck.
     expect(received.text).not.toBeNull();
     instance.unmount();
   });
@@ -362,7 +327,7 @@ describe("features: cursor + readline shortcuts", () => {
     });
     await tick();
     await type(instance, "first");
-    instance.stdin.write("\x0a"); // newline
+    instance.stdin.write("\x0a");
     await tick(10);
     await type(instance, "second");
     await pressEnter(instance);
@@ -371,8 +336,6 @@ describe("features: cursor + readline shortcuts", () => {
     instance.unmount();
   });
 });
-
-// ---------- 4. Paste heuristic ----------
 
 describe("features: paste heuristic", () => {
   test("a long pasted chunk is replaced by a [Pasted text #N] ref", async () => {
@@ -427,7 +390,6 @@ describe("features: paste heuristic", () => {
     const body = `${"x".repeat(1001)}\nline\npaste content`;
     instance.stdin.write(body);
     await tick(30);
-    // Submit — the engine sees the full expanded body.
     instance.stdin.write("\r");
     await tick(60);
     expect(received).toContain("x".repeat(1001));
@@ -516,8 +478,6 @@ describe("features: paste heuristic", () => {
   });
 });
 
-// ---------- 5. Busy-turn queue ----------
-
 describe("features: busy-turn queue", () => {
   test("typing a prompt while busy enqueues instead of duplicating", async () => {
     const resolvers: Array<() => void> = [];
@@ -537,24 +497,20 @@ describe("features: busy-turn queue", () => {
     await tick();
     await type(instance, "first");
     await pressEnter(instance);
-    await tick(20); // `busy` is now true
+    await tick(20);
     await type(instance, "queued one");
     await pressEnter(instance);
     await tick(20);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("queued");
-    // Release the first turn — the queue drains the second.
     resolvers.shift()?.();
     await tick(120);
-    // Release the drained turn too.
     resolvers.shift()?.();
     await tick(40);
     expect(seen).toEqual(["first", "queued one"]);
     instance.unmount();
   });
 });
-
-// ---------- 6. @-mention picker ----------
 
 describe("features: @-mention picker", () => {
   test("typing `@RE` opens the picker and matches cwd files", async () => {
@@ -577,7 +533,7 @@ describe("features: @-mention picker", () => {
     await tick();
     await type(instance, "inline @doc");
     await tick(30);
-    instance.stdin.write("\t"); // Tab
+    instance.stdin.write("\t");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("@docs.md");
@@ -596,8 +552,6 @@ describe("features: @-mention picker", () => {
   });
 });
 
-// ---------- 7. Inline Ctrl-R search ----------
-
 describe("features: inline reverse-i-search", () => {
   test("typing filters the match list as the user types", async () => {
     const path = tmpHist();
@@ -606,13 +560,12 @@ describe("features: inline reverse-i-search", () => {
     appendHistory("list schedules", { path, tenant: "acme" });
     const instance = renderApp({ historyPath: path });
     await tick();
-    instance.stdin.write("\x12"); // Ctrl-R
+    instance.stdin.write("\x12");
     await tick(30);
     await type(instance, "dep");
     await tick(30);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("deploy the docs");
-    // Non-matching entries shouldn't be the active pick.
     expect(frame).toMatch(/deploy the docs/);
     instance.unmount();
   });
@@ -623,9 +576,9 @@ describe("features: inline reverse-i-search", () => {
     const instance = renderApp({ historyPath: path });
     await tick();
     await type(instance, "keep this");
-    instance.stdin.write("\x12"); // Ctrl-R
+    instance.stdin.write("\x12");
     await tick(30);
-    instance.stdin.write("\x1b"); // Esc
+    instance.stdin.write("\x1b");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
     expect(frame).not.toContain("reverse-i-search");
@@ -648,13 +601,6 @@ describe("features: inline reverse-i-search", () => {
     instance.unmount();
   });
 });
-
-// ---------- 8. File-path paste ----------
-
-// Pasted or dropped local file paths route through engine upload +
-// `$file` insert rather than a file slash command. The tests below
-// provide a mocked EngineClient so the composer exercises the upload
-// path directly.
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -801,8 +747,6 @@ describe("features: file-path paste", () => {
     instance.unmount();
   });
 });
-
-// ---------- 9. /history built-in ----------
 
 describe("features: /history built-in", () => {
   test("/history prints the count + file path", async () => {

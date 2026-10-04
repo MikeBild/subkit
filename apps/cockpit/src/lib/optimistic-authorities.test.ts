@@ -46,7 +46,6 @@ describe("optimistic approvals", () => {
       open_ended: true,
       execution_environment: "prod",
     });
-    // Nothing read yet: the provisional approval is the whole list.
     expect(withProvisionalAuthority(undefined, review, input, "x")?.pages[0]?.items).toHaveLength(
       1,
     );

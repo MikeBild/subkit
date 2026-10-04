@@ -11,9 +11,6 @@ import {
   prepareRuntimeConfig,
 } from "./service.ts";
 
-/** Per-process replica lease and prepare/ACK coordinator. The canonical
- * revision store remains in service.ts; this class only projects committed
- * pointers into one running replica. */
 export class RuntimeConfigCoordinator {
   readonly instanceId: string;
   private activeRevision: number | null = null;

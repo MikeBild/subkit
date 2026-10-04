@@ -1,5 +1,3 @@
-// Knowledge + Profile tabs.
-
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
@@ -62,7 +60,6 @@ async function navigateTo(
 
 describe("KnowledgeTab — inline ingest (G8 closure)", () => {
   test("'i' opens the ingest path prompt; Enter calls createKnowledgeSource", async () => {
-    // Write a tiny temp file and submit it via the prompt.
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -107,7 +104,6 @@ describe("KnowledgeTab — inline ingest (G8 closure)", () => {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       await ui.type("i");
       await ui.waitFor((t) => t.includes("Ingest knowledge source"));
-      // Type the path char by char — the prompt accumulates in the buffer.
       for (const ch of filepath) await ui.type(ch);
       await ui.press("enter");
       await ui.waitFor(() => createKnowledgeSource.mock.calls.length > 0, {
@@ -135,7 +131,7 @@ describe("KnowledgeTab (M7)", () => {
         { id: "k2", name: "incidents.md", status: "indexing" },
       ],
     });
-    const ui = await navigateTo(client, 4); // Knowledge is idx 7
+    const ui = await navigateTo(client, 4);
     try {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       await ui.waitFor((t) => t.includes("playbook.md"));
@@ -181,10 +177,6 @@ describe("KnowledgeTab (M7)", () => {
 });
 
 describe("ProfileTab (M7) — rendered direct, no longer reachable from /settings", () => {
-  // Profile is mounted via /profile → ProfileCommand SinglePane.
-  // See apps/sk/src/settings-ui/ProfileCommand.tsx for that wiring;
-  // these unit tests cover the tab body directly so the assertions
-  // stay tight to ProfileTab's contract.
   async function renderProfile(opts: { email?: string } = {}): Promise<{
     ui: ReturnType<typeof renderInk>;
     fired: string[];

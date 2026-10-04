@@ -1,8 +1,3 @@
-// The converse loop withholds tools for an enumeration question only when the
-// tenant snapshot lists every row. With more workflows than the snapshot
-// shows, the first step is steered to list_workflows instead — the pin that
-// once made the model deny workflows sitting past the 40-row cap.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { workflows } from "../../db/schema/index.ts";
 import { MAX_WORKFLOWS_IN_SUMMARY } from "../../llm/core/tenant-summary.ts";

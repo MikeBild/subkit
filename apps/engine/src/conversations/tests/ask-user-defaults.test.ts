@@ -1,21 +1,5 @@
-// Schema-level unit tests for ask_user_* `default` field behaviour.
-//
-// What's covered:
-//   - ask_user_form field schema:
-//       text/number/boolean fields accept `default`
-//       select `default` accepted when matching an option value; rejected otherwise
-//       multi `default` accepted as string[] subset; rejected for non-subset
-//       password fields: `default` REJECTED
-//       sensitive:true fields: `default` REJECTED
-//   - ask_user_choice: `default` accepted when equal to one option value; rejected otherwise
-//   - ask_user_text: `default` string accepted
-//
-// Pure schema checks — no DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import { askUserChoiceTool, askUserFormTool, askUserTextTool } from "../tools/ask-user/index.ts";
-
-// ── ask_user_form — field `default` ─────────────────────────────────────────
 
 describe("ask_user_form field default — text/number/boolean accepted", () => {
   test("text field accepts a string default", () => {
@@ -174,8 +158,6 @@ describe("ask_user_form field default — password/sensitive REJECTED", () => {
   });
 });
 
-// ── ask_user_choice — `default` validation ──────────────────────────────────
-
 describe("ask_user_choice default", () => {
   test("default accepted when equal to one of the option values", () => {
     const r = askUserChoiceTool.inputSchema.safeParse({
@@ -212,8 +194,6 @@ describe("ask_user_choice default", () => {
     expect(r.success).toBe(true);
   });
 });
-
-// ── ask_user_text — `default` accepted ──────────────────────────────────────
 
 describe("ask_user_text default", () => {
   test("string default accepted", () => {

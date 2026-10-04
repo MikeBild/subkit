@@ -1,9 +1,4 @@
 #!/usr/bin/env bun
-// Determinism lint. Blocks banned patterns in test files so test
-// determinism doesn't decay PR-by-PR.
-//
-// Rules:
-//   1. `setTimeout(` inside *.test.ts / *.test.tsx / *.journey.test.ts
 //      → block. Whitelisted via a trailing `// allow-wall-clock` comment
 //      on (or immediately above) the offending line.
 //   2. `Math.random()`, `randomUUID(`, `randomBytes(` in test files →
@@ -66,8 +61,6 @@ const TEST_GLOBS = [
   "packages/**/src/**/*.test.tsx",
 ];
 
-// Files exempt from the setTimeout block because they implement the
-// helper that the rule points callers to.
 const SLEEP_WHITELIST = new Set(["apps/engine/src/test-helpers/determinism/wait.ts"]);
 
 interface Rule {
@@ -142,8 +135,6 @@ const RULES: Rule[] = [
 ];
 
 function hasMarker(lines: string[], index: number, marker: string): boolean {
-  // Check the current line and up to 3 lines above (covers multi-line
-  // comments where the marker sits 2-3 lines before the offending call).
   for (let k = index; k >= Math.max(0, index - 3); k--) {
     if ((lines[k] ?? "").includes(marker)) return true;
   }
@@ -169,7 +160,6 @@ function checkFile(relPath: string): Violation[] {
   const violations: Violation[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    // Skip pure-comment lines.
     if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) continue;
     for (const rule of RULES) {
       const m = rule.pattern.exec(line);
@@ -201,7 +191,6 @@ function loadBaseline(): Record<string, number> {
 }
 
 function writeBaseline(counts: Record<string, number>): void {
-  // Stable, sorted output so the diff is review-friendly.
   const sorted = Object.fromEntries(
     Object.entries(counts)
       .filter(([, n]) => n > 0)
@@ -243,8 +232,6 @@ async function main(): Promise<number> {
   console.log(`  errors:   ${errors.length}`);
   console.log(`  warnings: ${warnings.length}`);
 
-  // Baseline ratchet — block new warnings even though existing ones are
-  // tolerated. Skip when `SUBKIT_DETERMINISM_WARN=1` (debug mode).
   const current = countWarningsByFile(all);
   if (updateBaseline) {
     writeBaseline(current);
@@ -270,10 +257,6 @@ async function main(): Promise<number> {
       }
     }
 
-    // Aggregate-sum ratchet: catches the per-file laundering case where
-    // a refactor moves warnings from one file to a newly created one
-    // and the per-file diff washes out. A PR can only succeed if the
-    // total tolerated warning count goes down (or stays the same).
     const totalCurrent = Object.values(current).reduce((a, b) => a + b, 0);
     const totalBaseline = Object.values(baseline).reduce((a, b) => a + b, 0);
     if (totalCurrent > totalBaseline) {
@@ -298,10 +281,6 @@ async function main(): Promise<number> {
       }
     }
 
-    // Surface the delta in the GitHub job summary when running in CI
-    // so reviewers see "warnings: 56 → 53 (-3)" without opening the
-    // raw log. Best-effort: if the env var isn't set or the path can't
-    // be written, the regular console output still carries the data.
     const summaryPath = process.env.GITHUB_STEP_SUMMARY;
     if (summaryPath) {
       const direction =
@@ -315,9 +294,7 @@ async function main(): Promise<number> {
       }
       try {
         appendFileSync(summaryPath, `${lines.join("\n")}\n`);
-      } catch {
-        /* best-effort */
-      }
+      } catch {}
     }
   }
 

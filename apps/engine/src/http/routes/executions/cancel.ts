@@ -1,11 +1,3 @@
-// Cancel an in-flight execution — POST /v1/executions/{id}/cancel.
-//
-// Three-stage flow:
-//   (a) Persist an idempotent abort request before any queue race.
-//   (b) If the execution is still queued, mark the pg-boss job
-//       cancelled so the worker never picks it up.
-//   (c) Signal the in-process AbortController as a zero-latency fast path.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -54,9 +46,6 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("execution");
 
-    // Persist first. If a queued job is picked up between the read above and
-    // pg-boss cancellation below, the worker still observes this durable
-    // intent and cannot transition the row to running without seeing it.
     if (row.status === "queued" || row.status === "running") {
       await requestExecutionAbort(db, {
         tenant_id: principal.tenant_id,
@@ -67,8 +56,6 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    // (b) If the execution is still queued, mark the pg-boss job
-    // cancelled so the worker never picks it up.
     if (row.status === "queued") {
       try {
         const { getBoss } = await import("../../../queue/boss.ts");
@@ -89,18 +76,9 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      // Cancelling the pg-boss job means the worker will never pick it up,
-      // so nothing else will ever move the row off "queued". Transition it
-      // to the terminal "aborted" state (CAS-guarded to queued-only so a
-      // concurrent pickup that already flipped it to running is left for
-      // the abort signal below to finalize). Without this the row stays
-      // "queued" forever and the 202 is a lie to any polling client.
       await finalizeExecution(db, principal.tenant_id, id, "aborted", null, null, ["queued"]);
     }
 
-    // (c) Keep the process-local signal as the zero-latency fast path. A
-    // worker on another replica observes the durable flag through the abort
-    // monitor instead of depending on which replica consumed an outbox row.
     abortCancel(id, "cancelled");
     return c.body(null, 202);
   });

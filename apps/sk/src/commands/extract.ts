@@ -40,7 +40,7 @@ export const extractCommand = defineCommand({
     });
     try {
       const path = String(args.file);
-      statSync(path); // existence + permission probe; throws ENOENT/EACCES on miss
+      statSync(path);
       const filename = basename(path);
       const binaryMime = binaryMimeFor(path);
       if (binaryMime) {

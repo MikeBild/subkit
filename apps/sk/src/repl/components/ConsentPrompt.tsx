@@ -1,9 +1,3 @@
-// Generic numbered consent prompt — `1. Yes · 2. Not now`. Pressing
-// the digit confirms; pressing Esc cancels (treated as "Not now").
-//
-// Designed to be reused from any place a reversible consent decision
-// is needed (memory capture, install picker, permissions selector).
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 

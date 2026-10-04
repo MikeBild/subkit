@@ -22,8 +22,6 @@ describe("the reads a workflow's automation state rests on", () => {
   test("an approval, a revocation or a run makes them all stale — and nothing else", async () => {
     const client = new QueryClient();
     const seed = (key: readonly unknown[]) => client.setQueryData(key, { seeded: true });
-    // The diagnosis is read per environment, the approvals per page: both sit
-    // under the workflow's prefix and must go with it.
     const own = [
       ["workflow-diagnosis", WORKFLOW, "prod"],
       ["workflow-authorities", WORKFLOW, "newest"],

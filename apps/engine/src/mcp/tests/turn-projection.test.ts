@@ -1,12 +1,3 @@
-// Regression guard for thesis T1: the MCP poll surfaces (conversation_get,
-// tasks/result) must return a LEAN turn envelope — no live-streaming replay
-// frames, oversized payloads truncated with a raw_ref pointer, terminal/
-// meaningful frames preserved. Pairs with
-// `conversations/tests/verbosity-evidence.test.ts`
-// (which measures the BEFORE state on the raw event log).
-//
-// Run: bun test apps/engine/src/mcp/tests/turn-projection.test.ts
-
 import { describe, expect, it } from "bun:test";
 import {
   projectTurnEnvelopeForClient,
@@ -17,8 +8,6 @@ function bytes(v: unknown): number {
   return JSON.stringify(v)?.length ?? 0;
 }
 
-/** A finished turn that ran a workflow with a large (40KB) deck input,
- *  streamed token-by-token — the exact shape that bloated the prod payload. */
 function rawTurnEnvelope(markdownBytes: number) {
   const bigMarkdown = "#".repeat(markdownBytes);
   const events: unknown[] = [];
@@ -75,7 +64,6 @@ describe("turn-projection — lean MCP poll envelope (T1 fix)", () => {
     expect(types.has("message")).toBe(true);
     expect(types.has("tool_result")).toBe(true);
     expect(types.has("completed")).toBe(true);
-    // the final assistant text survives verbatim (it is small)
     const msg = lean.find((e) => (e as { type?: string }).type === "message") as {
       content: { text: string };
     };
@@ -88,7 +76,6 @@ describe("turn-projection — lean MCP poll envelope (T1 fix)", () => {
       string,
       unknown
     >;
-    // the 40KB echo is gone from the inline view, replaced by a pointer
     expect(bytes(tr.output)).toBeLessThan(5_000);
     expect(typeof tr.output_raw_ref).toBe("string");
   });
@@ -108,7 +95,6 @@ describe("turn-projection — lean MCP poll envelope (T1 fix)", () => {
     );
     expect(rawBytes).toBeGreaterThan(100_000);
     expect(leanBytes).toBeLessThan(8_000);
-    // even a 5MB deck stays bounded — the cap is on the frame, not the input
     const huge = projectTurnEnvelopeForClient(rawTurnEnvelope(5_000_000));
     expect(bytes(huge)).toBeLessThan(8_000);
   });

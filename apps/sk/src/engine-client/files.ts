@@ -1,15 +1,7 @@
-// Files surfaces of the engine client — inline + authenticated streamed uploads,
-// downloads, links, and stats. Method group merged into `EngineClient`
-// by `../engine-client.ts`.
-
 import { EngineError, TransportError } from "@cli-core/errors.ts";
 import { z } from "zod";
 import type { EngineClient } from "../engine-client.ts";
 import { parseResponseBody } from "./http.ts";
-
-// ---------- Files wire types ----------
-// Mirror `apps/engine/src/api/files-schemas.ts`. Kept structural (not
-// Zod) here so the CLI's tsc graph doesn't pull in @hono/zod-openapi.
 
 export type FileStatusWire = "pending" | "uploading" | "scanning" | "ready" | "failed" | "expired";
 
@@ -67,26 +59,11 @@ export interface FileStatsWire {
   scan_verdicts: Record<string, number>;
 }
 
-/** Inline-upload cap + link-resource-type enum — re-exported from the
- *  shared constants module so the CLI cannot drift from the engine's
- *  413 threshold or link-target whitelist. Above the inline cap the
- *  CLI must use `batchCreateFiles` + `putUploadBytes` + `finalizeFile`; the resource-type tuple is consumed by
- *  `parseResourceRef` to reject bad `--link-to` / `--linked-to`
- *  values locally. */
 export {
   FILE_LINK_RESOURCE_TYPES,
   type FileLinkResourceType,
   MAX_INLINE_BYTES,
 } from "@shared/files-constants.ts";
-
-// ---------- Files Zod schemas ----------
-// Mirror `apps/engine/src/api/files-schemas.ts` so a server that breaks
-// the wire shape (or a future engine that adds an unknown field
-// interpreted by the wrong path) is rejected at the CLI boundary
-// instead of smuggled through as a TS-shape-only crash inside the
-// command handler. Pattern matches the conversations module's
-// `ForkResponseSchema` — plain `zod`, no `@hono/zod-openapi` (CLI's
-// tsc graph stays small).
 
 const FileStatusWireSchema = z.enum([
   "pending",
@@ -146,16 +123,6 @@ const FileListResponseSchema = z.object({
 });
 
 export const filesMethods = {
-  // -------------------- Files --------------------
-  // Public file types — the wire shape matches
-  // `apps/engine/src/api/files-schemas.ts`. We re-declare here rather
-  // than reach into the engine package because the sk CLI is a separate
-  // build with its own typecheck graph and the engine's Zod schemas
-  // pull in the Hono runtime. The shape is verified by the engine's
-  // unit tests; drift would surface as a Zod parse error at the route
-  // boundary.
-
-  /** Inline upload — wire shape of `POST /v1/files/inline`. */
   async uploadInline(
     this: EngineClient,
     file: {
@@ -168,7 +135,6 @@ export const filesMethods = {
     return FileWireSchema.parse(raw);
   },
 
-  /** Batch-create — issue authenticated engine PUT endpoints for files >5 MB. */
   async batchCreateFiles(
     this: EngineClient,
     req: BatchCreateRequest,
@@ -177,8 +143,6 @@ export const filesMethods = {
     return BatchCreateResponseSchema.parse(raw);
   },
 
-  /** PUT bytes to the engine-relative upload URL returned by
-   *  `batchCreateFiles`, with progress callback. */
   async putUploadBytes(
     this: EngineClient,
     url: string,
@@ -187,9 +151,6 @@ export const filesMethods = {
     onProgress?: (sent: number, total: number) => void,
   ): Promise<void> {
     const fullUrl = `${this.base}${url}`;
-    // Bun's fetch supports `ReadableStream` bodies with `duplex: "half"`.
-    // The progress callback fires from the byte-counter wrapper around
-    // the stream, not from the response itself.
     const init: RequestInit & { duplex?: "half" } = {
       method: "PUT",
       headers: this.headers(headers),
@@ -206,12 +167,9 @@ export const filesMethods = {
       const text = await res.text().catch(() => "");
       throw new EngineError(res.status, parseResponseBody(text));
     }
-    // Surface a final "complete" tick for callers wiring progress UIs.
     if (onProgress) onProgress(0, 0);
   },
 
-  /** Finalize a streamed upload — server recomputes sha256 and
-   *  rejects 422 on mismatch. */
   async finalizeFile(this: EngineClient, id: string, sha256: string): Promise<FileWire> {
     const raw = await this.request<unknown>(
       "POST",
@@ -223,8 +181,6 @@ export const filesMethods = {
     return FileWireSchema.parse(raw);
   },
 
-  /** Stream a file's bytes back from the engine. `range.start/end` are
-   *  inclusive byte offsets; `range.end` omitted means "to the end". */
   async downloadFile(
     this: EngineClient,
     id: string,
@@ -235,8 +191,6 @@ export const filesMethods = {
     size_bytes: number;
     stream: ReadableStream<Uint8Array>;
   }> {
-    // First get metadata so the caller can show filename + size without
-    // a second round-trip. The /content endpoint streams the bytes.
     const meta = await this.getFile(id);
     const headers: Record<string, string> = { accept: "*/*" };
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
@@ -267,7 +221,6 @@ export const filesMethods = {
     };
   },
 
-  /** Paginated list. Cursor is opaque ISO timestamp issued by the engine. */
   async listFiles(
     this: EngineClient,
     query: { status?: string; linked_to?: string; cursor?: string; limit?: number } = {},
@@ -279,27 +232,18 @@ export const filesMethods = {
       query as Record<string, string | number | undefined>,
     );
     const parsed = FileListResponseSchema.parse(raw);
-    // `exactOptionalPropertyTypes`: project `next_cursor` to a value
-    // that matches the declared `string | null` (not `| undefined`).
     return { items: parsed.items, next_cursor: parsed.next_cursor ?? null };
   },
 
-  /** Get the file row. Returns soft-deleted rows during the cleanup
-   *  cron's 7-day soft-delete grace so `sk files download` works
-   *  briefly after `delete`. The list endpoint hides them. */
   async getFile(this: EngineClient, id: string): Promise<FileWire> {
     const raw = await this.request<unknown>("GET", `/v1/files/${encodeURIComponent(id)}`);
     return FileWireSchema.parse(raw);
   },
 
-  /** Soft-delete. Subsequent `getFile` may still return during the
-   *  in-flight grace window; the cleanup cron hard-deletes after 7d. */
   deleteFile(this: EngineClient, id: string): Promise<void> {
     return this.request<void>("DELETE", `/v1/files/${encodeURIComponent(id)}`);
   },
 
-  /** Attach a file to an owning resource. Idempotent on
-   *  `(resource_type, resource_id, slug)`. */
   async linkFile(
     this: EngineClient,
     file_id: string,
@@ -324,7 +268,6 @@ export const filesMethods = {
     return FileLinkWireSchema.parse(raw);
   },
 
-  /** Aggregate counters. Cheap — bounded by tenant's row count. */
   async getFileStats(this: EngineClient): Promise<FileStatsWire> {
     const raw = await this.request<unknown>("GET", "/v1/files/stats");
     return FileStatsWireSchema.parse(raw);

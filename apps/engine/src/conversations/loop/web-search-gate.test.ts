@@ -1,31 +1,6 @@
-// Unit tests for the web-search tool gating logic that lives in
-// `conversations/loop.ts` inside `runOnce`.
-//
-// The gate has three independent conditions:
-//   1. route.provider === "anthropic"
-//   2. /claude/i.test(modelId)
-//   3. getConfig(tenant_id).llm.web_search === true
-//
-// All three must hold for the gate to open. The `getConfig` call is
-// wrapped in a try/catch that returns false when the loader is not
-// initialised (unit tests), so we replicate that guard here to test
-// all branches purely.
-//
-// The `buildAnthropicWebSearchTool` function itself requires real
-// Anthropic credentials and calls into `@ai-sdk/anthropic`; it is NOT
-// exercised here. This file only asserts the gate predicate — which
-// keys off provider + model regex + config flag — is computed correctly.
-
 import { describe, expect, test } from "bun:test";
 import { anthropicWebSearchApplies } from "../../llm/core/model-init.ts";
 
-// Exercise the REAL exported gate predicate (no re-implemented copy). The
-// loop resolves `getConfig(tenant_id).llm.web_search` (or false when the
-// loader is uninitialised) into a boolean BEFORE calling the predicate, so
-// here `webSearch: undefined` maps to the resolved `false`.
-//   provider    — route.provider (the string returned by detectConfiguredProvider)
-//   modelId     — the effective model id for this turn
-//   webSearch   — the resolved llm.web_search boolean (undefined → false)
 function webSearchGate(opts: {
   provider: string;
   modelId: string;
@@ -33,8 +8,6 @@ function webSearchGate(opts: {
 }): boolean {
   return anthropicWebSearchApplies(opts.provider, opts.modelId, opts.webSearch === true);
 }
-
-// ---------------------------------------------------------------------------
 
 describe("webSearchGate — provider guard", () => {
   test("mock provider → gate closed regardless of model or config", () => {
@@ -121,7 +94,6 @@ describe("webSearchGate — config leaf guard", () => {
 });
 
 describe("webSearchGate — full matrix sanity", () => {
-  // Exhaustive cross-product for the high-signal combinations.
   const cases: Array<{
     label: string;
     provider: string;

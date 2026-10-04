@@ -1,9 +1,3 @@
-// A knowledge source read from an address: the engine fetches the page itself,
-// through the same egress guard every connector call passes, turns HTML into
-// Markdown and hands the text to the ordinary create / re-ingest pipeline. The
-// address stays on the row (`source_type = "url"`, `source_uri`), so "read it
-// again now" needs nothing but the source's id.
-
 import { htmlToMarkdown, looksLikeHtml } from "../connectors/discovery/html-to-markdown.ts";
 import { getDriverFetch } from "../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../connectors/egress-guard.ts";
@@ -14,7 +8,6 @@ import type { CreateKnowledgeSourceInput, KnowledgeSourceView } from "./types.ts
 
 const FETCH_TIMEOUT_MS = 20_000;
 
-/** The address could not be read: unreachable, refused, or not text. */
 export class KnowledgeUrlFetchError extends Error {
   readonly code = "url_fetch_failed";
   constructor(
@@ -26,7 +19,6 @@ export class KnowledgeUrlFetchError extends Error {
   }
 }
 
-/** A refresh was asked of a source that has no address to read again. */
 export class KnowledgeSourceNotRefreshableError extends Error {
   readonly code = "not_refreshable";
   constructor(public readonly source_type: string) {
@@ -40,7 +32,6 @@ export interface FetchedDocument {
   mime: string;
 }
 
-/** Fetch one address as text; HTML arrives as Markdown. */
 export async function fetchUrlDocument(url: string, tenant_id: string): Promise<FetchedDocument> {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
@@ -48,7 +39,6 @@ export async function fetchUrlDocument(url: string, tenant_id: string): Promise<
   try {
     await assertEgressAllowedResolved(parsed, { tenant_id });
   } catch (error) {
-    // The same refusal a connector call meets, said as what it means here.
     if (error instanceof EgressBlockedError)
       throw new KnowledgeUrlFetchError(`the address may not be read: ${error.reason}`, null);
     throw error;
@@ -88,7 +78,6 @@ export async function fetchUrlDocument(url: string, tenant_id: string): Promise<
   return { content, mime: html ? "text/markdown" : contentType.split(";")[0] || "text/plain" };
 }
 
-/** The name an address gives a source when nobody names it: host and path. */
 export function nameFromUrl(url: string): string {
   const parsed = new URL(url);
   const path = parsed.pathname.replace(/\/+$/, "");
@@ -122,11 +111,6 @@ export async function createKnowledgeSourceFromUrl(
   );
 }
 
-/**
- * Read an address source again now. Returns null when the source does not
- * exist; a source without an address (a file, a pasted text) is refused —
- * its content only changes when someone edits it.
- */
 export async function refreshKnowledgeSource(
   p: {
     tenant_id: string;

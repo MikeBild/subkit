@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { triggerOwner } from "./shell-header";
 
-// One sidebar toggle per viewport, and a bar only where it carries something.
-
 describe("triggerOwner", () => {
   const wide = { mobile: false, chatHeader: false, pageFrames: 1 };
 

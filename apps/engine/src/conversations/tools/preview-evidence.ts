@@ -1,4 +1,3 @@
-/** Evidence for the assistant's summary; held/skipped work is never counted as tested. */
 export function previewEvidence(
   steps: ReadonlyArray<{ step_key: string; status: string; held?: boolean }>,
 ) {

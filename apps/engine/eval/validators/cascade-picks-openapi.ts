@@ -1,5 +1,3 @@
-// Integration-eval: cascade orchestrator picks the first successful source.
-
 import { cascadeIngest } from "../../src/docs-ingestion/cascade.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

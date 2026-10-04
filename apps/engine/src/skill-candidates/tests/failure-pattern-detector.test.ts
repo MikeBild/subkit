@@ -1,18 +1,3 @@
-// Integration tests for detectFailurePatterns.
-//
-// The detector:
-//   • Queries execution_steps with status='failed' joined to executions,
-//     filtered to tenant_id + started_at >= cutoff (30 days).
-//   • Groups by (workflow_id, step_key, error_kind); threshold >= 3 → 1 signal.
-//   • error_kind = err.kind ?? err.code ?? "unknown".
-//   • Fingerprint: sha256(`failure:<workflow_id>:<step_key>:<error_kind>`).slice(0,32).
-//   • Emitted signal: scope:"workflow", workflow_id set.
-//
-// Clock: detectFailurePatterns reads time through `now()` (utils/clock.ts).
-// Tests that need a boundary check use installClock/restoreClock to freeze
-// time so row timestamps are predictable relative to the 30-day cutoff.
-// Tests that don't need boundary checks use wall-clock-relative timestamps.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { executionSteps, executions } from "../../db/schema/executions.ts";
@@ -35,10 +20,8 @@ let otherTenantId: string;
 let workflowId: string;
 let otherWorkflowId: string;
 
-// Timestamps used for boundary tests (relative to FROZEN_NOW).
-// These are fixed literals so the determinism lint is satisfied.
-const WITHIN_WINDOW_TS = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000); // 1 day before frozen
-const OUTSIDE_WINDOW_TS = new Date(FROZEN_NOW - 31 * 24 * 60 * 60 * 1000); // 31 days before frozen
+const WITHIN_WINDOW_TS = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000);
+const OUTSIDE_WINDOW_TS = new Date(FROZEN_NOW - 31 * 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
   if (skip) return;
@@ -96,7 +79,6 @@ afterEach(async () => {
   await testDb.db.delete(executions);
 }, 30_000);
 
-/** Seed one execution (saved workflow, so it has a workflow_id). */
 async function seedExecution(tenantIdArg: string, wfId: string, startedAt: Date): Promise<string> {
   const [ex] = await testDb.db
     .insert(executions)
@@ -113,7 +95,6 @@ async function seedExecution(tenantIdArg: string, wfId: string, startedAt: Date)
   return ex.id;
 }
 
-/** Seed one failed execution step with a given error shape. */
 async function seedFailedStep(
   executionId: string,
   stepKey: string,
@@ -252,7 +233,6 @@ describe.skipIf(skip)("detectFailurePatterns", () => {
   test("TENANT ISOLATION: other tenant's failures are excluded", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // Seed 3 failures for the other tenant.
     for (let i = 0; i < 3; i++) {
       const [ex] = await testDb.db
         .insert(executions)
@@ -278,7 +258,6 @@ describe.skipIf(skip)("detectFailurePatterns", () => {
       });
     }
 
-    // Running for the primary tenant must see 0 signals.
     const signals = await detectFailurePatterns(tenantId, testDb.db);
     expect(signals).toHaveLength(0);
   });
@@ -311,7 +290,6 @@ describe.skipIf(skip)("detectFailurePatterns", () => {
   test("DRAFT EXCLUSION: steps without workflow_id (draft executions) are skipped", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // Seed an execution with no workflow_id (draft execution).
     const [draftEx] = await testDb.db
       .insert(executions)
       .values({
@@ -344,13 +322,11 @@ describe.skipIf(skip)("detectFailurePatterns", () => {
   test("MULTIPLE GROUPS: two distinct (workflow, step, error_kind) triples each at threshold → 2 signals", async () => {
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // Group A: step_key="step_a", error_kind="timeout"
     for (let i = 0; i < 3; i++) {
       const execId = await seedExecution(tenantId, workflowId, WITHIN_WINDOW_TS);
       await seedFailedStep(execId, "step_a", { kind: "timeout" }, WITHIN_WINDOW_TS);
     }
 
-    // Group B: step_key="step_b", error_kind="parse_error"
     for (let i = 0; i < 3; i++) {
       const execId = await seedExecution(tenantId, workflowId, WITHIN_WINDOW_TS);
       await seedFailedStep(execId, "step_b", { kind: "parse_error" }, WITHIN_WINDOW_TS);

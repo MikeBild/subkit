@@ -1,12 +1,3 @@
-// Integration: `sk workflows run --input-file K=<path>` flow.
-//
-// Validates the full --input-file path end-to-end:
-//  1. uploadPath is called → uploadInline hit on the engine
-//  2. The returned fid is wrapped as { $file: "fid_..." }
-//  3. The runExecution body carries the fid under the expected key
-//
-// Uses a controlled fetchImpl so no real engine is needed.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,12 +71,10 @@ describe("workflows run --input-file", () => {
     const fp = join(tmpDir, "doc.pdf");
     writeFileSync(fp, Buffer.alloc(42, 0xbb));
 
-    // Simulate what workflows.ts run handler does:
     const file = await uploadPath(client, fp, { quiet: true });
     const inputObj: Record<string, unknown> = { format: "pdf" };
     inputObj.doc = formatFileRef(file.id);
 
-    // Now run the execution with the composed input.
     const execResult = await client.runExecution({
       source: "saved",
       workflow_id: "wf_x",
@@ -95,10 +84,8 @@ describe("workflows run --input-file", () => {
 
     expect(execResult.execution_id).toBe("exec-1");
 
-    // The inline upload must have been called.
     expect(captures.paths.some((p) => p.includes("/v1/files/inline"))).toBe(true);
 
-    // The execution body must have the $file ref under "doc".
     const body = captures.body as Record<string, unknown>;
     expect(body).toBeDefined();
     const input = body.input as Record<string, unknown>;

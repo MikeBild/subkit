@@ -1,7 +1,3 @@
-// Unit tests for the pure half of the connector-reference extractor.
-// The SQL half (`listConnectorRefs`, `workflowIdsUsingConnector`) is covered by
-// the HTTP integration tests, which exercise it against a real Postgres.
-
 import { describe, expect, test } from "bun:test";
 import { placeholderSlugsIn } from "./connector-refs.ts";
 
@@ -15,9 +11,6 @@ describe("placeholderSlugsIn", () => {
   });
 
   test("finds a placeholder that is not at the start of the url", () => {
-    // The validator only *requires* the leading form, but a reference anywhere
-    // is still a reference — under-reporting here is what breaks the delete
-    // guard and the by-connector filter.
     expect(placeholderSlugsIn("https://proxy/?to=${connector.stripe.base_url}")).toEqual([
       "stripe",
     ]);

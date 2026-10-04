@@ -1,7 +1,3 @@
-// The introspection query is a deliberately compact subset — we only
-// need names, kinds, fields, and arguments for retrieval, not directives
-// or full input value defaults.
-
 import { assertPageSize, consumeBytes, recordSpecFetched } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
 import type { BudgetState, RawChunk } from "../types.ts";
@@ -85,7 +81,6 @@ function renderField(f: IntrospectionField): string {
   return `  ${f.name}${args}: ${renderTypeRef(f.type)}${desc}`;
 }
 
-/** Convert an introspection JSON into a flat list of normalized chunks. */
 export function chunkGraphQLSchema(schema: IntrospectionSchema): RawChunk[] {
   const out: RawChunk[] = [];
   const queryRoot = schema.queryType?.name ?? "Query";
@@ -149,7 +144,6 @@ export function chunkGraphQLSchema(schema: IntrospectionSchema): RawChunk[] {
     }
   }
 
-  // Per-operation chunks — pull each top-level field from the root types.
   for (const rootName of [queryRoot, mutationRoot, subRoot]) {
     if (!rootName) continue;
     const rootType = schema.types.find((t) => t.name === rootName);

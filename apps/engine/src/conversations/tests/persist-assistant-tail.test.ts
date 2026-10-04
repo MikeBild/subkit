@@ -1,15 +1,3 @@
-// `buildModelMessages` must never hand the provider an array that ends on an
-// assistant turn.
-//
-// Regression: a turn resumed by a resolved elicitation carries no
-// `currentUserMessage`, so the array is pure replay. `empty_turn_fallback`
-// appends a SYNTHETIC assistant message after the tool rows, which therefore
-// lands last in `created_at` order. Anthropic reads a trailing assistant turn as
-// an attempt to prefill the reply and fails the whole turn with "This model does
-// not support assistant message prefill. The conversation must end with a user
-// message." — observed in production against claude-haiku-4-5, taking the
-// `conversation.run-turn` job down with it.
-
 import { beforeAll, describe, expect, it } from "bun:test";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
@@ -29,7 +17,6 @@ async function seedConversation(
     .values({ tenant_id: ctx.tenant_id, status: "active" })
     .returning({ id: conversations.id });
   const conversation_id = conv!.id;
-  // Distinct, increasing `created_at` so replay order is unambiguous.
   let t = Date.parse("2026-08-12T07:00:00Z");
   for (const row of rows) {
     t += 1_000;
@@ -73,7 +60,6 @@ describe("buildModelMessages — assistant tail", () => {
     const messages = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id, {});
 
     expect(messages[messages.length - 1]?.role).toBe("user");
-    // Only the tail goes — earlier assistant context is preserved.
     expect(messages.some((m) => m.role === "assistant")).toBe(true);
   });
 
@@ -90,7 +76,6 @@ describe("buildModelMessages — assistant tail", () => {
     const last = messages[messages.length - 1];
     expect(last?.role).toBe("user");
     expect(last?.content).toBe("and now this");
-    // The assistant turn in the middle is untouched.
     expect(messages.some((m) => m.role === "assistant")).toBe(true);
   });
 
@@ -101,8 +86,6 @@ describe("buildModelMessages — assistant tail", () => {
 
     const messages = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id, {});
 
-    // Nothing to fall back to — an empty `messages` array is rejected by
-    // providers just as hard as an assistant tail.
     expect(messages.length).toBe(1);
     expect(messages[0]?.role).toBe("assistant");
   });

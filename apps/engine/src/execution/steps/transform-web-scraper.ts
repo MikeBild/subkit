@@ -1,15 +1,3 @@
-// Web-scraper transform languages. Three static-import branches
-// invoked from `runTransformStep`. Each returns a typed JSON envelope:
-//   - readability       → ReadabilityOutput
-//   - html-to-markdown  → MarkdownOutput
-//   - structured-data   → StructuredDataOutput
-//
-// All caps default to `getConfig(tenant_id).connectors.web_scraper.*`
-// with step-level config (`step.readability`, `step.markdown`,
-// `step.structured_data`) overriding. No env-based feature flags.
-// Imports are intentionally STATIC — the no-dynamic-import test guards
-// this rule.
-
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
@@ -25,12 +13,6 @@ import type {
 import { validateAgainstJsonSchema } from "../engine/envelope.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 
-/** jsdom / Turndown / Readability occasionally echo page content into
- *  their error messages — pages with embedded query-string credentials
- *  (`?token=…`) could surface in audit/run records via
- *  `StepResult.error.message`. The logging redactor scrubs Bearer
- *  tokens, JWTs, AWS keys, etc. before the message lands on the
- *  envelope. */
 function safeErrorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e);
   const scrubbed = redact(raw);
@@ -43,17 +25,6 @@ export interface RunWebScraperParams {
   input: unknown;
 }
 
-/** Pull a `(html, url)` pair from the transform's incoming `input`. The
- *  upstream is most often a `request` step's envelope. We accept four
- *  shapes so recipes can chain without a glue JSONata step:
- *    1. bare string                  → html, url = ""
- *    2. { html, url? }               → typed pass-through
- *    3. { body, url? }               → request-step envelope; body may be
- *                                      a parsed body — coerced to string
- *    4. { content_html, url? }       → ReadabilityOutput (chained from
- *                                      transform.readability)
- *  Unknown shapes return html === null, which surfaces as a typed
- *  failure in each caller. */
 function extractHtmlAndUrl(input: unknown): { html: string | null; url: string } {
   if (typeof input === "string") return { html: input, url: "" };
   if (!input || typeof input !== "object") return { html: null, url: "" };
@@ -63,9 +34,6 @@ function extractHtmlAndUrl(input: unknown): { html: string | null; url: string }
   if (typeof obj.html === "string") return { html: obj.html, url };
   if (typeof obj.body === "string") return { html: obj.body, url };
   if (obj.body && typeof obj.body === "object") {
-    // Some HTTP responses parse as JSON; coerce to string so the
-    // transforms see deterministic input. This is rarely useful for
-    // Readability but keeps the failure mode loud rather than silent.
     try {
       return { html: JSON.stringify(obj.body), url };
     } catch {
@@ -103,8 +71,6 @@ function maybeValidateEnvelope(
   if (check.valid) return null;
   return fail(start, "output_schema_violation", check.errors.join("; "));
 }
-
-// ── readability ───────────────────────────────────────────────────────────
 
 export function runReadability(p: RunWebScraperParams): StepResult {
   const start = Date.now();
@@ -159,8 +125,6 @@ export function runReadability(p: RunWebScraperParams): StepResult {
   return maybeValidateEnvelope(p.step, envelope, start) ?? succeed(start, envelope);
 }
 
-// ── html-to-markdown ──────────────────────────────────────────────────────
-
 const HTML_DROP_TAGS = ["script", "style", "noscript", "iframe", "object", "embed"];
 
 export function runHtmlToMarkdown(p: RunWebScraperParams): StepResult {
@@ -191,8 +155,6 @@ export function runHtmlToMarkdown(p: RunWebScraperParams): StepResult {
     );
   }
 
-  // Strip noisy elements before turndown sees them so the markdown is
-  // determinstic across runs.
   const stripped: string[] = [];
   for (const tag of [...HTML_DROP_TAGS, ...extraStripTags]) {
     const nodes = dom.window.document.querySelectorAll(tag);
@@ -252,8 +214,6 @@ export function runHtmlToMarkdown(p: RunWebScraperParams): StepResult {
   return maybeValidateEnvelope(p.step, envelope, start) ?? succeed(start, envelope);
 }
 
-// ── structured-data ───────────────────────────────────────────────────────
-
 export function runStructuredData(p: RunWebScraperParams): StepResult {
   const start = Date.now();
   const requestedTypes = new Set(
@@ -296,11 +256,7 @@ export function runStructuredData(p: RunWebScraperParams): StepResult {
         } else if (parsed && typeof parsed === "object") {
           json_ld.push(parsed as Record<string, unknown>);
         }
-      } catch {
-        // Malformed JSON-LD blocks are intentionally skipped; sites
-        // routinely ship invalid blocks and we do not want one
-        // malformed island to fail the whole extraction.
-      }
+      } catch {}
     });
   }
 

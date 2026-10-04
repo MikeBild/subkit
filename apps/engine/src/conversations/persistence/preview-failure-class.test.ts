@@ -1,10 +1,3 @@
-// Unit tests for `classifyPreviewFailure` and `traceFailedWithRuntimeDataError`.
-// Pure functions — no DB, no network.
-//
-// The commit gate reacts to the classification:
-//   - `config_invalid` / `unknown` → block even with force_commit
-//   - `runtime_data`               → allow force_commit:true
-
 import { describe, expect, it } from "bun:test";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 import {
@@ -55,10 +48,6 @@ describe("classifyPreviewFailure", () => {
     expect(result).toBe("runtime_data");
   });
 
-  // "proof before proposal": an auth rejection (401/403/auth_failed) is
-  // negative proof the workflow never authenticated against the destination.
-  // It must NOT be force-committable the way a 404/410 (record gone) is — so
-  // it classifies as `unknown`, which the commit gate blocks even with force.
   it("returns 'unknown' (not force-committable) for a step trace with HTTP 401", () => {
     const result = classifyPreviewFailure(
       failedPreview([trace({ status: "failed", request_meta: { status: 401 } })]),
@@ -100,8 +89,6 @@ describe("classifyPreviewFailure", () => {
   });
 
   it("config_invalid dominates runtime_data when both appear in the same preview", () => {
-    // One step has a 404 (runtime), another has an unresolved reference (config).
-    // config_invalid must win — block even force_commit.
     const result = classifyPreviewFailure(
       failedPreview([
         trace({ step_id: "s1", status: "failed", request_meta: { status: 404 } }),
@@ -143,7 +130,6 @@ describe("traceFailedWithRuntimeDataError", () => {
   });
 
   it("returns false for a succeeded trace even with a 404-like status", () => {
-    // The status fields are only meaningful on failed/error traces.
     expect(
       traceFailedWithRuntimeDataError(
         trace({ status: "succeeded", request_meta: { status: 404 } }),
@@ -152,9 +138,6 @@ describe("traceFailedWithRuntimeDataError", () => {
   });
 
   it("returns false for a failed trace with error_code=auth_failed (auth is not a force/exempt signal)", () => {
-    // Auth failures are excluded from the runtime-data set on purpose — a
-    // transform referencing a step that never authenticated has no proven
-    // shape to author against, so the gate must hold rather than exempt it.
     expect(
       traceFailedWithRuntimeDataError(trace({ status: "failed", error_code: "auth_failed" })),
     ).toBe(false);

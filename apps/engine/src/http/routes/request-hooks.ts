@@ -1,15 +1,3 @@
-// Admin CRUD for Before-Request Hooks.
-//
-// Stored in the `request_hooks` table (tenant-scoped, keyed by role).
-// Every mutation writes an audit row and lints the JavaScript source
-// via the QuickJS sandbox so a malformed hook cannot reach the
-// evaluation path.
-//
-//   GET    /v1/auth/request-hooks          — list
-//   POST   /v1/auth/request-hooks          — create
-//   PATCH  /v1/auth/request-hooks/:id      — update
-//   DELETE /v1/auth/request-hooks/:id      — delete
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
@@ -135,8 +123,6 @@ function requireAdmin(principal: import("../../auth/types.ts").ResolvedPrincipal
 }
 
 export function registerRequestHookRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC: request hooks sit under rbac:read/rbac:write since they shape
-  // the effective principal evaluated by the auth layer.
   app.use("/v1/auth/request-hooks", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("rbac:read")(c, next);
     if (c.req.method === "POST") return requirePermission("rbac:write")(c, next);

@@ -1,14 +1,3 @@
-// OAuth2 client wrappers over `openid-client` v6. Each grant helper
-// returns a uniform `OAuth2TokenBundle` regardless of the underlying
-// grant type, so the caller (refresh worker, oauth callback route,
-// client-credentials startup) doesn't need to know which specific
-// openid-client function to call.
-//
-// openid-client v6 is the functional shape — `discovery()`,
-// `authorizationCodeGrant()`, `refreshTokenGrant()`,
-// `clientCredentialsGrant()`, `buildAuthorizationUrl()`,
-// `randomPKCECodeVerifier()`, `calculatePKCECodeChallenge()`.
-
 import * as oauth from "openid-client";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { logger } from "../../logging/logger.ts";
@@ -42,7 +31,6 @@ function resolveClientAuth(cfg: OAuth2ClientConfig): oauth.ClientAuth | undefine
   if (cfg.token_auth_method === "basic_auth") {
     return oauth.ClientSecretBasic(cfg.client_secret);
   }
-  // Default: "body" — post client_id/client_secret in the request body.
   return oauth.ClientSecretPost(cfg.client_secret);
 }
 
@@ -53,9 +41,6 @@ async function getConfig(cfg: OAuth2ClientConfig): Promise<oauth.Configuration> 
   const server = new URL(cfg.issuer_url);
   const clientAuth = resolveClientAuth(cfg);
 
-  // If the caller hands us explicit authorization_endpoint + token_endpoint,
-  // we skip the discovery round-trip. That keeps templates that don't
-  // publish /.well-known (Trello, Asana, early-access APIs) functional.
   let configuration: oauth.Configuration;
   if (cfg.authorization_endpoint && cfg.token_endpoint) {
     configuration = new oauth.Configuration(
@@ -108,13 +93,6 @@ function toBundle(
   };
 }
 
-/**
- * Pre-expiry check. Returns `true` if the token is missing, has no expiry, or
- * is within `bufferMs` of expiry. Callers should treat `true` as "refresh
- * before use" to avoid mid-request 401 retries.
- *
- * Default buffer: 5 minutes.
- */
 export function isTokenExpired(
   bundle: { expires_at?: Date | string | null } | null | undefined,
   bufferMs = 5 * 60_000,
@@ -132,16 +110,6 @@ export interface StartAuthCodeResult {
   code_verifier: string;
 }
 
-/**
- * Build a hosted auth-code URL with PKCE. The caller is responsible for
- * persisting `code_verifier` + `state` until the callback arrives.
- */
-/** Detect Google's OAuth issuer family. Matches `accounts.google.com`
- *  + every Google Workspace-suffixed variant used by their consumer
- *  + enterprise SSO endpoints. Used to add `access_type=offline` +
- *  `prompt=consent` so the authorize-code grant returns a
- *  refresh_token (without these two params Google issues a 1-hour
- *  access_token and nothing more). */
 function isGoogleIssuer(issuer: string | undefined): boolean {
   if (!issuer) return false;
   try {
@@ -163,7 +131,7 @@ export async function startAuthorizationCode(
     throw new Error("startAuthorizationCode requires config.redirect_uri");
   }
   const configuration = await getConfig(cfg);
-  const usePkce = cfg.use_pkce !== false; // default true
+  const usePkce = cfg.use_pkce !== false;
   const code_verifier = usePkce ? oauth.randomPKCECodeVerifier() : "";
   const state = oauth.randomState();
   const params: Record<string, string> = {
@@ -177,13 +145,6 @@ export async function startAuthorizationCode(
     params.code_challenge_method = "S256";
   }
   if (cfg.audience) params.audience = cfg.audience;
-  // Google-specific: without `access_type=offline` + `prompt=consent`,
-  // Google's authorization endpoint issues an access_token but NO
-  // refresh_token. The token expires in 1 hour and the engine can no
-  // longer call the API — operator has to re-authenticate from
-  // scratch. Both params are documented at
-  // https://developers.google.com/identity/protocols/oauth2/web-server#offline
-  // and are no-ops on other providers.
   if (isGoogleIssuer(cfg.issuer_url)) {
     params.access_type = "offline";
     params.prompt = "consent";
@@ -228,14 +189,6 @@ export async function runClientCredentialsGrant(
   return toBundle(res);
 }
 
-/**
- * Resource Owner Password Credentials grant (RFC 6749 §4.3). Auth0,
- * Keycloak, Okta, Cognito Hosted UI all support this — it's the
- * simplest "exchange username+password for an access_token" flow when
- * the upstream IdP is OAuth2-spec-compliant. Cognito's *native* IDP
- * (`InitiateAuth`) is NOT spec-compliant; that case lives in
- * `runCognitoUserPasswordGrant` below.
- */
 export async function runPasswordGrant(
   cfg: OAuth2ClientConfig,
   username: string,
@@ -253,35 +206,12 @@ export async function runPasswordGrant(
   return toBundle(res);
 }
 
-/**
- * AWS Cognito InitiateAuth — `USER_PASSWORD_AUTH` flow. Body shape is
- * proprietary AWS JSON (`{AuthFlow, ClientId, AuthParameters}`) sent
- * directly to `https://cognito-idp.<region>.amazonaws.com/`, with
- * `X-Amz-Target` header. Returns AWS-shaped `AuthenticationResult`
- * (IdToken / AccessToken / RefreshToken / ExpiresIn / TokenType).
- *
- * The wrapper normalises the result into the same `OAuth2TokenBundle`
- * shape every other grant produces. Two notable choices:
- *
- *   1. We persist `IdToken` as `access_token`. Cognito User-Pool /
- *      AppSync auth wants the IdToken in the `Authorization` header,
- *      not the AccessToken. Operators that want AccessToken-on-the-
- *      wire instead can flip `cognito_id_token_priority: false` on the
- *      connector config.
- *   2. We set `token_type: "none"` so `applyAuthMaterial` emits the
- *      raw JWT (no scheme prefix) — AppSync expects exactly that.
- */
 export interface CognitoUserPasswordParams {
   region: string;
   client_id: string;
   username: string;
   password: string;
-  /** Optional client secret. When set, a SECRET_HASH is computed and
-   *  added to AuthParameters. Required for app clients with a secret. */
   client_secret?: string | undefined;
-  /** Map AccessToken (default: false → IdToken) into the persisted
-   *  access_token slot. AppSync wants IdToken; resource APIs typically
-   *  want AccessToken. */
   use_access_token?: boolean | undefined;
 }
 
@@ -340,8 +270,6 @@ function bundleFromCognito(
   }
   const expires_at =
     typeof r.ExpiresIn === "number" ? new Date(Date.now() + Math.max(0, r.ExpiresIn) * 1000) : null;
-  // `none` so applyAuthMaterial emits the raw JWT — AppSync rejects
-  // anything with a `Bearer ` prefix.
   return {
     access_token: access,
     token_type: "none",
@@ -374,9 +302,6 @@ export async function runCognitoRefreshTokenGrant(
 ): Promise<OAuth2TokenBundle> {
   const params: Record<string, string> = { REFRESH_TOKEN: p.refresh_token };
   if (p.client_secret) {
-    // `username` is required for SECRET_HASH but not used by the
-    // refresh path — Cognito ignores it. Caller passes the original
-    // login email through.
     params.SECRET_HASH = await computeCognitoSecretHash(p.username, p.client_id, p.client_secret);
   }
   const payload = await postCognito<CognitoTokenPayload>(p.region, "InitiateAuth", {
@@ -387,8 +312,6 @@ export async function runCognitoRefreshTokenGrant(
   return bundleFromCognito(payload, p.use_access_token === true, p.refresh_token);
 }
 
-/** HMAC-SHA256(client_secret, username + client_id), base64. Required
- *  by Cognito app clients with a secret. */
 async function computeCognitoSecretHash(
   username: string,
   client_id: string,
@@ -443,10 +366,6 @@ export async function dynamicallyRegisterClient(
 
   let configuration: oauth.Configuration;
   try {
-    // The `client_id` argument is a placeholder — discovery only needs it
-    // to construct a Configuration, and we are about to dynamically issue
-    // the real client_id via /register. openid-client v6 has no
-    // "discovery-without-client" mode.
     configuration = await oauth.discovery(
       server,
       "dynamic-registration-probe",
@@ -528,29 +447,13 @@ export async function dynamicallyRegisterClient(
 }
 
 export interface ClientCredentialsJsonParams {
-  /** Full URL of the token endpoint. */
   token_endpoint: string;
-  /** Flat key→value map sent as the JSON POST body. Values are the
-   *  actual secrets (already resolved from the credential row). */
   body_mapping: Record<string, string>;
-  /** How to extract the token from the response body. */
   response_format: "raw" | "json";
-  /** Fallback TTL in ms when the response carries no expiry. */
   token_response_ttl_ms: number;
-  /** Optional extra headers added to the token POST request. */
   extra_token_headers?: Record<string, string> | undefined;
 }
 
-/**
- * JSON-body client-credentials exchange. Generalises token endpoints that
- * accept `application/json` instead of the OAuth2 form-encoded format and
- * whose response is either a bare quoted token string ("raw") or a standard
- * `{ access_token, expires_in?, ... }` envelope ("json").
- *
- * No issuer discovery is performed — the caller must supply the full
- * `token_endpoint` URL. Suitable for proprietary auth endpoints (e.g. Xray
- * Cloud) that do not publish an OIDC discovery document.
- */
 export async function runClientCredentialsJsonGrant(
   p: ClientCredentialsJsonParams,
 ): Promise<OAuth2TokenBundle> {
@@ -574,7 +477,6 @@ export async function runClientCredentialsJsonGrant(
   }
 
   if (p.response_format === "raw") {
-    // Strip surrounding double-quotes and whitespace (e.g. `"eyJ…"\n` → `eyJ…`).
     const token = text.trim().replace(/^"|"$/g, "");
     if (!token) {
       throw new Error("client_credentials_json raw response was empty after stripping quotes");
@@ -588,7 +490,6 @@ export async function runClientCredentialsJsonGrant(
     };
   }
 
-  // response_format === "json"
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -641,12 +542,6 @@ export async function runRefreshTokenGrant(
   }
 }
 
-/**
- * Whether an error came from talking to a sign-in service — its discovery
- * document, its client registration or one of its endpoints — rather than
- * from the engine itself. A route reports the first as the remote's fault
- * and lets the second stay an internal error.
- */
 export function isOAuthProviderError(err: unknown): boolean {
   return (
     err instanceof oauth.ClientError ||

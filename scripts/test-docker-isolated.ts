@@ -11,11 +11,6 @@ if (tests.length === 0) {
   throw new Error("no Docker E2E test files found");
 }
 
-// Every Docker file controls the same Compose project. Running their
-// beforeAll hooks in one Bun process lets compose up / force-recreate race
-// across files and can replace PostgreSQL underneath an active test. A fresh
-// process per file preserves the shared external state while serialising all
-// Compose mutations.
 for (const [index, file] of tests.entries()) {
   process.stdout.write(`[docker-isolated] ${index + 1}/${tests.length} ${file}\n`);
   const child = Bun.spawn(["bun", "test", "--timeout", "600000", file], {

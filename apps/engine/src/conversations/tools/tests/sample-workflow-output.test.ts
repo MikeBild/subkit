@@ -1,8 +1,3 @@
-// Regression: a large successful workflow output must reach the user as a
-// SAMPLE with real rows, never vanish. Pre-fix the outer LLM-budget pass
-// nulled the heaviest envelope branch — always `output` — and a 95-row
-// success surfaced as "status=succeeded · no output" in production.
-
 import { describe, expect, test } from "bun:test";
 import { getRawResult, sampleWorkflowOutputForLlm } from "../truncate.ts";
 
@@ -31,17 +26,13 @@ describe("sampleWorkflowOutputForLlm", () => {
     const output = { org: "remotion-dev", total: 95, repos };
     const r = sampleWorkflowOutputForLlm(output);
     expect(r.sampled).toBe(true);
-    // The sample carries REAL leading rows…
     const v = r.value as { repos: unknown[] };
     expect((v.repos[0] as { name: string }).name).toBe("repo-0");
-    // …an explicit in-band marker so nobody mistakes it for the full set…
     expect(JSON.stringify(v.repos.at(-1))).toContain("sampled");
     expect(JSON.stringify(v.repos.at(-1))).toContain("of 95 items");
-    // …and the FULL payload retrievable via the raw ref.
     expect(typeof r.raw_ref).toBe("string");
     const full = getRawResult(r.raw_ref!) as { repos: unknown[] };
     expect(full.repos).toHaveLength(95);
-    // The sample itself stays under the envelope budget.
     expect(JSON.stringify(r.value).length).toBeLessThanOrEqual(5000);
   });
 

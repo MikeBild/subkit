@@ -79,9 +79,6 @@ describe("POST /v1/conversations provider-limit handling", () => {
   });
 
   test("a streamed first turn that hits the quota is typed and kept on the conversation", async () => {
-    // The stream said `{ code: "internal" }` and stored nothing: a client
-    // could not tell a provider quota from a crash, and the created
-    // conversation read as still thinking once the stream was gone.
     resetMockProvider();
     getMockProvider().setFailure("conv-quota-primary", "quota_exhausted");
 
@@ -122,9 +119,6 @@ describe("POST /v1/conversations provider-limit handling", () => {
       retry_at: "2026-05-01T00:00:00.000Z",
     });
 
-    // The provider refused the call before reading it: the failure stays on
-    // the ledger as an error, and the conversation's tokens and cost stay at
-    // nothing — the estimate of a prompt nobody processed is not spend.
     const refused = await srv.db
       .select()
       .from(llmUsage)
@@ -273,9 +267,6 @@ describe("POST /v1/conversations provider-limit handling", () => {
     expect(body.code).toBe("pending_elicitation_blocked");
     expect(body.message).toContain("resolve the pending dialog");
     expect(body.details?.conversation_status).toBe("awaiting_input");
-    // The blocked error carries the full elicitation (tool_call_id +
-    // input) so a client that raced a prompt against the dialog can
-    // re-render and resolve it instead of deadlocking.
     expect(body.details?.pending_elicitation).toEqual({
       id: elicitation.id,
       tool_name: "ask_user_form",

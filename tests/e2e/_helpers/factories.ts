@@ -1,26 +1,12 @@
-// Hermetic fixture factories for the in-process e2e suites.
-//
-// Each factory creates a uniquely-slugged resource via the real HTTP
-// surface (so the test exercises the route, not a DB shortcut) and returns
-// the typed id the test asserts against. Uniqueness comes from a per-suite
-// monotonic counter rather than Date.now()/random so the fixtures stay
-// deterministic-seed friendly and never collide across parallel describe
-// blocks in the same file.
-
 import type { E2EEnv, PersonaName } from "../setup.ts";
 import { type ApiClient, apiClient } from "./http.ts";
 import { pollUntil } from "./poll.ts";
 
 let seq = 0;
-/** Monotonic, collision-free suffix for hermetic slugs/names. */
 export function uniqueSuffix(label = "fix"): string {
   seq += 1;
   return `${label}-${seq.toString().padStart(4, "0")}`;
 }
-
-// ---------------------------------------------------------------------------
-// Connectors
-// ---------------------------------------------------------------------------
 
 export interface SeedConnectorOpts {
   persona?: PersonaName;
@@ -36,12 +22,6 @@ export interface SeededConnector {
   slug: string;
 }
 
-/**
- * Create an HTTP connector (no auth, points at example.com by default).
- * Returns the connector id + slug. The default target is deliberately a
- * placeholder host — callers that need a reachable probe pass the booted
- * engine's own `base_url` so `/test` and `/call` stay hermetic.
- */
 export async function seedConnector(
   env: E2EEnv,
   opts: SeedConnectorOpts = {},
@@ -65,10 +45,6 @@ export async function seedConnector(
   return { id: res.body.id, slug };
 }
 
-// ---------------------------------------------------------------------------
-// Workflows
-// ---------------------------------------------------------------------------
-
 export interface WorkflowStep {
   id: string;
   kind: string;
@@ -81,7 +57,6 @@ export interface SeedWorkflowOpts {
   slug?: string;
   description?: string;
   steps?: WorkflowStep[];
-  /** Trigger binding (e.g. a schedule) — passed through verbatim. */
   trigger?: Record<string, unknown>;
 }
 
@@ -90,11 +65,6 @@ export interface SeededWorkflow {
   slug: string;
 }
 
-/**
- * Default step set: a single pure transform that needs no network. Keeps
- * `seedWorkflow` runs hermetic — callers needing a real request step pass
- * their own `steps` (e.g. pointing at the booted engine's own endpoints).
- */
 export function defaultTransformSteps(): WorkflowStep[] {
   return [
     {
@@ -106,7 +76,6 @@ export function defaultTransformSteps(): WorkflowStep[] {
   ];
 }
 
-/** Create a workflow via `POST /v1/workflows`. Returns its id + slug. */
 export async function seedWorkflow(
   env: E2EEnv,
   opts: SeedWorkflowOpts = {},
@@ -130,10 +99,6 @@ export async function seedWorkflow(
   return { id: res.body.id, slug };
 }
 
-// ---------------------------------------------------------------------------
-// Executions
-// ---------------------------------------------------------------------------
-
 export interface ExecutionRow {
   id: string;
   status: string;
@@ -151,11 +116,6 @@ const TERMINAL_STATUSES = new Set([
   "error",
 ]);
 
-/**
- * Poll `GET /v1/executions/:id` until the execution reaches a terminal
- * status and return the row. Async runs (`async: true`) and scheduler-fired
- * executions land here without the test guessing at timing.
- */
 export async function waitForExecution(
   api: ApiClient,
   id: string,

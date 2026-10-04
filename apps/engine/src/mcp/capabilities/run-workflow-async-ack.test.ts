@@ -1,12 +1,3 @@
-// run_workflow async-ack: execution-handle discovery.
-//
-// When a `run_workflow` MCP call outlives the inline tools/call deadline
-// (TOOLS_CALL_DEADLINE_MS), the response must hand back the running
-// execution_id as a poll handle — mirroring the wf_<slug> async-ack — so a
-// client polls get_execution instead of retrying and double-executing. The
-// poll handle is sourced by `findBackgroundExecutionId`, unit-tested here so
-// the discovery logic is verified without waiting out the 30s deadline.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, executions, workflows } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
@@ -56,7 +47,6 @@ describe("findBackgroundExecutionId", () => {
       steps: [],
     });
     const since = FROZEN_NOW;
-    // Two executions after `since`; the most recent must win.
     await seedRunningExecution(wf.id, new Date(since + 10));
     const newer = await seedRunningExecution(wf.id, new Date(since + 50));
 
@@ -112,7 +102,6 @@ describe("findBackgroundExecutionId", () => {
       name: "Async Ack Stale",
       steps: [],
     });
-    // A prior run of the same workflow, created before our window opens.
     const start = FROZEN_NOW;
     await seedRunningExecution(wf.id, new Date(start - 60_000));
 
@@ -146,10 +135,6 @@ describe("findBackgroundExecutionId", () => {
   });
 
   test("resolves a workflow whose published version was rotated out mid-run", async () => {
-    // A workflow the tool ran but whose current_version_id is now null (a
-    // publish rotate raced the run). The ack MUST still resolve it — a
-    // `require_published` filter here would orphan the live run into
-    // engine_busy, the exact failure the poll handle prevents.
     const [wf] = await suite.http.db
       .insert(workflows)
       .values({
@@ -157,7 +142,6 @@ describe("findBackgroundExecutionId", () => {
         slug: "async-ack-unpublished",
         name: "Async Ack Unpublished",
         lifecycle: "active",
-        // current_version_id intentionally left null
       })
       .returning();
     if (!wf) throw new Error("seed workflow failed");
@@ -186,7 +170,6 @@ describe("resolveConversationBoundWorkflowId", () => {
       name: "Bound B",
       steps: [],
     });
-    // Older conversation bound to A, newer bound to B — the newer must win.
     await suite.http.db.insert(conversations).values({
       tenant_id: suite.http.tenantId,
       owner_id: suite.http.userId,
@@ -217,8 +200,6 @@ describe("resolveConversationBoundWorkflowId", () => {
       name: "Bound C",
       steps: [],
     });
-    // Most-recent is abandoned (must be skipped); an active one with no
-    // target (must be skipped); the older active+bound one must win.
     await suite.http.db.insert(conversations).values({
       tenant_id: suite.http.tenantId,
       owner_id: owner,

@@ -1,13 +1,3 @@
-// Digest- and learnings-driven starter-action injection.
-//
-// When the startup health digest carries failures and the persona may run the
-// triage action, the REPL prepends a "guided triage" entry keyed "1". When
-// proposed session learnings are pending and the persona may read skills, a
-// "review learnings" entry takes the next free number. The persona defaults
-// renumber after the injected entries — keeping the rendered list and the
-// dispatch list (number-key handler) aligned. This logic lives here, shared by
-// ink-app.tsx and its tests, so the two can never drift.
-
 import type { OperatorHealthDigest } from "../engine-client.ts";
 import { totalFailureCount } from "../lib/operator-digest.ts";
 import type { PersonaProbe } from "../slash.ts";
@@ -21,17 +11,8 @@ import {
 export const TRIAGE_ACTION_ID = "triage-digest-failures";
 export const REVIEW_LEARNINGS_ACTION_ID = "review-learnings";
 
-// Injected entries take keys "1".. in plan order (triage first, then
-// learnings); the persona defaults shift to the next free number — capped so a
-// single-char number key never exceeds "9". Overflow entries are dropped
-// rather than clamped onto a shared key. Today's persona defaults have 5
-// entries and at most 2 injections, so this never trips; the cap is a
-// defensive invariant.
 const MAX_NUMBER_KEY = 9;
 
-/** Whether to inject the guided-triage starter action: the digest must carry
- *  failures AND the persona must hold the triage action's required permission.
- *  The single RBAC + failure gate — render and dispatch both derive from it. */
 export function shouldInjectTriage(
   digest: OperatorHealthDigest | null | undefined,
   probe: PersonaProbe,
@@ -42,9 +23,6 @@ export function shouldInjectTriage(
   return !action.requires || probe.allows(action.requires);
 }
 
-/** Whether to inject the review-learnings starter action: proposed session
- *  learnings must be pending AND the persona must hold the action's required
- *  permission. Same single-gate contract as shouldInjectTriage. */
 export function shouldInjectLearnings(pendingLearnings: number, probe: PersonaProbe): boolean {
   if (pendingLearnings <= 0) return false;
   const action = findTaskActionById(REVIEW_LEARNINGS_ACTION_ID);
@@ -52,9 +30,6 @@ export function shouldInjectLearnings(pendingLearnings: number, probe: PersonaPr
   return !action.requires || probe.allows(action.requires);
 }
 
-/** Injection plan shared by render + dispatch: the TaskActions to prepend, in
- *  key order, each with its count-aware render label. Deriving both lists from
- *  this one plan is what keeps their number keys aligned. */
 function injectionPlan(
   digest: OperatorHealthDigest | null | undefined,
   probe: PersonaProbe,
@@ -89,11 +64,6 @@ function renumberDefaults<T extends { key?: string | undefined }>(
     .map((action, i) => ({ ...action, key: String(i + 1 + injectedCount) }));
 }
 
-/** Render list: persona starter actions (RBAC-filtered by `probe`), with the
- *  triage / review-learnings entries prepended at keys "1".. when the digest,
- *  pending-learnings count, and permissions warrant it. The injection decision
- *  is derived internally via the shared plan so it can never be passed in
- *  inconsistently with the probe. */
 export function buildStarterActions(
   personaLabel: string,
   probe: PersonaProbe,
@@ -112,9 +82,6 @@ export function buildStarterActions(
   return [...injected, ...renumberDefaults(base, plan.length)];
 }
 
-/** Dispatch list (drives the number-key handler): persona task actions, with
- *  the injected TaskActions prepended at keys "1".. under the same plan.
- *  Mirrors buildStarterActions so render and dispatch keys stay aligned. */
 export function buildStarterTaskActions(
   personaLabel: string,
   probe: PersonaProbe,

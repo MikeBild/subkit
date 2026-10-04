@@ -18,7 +18,6 @@ function status(boot_id: string, active: number, saved: number): EngineRestartSt
   };
 }
 
-/** A virtual clock: every sleep advances it, nothing really waits. */
 function clock() {
   let t = 0;
   return {
@@ -32,7 +31,7 @@ function clock() {
 describe("sk system restart --wait", () => {
   test("down, draining, then a new boot running the saved revision is a confirmed restart", async () => {
     const answers: Array<EngineRestartStatus | Error> = [
-      status(OLD, 4, 5), // still the old process, draining
+      status(OLD, 4, 5),
       new TransportError(new Error("ECONNREFUSED")),
       new EngineError(503, { code: "draining", message: "draining" }),
       new EngineError(502, { code: "bad_gateway", message: "bad gateway" }),

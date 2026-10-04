@@ -10,10 +10,6 @@ function checkpointToolName(key: AuthoringCheckpointKey): string {
     case "connector_validated":
       return "validate_connector_draft";
     case "connector_authenticated":
-      // The actual next-best tool depends on auth_type at runtime —
-      // use ask_user_form as the default surface; oauth2 paths get
-      // steered to authenticate_oauth via blocked_by directly in
-      // computeBlockedBy. The label here is just for stale lookups.
       return "ask_user_form";
     case "connector_probed":
       return "probe_connector_draft";
@@ -73,17 +69,6 @@ export function toNextBestActions(
   return [...new Set(actions)];
 }
 
-/**
- * Post-start guidance: what the author must do next to make a freshly
- * started connector draft usable, keyed on auth_type. Lives here (not
- * inline in each start_* tool) so `start_connector_from_description` and
- * `start_connector_from_template` steer the LLM IDENTICALLY. Pre-fix the
- * template path returned no `next_phase`, so for oauth2 connectors the
- * LLM improvised "ask the user for an API access token" — wrong for
- * providers like LinkedIn that only issue tokens through the
- * authorization-code flow (confirmed in a live session: ask_user_form
- * summary "Enter your LinkedIn API access token" on an oauth2 draft).
- */
 export function buildAuthNextPhase(authType: string | undefined): {
   phase: string;
   next_suggested_tool: string;
@@ -116,7 +101,6 @@ export function buildAuthNextPhase(authType: string | undefined): {
   };
 }
 
-/** Keep lifecycle evidence, not duplicated response bodies, in every mutation/error. */
 function compactSummary(
   summary: ReturnType<typeof getAuthoringSnapshot>["summary"],
 ): ReturnType<typeof getAuthoringSnapshot>["summary"] {
@@ -170,18 +154,6 @@ export function buildGateError(
   };
 }
 
-/**
- * Slim down `summary` for read-only tool results (`dry_run_workflow`,
- * `inspect_workflow_draft`, etc.). Pre-fix every preview echoed the full
- * checkpoint array + persisted_resources + latest_execution + latest_
- * diagnosis on every call — accumulating ~1.5 KB per tool result. In a
- * session that loops on a JSONata transform that's 10–20 calls of pure
- * envelope cost per turn. The author only needs `next_required_action`,
- * `blocked_by`, `active_target`, and `last_action` to decide what to do
- * next. The heavier sub-fields stay on *mutation* paths
- * (`update_param`, `save_workflow_draft`) where the author actually
- * needs to know which resources persisted and what's verified.
- */
 function slimSummaryForReadOnly(
   summary: ReturnType<typeof getAuthoringSnapshot>["summary"],
 ): ReturnType<typeof getAuthoringSnapshot>["summary"] {
@@ -189,7 +161,6 @@ function slimSummaryForReadOnly(
   const asRecord = summary as unknown as Record<string, unknown>;
   const { checkpoints, persisted_resources, latest_execution, latest_diagnosis, ...rest } =
     asRecord;
-  // Reference the dropped fields so the linter does not flag them.
   void checkpoints;
   void persisted_resources;
   void latest_execution;
@@ -198,10 +169,6 @@ function slimSummaryForReadOnly(
 }
 
 export interface BuildLifecyclePayloadOptions {
-  /** When true, omit `checkpoints[]`, `persisted_resources[]`,
-   *  `latest_execution`, and `latest_diagnosis` from `summary` —
-   *  appropriate for read-only tool results where these fields just
-   *  inflate token cost without driving the next decision. */
   readOnly?: boolean;
 }
 

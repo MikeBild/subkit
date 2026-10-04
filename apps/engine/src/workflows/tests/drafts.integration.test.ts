@@ -342,13 +342,6 @@ test("draft access stays tenant scoped and updates require an observed base", as
 });
 
 test("a field the schema fills in is not a change the author made", async () => {
-  // An hour went into chasing a write that was never lost. A request step
-  // saved WITHOUT `error_policy` is stored WITH `error_policy: "none"` —
-  // `errorPolicy` carries that default (workflows/types.ts) — so the saved
-  // version and the author's draft differ textually while being the same
-  // definition. Read as a diff, that looks exactly like a save that silently
-  // dropped the correction, and the honest answer the save already gave
-  // (`version_changed: false`) was read as the symptom rather than the fact.
   const authored = {
     name: "default-materialised",
     slug: "default-materialised",
@@ -373,8 +366,6 @@ test("a field the schema fills in is not a change the author made", async () => 
   expect(step?.error_policy).toBe("none");
   expect(step?.on_error).toBe("continue");
 
-  // Saving the author's shape again is therefore a no-op, and the result says
-  // so by returning the same version rather than stacking another one.
   const again = unwrap(
     await saveWorkflowDraft(
       {

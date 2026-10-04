@@ -1,10 +1,3 @@
-// Route contract for the four driver-dispatched connector methods.
-//
-// `sk connectors enable / disable / mcp-inspect / mcp-authorize` are each one
-// client method away from an HTTP path. The command tests pin the verb→method
-// wiring; this pins method→path, which is the half that breaks silently: a
-// wrong path is a 404 nobody sees until an operator runs the verb.
-
 import { describe, expect, test } from "bun:test";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 
@@ -66,10 +59,6 @@ describe("EngineClient mcp-driver connector methods", () => {
     expect(result.authorization_url).toContain("https://idp.example.test/authorize");
   });
 
-  // The mcp authorize path is NOT the connector OAuth path. They discover
-  // the authorization server two different ways (config-declared issuer vs
-  // RFC 9728 protected-resource metadata), so routing one at the other
-  // yields a misleading error rather than a browser flow.
   test("mcp/authorize is a different path from the connector oauth/start flow", async () => {
     const captured: { url: string; method: string }[] = [];
     await clientCapturing(captured, {
@@ -86,8 +75,6 @@ describe("EngineClient mcp-driver connector methods", () => {
   });
 });
 
-// `sk auth` and the install flows start the sign-in the connector record
-// names. The engine owns the choice of route; the client reads it.
 describe("EngineClient startConnectorSignIn", () => {
   function signInClient(
     captured: { url: string; method: string }[],

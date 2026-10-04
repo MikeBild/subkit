@@ -1,6 +1,3 @@
-// E2E tests for binary version output.
-// Requires compiled binary: bun run build:sk
-
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 

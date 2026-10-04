@@ -6,10 +6,6 @@ import { Skeleton } from "./skeleton";
 
 const LINE = "flex flex-wrap items-center gap-2 text-sm text-muted-foreground";
 
-/**
- * The first element of every tab (P5): one muted sentence, its (?) and, on the
- * right, the control that chooses what the tab shows (a SegmentedControl).
- */
 export function SummaryLine({
   text,
   help,
@@ -20,7 +16,6 @@ export function SummaryLine({
   text: ReactNode;
   help?: ReactNode;
   aside?: ReactNode;
-  /** The sentence is still loading: one bar at the line's height. */
   loading?: boolean;
   testId?: string;
 }) {

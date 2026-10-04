@@ -1,18 +1,3 @@
-// HTTP integration tests for the /v1/audit-log read surface.
-//
-// Covers:
-//   - list returns tenant-scoped rows
-//   - action filter narrows
-//   - ts_from/ts_to window
-//   - limit + cursor pagination
-//   - /v1/audit-log/:id returns a single row
-//   - /v1/audit-log/export.ndjson streams a valid ndjson body
-//   - audit:read permission gate (admin 200, member 403)
-//
-// We drive the surface through real fetch calls so the test exercises
-// middleware ordering, JSON contract, and the streamText helper end to
-// end.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { auditAwait } from "../../audit/audit.ts";
@@ -38,8 +23,6 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 }
 
 async function seedAudit(action: string, delay = 10): Promise<string> {
-  // Force a monotonic gap between rows so ts ordering is deterministic
-  // and the cursor walker doesn't trip over ties.
   await new Promise((r) => setTimeout(r, delay)); // allow-wall-clock: delay-bounded helper used by audit-log retention assertions
   const row = await auditAwait(
     {
@@ -60,11 +43,6 @@ async function seedAudit(action: string, delay = 10): Promise<string> {
 beforeAll(async () => {
   srv = await createHttpTestServer("audit-log");
 
-  // Seed a known-shape set of audit rows for list / filter assertions.
-  // Capture the window bounds at SEED TIME using real Date.now() (not
-  // the module-load TEST_NOW_MS snapshot — that would zero-width the
-  // window since audit rows are written milliseconds AFTER load,
-  // landing outside the [snapshot, snapshot] interval).
   seedStartIso = new Date(getTestNow() - 1000).toISOString();
   seededIds = [];
   seededIds.push(await seedAudit("workflow.created"));
@@ -74,9 +52,6 @@ beforeAll(async () => {
   seededIds.push(await seedAudit("connector.updated"));
   seedEndIso = new Date(getTestNow() + 1000).toISOString();
 
-  // A second (non-admin) member user whose api key should be denied by
-  // `audit:read`. Member users inherit the built-in `member` role,
-  // which the catalog explicitly strips of audit:read permissions.
   const [member] = await srv.db
     .insert(users)
     .values({
@@ -118,9 +93,7 @@ describe("/v1/audit-log", () => {
       items: Array<{ id: string; action: string; tenant_id: string }>;
       next_cursor: string | null;
     };
-    // Every returned row belongs to the test tenant.
     for (const row of body.items) expect(row.tenant_id).toBe(srv.tenantId);
-    // All five seeded ids should be present.
     const ids = new Set(body.items.map((r) => r.id));
     for (const id of seededIds) expect(ids.has(id)).toBe(true);
   });
@@ -143,7 +116,6 @@ describe("/v1/audit-log", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ id: string }> };
     const ids = new Set(body.items.map((r) => r.id));
-    // Every seeded id should appear inside the window.
     for (const id of seededIds) expect(ids.has(id)).toBe(true);
   });
 
@@ -170,19 +142,10 @@ describe("/v1/audit-log", () => {
       next_cursor: string | null;
     };
     expect(p2.items.length).toBe(2);
-    // Pages must be disjoint.
     const ids1 = new Set(p1.items.map((r) => r.id));
     for (const row of p2.items) expect(ids1.has(row.id)).toBe(false);
   });
 
-  // LOCAL-SK-CURSOR-MUELL-500 — the cursor param was widened from `.datetime()` to
-  // `.min(1).max(128)` so the keyset cursor (`<ts>|<uuid>`) would pass. That
-  // left NO shape check: anything 1..128 chars reached `parseAuditCursor`,
-  // which split on the last `|` and handed both halves to Postgres as
-  // `::timestamptz` / `::uuid`. The cast throws, the request 500s, and the
-  // failure lands in the operator diagnostics register. The envelope is
-  // generic, so nothing leaked — but a client error must not be reported as
-  // a server fault.
   test("malformed cursor is 400, not 500", async () => {
     for (const bad of ["abc|def", "not-a-cursor", "|", "2026-01-01T00:00:00Z|nope"]) {
       const res = await fetch(`${srv.baseUrl}/v1/audit-log?cursor=${encodeURIComponent(bad)}`, {
@@ -231,7 +194,6 @@ describe("/v1/audit-log", () => {
     const body = await res.text();
     const lines = body.split("\n").filter((l) => l.length > 0);
     expect(lines.length).toBeGreaterThanOrEqual(seededIds.length);
-    // Every line parses as a JSON object with an id.
     for (const line of lines) {
       const obj = JSON.parse(line) as { id: string; tenant_id: string };
       expect(obj.id).toBeTruthy();

@@ -1,18 +1,7 @@
-// Test helpers for the unified-tool-palette suite.
-//
-// Two reasons to live here rather than alongside each test file:
-//   1. Avoid drift in the `ResolvedPrincipal` / `Db` test stubs across
-//      half a dozen tests.
-//   2. Centralize the `as any` casts that AGENTS bans in production
-//      code — concentrated in one helper, each test consumes typed
-//      values.
-
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { Db } from "../../db/client.ts";
 
-/** Build a deterministic ResolvedPrincipal for unit tests. Override
- *  any field; defaults are tenant-A / user-1 / no permissions. */
 export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
     kind: "user",
@@ -38,16 +27,6 @@ export interface StubDbCapture {
   }>;
 }
 
-/** Build a Drizzle-flavored stub `Db` that:
- *   - captures every `insert(...).values({...})` row into `capture.inserts`
- *     so audit emissions are testable without Postgres.
- *   - returns empty result sets from every `select()` chain — used by
- *     `can()`'s permission-catalog lookup; an empty catalog means
- *     every permission lookup denies cleanly without throwing.
- *   - threads through transactions as no-ops.
- *
- *  Returns `{ db, capture }` so the test can assert on captured rows.
- */
 export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   const capture: StubDbCapture = { inserts: [] };
   // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
@@ -59,12 +38,6 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
     limit: () => Promise.resolve([]),
     orderBy: () => Promise.resolve([]),
   };
-  // Update chain that matches zero rows. The needs_confirm path may call
-  // `mintApprovalGrantUrl` (portal-token minting) when the ambient config
-  // carries a `public_base_url` — under bun's parallel test FILES another
-  // suite's beforeAll/afterAll window (e.g. mcp-oauth audience tests) can
-  // set one concurrently, so the stub must carry the chain instead of
-  // exploding with "db.update is not a function" depending on scheduling.
   // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
   const emptyUpdate: any = {
     set: () => emptyUpdate,
@@ -93,7 +66,6 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   return { db: db as Db, capture };
 }
 
-/** Minimal ToolContext stub for unit-layer tool tests. */
 export function makeStubCtx(opts: { db: Db; principal: ResolvedPrincipal }): ToolContext {
   return {
     db: opts.db,

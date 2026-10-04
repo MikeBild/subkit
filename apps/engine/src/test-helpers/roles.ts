@@ -1,12 +1,9 @@
-// Roles for fixtures that need a person whose role grants nothing.
-
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { roles } from "../db/schema/index.ts";
 
 const EMPTY_ROLE_NAME = "no-permissions";
 
-/** A tenant role with no permissions, created on first use. */
 export async function emptyRoleId(exec: Executor, tenant_id: string): Promise<string> {
   const [existing] = await exec
     .select({ id: roles.id })

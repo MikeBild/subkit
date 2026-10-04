@@ -1,10 +1,3 @@
-// Unit test for extractAssistantText — the dispatcher's reply-text
-// extraction. Reachable on every non-elicitation turn but previously
-// untested directly. The `RunLoopResult.events` shape evolved twice
-// in the past; a renamed `message` event role or a stripped `content`
-// shape would silently fall back to the "Still thinking on this…"
-// message — this test pins the canonical shapes.
-
 import { describe, expect, test } from "bun:test";
 import type { RunLoopResult } from "../../conversations/loop.ts";
 import type { TurnEvent } from "../../conversations/types.ts";

@@ -1,14 +1,3 @@
-// Unit: the `list_audit` tool exposes a singular `action` arg but the
-// server-side AuditQueryFilters keys the filter as `actions: string[]`
-// (consumed via inArray in audit/query.ts). The tool must MAP the singular
-// arg onto `filters.actions = [action]` — not set a singular `action` key
-// that the query layer silently ignores.
-//
-// Regression: the tool previously built `Record<string,string>` + `as any`
-// and set `filters.action`, so the filter never reached `inArray` and the
-// audit query returned UNFILTERED rows. The fix drops the cast (the type
-// system now blocks an `action` key) and maps to `actions`.
-
 import { describe, expect, test } from "bun:test";
 import type { AuditQueryFilters } from "../../../audit/index.ts";
 import { queryAuditTool } from "../engine-api/audit.ts";

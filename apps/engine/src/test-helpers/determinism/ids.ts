@@ -1,16 +1,6 @@
-// Deterministic id factories for tests.
-//
-// Tests should not depend on crypto.randomBytes / randomUUID. A counter
-// per factory keeps ids unique within a test and exactly replayable
-// across runs.
-//
-
 export interface IdFactory {
-  /** Next id in the sequence. */
   next(label?: string): string;
-  /** Reset to zero. */
   reset(): void;
-  /** Current counter (for assertions). */
   count(): number;
 }
 
@@ -30,7 +20,6 @@ export function createDeterministicIdFactory(prefix: string): IdFactory {
   };
 }
 
-/** Shared global counter — mirrors tacktics' `createDeterministicSequenceId`. */
 let sharedCounter = 0;
 
 export function resetAllDeterministicIds(): void {
@@ -41,9 +30,6 @@ export function createDeterministicSequenceId(prefix: string, seed: string | num
   return `${prefix}-${seed}-${String(sharedCounter++).padStart(4, "0")}`;
 }
 
-/** Deterministic replacement for `randomBytes(n).toString('hex')`. Same
- *  seed + call index → same bytes. Uses the same mulberry32 PRNG as
- *  random.ts so one shared seed threads the whole test. */
 export function createDeterministicHexFactory(seed: number): (bytes: number) => string {
   let state = seed >>> 0;
   const next = (): number => {
@@ -62,8 +48,6 @@ export function createDeterministicHexFactory(seed: number): (bytes: number) => 
   };
 }
 
-/** Deterministic UUID v4-shaped string (not RFC-compliant random, but
- *  well-formed). Useful when the code under test only validates shape. */
 export function createDeterministicUuidFactory(seed: number): () => string {
   const hex = createDeterministicHexFactory(seed);
   return () => {

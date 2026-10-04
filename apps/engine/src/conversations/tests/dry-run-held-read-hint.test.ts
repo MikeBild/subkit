@@ -1,14 +1,3 @@
-// dry_run_workflow · held-read nudge.
-//
-// When a dry-run holds a step (write-classified by default) and that hold
-// SKIPS the step's dependents, the held step is often a READ misclassified as a
-// write — e.g. a browserless scrape that uses POST. The keyed benchmark showed
-// the model burning previews before it set side_effects:read. On a non-green
-// preview where holding skipped dependents, the dry-run now surfaces a
-// `held_read_hint` (and folds it into the message) telling the author to set
-// side_effects:read if the held step only reads. It is a NUDGE only — the
-// engine never auto-reclassifies a POST (which can be a genuine write).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
@@ -52,10 +41,6 @@ function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDo
   };
 }
 
-// fetch (POST request, HELD by default) → use (transform reading the held step
-// via input.scope.fetch → skipped_dependency_held). A goal is stashed so the
-// judge runs; the judge fails (output incomplete because the POST was held) →
-// the preview is NOT clean → the held-read nudge surfaces.
 function heldChainDraft(slug: string): DraftDocument {
   return {
     workflow: {
@@ -84,8 +69,6 @@ function heldChainDraft(slug: string): DraftDocument {
 
 describe("dry_run_workflow · held-read nudge", () => {
   test("a held step that skips its dependents surfaces a side_effects:read hint", async () => {
-    // Judge fails unconditionally — the preview cannot satisfy the goal because
-    // the POST was held, so its dependent produced no rows.
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "failed",
       reason: "no rows were returned",
@@ -101,10 +84,8 @@ describe("dry_run_workflow · held-read nudge", () => {
       };
 
       expect(result.ok).toBe(false);
-      // The structured hint is present on the envelope...
       expect(typeof result.data?.held_read_hint).toBe("string");
       expect(result.data?.held_read_hint).toContain("side_effects");
-      // ...and folded into the top-level message the log/model read.
       expect(result.message ?? "").toContain("side_effects");
     } finally {
       getMockProvider().generateOverrides = {};

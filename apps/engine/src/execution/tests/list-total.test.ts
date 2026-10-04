@@ -1,8 +1,3 @@
-// Ground-truth cardinality for the canonical execution list service
-// (Fix 3). Executions are an unbounded history: the service pages, but
-// every page carries the EXACT filtered `total` so consumers render
-// "showing latest N of T" instead of presenting a page as the universe.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executions, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -25,7 +20,6 @@ beforeAll(async () => {
   tenantA = a!.id;
   tenantB = b!.id;
 
-  // Tenant A: 12 executions — 9 succeeded (api), 3 failed (scheduler).
   await ctx.db.insert(executions).values(
     Array.from({ length: 12 }, (_, i) => ({
       tenant_id: tenantA,
@@ -35,7 +29,6 @@ beforeAll(async () => {
       source_kind: "saved",
     })),
   );
-  // Tenant B: 1 execution — isolation guard.
   await ctx.db.insert(executions).values({
     tenant_id: tenantB,
     status: "succeeded",

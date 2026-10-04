@@ -1,6 +1,3 @@
-// Drizzle schema for MCP OAuth 2.1 authorization server tables.
-// Mirrors apps/engine/src/db/migrations/0024_mcp_oauth.sql exactly.
-
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -16,9 +13,6 @@ import {
 import { timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
-// ── mcp_oauth_clients ─────────────────────────────────────────────────────────
-// Public clients only (token_endpoint_auth_method = "none").
-// tenant_id is not stored here — it binds on authorization codes/tokens.
 export const mcpOauthClients = pgTable(
   "mcp_oauth_clients",
   {
@@ -35,7 +29,6 @@ export const mcpOauthClients = pgTable(
       .$type<"none">(),
     scope: text("scope").notNull().default("mcp:read"),
     client_name: text("client_name"),
-    /** RFC 7591 `client_uri` — the client's own base address, shown on the consent page. */
     client_uri: text("client_uri"),
     software_id: text("software_id"),
     registration_source: text("registration_source")
@@ -43,13 +36,6 @@ export const mcpOauthClients = pgTable(
       .default("dcr")
       .$type<"dcr" | "manual">(),
     disabled_at: timestamp("disabled_at", { withTimezone: true }),
-    /**
-     * Set together with `disabled_at` when the housekeeping sweep retired a
-     * dynamic registration nobody holds a grant for or has used in a week.
-     * A retired registration is hidden, not revoked: the next authorization a
-     * person completes for it clears both columns. `disabled_at` without it is
-     * an administrator's revocation, which no authorization undoes.
-     */
     retired_at: timestamp("retired_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -66,9 +52,6 @@ export const mcpOauthClients = pgTable(
   ],
 );
 
-// ── mcp_oauth_authorization_codes ─────────────────────────────────────────────
-// Single-use PKCE S256 authorization codes. code_sha256 is the SHA-256 of the
-// opaque plaintext code. consumed_at is set atomically on exchange.
 export const mcpOauthAuthorizationCodes = pgTable(
   "mcp_oauth_authorization_codes",
   {
@@ -99,9 +82,6 @@ export const mcpOauthAuthorizationCodes = pgTable(
   ],
 );
 
-// ── mcp_oauth_refresh_tokens ──────────────────────────────────────────────────
-// Rotation chain: rotated_to_id points forward to the replacement token.
-// Reusing a rotated token triggers chain revocation.
 export const mcpOauthRefreshTokens = pgTable(
   "mcp_oauth_refresh_tokens",
   {
@@ -114,11 +94,6 @@ export const mcpOauthRefreshTokens = pgTable(
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     scope: text("scope").notNull(),
-    // RFC 8707 audience, carried the length of the rotation chain. The resource
-    // server rejects an access token whose `resource` is NULL once a public
-    // base URL is configured, and a rotated access token can only copy the
-    // audience forward if the refresh token it rotates from holds it — so the
-    // audience must live here, mirroring `mcpOauthAccessTokens.resource`.
     resource: text("resource"),
     rotated_to_id: uuid("rotated_to_id").references((): AnyPgColumn => mcpOauthRefreshTokens.id),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -132,8 +107,6 @@ export const mcpOauthRefreshTokens = pgTable(
   ],
 );
 
-// ── mcp_oauth_access_tokens ───────────────────────────────────────────────────
-// Short-lived access tokens. prefix is a 12-char indexed lookup key.
 export const mcpOauthAccessTokens = pgTable(
   "mcp_oauth_access_tokens",
   {

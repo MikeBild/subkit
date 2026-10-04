@@ -72,7 +72,6 @@ describe("scope labels", () => {
     expect(scopeRisk("rbac:write")).toBe("manages");
     expect(scopeRisk("workflow:delete")).toBe("manages");
     expect(scopeRisk("*")).toBe("manages");
-    // An action this build does not know is never understated as reading.
     expect(scopeRisk("workflow:teleport")).toBe("writes");
   });
 
@@ -89,23 +88,18 @@ const daysAhead = (days: number) => new Date(NOW + days * 86_400_000).toISOStrin
 describe("a key's state, on its row", () => {
   test("a working key used lately carries no word at all", () => {
     expect(keyState(key({}), NOW)).toBeNull();
-    // Freshly made and not used yet: its use line already says so.
     expect(keyState(key({ last_used_at: null, created_at: daysAgo(3) }), NOW)).toBeNull();
-    // An expiry far enough away is not news either.
     expect(keyState(key({ expires_at: daysAhead(KEY_EXPIRING_DAYS + 1) }), NOW)).toBeNull();
   });
 
   test("the most pressing state wins, one per key", () => {
-    // Revoked and expired: revoked, it holds nothing any more.
     expect(keyState(key({ expires_at: daysAgo(2), revoked_at: daysAgo(1) }), NOW)?.kind).toBe(
       "revoked",
     );
-    // Expired and idle for months: expired.
     expect(
       keyState(key({ expires_at: daysAgo(2), last_used_at: daysAgo(UNUSED_KEY_DAYS + 5) }), NOW)
         ?.kind,
     ).toBe("expired");
-    // About to lapse and idle: the lapse.
     expect(
       keyState(key({ expires_at: daysAhead(3), last_used_at: daysAgo(UNUSED_KEY_DAYS + 5) }), NOW),
     ).toEqual({ kind: "expiring", days: 3 });
@@ -123,8 +117,6 @@ describe("a key's state, on its row", () => {
   });
 
   test("today and tomorrow are calendar days in the reader's zone, not 24-hour blocks", () => {
-    // Late in the evening, local time: a key lapsing two hours later lapses
-    // TOMORROW, one lapsing within the hour lapses today.
     const evening = new Date(2026, 8, 1, 23, 0).getTime();
     const chip = (expires: Date) => {
       const state = keyState(key({ expires_at: expires.toISOString() }), evening);
@@ -132,7 +124,6 @@ describe("a key's state, on its row", () => {
     };
     expect(chip(new Date(2026, 8, 2, 1, 0))).toBe("läuft morgen ab");
     expect(chip(new Date(2026, 8, 1, 23, 30))).toBe("läuft heute ab");
-    // Thirty hours away, but two dates on: in two days.
     expect(chip(new Date(2026, 8, 3, 5, 0))).toBe("läuft ab in 2 Tagen");
     expect(calendarDaysUntil(new Date(2026, 8, 2, 0, 1).getTime(), evening)).toBe(1);
   });
@@ -152,7 +143,6 @@ describe("a key's state, on its row", () => {
     const never = keyState(key({ last_used_at: null, created_at: daysAgo(UNUSED_KEY_DAYS) }), NOW);
     expect(never).toEqual({ kind: "neverUsed", days: UNUSED_KEY_DAYS });
     expect(never ? keyStateText(never, t) : null).toBe(`seit ${UNUSED_KEY_DAYS} Tagen nie benutzt`);
-    // One day short of the threshold is still a working key.
     expect(keyState(key({ last_used_at: daysAgo(UNUSED_KEY_DAYS - 1) }), NOW)).toBeNull();
   });
 
@@ -181,8 +171,6 @@ function client(overrides: Partial<ConnectedClientItem>): ConnectedClientItem {
 }
 
 describe("connected applications, in the order a reader needs them", () => {
-  // Production: 494 registrations by a deploy verifier against four real
-  // applications. Listed flat, the real ones drowned.
   const dead = Array.from({ length: 200 }, (_, index) =>
     client({
       id: `dead-${index}`,
@@ -216,7 +204,6 @@ describe("connected applications, in the order a reader needs them", () => {
     client({ id: "chatgpt", client_name: "ChatGPT", created_at: daysAgo(20) }),
     client({ id: "watchkit", client_name: "WatchKit", created_at: daysAgo(3) }),
   ];
-  // Interleaved as the engine returns them: no order at all.
   const all = [
     ...dead.slice(0, 100),
     real[0],
@@ -241,8 +228,6 @@ describe("connected applications, in the order a reader needs them", () => {
   test("retired and revoked registrations are apart from both, whatever their grants", () => {
     const groups = groupConnectedClients(all);
     expect(groups.disabled).toHaveLength(31);
-    // A disabled registration is never listed with the live ones, even if a
-    // stale count still says it has connections.
     const stale = client({ id: "stale", disabled_at: daysAgo(1), live_connections: 2 });
     expect(groupConnectedClients([stale]).granted).toEqual([]);
     expect(groupConnectedClients([stale]).disabled.map((item) => item.id)).toEqual(["stale"]);
@@ -284,8 +269,6 @@ describe("API keys: live first, revoked collapsed", () => {
 
 describe("the tabs: their order, the one that opens, and what they count", () => {
   test("keys first, then apps", () => {
-    // Schlüssel · Apps (D7): the first tab is the default and the one with
-    // the page's action.
     expect([...API_ACCESS_ORDER]).toEqual(["keys", "clients"]);
   });
 
@@ -305,11 +288,11 @@ describe("the tabs: their order, the one that opens, and what they count", () =>
 
   test("a keys tab counts what needs a decision: expired and lapsing, not idle", () => {
     const items = [
-      key({ expires_at: daysAgo(1) }), // expired
-      key({ expires_at: new Date(NOW + 3 * 86_400_000).toISOString() }), // lapsing
-      key({ last_used_at: daysAgo(200), created_at: daysAgo(300) }), // idle
-      key({}), // fine
-      key({ revoked_at: daysAgo(2), expires_at: daysAgo(1) }), // revoked holds nothing
+      key({ expires_at: daysAgo(1) }),
+      key({ expires_at: new Date(NOW + 3 * 86_400_000).toISOString() }),
+      key({ last_used_at: daysAgo(200), created_at: daysAgo(300) }),
+      key({}),
+      key({ revoked_at: daysAgo(2), expires_at: daysAgo(1) }),
     ];
     expect(keysNeedingAction(items, NOW)).toBe(2);
   });

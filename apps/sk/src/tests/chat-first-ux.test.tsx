@@ -45,14 +45,6 @@ async function tick(ms = 30): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Poll the frame until a predicate matches, then return. Replaces the
- * brittle `tick(N) + assertion` pattern where render timing depends on
- * chained async work (prompt → stream event → render). Locally a fixed
- * tick is plenty; on CI under `bun test --max-concurrency=4` the same
- * code can take 200+ ms wall-clock to land the frame and a fixed tick
- * races past it (see the same helper in ink-app.test.tsx).
- */
 async function waitForFrame(
   instance: ReturnType<typeof render>,
   pred: (frame: string) => boolean,
@@ -117,10 +109,6 @@ describe("chat-first UX", () => {
     await pressEnter(instance);
     await waitForFrame(instance, (f) => f.includes("ok"));
     const frame = instance.lastFrame() ?? "";
-    // The banner is now part of the static scrollback (it scrolls up
-    // with history rather than re-rendering as a floating chip every
-    // tick). It stays in the frame at the top, but the assistant
-    // message renders strictly AFTER it.
     expect(frame).toContain("ok");
     const starterIdx = frame.indexOf("Resume work");
     const assistantIdx = frame.indexOf("ok");

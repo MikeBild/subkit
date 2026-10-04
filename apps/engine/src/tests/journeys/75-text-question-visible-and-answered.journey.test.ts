@@ -1,25 +1,3 @@
-// User story: As a chat user, when the assistant asks me a free-text
-// question, I see the question and answer it on purpose — and the assistant
-// reads my reply against the question it asked, so a remark that is not an
-// answer can be recognised as such.
-// Acceptance criteria:
-//   - AC1: A turn that ends on `ask_user_text` reports `awaiting_input`, and
-//          the conversation detail carries everything a client needs to show
-//          the question: `prompt.question` on the pending approval (the
-//          `summary` is not the question), the call's placeholder in
-//          `tool_calls[].input`, and the call anchored in the transcript.
-//   - AC2: Answering over HTTP (`/elicitations/{id}/respond`) resolves the
-//          elicitation with the typed value, verbatim; the detail projects the
-//          answer as a user message carrying the elicitation id and marks the
-//          call resolved with that id.
-//   - AC3: The model's replay pairs the question (tool-call input) with the
-//          reply (tool-result `response.value`) verbatim, adjacent — the
-//          model can tell a reply that is not an answer.
-//   - AC4: A question the harness parked from prose (no tool call) is shown
-//          through `prompt.question`, answered over HTTP, and replayed to the
-//          model as the user's own turn after the assistant's question.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
@@ -35,7 +13,6 @@ let toolCallId = "";
 
 const QUESTION = "Wie soll dein Workflow heißen?";
 const PLACEHOLDER = "Example API Data Fetch";
-// The production reply: a complaint, not a name.
 const REPLY = "ich sehe hier keinen dialog";
 
 interface Detail {
@@ -112,7 +89,6 @@ describe("journey: a text question is visible and answered on purpose", () => {
     const body = await detail(conversationId);
     const pending = body.resume_summary?.pending_approval;
     expect(pending?.tool_name).toBe("ask_user_text");
-    // The question a client shows is `prompt.question` — never `summary`.
     expect(pending?.prompt?.question).toBe(QUESTION);
     expect(pending?.summary).not.toBe(QUESTION);
     elicitationId = pending?.id ?? "";
@@ -122,7 +98,6 @@ describe("journey: a text question is visible and answered on purpose", () => {
     const call = body.tool_calls.find((c) => c.id === toolCallId);
     expect(call?.tool).toBe("ask_user_text");
     expect(call?.input).toMatchObject({ question: QUESTION, placeholder: PLACEHOLDER });
-    // Anchored in the transcript, so the client can put its card in place.
     const anchored = body.messages.some((m) =>
       m.parts.some((p) => p.type === "tool_call" && p.call_id === toolCallId),
     );
@@ -146,7 +121,6 @@ describe("journey: a text question is visible and answered on purpose", () => {
     const call = body.tool_calls.find((c) => c.id === toolCallId);
     expect(call?.output).toEqual({ status: "resolved", elicitation_id: elicitationId });
 
-    // A second answer to the same question is refused, not appended.
     const again = await journeyFetch(
       ctx,
       `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`,

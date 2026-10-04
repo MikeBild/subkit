@@ -1,13 +1,3 @@
-// `sk workflows invoke-snippet` prints the engine's snippet — the call the
-// workflow page shows, with the workflow's sample input and the engine's public
-// address — and renders one itself only when the engine cannot answer.
-//
-// The first half runs the command against a real engine and compares it with
-// what `GET /v1/workflows/{id}/invocation` returns for the same workflow. The
-// second half is the fallback: an unreachable engine, an unknown workflow, an
-// engine without a public address. Anything else is an error, never a
-// different snippet.
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { EngineError } from "@cli-core/errors";
 import { renderInvokeSnippet } from "@shared/invoke-snippet.ts";
@@ -57,8 +47,6 @@ afterAll(async () => {
 }, 30_000);
 
 beforeEach(() => {
-  // The profile comes from the environment, so the test never reads or
-  // writes a config file on disk.
   const names = ["SUBKIT_ENGINE_URL", "SUBKIT_API_KEY", "SUBKIT_TENANT"];
   const saved = Object.fromEntries(names.map((name) => [name, process.env[name]] as const));
   written = [];
@@ -85,8 +73,6 @@ function profile(engineUrl: string, apiKey: string, tenant?: string): void {
   else process.env.SUBKIT_TENANT = tenant;
 }
 
-/** What the command printed. The engine runs in this process and logs to the
- *  same stdout, one JSON line per event; those are not the command's output. */
 function commandOutput(): string {
   return written.filter((chunk) => !chunk.startsWith('{"ts":')).join("");
 }
@@ -96,7 +82,6 @@ async function emit(id: string, ...args: string[]): Promise<Emitted> {
   return JSON.parse(commandOutput()) as Emitted;
 }
 
-/** What the engine itself answers for this workflow. */
 async function engineInvocation(): Promise<{
   base_url: string | null;
   http: { snippets: Record<"dev" | "prod", Record<string, string>> | null };
@@ -120,10 +105,8 @@ describe("sk workflows invoke-snippet — against the engine", () => {
     ]);
     expect(out.source).toBe("engine");
     expect(out.snippet).toBe(engine.http.snippets?.[environment][lang] ?? "no engine snippet");
-    // The workflow's required input, not an empty object that fails its validation.
     expect(out.snippet).toContain("recipient_email");
     expect(out.snippet).toContain("<recipient_email>");
-    // The address callers reach the engine at, not the one this profile uses.
     expect(out.engine_url).toBe(PUBLIC_URL);
     expect(out.snippet).toContain(`${PUBLIC_URL}/v1/executions`);
     expect(out.snippet).not.toContain(ctx.baseUrl);
@@ -166,7 +149,6 @@ describe("sk workflows invoke-snippet — when the engine cannot answer", () => 
   });
 
   test("an unreachable engine", async () => {
-    // Nothing listens on the discard port.
     profile("http://127.0.0.1:9", "wf_live_never_printed", "tenant-never-printed");
     const out = await emit(UNKNOWN_WORKFLOW, "--environment", "dev");
     expect(out).toMatchObject({ source: "local", local_reason: "engine_unreachable" });

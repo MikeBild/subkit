@@ -62,10 +62,6 @@ const createCmd = defineCommand({
   async run({ args }) {
     const client = makeClient();
     try {
-      // Resolve the calling actor's identity so the route receives the
-      // mandatory {owner_kind, owner_id} pair without the user having to
-      // supply them. Admins who need to mint a key for someone else
-      // should use the HTTP API directly today.
       const me = (await client.whoami()) as {
         id: string;
         kind: "user" | "system_account";

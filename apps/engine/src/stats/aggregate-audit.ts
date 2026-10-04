@@ -1,24 +1,3 @@
-// Read-time aggregation over `audit_log`, shared by GET /v1/stats/connectors
-// (one row per connector call — see that route) and GET /v1/stats/events (a class →
-// action set). NO new persistence — `date_trunc()` + `percentile_cont`
-// at read time. Three rollups in one round-trip.
-//
-// Outcome reads `audit_log.result` — the column with the CHECK
-// constraint IN ('success','denied','error') — NOT `metadata->>'outcome'`.
-// Latency reads canonical `metadata->>'latency_ms'` and accepts the legacy
-// egress alias `duration_ms`. The fine-grained status class reads canonical
-// `status_code` and accepts the legacy alias `status`:
-//   4xx_auth          = 401, 403
-//   4xx_rate_limited  = 429
-//   4xx_other         = remaining 400-499
-//   2xx / 3xx / 5xx   = the obvious ranges
-//   network_error     = result='error' AND status_code IS NULL
-//
-// TENANT ISOLATION (critical invariant): `tenant_id = $tenantId` (a
-// dedicated column, NEVER read from JSONB) is the FIRST predicate in
-// every WHERE. The action-set filter and any caller-supplied
-// connector_id/driver/etc. can only narrow within the tenant.
-
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
@@ -51,21 +30,15 @@ export interface AuditStatsParams {
   from: Date;
   to: Date;
   tz: string;
-  /** The set of `audit_log.action` values this query aggregates. */
   actions: string[];
-  /** Rows of this action written for this driver are left out — the one
-   *  call is counted from another action's row instead. */
   excludeActionDriver?: { action: string; driver: string } | undefined;
-  /** Optional narrowing filters (all read from metadata except outcome). */
   connectorId?: string | undefined;
   connectorSlug?: string | undefined;
   driver?: string[] | undefined;
   method?: string[] | undefined;
   outcome?: AuditOutcome[] | undefined;
   statusClass?: StatusClass[] | undefined;
-  /** ≤2 dims. */
   groupBy: AuditGroupDim[];
-  /** When true, adds the normalized endpoint_path_template axis. */
   includeEndpoint?: boolean | undefined;
 }
 
@@ -104,7 +77,6 @@ export interface AuditStatsResult {
     };
     latency_ms: LatencyAgg;
   };
-  /** Set when the endpoint axis was capped at 200 distinct templates. */
   truncated_endpoints?: boolean;
 }
 
@@ -116,13 +88,7 @@ const LATENCY = sql`coalesce(
 )`;
 const HAS_LATENCY = sql`(metadata ? 'latency_ms' or metadata ? 'duration_ms')`;
 
-// The connector a row is about. Egress rows (`connector.invoked`) carry it in
-// metadata; the MCP pool's `mcp_external_tool.invoked` row names it only as
-// `resource_id`. Group key AND filter read the same expression — a filter on
-// the metadata key alone made every MCP call invisible to a per-connector read
-// that the grouped read counted.
 const CONNECTOR_ID = sql`coalesce(metadata->>'connector_id', resource_id::text)`;
-// The driver a row is about. The MCP pool row names no driver; its action does.
 const DRIVER = sql`coalesce(
   metadata->>'driver',
   case when action = 'mcp_external_tool.invoked' then 'mcp' end
@@ -133,7 +99,6 @@ const STATUS_CODE = sql`coalesce(
   nullif(metadata->>'status', '')::int
 )`;
 
-/** Normalised endpoint path template: numeric + UUID segments → `:id`. */
 const ENDPOINT_TEMPLATE = sql`
   regexp_replace(
     regexp_replace(
@@ -150,7 +115,6 @@ const ENDPOINT_TEMPLATE = sql`
   )
 `;
 
-/** SQL `CASE` mapping a row to its fine-grained status class. */
 const STATUS_CLASS_CASE = sql`
   case
     when ${STATUS_CODE} is null and result = 'error' then 'network_error'
@@ -227,10 +191,6 @@ function readOutcomes(row: Record<string, unknown>): Record<AuditOutcome, number
 }
 
 function buildWhere(p: AuditStatsParams): SQL {
-  // tenant_id FIRST. Empty `actions` would aggregate the whole audit
-  // log — the route layer guarantees a non-empty set, but guard anyway
-  // so a programming error degrades to "no rows" rather than a leak of
-  // unrelated action volume.
   const conds: SQL[] = [
     sql`tenant_id = ${p.tenantId}`,
     p.actions.length > 0 ? sql`action in ${p.actions}` : sql`false`,
@@ -253,8 +213,6 @@ function buildWhere(p: AuditStatsParams): SQL {
   return sql.join(conds, sql` and `);
 }
 
-/** See aggregate-executions.ts: bucket + tz are bound params; the SELECT
- *  alias `bucket_ts` is what GROUP BY references. */
 function bucketExpr(p: AuditStatsParams): SQL {
   return sql`date_trunc(${p.bucket}, ts at time zone ${p.tz})`;
 }
@@ -267,7 +225,7 @@ export async function aggregateAudit(db: Db, p: AuditStatsParams): Promise<Audit
   const dims: AuditGroupDim[] = p.groupBy.slice(0, 2);
   if (p.includeEndpoint && !dims.includes("endpoint_path_template")) {
     dims.push("endpoint_path_template");
-    dims.splice(2); // keep ≤2 dims total
+    dims.splice(2);
   }
 
   const dimSelects =
@@ -390,7 +348,6 @@ export async function aggregateAudit(db: Db, p: AuditStatsParams): Promise<Audit
   const byStatusClass: Record<string, number> = {};
   for (const r of byStatusClassRows) byStatusClass[String(r.status_class)] = Number(r.n ?? 0);
 
-  // Endpoint-axis cardinality cap.
   let truncated = false;
   let groups = [...groupMap.values()];
   if (dims.includes("endpoint_path_template") && groups.length > MAX_ENDPOINT_TEMPLATES) {

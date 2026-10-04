@@ -1,12 +1,3 @@
-// Circuit breaker test.
-//
-//   1. Force 10 failing attempts.
-//   2. Assert the breaker is open in memory AND persisted to the
-//      subscriptions row.
-//   3. Send one more job and assert that the delivery worker records a
-//      dead_letter row with error="circuit_open" and the mock
-//      receiver does NOT see a new hit.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Job } from "pg-boss";
@@ -66,10 +57,8 @@ describe("outbound: circuit breaker", () => {
         data: job,
       } as unknown as Job<WebhookDeliverJob>);
     }
-    // 10 real HTTP attempts observed.
     expect(receiver.hits.length - hitsAtStart).toBe(10);
 
-    // Breaker flipped open.
     expect(breaker.isOpen(sub.id)).toBe(true);
     const subRows = await ctx.db
       .select()
@@ -79,7 +68,6 @@ describe("outbound: circuit breaker", () => {
     expect(subRows[0]?.consecutive_failures).toBeGreaterThanOrEqual(10);
     expect(subRows[0]?.circuit_open_until).not.toBeNull();
 
-    // Next attempt should be short-circuited — no extra http hit.
     const hitsBefore11 = receiver.hits.length;
     const job11: WebhookDeliverJob = {
       tenant_id: ctx.tenantId,
@@ -99,7 +87,6 @@ describe("outbound: circuit breaker", () => {
     } as unknown as Job<WebhookDeliverJob>);
     expect(receiver.hits.length).toBe(hitsBefore11);
 
-    // A dead_letter row with error=circuit_open was written.
     const deadRows = await ctx.db
       .select()
       .from(deliveries)

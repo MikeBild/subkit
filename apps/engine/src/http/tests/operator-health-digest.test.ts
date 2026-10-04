@@ -1,9 +1,3 @@
-// Integration test for GET /v1/operator/health-digest.
-//
-// Proves: unauthenticated → 401; admin key → 200 with a grouped,
-// origin-tagged digest computed from real executions;
-// member role (lacks stats:read) → 403.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -22,9 +16,6 @@ function sha256Hex(s: string): string {
 }
 
 function mintKey(): { plaintext: string; prefix: string; hash: string } {
-  // Deterministic literal — randomBytes is banned in *.test.ts by the
-  // determinism gate. One member key per file, inserted into this file's own
-  // isolated test DB, so a fixed value is unique where it matters.
   const plaintext = "wf_live_neghttp_member_0001";
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
@@ -33,7 +24,6 @@ let srv: HttpTestServer;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("operator_digest");
-  // One scheduled failure with a connector-authored guidance hint.
   const [exec] = await srv.db
     .insert(executions)
     .values({
@@ -53,7 +43,6 @@ beforeAll(async () => {
     status: "failed",
     error: { code: "http_4xx", message: "http 404", guidance: "The path is wrong." },
   });
-  // One open patch decision so the digest's patch bucket is non-empty.
   const wf = await seedPatchableWorkflow(srv.db, srv.tenantId, "sync", "Sync");
   await srv.db.insert(patchCandidates).values({
     tenant_id: srv.tenantId,
@@ -89,9 +78,6 @@ describe("GET /v1/operator/health-digest", () => {
     const group = body.failure_groups.find((g) => g.error_code === "http_4xx");
     expect(group?.origin).toBe("scheduled");
     expect(group?.guidance).toBe("The path is wrong.");
-    // The headline counts attention items: the open fix. The scheduled failure
-    // belongs to no saved workflow, so there is nothing to act on — it stays in
-    // the digest's detail.
     expect(body.headline).toBe("Needs attention: 1 item (1 to decide).");
     expect(body.rendered).toContain("[scheduled]");
   });
@@ -116,7 +102,6 @@ describe("GET /v1/operator/health-digest", () => {
   });
 
   test("403 when the principal lacks stats:read (member role)", async () => {
-    // A member-role user explicitly excludes stats:read (see rbac/seed.ts).
     const [memberUser] = await srv.db
       .insert(users)
       .values({

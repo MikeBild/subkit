@@ -1,12 +1,3 @@
-// The Slack url_verification handshake is the first thing Slack does
-// when an Events API subscription URL is configured — and it MUST be
-// echoed back as 200 with `{ challenge }` *before* signature
-// verification fires (the request from Slack's verifier is unsigned).
-//
-// The plan's Verification section lists this scenario as scenario #3
-// but no test covered it. AC1 in the journey suite tests HMAC verify,
-// not the challenge short-circuit. This test closes that gap.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

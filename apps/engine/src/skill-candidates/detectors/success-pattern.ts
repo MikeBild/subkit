@@ -1,11 +1,3 @@
-// Success Pattern Detector — identifies consistent conventions from
-// successful request steps.
-//
-// Input: Successful request steps for a tenant (last 30 days)
-// Grouping key: connector_id (via workflow context)
-// Threshold: >= 10 successful steps
-// Output: Connector-scoped PatternSignal
-
 import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -58,9 +50,6 @@ export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promis
     return [];
   }
 
-  // Group by workflow_id (proxy for connector context). Draft and step
-  // runs skip this loop — they're not persisted workflows and can't form
-  // a success-pattern signal for a tool-candidate.
   const byWorkflow = new Map<string, StepRecord[]>();
   for (const row of rows) {
     if (!row.workflow_id) continue;
@@ -79,7 +68,6 @@ export async function detectSuccessPatterns(tenant_id: string, exec: Db): Promis
   for (const [workflowId, steps] of byWorkflow) {
     if (steps.length < MIN_SUCCESS_COUNT) continue;
 
-    // Rule 1: Check for consistent data_selector patterns
     const selectorsWithMeta = steps.filter(
       (s) =>
         s.request_meta &&

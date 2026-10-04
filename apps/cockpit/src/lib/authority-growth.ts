@@ -1,7 +1,3 @@
-// What a version reaches beyond the approval it did not take over, in one
-// line. The engine reports the growth (`boundary_growth` on the review,
-// `approval.growth` on the attention item); this only words it.
-
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 
@@ -26,8 +22,6 @@ function keyOf(entry: BoundaryGrowth): TranslationKey {
   }
 }
 
-/** One line naming the first thing that is new, and how many more there are.
- *  Null when nothing grew. */
 export function growthLine(t: Translate, growth: readonly BoundaryGrowth[] | undefined) {
   const first = growth?.[0];
   if (!first || !growth) return null;

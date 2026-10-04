@@ -1,9 +1,3 @@
-// Pure-function tests for the ask_user_* prompt escape decoder. The model
-// sometimes double-encodes non-ASCII in its tool-call arguments, so the
-// question arrives as the literal characters `\u00df` instead of `ß`.
-// Fixtures spell the escape as `"\\u00df"` on purpose: `"\u00df"` would be
-// decoded by the TypeScript compiler and the test would pass for nothing.
-
 import { describe, expect, test } from "bun:test";
 import {
   decodeAskUserPromptEscapes,

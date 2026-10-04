@@ -1,6 +1,3 @@
-// GET /v1/identity/users — admin; paginated.
-// GET /v1/identity/users/:id — admin or self.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, or } from "drizzle-orm";
 import {
@@ -123,7 +120,6 @@ const deactivateRoute = createRoute({
   },
 });
 
-/** The domain's last-admin refusal as the 409 a client can name. */
 function lastAdminAsConflict(err: unknown): never {
   if (err instanceof identity.LastAdminError) throw new LastAdminConflictError(err.message);
   throw err;
@@ -147,15 +143,6 @@ function serialize(
 }
 
 export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC is enforced by the `requirePermission(...)` middleware below
-  // (identity:read / identity:write) AND a handler-level `enforce(...)`
-  // check. The two are NOT redundant: the middleware proves the principal
-  // holds the named permission, while the handler pins the role floor each
-  // mutation actually requires. Mutations that change another user's
-  // authority (create, update role, deactivate) demand `adminOnly`; only
-  // the read GET relaxes to `adminOrSelf`. Collapsing these to a single
-  // identity:write gate would let any holder of that permission escalate
-  // their own role — which is exactly why the PATCH handler is adminOnly.
   app.use("/v1/identity/users", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("identity:read")(c, next);
     if (c.req.method === "POST") return requirePermission("identity:write")(c, next);
@@ -190,7 +177,6 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       .from(roles)
       .where(or(isNull(roles.tenant_id), eq(roles.tenant_id, principal.tenant_id)));
     const roleNames = new Map(roleRows.map((role) => [role.id, role.name]));
-    // The People page asks "deactivate?" — it may as well say what that ends.
     const connections = await identity.countLiveConnectionsByUser(
       db,
       principal.tenant_id,

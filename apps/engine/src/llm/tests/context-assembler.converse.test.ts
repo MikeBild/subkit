@@ -1,23 +1,9 @@
-// Locks the converse-pipeline non-regression contract:
-//
-// 1. Converse flow does NOT pre-embed knowledge or connector docs.
-//    The model fetches them on-demand via the `search_knowledge` and
-//    `fetch_connector_docs` tools. Removing the
-//    `preEmbedCorpus = p.flow !== "converse"` guard at
-//    `apps/engine/src/llm/core/context-assembler.ts:569` brings back
-//    the 1M-token empty turn that landed in `db96ebb`'s fix-and-roll.
-//
-// 2. Tenant snapshot is injected at BOTH ends of the stable head
-//    (prefix + suffix) so it stays visible after the skills section
-//    grows. Single-position injection gets buried.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: LlmTestCtx;
@@ -26,8 +12,6 @@ beforeAll(async () => {
   if (skip) return;
   ctx = await createLlmTestCtx("converse-non-regression");
 
-  // Seed a knowledge source so a regression that re-enables pre-embedding
-  // would surface as non-empty `included_knowledge_chunks`.
   await createKnowledgeSource(
     {
       tenant_id: ctx.tenant_id,
@@ -44,9 +28,6 @@ beforeAll(async () => {
     ctx.testDb.db,
   );
 
-  // Seed an active workflow so a regression that pre-embeds prior
-  // workflows in the converse flow would surface as a non-empty
-  // `### Prior workflows` section in the system prompt.
   const seedWf = await createWorkflow(
     {
       tenant_id: ctx.tenant_id,
@@ -89,9 +70,6 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
       },
       ctx.testDb.db,
     );
-    // The whole point of the guard: even though knowledge exists and
-    // matches the query, the converse flow must not embed it. The
-    // model fetches on demand via search_knowledge.
     expect(prompt.included_knowledge_chunks).toHaveLength(0);
     expect(prompt.included_knowledge_chunk_ids).toHaveLength(0);
   });
@@ -122,10 +100,6 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
       },
       ctx.testDb.db,
     );
-    // The other flows do not have a tool loop and rely on pre-embedded
-    // knowledge. They should still receive chunks (or at minimum the
-    // budget tracking should report a non-negative number; concrete
-    // chunk counts depend on FTS scoring).
     expect(prompt.token_counts.knowledge).toBeGreaterThanOrEqual(0);
     expect(Array.isArray(prompt.included_knowledge_chunks)).toBe(true);
   });
@@ -141,8 +115,6 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
       },
       ctx.testDb.db,
     );
-    // Snapshot is rendered as a section starting with a known marker
-    // string. Renderer is at apps/engine/src/llm/core/tenant-summary.ts.
     const matches = prompt.system.match(/TENANT SNAPSHOT/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
@@ -162,11 +134,6 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
   });
 
   test("converse flow does NOT pre-embed prior-workflow reference cases", async () => {
-    // Same load-bearing guard as the knowledge / docs cases above:
-    // the converse flow lets the model discover prior workflows via the
-    // always-on tenant snapshot + the `find_workflow` tool, not via
-    // pre-embedded reference cases. Removing the `preEmbedCorpus` gate
-    // would re-introduce a 1M-token-class regression in chat turns.
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: ctx.tenant_id,
@@ -183,9 +150,6 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
   });
 
   test("non-converse flows DO pre-embed prior-workflow reference cases when matches exist", async () => {
-    // Inverted regression check: when the same intent runs through a
-    // structured authoring flow, the section appears — proving the
-    // guard is what suppressed it above (not e.g. a missing seed).
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: ctx.tenant_id,

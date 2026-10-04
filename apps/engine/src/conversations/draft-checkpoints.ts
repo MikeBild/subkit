@@ -1,15 +1,3 @@
-// Draft-snapshot service.
-//
-// Writes a recovery point to `conversation_draft_snapshots` (migration
-// 0028) after every draft-mutating tool call. The snapshot is NOT a
-// commit — the workflow still needs explicit `save_workflow_draft` to persist
-// to `workflows`. It's a way to roll back a draft after a bad edit or
-// after a disconnect without losing the prior state.
-//
-// LRU cap: keep at most 10 snapshots per conversation. The oldest are
-// deleted on insert so the table cannot grow unbounded even in chatty
-// long sessions.
-
 import { and, count, desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversationDraftSnapshots } from "../db/schema/index.ts";
@@ -35,7 +23,6 @@ export interface SnapshotCreateParams {
   label?: string | null;
 }
 
-/** Record a new snapshot. Prunes oldest rows beyond the 10-row cap. */
 export async function createDraftSnapshot(
   p: SnapshotCreateParams,
   exec: Db,
@@ -52,7 +39,6 @@ export async function createDraftSnapshot(
     .returning();
   if (!row) throw new Error("draft snapshot insert returned no row");
 
-  // Prune beyond LRU cap. SELECT ids older than the 10 newest, then delete.
   const all = await exec
     .select({ id: conversationDraftSnapshots.id })
     .from(conversationDraftSnapshots)
@@ -81,7 +67,6 @@ export async function createDraftSnapshot(
   };
 }
 
-/** List snapshots for a conversation, newest-first. */
 export async function listDraftSnapshots(
   p: { tenant_id: string; conversation_id: string; limit?: number },
   exec: Db,
@@ -109,7 +94,6 @@ export async function listDraftSnapshots(
   }));
 }
 
-/** Fetch a single snapshot by id. */
 export async function getDraftSnapshot(
   p: { tenant_id: string; snapshot_id: string },
   exec: Db,
@@ -136,7 +120,6 @@ export async function getDraftSnapshot(
   };
 }
 
-/** Count — used by tests + for sizing decisions. */
 export async function countDraftSnapshots(
   p: { tenant_id: string; conversation_id: string },
   exec: Db,

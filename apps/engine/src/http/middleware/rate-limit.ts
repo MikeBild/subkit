@@ -1,6 +1,3 @@
-// Lightweight IP-based token-bucket rate limiter.
-// No external dependencies — uses an in-memory Map with periodic pruning.
-
 import type { MiddlewareHandler } from "hono";
 import { logger } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -10,24 +7,16 @@ interface Bucket {
   last: number;
 }
 
-const DEFAULT_MAX = 100; // requests per window
-const DEFAULT_WINDOW_MS = 60_000; // 1 minute
+const DEFAULT_MAX = 100;
+const DEFAULT_WINDOW_MS = 60_000;
 const PRUNE_INTERVAL_MS = 60_000;
 
 export interface RateLimitOptions {
   max?: number;
   windowMs?: number;
-  /** Number of trusted reverse proxies in front of the engine. The client
-   *  IP is read that many entries from the RIGHT of X-Forwarded-For (the
-   *  entries our own infra appended), not the leftmost (which the client
-   *  controls and can forge to evade the limit). Default 1 — the standard
-   *  single Caddy/ingress in front of the engine. */
   trustedProxies?: number;
 }
 
-// Resolve the client IP, trusting only the proxy-appended right-hand
-// entries of X-Forwarded-For. The leftmost entries are client-supplied and
-// must never be trusted for rate-limit keying.
 export function resolveClientIp(
   xff: string | undefined,
   realIp: string | undefined,
@@ -54,11 +43,6 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
   let lastPrune = Date.now();
 
   return async (c, next): Promise<undefined | Response> => {
-    // Authentication runs before this middleware. A resolved principal has
-    // already paid the credential-validation cost and is governed by tenant,
-    // RBAC, and audit controls, so it must not share the anonymous per-IP
-    // budget. This is especially important for browser clients: a single
-    // cockpit view intentionally fans out into many authenticated reads.
     if (c.get("principal")) {
       await next();
       return undefined;
@@ -66,7 +50,6 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
 
     const now = Date.now();
 
-    // Periodic prune of expired buckets.
     if (now - lastPrune > PRUNE_INTERVAL_MS) {
       for (const [key, bucket] of buckets) {
         if (now - bucket.last > windowMs) {
@@ -84,7 +67,6 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
 
     const bucket = buckets.get(ip);
     if (bucket) {
-      // Refill tokens based on elapsed time.
       const elapsed = now - bucket.last;
       const refill = Math.floor((elapsed / windowMs) * max);
       bucket.tokens = Math.min(max, bucket.tokens + refill);

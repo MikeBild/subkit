@@ -39,7 +39,6 @@ function register(
   });
 }
 
-/** Document raw Hono routes without registering a second runtime handler. */
 export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
   const metadata = { 200: { description: "Metadata", content: json({ type: "object" }) } };
   register(

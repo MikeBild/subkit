@@ -1,11 +1,3 @@
-// Suggested-endpoints surface for `discover_connector_endpoints`.
-//
-// Verifies the suggested-endpoints contract: when the operator's most recent user
-// message is in scope, the result includes `data.suggested_endpoints`
-// — a top-3 list ranked against the message via the BM25-lite scorer
-// in `connectors/discovery/endpoint-scorer.ts`. Without the message,
-// the field is omitted entirely so the LLM does not see noise.
-
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../../connectors/discovery/types.ts";
@@ -37,9 +29,6 @@ function makeEndpoint(over: Partial<DiscoveredEndpoint> & { path: string }): Dis
 }
 
 function buildSyntheticIndex(): DiscoveredEndpoint[] {
-  // 49 filler endpoints + the droplets one — verifies the scorer wins
-  // by relevance, not by accident of position. Drop the target into the
-  // middle of the list.
   const filler: DiscoveredEndpoint[] = Array.from({ length: 49 }, (_, i) =>
     makeEndpoint({
       path: `/v2/resource_${i}`,

@@ -1,12 +1,3 @@
-// Schema-drift diagnostics endpoint.
-//
-//   GET /v1/diagnostics/drift
-//
-// Surfaces the structured drift report so `sk doctor` can show the
-// operator the rows that don't belong in this engine's lineage. Read
-// from `subkit.__drizzle_migrations` and compared against the
-// migrations embedded in the binary at compile time.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
@@ -20,16 +11,9 @@ import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OPENAPI_INFO } from "../../openapi.ts";
 
-// Reuse the runtime schema as the wire shape — single source of truth.
-// The route adds three derived fields (engine_version,
-// embedded_migration_count, db_migration_count) so the operator
-// dashboard can render counts without summing client-side.
 const DriftResponse = DriftReportSchema.extend({
-  /** Engine binary version that produced this report. */
   engine_version: z.string(),
-  /** Number of migrations baked into this binary at build time. */
   embedded_migration_count: z.number().int(),
-  /** Number of rows currently in `subkit.__drizzle_migrations`. */
   db_migration_count: z.number().int(),
 }).openapi("DriftReport");
 
@@ -52,17 +36,12 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db") ?? getDb();
     const report = await detectDrift(db);
     const embedded = listEmbeddedMigrations();
-    // Journal history is append-only, so accepted pre-squash rows remain part of the DB count.
     const db_migration_count =
       embedded.length -
       report.missing_in_db.length +
       report.unknown_in_db.length +
       report.historical_in_db.length;
 
-    // Parse metadata through the schema, then
-    // await the audit row before returning. Drift reads are
-    // privilege-sensitive; the cost of a guaranteed compliance row
-    // exceeds the negligible latency add.
     const metadata = DiagnosticsDriftReadMetadataSchema.parse({
       embedded: embedded.length,
       db: db_migration_count,
@@ -81,10 +60,6 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
         result: "success",
         metadata,
       },
-      // Bind the audit insert to the request's db handle so the row
-      // lands on the same database the route just read from. In
-      // production `c.get("db")` is the shared `getDb()`; in tests
-      // it's the per-suite handle bound by `createHttpTestServer`.
       db,
     );
 

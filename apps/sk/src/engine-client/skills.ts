@@ -1,12 +1,6 @@
-// Skills surfaces of the engine client: skill CRUD + lifecycle +
-// history, skill candidates, and the MCP catalog listings (prompts are
-// backed by skills; resources/tools complete the catalog picture).
-// Method group merged into `EngineClient` by `../engine-client.ts`.
-
 import type { EngineClient } from "../engine-client.ts";
 
 export const skillsMethods = {
-  // --------------------------- Skills ---------------------------
   listSkills(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -14,7 +8,6 @@ export const skillsMethods = {
     return this.request("GET", "/v1/skills", undefined, query);
   },
 
-  // --------------------------- MCP catalog ---------------------------
   listMcpPrompts(this: EngineClient): Promise<{
     items: Array<{ name: string; description: string | null; scope: string; skill_id: string }>;
   }> {
@@ -36,7 +29,6 @@ export const skillsMethods = {
     return this.request("GET", "/v1/mcp/tools");
   },
 
-  // -------------------- Skills --------------------
   getSkill(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("GET", `/v1/skills/${encodeURIComponent(id)}`);
   },
@@ -72,7 +64,6 @@ export const skillsMethods = {
     });
   },
 
-  // -------------------- Skill Candidates --------------------
   listSkillCandidates(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},

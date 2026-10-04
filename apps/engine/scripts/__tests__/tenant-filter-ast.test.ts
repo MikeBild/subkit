@@ -1,8 +1,3 @@
-// Coverage for the AST-based tenant-filter audit. The CI gate replaces
-// a regex heuristic that was loud and noisy (196 candidate sites, many
-// false positives). These tests pin the AST scan's contract: which
-// sites are real violations, which are not.
-
 import { describe, expect, test } from "bun:test";
 import { auditTenantFilterFromText } from "../audit/tenant-filter-ast.ts";
 
@@ -214,13 +209,6 @@ describe("tenant-filter-ast", () => {
   });
 
   test("exempt comment placed beyond MAX_CHAIN_SCAN_LINES is NOT recognised (boundary pin)", () => {
-    // Pins the upper bound of the mid-chain trivia scan
-    // (MAX_CHAIN_SCAN_LINES = 12). An exempt comment 14 lines
-    // above the .from() must NOT be treated as exempt — otherwise
-    // a future raise of the constant could mask real violations
-    // by accident. If a legitimate query needs the comment at
-    // that distance, the constant should be raised deliberately
-    // and this test updated.
     const text = `
 import { eq } from "drizzle-orm";
 import { conversations } from "../db/schema.ts";

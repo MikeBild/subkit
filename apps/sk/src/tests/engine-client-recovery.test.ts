@@ -1,16 +1,3 @@
-// Engine-client recovery path — long LLM turns can exceed bun-fetch's
-// keep-alive window, dropping the response side of the socket while
-// the engine keeps writing on its side. The client must:
-//   1. detect ECONNRESET-class drops on the elicitation respond path;
-//   2. retry once with a brief delay;
-//   3. on 409 elicitation_already_resolved (the engine accepted the
-//      first POST), recover by fetching the conversation detail and
-//      synthesising a ConversationRunOutcome with __recovered: true.
-//
-// Without this, the user sees a red "cannot reach engine" block even
-// though the engine completed the turn — the regression that drove
-// session f00b8d1c into duplicate-prompt territory.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,15 +18,10 @@ beforeEach(() => {
 afterEach(() => {
   process.env = originalEnv;
   delete require.cache[require.resolve("../debug.ts")];
-  // Never evict `engine-client.ts`: that drops any `mock.module` override
-  // another test file installed for it in this process, leaving the next
-  // importer with the real client and a live socket.
   delete require.cache[require.resolve("../repl/error-humanize.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function makeEconnResetError(): Error {
@@ -145,8 +127,6 @@ describe("EngineClient.respondElicitation recovery", () => {
     expect(getCalls).toBe(1);
     expect((out as { __recovered?: boolean }).__recovered).toBe(true);
     expect(out.conversation.id).toBe("c1");
-    // Synthesised events: a single `completed` so the cli-core
-    // reducer can transition the session out of "running".
     expect(out.events.length).toBe(1);
     expect((out.events[0] as { type: string }).type).toBe("completed");
   });

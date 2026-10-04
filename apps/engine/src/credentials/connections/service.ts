@@ -1,24 +1,3 @@
-// Outbound connections — SubKit as an OAuth 2.1 client, driven from the Cockpit.
-//
-// The flow, in the order a person experiences it:
-//
-//   1. `discoverService` — what is at that address? (discovery.ts)
-//   2. `startConnection` — register this engine as a public client there
-//      (RFC 7591), mint PKCE material, remember the round in
-//      `outbound_connection_starts`, hand back the authorization URL.
-//   3. The person approves on the other side; the server redirects to
-//      `/v1/connections/callback?code&state`.
-//   4. `completeConnection` — trade the code for tokens at the discovered
-//      token endpoint (no client secret, the verifier is the proof), store
-//      the tokens as runtime secret versions, write the connection row.
-//   5. `readAccessToken` at use time refreshes before expiry; the scheduler
-//      calls `refreshDueConnections` so a token nobody used still renews.
-//
-// Tokens are never on these rows: `connection.<tenant>.<name>.access_token`
-// and `…refresh_token` are secret names, and the row holds the version
-// numbers. That keeps them under the same key, the same rewrap and the same
-// audit as every other runtime secret.
-
 import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
@@ -61,11 +40,8 @@ import {
 } from "./types.ts";
 
 const START_TTL_MS = 10 * 60_000;
-/** Refresh this long before `expires_at`, so a token is never handed out on its last breath. */
 export const REFRESH_BUFFER_MS = 5 * 60_000;
-/** `last_used_at` is written at most this often per connection. */
 const LAST_USED_WRITE_INTERVAL_MS = 60_000;
-/** The name the person types: a slug, because it becomes part of a secret name. */
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 type ConnectionRow = typeof outboundConnections.$inferSelect;
@@ -94,8 +70,6 @@ function assertName(name: string): void {
   }
 }
 
-// ── Registration and the authorization URL ──────────────────────────────────
-
 export interface StartConnectionInput {
   tenant_id: string;
   user_id: string;
@@ -103,9 +77,7 @@ export interface StartConnectionInput {
   base_url: string;
   scopes: string[];
   redirect_uri: string;
-  /** This engine's public origin, sent as `client_uri` so the other side can show it. */
   client_uri: string | null;
-  /** Renew an existing connection instead of creating one. */
   connection_id?: string;
 }
 
@@ -121,8 +93,6 @@ export async function startConnection(
 ): Promise<StartConnectionResult> {
   const name = input.name.trim().toLowerCase();
   assertName(name);
-  // What the person grants is stored; what the server is asked for adds the
-  // protocol scopes this server needs (scopes.ts) — re-derived every round.
   const scopes = permissionScopes(input.scopes);
   if (scopes.length === 0) throw new ConnectionError("scopes_missing", "pick at least one scope");
 
@@ -199,9 +169,6 @@ export async function startConnection(
   };
 }
 
-// ── Tokens ──────────────────────────────────────────────────────────────────
-
-/** Mint the new versions, then retire the old ones. Old versions that cannot be revoked are logged, never fatal. */
 async function storeTokens(
   db: Executor,
   args: {
@@ -210,12 +177,6 @@ async function storeTokens(
     token: TokenResponse;
     created_by: string | null;
     previous: { access: number | null; refresh: number | null };
-    /**
-     * `refresh_token`: an answer without a new refresh token keeps the old one
-     * (RFC 6749 §6). `authorization_code`: every round registers a new client,
-     * so an old refresh token belongs to a client that no longer asks — it is
-     * retired, and the connection honestly has none.
-     */
     grant: "authorization_code" | "refresh_token";
   },
 ): Promise<{ access: number; refresh: number | null }> {
@@ -260,11 +221,6 @@ export type CompleteConnectionResult =
   | { ok: true; name: string; connection_id: string; renewed: boolean }
   | { ok: false; name: string | null; code: ConnectionError["code"]; message: string };
 
-/**
- * Finish a round. The `state` is the only credential the browser carries;
- * it names the tenant, the person and the connection, and is spent here
- * exactly once whatever the outcome.
- */
 export async function completeConnection(
   db: Db,
   input: { state: string; code?: string | undefined; error?: string | undefined },
@@ -329,8 +285,6 @@ export async function completeConnection(
     return fail("token_exchange_failed", messageOf(error));
   }
   if (!token.refresh_token) {
-    // Not an error — the grant works until `expires_at` — but it will not
-    // renew itself, and the person must learn that before it ends.
     logger.warn({
       module: "connections",
       action: "connection.no_refresh_token",
@@ -451,8 +405,6 @@ export async function completeConnection(
   };
 }
 
-// ── Reading and listing ─────────────────────────────────────────────────────
-
 async function findConnection(db: Db, tenantId: string, id: string): Promise<ConnectionRow | null> {
   const [row] = await db
     .select()
@@ -480,10 +432,6 @@ async function currentAccessToken(db: Db, row: ConnectionRow): Promise<string | 
   }
 }
 
-/**
- * The state word and, for every state that is not ok, the recorded cause —
- * decided together so a state can never go out without its reason.
- */
 export function connectionStateOf(
   row: Pick<
     ConnectionRow,
@@ -536,13 +484,6 @@ function toView(
   };
 }
 
-/**
- * The live connectors whose credential points at each connection, with the
- * number of live workflows using each connector. One grouped query for the
- * connectors and one tenant-wide pass for the workflow references
- * (`listConnectorRefs`, the same answer the workflow list gives) — never a
- * query per row.
- */
 async function usersOfConnections(
   db: Db,
   tenantId: string,
@@ -617,11 +558,6 @@ export async function getConnection(db: Db, tenantId: string, id: string): Promi
   return toView(row, readable, usedBy.get(row.id) ?? [], Date.now());
 }
 
-/**
- * Name and state of the given connections, keyed by id — what a connector's
- * credential shows about the grant it points at. State needs the token to
- * decrypt, so it is decided here and nowhere else.
- */
 export async function summarizeConnections(
   db: Db,
   tenantId: string,
@@ -648,8 +584,6 @@ export async function summarizeConnections(
   return out;
 }
 
-// ── Refresh ─────────────────────────────────────────────────────────────────
-
 async function refreshRow(
   db: Db,
   row: ConnectionRow,
@@ -673,8 +607,6 @@ async function refreshRow(
       nextScopes?.join(" ") ?? null,
     );
     const refreshed = await db.transaction(async (tx) => {
-      // Network work stays outside the transaction. Recheck its source under
-      // the row lock BEFORE creating or retiring any local secret version.
       const [current] = await tx
         .select({ id: outboundConnections.id })
         .from(outboundConnections)
@@ -780,12 +712,6 @@ function needsRefresh(row: ConnectionRow, nowMs: number): boolean {
   return row.expires_at.getTime() - nowMs <= REFRESH_BUFFER_MS;
 }
 
-/**
- * The access token a connector sends, refreshed first when it is about to
- * expire. Null when the grant is gone — expired without a refresh token,
- * refresh refused, or unreadable under this MASTER_KEY — so the caller can
- * report "Zugangsdaten fehlen" rather than send a dead token.
- */
 export async function readAccessToken(
   db: Db,
   tenantId: string,
@@ -822,7 +748,6 @@ export async function readAccessToken(
   };
 }
 
-/** Renew every connection whose token ends within the buffer. One failure does not stop the sweep. */
 export async function refreshDueConnections(
   db: Db,
   now: Date = new Date(),
@@ -851,14 +776,6 @@ export async function refreshDueConnections(
   return { refreshed, failed };
 }
 
-// ── Disconnect ──────────────────────────────────────────────────────────────
-
-/**
- * "Trennen": revoke the current token versions and remove the row. A
- * connector credential that pointed here keeps its row with nothing to send
- * (`credentials.connection_id` becomes null by FK), which its page shows as
- * missing credentials rather than as a silent 401.
- */
 export async function disconnectConnection(
   db: Db,
   args: { tenant_id: string; id: string; actor_id: string | null },

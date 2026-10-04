@@ -1,35 +1,3 @@
-// Public, token-gated credential-setup flow for non-OAuth (bearer / basic /
-// header / query) connectors — the browser-openable counterpart to the
-// grant-token GET of a connector's sign-in route (`/oauth/start?grant=…`,
-// `/mcp/authorize?grant=…`) for connectors that have no browser sign-in to
-// redirect into.
-//
-//   GET  /v1/connectors/{id}/credentials/setup?grant=sksg_…  — UNAUTHENTICATED
-//        (grant-token auth). Validates the single-use grant WITHOUT consuming
-//        it (a second, later POST still needs to redeem it) and renders a
-//        minimal HTML form for the connector's auth_type. Invalid/expired
-//        grant → 400 HTML error page.
-//
-//   POST /v1/connectors/{id}/credentials/setup                — UNAUTHENTICATED
-//        (grant-token auth). Form-encoded body, registered via app.openapi.
-//        The urlencoded body is documented as a plain OpenAPI schema object
-//        (not zod) so no body validator runs — the handler's parseFormBody
-//        plus per-auth_type field checks remain the sole boundary validation,
-//        keeping every error path an HTML page for the browser. Atomically
-//        consumes the grant, upserts the credential, resolves what a fresh
-//        credential resolves (the sign-in flag and the circuit breaker —
-//        never the on/off switch), and renders the result page.
-//        Invalid/expired/replayed grant → 400 HTML.
-//
-// This is a SEPARATE path from POST /v1/connectors/{id}/credentials (the
-// existing API-key-gated route, untouched) — that route stays for
-// programmatic callers; this one is the secure link `request_connector_reauth`
-// hands to an MCP operator to open in a browser.
-//
-// Security: the plaintext grant token must NEVER appear in logs or audit
-// metadata — it is only ever placed into the rendered form's hidden `grant`
-// field so the browser can round-trip it on submit.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
@@ -61,9 +29,6 @@ import {
   signInFailedPage,
 } from "./signin-result.ts";
 
-// Single-use grant token query parameter. Min-20 guards against random short
-// strings but no semantic validation — validateSetupGrant/consumeSetupGrant
-// enforce the sha256 match and expiry check.
 const CredentialSetupGrantQuery = z
   .object({ grant: z.string().min(20) })
   .openapi("CredentialSetupGrantQuery");
@@ -73,12 +38,6 @@ const credentialSetupFormRoute = createRoute({
   path: "/v1/connectors/{id}/credentials/setup",
   tags: ["connectors"],
   summary: "Browser-openable credential-setup form (single-use grant token)",
-  // Unauthenticated: the LLM hands this URL to the operator to open in a
-  // browser. Authentication is by way of the single-use opaque `grant`
-  // query parameter (sksg_… token), which the engine generated and stored
-  // in connector_credential_setup_grants as a sha256 hash. This GET
-  // VALIDATES ONLY — it must not consume the grant, since the operator
-  // still needs to submit the rendered form.
   request: { params: IdParam, query: CredentialSetupGrantQuery },
   responses: {
     200: { description: "OK (HTML form)", content: { "text/html": { schema: z.string() } } },
@@ -89,22 +48,11 @@ const credentialSetupFormRoute = createRoute({
   },
 });
 
-// Form fields the POST handler reads, documented as a plain OpenAPI schema
-// object rather than a zod schema. A zod form schema here would make
-// @hono/zod-openapi register a body validator that (a) consumes the raw
-// request body before the handler's parseFormBody can read it and (b) sends
-// malformed submissions to the JSON defaultHook instead of the HTML error
-// pages a browser expects. Every field is optional in the document because
-// which fields are required depends on the connector's auth_type — the
-// handler enforces them per mode.
 const credentialSetupSubmitRoute = createRoute({
   method: "post",
   path: "/v1/connectors/{id}/credentials/setup",
   tags: ["connectors"],
   summary: "Submit the credential-setup form (consumes the single-use grant)",
-  // Unauthenticated, same as the GET twin: authentication is the single-use
-  // `grant` token round-tripped from the rendered form's hidden field. The
-  // grant is consumed atomically on submit — a replay renders a 400 HTML page.
   request: {
     params: IdParam,
     body: {
@@ -230,8 +178,6 @@ const field = (
   required = true,
 ): FormField => ({ name, secret, required, label });
 
-// Every secret field names the external service that issued it — operators
-// otherwise misread the form as a sign-in for this page.
 const FORM_COPY: Record<AuthLocale, FormCopy> = {
   en: {
     context: "Connector sign-in",
@@ -289,12 +235,6 @@ const FORM_COPY: Record<AuthLocale, FormCopy> = {
   },
 };
 
-/**
- * Render the credential-setup form in the shared page shell. The plaintext
- * grant token is placed ONLY in the hidden `grant` field so the browser
- * round-trips it on submit — it must never appear anywhere else in this
- * response.
- */
 function buildCredentialSetupFormHtml(opts: {
   action: string;
   label: string;
@@ -321,7 +261,6 @@ function buildCredentialSetupFormHtml(opts: {
 
 type RouteContext = Parameters<typeof requestLocale>[0];
 
-/** A failure of this page, worded for someone who opened a one-time link. */
 function failed(
   c: RouteContext,
   failure: SignInFailure,
@@ -333,8 +272,6 @@ function failed(
   );
 }
 
-/** What went wrong after the grant was spent, without repeating the error's
- *  own text on the page: a missing field is named, anything else is logged. */
 function submitFailure(c: RouteContext, err: unknown): Response {
   return err instanceof MissingFieldError
     ? failed(c, "missing_field", err.field)
@@ -489,8 +426,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // ── GET /v1/connectors/{id}/credentials/setup?grant=sksg_… ────────────────
-  // Unauthenticated browser-grant path. VALIDATES ONLY — does not consume.
   app.openapi(credentialSetupFormRoute, async (c) => {
     const db = c.get("db");
     const { id } = c.req.valid("param");
@@ -498,7 +433,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const validated = await validateSetupGrant(db, { token: grant, connector_id: id });
     if (!validated) {
-      // Do not echo the grant token in HTML or logs.
       logger.warn({
         module: "credentials_setup",
         action: "credentials_setup.form.invalid_grant",
@@ -508,7 +442,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       return failed(c, "link_expired");
     }
 
-    // Tenant is derived ONLY from the validated row — never from the request.
     const connector = await connectorSvc.getConnector(
       validated.tenant_id,
       validated.connector_id,
@@ -529,11 +462,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     return authHtmlResponse(html);
   });
 
-  // ── POST /v1/connectors/{id}/credentials/setup ────────────────────────────
-  // Form-encoded body (an HTML <form> POST). The route spec documents the
-  // body without a zod schema, so no body validator runs — parseFormBody plus
-  // the per-mode field checks below stay the boundary validation and every
-  // failure renders HTML, not the JSON defaultHook.
   app.openapi(credentialSetupSubmitRoute, async (c) => {
     const db = c.get("db");
     const { id } = c.req.valid("param");
@@ -544,7 +472,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       return failed(c, "link_expired");
     }
 
-    // Atomic claim: wrong connector_id does NOT burn the grant.
     const claimed = await consumeSetupGrant(db, { token: grant, connector_id: id });
     if (!claimed) {
       logger.warn({
@@ -605,10 +532,6 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
           environment: connector.environment,
           mode: connector.auth_type as "bearer" | "basic" | "header" | "query",
           value,
-          // Anonymous browser hit — no operator principal. The grant's
-          // created_by_actor_id records who REQUESTED the fix, not who
-          // submitted the browser form (the credential service writes
-          // `actor_type: "system"` for a null actor_id).
           actor_id: null,
           source: "credential_setup_grant",
         },

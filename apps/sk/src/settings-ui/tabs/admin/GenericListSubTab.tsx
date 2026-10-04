@@ -1,8 +1,3 @@
-// Read-only list rendering for admin resources, with an optional inline
-// create form. When `createForm` is supplied, pressing `c` opens the
-// form; on submit, `createForm.submit` is invoked with the form values
-// and the list is refreshed.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -18,12 +13,6 @@ interface Props {
     fields: readonly AdminFormField[];
     submit: (values: Record<string, string>) => Promise<void>;
   };
-  /**
-   * Fired when this sub-tab owns Esc — currently only while the
-   * AdminCreateForm is open. Threaded up to AdminTab → AdminCommand
-   * so the outer SinglePane's Esc handler stays suppressed until the
-   * inner form is closed.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -72,7 +61,6 @@ export const GenericListSubTab: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-    // refreshKey forces re-fetch after a successful create.
   }, [fetcher, refreshKey]);
 
   useInput((input) => {

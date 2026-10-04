@@ -1,21 +1,3 @@
-// User story: As an operator (or end user) who just kicked off a
-// workflow run, I want to follow that single execution live — step by
-// step — without holding the tenant-wide `audit:read` compliance
-// permission the unified /v1/events/stream tail requires.
-// Acceptance criteria:
-//   - AC1: GET /v1/executions/{id}/stream returns text/event-stream and
-//          replays the run's full history: execution.queued →
-//          execution.started → step frames → execution.succeeded.
-//   - AC2: step frames carry step_key / step_index / kind / status and
-//          arrive between execution.started and the terminal frame
-//          (execution.step.started before execution.step.finished).
-//   - AC3: the stream closes on its own right after the terminal frame
-//          (a follower of a finished run does not hang).
-//   - AC4: an enduser (execution:read, no audit:read) can follow the
-//          run but is refused on /v1/events/stream.
-//   - AC5: unknown execution id yields 404.
-// Spec refs: docs/concepts/workflows.md ("Following a run live")
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -36,9 +18,6 @@ interface SSEFrame {
   data?: string;
 }
 
-/** Read SSE frames until the stream ends, `until(frames)` is true, or
- *  the timeout elapses. Returns the frames plus whether the SERVER
- *  closed the stream (reader hit done) — AC3 asserts on that. */
 async function collectFrames(
   res: Response,
   until: (frames: SSEFrame[]) => boolean,
@@ -86,9 +65,7 @@ async function collectFrames(
   } finally {
     try {
       await reader.cancel();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
   return { frames, serverClosed };
 }
@@ -105,8 +82,6 @@ beforeAll(async () => {
   });
   workflowId = wf.id;
 
-  // Run once synchronously — by the time this resolves every event
-  // (queued, started, 2× step pairs, succeeded) is on the outbox.
   const run = await journeyFetch(ctx, "/v1/executions", {
     method: "POST",
     body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
@@ -131,8 +106,6 @@ describe("journey 55: per-execution SSE follow", () => {
       expect(res.status).toBe(200);
       expect((res.headers.get("content-type") ?? "").toLowerCase()).toContain("text/event-stream");
 
-      // Read until the server closes — the terminal frame ends the
-      // stream, so `until` never fires and serverClosed flips true.
       const { frames, serverClosed } = await collectFrames(res, () => false, 10_000);
       expect(serverClosed).toBe(true);
 
@@ -143,12 +116,9 @@ describe("journey 55: per-execution SSE follow", () => {
       expect(qi).toBeGreaterThanOrEqual(0);
       expect(si).toBeGreaterThan(qi);
       expect(ti).toBeGreaterThan(si);
-      // The terminal frame is the last event frame the server wrote.
       const lastEventIdx = types.reduce((acc, t, i) => (t.startsWith("execution.") ? i : acc), -1);
       expect(lastEventIdx).toBe(ti);
 
-      // Step frames: one started + one finished per step, ordered, with
-      // the documented payload fields.
       const stepStarted = frames.filter((f) => f.event === "execution.step.started");
       const stepFinished = frames.filter((f) => f.event === "execution.step.finished");
       expect(stepStarted.length).toBe(2);
@@ -173,9 +143,6 @@ describe("journey 55: per-execution SSE follow", () => {
   test(
     "AC4: enduser follows the run but is refused on /v1/events/stream",
     async () => {
-      // Seed an enduser + api key directly (same pattern as the
-      // sk-cli-03 enduser dashboard journey). The enduser built-in role
-      // grants execution:read but not audit:read.
       const { users, apiKeys } = await import("../../db/schema/index.ts");
       const [u] = await ctx.db
         .insert(users)
@@ -203,7 +170,6 @@ describe("journey 55: per-execution SSE follow", () => {
 
       const follow = await enduserFetch(`/v1/executions/${executionId}/stream`);
       expect(follow.status).toBe(200);
-      // Drain so the poll loop frees up (terminal frame closes it).
       await collectFrames(follow, () => false, 10_000);
 
       const tenantWide = await enduserFetch("/v1/events/stream");

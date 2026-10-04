@@ -1,14 +1,3 @@
-// The MCP-shaped read over `connectors`, and the two writes only a
-// handshake may perform.
-//
-// There is no MCP CRUD any more: an external MCP server is created,
-// patched and deleted through the connector service like every other
-// driver, and those paths have their own tests. What this suite covers is
-// what is specific to `mcp` — that a connector row projects into the shape
-// the pool consumes, that the connectable filter honours the operator's
-// on/off bit, and that a handshake's success and failure land on BOTH the
-// session row and the connector row without the two disagreeing.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setConnectorEnabled } from "../../connectors/service.ts";
@@ -120,11 +109,8 @@ describe("listConnectableMcpConnectorsForTenant", () => {
     await setConnectorEnabled(tenantB, off.id, false, null, ctx.db);
 
     const ids = (await listConnectableMcpConnectorsForTenant(ctx.db, tenantB)).map((r) => r.id);
-    // A remote that is down must stay retryable — excluding it would leave
-    // it permanently dark after it recovers.
     expect(ids).toContain(healthy.id);
     expect(ids).toContain(degraded.id);
-    // Disabled is an operator decision and is never auto-retried.
     expect(ids).not.toContain(off.id);
   });
 });
@@ -151,8 +137,6 @@ describe("handshake state", () => {
       "connect ECONNREFUSED",
       (n) => new Date(Date.now() + n * 1_000), // allow-wall-clock
     );
-    // Counted by the database, not read-then-written: two turns failing
-    // concurrently must not both observe the same prior value.
     expect(first).toBe(1);
     expect(second).toBe(2);
 
@@ -161,13 +145,11 @@ describe("handshake state", () => {
       .from(connectors)
       .where(eq(connectors.id, seeded.id));
     expect(connector?.health_state).toBe("degraded");
-    // The persisted failure text is redacted: no query string, no token.
     expect(connector?.last_error ?? "").not.toContain("SECRET");
     expect(connector?.last_error ?? "").not.toContain("?");
 
     const backoff = await getMcpSessionBackoff(ctx.db, tenantA, seeded.id);
     expect(backoff?.consecutive_failures).toBe(2);
-    // Survives a process restart, which the pool's in-memory window does not.
     expect(backoff?.backoff_until).not.toBeNull();
   });
 
@@ -192,9 +174,6 @@ describe("handshake state", () => {
       .select({ health_state: connectors.health_state, last_error: connectors.last_error })
       .from(connectors)
       .where(eq(connectors.id, seeded.id));
-    // A session that says healthy beside a connector still carrying the
-    // failure text is the disagreement effectiveConnectorHealth exists to
-    // prevent, so both move together.
     expect(connector?.health_state).toBe("ok");
     expect(connector?.last_error).toBeNull();
 
@@ -209,11 +188,6 @@ describe("handshake state", () => {
   });
 
   test("no failure shape a handshake throws puts remote-authored text ON THE ROW", async () => {
-    // The claim an operator depends on is about the COLUMN: whatever the
-    // handshake threw, what `parkMcpConnectorFailure` persisted is the
-    // ENGINE's sentence. Redacting the remote's own body would mean
-    // recognising every vendor's token shape — so none of it is carried
-    // forward, and these are the shapes that actually reach this function.
     const seeded = await seedMcpConnector(ctx.db, {
       tenant_id: tenantA,
       slug: "shapes",
@@ -245,42 +219,25 @@ describe("handshake state", () => {
       };
     };
 
-    // The dominant shape: the SDK reports a refused handshake as
-    // `Error POSTing to endpoint: <raw response body>`, so the remote we
-    // just failed to authenticate against decides what that string says —
-    // and an OAuth error body routinely echoes the token it rejected.
     const echoed = await persist(
       'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
     );
     expect(echoed.last_error).not.toContain("eyJhbGciOiJIUzI1NiJ9");
     expect(echoed.last_error).not.toContain("invalid_token");
-    // `health_reason` is published beside it now, so it carries no remote
-    // text either.
     expect(echoed.health_reason).not.toContain("invalid_token");
-    // What the operator gets instead: the branchable code plus a sentence
-    // naming the endpoint and the status.
     expect(echoed.health_error_code).toBe("auth_rejected");
     expect(echoed.last_error).toContain("[auth_rejected]");
     expect(echoed.last_error).toContain("shapes.example.test");
     expect(echoed.last_error).toContain("401");
 
-    // `undici` reports a dead host with the request URL inline, query
-    // string included — which is where a pre-signed credential rides.
     const inlineUrl = await persist(
       "fetch failed for https://shapes.example.test/mcp?access_token=SECRET123: ECONNRESET",
     );
     expect(inlineUrl.last_error).not.toContain("SECRET123");
     expect(inlineUrl.last_error).not.toContain("access_token");
 
-    // A verbose remote body cannot bloat the row it is stored in — the
-    // engine's sentence is bounded by construction.
     expect((await persist("x".repeat(2_000))).last_error.length).toBeLessThanOrEqual(301);
 
-    // `last_error` re-classifies on every attempt, while `health_reason` /
-    // `health_error_code` stay what the TRANSITION recorded: the health
-    // columns are edge-guarded (one notification for a remote that has been
-    // refusing for an hour), so the two answer different questions and an
-    // operator reading both is not looking at a contradiction.
     const gone = await persist("Error POSTing to endpoint (HTTP 410): endpoint retired");
     expect(gone.last_error).toContain("[resource_not_found]");
     expect(gone.last_error).not.toContain("retired");
@@ -309,26 +266,10 @@ describe("handshake state", () => {
       .where(
         and(eq(auditLog.resource_id, seeded.id), eq(auditLog.action, "connector.health_changed")),
       );
-    // Edge-guarded: three failures, one transition.
     expect(rows.length).toBe(1);
   });
 });
 
-// `redactUpstreamDetail` no longer feeds a column: it sanitizes the text
-// handed back IN FLIGHT (the probe envelope, the step result, the log
-// line), where an operator reads the upstream's own words in the same
-// breath as the failure. The shapes asserted below are the ones that
-// actually reach it, not one convenient example:
-//
-//   * the SDK's streamable-HTTP transport reports a refused handshake as
-//     `Error POSTing to endpoint: <raw response body>` — the body is the
-//     remote's text, and an OAuth error body routinely echoes the token
-//     that was presented;
-//   * `undici` reports a dead host with the request URL inline;
-//   * a URL can carry credentials in its userinfo as well as its query;
-//   * `connectClient` collapses the SDK's `UnauthorizedError` to a fixed
-//     sentence, which must survive intact — the probe's error-code mapping
-//     reads it.
 describe("redactUpstreamDetail", () => {
   test("reduces every embedded URL to its origin, userinfo and query included", () => {
     const out = redactUpstreamDetail(
@@ -338,7 +279,6 @@ describe("redactUpstreamDetail", () => {
     expect(out).not.toContain("SECRET");
     expect(out).not.toContain("access_token");
 
-    // Userinfo is credential material too, and `URL.host` excludes it.
     const userinfo = redactUpstreamDetail(
       "connect ECONNREFUSED https://svc:hunter2@remote.example.test/mcp",
     );
@@ -346,7 +286,6 @@ describe("redactUpstreamDetail", () => {
     expect(userinfo).not.toContain("hunter2");
     expect(userinfo).not.toContain("svc:");
 
-    // Several URLs in one message: every one of them, not just the first.
     const many = redactUpstreamDetail(
       "redirected from https://a.example.test/mcp?t=AAA to https://b.example.test/cb?code=BBB",
     );
@@ -355,10 +294,6 @@ describe("redactUpstreamDetail", () => {
   });
 
   test("a token the remote echoed back in its error BODY is redacted", () => {
-    // The dominant shape: no URL to strip, and the text is authored by the
-    // server we just failed to authenticate against. It is redacted here
-    // and it is not persisted anywhere — a shape-matching redactor is a
-    // best effort in flight, never the guarantee a column depends on.
     const bearer = redactUpstreamDetail(
       'Error POSTing to endpoint: {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
     );
@@ -372,14 +307,10 @@ describe("redactUpstreamDetail", () => {
   });
 
   test("the shapes that carry no secret survive verbatim", () => {
-    // `probeErrorFor` maps a handshake failure onto a probe error code by
-    // reading this text. Mangling it would silently downgrade every
-    // credential failure to `unknown_upstream_error`.
     expect(redactUpstreamDetail("authorization required")).toBe("authorization required");
     expect(redactUpstreamDetail("Error POSTing to endpoint (HTTP 401): unauthorized")).toContain(
       "401",
     );
-    // A bare host:port is not a URL and has nothing to strip.
     expect(redactUpstreamDetail("connect ECONNREFUSED 93.184.216.34:443")).toBe(
       "connect ECONNREFUSED 93.184.216.34:443",
     );

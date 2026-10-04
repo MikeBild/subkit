@@ -1,11 +1,3 @@
-// Within-turn tool-output elision (Fix 7, session 784c1b02). One live
-// turn of 40+ agentic iterations re-sent the FULL tool-output history
-// on every LLM call — persist.ts only elides across user-turns. The
-// shared elision helper stubs bulky (>4KB serialized) tool results
-// that are more than WITHIN_TURN_VERBATIM_ITERATIONS iterations old
-// with the same `_raw_ref` stub the cross-turn path emits, and the
-// model recovers any stubbed payload via `get_raw_result(ref)`.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ModelMessage } from "ai";
 import {
@@ -23,7 +15,6 @@ afterEach(() => {
 const BIG_PAYLOAD = () => ({ data: "x".repeat(TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS + 1000) });
 const SMALL_PAYLOAD = () => ({ data: "small" });
 
-/** One agentic iteration: assistant tool-call + tool result. */
 function iteration(i: number, payload: unknown, tool = "inspect_workflow_draft"): ModelMessage[] {
   return [
     {
@@ -68,10 +59,8 @@ describe("elideWithinTurnToolOutputs", () => {
     const result = elideWithinTurnToolOutputs(messages, { baseline_index: baseline });
     expect(result).not.toBeNull();
     if (!result) throw new Error("expected elision");
-    // 7 iterations, keep 5 → the 2 oldest are elided.
     expect(result.elided_count).toBe(2);
     for (const idx of [0, 1]) {
-      // tool message of iteration idx sits at baseline + idx*2 + 1.
       const stub = toolResultValue(result.messages[baseline + idx * 2 + 1]) as Record<
         string,
         unknown
@@ -79,12 +68,9 @@ describe("elideWithinTurnToolOutputs", () => {
       expect(stub._elided).toBe(true);
       expect(stub._tool).toBe("inspect_workflow_draft");
       expect(typeof stub._raw_ref).toBe("string");
-      // Persisted-stub convention — the model recognises the wording
-      // regardless of which path elided.
       expect(stub._note).toMatch(
         /^<elided: tool=inspect_workflow_draft, ref=raw_[0-9a-f]{8}, original=\d+ chars; call get_raw_result\(ref="raw_[0-9a-f]{8}"\) for the full payload>$/,
       );
-      // Full payload recoverable via the existing get_raw_result tool.
       expect(getRawResult(stub._raw_ref as string)).toEqual(payloads[idx]);
     }
   });
@@ -98,7 +84,6 @@ describe("elideWithinTurnToolOutputs", () => {
     expect(result).not.toBeNull();
     if (!result) throw new Error("expected elision");
     expect(result.elided_count).toBe(1);
-    // Iterations 1..5 (the last five) stay verbatim.
     for (let idx = 1; idx <= WITHIN_TURN_VERBATIM_ITERATIONS; idx++) {
       expect(toolResultValue(result.messages[baseline + idx * 2 + 1])).toEqual(payloads[idx]!);
     }
@@ -115,19 +100,16 @@ describe("elideWithinTurnToolOutputs", () => {
     expect(result).not.toBeNull();
     if (!result) throw new Error("expected elision");
     expect(result.elided_count).toBe(1);
-    // Old-but-small iteration 0 untouched; old-and-big iteration 1 stubbed.
     expect(toolResultValue(result.messages[baseline + 1])).toEqual(payloads[0]!);
     const stub = toolResultValue(result.messages[baseline + 3]) as Record<string, unknown>;
     expect(stub._elided).toBe(true);
   });
 
   test("returns null when no live iteration crosses the window or threshold", () => {
-    // Fewer iterations than the window → nothing to do.
     const few = buildTurn(
       Array.from({ length: WITHIN_TURN_VERBATIM_ITERATIONS }, () => BIG_PAYLOAD()),
     );
     expect(elideWithinTurnToolOutputs(few.messages, { baseline_index: few.baseline })).toBeNull();
-    // Enough iterations, all small → nothing crosses the threshold.
     const small = buildTurn(
       Array.from({ length: WITHIN_TURN_VERBATIM_ITERATIONS + 3 }, () => SMALL_PAYLOAD()),
     );
@@ -137,8 +119,6 @@ describe("elideWithinTurnToolOutputs", () => {
   });
 
   test("replayed history before baseline_index is never touched", () => {
-    // Bulky tool result in the replayed history — persist.ts owns that
-    // window; the within-turn pass must leave it alone.
     const historyPayload = BIG_PAYLOAD();
     const history: ModelMessage[] = [
       { role: "user", content: "earlier turn" },
@@ -151,7 +131,6 @@ describe("elideWithinTurnToolOutputs", () => {
     const result = elideWithinTurnToolOutputs(messages, { baseline_index: history.length });
     expect(result).not.toBeNull();
     if (!result) throw new Error("expected elision");
-    // History tool message (index 2) is verbatim.
     expect(toolResultValue(result.messages[2])).toEqual(historyPayload);
     expect(result.elided_count).toBe(1);
   });

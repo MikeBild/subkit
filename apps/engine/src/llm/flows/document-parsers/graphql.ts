@@ -1,9 +1,6 @@
-// Deterministic GraphQL SDL / Introspection JSON parser. No LLM required.
-
 import type { EndpointSpec } from "../document-analysis.ts";
 
 export function parseGraphQL(content: string): EndpointSpec[] {
-  // Handle introspection JSON
   if (content.trimStart().startsWith("{")) {
     try {
       const doc = JSON.parse(content) as {
@@ -39,12 +36,9 @@ export function parseGraphQL(content: string): EndpointSpec[] {
         }
       }
       return endpoints;
-    } catch {
-      // fall through to SDL parsing
-    }
+    } catch {}
   }
 
-  // Basic SDL parsing: detect type Query / type Mutation blocks
   const endpoints: EndpointSpec[] = [];
   const queryMatch = content.match(/type\s+Query\s*\{([^}]+)\}/s);
   const mutationMatch = content.match(/type\s+Mutation\s*\{([^}]+)\}/s);

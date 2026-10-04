@@ -1,27 +1,3 @@
-// Live-mode authoring eval runner (Fix E, live mode). NOT part of any
-// CI gate — run manually pre-release against a target engine:
-//
-//   bun run apps/engine/eval/live-authoring.ts \
-//     --engine-url https://engine.example.com \
-//     --api-key sk_live_xxx \
-//     [--scenario droplet-specs-email[,gh-org-top-repos-table,…]] \
-//     [--out apps/engine/eval/out/live-authoring-report.json]
-//
-// Credentials come ONLY from argv (or the SK_ENGINE_URL / SK_API_KEY
-// environment variables as a fallback) — this runner never reads .env
-// files. It drives the engine's real conversation surface
-// (POST /v1/conversations, permission_mode=auto) with the
-// estate-derived goals in `live-report.ts#LIVE_SCENARIOS`, scores each
-// run (conversation tool calls, internal pipeline passes from the
-// `author_workflow` envelope, judge verdict, wall-clock, content
-// assertions on the FIRST preview, tokens when reported), evaluates
-// the code-derived benchmark targets (≤3 pipeline LLM calls, exactly
-// 1 preview, ≤15 tool calls, content-correct first preview), and
-// writes the JSON report into `eval/out/`.
-//
-// Exit codes: 0 — every scenario met every target; 1 — at least one
-// target FAILED or a run errored; 2 — usage error.
-
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -37,8 +13,6 @@ import {
   scoreScenario,
 } from "./live-report.ts";
 
-/** Hard per-scenario wall-clock cap — a wedged conversation must not
- *  stall the whole report. */
 const SCENARIO_TIMEOUT_MS = 10 * 60_000;
 
 const DEFAULT_OUT = join(process.cwd(), "apps/engine/eval/out/live-authoring-report.json");
@@ -107,10 +81,6 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
-// Local-only scenario file (`--scenarios-file`). Lets a gitignored benchmark
-// (e.g. a keyed connector against real sites) add scenarios WITHOUT polluting
-// the committed `LIVE_SCENARIOS` gate. Validated at this CLI boundary; entries
-// merge into the candidate set and are otherwise scored identically.
 const ContentCheckSchema = z.object({
   name: z.string(),
   pattern: z.string(),
@@ -150,8 +120,6 @@ interface TurnEventLike {
   usage?: { turn_tokens?: number };
 }
 
-/** Project the engine's run-outcome events (or the conversation-detail
- *  fallback) into the scorer's observation shape. */
 function projectEvents(events: TurnEventLike[]): {
   tool_calls: number;
   results: ObservedToolCall[];
@@ -214,10 +182,6 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
     };
     const conversationId = outcome.conversation?.id;
 
-    // Multi-turn: append each follow-up to the SAME conversation, in order.
-    // Exercises iterative authoring (turn 2+). The final outcome/status is the
-    // last turn's; tool calls accumulate across turns (read from the detail
-    // below). A failed append surfaces as an error observation.
     let tokensAcrossTurns = projectEvents(outcome.events ?? []).tokens;
     if (conversationId && spec.follow_up_turns && spec.follow_up_turns.length > 0) {
       for (const turn of spec.follow_up_turns) {
@@ -245,10 +209,6 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
     const wall_ms = Date.now() - started;
     let projected = projectEvents(outcome.events ?? []);
 
-    // Read the persisted conversation detail — for a multi-turn run it carries
-    // the FULL tool-call history across every turn (the per-turn events only
-    // cover the last turn). Single-turn runs also benefit when a surface omits
-    // tool frames from the outcome events.
     if (conversationId && (projected.tool_calls === 0 || (spec.follow_up_turns?.length ?? 0) > 0)) {
       const detailRes = await engineFetch(args, `/v1/conversations/${conversationId}`);
       if (detailRes.ok) {
@@ -289,9 +249,6 @@ async function runScenario(args: CliArgs, spec: LiveScenarioSpec): Promise<Scena
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  // Committed gate scenarios + any local-only ones (`--scenarios-file`). A
-  // local entry with a slug already in LIVE_SCENARIOS overrides the committed
-  // one (lets a benchmark pin a harder variant of a named scenario).
   const fileScenarios = args.scenarios_file ? loadScenariosFile(args.scenarios_file) : [];
   const candidates: LiveScenarioSpec[] = [
     ...LIVE_SCENARIOS.filter((s) => !fileScenarios.some((f) => f.slug === s.slug)),
@@ -310,11 +267,6 @@ async function main(): Promise<void> {
   console.log(`live-authoring eval → ${args.engine_url} (${specs.length} scenario(s))\n`);
 
   const scores = [];
-  // Raw per-scenario observations (the actual tool outputs the model
-  // produced), dumped alongside the report. This is the ground truth for the
-  // evidence process: the scored row tells you PASS/FAIL, this file tells you
-  // WHY — e.g. whether the rendered output really is a markdown table, or
-  // whether a content-check failure is a measurement artifact vs a real defect.
   const observations: ScenarioObservation[] = [];
   for (const spec of specs) {
     console.log(`▶ ${spec.slug}`);
@@ -344,8 +296,6 @@ async function main(): Promise<void> {
 
   mkdirSync(dirname(args.out), { recursive: true });
   writeFileSync(args.out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  // Sibling raw-observations dump (`<out>.results.json`) — the unscored tool
-  // outputs, for evidence inspection. Same basename so it pairs with the report.
   const resultsOut = `${args.out.replace(/\.json$/, "")}.results.json`;
   writeFileSync(resultsOut, `${JSON.stringify(observations, null, 2)}\n`, "utf8");
   console.log(`Report: ${args.out}`);

@@ -1,23 +1,3 @@
-// `invoke` — single entry point for every LLM call in the engine.
-//
-// Responsibilities (in order):
-//   1) Resolve per-tenant model route (primary/fallback, provider, budget,
-//      cache-toggle) from `tenant_llm_settings` + env fallback.
-//   2) Budget pre-check and decrement via `llm/accounting/budget.ts`.
-//   3) Assemble context via `core/context-assembler.ts` → stable/volatile
-//      cache blocks + a budget report.
-//   4) Dispatch:
-//        provider === "mock" → in-process mock provider (tests)
-//        otherwise            → AiSdkModel (gateway-first, via `ai`)
-//   5) Post-hoc reconcile SDK-reported usage into `llm_usage` via
-//      `llm/accounting/accountant.ts`.
-//   6) Return a uniform `{result, prompt, blocks, budget_report,
-//      model_used, fell_back}` envelope.
-//
-// This file is the only place the engine touches either the AiSdkModel
-// or the mock provider directly. All four flows (generate, extract,
-// repair, converse) are thin wrappers around `invoke`.
-
 import type { LanguageModel } from "ai";
 import { and, eq } from "drizzle-orm";
 import type { ZodType } from "zod";
@@ -58,16 +38,6 @@ import { maybeWrapForDevtools } from "./devtools-wrap.ts";
 import { detectConfiguredProvider, initializeModel, type ModelInitOptions } from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
 
-/**
- * Resolve the Vercel AI SDK model handle for the given model id. Real-LLM
- * paths route through the AI Gateway (AI_GATEWAY_API_KEY); mock paths
- * return the sentinel string which the conversation loop short-circuits
- * before dispatch.
- *
- * Model ids prefixed `anthropic:`, `openai:`, etc. are stripped — the `ai`
- * SDK routes on the plain model string via the gateway, so `anthropic:` is
- * just a namespacing nicety that lived in tenant routes.
- */
 export async function resolveLanguageModel(
   provider: LlmProviderKind,
   modelId: string,
@@ -85,34 +55,12 @@ export async function resolveLanguageModel(
 }
 
 function zodToJson(schema: ZodType): Record<string, unknown> {
-  // Shared boundary helper: draft-7 with deterministic object shapes
-  // (`required: [...]` arrays, no `anyOf` unions for optional fields).
   return zodToJsonSchema7(schema);
 }
 
 export const DEFAULT_PRIMARY_MODEL = "claude-sonnet-4-6";
-// The fallback carries TWO jobs, and they pull in the same direction only if it
-// is the STRONGER model: it absorbs an overloaded primary, and it is where
-// `applyFlowModelElevation` sends `judge` and `generate`. It must also be
-// authoring-capable on its own — a converse turn that dropped to it still has
-// to write correct code — which rules out Haiku.
-//
-// This used to be `claude-sonnet-4-5`, one step BELOW the primary, which
-// inverted the elevation: on a default-configured engine the two
-// quality-critical flows were quietly DOWNGRADED, the opposite of what the
-// elevation exists to do. The nightly judge-calibration job is what surfaced
-// it — it pins no model, so it rode the shipped default and failed while its
-// sibling job, which pins `claude-sonnet-4-6`, passed on the same key.
 export const DEFAULT_FALLBACK_MODEL = "claude-opus-4-7";
 
-/**
- * Snapshot of the global LLM-routing configuration for /health.
- *
- * Surfaces both the env (`LLM_PROVIDER`) and the inferred provider so
- * operators can spot the regression that caused the production
- * `internal_error` cluster: env unset, key present, inferred provider
- * mismatching the dispatch-time fallback.
- */
 export interface GlobalLlmStatus {
   provider_env: string | null;
   inferred_provider: LlmProviderKind | "unconfigured";
@@ -204,20 +152,13 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     .limit(1);
   const tenant = tenantRows[0];
 
-  // v3.5: llm.model / llm.fallback_model are first-class config leaves.
-  // The pre-v3.5 LLM_PRIMARY / LLM_FALLBACK env reads are retired
-  // (see RETIRED_ENV_KEYS in env.ts) — operators who still set them
-  // get a warn at boot. Resolution chain: per-conversation settings →
-  // tenant override → schema-config → DEFAULT_*.
   let cfgModel: string | undefined;
   let cfgFallback: string | undefined;
   try {
     const cfg = getConfig(tenant_id).llm;
     if (cfg.model) cfgModel = cfg.model;
     if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
-  } catch {
-    /* loader not initialised — unit tests fall back to DEFAULT_* */
-  }
+  } catch {}
   const primary =
     settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY_MODEL;
   const fallback =
@@ -225,12 +166,6 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   const provider =
     (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider(tenant_id);
   const fallback_provider = currentFallbackProvider(provider, tenant_id);
-  // Asked of the one function that owns this answer, rather than rebuilt from
-  // the two columns this used to chain. Those columns had no writer, so the
-  // chain could only ever produce `null` while the cap an operator had
-  // actually typed — the `tokens.monthly_budget` config leaf — was read by
-  // nobody. A second derivation of the same cap is how they drifted apart in
-  // the first place.
   const monthly_budget = resolveMonthlyBudget(tenant_id);
 
   return {
@@ -245,28 +180,10 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
   };
 }
 
-// Per-flow env overrides. Lets operators route e.g. "summarize" to a cheaper
-// model and "generate" to a stronger one without any workflow-level config.
-// Variables follow the shape `{FLOW}_LLM_PROVIDER` and `{FLOW}_MODEL` — these
-// must be upper-cased flow names. Unknown / unset variables fall through to
-// the tenant-resolved route.
 function flowEnvKey(flow: LlmFlow): string {
   return flow.toUpperCase();
 }
 
-// Code-level model elevation for quality-critical, LOW-frequency flows.
-//
-// `judge` (post-preview verdicts that gate auto-commit) and `generate`
-// (whole-workflow authoring) each fire roughly once per authoring cycle
-// but decide artifact quality outright, while the chat-frequency flows
-// (converse / extract / summarize / …) dominate token volume. By
-// convention the tenant route's FALLBACK model is the STRONGER one
-// (prod: primary Haiku 4.5, fallback Sonnet 4.6 — the primary is picked
-// for cost, the fallback for capability), so these two flows are routed
-// to the fallback model in code. No env vars: this is shipped behavior,
-// not a toggle. When the route carries no distinct fallback the primary
-// is kept unchanged. `applyFlowEnvOverrides` still applies ON TOP, so a
-// per-flow `{FLOW}_MODEL` operator override wins exactly as before.
 const ELEVATED_FLOWS: ReadonlySet<LlmFlow> = new Set(["judge", "generate"]);
 
 export function applyFlowModelElevation(route: ModelRoute, flow: LlmFlow): ModelRoute {
@@ -276,11 +193,6 @@ export function applyFlowModelElevation(route: ModelRoute, flow: LlmFlow): Model
     ...route,
     primary: route.fallback,
     provider: route.fallback_provider,
-    // The original primary becomes the FALLBACK: an overloaded strong
-    // model degrades to the cheaper model instead of retrying itself —
-    // without this swap, elevation collapsed primary === fallback and
-    // judge/generate failed harder than converse on exactly the
-    // overload path.
     fallback: route.primary,
     fallback_provider: route.provider,
     context_cap: contextCapFor(route.fallback),
@@ -311,24 +223,10 @@ export interface InvokeParams<T = unknown> {
   workflow_id?: string;
   prior_failures?: Parameters<typeof assembleContext>[0]["prior_failures"];
   user_memory?: string;
-  /** When set, run as `generateObject` with submit-tool loop. */
   schema?: ZodType<T>;
   telemetry_metadata?: Record<string, string | number | boolean>;
-  /**
-   * Optional acting principal. The converse flow attributes usage to the
-   * end-user via this field; authoring/system flows (generate/extract/
-   * repair/…) leave it unset → the row is recorded as `system`.
-   */
   principal?: ResolvedPrincipal | null;
-  /** Optional explicit route; otherwise resolved from tenant settings. */
   route?: ModelRoute;
-  /**
-   * Optional caller abort signal. Threaded down to the provider round-trip in
-   * `AiSdkModel`, where it is merged with a per-call hard timeout. Nested
-   * `invoke()`s inside a tool execution pass the turn/pipeline signal here so a
-   * wedged provider connection can't outlive the turn (the STALL fix). When
-   * omitted, the per-call timeout still bounds the call.
-   */
   signal?: AbortSignal;
 }
 
@@ -367,8 +265,6 @@ export async function invoke<T = unknown>(
   params: InvokeParams<T>,
   exec?: Executor,
 ): Promise<InvokeResult<T>> {
-  // `model` is filled in once the route resolves, so the completion/failure
-  // line carries the effective model even though it isn't known at entry.
   const invokeFields: Record<string, unknown> = { flow: params.flow, model: null };
   return instrument({
     module: "llm",
@@ -385,9 +281,6 @@ async function invokeInner<T = unknown>(
 ): Promise<InvokeResult<T>> {
   const db = exec ?? getDb();
   const base_route = params.route ?? (await resolveModelRoute(params.tenant_id, db));
-  // Order matters: code-level elevation first (judge/generate → the
-  // stronger fallback model), then env overrides so an operator's
-  // per-flow override still has the last word.
   const route = applyFlowEnvOverrides(
     applyFlowModelElevation(base_route, params.flow),
     params.flow,
@@ -401,7 +294,6 @@ async function invokeInner<T = unknown>(
     flow: params.flow,
   });
 
-  // 1) Assemble context.
   const assembleParams: Parameters<typeof assembleContext>[0] = {
     tenant_id: params.tenant_id,
     flow: params.flow,
@@ -413,10 +305,6 @@ async function invokeInner<T = unknown>(
   if (params.workflow_id) assembleParams.workflow_id = params.workflow_id;
   if (params.prior_failures) assembleParams.prior_failures = params.prior_failures;
   if (params.user_memory !== undefined) assembleParams.user_memory = params.user_memory;
-  // Memory-delta wrap around the top-level assembly — this is the known
-  // multi-GB per-turn transient (buildModelMessages / prompt construction).
-  // Single rss-delta bracket here rather than nested wraps inside the
-  // assembler keeps the signal attributable without double-counting.
   const assembled = await instrument({
     module: "llm",
     action: "context.assemble",
@@ -425,8 +313,6 @@ async function invokeInner<T = unknown>(
     fn: () => assembleContext(assembleParams, db),
   });
 
-  // 2) Budget pre-check. The user cap (when the actor is a user with a
-  // per-user budget) is an additional ceiling on top of the tenant cap.
   const actor = actorFields(params.principal);
   const estimated = assembled.prompt.token_counts.total + 1024;
   try {
@@ -462,13 +348,11 @@ async function invokeInner<T = unknown>(
     throw err;
   }
 
-  // 3) Dispatch.
   const start = Date.now();
   const result =
     route.provider === "mock"
       ? await dispatchMock<T>(params, route, assembled, start, db)
       : await dispatchReal<T>(params, route, assembled, start, db);
-  // The completion line names the model that answered, not the one asked.
   invokeFields.model = result.model_used;
   return result;
 }
@@ -481,9 +365,6 @@ async function dispatchMock<T>(
   db: Executor,
 ): Promise<InvokeResult<T>> {
   const mock = getMockProvider();
-  // The mock provider reads from `EnhancedPrompt.system` directly, so we
-  // flatten stable+volatile back into a single system string for parity
-  // with the pre-refactor behaviour.
   const flatSystem = [assembled.blocks.stable, assembled.blocks.volatile]
     .filter((s) => s.length > 0)
     .join("\n\n");
@@ -503,8 +384,6 @@ async function dispatchMock<T>(
     });
   } catch (err) {
     if (!(err instanceof LlmProviderError)) throw err;
-    // Record the primary-model error row so observability + test parity
-    // with the pre-refactor provider.ts remains intact.
     await recordUsage(
       {
         tenant_id: params.tenant_id,
@@ -577,12 +456,6 @@ async function dispatchMock<T>(
     cache_read_tokens: res.cache_read_tokens ?? 0,
     cache_creation_tokens: res.cache_creation_tokens ?? 0,
   });
-  // Mock + real dispatch parity: emit the same `LLM_INVOCATION` audit
-  // row dispatchReal writes (below) so integration tests running against
-  // the mock can still assert the audit trail. Without this, a future
-  // refactor that drops the audit write inside `invoke()` would only
-  // fail in production, not in CI. The optional executor routes the
-  // insert to the test DB so disposable-DB tests see it.
   audit(
     {
       tenant_id: params.tenant_id,
@@ -635,9 +508,6 @@ async function dispatchReal<T>(
     content: m.content_parts ?? m.content,
   }));
 
-  // Spread rather than re-shape: the previous `.map` rebuilt each message from
-  // role and content alone, which silently discarded the cache hint that the
-  // line above had just attached.
   const messages: SubkitLlmMessage[] = [...systemMessages, ...userMessages];
 
   const model = new AiSdkModel({
@@ -667,17 +537,10 @@ async function dispatchReal<T>(
     cache_read_tokens: 0,
     cache_creation_tokens: 0,
   };
-  // The model call retries a refused primary on the fallback itself, so which
-  // model answered is read off the answer — never assumed to be the primary.
   let answeredBy: SubkitLlmAnsweredBy = { model_used: route.primary, fell_back: false };
 
   try {
     if (params.schema) {
-      // Every schema flow runs through the same submit/abort tool loop with
-      // `toolChoice: "required"`. The loop is capped at MAX_TOOL_LOOP_ATTEMPTS
-      // (see `ai-sdk-model.ts`); callers can tighten it per-flow via an
-      // explicit `maxAttempts` on the `schema` path once we expose it on
-      // `InvokeParams` (not yet wired — use the default for now).
       const jsonSchema = zodToJson(params.schema);
       const r = await model.generateObject<T>({
         messages,
@@ -704,15 +567,12 @@ async function dispatchReal<T>(
       usage = r.usage;
       answeredBy = r;
       text = r.response;
-      // Attempt best-effort JSON extraction for non-converse flows.
       if (params.flow !== "converse") {
         const extracted = extractJson<T>(text);
         if (extracted !== undefined) object = extracted;
       }
     }
   } catch (err) {
-    // The model call already made the fallback decision and, when it applied,
-    // the fallback attempt; an error reaching here is final.
     const mapped = mapProviderError(err);
     const latency = Date.now() - start;
     await recordUsage(
@@ -739,8 +599,6 @@ async function dispatchReal<T>(
   const providerUsed = fell_back ? route.fallback_provider : route.provider;
 
   if (fell_back) {
-    // The refusal stays on the ledger as an error without output, which
-    // `billedTokenUsage` books at zero — the same row the chat turn writes.
     await recordUsage(
       {
         tenant_id: params.tenant_id,
@@ -792,8 +650,6 @@ async function dispatchReal<T>(
     cache_read_tokens: usage.cache_read_tokens,
     cache_creation_tokens: usage.cache_creation_tokens,
   });
-  // Pass `db` so the row participates in the caller-provided executor
-  // (test DBs, in-flight transactions). Matches the mock dispatch.
   audit(
     {
       tenant_id: params.tenant_id,
@@ -827,18 +683,15 @@ async function dispatchReal<T>(
 }
 
 function extractJson<T>(text: string): T | undefined {
-  // 1) raw text via safeParseJson (raw parse → jsonrepair fallback).
   const direct = safeParseJson<T>(text);
   if (direct !== undefined) return direct;
 
-  // 2) fenced ```json ...``` block.
   const fenceMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
   if (fenceMatch?.[1]) {
     const fenced = safeParseJson<T>(fenceMatch[1]);
     if (fenced !== undefined) return fenced;
   }
 
-  // 3) brace / bracket-balanced slice — last resort for prose-wrapped JSON.
   const braceStart = text.indexOf("{");
   const bracketStart = text.indexOf("[");
   const start =

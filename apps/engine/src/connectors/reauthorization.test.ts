@@ -1,12 +1,3 @@
-// What a person's fresh authorization resolves — and what it leaves alone.
-//
-// The breaker's three columns are written in one place
-// (`circuit-breaker.ts`), so "closed" can never keep the stamp of the trip it
-// recovered from; and `completeConnectorReauthorization` is the one funnel
-// every credential-issuing flow goes through, so each of them resolves the
-// same things: the sign-in flag, its mirror in the stored health verdict, and
-// the breaker — never the on/off switch.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, tenants } from "../db/schema/index.ts";
@@ -28,7 +19,6 @@ let testDb: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 let sequence = 0;
-// Every tenant whose cached views were dropped, in order.
 const invalidated: Array<string | undefined> = [];
 registerTenantStateCache((tenant) => {
   invalidated.push(tenant);
@@ -215,7 +205,6 @@ describe("completeConnectorReauthorization", () => {
   });
 
   test("leaves a verdict that signing in cannot fix", async () => {
-    // A removed endpoint stays removed whoever signs in.
     const connector = await seedConnector({
       needs_reauth: true,
       health_state: "needs_update",
@@ -241,7 +230,6 @@ describe("completeConnectorReauthorization", () => {
 
   test("the rows name the person when there is one", async () => {
     const connector = await seedConnector({ ...OPEN, needs_reauth: true });
-    // Any uuid: the audit row stores the actor as given.
     const actor_id = connector.id;
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
@@ -281,7 +269,6 @@ describe("the tenant's cached views", () => {
     invalidated.length = 0;
     await flagConnectorAuthFailure(testDb.db, flagged, { reason: "credential rejected" });
     expect(invalidated).toEqual([tenantId]);
-    // Hammering a flagged connector is no second edge.
     await flagConnectorAuthFailure(testDb.db, flagged, { reason: "credential rejected" });
     expect(invalidated).toEqual([tenantId]);
 
@@ -290,7 +277,6 @@ describe("the tenant's cached views", () => {
       connector_id: connector.id,
     });
     expect(invalidated).toEqual([tenantId, tenantId]);
-    // Nothing left to resolve: nothing to drop.
     await completeConnectorReauthorization(testDb.db, {
       tenant_id: tenantId,
       connector_id: connector.id,
@@ -317,8 +303,6 @@ describe("settleConnectorReauthorization", () => {
       connector_id: connector.id,
     });
     expect((await read(connector.id)).needs_reauth).toBe(false);
-    // A database that cannot be reached: the credential is stored by then, so
-    // the flow still succeeds and the failure is the log's.
     const broken = {
       execute: () => Promise.reject(new Error("connection refused")),
     } as unknown as typeof testDb.db;

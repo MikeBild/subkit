@@ -90,8 +90,6 @@ describe("error envelope over HTTP", () => {
         headers: { authorization: `Bearer ${ctx.apiKey}` },
       },
     );
-    // Either 404 (not found) or 200 (route only lists own tenant) — assert
-    // that *if* it's an error, the envelope doesn't leak unset fields.
     if (res.status >= 400) {
       const body = (await res.json()) as ErrorBody;
       expect(body.code).toBeTruthy();
@@ -101,24 +99,12 @@ describe("error envelope over HTTP", () => {
   });
 });
 
-// R2-W5 review fix: end-to-end coverage that a 429 emits BOTH the
-// `hint` + `retry_after` body fields AND the `Retry-After` HTTP
-// header in a single response. The unit tests above exercise the
-// envelope construction in isolation; this block stands up the
-// real `errorMiddleware` against a synthetic route that throws
-// `new HttpError(429, …, { hint, retry_after })` and
-// asserts the wire response.
 describe("error envelope wire — 429 hint + retry_after", () => {
   let server: ServerType;
   let baseUrl: string;
 
   beforeAll(async () => {
     const app = new Hono<AppEnv>();
-    // Hono's router resolves `app.onError(...)` BEFORE upstream
-    // middleware catch blocks see a synchronously thrown error
-    // (apps/engine/src/http/server.ts:118). The standalone test app
-    // therefore wires the same `mapKnownErrorResponse` mapping the
-    // engine uses — the assertion below pins the wire shape end-to-end.
     app.onError((err, c) => {
       const known = mapKnownErrorResponse(c, err);
       if (known) return known;

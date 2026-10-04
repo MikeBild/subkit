@@ -1,11 +1,3 @@
-// Regression: conversation 730c568a (audit pattern A1).
-//
-// The direct save_connector_draft tool path bypasses the auto-persist
-// secret-field scrub. Without an explicit guard, an LLM-issued
-// `credential: { mode: "bearer", token: "{{token}}" }` payload would
-// persist the literal placeholder string and every subsequent
-// execution / probe would 401 against `Authorization: Bearer {{token}}`.
-
 import { describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
@@ -97,9 +89,6 @@ describe("save_connector_draft · mustache placeholder guard", () => {
   });
 
   test("real values without {{...}} pass the placeholder guard (further validation may still apply)", async () => {
-    // We only verify the placeholder check itself doesn't fire — the
-    // call goes on to fail with a different gate (no draft connector
-    // yet) which is fine for this regression test's purpose.
     const ctx = makeMinimalCtx();
     const res = await saveConnectorDraftTool.execute(ctx, {
       credential: { mode: "bearer", token: "ghp_realtoken" },

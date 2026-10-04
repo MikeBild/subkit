@@ -40,7 +40,6 @@ describe("HeightCache", () => {
     const c = new HeightCache({ maxEntries: 16 });
     for (let i = 0; i < 20; i++) c.set(`k${i}`, 80, i);
     expect(c.size()).toBe(16);
-    // The first ~4 entries should have been evicted.
     expect(c.get("k0", 80)).toBeUndefined();
     expect(c.get("k19", 80)).toBe(19);
   });
@@ -48,10 +47,8 @@ describe("HeightCache", () => {
   test("touch on get prevents eviction", () => {
     const c = new HeightCache({ maxEntries: 16 });
     for (let i = 0; i < 15; i++) c.set(`k${i}`, 80, i);
-    // Touch the oldest two.
     c.get("k0", 80);
     c.get("k1", 80);
-    // Adding 4 more should evict NEW-ish entries before k0/k1.
     for (let i = 15; i < 19; i++) c.set(`k${i}`, 80, i);
     expect(c.get("k0", 80)).toBe(0);
     expect(c.get("k1", 80)).toBe(1);

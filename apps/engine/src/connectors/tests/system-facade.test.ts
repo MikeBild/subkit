@@ -1,8 +1,3 @@
-// Smoke test for the `ConnectorSystem` facade. The facade is a thin
-// orchestrator over `getConnectorForEnvironment` + `getCredentialForConnector`
-// + `listDocs`; the underlying primitives have their own coverage. This
-// file proves the facade composes them correctly.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -133,7 +128,6 @@ describe("ConnectorSystem facade", () => {
       ctx.db,
     );
 
-    // Asking for prod when only dev exists falls back to the dev row.
     const sys = await loadConnectorSystem(tenant_id, created.id, "prod", ctx.db);
     expect(sys).not.toBeNull();
     expect(sys!.id).toBe(created.id);

@@ -1,10 +1,3 @@
-// rerun_execution tool — faithful rerun of a saved-workflow execution.
-//
-// Mirrors POST /v1/executions/{id}/rerun: same workflow_version_id as
-// the original, original input by default (overridable), lineage via
-// parent_execution_id + source_ref.rerun_of. Confirm-gated via
-// tool-policies (it triggers real connector calls).
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executions } from "../../../../db/schema/index.ts";
@@ -16,7 +9,6 @@ import { sampleWorkflowOutputForLlm } from "../../truncate.ts";
 const RerunInput = z
   .object({
     execution_id: z.string().uuid(),
-    /** Override the original input. Omit to reuse it verbatim. */
     input: z.unknown().optional(),
   })
   .openapi("RerunExecutionToolInput");

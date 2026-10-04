@@ -1,15 +1,3 @@
-// User story: As an AI agent, I want to discover workflows and resources
-// over the Model Context Protocol and run a workflow inline, so that
-// agents can automate against the engine without bespoke glue.
-// Acceptance criteria:
-//   - AC1: An MCP client that connects over Streamable HTTP can list
-//          tools and see the seeded workflow.
-//   - AC2: `tools/call` runs the workflow through the engine and returns
-//          a parseable result.
-//   - AC3: `resources/read` on a `connector://<id>` URI returns the
-//          connector metadata.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -39,7 +27,6 @@ beforeAll(async () => {
   const addr = mock.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
 
-  // Seed a connector so the agent can `resources/read` it.
   const createConn = await journeyFetch(ctx, "/v1/connectors", {
     method: "POST",
     body: JSON.stringify({
@@ -53,7 +40,6 @@ beforeAll(async () => {
   });
   connectorId = ((await createConn.json()) as { id: string }).id;
 
-  // Seed a workflow.
   workflowSlug = "mcp-probe";
   const createWf = await journeyFetch(ctx, "/v1/workflows", {
     method: "POST",

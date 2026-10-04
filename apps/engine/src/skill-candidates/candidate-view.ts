@@ -2,11 +2,6 @@ import type { skillCandidates } from "../db/schema/skills.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import type { SkillCandidateView } from "./types.ts";
 
-/** Convert a DB row to a view. evidence_count defaults to 0 — callers that
- *  need the real count should query the relational evidence table. */
-/** Kinds a person never adopts: they feed drafting prompts as context
- *  (an authoring capability) or name a symptom (a failure pattern), so
- *  activating one as a skill would teach nothing. */
 const ADVISORY_PATTERN_KINDS: ReadonlySet<string> = new Set([
   "failure_pattern",
   "authoring_capability",
@@ -16,8 +11,6 @@ export function isAdvisoryPatternKind(kind: string): boolean {
   return ADVISORY_PATTERN_KINDS.has(kind);
 }
 
-/** Approving a candidate the view marks not reviewable is refused on every
- *  surface — the Cockpit hides the action, the engine owns the rule. */
 export class AdvisoryCandidateError extends Error {
   constructor(readonly candidate_id: string) {
     super("an advisory skill candidate cannot be approved");
@@ -73,7 +66,6 @@ export function toView(
   };
 }
 
-/** Refuse to adopt an advisory candidate, whichever surface asked. */
 export function assertAdoptable(row: { id: string; pattern_kind: string }): void {
   if (isAdvisoryPatternKind(row.pattern_kind)) throw new AdvisoryCandidateError(row.id);
 }

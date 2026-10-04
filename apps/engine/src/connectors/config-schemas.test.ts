@@ -1,10 +1,3 @@
-// Per-driver config validation.
-//
-// The behaviour under test is the one that changed: graphql and s3 configs are
-// now checked when they are written. Before, only http was — everything else
-// returned early, was stored as given, and failed later inside the driver with
-// a message naming the connector id instead of the bad field.
-
 import { describe, expect, test } from "bun:test";
 import {
   CONNECTOR_CONFIG_SCHEMAS,
@@ -20,15 +13,12 @@ import { AuthTypeEnum, DriverEnum } from "./types.ts";
 
 describe("every driver has a config schema", () => {
   test("the registry covers DriverEnum exactly", () => {
-    // Drift here is how a new driver silently gets no validation at all.
     expect(Object.keys(CONNECTOR_CONFIG_SCHEMAS).sort()).toEqual([...DriverEnum.options].sort());
   });
 });
 
 describe("s3 — the missing bucket is caught at write time", () => {
   test("a config without bucket is rejected", () => {
-    // The driver throws `missing config.bucket` on first use. Catching it here
-    // means the author sees the field name while they are still authoring.
     const issues = validateConnectorConfig("s3", { region: "eu-central-1" });
     expect(issues.length).toBeGreaterThan(0);
     expect(issues.some((i) => i.path === "bucket")).toBe(true);
@@ -39,8 +29,6 @@ describe("s3 — the missing bucket is caught at write time", () => {
   });
 
   test("unknown keys are accepted", () => {
-    // The s3 driver has always ignored what it does not read. Rejecting extras
-    // here would turn configs that work today into write errors.
     expect(validateConnectorConfig("s3", { bucket: "b", legacy_flag: true })).toEqual([]);
   });
 
@@ -63,8 +51,6 @@ describe("graphql", () => {
 
 describe("http keeps its strictness", () => {
   test("an unknown key is still rejected", () => {
-    // http has always been `.strict()`. This pins that the registry did not
-    // quietly relax it while making the other drivers permissive.
     const issues = validateConnectorConfig("http", { timeout_ms: 1000, nope: true });
     expect(issues.length).toBeGreaterThan(0);
   });
@@ -75,8 +61,6 @@ describe("http keeps its strictness", () => {
 });
 
 describe("an absent config is valid everywhere", () => {
-  // `config` is optional on create, and a patch that does not mention it must
-  // not be treated as an attempt to write an empty one.
   for (const driver of DriverEnum.options) {
     test(`${driver} accepts undefined and null`, () => {
       expect(validateConnectorConfig(driver, undefined)).toEqual([]);
@@ -160,8 +144,6 @@ describe("mcp", () => {
   });
 
   test("refuses stdio — the pool does not serve a local subprocess", () => {
-    // Encoding the refusal here turns a handshake-time throw into an
-    // authoring-time message, which is what this file is for.
     const issues = validateConnectorConfig("mcp", { mcp: { transport: "stdio" } });
     expect(issues.length).toBeGreaterThan(0);
     expect(issues[0]?.path).toBe("mcp.transport");
@@ -177,9 +159,6 @@ describe("mcp", () => {
   });
 
   test("refuses an inlined secret in the auth block", () => {
-    // Secret-by-reference: the credential lives encrypted in `credentials`.
-    // The DB CHECK is the backstop for writers that bypass Zod; this is the
-    // gate for the ones that do not.
     const issues = validateConnectorConfig("mcp", {
       mcp: { transport: "http", auth: { kind: "bearer", token: "sk-live-abc" } },
     });
@@ -187,8 +166,6 @@ describe("mcp", () => {
   });
 
   test("bounds the per-connector call timeout", () => {
-    // The timeout is what stops a hung remote from holding the turn's tool
-    // mutex; an unbounded override would remove that guarantee.
     expect(
       validateConnectorConfig("mcp", {
         mcp: { transport: "http", remote_tool_call_timeout_ms: 10_000_000 },
@@ -203,11 +180,6 @@ describe("mcp", () => {
 });
 
 describe("auth kinds are scoped to the driver that can honour them", () => {
-  // `AuthTypeEnum` is one enum every driver shares, so the two
-  // machine-to-machine MCP kinds would otherwise be offered to every driver by
-  // the generated contract. The HTTP driver throws on both rather than sign a
-  // request with one, so accepting them there would store a connector that
-  // cannot complete a call.
   for (const auth_type of MCP_ONLY_AUTH_TYPES) {
     test(`${auth_type} is accepted for mcp`, () => {
       expect(validateConnectorAuthType("mcp", auth_type)).toEqual([]);
@@ -252,7 +224,6 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
   });
 
   test("an absent auth_type is not an issue", () => {
-    // A patch that does not mention `auth_type` leaves the stored value alone.
     expect(validateConnectorAuthType("http", undefined)).toEqual([]);
     expect(validateConnectorAuthType("http", null)).toEqual([]);
   });

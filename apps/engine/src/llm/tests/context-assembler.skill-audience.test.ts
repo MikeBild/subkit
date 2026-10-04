@@ -1,7 +1,3 @@
-// A skill's `applies_to` decides which prompts it enters: a chat-only skill
-// never reaches a workflow-drafting prompt, a drafting-only skill never a chat
-// prompt — whether it arrives through the scope index or the loaded set.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createSkill } from "../../skills/service.ts";
 import { assembleEnhancedPrompt, promptSkillAudience } from "../core/context-assembler.ts";

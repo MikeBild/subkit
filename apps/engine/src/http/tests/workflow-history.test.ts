@@ -1,17 +1,3 @@
-// Workflow version history and restore over the HTTP surface.
-//
-//   * GET /v1/workflows/:id/history is a read-only view of what was stored.
-//     A version saved under an earlier definition schema is listed with its
-//     dag unchanged and `invalid: true` — it does not fail the whole list.
-//   * POST /v1/workflows/:id/restore/:version stays strict: a version that no
-//     longer validates is refused with a typed `version_not_restorable`, and
-//     the refusal writes nothing.
-//   * History is newest first; `limit` / `offset` page it in the query and
-//     `total` is the exact count regardless of the page.
-
-//   * Both routes keep their permission gates: history needs `workflow:read`,
-//     restore needs `workflow:restore`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -19,9 +5,7 @@ import { apiKeys, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
-/** May read workflows, and nothing else — in particular not restore them. */
 const readKey = "wf_live_ro_history_test_key_000000001";
-/** Holds no workflow permission at all. */
 const unrelatedKey = "wf_live_no_history_test_key_000000001";
 
 beforeAll(async () => {
@@ -53,8 +37,6 @@ const currentSteps = (value: number) => [
   { kind: "transform", id: "out", language: "javascript", expression: `return ${value};` },
 ];
 
-// A definition as it was valid under an earlier schema: `jsonata` is no longer
-// a transform language, so today's schema rejects the step.
 const INVALID_DAG = {
   name: "invalid-history",
   slug: "invalid-history",
@@ -88,8 +70,6 @@ async function updateWorkflow(id: string, name: string, value: number): Promise<
   if (!res.ok) throw new Error(`workflow update failed: ${res.status} ${await res.text()}`);
 }
 
-/** Store a version the way an earlier engine wrote it — straight into the
- *  table, because the current write path would refuse the definition. */
 async function insertStoredVersion(workflow_id: string, version: number, dag: unknown) {
   await ctx.db
     .insert(workflowVersions)
@@ -114,8 +94,6 @@ describe("workflow history with a version stored under an earlier schema", () =>
     const [invalid, current] = body.items;
     expect(current?.invalid).toBe(false);
     expect(invalid?.invalid).toBe(true);
-    // The stored definition comes back as stored — not parsed, defaulted or
-    // stripped on the way out.
     expect(invalid?.dag).toEqual(INVALID_DAG);
   });
 
@@ -146,8 +124,6 @@ describe("workflow history with a version stored under an earlier schema", () =>
       step_id: "shape",
     });
 
-    // The refusal happens before any write: no restored version row, and the
-    // workflow still points at the version it pointed at.
     const stored = await ctx.db
       .select({ version: workflowVersions.version })
       .from(workflowVersions)
@@ -201,7 +177,6 @@ describe("workflow history pagination", () => {
     expect(page.items.map((v) => v.version)).toEqual([3, 2]);
     expect(page.total).toBe(4);
 
-    // Paging past the end is an empty page, not a wrong total.
     const beyond = (await (await history(wf.id, "?limit=2&offset=10")).json()) as {
       items: VersionItem[];
       total: number;
@@ -212,8 +187,6 @@ describe("workflow history pagination", () => {
 
   test("a read that names no limit gets one bounded page, and the total to page by", async () => {
     const wf = await createWorkflow("unpaged-history");
-    // Every row carries its full definition and is checked against the
-    // schema, so an unpaged read is a page — not the whole history.
     for (let version = 2; version <= 61; version += 1) {
       await insertStoredVersion(wf.id, version, {
         name: "unpaged-history",
@@ -229,7 +202,6 @@ describe("workflow history pagination", () => {
     expect(unpaged.items[0]?.version).toBe(61);
     expect(unpaged.items.at(-1)?.version).toBe(12);
 
-    // The rest is one more page away.
     const rest = (await (await history(wf.id, "?limit=200&offset=50")).json()) as {
       items: VersionItem[];
     };
@@ -253,7 +225,6 @@ describe("workflow history and restore permissions", () => {
 
     expect((await fetch(historyUrl, { headers: headers(readKey) })).status).toBe(200);
     expect((await fetch(historyUrl, { headers: headers(unrelatedKey) })).status).toBe(403);
-    // Reading the history is not a licence to make an old version live.
     expect((await restoreAs(readKey)).status).toBe(403);
     expect((await restoreAs(unrelatedKey)).status).toBe(403);
   });

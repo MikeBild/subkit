@@ -1,5 +1,3 @@
-// Unit tests for predictable slash-command search.
-
 import { describe, expect, test } from "bun:test";
 import { type PersonaProbe, searchSlashCommands } from "../slash.ts";
 

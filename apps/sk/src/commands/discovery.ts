@@ -117,12 +117,6 @@ const createCommand = defineCommand({
         .split(",")
         .map((p: string) => p.trim())
         .filter(Boolean);
-      // First register each file in the unified `files` table so the
-      // discovery run carries a dedup-able audit trail. The legacy
-      // multipart route is still the persistence path until the
-      // engine accepts file_ids directly — the file rows + links
-      // ensure every CLI surface funnels through `uploadInline` /
-      // `batchCreateFiles` (the upload-paths-parity guarantee).
       const fileRows = await Promise.all(paths.map((p) => uploadPath(client, p, { quiet: true })));
       const files = paths.map((p: string) => ({
         name: basename(p),
@@ -138,9 +132,7 @@ const createCommand = defineCommand({
               resource_type: "discovery_run",
               resource_id: runId,
             });
-          } catch {
-            /* best-effort — the run already owns its bytes */
-          }
+          } catch {}
         }
       }
       printJson(run);

@@ -1,13 +1,3 @@
-// RBAC + tenant-isolation negatives, and the audit-on-state-change invariant.
-//
-// Three personas (admin/member/enduser) against one tenant. Asserts the
-// auth gate rejects the unauthenticated + under-privileged, that a foreign
-// `x-subkit-tenant` header cannot broaden an api key's tenant, and that
-// every state-changing call lands an immutable audit row (a state change
-// without an audit row is itself a finding per AGENTS.md).
-//
-// LLM: none — boot mock to stay hermetic.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { seedConnector, seedWorkflow, uniqueSuffix } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
@@ -74,8 +64,6 @@ describe("tenant isolation", () => {
       "/v1/executions?limit=5",
     ]) {
       const res = await api.get(path, { tenant: foreign });
-      // Header ignored (200, own tenant) or rejected (4xx) — never 5xx,
-      // never another tenant's data.
       expect(res.status).toBeLessThan(500);
     }
   }, 30_000);
@@ -92,7 +80,6 @@ describe("audit on state change", () => {
     const serialized = JSON.stringify(audit.body);
     expect(serialized).toContain("connector.created");
     expect(serialized).toContain("workflow.created");
-    // The specific resources we just created are present in the trail.
     expect(serialized.includes(connectorSlug) || serialized.includes("connector.created")).toBe(
       true,
     );

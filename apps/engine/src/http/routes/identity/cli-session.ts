@@ -1,7 +1,3 @@
-// POST /v1/identity/cli-session — one-time OAuth-to-personal-key exchange for
-// the `sk` CLI. The credential is authenticated by its dedicated OAuth
-// audience and scope, not by the normal API RBAC middleware.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { readRequestSource } from "../../../audit/index.ts";

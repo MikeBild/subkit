@@ -1,15 +1,3 @@
-// attachments.ts — parser + resolver tests against the unified
-// `files` + `file_links` resource.
-//
-// Wave-C Step 6 collapsed the legacy `conversation_attachments` table
-// + in-process MEMORY_STORE into the canonical files resource. The
-// tests below exercise the new surface:
-//   - `parseAttachmentSlugs` (chat-text token scan, pure)
-//   - `resolveAttachmentSlugsInText` (slug → `[file:fid_...]` rewriter
-//     scoped to `file_links WHERE resource_type='conversation'`)
-//   - `walkAndResolve` (JSON `$file` ref → ResolvedFile, the canonical
-//     tenant-isolation chokepoint).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { parseFileId } from "../../api/files-schemas.ts";
 import { conversations, tenants } from "../../db/schema/index.ts";
@@ -176,7 +164,6 @@ describe("walkAndResolve — JSON `$file` resolver", () => {
   });
 
   test("cross-tenant fid → FileNotFoundError (chokepoint)", async () => {
-    // Create another tenant + conversation; attach a file there.
     const [otherT] = await ctx.db
       .insert(tenants)
       .values({ slug: "t-att-2", display_name: "T2" })
@@ -193,12 +180,10 @@ describe("walkAndResolve — JSON `$file` resolver", () => {
       content: "cross-leak",
       slug: "isolated",
     });
-    // Resolve from OUR tenant — must throw.
     const cache = new Map<string, ResolvedFile>();
     await expect(
       walkAndResolve<unknown>({ $file: att.file_id }, { db: ctx.db, tenant_id }, cache),
     ).rejects.toBeInstanceOf(FileNotFoundError);
-    // Sanity — the file does exist under its real tenant.
     const okCache = new Map<string, ResolvedFile>();
     const out = await walkAndResolve<unknown>(
       { $file: att.file_id },
@@ -206,7 +191,6 @@ describe("walkAndResolve — JSON `$file` resolver", () => {
       okCache,
     );
     expect((out as ResolvedFile).filename).toBe("isolated.txt");
-    // Ensure the wire id parses back to the underlying uuid.
     expect(parseFileId(att.file_id)).toBe(att.file_uuid);
   });
 
@@ -227,7 +211,7 @@ describe("walkAndResolve — JSON `$file` resolver", () => {
     );
     const a = (out as ResolvedFile[])[0]!;
     const b = (out as ResolvedFile[])[1]!;
-    expect(a).toBe(b); // identity-equal — cache populated on the first walk
+    expect(a).toBe(b);
     expect(cache.size).toBe(1);
   });
 });

@@ -15,9 +15,6 @@ let pgConnectorId: string;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("postgres-step");
-  // Seed a postgres connector pointing at the same test database the
-  // engine harness already provisioned. Reusing the test DB keeps the
-  // fixture self-contained — no second container, no second migration.
   const [c] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -33,7 +30,6 @@ beforeAll(async () => {
     })
     .returning();
   pgConnectorId = c!.id;
-  // Seed a tiny table the workflow can SELECT from.
   await ctx.testDb.pool.query(
     "CREATE TABLE IF NOT EXISTS pg_step_widgets (id int PRIMARY KEY, name text NOT NULL)",
   );
@@ -193,8 +189,6 @@ describe("request step · postgres connector dispatch", () => {
             query: "INSERT INTO pg_step_uniq (id, label) VALUES (2, 'newly_added')",
             also: [
               {
-                // Unique constraint violation — should rollback the
-                // first insert.
                 query: "INSERT INTO pg_step_uniq (id, label) VALUES (3, 'taken')",
               },
             ],
@@ -217,7 +211,6 @@ describe("request step · postgres connector dispatch", () => {
 
   test("sql.cursor streams rows via server-side cursor", async () => {
     await ctx.testDb.pool.query("CREATE TABLE IF NOT EXISTS pg_step_audit (id int PRIMARY KEY)");
-    // Seed enough rows to span multiple cursor batches.
     await ctx.testDb.pool.query(
       "INSERT INTO pg_step_audit (id) SELECT i FROM generate_series(1, 25) AS i ON CONFLICT DO NOTHING",
     );
@@ -353,11 +346,9 @@ describe("request step · postgres connector dispatch", () => {
           sql: {
             query: "UPDATE pg_step_per_stmt SET val = 7 WHERE id = $1",
             params: [1],
-            // First statement OK (1 row updated, exact match).
             also: [
               {
                 query: "UPDATE pg_step_per_stmt SET val = 9 WHERE id IN (1, 2)",
-                // Second statement updates 2 rows but we assert exactly 999 — must roll back.
                 expected_row_count: 999,
               },
             ],
@@ -374,7 +365,6 @@ describe("request step · postgres connector dispatch", () => {
     });
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("expected_row_count_mismatch");
-    // First statement's row write must have rolled back: val for id=1 stays 0.
     const after = await ctx.testDb.pool.query("SELECT val FROM pg_step_per_stmt WHERE id = 1");
     expect(after.rows[0]!.val).toBe(0);
   });

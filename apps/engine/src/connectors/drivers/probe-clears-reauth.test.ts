@@ -1,20 +1,3 @@
-// A successful probe closes the re-auth state machine's clearing edge.
-//
-// `connectors/reauth.ts` documents the machine as
-//   healthy ──auth failure──▶ needs_reauth=true
-//   needs_reauth=true ──successful authed call──▶ healthy
-// but nothing used to walk the second edge except a workflow step, and the
-// flag itself makes workflow steps unavailable: `workflows/effect-resolution.ts`
-// lists every step on a flagged connector as unavailable (holding the schedule)
-// and `execution/prepared-workflow-references.ts` refuses the prepared run that
-// would have made the healing call. A connector flagged in error was therefore
-// stranded, with a live credential, until a human re-authenticated it.
-//
-// A probe is a successful authenticated call, so it now clears the flag. These
-// tests pin the edge and its two guards: a failed probe proves nothing, and a
-// draft probe (`credential_override`) proves something about the material the
-// caller supplied, not about the persisted row.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
@@ -30,7 +13,6 @@ import { probeConnector } from "./index.ts";
 let ctx: TestDb;
 let tenantId: string;
 let mock: MockServer;
-/** Flipped per test so one fixture can answer healthy or reject the credential. */
 let probeStatus = 200;
 
 beforeAll(async () => {
@@ -51,7 +33,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A flagged bearer connector with a real stored credential, as a probe sees it. */
 async function seedFlaggedConnector(name: string): Promise<ConnectorView> {
   const created = await createConnector(
     {
@@ -127,7 +108,5 @@ test("a draft probe with a supplied credential never clears the persisted flag",
     credential_override: { mode: "bearer", token: "supplied-by-caller" },
   });
   expect(result.ok).toBe(true);
-  // The success says the SUPPLIED material works. The stored row is untouched,
-  // so a caller cannot launder an unrelated secret into a clean bill of health.
   expect(await readFlag(connector.id)).toBe(true);
 });

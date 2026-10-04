@@ -1,16 +1,3 @@
-// Why an approval gate holds a workflow, and what removes it — asked once.
-//
-// The gate already says what is wrong in four places: the manifest's issues,
-// the request and storage refusals beside it, the connectors that cannot
-// serve, and — after approval — the step a granted run was refused at. Each
-// surface used to read one of them and infer the rest. `diagnoseWorkflow` is
-// the single producer: every surface (HTTP, the conversation tools, the
-// automation review, the repair queue) reads the same diagnoses, so a remedy
-// shown in one place is the remedy proposed in another.
-//
-// It only reads. Proposing a repair is `proposeGateRepairs` in self-healing;
-// this module looks up a candidate that already exists, never creates one.
-
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -52,30 +39,18 @@ export type GateDiagnosisCode =
   | "execution_authority_changed"
   | "connector_unavailable";
 
-/** What kind of act removes the block. `patch` is the only one a fixer can
- *  perform; the others name what a person (or an author) has to do. */
 export type GateRemedyKind = "patch" | "prepare" | "declare" | "reconnect" | "author";
 
 export interface GateDiagnosis {
   code: GateDiagnosisCode;
-  /** The report gate's own rule the message broke (or how it differs from
-   *  its declaration), when the gate named one. */
   reason?: ReportDeliveryRefusal;
   subject: { step_id: string; field?: string };
   evidence: {
-    /** The run the diagnosis rests on, when it rests on one. */
     execution_id?: string;
-    /** Addresses a successful inspection observed — never message content. */
     observed?: Omit<ReportDeliveryBoundary, "kind">;
   };
   remedy_kind: GateRemedyKind;
-  /** Present only when a deterministic fixer computes the repair. It can be
-   *  proposed only when the diagnosis `is_current`; on a draft it names the
-   *  change to make in the draft. */
   fixer?: GateFixer;
-  /** The open repair candidate for this diagnosis, when one was proposed.
-   *  Candidates are filed against the active version only, so a draft's
-   *  diagnosis never carries one. */
   candidate_id?: string;
 }
 
@@ -83,13 +58,10 @@ export interface WorkflowDiagnosis {
   workflow_id: string;
   workflow_version_id: string | null;
   environment: "dev" | "prod";
-  /** Whether the diagnosed version is the one runs use. A repair can only be
-   *  proposed against the current version — a draft is diagnosed, not fixed. */
   is_current: boolean;
   diagnoses: GateDiagnosis[];
 }
 
-/** The wire shape of a diagnosis — the same object every surface returns. */
 export const GateDiagnosisSchema = z
   .object({
     code: z.string(),
@@ -124,22 +96,13 @@ export const WorkflowDiagnosisSchema = z
 type Preview = Awaited<ReturnType<typeof previewWorkflowAuthority>>;
 type HeldEvidence = Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
 
-/** A loop body records `send[0]`, `send[1]`, … — the same step. */
 const stepKeyOf = (key: string) => key.replace(/\[[0-9]+\]$/, "");
-/** The same suffix as a Postgres regular expression. */
 const LOOP_SUFFIX = "\\[[0-9]+\\]$";
 
 export function gateEndpointKey(code: string): string {
   return `gate:${code}`;
 }
 
-/**
- * Diagnose a workflow's saved version in one environment.
- *
- * The version is the draft when there is one and the current version
- * otherwise — the same choice the automation review makes. `preview` and
- * `held` let a caller that already computed them avoid a second pass.
- */
 export async function diagnoseWorkflow(
   db: Executor,
   tenant_id: string,
@@ -188,7 +151,6 @@ export async function diagnoseWorkflow(
       ),
     )
     .limit(1);
-  // A version asked for by id that is not this workflow's is not found, not clean.
   if (!version) return options.version_id ? null : { ...base, diagnoses: [] };
   const preview = options.preview ?? (await previewWorkflowAuthority(input, db));
   const held =
@@ -197,16 +159,10 @@ export async function diagnoseWorkflow(
   const diagnoses = collapse(
     await buildDiagnoses(db, { ...input, definition: version.dag, preview, held, refused }),
   );
-  // A repair is filed against the active version only (`proposeGateRepair`
-  // re-diagnoses that one), so only its diagnosis can point at a candidate.
   if (base.is_current) await attachCandidates(db, input, diagnoses);
   return { ...base, diagnoses };
 }
 
-/** The newest step a granted run of exactly this version was refused at and
- *  no later granted run of that version has since got past.
- *  Read from the step row — the run's own record — not from the audit log,
- *  whose reasons sit behind their own read permission. */
 async function newestRefusedStep(
   db: Executor,
   input: {
@@ -239,16 +195,7 @@ async function newestRefusedStep(
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         isNotNull(executions.execution_authority_id),
-        // Only the refusal that says the approval no longer fits the
-        // materialized request. Other governance refusals (a request outside a
-        // declared boundary, an authority that ran out) are not this block and
-        // are diagnosed by the preview, not relabelled here.
         sql`${executionSteps.error}->>'code' = 'execution_authority_changed'`,
-        // A refusal is history once a later granted run of the same version
-        // completed that very step for real: the approval fits again, and
-        // naming the old refusal would send a person to repair what works.
-        // "Later" is decided in SQL against the refused run's own timestamp —
-        // never a JavaScript Date, which drops the microseconds.
         notExists(
           db
             .select({ one: sql`1` })
@@ -300,8 +247,6 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
   const out: GateDiagnosis[] = [];
   const refusedSteps = new Set<string>();
   for (const refusal of preview.request_refusals) {
-    // A refusal inside a called workflow is repaired THERE; this workflow can
-    // only name the call step that starts it.
     const step_id = refusal.call_path?.[0] ?? refusal.step_id;
     refusedSteps.add(step_id);
     if (refusal.call_path) {
@@ -316,8 +261,6 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     out.push({ code: refusal.reason, subject: { step_id }, evidence: {}, remedy_kind: "author" });
   }
   for (const issue of preview.manifest.issues) {
-    // `dynamic_request` is what every refusal above explains in detail; the
-    // generic code beside its specific reason would be the same block twice.
     if (issue.code === "dynamic_request" && refusedSteps.has(issue.step_id)) continue;
     out.push({
       code: issue.code,
@@ -335,10 +278,6 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
     });
   }
   if (refused) {
-    // A refusal recorded before refusals named their rule carries no reason.
-    // The newest held capture of this very step can still name it: the same
-    // message, inspected without sending. Only with neither is a preparation
-    // the remedy — it is what records the missing evidence.
     const reason = reportRefusalReason(refused.error) ?? heldReason(input, refused.step_id);
     const subject = { step_id: refused.step_id };
     out.push(
@@ -360,8 +299,6 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
   return out;
 }
 
-/** The operations a diagnosis's fixer computes against a definition, or null
- *  when it has no fixer or the definition no longer supports the fix. */
 export function planForDiagnosis(
   definition: unknown,
   diagnosis: GateDiagnosis,
@@ -379,35 +316,22 @@ export function planForDiagnosis(
 
 const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
 
-/** Refusals a byte-per-character encoder produces and the UTF-8 one removes. */
 const ENCODER_REASONS: ReadonlySet<string> = new Set([
   "not_utf8",
   "header_control_byte",
 ] satisfies ReportMessageRefusal[]);
 
-/** Whether the newest held capture inspected this step's message at all. */
 function heldInspected(input: DiagnosisInput, step_id: string): boolean {
   const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
   return step?.report_delivery_inspection !== undefined;
 }
 
-/** The newest held capture's refusal of the report profile for this step. */
 function heldReason(input: DiagnosisInput, step_id: string): ReportMessageRefusal | null {
   const step = input.held?.steps.find((entry) => stepKeyOf(entry.step_id) === step_id);
   const inspection = step?.report_delivery_inspection;
   return inspection && !inspection.ok ? inspection.reason : null;
 }
 
-/**
- * What removes a report refusal, decided by its reason.
- *
- * - A message the binary encoder broke: swap the encoder, when exactly one
- *   whole-string reference leads to exactly one encoder call; else author it.
- * - Any other message outside the profile: author it — no fixer guesses MIME.
- * - No message refusal at all (a step no preparation reaches, or a message
- *   addressed differently from its declaration): declare what a successful
- *   inspection of this very step observed, when one was recorded.
- */
 async function reportRemedy(
   db: Executor,
   input: DiagnosisInput,
@@ -450,10 +374,6 @@ async function requestDiagnosis(
     case "report_delivery_unobserved":
     case "report_delivery_contradicted": {
       const reason = heldReason(input, step_id);
-      // Unobserved without a recorded reason. A capture that predates message
-      // inspections recorded nothing about this step: the evidence is missing,
-      // not the message wrong, and a fresh preparation records it. Only a
-      // capture that did inspect and still observed nothing is the author's.
       if (code === "report_delivery_unobserved" && !reason)
         return {
           code,
@@ -473,13 +393,6 @@ async function requestDiagnosis(
   }
 }
 
-/**
- * The newest recorded successful inspection of this very step against the
- * report target, from a held run of exactly the diagnosed version in this
- * environment.
- * The declaration copies what a run observed — never what a transform's
- * source text appears to say.
- */
 async function successfulObservation(db: Executor, input: DiagnosisInput, step_id: string) {
   const rows = await db
     .select({
@@ -499,8 +412,6 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
       and(
         eq(executionSteps.tenant_id, input.tenant_id),
         eq(executions.workflow_id, input.workflow_id),
-        // Only this version's runs: another version's message may be built
-        // and addressed differently, and its observation proves nothing here.
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         eq(executions.hold_writes, true),
@@ -518,8 +429,6 @@ async function successfulObservation(db: Executor, input: DiagnosisInput, step_i
         report_delivery_inspection?: { ok?: unknown };
       };
     } | null;
-    // Only a capture that recorded a successful inspection: a proposal
-    // without its verdict predates the recording and proves nothing here.
     if (
       meta?.extras?.held !== true ||
       meta.url !== GMAIL_SEND_TARGET ||
@@ -538,12 +447,6 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * One diagnosis per fix. A held preview and a refused granted run can name the
- * same cause under two codes; proposing both would put the same operations in
- * front of a person twice. The first diagnosis wins — the gate's own preview
- * comes before the run evidence — and keeps the run's id when it had none.
- */
 function collapse(diagnoses: GateDiagnosis[]): GateDiagnosis[] {
   const byFix = new Map<string, GateDiagnosis>();
   const seen = new Set<string>();
@@ -567,13 +470,6 @@ function collapse(diagnoses: GateDiagnosis[]): GateDiagnosis[] {
   return out;
 }
 
-/**
- * Gate-repair candidates proposed against exactly this version, newest first.
- *
- * Matched by the step and the fixer, not by the gate code: a held preview and
- * a refused granted run name the same cause under different codes, and the
- * repair they call for is one and the same.
- */
 export async function findGateCandidate(
   db: Executor,
   input: { tenant_id: string; workflow_id: string; workflow_version_id: string },
@@ -607,7 +503,6 @@ export async function findGateCandidate(
   );
 }
 
-/** Attach the open gate-repair candidate for each fixable diagnosis. */
 async function attachCandidates(
   db: Executor,
   input: { tenant_id: string; workflow_id: string; workflow_version_id: string },

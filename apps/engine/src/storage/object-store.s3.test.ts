@@ -1,20 +1,3 @@
-// S3ObjectStore — integration tests against a real S3 server.
-//
-// Spins one up via Docker (see `tests/object-store-fixture.ts`). Gated on
-// `dockerAvailable()` so laptops without Docker exit 0 without failing. Tests
-// the full ObjectStore surface against a real S3-compatible endpoint.
-
-// A case that could not run must report SKIP, never PASS.
-//
-// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the docker gate used to be a bare
-// `return` in each test body. Under `SKIP_DOCKER=1` (how CI's test shards run)
-// the run reported "20 pass, 0 skip" for this group while 15 of those cases had
-// asserted nothing. A count that cannot distinguish "verified" from "never ran"
-// is not evidence, and it is the number a release reads.
-//
-// The probe therefore happens once, at module scope, and the suites are gated
-// with `describe.skipIf` / `test.skipIf` so bun counts them as skipped.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import {
@@ -26,7 +9,6 @@ import { MULTIPART_PART_BYTES, S3ObjectStore } from "./object-store.ts";
 
 const BUCKET = `sk-objstore-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
-// Module scope, so the result is known before bun builds the test list.
 const DOCKER = await dockerAvailable();
 let objectStore: ObjectStoreFixture | null = null;
 let store: S3ObjectStore | null = null;
@@ -44,9 +26,7 @@ beforeAll(async () => {
   });
   try {
     await bootstrap.makeBucket(BUCKET);
-  } catch {
-    // may already exist
-  }
+  } catch {}
   store = new S3ObjectStore({
     endpoint: objectStore.endpoint,
     region: "us-east-1",

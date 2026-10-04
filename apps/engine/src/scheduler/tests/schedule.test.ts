@@ -1,13 +1,3 @@
-// Insert a workflows_schedules row with a sub-minute `every:1` cron
-// expression. Run the reconciler and assert the execution.run worker
-// picks up a job within 3 seconds.
-//
-// Deviation: the plan literally says cron '* * * * * *'. pg-boss only
-// supports 5-field cron with minute resolution, so we use the engine's
-// `every:<seconds>` shorthand which is reconciled locally via
-// setInterval. Standard 5-field cron is validated + scheduled via
-// pg-boss and covered by unit tests on parseCronExpression below.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
@@ -61,7 +51,6 @@ describe("scheduler reconciler", () => {
       input: { from: "test" },
     });
 
-    // Wire the execution.run worker so the enqueued job actually runs.
     await registerExecutionRunHandler({ boss: ctx.boss, db: ctx.engine.testDb.db });
 
     const reconciler = new SchedulerReconciler({
@@ -72,7 +61,6 @@ describe("scheduler reconciler", () => {
     await reconciler.start();
 
     try {
-      // Wait for at least one execution row to appear for this workflow.
       // allow-wall-clock: this test exercises real-time polling or freshness windows.
       const deadline = Date.now() + 5_000;
       let rowCount = 0;
@@ -106,10 +94,6 @@ describe("scheduler reconciler", () => {
     }
   }, 20_000);
 
-  // #17: a transient enqueue failure during a cron fire must NOT silently
-  // drop the occurrence. The watermark is stamped before firing; if the
-  // fire throws, the catch compensates by restoring it so the next tick
-  // retries — instead of the run being lost until the next natural cron.
   test("a failed fire restores last_enqueued_at (the run is not lost)", async () => {
     const { workflow_id } = await createWorkflowRow(ctx.engine, {
       name: "sched-compensate",
@@ -126,15 +110,10 @@ describe("scheduler reconciler", () => {
         timezone: "UTC",
         paused: false,
         input: { from: "test" },
-        // Backdate creation so the never-fired schedule is genuinely due:
-        // a fresh schedule waits for its first cron occurrence AFTER
-        // creation, so an at-now created_at could park this for up to a
-        // minute and let the test pass vacuously.
         created_at: new Date(getTestNow() - 120_000),
       })
       .returning();
 
-    // Reconciler whose enqueue always throws (simulated transient blip).
     const failingBoss = {
       send: async () => {
         throw new Error("transient enqueue failure");
@@ -148,9 +127,6 @@ describe("scheduler reconciler", () => {
 
     await reconciler.reconcileWorkflowSchedules(new Date(getTestNow()));
 
-    // The watermark must be back to NULL (compensated) — proving the
-    // occurrence will be retried, not silently consumed. Pre-fix it would
-    // be stamped to the fire time and the run lost.
     const [after] = await ctx.engine.testDb.db
       .select()
       .from(workflowsSchedules)
@@ -158,10 +134,6 @@ describe("scheduler reconciler", () => {
     expect(after?.last_enqueued_at).toBeNull();
   }, 20_000);
 
-  // A fresh schedule must fire at its first cron occurrence AFTER
-  // creation — not immediately on the next reconciler pass. Observed
-  // live: a daily-07:00 report created mid-morning sent a surprise
-  // email two minutes later, then again at the real 07:00.
   test("a fresh cron schedule waits for its first occurrence after creation", async () => {
     const db = ctx.engine.testDb.db;
     const { workflow_id } = await createWorkflowRow(ctx.engine, {
@@ -170,7 +142,6 @@ describe("scheduler reconciler", () => {
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
     await grantScheduleAuthorityFixture(db, ctx.engine.tenantId, workflow_id);
-    // 07:00 Europe/Berlin (DST) = 05:00 UTC; created two minutes before.
     const createdAt = new Date("2026-07-04T04:57:00Z");
     const [sched] = await db
       .insert(workflowsSchedules)
@@ -192,7 +163,6 @@ describe("scheduler reconciler", () => {
       intervalMs: 60_000,
     });
 
-    // One pass shortly after creation: NOT due — pre-fix this fired.
     await reconciler.reconcileWorkflowSchedules(new Date("2026-07-04T04:59:00Z"));
     let [row] = await db
       .select()
@@ -200,7 +170,6 @@ describe("scheduler reconciler", () => {
       .where(eq(workflowsSchedules.id, sched!.id));
     expect(row?.last_enqueued_at).toBeNull();
 
-    // One pass after the first real occurrence: fires (watermark stamps).
     await reconciler.reconcileWorkflowSchedules(new Date("2026-07-04T05:00:30Z"));
     [row] = await db.select().from(workflowsSchedules).where(eq(workflowsSchedules.id, sched!.id));
     expect(row?.last_enqueued_at).not.toBeNull();

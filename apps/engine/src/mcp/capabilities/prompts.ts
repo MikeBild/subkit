@@ -1,10 +1,3 @@
-// Skills → MCP prompts.
-//
-// Skills are hand-authored LLM-context records; each active skill becomes
-// an MCP prompt named `skill.<id-slice>` with the skill title as the
-// description. `prompts/get` returns the body as a single user message
-// followed by each example (if any) as assistant messages.
-
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   ErrorCode,
@@ -28,7 +21,6 @@ const PREFIX = "skill_";
 const PROMPT_LIST_CHANGED_DEBOUNCE_MS = 250;
 
 function toName(id: string): string {
-  // Keep the full uuid so ids are unambiguous.
   return `${PREFIX}${id}`;
 }
 
@@ -113,9 +105,7 @@ export function registerPromptsCapability(p: RegisterPromptsParams): void {
     if (typeof priorOnClose === "function") {
       try {
         priorOnClose();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   };
 

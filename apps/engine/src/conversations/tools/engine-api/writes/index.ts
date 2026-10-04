@@ -1,8 +1,3 @@
-// Hand-written tenant-write tool barrel. All tools:
-//   - category: "tenant_write"
-//   - write an audit_log row before returning
-//   - surface structured errors when the tenant state disallows the op.
-
 import type { ConversationTool } from "../../index.ts";
 import { analyzeKnowledgeSourceTool } from "./analyze-knowledge-source.ts";
 import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";

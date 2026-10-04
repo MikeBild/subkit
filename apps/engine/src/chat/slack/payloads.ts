@@ -1,44 +1,8 @@
-// Zod-validated Slack inbound payload shapes.
-//
-// `SlackAdapter.receive()` used to walk the raw payload with `as`
-// narrowings — a missing field silently became `""` and percolated to
-// the dispatcher as `workspace_id: ""` (which then matches no
-// `chat_workspaces` row and lands in the unknown-workspace audit
-// branch). Slack also evolves its envelope; a new optional field is
-// harmless but a renamed required one would silently drop events.
-//
-// This module is the SINGLE parse choke-point for all four Slack
-// inbound shapes:
-//
-//   - event_callback / app_mention
-//   - event_callback / message  (IM channel; bot-echo filter applied
-//     later by the adapter, not the schema)
-//   - block_actions
-//   - view_submission
-//   - slash command (form-encoded; adapter wraps form fields under
-//     `__slack_form: true` before parsing)
-//
-// All schemas use `.passthrough()` so unknown Slack-added fields don't
-// reject the payload. Required fields are strictly typed (`workspace_id`,
-// `user_id`, etc. MUST be present). `parseSlackInboundPayload` returns
-// a tagged union the adapter switches on; on a parse failure it returns
-// `{ kind: "unknown", issues, raw }` and the adapter logs + throws so
-// the malformed event surfaces in metrics rather than dispatching with
-// silently-defaulted IDs.
-
 import { z } from "zod";
-
-// ---------------------------------------------------------------------
-// Common building blocks
-// ---------------------------------------------------------------------
 
 const ChannelObj = z.object({ id: z.string().min(1) }).passthrough();
 const UserObj = z.object({ id: z.string().min(1) }).passthrough();
 const TeamObj = z.object({ id: z.string().min(1) }).passthrough();
-
-// ---------------------------------------------------------------------
-// Events API — event_callback envelopes
-// ---------------------------------------------------------------------
 
 const AppMentionInner = z
   .object({
@@ -60,9 +24,6 @@ const MessageImInner = z
     text: z.string().default(""),
     ts: z.string().min(1),
     thread_ts: z.string().optional(),
-    // Bot-echo filter fields — present means "this is the bot's own
-    // message; drop it". The schema accepts them; the adapter applies
-    // the filter after parsing.
     bot_id: z.string().optional(),
     subtype: z.string().optional(),
     app_id: z.string().optional(),
@@ -77,10 +38,6 @@ const EventCallback = z
     event: z.union([AppMentionInner, MessageImInner, z.object({}).passthrough()]),
   })
   .passthrough();
-
-// ---------------------------------------------------------------------
-// Block-Kit interactions (`block_actions`, `view_submission`)
-// ---------------------------------------------------------------------
 
 const BlockAction = z
   .object({
@@ -109,11 +66,6 @@ const BlockActionsPayload = z
     state: z.object({ values: StateValuesShape }).passthrough().optional(),
   })
   .passthrough()
-  // The adapter computes workspace_id = team?.id ?? team_id ?? ""; an
-  // empty workspace_id matches no chat_workspaces row and the queue
-  // worker drops the event. Reject at the parse boundary so the
-  // rejection surfaces in adapter-level metrics instead of slipping
-  // through as a silent dispatcher drop.
   .refine((d) => Boolean(d.team?.id ?? d.team_id), {
     message: "block_actions requires `team.id` or `team_id`",
   });
@@ -138,10 +90,6 @@ const ViewSubmissionPayload = z
     message: "view_submission requires `team.id` or `team_id`",
   });
 
-// ---------------------------------------------------------------------
-// Slash command (form-encoded; wrapped by the adapter)
-// ---------------------------------------------------------------------
-
 const SlashFormPayload = z
   .object({
     __slack_form: z.literal(true),
@@ -153,10 +101,6 @@ const SlashFormPayload = z
     trigger_id: z.string().optional(),
   })
   .passthrough();
-
-// ---------------------------------------------------------------------
-// Tagged-union parser
-// ---------------------------------------------------------------------
 
 export type ParsedSlackPayload =
   | {
@@ -254,6 +198,5 @@ export function parseSlackInboundPayload(raw: unknown): ParsedSlackPayload {
   return { kind: "unknown", reason: `unrecognised top-level type: ${String(r.type)}` };
 }
 
-// Re-export the inner types for the adapter's narrowing convenience.
 export type ParsedBlockActions = z.infer<typeof BlockActionsPayload>;
 export type ParsedViewSubmission = z.infer<typeof ViewSubmissionPayload>;

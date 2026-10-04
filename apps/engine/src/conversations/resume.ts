@@ -1,14 +1,6 @@
+import { refreshDraftSummary } from "./authoring-state.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import { resumeFormFields } from "./resume-form.ts";
-// Resume summary for conversations.
-//
-// Surfaces a single-sentence "where were we / what next" banner whenever
-// someone reattaches to an existing conversation (either via /resume or by
-// fetching the detail endpoint while the conversation is neither active
-// nor a single-turn session). Purely a projection over the persisted
-// conversation row + draft — no side effects, no model calls.
-
-import { refreshDraftSummary } from "./authoring-state.ts";
 import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";
 
 type ConnectorProbe = NonNullable<NonNullable<DraftDocument["connector"]>["latest_probe"]>;
@@ -37,8 +29,6 @@ export interface ResumeSummary {
       external_tool?: ExternalToolSubject;
     };
     summary: string;
-    /** When this approval lapses. The only real deadline in the product;
-     *  without it a client cannot tell "running out" from "just waiting". */
     expires_at: string;
   } | null;
   next_action: string;
@@ -54,21 +44,13 @@ export interface BuildResumeSummaryParams {
     tool_name: string;
     input?: unknown;
     summary?: string | null;
-    /** ISO instant the prompt lapses. Carried through so the resume banner —
-     *  and the decision queue reading it — can say how long is left. */
     expires_at: string;
   } | null;
 }
 
-/**
- * True when re-attaching this conversation is genuinely a "resume" — i.e.
- * there is prior work to carry forward. A brand-new, one-turn, or already
- * committed conversation does not need a resume banner.
- */
 export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boolean {
   const { conversation, draft } = params;
   if (conversation.status === "committed" || conversation.status === "abandoned") return false;
-  // A pending question is actionable even before any draft exists.
   if (params.pendingElicitation) return true;
   if (!draft) return false;
   const hasConnectorDraft = draft.connector !== undefined && draft.connector !== null;
@@ -291,11 +273,6 @@ function buildOneSentence(p: OneSentenceInputs): string {
   }
 }
 
-/** What an external MCP tool approval asks about, as data a client can phrase
- *  in its own language: the connector's registered name, the server's tool
- *  name, and — optionally — one line the SERVER says about its tool. That line
- *  is the server's claim, unverified; a client shows it attributed to the
- *  server, never as the engine's own statement. */
 export interface ExternalToolSubject {
   connector: string;
   tool: string;
@@ -314,7 +291,6 @@ function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
   };
 }
 
-/** Project the dialog fields only; never expose its execution or approval capability. */
 export function pendingPrompt(input: unknown): {
   prompt?: {
     question: string;
@@ -342,9 +318,7 @@ export function pendingPrompt(input: unknown): {
         !url.password
       )
         authorizationUrl = value.authorization_url;
-    } catch {
-      /* Invalid destinations are never clickable. */
-    }
+    } catch {}
   }
   return {
     prompt: {

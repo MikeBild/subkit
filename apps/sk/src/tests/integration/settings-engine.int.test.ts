@@ -1,11 +1,3 @@
-// Settings UI ↔ engine integration via the draft store.
-//
-// Verifies the survival contract: a partial draft persists across
-// SettingsApp open/close cycles within a session, scoped per
-// (profile, tenant). No live engine call needed — this exercises the
-// draft store directly, since SettingsApp doesn't expose its internal
-// state on unmount yet.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   _resetDraftStoreForTests,
@@ -23,7 +15,6 @@ describe("integration: settings draft survives close+reopen", () => {
       scrollTop: 12,
       expandedKeys: ["model"],
     });
-    // Simulate a close+reopen cycle.
     const snap1 = loadDraft("admin", "t-x");
     expect(snap1.partialFieldEdits["model.default"]).toBe("claude-haiku");
     expect(snap1.scrollTop).toBe(12);

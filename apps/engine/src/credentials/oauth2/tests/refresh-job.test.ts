@@ -1,9 +1,3 @@
-// Integration tests for handleRefreshJob — the `connector.refresh-oauth`
-// pg-boss job body fed by the scheduler's keep-alive sweep
-// (runOAuth2RefreshKeepAliveForTenant). Same mock-IdP fixture as
-// refresh.test.ts, but driven through the job entry point: load row by id,
-// guard, decrypt via the service, delegate to refreshIfStale.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
@@ -84,14 +78,12 @@ describe("connector.refresh-oauth job", () => {
       },
       ctx.db,
     );
-    // Backdate updated_at so the "token last exercised" bump is observable.
     const backdated = new Date("2026-01-01T00:00:00.000Z");
     await ctx.db
       .update(credentials)
       .set({ updated_at: backdated })
       .where(eq(credentials.id, row.id));
 
-    // Wait past expiry so the job's refreshIfStale actually refreshes.
     await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: token-refresh skew window for the OAuth2 fixture clock
     mock.setExpiresIn(3600);
 
@@ -104,7 +96,6 @@ describe("connector.refresh-oauth job", () => {
     expect(persisted!.value.access_token).not.toBe(initial.access_token);
     expect(persisted!.row.updated_at.getTime()).toBeGreaterThan(backdated.getTime());
 
-    // Immediate second run: token is fresh for 3600s → no second IdP hit.
     const issuedBefore = mock.issuedCount();
     await handleRefreshJob(ctx.db, { tenant_id: tenantId, credential_id: row.id });
     expect(mock.issuedCount()).toBe(issuedBefore);

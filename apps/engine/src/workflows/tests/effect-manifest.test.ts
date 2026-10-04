@@ -291,8 +291,6 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
   const input = fixture({
     method: "DELETE",
     path: undefined,
-    // A removal carries no body; the default fixture body would be refused, which
-    // is itself the behaviour asserted in the boundary suite.
     body: undefined,
     s3: {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
@@ -312,14 +310,8 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
   const result = compileWorkflowEffectManifest(input);
   expect(result.manifest.issues).toEqual([]);
   expect(result.eligible_for_repeated_runs).toBe(true);
-  // The reviewer must still see what this step does. Only the blocking issue is
-  // lifted; the effect itself is unchanged.
   expect(result.manifest.effects[0]?.effect).toBe("destructive");
   expect(result.manifest.effects[0]?.storage?.max_deletes).toBe(500);
-  // Strip the ceiling from the stored binding and the boundary no longer parses
-  // at all, so the compile fails loudly instead of quietly returning an
-  // ineligible manifest. That is the fail-closed direction: a DELETE boundary
-  // without a ceiling is not a workflow to report on, it is an impossible input.
   const { max_deletes: _ceiling, ...noCeiling } = storage;
   expect(() =>
     compileWorkflowEffectManifest({
@@ -327,8 +319,6 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
       bindings: [{ ...input.bindings[0], storage: noCeiling }],
     }),
   ).toThrow("max_deletes");
-  // A ceiling that is present but tampered still parses, so it takes the normal
-  // digest-mismatch route and simply becomes ineligible.
   expect(
     compileWorkflowEffectManifest({
       ...input,
@@ -337,9 +327,6 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
   ).toBe(false);
 });
 
-// An author-declared request boundary. The fixture base carries a path on
-// purpose: the reviewed target must be the one dispatch resolves, not the one
-// `new URL(path, base)` would produce.
 function boundaryFixture(request: Record<string, unknown> = {}) {
   const input = fixture({
     method: "POST",
@@ -395,10 +382,6 @@ test("a stored boundary that no longer reproduces from the step is a mismatch", 
 });
 
 test("a refused boundary does not fall back to an unchecked read-query exemption", () => {
-  // Shaped like a read query (GET, static path, runtime query value) but the
-  // author ALSO wrote a `boundary`, which this slice must refuse for a query
-  // placeholder. The step used to stay exempt as a read query while the
-  // read_query assert was suppressed — exempt, and checked by nothing.
   const input = fixture({
     method: "GET",
     path: "/reports",
@@ -426,9 +409,7 @@ test("an HTTP removal is grantable only when its author declared it destructive"
   });
   const result = compileWorkflowEffectManifest(declared.input);
   expect(result.manifest.issues).toEqual([]);
-  // Still shown as what it is.
   expect(result.manifest.effects[0]?.effect).toBe("destructive");
-  // Without the declaration no boundary compiles, so both issues stand.
   const undeclared = boundaryFixture({
     method: "DELETE",
     body: undefined,

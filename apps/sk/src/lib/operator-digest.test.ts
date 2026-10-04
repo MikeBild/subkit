@@ -1,6 +1,3 @@
-// The sk side of the attention list: what the model is told at REPL start and
-// what `sk login` prints.
-
 import { describe, expect, test } from "bun:test";
 import type { EngineClient, OperatorHealthDigest } from "../engine-client.ts";
 import { digestAsContext, fetchOperatorDigest, riskSummaryLine } from "./operator-digest.ts";

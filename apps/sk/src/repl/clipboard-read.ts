@@ -1,21 +1,3 @@
-// Cross-platform clipboard reader. Used by the `/paste` slash command
-// to insert clipboard content into the composer. Writes go through cli-core's
-// osc52Copy; reads need a platform-specific shell-out because OSC 52
-// paste is rarely supported.
-//
-// macOS  — `pbpaste`                        (text)
-//          `pbpaste -Prefer png`            (image bytes)
-// Linux  — `xclip -selection clipboard -o`  (text)
-//          `xclip -selection clipboard -t image/png -o`
-//          (falls back to `wl-paste` on Wayland)
-// Win32  — PowerShell `Get-Clipboard`       (text)
-//          PowerShell `Get-Clipboard -Format Image` is more involved;
-//          we write the PNG to a temp file via an inline script.
-//
-// All functions resolve with `{ kind: "none" }` on any failure. The
-// REPL treats that as a dismissible "clipboard empty" notice — never a
-// crash.
-
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,26 +10,20 @@ export type ClipboardRead =
 
 const DEFAULT_TIMEOUT_MS = 1500;
 
-/** Read the system clipboard, preferring image content if available. */
 export function readClipboard(opts: { timeoutMs?: number } = {}): ClipboardRead {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  // 1. Image path — try png first, fall back to text.
   const img = tryReadImage(timeoutMs);
   if (img.kind !== "none") return img;
-  // 2. Text path.
   const txt = tryReadText(timeoutMs);
   if (txt.kind !== "none") return txt;
   return { kind: "none" };
 }
-
-// ---------- Text ----------
 
 function tryReadText(timeoutMs: number): ClipboardRead {
   switch (process.platform) {
     case "darwin":
       return runCapture(["pbpaste"], timeoutMs);
     case "linux":
-      // Try xclip first, wl-paste second.
       return (
         runCapture(["xclip", "-selection", "clipboard", "-o"], timeoutMs) ??
         runCapture(["wl-paste", "-n"], timeoutMs) ?? { kind: "none" }
@@ -73,8 +49,6 @@ function runCapture(argv: string[], timeoutMs: number): ClipboardRead {
   }
 }
 
-// ---------- Image ----------
-
 function tryReadImage(timeoutMs: number): ClipboardRead {
   switch (process.platform) {
     case "darwin":
@@ -90,11 +64,8 @@ function tryReadImage(timeoutMs: number): ClipboardRead {
 
 function tryReadImageMacos(timeoutMs: number): ClipboardRead {
   try {
-    // `pbpaste -Prefer png` streams the PNG bytes to stdout when an
-    // image is on the clipboard; otherwise it exits empty.
     const res = spawnSync("pbpaste", ["-Prefer", "png"], {
       timeout: timeoutMs,
-      // Buffer up to 10MB of image data.
       maxBuffer: 10 * 1024 * 1024,
     });
     if (res.error || res.status !== 0) return { kind: "none" };
@@ -139,7 +110,6 @@ function tryReadImageWindows(timeoutMs: number): ClipboardRead {
     });
     if (res.error || res.status !== 0) return { kind: "none" };
     if (!res.stdout?.includes("OK")) return { kind: "none" };
-    // We don't have the buffer here — read the file stat for size.
     try {
       const { statSync } = require("node:fs");
       const st = statSync(tmpPath);
@@ -151,8 +121,6 @@ function tryReadImageWindows(timeoutMs: number): ClipboardRead {
     return { kind: "none" };
   }
 }
-
-// ---------- Helpers ----------
 
 function isPngHeader(buf: Buffer): boolean {
   return (
@@ -175,14 +143,6 @@ function writeTempImage(buf: Buffer, ext: string): string {
   return path;
 }
 
-// ---------- Attachment classification helper ----------
-
-/**
- * Classify a filesystem path into a paste-store kind. Images go into
- * `addImage`; everything else (markdown, pdf, docx, xls, code, etc.)
- * is a generic file reference — the engine-side mention resolver
- * handles whatever content makes sense for that MIME type.
- */
 export function classifyAttachment(path: string): { kind: "image" | "file"; mediaType: string } {
   const ext = extname(path).toLowerCase();
   const imageExt = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic"]);

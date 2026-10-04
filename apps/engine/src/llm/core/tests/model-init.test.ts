@@ -51,14 +51,8 @@ function clearEnv() {
   for (const k of TRACKED) delete process.env[k];
 }
 
-// The transport an AI-SDK model dispatches over. `@ai-sdk/openai` (pinned at
-// 3.0.x) tags chat-completions models `openai.chat` and Responses-API models
-// `openai.responses` on the public `provider` field — the cleanest stable
-// signal for which route resolveOpenAi pinned, without standing up an HTTP
-// stub. If a future SDK bump re-tags these, update the two constants below —
-// they are the single grep target for both assertions.
-const OPENAI_CHAT_TRANSPORT = "openai.chat"; // POST /chat/completions
-const OPENAI_RESPONSES_TRANSPORT = "openai.responses"; // POST /v1/responses
+const OPENAI_CHAT_TRANSPORT = "openai.chat";
+const OPENAI_RESPONSES_TRANSPORT = "openai.responses";
 function modelTransport(model: unknown): string {
   return (model as { provider: string }).provider;
 }
@@ -69,9 +63,6 @@ describe("initializeModel", () => {
   beforeEach(() => {
     snapshotEnv();
     clearEnv();
-    // v3.5: drop any config state leaked from earlier suites; readEnv
-    // reads getConfig() first and the schema's "mock" default would
-    // override these env-driven assertions otherwise.
     _resetConfigForTests();
   });
   afterEach(() => {
@@ -135,9 +126,6 @@ describe("initializeModel", () => {
     const r = await initializeModel();
     expect(r.provider).toBe("openai");
     expect(r.modelId).toBe("qwen-3-32b");
-    // `.chat()` builds an `openai.chat` model (POST /chat/completions); the
-    // default callable would be `openai.responses` (POST /v1/responses), which
-    // a custom OpenAI-compatible host does not implement.
     expect(modelTransport(r.model)).toBe(OPENAI_CHAT_TRANSPORT);
   });
 

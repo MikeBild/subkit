@@ -1,7 +1,3 @@
-// Unit tests for the ScrollView primitive — windowing, auto-pin,
-// keyboard scrolling. Lives in @chat-ui because multiple `sk`
-// surfaces consume it.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { Text } from "ink";
 import { cleanup, render } from "ink-testing-library";
@@ -24,11 +20,6 @@ function mount(children: React.ReactNode, height = 5): ReturnType<typeof render>
 }
 
 async function tick(ms = 80): Promise<void> {
-  // Settle window for the Ink renderer's effect chain. 20ms is enough
-  // on an idle machine but flakes under the parallel `bun test` runner
-  // when contention pushes the auto-pin effect past the assertion. 80ms
-  // is still microscopic relative to the test's wall time and survives
-  // CI load.
   await new Promise((r) => setTimeout(r, ms)); // allow-wall-clock
 }
 
@@ -39,7 +30,6 @@ describe("ScrollView", () => {
     const instance = mount(rows(20), 5);
     await tick();
     const frame = instance.lastFrame() ?? "";
-    // With 20 rows and a 5-row viewport, auto-pin shows rows 15..19.
     expect(frame).toContain("row-019");
     expect(frame).toContain("row-015");
     expect(frame).not.toContain("row-000");
@@ -63,12 +53,9 @@ describe("ScrollView", () => {
   test("PgUp scrolls back a viewport height", async () => {
     const instance = mount(rows(20), 5);
     await tick();
-    // PgUp = 0x1b 0x5b 0x35 0x7e (CSI 5~). Ink's parser handles it.
     instance.stdin.write("\u001b[5~");
     await tick(30);
     const frame = instance.lastFrame() ?? "";
-    // After one PgUp (jump = viewport - 1 = 4) from offset 15 → offset 11.
-    // Rows shown: 11..15.
     expect(frame).toContain("row-011");
     expect(frame).toContain("row-015");
     expect(frame).toContain("more below");

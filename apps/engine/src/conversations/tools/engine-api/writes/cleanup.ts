@@ -31,16 +31,7 @@ export const deleteWorkflowTool: ConversationTool = {
       return wf ? wf.id : null;
     },
   },
-  // NOT `requires_persisted_workflow`: this resolves an EXISTING workflow by
-  // explicit id/slug against the live table (see resolution below), it is the
-  // same class of cleanup op as delete_connector, and it has no `{}`-no-args
-  // loop failure mode (the input schema requires id or slug). Flagging it made
-  // the step-router drop it from the palette whenever no workflow was bound to
-  // the conversation, so "delete workflow X" on a fresh chat had no tool to
-  // reach for and the model fell back to delete_connector. See step-router.ts.
   async execute(ctx, args: z.infer<typeof WorkflowDeleteInput>) {
-    // RBAC (`workflow:delete`) is enforced centrally via the `permission`
-    // descriptor before execute runs — see permission-gate.ts.
     let workflow: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
     if (args.id) {
       workflow = await ctx.engineClient.workflows.get(args.id);
@@ -53,8 +44,6 @@ export const deleteWorkflowTool: ConversationTool = {
     try {
       ok = await ctx.engineClient.workflows.delete(workflow.id);
     } catch (err) {
-      // Translate Postgres errors (FK violations from running
-      // executions, schedules, hooks) into typed error_codes.
       const translated = translateAutoPersistError(err, "delete_workflow");
       logger.warn({
         module: "conversation_tool",

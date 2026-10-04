@@ -1,10 +1,3 @@
-// skills.activates_when migration round-trip — exercises the columns
-// added in 0006_skill_metadata_overhaul.sql against a real Postgres
-// container, then writes a row through the seed loader to prove
-// (a) the legacy auto_load / trigger_keywords columns are gone,
-// (b) the new activates_when + capability/safety columns persist
-//     without coercion.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { SeededSkill } from "../../skills/seed.ts";
@@ -12,7 +5,6 @@ import { applySkillSeeds } from "../../skills/seed.ts";
 import { skills, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: TestDb;
@@ -40,7 +32,6 @@ describe.skipIf(skip)("migration 0006 — skills column shape", () => {
     const present = new Set(rows.rows.map((r: Record<string, unknown>) => r.column_name as string));
     expect(present.has("auto_load")).toBe(false);
     expect(present.has("trigger_keywords")).toBe(false);
-    // The kept columns + new columns must all exist.
     for (const expected of [
       "gates_tools",
       "activates_when",
@@ -56,10 +47,6 @@ describe.skipIf(skip)("migration 0006 — skills column shape", () => {
   });
 
   test("check constraints on side_effects / idempotency / maturity reject bad values", async () => {
-    // INSERT a row with a bad enum-like value. Constraint check rejects
-    // at write time. Wrapping in Promise.resolve because drizzle's PgRaw
-    // is awaitable but isn't recognized as a Promise by bun-test's
-    // `.rejects` matcher.
     let threw = false;
     try {
       await Promise.resolve(

@@ -1,29 +1,3 @@
-// Recipe-quality lint. Runs in `bun run verify` before `test:determinism`.
-//
-// Catches authoring mistakes that the Zod parser accepts but the LLM
-// or operator UI cannot rank against:
-//
-//   1. `intent_keywords` outside [3, 7], not lowercased, or duplicated
-//      with `title` words (would inflate match scores spuriously).
-//   2. `sample_input` set without `workflow.input_schema` (or vice-versa
-//      when `input_schema` declares required fields and `sample_input`
-//      omits them).
-//   3. Multi-connector recipes (`required_connectors[]` non-empty)
-//      whose declared placeholder UUIDs do not appear inside any
-//      `workflow.steps[*].connector_id`.
-//   4. Per-step coverage of `WorkflowDefSchema` primitives — every
-//      step kind (`request`, `transform`, `call`, `wait`, `branch`,
-//      `parallel`, `loop`) should have at least one recipe
-//      demonstrating it. CI fails on regressions in this coverage.
-//   5. `category` membership in `RecipeCategoryEnum` (the Zod parser
-//      already enforces this; lint surfaces it before parse for a
-//      better error message).
-//
-// Exit 0 = green, exit 1 = at least one violation.
-//
-// Per `bun run verify` convention: prints a one-line "OK" on success
-// and structured per-recipe errors on failure, so CI logs stay scannable.
-
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -40,19 +14,7 @@ type Recipe = {
     name?: string;
     input_schema?: Record<string, unknown>;
     steps?: Array<Record<string, unknown>>;
-    /**
-     * Optional trigger envelope. `kind` selects how the engine wakes the
-     * workflow: `request` (default, externally invoked), `webhook`
-     * (inbound URL bound by the workflow service reconciler), or
-     * `schedule` (cron + tz bound by the scheduler reconciler).
-     */
     trigger?: { kind?: string; [k: string]: unknown };
-    /**
-     * Optional per-run LLM token budget. Recipes that call an LLM step
-     * declare a positive cap so the engine token meter aborts a runaway
-     * run before it overspends. Tracked as the `budgeted-llm` primitive
-     * in the coverage map so it stays a regression net.
-     */
     max_llm_tokens_per_run?: number;
   };
 };
@@ -86,20 +48,6 @@ const RECIPE_CATEGORY_ENUM = new Set([
 
 const STEP_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 
-/**
- * Workflow-level (non-step) primitives the lint also tracks so the
- * coverage map catches accidental removal of a recipe demonstrating
- * each one. These do not live inside `workflow.steps[*].kind`:
- *
- *   - `webhook`       — `workflow.trigger.kind === "webhook"`
- *   - `schedule`      — `workflow.trigger.kind === "schedule"`
- *   - `budgeted-llm`  — `workflow.max_llm_tokens_per_run > 0`
- *
- * These primitives are demonstrated by the Stripe charge-failed
- * webhook recipe, the Stripe daily-charges-digest schedule recipe,
- * and the structured-extraction budgeted recipe. The baseline below
- * pins each at >=1.
- */
 const WORKFLOW_FEATURE_KINDS = ["webhook", "schedule", "budgeted-llm"] as const;
 
 type Violation = { template: string; recipe: string; rule: string; message: string };
@@ -137,10 +85,6 @@ function lintIntentKeywords(template: string, recipe: Recipe): Violation[] {
     }
     seen.add(k);
   }
-  // Title-word overlap: an intent_keyword that is just a single word
-  // already in the title contributes no information beyond the title
-  // itself. Multi-word phrases overlapping the title are fine
-  // (they bring phrasing variation).
   const titleWords = new Set(
     recipe.title
       .toLowerCase()
@@ -188,7 +132,6 @@ function lintSampleInputAlignment(template: string, recipe: Recipe): Violation[]
   const sample = recipe.sample_input;
   const schema = recipe.workflow.input_schema;
   if (sample == null && schema == null) return [];
-  // If the schema declares required props, sample_input must satisfy them.
   if (
     sample != null &&
     schema != null &&
@@ -225,9 +168,6 @@ function lintSampleInputAlignment(template: string, recipe: Recipe): Violation[]
 function lintRequiredConnectors(template: string, recipe: Recipe): Violation[] {
   const required = recipe.required_connectors ?? [];
   if (required.length === 0) return [];
-  // Every declared placeholder must appear at least once in a step's
-  // connector_id field. Lets multi-connector recipes fail fast on
-  // typos before the cloned draft hits dry-run.
   const seenPlaceholders = new Set<string>();
   for (const step of recipe.workflow.steps ?? []) {
     const cid = (step as { connector_id?: unknown }).connector_id;
@@ -258,8 +198,6 @@ function buildPrimitiveCoverage(templates: Template[]): Record<string, number> {
         const kind = (step as { kind?: unknown }).kind;
         if (typeof kind === "string" && kind in counts) counts[kind] += 1;
       }
-      // Workflow-level primitives. A recipe contributes at most once to
-      // each: e.g. a webhook trigger counts the recipe, not each step.
       const trigger = r.workflow.trigger;
       const triggerKind =
         typeof trigger === "object" && trigger != null && typeof trigger.kind === "string"
@@ -277,30 +215,16 @@ function buildPrimitiveCoverage(templates: Template[]): Record<string, number> {
 }
 
 function lintPrimitiveCoverage(templates: Template[]): Violation[] {
-  // Demonstration recipes backfill each step primitive. Once a
-  // primitive crosses zero, lint pins it at ≥1 to catch regressions.
-  // Coverage is logged to stdout; CI fails only when a previously-covered
-  // primitive drops to zero.
   const counts = buildPrimitiveCoverage(templates);
   const out: Violation[] = [];
-  // The starting baseline. As demonstration recipes for new primitives
-  // ship, raise this map (e.g. `branch: 1`) so CI catches accidental
-  // removal.
   const baseline: Record<string, number> = {
     request: 1,
     transform: 1,
-    // Demonstration recipes bumped these to ≥1. `call` is lifted once
-    // the relevant executor wiring lands. Never drop a primitive below
-    // its prior baseline — CI fails on regression.
     branch: 1,
     parallel: 1,
     wait: 1,
     loop: 1,
     call: 0,
-    // Workflow-level feature primitives. Each kind has at least one
-    // shipped recipe — the eval suite under
-    // `apps/engine/eval/fixtures/recipe-*.json` pins those recipes
-    // to their declared shape, this baseline pins the catalog count.
     webhook: 1,
     schedule: 1,
     "budgeted-llm": 1,
@@ -318,7 +242,6 @@ function lintPrimitiveCoverage(templates: Template[]): Violation[] {
       });
     }
   }
-  // Always print coverage so reviewers see progress without grepping.
   console.log("recipe primitive coverage:");
   for (const kind of trackedKinds) {
     console.log(`  ${kind.padEnd(14)} ${counts[kind] ?? 0}`);

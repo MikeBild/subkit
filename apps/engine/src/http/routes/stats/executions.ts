@@ -1,6 +1,3 @@
-// GET /v1/stats/executions — tenant-scoped, time-bucketed execution
-// stats. Gated by `stats:read`.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {

@@ -1,23 +1,6 @@
-// Production history also contains UUID-shaped references whose version or
-// variant nibble is not RFC-conformant. They are still opaque identifiers to a
-// reviewer, so presentation must recognise the shape rather than validate the
-// identifier format.
 const UUID_PATTERN =
   /\b(?:fid_)?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{1,4}(?:-[0-9a-f]{1,4})?(?:-[0-9a-f]{1,12})?…|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/gi;
 
-/**
- * Clip at a word boundary, marking a clipped string with `…`.
- *
- * A clipped line and a wrapped one are different facts, so this happens in the
- * model rather than through `line-clamp`: a reader can tell the text was cut,
- * and whatever renders below is free to say something else. The boundary is
- * preferred, not required — an unbroken run clips hard rather than collapsing
- * to a fragment.
- *
- * Two surfaces clip conversation prose — the chat list's titles and the
- * decision queue's collapsed question — and a second copy of this rule is how
- * they start disagreeing about what a message said.
- */
 export function clipAtWord(text: string, max: number): string {
   const squashed = text.replace(/\s+/g, " ").trim();
   if (squashed.length <= max) return squashed;
@@ -35,14 +18,6 @@ export function humanFacingText(value: string, hiddenReferenceLabel: string): st
   return hideTechnicalIdentifiers(value, hiddenReferenceLabel).replace(/\bsubkit\b/gi, "SubKit");
 }
 
-/**
- * One line of readable text from a stored message excerpt.
- *
- * A tool payload is collapsed rather than shown: the engine's excerpt falls
- * back to `JSON.stringify(content)`, so a list row would otherwise print raw
- * tool JSON. `toolLabel` names the action when the payload identifies one —
- * "Listed workflows" rather than the same generic phrase on every such row.
- */
 export function conversationExcerpt(
   value: string | null | undefined,
   toolActivityLabel: string,

@@ -1,14 +1,3 @@
-// api_keys row → ResolvedPrincipal.
-//
-// Shared by the two credentials that are bound to an `api_keys` row: the key
-// itself (`providers/api-key.ts`) and the short-lived token an RFC 8693
-// exchange mints from it (`auth/oauth/token-exchange.ts`). Both must apply the
-// SAME state checks (revoked / not-yet-active / expired / rotated-out) and the
-// SAME owner resolution (user or system account, role, e-mail), so that a
-// token can never outlive or outrank the key it came from. Keeping the logic
-// here means "revoke the key" invalidates its tokens by construction: the
-// token provider re-reads the row on every use and runs this function.
-
 import { eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -22,7 +11,6 @@ export type ApiKeyRow = typeof apiKeys.$inferSelect;
 const FLUSH_INTERVAL_MS = 60_000;
 const lastFlush = new Map<string, number>();
 
-/** Test seam: clear the in-process `last_used_at` throttle. */
 export function resetApiKeyUsageThrottle(): void {
   lastFlush.clear();
 }
@@ -52,7 +40,6 @@ async function maybeFlushLastUsed(
   if (now - last < FLUSH_INTERVAL_MS) return;
   lastFlush.set(keyId, now);
 
-  // Best-effort flush — never block the request.
   void db
     .update(apiKeys)
     .set({ last_used_at: new Date(now) })
@@ -67,9 +54,6 @@ async function maybeFlushLastUsed(
       });
     });
 
-  // Sampled audit row — every 60 s window per key, not per request. We
-  // bind the audit row to the same per-request executor the caller
-  // handed in so tests using per-DB isolation still observe the write.
   audit(
     {
       tenant_id: tenantId,
@@ -85,9 +69,7 @@ async function maybeFlushLastUsed(
 }
 
 export interface ResolveApiKeyRowOptions {
-  /** Auth provider name written to logs and the denial audit metadata. */
   provider: string;
-  /** Marks a principal that reached the row through an exchanged token. */
   via?: "token_exchange";
 }
 
@@ -109,20 +91,14 @@ function denied(db: Db, row: ApiKeyRow, reason: string, provider: string): null 
   return null;
 }
 
-/** State of the key row alone — no owner lookup. `null` means live. */
 export function apiKeyRowDenialReason(row: ApiKeyRow, now: Date): string | null {
   if (row.revoked_at && row.revoked_at <= now) return "revoked";
   if (row.not_before && row.not_before > now) return "not_yet_active";
   if (row.expires_at && row.expires_at <= now) return "expired";
-  // Soft revoke after the rotation overlap window has elapsed.
   if (row.rotating_out_at && row.rotating_out_at <= now) return "rotated_out";
   return null;
 }
 
-/**
- * Turn a matched `api_keys` row into a principal, or `null` when the row or
- * its owner must not authenticate. Every refusal is logged and audited.
- */
 export async function resolvePrincipalFromApiKeyRow(
   db: Db,
   row: ApiKeyRow,
@@ -132,7 +108,6 @@ export async function resolvePrincipalFromApiKeyRow(
   const stateReason = apiKeyRowDenialReason(row, new Date());
   if (stateReason) return denied(db, row, stateReason, provider);
 
-  // Resolve owner -> kind, id, role.
   let kind: "user" | "system_account";
   let ownerId: string;
   let roles: string[];
@@ -159,9 +134,6 @@ export async function resolvePrincipalFromApiKeyRow(
       log.auth.denied({ provider, reason: "user_missing", api_key_id: row.id });
       return null;
     }
-    // Disabling or soft-deleting a user must immediately void their
-    // credentials — a still-valid API key for a deactivated account is
-    // exactly what an operator expects revocation to prevent.
     if (u.deleted_at !== null || u.status !== "active") {
       log.auth.denied({
         provider,
@@ -192,13 +164,10 @@ export async function resolvePrincipalFromApiKeyRow(
       log.auth.denied({ provider, reason: "system_account_missing", api_key_id: row.id });
       return null;
     }
-    // A soft-deleted system account must not authenticate.
     if (acct.deleted_at !== null) {
       log.auth.denied({ provider, reason: "system_account_deleted", api_key_id: row.id });
       return null;
     }
-    // Pass-2 C7: stop hardcoding `admin`. If the row has no
-    // role_id, fall back to `member` — the safer default.
     roles = [acct.role_name ?? "member"];
   } else {
     log.auth.denied({ provider, reason: "key_has_no_owner", api_key_id: row.id });

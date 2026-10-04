@@ -1,7 +1,3 @@
-// Pins `inferProvider` — the bounded model-id → vendor-label classifier used
-// for LLM-usage telemetry. Open-weight families (qwen / mistral / glm / deepseek /
-// llama) must map to stable named buckets rather than collapsing into "other".
-
 import { describe, expect, it } from "bun:test";
 import { inferProvider } from "./accountant.ts";
 

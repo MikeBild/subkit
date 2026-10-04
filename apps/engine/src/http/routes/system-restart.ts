@@ -1,14 +1,3 @@
-// `POST /v1/system/restart` and `GET /v1/system/restart-status`.
-//
-// The restart is an operator act on shared infrastructure: `system:restart`
-// (admin only) and three honest refusals — no supervisor, nothing waiting,
-// more than one live instance. The accepted request answers 202 first and
-// only then drains the process (the same drain as SIGTERM) and ends it with
-// exit code 75, so the caller always learns the request was taken.
-//
-// Deliberately no MCP tool: a restart would tear down the very transport the
-// call arrived on.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";

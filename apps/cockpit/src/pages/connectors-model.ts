@@ -4,13 +4,6 @@ export interface WorkflowUsingConnectors {
   connectors: string[];
 }
 
-/**
- * Inverts `workflow.connectors[]` into "which workflows reach this connector".
- *
- * The engine answers "which connectors does this workflow use" per workflow;
- * the connector list needs the other direction. One `/v1/workflows` read is
- * inverted client-side rather than one request per row.
- */
 export function workflowsByConnector(
   workflows: readonly WorkflowUsingConnectors[],
 ): Map<string, WorkflowUsingConnectors[]> {
@@ -25,11 +18,6 @@ export function workflowsByConnector(
   return byConnector;
 }
 
-/**
- * The one narrowing a link can put on the connector list: `?health=not_ok`.
- * The engine answers it (`GET /v1/connectors?health=not_ok`) with the predicate
- * the connector-health ratio counts against; this page only carries it.
- */
 export type ConnectorHealthFilter = "not_ok";
 
 export function connectorHealthFilterFromUrl(search: string): ConnectorHealthFilter | null {

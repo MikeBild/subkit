@@ -1,6 +1,3 @@
-// Unit tests for sealSchema — the registration-time pass that
-// tightens every conversation-tool input schema.
-
 import { describe, expect, it } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { sealSchema } from "../seal-schema.ts";
@@ -39,7 +36,6 @@ describe("sealSchema", () => {
 
   it("preserves the .openapi metadata wrapper", () => {
     const sealed = sealSchema(z.object({ a: z.string() }).openapi("FooInput"));
-    // Round-trips like a normal schema.
     expect(sealed.parse({ a: "ok" })).toEqual({ a: "ok" });
     expect(sealed.safeParse({ a: "ok", extra: 1 }).success).toBe(false);
   });

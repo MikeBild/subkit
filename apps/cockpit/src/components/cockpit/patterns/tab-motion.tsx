@@ -1,13 +1,5 @@
 import { type CSSProperties, type RefObject, useLayoutEffect, useState } from "react";
 
-// The motion both tab bars share: one underline that slides to the chosen tab,
-// and an edge fade where the bar scrolls sideways on a narrow screen.
-
-/**
- * The underline's place under the active tab. Measured before paint, again
- * when the bar resizes (a count arriving widens a tab). Null until measured;
- * the bar then draws no underline rather than one in the wrong place.
- */
 export function useTabIndicator(
   list: RefObject<HTMLElement | null>,
   activeSelector: string,
@@ -35,10 +27,6 @@ export function useTabIndicator(
   return style;
 }
 
-/**
- * A sideways-scrolling bar fades out at the edge that has more behind it, so
- * a tab cut off at the screen's edge reads as "more", not as broken.
- */
 export function useEdgeFade(scroller: RefObject<HTMLElement | null>): CSSProperties | undefined {
   const [edges, setEdges] = useState({ start: false, end: false });
   useLayoutEffect(() => {
@@ -67,6 +55,5 @@ export function useEdgeFade(scroller: RefObject<HTMLElement | null>): CSSPropert
   return { maskImage: mask, WebkitMaskImage: mask };
 }
 
-/** The sliding underline's own class: one bar, moving on the motion tokens. */
 export const TAB_INDICATOR =
   "pointer-events-none absolute bottom-0 left-0 h-0.5 bg-foreground transition-[transform,width] duration-(--sk-dur-base) ease-(--sk-ease-standard)";

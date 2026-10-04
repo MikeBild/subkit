@@ -1,27 +1,7 @@
-// Pure helpers that turn an arbitrary `output_preview` value into the
-// authoring-time vocabulary the LLM needs to compose downstream
-// transforms / loops without guessing at JSONata paths.
-//
-// `enumerateScopePaths` walks the value and emits every readable
-// JSONata-style path up to a depth + count budget. `summarizeScopeShape`
-// produces a one-line shape summary ("object{count,results[3]}") for
-// the same value.
-//
-// Pre-fix the LLM had to guess the post-selector shape from the
-// connector docs; sessions like ebd66982 burned 3+ retries on
-// `$scope.X.data` vs. `$scope.X` vs. `X.data` because the actual
-// envelope was never echoed back. step_trace + scope_at_step + the
-// `suggest_jsonata_paths` tool all share these helpers so the output
-// is uniform across surfaces.
-
 const MAX_PATH_BUDGET = 64;
 const MAX_DEPTH = 4;
-/** Number of array indices we expand when recording paths. The first
- * element is always recorded as `[0]`; if more elements exist we add
- * a `[*]` synthetic path so the LLM knows the array is iterable. */
 const ARRAY_SAMPLE_FIRST_N = 1;
 
-/** A primitive type label in the shape grammar. */
 type PrimitiveLabel = "string" | "number" | "boolean" | "null" | "undefined";
 
 function classifyPrimitive(value: unknown): PrimitiveLabel | null {
@@ -39,11 +19,6 @@ function classifyPrimitive(value: unknown): PrimitiveLabel | null {
   }
 }
 
-/**
- * Walk `value` and emit JSONata-shaped paths ("a.b", "items[0].id",
- * "items[*].id"). Stops at MAX_DEPTH and MAX_PATH_BUDGET so a runaway
- * preview can't blow the token budget.
- */
 export function enumerateScopePaths(
   value: unknown,
   options?: { root_prefix?: string; depth_budget?: number; path_budget?: number },
@@ -60,12 +35,6 @@ export function enumerateScopePaths(
     if (out.length >= pathBudget) return;
     if (v === null || v === undefined) return;
     if (Array.isArray(v)) {
-      // Record first N elements as concrete indices so the LLM can copy
-      // them directly. Add a `[*]` synthetic path when the array has
-      // more entries — JSONata doesn't accept literal `[*]`, but we
-      // include it as documentation that the array is iterable; the
-      // LLM should write `items.id` (JSONata fanout) for the same
-      // effect.
       const sampleCount = Math.min(ARRAY_SAMPLE_FIRST_N, v.length);
       for (let i = 0; i < sampleCount; i++) {
         if (out.length >= pathBudget) return;
@@ -90,13 +59,6 @@ export function enumerateScopePaths(
   return out;
 }
 
-/**
- * One-line shape summary. Examples:
- *   - `string`
- *   - `array[12]`
- *   - `object{count,results[12]}`
- *   - `array[3]<object>`
- */
 export function summarizeScopeShape(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
@@ -109,7 +71,6 @@ export function summarizeScopeShape(value: unknown): string {
   if (typeof value === "object") {
     const keys = Object.keys(value as Record<string, unknown>);
     if (keys.length === 0) return "object{}";
-    // Inline up to 3 keys, with array-length annotation where useful.
     const previews = keys.slice(0, 3).map((k) => {
       const child = (value as Record<string, unknown>)[k];
       if (Array.isArray(child)) return `${k}[${child.length}]`;
@@ -129,19 +90,6 @@ function describeKind(v: unknown): string | null {
   return classifyPrimitive(v);
 }
 
-/**
- * Best-guess "where the actual data lives" path — useful for
- * `$scope.<id>.<primary_data_path>` recommendations the LLM can drop
- * straight into a downstream transform / loop.
- *
- * Heuristics, in order:
- *  1. value is an array → ""
- *  2. value is an object with one key → recurse into that key
- *  3. value is an object with a key whose name is in a small "this is
- *     the payload" allow-list (`data`, `results`, `items`, `records`,
- *     `rows`, `entries`, `payload`, `body`) → return that key
- *  4. otherwise → null
- */
 export function pickPrimaryDataPath(value: unknown, depth = 0): string | null {
   if (depth > 3 || value === null || value === undefined) return null;
   if (Array.isArray(value)) return "";
@@ -173,23 +121,12 @@ export function pickPrimaryDataPath(value: unknown, depth = 0): string | null {
   return null;
 }
 
-/**
- * One-shot envelope describing the scope at a step. Mirrors what
- * `dry_run_workflow.step_trace[i].scope_at_step` returns and what
- * `suggest_jsonata_paths` consumes.
- */
 export interface ScopeAtStep {
-  /** Up to 64 readable JSONata paths (relative — no `$scope.<id>.`
-   * prefix; callers prepend that themselves). */
   available_paths: string[];
-  /** One-line shape summary (`object{count,results[12]}`). */
   shape_summary: string;
-  /** Best guess at where the iterable / primary payload lives, or null
-   * if not obvious. */
   primary_data_path: string | null;
 }
 
-/** Build a `ScopeAtStep` envelope from an arbitrary preview value. */
 export function buildScopeAtStep(value: unknown): ScopeAtStep {
   return {
     available_paths: enumerateScopePaths(value),

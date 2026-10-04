@@ -1,8 +1,3 @@
-// Document analysis flow: analyzes uploaded documents once at setup time.
-// Structured formats (OpenAPI, API collections, HAR, GraphQL) → deterministic parsers, NO LLM.
-// Unstructured formats (PDF, image, markdown) → LLM vision.
-// Result: DocumentAnalysisResult with endpoints, auth, confidence.
-
 import { sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -59,8 +54,8 @@ export interface DocumentAnalysisAttachment {
   storage_uri: string;
   mime_type: string;
   filename: string;
-  content?: string; // Text content if already resolved
-  data?: Uint8Array; // Binary content if available
+  content?: string;
+  data?: Uint8Array;
 }
 
 export interface DocumentAnalysisParams {
@@ -90,7 +85,6 @@ function detectDocumentFormat(
   if (lower.endsWith(".md") || lower.endsWith(".markdown") || mime === "text/markdown")
     return "markdown";
 
-  // JSON/YAML files — inspect content to distinguish
   if (
     lower.endsWith(".yaml") ||
     lower.endsWith(".yml") ||
@@ -116,7 +110,7 @@ function detectDocumentFormat(
         return "graphql";
     }
     if (lower.includes("postman")) return "postman";
-    return "openapi"; // default structured guess
+    return "openapi";
   }
 
   return "unknown";
@@ -177,9 +171,6 @@ export async function runDocumentAnalysisFlow(
           break;
         }
         default: {
-          // LLM-based extraction would go here.
-          // For now, emit a structured placeholder that signals the caller
-          // to use vision-based analysis.
           confidence = Math.min(confidence, 60);
           errors.push(
             `Document '${attachment.filename}' (${fmt}) requires LLM vision extraction — not yet implemented in this path.`,
@@ -196,7 +187,6 @@ export async function runDocumentAnalysisFlow(
 
   const merged = mergeEndpoints(allEndpoints);
 
-  // Infer auth from endpoints (placeholder — real inference happens in the full flow)
   const auth: AuthSpec = { type: "none" };
 
   const result: DocumentAnalysisResult = {
@@ -208,7 +198,6 @@ export async function runDocumentAnalysisFlow(
     errors,
   };
 
-  // Audit emission — one row per analysis call, regardless of persistence.
   const auditDb = p.db ?? getDb();
   await auditAwait(
     {
@@ -236,7 +225,6 @@ export async function runDocumentAnalysisFlow(
     });
   });
 
-  // Persist endpoints to registry if connector_id is provided
   const connectorId = p.connector_id;
   if (connectorId && merged.length > 0) {
     const db = p.db ?? getDb();

@@ -1,25 +1,10 @@
-// Warnings-wrapping envelope for wf_<slug> MCP results.
-//
-// A client annotation dialog is not a server-verifiable authority. Held
-// preparation must never be presented as successful live execution.
-//
-// What remains is the warnings-wrapping contract: when a run produced non-fatal
-// warnings (e.g. a jsonata `unresolved_identifier`), the output is wrapped so
-// the MCP client sees them alongside the payload; a clean run returns the bare
-// output.
-
 import { HELD_PREVIEW_WARNING_CODE, type RunResult } from "../../execution/index.ts";
 
 export interface ResultEnvelope {
-  /** The body to serialize into the MCP text content block. */
   rawBody: unknown;
   held: boolean;
 }
 
-/**
- * Shape the MCP result envelope for a completed wf_<slug> run: wrap
- * `{ output, warnings }` when any warning is present, bare output when clean.
- */
 export function buildResultEnvelope(
   result: Pick<RunResult, "warnings" | "output" | "execution_id">,
 ): ResultEnvelope {

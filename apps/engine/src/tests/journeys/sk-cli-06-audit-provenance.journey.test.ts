@@ -1,13 +1,3 @@
-// User story: As a SOC 2 reviewer, I can distinguish sk-cli-originated
-// logins from compatibility-alias logins by querying the audit log for
-// `sk_cli.login` rows. The engine tags OIDC exchanges when the
-// `user-agent: sk-cli/*` header is present on the request.
-//
-// This test stands up a mock OIDC IdP, drives the engine's generic
-// `POST /v1/identity/sessions` endpoint with a sk-cli user-agent
-// header, and asserts the `SK_CLI_LOGIN` audit action lands on top of
-// the standard `USER_LOGGED_IN` row.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
@@ -38,19 +28,11 @@ async function auditRowsByAction(
 describe("journey: sk-cli audit provenance", () => {
   let jwksJson = "";
 
-  // 30s — RSA keypair generation + journey ctx + IDP server can blow
-  // past the 5s default on slower CI runners.
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-06-audit");
 
-    // The configured adapter maps to slug=`default`. Seed that tenant so the journey fixture's random slug does
-    // not break the test. We reuse the existing journey-created
-    // admin tenant by renaming it.
     await ctx.db.insert(tenants).values({ slug: "default", display_name: "default" });
 
-    // Mint an RS256 key pair (jose's helper returns extractable keys)
-    // and build a matching JWKS so the engine can verify the id_token
-    // we hand it below.
     const kp = await jose.generateKeyPair("RS256", { extractable: true });
     const jwk = await jose.exportJWK(kp.publicKey);
     jwk.alg = "RS256";
@@ -58,7 +40,6 @@ describe("journey: sk-cli audit provenance", () => {
     jwk.kid = "sk-test-1";
     jwksJson = JSON.stringify({ keys: [jwk] });
 
-    // Tiny mock OIDC IdP that serves discovery + jwks.
     idpServer = createServer((req, res) => {
       if (req.url === "/.well-known/openid-configuration") {
         res.writeHead(200, { "content-type": "application/json" });
@@ -89,8 +70,6 @@ describe("journey: sk-cli audit provenance", () => {
     }
     idpUrl = `http://127.0.0.1:${idpPort}`;
 
-    // Sign an id_token for a fresh subject using the private half of
-    // the key pair above.
     idToken = await new jose.SignJWT({
       sub: "sk-cli-06-subject",
       email: "sk-cli-06@test.local",
@@ -102,7 +81,6 @@ describe("journey: sk-cli audit provenance", () => {
       .setIssuedAt()
       .sign(kp.privateKey);
 
-    // Point the configured provider at this journey's mock IdP.
     await loadAuthProvidersForTest(
       [
         { protocol: "api_key", id: "api-key", label: "SubKit API key" },
@@ -152,10 +130,6 @@ describe("journey: sk-cli audit provenance", () => {
   });
 
   test("same endpoint without sk-cli user-agent does NOT emit SK_CLI_LOGIN", async () => {
-    // Reuse the id_token minted in beforeAll. The engine upserts on
-    // `sub`, so this call resolves to the same user row as the first
-    // test. That lets us assert the sk_cli.login count stays at 1:
-    // only the first (sk-cli-tagged) login minted a row.
     const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json", "user-agent": "subkit/0.0.1" },

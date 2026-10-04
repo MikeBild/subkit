@@ -1,10 +1,3 @@
-// POST /v1/ai/repair — propose a patch for a drifted failing step.
-//
-// The self-healing loop in P7 hands us an execution id + the failing
-// step + a textual drift diff. We run the repair flow and return the
-// normalised PatchProposal envelope. The caller decides whether to
-// stage, auto-apply, or reject.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { runRepairFlow } from "../../../llm/index.ts";
@@ -14,10 +7,6 @@ import type { AppEnv } from "../../openapi.ts";
 
 const RepairBody = z
   .object({
-    // A uuid, like `connector_id` below. It is copied into
-    // `llm_usage.execution_id`, a uuid column, so accepting any string here
-    // only moves the rejection to a place where it is swallowed instead of
-    // reported. Existence is the foreign key's job, not the schema's.
     execution_id: z.string().uuid(),
     failing_step_id: z.string(),
     drift_diff: z.string().min(1),

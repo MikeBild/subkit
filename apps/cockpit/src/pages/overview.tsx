@@ -72,11 +72,9 @@ import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
-/** The four figures the Übersicht leads with (R1); the rest are Nutzung's. */
 const KPI_IDS = ["runs", "successRate", "connectorHealth", "budget"] as const;
 const WINDOWS: readonly StatsWindow[] = ["24h", "7d"];
 
-/** Where an entry's name leads: its object's own page, else its review. */
 function subjectHref(item: AttentionItem): string | null {
   if (!item.subject) return null;
   if (item.subject.kind === "workflow") return workflowHref(item.subject.id);
@@ -85,12 +83,6 @@ function subjectHref(item: AttentionItem): string | null {
   return null;
 }
 
-/**
- * The verb that completes an entry (D12): "Freigeben…" opens the approval
- * dialog right here, "Neu anmelden" starts the sign-in, "Ursache ansehen"
- * opens the newest failed run, "Prüfen" opens the review sheet. Every other
- * entry leads where it is acted on.
- */
 function CompletingVerb({
   item,
   index,
@@ -107,10 +99,6 @@ function CompletingVerb({
   const sheets = useOpenRunSheet();
   const { primary } = entryActions(item);
   const testId = `attention-item-${index}-primary`;
-  // A connection renews at its provider; a connector signs in on the route it
-  // states itself (a web service and an MCP server differ). Anything else — a
-  // connector with a key, a workflow whose connector lost its sign-in — is
-  // acted on where the entry leads.
   const signIn = useMutation({
     mutationFn: async (): Promise<{ authorization_url: string } | null> => {
       const subject = item.subject;
@@ -210,7 +198,6 @@ function CompletingVerb({
   );
 }
 
-/** "Braucht dich": one row per subject, its name the object alone, its action the verb that completes it. */
 function NeedsYou({
   items,
   emptyLine,
@@ -220,7 +207,6 @@ function NeedsYou({
   onReview,
 }: {
   items: AttentionItem[];
-  /** "Nothing needs you" — scoped to the sources that answered when one did not. */
   emptyLine: string;
   pending: boolean;
   error: { line: string; onRetry(): void } | null;
@@ -310,11 +296,6 @@ function NeedsYou({
   );
 }
 
-/**
- * The entry as one sentence — the subject, the reason, "seit …" — for the
- * row's link: the table splits it into columns for the eye, the accessible
- * name keeps it whole.
- */
 function sentenceLabel(
   item: AttentionItem,
   t: ReturnType<typeof useI18n>["t"],
@@ -324,7 +305,6 @@ function sentenceLabel(
   return `${lead}${since ? ` — ${since}` : ""}.`;
 }
 
-/** "Letzte Fehlschläge": the newest three failed runs, each opening its sheet here. */
 function LastFailures() {
   const { t, dateTime } = useI18n();
   const sheets = useOpenRunSheet();
@@ -386,26 +366,16 @@ function LastFailures() {
   );
 }
 
-/**
- * Übersicht (V1): one count of what needs the reader, the four figures over
- * one window (R1), "Braucht dich" with the verb that completes each entry, and
- * the newest failures. Tasks live here and nowhere else — the object pages
- * show their state and at most link here.
- */
 export function OverviewPage() {
   const { t } = useI18n();
   const session = useSession();
   const attention = useAttention(session.permissions);
   const sheets = useOpenRunSheet();
-  // The window as two fixed instants, set when it is chosen: the figures and
-  // the lists they link to count over the very same bounds.
   const [bounds, setBounds] = useState<WindowBounds>(() => windowBounds("24h"));
   const operations = useOperationsFigures(bounds, session.permissions);
   const href = useRouterState({ select: (state) => state.location.href });
   const [review, setReview] = useState<string | null>(() => reviewFromUrl(window.location.search));
 
-  // The sheet follows the address: Back closes it, a link opens it, and a
-  // router navigation to the Übersicht (the sidebar entry) lands without it.
   useEffect(() => {
     void href;
     setReview(reviewFromUrl(window.location.search));
@@ -426,15 +396,11 @@ export function OverviewPage() {
     },
     [navigation],
   );
-  // Closing leaves no history entry behind: Back after a closed sheet goes
-  // where the reader was before it opened, never into the sheet again.
   const closeReview = useCallback(() => {
     navigation.close();
     setReview(null);
   }, [navigation]);
 
-  // Nobody reads the Übersicht who may read none of its sources: they land on
-  // the first page they can see, not on a page that can only ever be empty.
   const fallback = attention.enabled
     ? null
     : (visibleNavigation(session.permissions)
@@ -471,9 +437,6 @@ export function OverviewPage() {
   const canHistory = session.permissions.includes("audit:read");
   const canRuns = session.permissions.includes("execution:read");
   const count = items.length;
-  // A count is a claim about every source. Before the answer, after a failed
-  // read, or with a source that did not answer, there is none to make: the
-  // gap is named below instead, never counted over.
   const summary =
     attention.query.isPending || attention.query.isError || unread.length > 0
       ? null
@@ -554,7 +517,6 @@ export function OverviewPage() {
             testId="attention-unread"
           />
         ) : null}
-        {/* Each list is its own item: its column choice belongs to it alone. */}
         <div data-action-scope="list">
           <Section label={t("overview.needsYou")} testId="attention-section">
             {view?.kind === "nothing_readable" ? (
@@ -614,12 +576,6 @@ function decisionFailureKey(error: unknown): TranslationKey {
   return "decisions.decisionFailed";
 }
 
-/**
- * One entry's decisions (O1), in a sheet over the Übersicht: the cards the
- * decisions queue always used — the same diff, dry run, approve and reject —
- * narrowed to this entry's subject. The engine's own wording about the entry
- * is shown here, and only here, marked as the engine's.
- */
 function ReviewSheet({
   id,
   item,
@@ -687,10 +643,6 @@ function ReviewBody({
     },
     onMutate: (input) => {
       setBusyId(input.item.id);
-      // The last open decision of this entry settles it: the entry leaves the
-      // list at once — before the engine has answered — and comes back if the
-      // decision fails. The sheet stays until the answer, so a refusal is read
-      // on the card it is about.
       const remaining = decisions.filter((entry) => entry.id !== input.item.id).length;
       const settles = remaining === 0 && held.length === 0 && heldHooks.length === 0;
       if (settles && item) hideAttentionEntry(item);
@@ -729,7 +681,6 @@ function ReviewBody({
   });
 
   const { primary } = item ? entryActions(item) : { primary: null as AttentionAction | null };
-  // Where the entry is acted on, when not in this sheet.
   const elsewhere =
     item && primary && primary.verb !== "review" ? (
       <ActionButton

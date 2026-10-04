@@ -1,9 +1,3 @@
-// Shared scaffolding for the docs-ingestion test suite.
-//
-// Each file creates its own disposable database via the P1 helper,
-// seeds a tenant + connector, and hands back the primitives the tests
-// need (db, tenant id, connector id, cleanup).
-
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
@@ -42,10 +36,6 @@ export async function createDocsTestCtx(label: string): Promise<DocsTestCtx> {
   };
 }
 
-/**
- * Minimal fetch stub — map URL to a pre-canned response. Everything
- * else throws so tests surface unexpected fetches.
- */
 export function stubFetch(
   table: Record<string, { body: string; status?: number; headers?: Record<string, string> }>,
 ): typeof fetch {

@@ -6,12 +6,6 @@ import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
 import type { ChatChoice } from "./chat-choice";
 
-/**
- * A question with fixed answers: the question as the card's line, each option
- * with its effect, nothing chosen until the reader chooses, one button that
- * sends the choice. The card exists once — in the transcript — so there is
- * one selection, not one per copy.
- */
 export function ChatChoiceCard({
   choice,
   busy,

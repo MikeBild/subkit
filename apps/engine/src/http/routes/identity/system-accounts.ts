@@ -1,5 +1,3 @@
-// GET / POST / DELETE /v1/identity/system-accounts
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, PaginationQuery } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
@@ -86,10 +84,6 @@ function serialize(s: NonNullable<Awaited<ReturnType<typeof identity.createSyste
 }
 
 export function registerSystemAccountRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC is enforced by the `requirePermission(...)` middleware below
-  // (identity:read / identity:write). The legacy `enforce(adminOnly)`
-  // calls inside the handlers are strict duplicates kept as defense-in-
-  // depth.
   app.use("/v1/identity/system-accounts", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("identity:read")(c, next);
     if (c.req.method === "POST") return requirePermission("identity:write")(c, next);

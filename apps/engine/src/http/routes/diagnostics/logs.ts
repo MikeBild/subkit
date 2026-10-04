@@ -1,19 +1,3 @@
-// Engine log-tail endpoints.
-//
-//   GET /v1/diagnostics/logs              — paginated window
-//   GET /v1/diagnostics/logs/stream       — SSE live tail (LOG_STREAM_PATH)
-//
-// Both backed by the in-memory `logRing` populated by every
-// `logger.*` call. Exists so an operator running `sk logs --follow`
-// can correlate sk-side errors with engine-side log lines without
-// SSH-ing into the engine container — operator
-// observability of migrate / seed / drift events specifically.
-//
-// Tenant scoping: the ring is process-wide but every read
-// here filters entries to the principal's tenant + system-scope only,
-// so a tenant-scoped admin cannot tail another tenant's request log.
-// Each tail also writes a `DIAGNOSTICS_LOGS_TAILED` audit row.
-
 import { DIAGNOSTICS_LOG_STREAM_PATH } from "@cli-core/diagnostics-paths.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -27,13 +11,8 @@ import { isEntryVisibleToTenant, levelWeight, logRing } from "../../../observabi
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-/** Path of the SSE live-tail route. Re-exported from the shared
- *  `cli-core` constant so the engine and the CLI cannot disagree. */
 export const LOG_STREAM_PATH = DIAGNOSTICS_LOG_STREAM_PATH;
 
-/** Idle heartbeat cadence on the SSE stream. Sub-30s so reverse proxies
- *  with default idle close (Caddy 30s, ALB 60s) don't half-close the
- *  stream during quiet periods. */
 const SSE_HEARTBEAT_MS = 15_000;
 
 const LogEntrySchema = z
@@ -47,8 +26,6 @@ const LogEntrySchema = z
   })
   .openapi("LogRingEntry");
 
-/** Shared query schema — applied to both the JSON tail and the SSE
- *  stream so the two surfaces validate identically. */
 const LogTailQuery = z
   .object({
     since: z.coerce.number().int().nonnegative().optional(),
@@ -62,7 +39,6 @@ const LogTailQuery = z
 const LogTailResponse = z
   .object({
     entries: z.array(LogEntrySchema),
-    /** Operator polls the next window with `?since=<this>`. */
     next_since_ms: z.number().int(),
     capacity: z.number().int(),
     size: z.number().int(),
@@ -121,12 +97,6 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     const entries = logRing.tail(opts);
     const lastTs = entries.length > 0 ? entries[entries.length - 1]!.ts : (q.since ?? 0);
 
-    // Metadata is parsed through the Zod schema so a
-    // future field rename / type change in `audit/types.ts` fails at
-    // the route, not in production. `auditAwait` blocks the
-    // response until the row is durable — diagnostics tails finish in
-    // microseconds, so the latency cost is negligible compared with the
-    // compliance benefit of guaranteeing the row.
     const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
       mode: "json",
       returned: entries.length,
@@ -167,10 +137,6 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     );
   });
 
-  // SSE live tail. Hand-rolled because @hono/zod-openapi's `c.json`
-  // doesn't model streaming responses; we register the SSE route
-  // outside the OpenAPI surface but still validate its query bag with
-  // the same Zod schema the JSON tail uses.
   app.get(LOG_STREAM_PATH, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db") ?? getDb();
@@ -182,9 +148,6 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
       level: c.req.query("level"),
     });
     if (!parsed.success) {
-      // Match the shared `ErrorSchema` envelope so the
-      // CLI / MCP error adapters parse this 400 the same way they parse
-      // every other engine error response.
       return c.json(
         {
           code: "validation_error",
@@ -203,8 +166,6 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
     const tailOpts = buildTailOpts(q, principal.tenant_id, { limit: 1000 });
     const minLevelWeight = q.level ? levelWeight(q.level) : 0;
 
-    // Parse metadata through the schema, then
-    // await the audit row before opening the stream.
     const metadata = DiagnosticsLogsTailedMetadataSchema.parse({
       mode: "stream",
       ...(q.since !== undefined ? { since_ms: q.since } : {}),
@@ -234,16 +195,10 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
-        // 1. Catch-up replay: any buffered entries newer than `since`
-        // that the principal is allowed to see.
         for (const entry of logRing.tail(tailOpts)) {
           send("log", entry);
         }
 
-        // 2. Live subscription. Filter server-side so the operator
-        // doesn't pay for entries it would have dropped, and so
-        // tenant-A admins can never observe tenant-B request lines
-        // mid-stream.
         const unsub = logRing.subscribe((entry) => {
           if (q.module && entry.module !== q.module) return;
           if (q.action && entry.action !== q.action) return;
@@ -251,12 +206,9 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
           if (!isEntryVisibleToTenant(entry, principal.tenant_id)) return;
           try {
             send("log", entry);
-          } catch {
-            /* controller closed — handled below */
-          }
+          } catch {}
         });
 
-        // 3. Heartbeat so reverse proxies don't half-close idle streams.
         const heartbeat = setInterval(() => {
           try {
             controller.enqueue(enc.encode(`: heartbeat ${Date.now()}\n\n`));
@@ -267,16 +219,13 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
         }, SSE_HEARTBEAT_MS);
         (heartbeat as unknown as { unref?: () => void }).unref?.();
 
-        // Tear down when the client disconnects.
         const signal = c.req.raw.signal;
         signal.addEventListener("abort", () => {
           clearInterval(heartbeat);
           unsub();
           try {
             controller.close();
-          } catch {
-            /* already closed */
-          }
+          } catch {}
         });
       },
     });
@@ -286,7 +235,6 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
         "content-type": "text/event-stream",
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
-        // Cloudflare / Caddy proxy hint to disable buffering.
         "x-accel-buffering": "no",
       },
     });

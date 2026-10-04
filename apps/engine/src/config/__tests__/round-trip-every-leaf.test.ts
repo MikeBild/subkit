@@ -1,17 +1,3 @@
-// Round-trip every leaf in ConfigSchema through setConfigKey + getConfig.
-//
-// For every leaf the schema declares, this test:
-//   1. derives a deterministic value of the right shape
-//   2. writes it via setConfigKey (with force=true to bypass the
-//      requiresRestart guard in test mode)
-//   3. reads it back via getConfig() and asserts equality
-//   4. asserts the source_map flips to "global" or "tenant"
-//   5. captures the structured "setting.applied" log line
-//
-// A new Zod kind landing on the schema without a corresponding
-// case in `valueFor` fails this test loudly — the leaf would never
-// be writable from sk settings configure or PUT /v1/settings.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +12,6 @@ import {
 } from "../loader.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../walk.ts";
 
-/** See `config/non-removable-scopes.ts` — written value is a prefix, not the whole. */
 const PINNED_SCOPES_LEAF = "auth.mcp_oauth.scopes_supported";
 
 let dir: string;
@@ -48,19 +33,10 @@ afterEach(() => {
 });
 
 function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
-  // Try a plain tagged string first. If the leaf's schema rejects it
-  // (e.g. optionalUrl unions or session.secret min(32) refinements)
-  // walk a small candidate list until one passes. This keeps the
-  // sweep deterministic per-leaf without baking path-name knowledge
-  // into the test.
   const candidates: string[] = [
     tag,
     `https://example.com/${tag.replaceAll("_", "-")}`,
-    // 32-char hex-shaped value for min(32) refinements.
     tag.padEnd(32, "x").slice(0, 32),
-    // HH:MM-shaped value for the notifications.push.quietHours* regex.
-    // Empty disables the window; the `00:00` candidate covers the
-    // populated case.
     "00:00",
     "",
   ];
@@ -72,14 +48,6 @@ function pickStringCandidate(leaf: ConfigLeaf, tag: string): string {
 }
 
 function pickNumberCandidate(leaf: ConfigLeaf, salt: number): number {
-  // Walk a candidate ladder so leaves with high min() bounds (e.g.
-  // connectors.web_scraper.runtime.max_chars_*, robots_cache.ttl_ms)
-  // OR tight max() bounds (min_runs_before_proposing max 50) still
-  // resolve to a parsable value without baking path-name knowledge
-  // into the test. The first candidate is bounded to 1..50 so leaves
-  // with a low ceiling have at least one in-range entry; `0.5` covers
-  // fractional leaves (observability.predictive.memory_cap_fraction,
-  // min 0.1 / max 1).
   const candidates = [
     Math.max(1, Math.min(50, salt + 1)),
     0.5,
@@ -101,9 +69,6 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string":
       return pickStringCandidate(leaf, tag);
     case "number":
-      // Most number leaves are positive ints with sane caps; some have
-      // higher min() bounds. The candidate walker picks the smallest
-      // value the leaf accepts.
       return pickNumberCandidate(leaf, salt);
     case "boolean":
       return salt % 2 === 0;
@@ -117,11 +82,6 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string-array":
       return [tag];
     case "json": {
-      // Keyed by leaf: a structural leaf is written as one whole value,
-      // so a sample shaped like a different leaf fails as a type error.
-      // This returned the auth-provider list unconditionally, which was
-      // right while that was the only json leaf and silently wrong for
-      // the second one.
       if (dottedPath(leaf) === "tokens.prices")
         return [
           {
@@ -173,10 +133,6 @@ describe("ConfigSchema round-trip — every leaf", () => {
       const live = readDeep(getConfig() as unknown as Record<string, unknown>, leaf.path);
       const label = `${dottedPath(leaf)} (${leaf.kind}) round-trips`;
       if (dottedPath(leaf) === PINNED_SCOPES_LEAF) {
-        // The one leaf that deliberately reads back as MORE than was written:
-        // it carries scopes an installation may not drop
-        // (`config/non-removable-scopes.ts`). What the operator wrote survives
-        // in their order; the missing non-removable scope is appended.
         const applied = live as string[];
         const asked = written as string[];
         expect(applied.slice(0, asked.length), label).toEqual(asked);
@@ -201,11 +157,8 @@ describe("ConfigSchema round-trip — every leaf", () => {
       tenantId: "tenant-x",
       force: true,
     });
-    // Diagnostics source_map describes the global config view only.
     expect(getDiagnostics().source_map["llm.api_key"]).toBe("default");
-    // The global value stays at the schema default (empty string).
     expect(getConfig().llm.api_key).toBe("");
-    // The tenant overlay carries the new value.
     expect(getConfig("tenant-x").llm.api_key).toBe("tenant-only");
   });
 

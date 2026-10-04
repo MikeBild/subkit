@@ -1,28 +1,5 @@
-// Shared file-handling constants — single source of truth for both
-// the engine (validation + 413 response) and the CLI (size-based
-// routing between inline upload and authenticated streamed PUT).
-//
-// Drift between the two halves used to be invisible until a 5 MiB-
-// boundary file either:
-//   - went through `/v1/files/inline` and got 413'd, or
-//   - went through the streamed PUT path needlessly when the engine
-//     would still have accepted it inline.
-// Both halves now read the same constant; bumping the cap is a
-// one-line change with both surfaces aligned.
-
-/** Hard cap on inline-upload payload size. Above this the client
- *  must go through the authenticated streamed-PUT path
- *  (`/v1/files/batch-create` → `PUT <upload_url>` →
- *  `/v1/files/:id/finalize`). Mirrors the legacy 10 MB
- *  conversation-attachment cap, halved because base64 inflates the
- *  JSON body by ~33% so a 5 MiB payload lands as ~7 MiB on the
- *  wire. */
 export const MAX_INLINE_BYTES = 5 * 1024 * 1024;
 
-/** Resource types a file link may target. Shared between the engine
- *  (`LinkRequestSchema.resource_type`, `ListFilesQuerySchema.linked_to`)
- *  and the CLI (`parseResourceRef`) so an enum addition / rename flows
- *  through every surface without drift. */
 export const FILE_LINK_RESOURCE_TYPES = [
   "conversation",
   "knowledge_source",

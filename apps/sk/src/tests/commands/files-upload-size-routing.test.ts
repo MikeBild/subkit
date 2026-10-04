@@ -1,8 +1,3 @@
-// Size-routing parity: ≤5 MB → inline, >5 MB → batch-create + authenticated PUT + finalize.
-//
-// The mock intercepts at the `fetchImpl` boundary so we verify the actual
-// wire paths without any process spawning.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,7 +54,6 @@ describe("uploadPath size routing", () => {
 
     const row = await uploadPath(client, fp, { quiet: true });
 
-    // Only one HTTP call should occur — the inline POST.
     expect(paths).toHaveLength(1);
     expect(paths[0]).toContain("/v1/files/inline");
     expect(row.id).toBe(FID);
@@ -115,19 +109,16 @@ describe("uploadPath size routing", () => {
     });
 
     const fp = join(tmpDir, "large.bin");
-    // Write exactly MAX_INLINE_BYTES + 1 bytes so the size threshold is crossed.
     writeFileSync(fp, Buffer.alloc(LARGE, 0x42));
 
     const row = await uploadPath(client, fp, { quiet: true });
 
     expect(row.id).toBe(FID);
-    // batch-create, authenticated PUT, finalize = 3 calls minimum.
     expect(paths.length).toBeGreaterThanOrEqual(3);
     expect(paths.some((p) => p.includes("batch-create"))).toBe(true);
     expect(methods.some((m) => m === "PUT")).toBe(true);
     expect(uploadAuthorizations).toContain("Bearer wf_live_test");
     expect(paths.some((p) => p.includes("finalize"))).toBe(true);
-    // The inline endpoint must NOT have been called.
     expect(paths.some((p) => p.includes("/v1/files/inline"))).toBe(false);
   });
 
@@ -147,7 +138,6 @@ describe("uploadPath size routing", () => {
         methods.push(method);
 
         if (url.includes("/v1/files/batch-create")) {
-          // Engine signals dedup: true — no PUT needed.
           return new Response(
             JSON.stringify({
               files: [
@@ -164,7 +154,6 @@ describe("uploadPath size routing", () => {
           );
         }
 
-        // getFile call after dedup.
         if (method === "GET" && url.includes(FID)) {
           return new Response(JSON.stringify(makeReadyRow(LARGE)), {
             status: 200,
@@ -182,9 +171,7 @@ describe("uploadPath size routing", () => {
     const row = await uploadPath(client, fp, { quiet: true });
 
     expect(row.id).toBe(FID);
-    // Must NOT have issued a PUT — the dedup flag short-circuits.
     expect(methods.some((m) => m === "PUT")).toBe(false);
-    // Must NOT have called /finalize — dedup path returns the existing row.
     expect(paths.some((p) => p.includes("finalize"))).toBe(false);
   });
 });

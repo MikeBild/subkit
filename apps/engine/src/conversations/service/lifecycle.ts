@@ -1,5 +1,3 @@
-// Conversation lifecycle endpoints — cancel, list, patch metadata.
-
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, ConversationDeletedMetadataSchema } from "../../audit/types.ts";
@@ -56,29 +54,17 @@ export async function cancelConversation(
   return rowToRecord(row);
 }
 
-/**
- * Payload guard on the question a waiting conversation carries.
- *
- * Not a display length — see the note at the call site. Sized against the real
- * distribution (longest pending prompt in production: 482 characters) so that
- * clipping here means a tool call went wrong, not that a person wrote a long
- * question.
- */
 export const PENDING_QUESTION_MAX = 2000;
 
 export interface ListConversationsParams {
   tenant_id: string;
   status?: ConversationStatus;
-  /** Restrict to conversations owned by this user id. */
   owner_id?: string;
   target_workflow_id?: string;
   target_connector_id?: string;
   q?: string;
-  /** The person reading the list — needed for `hidden` and the `hidden` flag. */
   viewer_user_id?: string;
-  /** Default `exclude` when a viewer is known: a hidden conversation stays out of the way. */
   hidden?: "exclude" | "only" | "all";
-  /** Restrict to conversations owned by people or by machine accounts. */
   owner_kind?: "user" | "system_account";
   sort?: "title" | "status" | "created_at" | "updated_at";
   order?: "asc" | "desc";
@@ -89,27 +75,15 @@ export interface ListConversationsParams {
 export interface ConversationListItem extends ConversationRecord {
   last_message_role: string | null;
   last_message_excerpt: string | null;
-  /** When this conversation's pending prompt lapses, or null when nothing is
-   *  waiting. The only real deadline in the product — a review queue cannot
-   *  tell "running out" from "just sitting there" without it. */
   pending_elicitation_expires_at: string | null;
-  /** What the conversation is actually asking. A queue that says only "waiting
-   *  for your answer" asks a person to open every entry to find out which one
-   *  they can answer; the question is the thing that lets them choose. */
   pending_elicitation_summary: string | null;
-  /** Which `ask_user_*` raised it — a confirmation reads differently from a
-   *  free-text question, and the queue can say so without opening anything. */
   pending_elicitation_tool: string | null;
-  /** Newest message time — the activity clock the list sorts and ages by;
-   *  `updated_at` also moves on bookkeeping writes and is not that. */
   last_activity_at: string | null;
   message_count: number;
-  /** Read-time projection of status + last message — see `lifecycle-view.ts`. */
   outcome: ConversationOutcome;
   owner: ConversationOwner | null;
   target_workflow: ConversationTargetRef | null;
   target_connector: ConversationTargetRef | null;
-  /** Hidden by the calling person. Only meaningful when the list ran with a viewer. */
   hidden: boolean;
 }
 
@@ -198,9 +172,6 @@ export async function listConversations(
     .orderBy(desc(conversationMessages.created_at));
 
   const latestByConversation = new Map<string, { role: string | null; excerpt: string | null }>();
-  // Activity clock and size, from the same rows: the newest message of any
-  // role (tool rows count — a turn that died mid-way is still activity) and
-  // how many there are.
   const activity = new Map<string, { last_role: string; last_at: Date; count: number }>();
   for (const message of messages) {
     const seen = activity.get(message.conversation_id);
@@ -252,16 +223,6 @@ export async function listConversations(
   const hiddenIds = new Set(hiddenRows.map((row) => row.conversation_id));
   const nowMs = now();
 
-  // The pending prompt a waiting conversation is running out of, AND what it
-  // asks. One query for the whole page, served by the existing
-  // `(conversation_id, status)` index — deliberately NOT a join onto the main
-  // select, which would multiply rows against a 1:N table and break the
-  // limit/offset pagination that `countConversations` is paired with.
-  //
-  // `distinct on` rather than `min(expires_at)`: the deadline alone answered
-  // "how long have I got" but not "got for what", and the question lives on the
-  // same row. The ordering picks the prompt that lapses first — the one that
-  // actually bites — and carries its own summary and tool with it.
   const pendingRows = await exec
     .selectDistinctOn([conversationElicitations.conversation_id], {
       conversation_id: conversationElicitations.conversation_id,
@@ -305,16 +266,6 @@ export async function listConversations(
         (row.target_connector_id && targetConnectors.get(row.target_connector_id)) || null,
       hidden: hiddenIds.has(row.id),
       pending_elicitation_expires_at: pending ? pending.expires_at.toISOString() : null,
-      // The whole question, not an excerpt of it. Clipping at 140 here made the
-      // decision queue's expanded panel show the reader exactly what its
-      // collapsed line already showed — the caller could not recover what the
-      // engine had thrown away. How much of a question fits on a card is a
-      // decision the surface makes, so the surface gets the text and makes it.
-      //
-      // The bound that remains is a payload guard, not a display rule: it is
-      // wide enough that no real question meets it (the longest pending prompt
-      // in production is a third of it) and narrow enough that one malformed
-      // tool call cannot inflate a 200-row page.
       pending_elicitation_summary: pending?.summary
         ? truncateExcerpt(pending.summary, PENDING_QUESTION_MAX)
         : null,
@@ -355,12 +306,6 @@ async function loadTargetConnectors(
   return out;
 }
 
-/**
- * Take a conversation out of one person's list, or put it back. Never a
- * delete: the row, its messages, tool calls and audit trail stay, and every
- * other reader still sees it. Returns null when the conversation is not in
- * the tenant.
- */
 export async function setConversationHidden(
   p: { tenant_id: string; conversation_id: string; user_id: string; hidden: boolean },
   exec: Db,
@@ -402,8 +347,6 @@ export async function setConversationHidden(
   return rowToRecord(row);
 }
 
-/** How long an unfinished background turn counts as still running. Matches
- *  the MCP task TTL; past it the turn is presumed dead and no longer blocks. */
 const BACKGROUND_TURN_LIVE_MS = 600_000;
 
 export type DeleteConversationResult =
@@ -412,13 +355,6 @@ export type DeleteConversationResult =
   | { kind: "forbidden" }
   | { kind: "turn_running" };
 
-/**
- * Remove a conversation for everyone: the row and, by cascade, its messages,
- * tool calls, elicitations and hide marks. Its file links have no foreign key
- * and are removed in the same transaction; the files themselves stay. Only the
- * owner or an administrator may delete, and never while a turn runs — the
- * worker would otherwise write into a conversation that no longer exists.
- */
 export async function deleteConversation(
   p: {
     tenant_id: string;
@@ -448,7 +384,6 @@ export async function deleteConversation(
         isNull(mcpTasks.result),
         isNull(mcpTasks.failure_reason),
         isNull(mcpTasks.cancelled_at),
-        // A turn parked on a provider limit resumes later and still counts.
         or(
           gt(mcpTasks.created_at, new Date(now() - BACKGROUND_TURN_LIVE_MS)),
           gt(mcpTasks.parked_until, new Date(now())),
@@ -523,11 +458,6 @@ export interface PatchConversationParams {
   title?: string | null;
 }
 
-/**
- * Patch a conversation's mutable metadata. Emits `CONVERSATION_UPDATED`
- * audit. The conversation rows's `updated_at` is bumped so the
- * `/resume` picker re-orders against it.
- */
 export async function patchConversation(
   p: PatchConversationParams,
   exec: Db,
@@ -536,7 +466,6 @@ export async function patchConversation(
   if (p.model !== undefined) updates.model = p.model;
   if (p.title !== undefined) {
     updates.title = p.title;
-    // A name a person set is theirs; the automatic titler stays off it.
     updates.title_locked = typeof p.title === "string" && p.title.trim().length > 0;
   }
   const [row] = await exec
@@ -564,20 +493,6 @@ export async function patchConversation(
   return rowToRecord(row);
 }
 
-/**
- * Remember why the last turn stopped, when it stopped because something broke.
- *
- * A turn killed by a provider error wrote nothing at all: the status stayed
- * `active`, no message was appended, and the transcript read "in progress" for
- * as long as anyone cared to look — indistinguishable from a turn still
- * thinking. The provider's own sentence ("you have reached your specified API
- * usage limits") is usually the whole diagnosis, and it was discarded twice
- * over: once by not being stored, once by the browser replacing it with a
- * constant.
- *
- * Stored on the conversation, never as a message. A synthetic assistant turn
- * would be replayed to the model as something the assistant said.
- */
 export async function recordConversationTurnFailure(
   exec: Db,
   tenant_id: string,
@@ -590,7 +505,6 @@ export async function recordConversationTurnFailure(
     .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
 }
 
-/** Forget it: the next turn has started, so the old failure is history. */
 export async function clearConversationTurnFailure(
   exec: Db,
   tenant_id: string,

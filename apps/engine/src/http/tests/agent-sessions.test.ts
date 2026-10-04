@@ -1,8 +1,3 @@
-// Integration tests for POST /v1/agent/sessions — the coding-agent
-// session capture surface. The analyze job is stubbed via the scaffold's
-// appOptions so no pg-boss (and no LLM) is needed; what's exercised is
-// auth + RBAC + Zod validation + the enqueue payload + the audit entry.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -87,9 +82,6 @@ describe("POST /v1/agent/sessions — happy path", () => {
     expect(job?.domains).toEqual(["blog-de"]);
     expect(job?.transcript).toContain("Gedankenstrich");
 
-    // The route audits fire-and-forget (repo convention for enqueue
-    // endpoints), so the entry can land AFTER the 202 — poll briefly
-    // instead of racing the async write.
     const captured = await waitFor(
       async () => {
         const entries = await ctx.db
@@ -106,8 +98,6 @@ describe("POST /v1/agent/sessions — happy path", () => {
   });
 
   test("the candidate list accepts the session_learning filter (curation path)", async () => {
-    // Regression: the list route once pinned a hand-copied pattern_kind
-    // subset and 400'd `session_learning` — breaking `sk learnings list`.
     const res = await fetch(
       `${ctx.baseUrl}/v1/skill-candidates?status=proposed&pattern_kind=session_learning`,
       { headers: { authorization: `Bearer ${ctx.apiKey}` } },

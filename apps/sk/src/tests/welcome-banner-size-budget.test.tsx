@@ -1,12 +1,3 @@
-// Size-budget regression test for the welcome
-// banner. This was once framed as a "token budget" but the
-// banner is rendered to the terminal, not injected into the LLM
-// context. The concrete operator-facing concern is: the first paint
-// shouldn't grow into a screenful of text. This test pins the line
-// count and rendered-byte count for the worst-case configuration
-// (tip + whatsNew + signedIn=true + targetKind set + connection
-// metadata) so a future addition surfaces in CI.
-
 import { describe, expect, test } from "bun:test";
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import { renderInk } from "./helpers/ink.tsx";
@@ -35,11 +26,6 @@ describe("WelcomeBanner — size budget (H8)", () => {
       const text = ui.text();
       const lineCount = text.split("\n").length;
       const byteCount = Buffer.byteLength(text, "utf8");
-      // First-paint UX budget: ≤ 16 lines is the ceiling that keeps
-      // the transcript visible above the fold on a typical 24-row
-      // terminal even with all optional rows populated (tip,
-      // what's-new, target, version-skew). Bytes are a coarser
-      // sanity check on rendered density.
       expect(lineCount).toBeLessThanOrEqual(16);
       expect(byteCount).toBeLessThanOrEqual(2000);
     } finally {

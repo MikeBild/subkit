@@ -1,6 +1,3 @@
-// Integration test for per-tenant vendor-recipe overrides.
-// Uses the testcontainer-backed db helper so the real row + index is exercised.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, vendorRecipeOverrides } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -27,7 +24,6 @@ describe("per-tenant vendor-recipe overrides", () => {
   test("falls back to base manifest when no override row exists", async () => {
     const r = await getVendorRecipeForTenant(tdb.db, tenantId, "codex");
     expect(r?.client).toBe("codex");
-    // Matches the base manifest exactly.
     expect(r).toEqual(getVendorRecipe("codex"));
   });
 
@@ -39,7 +35,6 @@ describe("per-tenant vendor-recipe overrides", () => {
     });
     const r = await getVendorRecipeForTenant(tdb.db, tenantId, "codex");
     expect(r?.notes).toBe("tenant-specific override: use stdio only");
-    // Untouched keys preserved.
     expect(r?.transports).toEqual(getVendorRecipe("codex")!.transports);
   });
 

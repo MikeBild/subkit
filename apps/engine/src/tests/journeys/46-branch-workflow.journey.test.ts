@@ -1,16 +1,3 @@
-// User story: As an operator, I want branch steps to route execution to the
-// correct arm and skip the other arm's steps, so that workflows can handle
-// conditional logic without running both paths.
-//
-// Acceptance criteria:
-//   - AC1: When the branch `when` condition is true, `then_steps` run and
-//          `else_steps` are skipped (appear as "aborted" in step summaries).
-//   - AC2: When the `when` condition is false, `else_steps` run and
-//          `then_steps` are skipped.
-//   - AC3: Workflow status is "succeeded" in both cases — branch itself
-//          doesn't fail just because an arm is not taken.
-// Spec refs: plan docs — §2d BRANCH STEP: Actual Control Flow
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
@@ -26,7 +13,6 @@ afterAll(async () => {
 
 describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
   test("AC1+AC3: true branch runs then_steps, else_steps are skipped, status succeeded", async () => {
-    // Create workflow: prepare step outputs status "approved", branch checks it.
     const createRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -85,7 +71,6 @@ describe("46: Branch workflow — correct arm runs, other arm skipped", () => {
   });
 
   test("AC2+AC3: false branch skips then_steps, else_steps run, status succeeded", async () => {
-    // Condition evaluates to false (status is "pending", not "approved").
     const createRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({

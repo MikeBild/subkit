@@ -1,18 +1,3 @@
-// `summarize` flow — compact summary of arbitrary input.
-//
-// Two modes, both backed by `core/invoke.ts`:
-//   - default: free-form text (`runSummarizeFlow({ tenant_id, prompt })`).
-//     Kept for low-latency, single-paragraph summaries where structure
-//     would be pure overhead.
-//   - structured: Zod-typed envelope (`runStructuredSummarizeFlow`). Uses
-//     the same submit/abort tool loop as every other schema flow, so
-//     callers that need key_points / warnings get a deterministic shape
-//     without hand-parsing the text.
-//
-// Per-flow env overrides (SUMMARIZE_LLM_PROVIDER / SUMMARIZE_MODEL) are
-// applied centrally in `invoke.ts#applyFlowEnvOverrides`. Any flow name
-// picks up `{FLOW}_LLM_PROVIDER` + `{FLOW}_MODEL` the same way.
-
 import { z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../core/invoke.ts";

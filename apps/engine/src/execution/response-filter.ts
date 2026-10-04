@@ -1,17 +1,3 @@
-// Response filters: KEYS / VALUES / BOTH x REMOVE / MASK / FAIL.
-// Filters compose top-to-bottom. The body is mutated in-place when possible
-// to avoid extra allocations on large pages.
-//
-// Scope widens the blast radius of a match:
-//   FIELD  — the default; only the matched key/value is affected.
-//   ITEM   — when any descendant matches, the *containing object* is
-//            removed / masked / failed. The match still has to happen
-//            inside that object (or its children).
-//   ENTRY  — when any descendant matches, the *top-level array element*
-//            that transitively contains the match is removed / masked /
-//            failed. Matches inside a non-array root fall back to ITEM
-//            semantics so the scope is still coherent.
-
 import type { ResponseFilter } from "../workflows/types.ts";
 
 export class ResponseFilterFailError extends Error {
@@ -38,11 +24,6 @@ function matches(filter: ResponseFilter, key: string | null, value: unknown): bo
   return false;
 }
 
-/**
- * Does this subtree contain any matching key/value pair? Used by ITEM
- * and ENTRY scopes to decide whether the containing object/element
- * should be struck whole, without mutating its contents.
- */
 function subtreeMatches(filter: ResponseFilter, node: unknown): boolean {
   if (Array.isArray(node)) {
     for (const item of node) {
@@ -115,9 +96,6 @@ function applyItemScope(filter: ResponseFilter, body: unknown, path = "$"): unkn
       .filter((item) => item !== REMOVE_TOKEN);
   }
   if (body && typeof body === "object") {
-    // "Item" = the nearest object that *directly* owns a matching key/value.
-    // Only strike if an own key matches — if the match is deeper, let the
-    // recursion find the real item further down.
     if (ownMatches(filter, body as Record<string, unknown>)) {
       return strikeWhole(filter, path);
     }
@@ -145,7 +123,6 @@ function applyEntryScope(filter: ResponseFilter, body: unknown, path = "$"): unk
     });
     return out;
   }
-  // Fall back to ITEM semantics for non-array roots.
   return applyItemScope(filter, body, path);
 }
 

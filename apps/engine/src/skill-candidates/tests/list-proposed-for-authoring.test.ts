@@ -1,13 +1,3 @@
-// Service-level integration test for listProposedForAuthoring.
-// Uses a real disposable Postgres database (createTestDb) — no mocks.
-//
-// Verifies:
-//  - Three-scope merge: global ∪ connector ∪ workflow candidates all returned
-//  - Deduplication on id: workflow > connector > global tiebreak (last-write wins)
-//  - Sort order: (scope_specificity desc, confidence_rank desc, evidence_count desc, created_at desc)
-//  - Cap at 8 results
-//  - Status filter: approved / rejected / superseded excluded; only proposed included
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
@@ -21,7 +11,6 @@ let ctx: TestDb;
 let tenant_id: string;
 let other_tenant_id: string;
 
-// Fixed connector + workflow ids used across tests
 const CONNECTOR_ID = "00000000-0000-0000-0000-000000000001";
 const WORKFLOW_ID = "00000000-0000-0000-0000-000000000002";
 const _OTHER_WORKFLOW_ID = "00000000-0000-0000-0000-000000000003";
@@ -65,7 +54,6 @@ async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
     .returning();
   if (!row) throw new Error("seed failed");
 
-  // Add evidence rows if requested
   if (opts.evidence_count && opts.evidence_count > 0) {
     for (let i = 0; i < opts.evidence_count; i++) {
       await ctx.db.insert(skillCandidateEvidence).values({
@@ -122,15 +110,10 @@ afterAll(async () => {
 }, 30_000);
 
 afterEach(async () => {
-  // Clean up candidates between tests for isolation
   await ctx.db.delete(skillCandidateEvidence);
   await ctx.db.delete(skillCandidates).where(and(eq(skillCandidates.tenant_id, tenant_id)));
   await ctx.db.delete(skillCandidates).where(and(eq(skillCandidates.tenant_id, other_tenant_id)));
 }, 10_000);
-
-// ---------------------------------------------------------------------------
-// Basic scenarios
-// ---------------------------------------------------------------------------
 
 describe("listProposedForAuthoring — basic merge", () => {
   test("returns empty array when tenant has no candidates", async () => {
@@ -189,10 +172,6 @@ describe("listProposedForAuthoring — basic merge", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Status filter: only proposed
-// ---------------------------------------------------------------------------
-
 describe("listProposedForAuthoring — status filter", () => {
   test("excludes approved candidates", async () => {
     await seedCandidate({ scope: "global", title: "Approved", status: "approved" });
@@ -215,10 +194,6 @@ describe("listProposedForAuthoring — status filter", () => {
     expect(result.some((c) => c.title === "Superseded")).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Sort order: scope_specificity desc, confidence_rank desc, evidence_count desc, created_at desc
-// ---------------------------------------------------------------------------
 
 describe("listProposedForAuthoring — sort order", () => {
   test("workflow-scoped ranks above connector-scoped above global", async () => {
@@ -280,7 +255,6 @@ describe("listProposedForAuthoring — sort order", () => {
   });
 
   test("within same scope + confidence + evidence: newer created_at ranks first", async () => {
-    // Seed older first, then newer
     await seedCandidate({
       scope: "global",
       confidence: "medium",
@@ -302,13 +276,8 @@ describe("listProposedForAuthoring — sort order", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Cap at 8 results
-// ---------------------------------------------------------------------------
-
 describe("listProposedForAuthoring — cap at 8", () => {
   test("returns at most 8 candidates even when more are available", async () => {
-    // Seed 12 global candidates
     for (let i = 0; i < 12; i++) {
       await seedCandidate({ scope: "global", title: `Bulk ${i}` });
     }
@@ -335,13 +304,8 @@ describe("listProposedForAuthoring — cap at 8", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tenant isolation: wrong tenant returns empty
-// ---------------------------------------------------------------------------
-
 describe("listProposedForAuthoring — tenant isolation", () => {
   test("candidates for other_tenant_id are not returned for tenant_id", async () => {
-    // Seed for other tenant
     await ctx.db.insert(skillCandidates).values({
       tenant_id: other_tenant_id,
       scope: "global",
@@ -352,7 +316,6 @@ describe("listProposedForAuthoring — tenant isolation", () => {
       confidence: "high",
       fingerprint: nextFingerprint(),
     });
-    // Seed for this tenant
     await seedCandidate({ scope: "global", title: "My Candidate" });
 
     const result = await listProposedForAuthoring(tenant_id, {}, ctx.db);

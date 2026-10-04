@@ -15,14 +15,6 @@ interface ConversationRow {
   when: string;
 }
 
-/**
- * "Unterhaltungen dazu", folded: the conversations people had about this
- * record. Provenance is structural — you see them where the record is, and
- * the chat list stays a way back into your own work.
- *
- * A record nobody talked about has no section at all; a read that failed
- * says so (the table's error state) instead of passing for "none".
- */
 export function ConversationsAbout({
   target,
 }: {

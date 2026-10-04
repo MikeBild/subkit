@@ -1,31 +1,3 @@
-// Proactive drift scanner — finds drift between runs, not at the
-// moment a customer-facing execution fails.
-//
-// Three pure DB scanners feed a single `scanForDrift` orchestrator:
-//
-//   * `scanStdlibVersionDrift`  — reuses `stdlib-drift-scan.ts`. Emits
-//     `stdlib_version_drift` signals for workflows + request hooks
-//     whose recorded sk-stdlib major differs from the engine's.
-//
-//   * `scanSchemaShapeDrift`    — compares accumulated observations per
-//     `(tenant, connector, endpoint, workflow, step)`. Incompatible
-//     type changes emit `schema_diff`; additive fields remain evidence.
-//
-//   * `scanValidationDrift`     — walks every workflow whose current
-//     version's `dag.validation_expression` is non-empty. If the
-//     latest execution on the current version failed AND an earlier
-//     execution on the SAME version succeeded, the invariant has
-//     started failing on previously-valid output. We emit a
-//     `validation_failed` signal so the operator gets a Patch
-//     Candidate before the next downstream chain wedges on the
-//     same envelope.
-//
-// All three scanners are pure: DB reads only, no LLM, no network.
-// `scanForDrift` returns a flat list of `{ signal, ctx }`; the caller
-// (scheduler reconciler / admin route / MCP tool) is responsible for
-// running each through `processDriftSignal(..., { allowAutoApply: false })`
-// to persist Patch Candidates.
-
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/connectors.ts";
@@ -40,36 +12,16 @@ import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
 
 export interface ProactiveScanFilters {
-  /** Limit the scan to a single tenant. Required for tenant-scoped
-   *  callers (admin HTTP). Omit to fan out across all live tenants
-   *  (the scheduler does this implicitly per-tenant, so it always
-   *  passes the tenant_id). */
   tenant_id?: string;
-  /** Limit validation and schema-drift scanning to a single workflow. */
   workflow_id?: string;
-  /** Limit schema-drift scanning to a single connector. Stdlib +
-   *  validation drift scanners ignore this filter. */
   connector_id?: string;
 }
 
-/**
- * Carrier the scanner attaches to every emitted signal. The HTTP /
- * scheduler / MCP orchestrators receive a `ScannedSignal[]` and call
- * `processDriftSignal(signal, fullCtx, ...)` where `fullCtx` is this
- * partial context layered with `source`, `actor_id`, and `scan_id`.
- *
- * `repair_input.failing_step_id` is a synthetic token like
- * `proactive:schema_diff:<connector_id>:<endpoint_key>` so the LLM
- * prompt has a stable handle but downstream code can immediately
- * tell it never came from a real execution_steps row.
- */
 export interface ScannedSignalContext {
   tenant_id: string;
   workflow_id: string;
   execution_id: null;
   step_id: null;
-  /** The DAG step the drift was recorded against, when the scan has one.
-   *  Endpoint-shape drift does; stdlib/workflow-scoped drift does not. */
   workflow_step_id?: string | null;
   connector_id?: string;
   endpoint_key?: string;
@@ -85,17 +37,6 @@ export interface ScannedSignal {
   ctx: ScannedSignalContext;
 }
 
-/**
- * Translate a scanned signal's context into the shape `processDriftSignal`
- * persists.
- *
- * Both callers — the scheduler runner and the operator scan route — used to
- * rebuild this field by field, and both silently dropped `workflow_step_id`.
- * A proactive signal has no failing execution row, so that anchor is the only
- * link between the resulting candidate and the step it proposes to change:
- * without it the candidate can be neither previewed nor applied. One
- * translation means a field added here can never again reach only one caller.
- */
 export function driftSignalContext(
   ctx: ScannedSignalContext,
   extra: { actor_id: string | null; source: SignalSource; scan_id: string },
@@ -127,35 +68,12 @@ export function driftSignalContext(
   };
 }
 
-/**
- * Drift the scanner found but cannot promote to a Patch Candidate
- * (which is workflow-scoped at the DB level). Surfaced to the
- * operator so the drift is visible even when no workflow anchor
- * exists:
- *
- *   * `hook_surface_not_supported` — stdlib version drift on a
- *     `request_hooks` row. Hooks are tenant-scoped, not workflow-
- *     scoped, so they have no Patch Candidate anchor today.
- *   * `no_workflow_anchor` — schema-shape drift on a (connector,
- *     endpoint) pair that no workflow in the tenant references.
- *
- * Operators read these from the scan response (HTTP / MCP), the
- * audit metadata, and the `proactive_drift_unanchored_total`
- * metric.
- */
 export interface UnanchoredDrift {
   signal: DriftSignal;
   reason: "hook_surface_not_supported" | "no_workflow_anchor";
   resource_id: string;
 }
 
-/**
- * The scanner's pure output. The orchestrator-side scan_id is owned
- * by the caller (it comes from the `self_healing_scans` row INSERT,
- * not from the scanner itself) — we deliberately do NOT generate one
- * here because emitting a uuid that nobody reads would be confusing
- * forensic noise.
- */
 export interface ScanResult {
   signals: ScannedSignal[];
   unanchored: UnanchoredDrift[];
@@ -165,18 +83,6 @@ function tokenisedAnchor(parts: Array<string | null | undefined>): string {
   return parts.filter((p): p is string => typeof p === "string" && p.length > 0).join(":");
 }
 
-/**
- * Stdlib version drift — wraps the existing tenant-scoped scanner
- * and tags each emitted signal with a workflow / request-hook
- * carrier. `stdlib_version_drift` signals attach to whatever surface
- * recorded the version (a workflow row or a request_hook row).
- *
- * Hook-surface drift can't be promoted to a Patch Candidate today
- * because `patch_candidates.workflow_id` is NOT NULL — hooks are
- * tenant-scoped, not workflow-scoped. We return those signals in
- * the `unanchored` bucket instead so the operator still sees them
- * in the scan response and can take manual action.
- */
 async function scanStdlibVersionDriftForTenant(
   tenant_id: string,
   exec: Executor,
@@ -217,11 +123,6 @@ async function scanStdlibVersionDriftForTenant(
   return { anchored, unanchored };
 }
 
-/**
- * Schema shape drift compares observations only within their recorded
- * workflow and step provenance. Additive evidence is compatible;
- * incompatible type changes are the proactive patch signal.
- */
 async function scanSchemaShapeDriftForTenant(
   tenant_id: string,
   exec: Executor,
@@ -293,15 +194,11 @@ async function scanSchemaShapeDriftForTenant(
     step_id,
     rows: bucket,
   } of grouped.values()) {
-    if (bucket.length < 2) continue; // Need before AND after to diff.
-    const [after, before] = bucket; // desc order: index 0 newest
+    if (bucket.length < 2) continue;
+    const [after, before] = bucket;
     if (!after || !before) continue;
     const diff = diffShapesDeep(before.schema, after.schema);
     if (diff.widened.length === 0) continue;
-    // A root-level `unknown` on either side is not a schema change anyone can
-    // patch: the response stopped being describable (a non-JSON body), or it
-    // became describable again. The diff carries no field to name, so a repair
-    // attempt can only fail — every scan, forever. Record it and move on.
     if (before.schema.type === "unknown" || after.schema.type === "unknown") {
       logger.info({
         module: "self-healing",
@@ -346,9 +243,6 @@ async function scanSchemaShapeDriftForTenant(
         workflow_id,
         execution_id: null,
         step_id: null,
-        // No failing execution row, but the recorded shape names the definition
-        // step — and the anchor check above just proved it still exists in the
-        // current version. That is the target a patch rewrites.
         workflow_step_id: step_id,
         connector_id,
         endpoint_key,
@@ -361,9 +255,6 @@ async function scanSchemaShapeDriftForTenant(
             workflow_id,
             step_id,
           ]),
-          // The "response" we hand the LLM is the newer shape — the
-          // model uses it to ground the patch (rename / type-widen
-          // suggestions stay tied to the observed structure).
           response: after.schema,
         },
       },
@@ -397,21 +288,6 @@ function readValidationExpression(dag: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-/**
- * Validation expression drift — workflows whose current version has
- * a non-empty `validation_expression` AND whose latest execution on
- * the current version failed AND an earlier execution on the same
- * version succeeded. The pair "previously succeeded, now failing"
- * is the actual drift signal: the expression itself didn't change,
- * but the upstream payload now violates the invariant.
- *
- * We don't read offloaded result envelopes to confirm the failure
- * was specifically `validation_failed` — that would require a heavy
- * scan and the reactive path is already wired for that case. The
- * proactive trigger fires whenever an execution failed AFTER a
- * prior success on the same version, and lets the LLM propose a
- * patch grounded on the current invariant text.
- */
 async function scanValidationDriftForTenant(
   tenant_id: string,
   exec: Executor,
@@ -459,12 +335,6 @@ async function scanValidationDriftForTenant(
 
     if (execRows.length < 2) continue;
     const newest = execRows[0];
-    // `failed` ONLY. `aborted` (and `timed_out`) are excluded here, and that
-    // exclusion is a contract, not an omission: a cancelled run says nothing
-    // about the workflow, so it must never become a repair candidate. Every
-    // driver's cancellation path is written against this — the guarantee that
-    // stopping a run cannot manufacture a Patch Candidate for it. Widening
-    // this predicate would silently break all of them at once.
     if (newest?.status !== "failed") continue;
     const priorSucceeded = execRows.slice(1).some((e) => e.status === "succeeded");
     if (!priorSucceeded) continue;
@@ -472,11 +342,6 @@ async function scanValidationDriftForTenant(
     const signal: DriftSignal = {
       kind: "validation_failed",
       expression,
-      // Without parsing the offloaded result envelope we cannot
-      // surface the exact `actual_value` that tripped the invariant.
-      // The repair flow gets the expression text and the proactive
-      // anchor — the operator's review captures whether the proposal
-      // is right before any apply.
       actual_value: null,
     };
     anchored.push({
@@ -495,19 +360,6 @@ async function scanValidationDriftForTenant(
   return { anchored, unanchored: [] };
 }
 
-/**
- * Orchestrator — runs all three scanners and returns the flattened
- * anchored + unanchored signal lists. The caller (scheduler runner,
- * HTTP route, MCP tool) owns the scan_id (it comes from the
- * `self_healing_scans` row INSERT) and uses it when stamping the
- * downstream Patch Candidate diff + the SELF_HEALING_SCAN_*
- * audit rows.
- *
- * When `filters.tenant_id` is omitted, the scanner fans out across
- * every live tenant. The scheduler reconciler always passes a
- * specific tenant_id (the one it just CAS-stamped), so the fan-out
- * branch is exercised by the admin HTTP "scan everything" form.
- */
 export async function scanForDrift(filters: ProactiveScanFilters, exec: Db): Promise<ScanResult> {
   return instrument({
     module: "self-healing",

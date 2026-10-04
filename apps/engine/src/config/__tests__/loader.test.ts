@@ -1,6 +1,3 @@
-// Loader tests. Filesystem-backed (tmpdir) but no DB / no testcontainers.
-// Determinism gate: no Math.random / setTimeout / .only.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,28 +84,17 @@ describe("loadConfig", () => {
   });
 
   test("tenant overlay schema rejects non-scope:tenant leaves at parse time", async () => {
-    // A hand-edited config that puts `server.port` (scope:global)
-    // inside a tenant overlay must fail parse — the overlay schema
-    // doesn't allow it. This is the runtime contract: the only
-    // path to a tenant overlay leaf is through scope:tenant.
     writeFileSync(
       cfgPath,
       JSON.stringify({
         database: { url: "postgres://x" },
         tenants: {
           "tenant-bad": {
-            // Hand-injected non-tenant key. The TenantOverlaySchema
-            // limits the shape, so this round-trips through Zod's
-            // `strict()` path and is dropped silently OR rejected.
             server: { port: 4001 },
           },
         },
       }),
     );
-    // The current behaviour: passes parse (the overlay's `server`
-    // key is unknown so Zod with default strip mode discards it).
-    // Test asserts the resulting tenant view does NOT carry the
-    // non-tenant value.
     await loadFresh({ NODE_ENV: "test" });
     expect(getConfig("tenant-bad").server.port).toBe(3000);
   });
@@ -122,7 +108,6 @@ describe("loadConfig", () => {
         tenants: {
           "tenant-a": {
             llm: { api_key: "tenant-a-key" },
-            // Non-tenant leaf — should be ignored at merge.
             server: { port: 9999 },
           },
         },
@@ -131,11 +116,6 @@ describe("loadConfig", () => {
     await loadFresh({ NODE_ENV: "test" });
     expect(getConfig("tenant-a").llm.api_key).toBe("tenant-a-key");
     expect(getConfig().llm.api_key).toBe("global-key");
-    // The non-tenant overlay leaf is structurally there but the
-    // applyTenantOverlay merger replaces server.port — we don't surface
-    // a guarantee that it's silently dropped, only that global-only
-    // PUTs through setConfigKey reject the scope.
-    // This is asserted at the setConfigKey level below.
   });
 
   test("invalid JSON file fails with ConfigLoaderError", async () => {
@@ -178,7 +158,6 @@ describe("setConfigKey", () => {
   test("validation failure surfaces ValidationError with path + expected", async () => {
     let caught: ValidationError | undefined;
     try {
-      // log.level only accepts the documented enum values.
       await setConfigKey("log.level", "bogus", { force: true });
     } catch (err) {
       caught = err as ValidationError;
@@ -188,8 +167,6 @@ describe("setConfigKey", () => {
   });
 
   test("requires-restart in production blocks without force", async () => {
-    // The guard reads process.env.NODE_ENV directly (it predates the
-    // loader-injected env). Set + restore for this single test.
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     try {

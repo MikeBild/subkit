@@ -1,13 +1,3 @@
-// Atomic connector + credential save — extracted from
-// `tools/save-connector-draft.ts` so both the LLM-driven tool path AND
-// the harness-driven auto-persist path (via the elicitation
-// `commit_intent`) share one durability contract.
-//
-// One-place rule: any change to the upsert sequence (connector first →
-// conversation target update → optional credential → endpoint analysis
-// → draft snapshot transition) lives here. The tool wrapper and the
-// elicitation auto-persist dispatcher are thin callers.
-
 import { eq } from "drizzle-orm";
 import {
   recordConnectorCreated,
@@ -44,24 +34,12 @@ import { credentialModeMatchesAuthType } from "./credential-form-contract.ts";
 import { clearDraftCredential, getDraftCredential } from "./draft-credential-cache.ts";
 import { persistCredential } from "./persist-credential.ts";
 
-/**
- * Connector-column edits a re-issued draft carries vs. the persisted row.
- *
- * Used by both `saveConnectorAtomic` and the `save_connector_draft` tool's
- * idempotency check so they agree on what counts as "changed". `config`
- * is deliberately excluded: the persisted config carries template
- * enrichment the draft never mirrors, so a diff there is unreliable —
- * explicit config edits go through the `update_connector` tool.
- */
 export function connectorFieldPatch(
   connector: ConnectorDraftDocument | null | undefined,
   existing: ConnectorView,
 ): UpdateConnectorInput {
   const patch: UpdateConnectorInput = {};
   if (!connector) return patch;
-  // A draft hydrated from the saved connector carries the masked dsn, and the
-  // masked base_url when that holds a credential. Either is the stored value,
-  // not an edit.
   const shown = toPublicConnector(existing);
   if (
     connector.base_url !== undefined &&
@@ -86,32 +64,8 @@ export function connectorFieldPatch(
   return patch;
 }
 
-/**
- * Cooldown window after a failed probe during which `force_save: true`
- * is refused. Picked to be long enough that the LLM's "re-probe with
- * the same broken credential, then force_save" loop is broken, short
- * enough that legitimate operator workflows (rotate-then-save) don't
- * sit and wait. Tuned at one minute — a probe + manual operator confirm
- * comfortably fits inside this window so the cooldown only ever
- * triggers on the bad pattern.
- */
 const FORCE_SAVE_COOLDOWN_MS = 60_000;
 
-/** Shape of the optional credential collected via `ask_user_form(type:password)`.
- *
- *  `cognito_user_password` is the bootstrap shape: the operator hands us
- *  a Cognito email + password; the engine exchanges them at
- *  `cognito-idp.<region>.amazonaws.com` for an IdToken + RefreshToken
- *  before any probe runs. The persisted credential row ends up as
- *  `mode: "oauth2"` with `token_type: "none"` so the raw JWT lands in
- *  the `Authorization` header (AppSync rejects anything with a `Bearer`
- *  prefix). Refresh-on-stale uses `REFRESH_TOKEN_AUTH` against the
- *  same endpoint via `runCognitoRefreshTokenGrant`.
- *
- *  `aws_sigv4` is also a bootstrap shape — keys are persisted verbatim;
- *  signing happens per-request inside the HTTP driver's
- *  `executePlannedHttpRequest`.
- */
 export type AtomicCredentialInput =
   | { mode: "bearer"; token: string }
   | { mode: "basic"; username: string; password: string }
@@ -121,14 +75,9 @@ export type AtomicCredentialInput =
       mode: "cognito_user_password";
       username: string;
       password: string;
-      /** Override the `aws_region` from connector config when present. */
       aws_region?: string;
-      /** Override the `client_id` from `oauth.client_id` when present. */
       client_id?: string;
-      /** Optional Cognito app-client secret (apps with secret enabled). */
       client_secret?: string;
-      /** Send AccessToken instead of IdToken (resource APIs that want
-       *  the access scope). Defaults to IdToken (AppSync convention). */
       use_access_token?: boolean;
     }
   | {
@@ -138,10 +87,6 @@ export type AtomicCredentialInput =
       session_token?: string;
     }
   | {
-      /** OAuth2 client-credentials seed. NOT a credential-row write —
-       *  the saved connector's `config.oauth` is updated so a subsequent
-       *  `authenticate_oauth` call can run the dance. The credential
-       *  row is created later by the OAuth callback route. */
       mode: "oauth2";
       client_id: string;
       client_secret?: string;
@@ -154,96 +99,27 @@ export interface SaveConnectorAtomicParams {
   ctx: ToolContext;
   environment: "dev" | "prod";
   credential?: AtomicCredentialInput | undefined;
-  /**
-   * When true, persist the connector even if the most recent probe
-   * failed. Operator-confirmed escape hatch; matches the
-   * `force_save` arg on the tool wrapper. Defaults to false — a
-   * failed probe + missing force_save returns a structured
-   * `probe_failed` envelope so the LLM can re-issue with the user's
-   * blessing.
-   */
   forceSave?: boolean;
-  /**
-   * True ONLY when `forceSave` arrived through a RESOLVED operator
-   * approval — the commit-intent dispatch from an approved elicitation
-   * (`maybeAutoPersistFromElicitation`). That approval IS the human
-   * override the fresh-probe cooldown exists to demand, so it bypasses
-   * the cooldown; the override audit row records
-   * `cooldown_bypassed: true`. A bare LLM-initiated `force_save`
-   * (the `save_connector_draft` tool path) never sets this and keeps
-   * the cooldown refusal.
-   */
   forceSaveApproved?: boolean;
-  /**
-   * Reason annotation surfaced as the audit row's `reason` column. The
-   * tool path leaves it null (the existing `connector.created` audit
-   * shape stays untouched); the harness auto-persist path passes
-   * `auto_persist_on_confirmation` so operators can distinguish a
-   * harness-issued save from an LLM-issued one.
-   */
   reason?: string;
-  /**
-   * When true, emit a secondary `connector.persisted` audit row tagged
-   * with `commit_intent_kind`. Used by the harness auto-persist path so
-   * the audit trail records which elicitation kind drove the write.
-   */
   emitAutoPersistAudit?: boolean;
-  /** Used by the auto-persist audit row only. */
   commitIntentKind?: string;
-  /**
-   * Suppress the fire-and-forget post-save discovery warm-up. Set by the
-   * green-probe auto-persist path: the probe already proved the endpoint
-   * live and the conversation continues immediately — an untracked
-   * background introspection there outlives the tool call. Explicit saves
-   * keep the warm-up; discovery stays available on demand via
-   * `discover_connector_endpoints`.
-   */
   skipBackgroundDiscovery?: boolean;
 }
 
-/**
- * Atomic connector + (optional) credential save. Mirrors the previous
- * tool body line-for-line so behaviour stays identical:
- *
- *   1. Idempotency check against `connector.saved_connector_id`.
- *   2. Validate the draft against `validateConnectorDraft`.
- *   3. Gate on missing-fresh checkpoints + driver-required probe.
- *   4. `createConnector` → conversations.target_connector_id update →
- *      attachment-driven endpoint analysis (best-effort) → optional
- *      `upsertCredential`.
- *   5. Snapshot the draft into `connector_persisted` lifecycle.
- *
- * Returns the same `ToolResult` envelope the tool wrapper has always
- * surfaced, so wrapper + harness can share the downstream
- * `data`/`pause`/`committed_workflow_id` plumbing without touching it.
- */
 export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise<ToolResult> {
   const { ctx } = p;
   const draft = ctx.getDraft();
   const connector = draft.connector;
 
-  // Re-issued path: the draft is already bound to a saved connector.
-  // It refreshes the credential AND persists any connector-column edits
-  // the operator made after the first save. Before 5.1.x this path
-  // compared only the credential and silently dropped every field
-  // change, so a `base_url` correction (the AppSync `/graphql` case)
-  // could never land — `save_connector_draft` kept reporting
-  // `already_persisted`. See save-connector-draft.ts history (2ee4511c).
   const existingSavedId = connector?.saved_connector_id ?? null;
   if (existingSavedId) {
     const existing = await getConnector(ctx.tenant_id, existingSavedId, ctx.db);
     if (existing) {
-      // Patch whatever connector columns the draft changed since the
-      // first save (most commonly a `base_url` correction).
       const fieldPatch = connectorFieldPatch(connector, existing);
       const updatedFields = Object.keys(fieldPatch);
       const fieldsChanged = updatedFields.length > 0;
       if (fieldsChanged) {
-        // A field edit must still clear the draft validation gate. The
-        // re-issue path skips the validation block below, so re-run it
-        // here — this is what refuses a `base_url` patch that no longer
-        // matches the template endpoint pattern (the AppSync host-root
-        // trim), instead of persisting a connector that 404s every call.
         const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
         const validation = validateConnectorDraft(
           connector ?? null,
@@ -268,23 +144,9 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
             }),
           };
         }
-        // `updateConnector` runs the UPDATE in its own transaction and
-        // emits the `connector.updated` audit row with before/after.
         await updateConnector(ctx.tenant_id, existing.id, fieldPatch, ctx.actor_id, ctx.db);
       }
 
-      // Write-sequence contract: persistCredential → completeConnectorReauthorization →
-      // recordConnectorUpdated run as separate statements on `ctx.db`, NOT a
-      // single transaction. A wrapping `ctx.db.transaction(...)` is
-      // deliberately NOT used: `upsertCredential` (via persistCredential)
-      // already opens its OWN transaction (credentials/service.ts), so an
-      // outer transaction would nest — not cleanly supported by the executor
-      // abstraction here, and the same pattern the pre-existing connector-save
-      // path uses. The failure mode is benign and self-healing — if a later
-      // step throws after the credential lands, the worst case is
-      // `needs_reauth` stays true (the next authed call clears it via
-      // clearReauthIfProved) and/or the connector-side credential_rotated
-      // audit row is missing. There is never a partial credential write.
       let credential_persisted = false;
       if (p.credential) {
         await persistCredential({
@@ -298,19 +160,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         });
         credential_persisted = true;
       }
-      // Re-save still graduates the credential to the encrypted table —
-      // drop any leftover in-memory draft credential so a subsequent
-      // probe doesn't keep using the cached value.
       clearDraftCredential(ctx.conversation_id);
-      // A fresh credential just landed on a connector that may have been
-      // flagged `needs_reauth` (the repair flow). Clear the flag + failure
-      // provenance and close the breaker so the connector reads healthy
-      // immediately, rather than waiting for the next live authed call. Gate
-      // on `credential_persisted` so a pure field-edit re-issue (no new
-      // secret) never falsely clears a genuinely-dead credential's flag. Each
-      // edge audits itself (CONNECTOR_REAUTH_CLEARED, CONNECTOR_CIRCUIT_RESET),
-      // independent of the credential_rotated row below; pass actor_id so
-      // they attribute to the operator.
       if (credential_persisted) {
         await completeConnectorReauthorization(ctx.db as Db, {
           tenant_id: ctx.tenant_id,
@@ -324,9 +174,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           actor_id: ctx.actor_id,
           executor: ctx.db,
           connector_id: existing.id,
-          // A rotated credential is auditably distinct from a field edit —
-          // surface `credential_rotated` so the audit trail names the secret
-          // change (parity with the save_connector_draft re-issue audit).
           kind: credential_persisted
             ? "credential_rotated"
             : fieldsChanged
@@ -401,23 +248,9 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     "connector_inspected",
     "connector_validated",
   ]);
-  // A FRESH GREEN probe supersedes stale inspect/validate checkpoints:
-  // the probe exercised the real endpoint with the real credential —
-  // strictly stronger evidence than the static checks this gate fronts.
-  // Pre-fix, the green-probe auto-persist failed `connector_not_ready`
-  // (×29 in one production authoring session) because probing never
-  // refreshes the inspect/validate checkpoints, so a connector that had
-  // just PROVEN itself live could not be saved.
   const probeCheckpointFresh = missingFreshCheckpoints(draft, ["connector_probed"]).length === 0;
   const probeIsGreen = connector.latest_probe?.ok === true;
   const staleCheckpoints = probeCheckpointFresh && probeIsGreen ? [] : staleCheckpointsRaw;
-  // OAuth2 drafts cannot probe before `authenticate_oauth` completes —
-  // there is no access token yet, every probe will 401. The documented
-  // lifecycle is save → authenticate_oauth → probe (docs/concepts/connectors.md),
-  // so the first save MUST not gate on probe; subsequent saves take the
-  // idempotent short-circuit above. Before this carve-out OAuth2 drafts
-  // tripped the probe gate, then the 60s `force_save` cooldown — the
-  // Gmail-OAuth2 catch-22 from session 37a6d350 (2026-05-12).
   const authCanProbeBeforeSave =
     connector.auth_type !== "oauth2" &&
     connector.auth_type !== "oauth2_client" &&
@@ -441,9 +274,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
         reason.startsWith("missing:"),
     ),
   ];
-  // Stale-checkpoint / missing-field gate is non-overridable — those
-  // reflect "the draft itself is incomplete", which `force_save` was
-  // never intended to bypass.
   if (
     staleCheckpoints.length > 0 ||
     blocking_reasons.some((reason) => reason.startsWith("missing:"))
@@ -468,20 +298,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     };
   }
 
-  // Credential gate — a connector with an auth requirement cannot be
-  // persisted without a credential. The masked
-  // `ask_user_form(type:password)` path collects the secret and feeds
-  // it into `p.credential`; if neither this call nor a prior one
-  // supplied one, surface the structured `credential_required`
-  // envelope so the LLM can re-issue with `ask_user_form` instead of
-  // silently failing.
-  //
-  // Cache fallback: an LLM-issued `save_connector_draft` retry has no
-  // secret to inline (the secret only ever flows through the masked
-  // form). Honour the same in-memory draft credential cache that
-  // `probe_connector_draft` reads so the operator does not get bounced
-  // through `ask_user_form` a second time. Only accept a cached
-  // credential whose mode matches the connector's `auth_type`.
   let credential = p.credential;
   if (requiresCredential && !credential) {
     const cached = getDraftCredential(ctx.conversation_id);
@@ -507,41 +323,15 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     };
   }
 
-  // Probe gate — for drivers that support a probe, a failed-or-missing
-  // probe blocks the save UNLESS the operator explicitly forces it
-  // (force_save: true). The envelope's `next_best_actions` lists the
-  // recovery routes so the LLM can decide to re-probe, rotate the
-  // credential, or escalate to a force_save.
   const probeFailed = requiresProbe && connector.latest_probe?.ok !== true;
-  // Cooldown: even `force_save: true` is refused when the failed probe
-  // is fresh (within 60s). Without this gate the LLM can persist the
-  // exact credential a probe just rejected — every subsequent execution
-  // then 401s and the operator chases their own tail (conversation
-  // 730c568a). Stale failed probes still bypass via force_save: true so
-  // operators can save credentials for systems they cannot probe right
-  // now (intermittent endpoints, blocked egress, etc.).
-  //
-  // Missing-probed_at carve-out: a failed probe without a `probed_at`
-  // timestamp is either a legacy persisted draft (pre-cfdbceb) or a
-  // hand-built one. Treat it as fresh-and-failed and refuse force_save
-  // — silently bypassing the cooldown for null-probed_at would leave
-  // the LLM able to save a freshly-rejected credential.
   let cooldownBypassed = false;
   if (probeFailed && p.forceSave === true && connector.latest_probe) {
     const probedAtRaw = connector.latest_probe.probed_at;
     const probedAtMs = probedAtRaw ? Date.parse(probedAtRaw) : Number.NaN;
     const haveTimestamp = Number.isFinite(probedAtMs);
-    // Clamp a future-dated probe (clock skew) to age 0: a negative age must
-    // count as inside-cooldown, not bypass it — otherwise skew lets the LLM
-    // force-save the exact credential a probe just rejected.
     const ageMs = haveTimestamp ? Math.max(0, now() - probedAtMs) : 0;
     const insideCooldown = haveTimestamp && ageMs < FORCE_SAVE_COOLDOWN_MS;
     if ((!haveTimestamp || insideCooldown) && p.forceSaveApproved === true) {
-      // A resolved operator approval beats the cooldown — the cooldown
-      // exists to stop the LLM force-saving a just-rejected credential
-      // on its own, not to overrule an explicit human "save it anyway"
-      // (conversation 68b5c87e: the operator approved the force-save and
-      // the engine still refused with "probe failed ~40s ago").
       cooldownBypassed = true;
       logger.info({
         module: "conversation_persistence",
@@ -624,8 +414,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     })
     .where(eq(conversations.id, ctx.conversation_id));
 
-  // Attachment-driven endpoint extraction. Best-effort; failures here
-  // never block the save.
   let analysis: { source_format: string; confidence: number; endpoint_count: number } | null = null;
   try {
     const result = await analyzeConversationAttachments({
@@ -664,9 +452,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
     credential_persisted = true;
   }
-  // The connector now has a real UUID and (if applicable) an encrypted
-  // credential row. Drop the in-memory draft credential so subsequent
-  // probes go through the canonical `getCredentialForConnector` path.
   clearDraftCredential(ctx.conversation_id);
 
   if (p.emitAutoPersistAudit) {
@@ -685,36 +470,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
   }
 
-  // GraphQL connectors: kick off introspection-based discovery in the
-  // background so the LLM has the full schema available the next turn.
-  // Pre-fix the operator had to ask explicitly ("discover endpoints")
-  // before the LLM knew which queries existed — for AppSync-style APIs
-  // that's a wasted round-trip and burned tokens.
-  //
-  // Fire-and-forget. Three failure modes that are NOT fatal:
-  //   1. `introspection_disabled` — production-hardened APIs
-  //      (Shopify Admin, some SaaS) refuse `__schema`. Logged at
-  //      info, no audit row, no draft mutation. Operator can still
-  //      hand-author queries; the LLM is told to ask for sample
-  //      output instead via the skill content.
-  //   2. `all_strategies_failed` — endpoint refused both
-  //      introspection AND every fallback strategy (network, 4xx,
-  //      etc.). Same soft-fail path — the connector itself probed
-  //      green so it works, just without the schema corpus.
-  //   3. Any other thrown error — logged warn, swallowed.
-  // Skip auto-discovery on `oauth2` saves whose credential row hasn't
-  // been written yet — the dance still has to run via
-  // `authenticate_oauth`. Without this gate every oauth2 graphql save
-  // fires unauth introspection, fails, and logs a noisy warn. The
-  // post-`authenticate_oauth` path is responsible for kicking discovery
-  // once the access token is bound.
-  //
-  // Also skipped when the caller opted out (`skipBackgroundDiscovery`) —
-  // the green-probe auto-persist path does: the probe already proved the
-  // endpoint live, the conversation continues immediately, and an
-  // untracked background introspection there outlives the tool call (it
-  // raced subsequent test/server fetches). Discovery still runs on
-  // explicit saves and on demand via `discover_connector_endpoints`.
   const skipGraphqlDiscovery =
     p.skipBackgroundDiscovery === true ||
     (saved.auth_type === "oauth2" && credential_persisted !== true);
@@ -728,18 +483,10 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       {
         connector_id: saved.id,
         base_url: saved.base_url,
-        // Thread the saved connector's environment so credential lookup
-        // hits the right (tenant_id, connector_id, environment) row.
-        // Without this every prod connector ran discovery against the
-        // dev credential slot and silently warn-logged "discovery
-        // failed" forever.
         environment: saved.environment,
       },
     )
       .then((out) => {
-        // Surface per-strategy warnings into the audit trail so
-        // operators see "openapi-direct 404, llms.txt empty,
-        // graphql-introspect succeeded" without grepping logs.
         void recordConnectorDiscovered({
           tenant_id: ctx.tenant_id,
           actor_id: ctx.actor_id,
@@ -761,9 +508,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
           err && typeof err === "object" && "code" in err
             ? String((err as { code: unknown }).code)
             : null;
-        // Differentiate the "schema is hidden by upstream" case from
-        // an unexpected discovery breakage — operators reading the
-        // log should see at a glance which one fired.
         const introspectionDisabled =
           code === "introspection_disabled" ||
           /introspection.*not allowed|introspection.*disabled/i.test(message);
@@ -783,9 +527,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       });
   }
 
-  // Force-save audit annotation — every probe-overridden save lands a
-  // distinct `connector.saved_override` row so operators can see exactly
-  // which connectors were persisted without a green probe and why.
   if (p.forceSave === true && requiresProbe && connector.latest_probe?.ok !== true) {
     await recordConnectorSavedOverride({
       tenant_id: ctx.tenant_id,
@@ -803,13 +544,6 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
     });
   }
 
-  // Bound credentials = the connector_authenticated checkpoint flips
-  // fresh atomically with the save. oauth2 connectors flip via
-  // authenticate_oauth instead — no credential is bound at save time
-  // for the authorization-code flow. Use the resolved `credential`
-  // (which honours the draft-credential cache) rather than just
-  // `p.credential`, so a cached credential collected via ask_user_form
-  // earlier in the conversation also flips the gate.
   const credentialBound =
     connector.auth_type !== "none" && connector.auth_type !== "oauth2" && credential != null;
   let postSaveDraft = draft;

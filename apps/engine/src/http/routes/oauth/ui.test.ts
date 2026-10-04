@@ -63,7 +63,6 @@ describe("common MCP auth UI contract", () => {
     expect(html).toContain('value="deny" class="deny">Ablehnen<');
     expect(html).toContain("Bearbeiten · mcp:authoring");
     expect(html).not.toContain("Approve");
-    // Without an address nothing pretends to be one.
     const bare = renderConsentPage({
       clientName: "Probe Service",
       tenantName: "Example",
@@ -113,10 +112,6 @@ describe("common MCP auth UI contract", () => {
   });
 
   test("the funnel declares both schemes, in the family palette", () => {
-    // The funnel was `color-scheme:light` and nothing else, so an operator
-    // working in dark met a white page. SubKit ships no web console and so has
-    // no explicit preference to honour — the media query is the whole answer
-    // here, and the .scheme-* classes are carried but never set.
     const html = renderProviderChoice([]);
     expect(html).toContain("color-scheme:light dark");
     expect(html).toContain("@media(prefers-color-scheme:dark)");

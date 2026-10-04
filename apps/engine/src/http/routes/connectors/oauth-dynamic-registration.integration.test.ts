@@ -1,11 +1,3 @@
-// Integration tests for POST /v1/connectors/{id}/oauth/start when
-// the connector template has oauth.dynamic_registration=true.
-//
-// Covers:
-//   - Registration is called BEFORE the authorization redirect (order test).
-//   - Credential is persisted and client_id written back to connector config.
-//   - Registration failure → structured error and audit_log row.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -14,10 +6,6 @@ import { setConfigKey } from "../../../config/loader.ts";
 import { __resetOAuth2CacheForTests } from "../../../credentials/oauth2/client.ts";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
-
-// ---------------------------------------------------------------------------
-// Mock IdP
-// ---------------------------------------------------------------------------
 
 async function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -138,12 +126,6 @@ async function startMockIdP(): Promise<MockIdPHandle> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Minimal valid ConnectorTemplate snapshot with dynamic_registration=true.
-// This mirrors the shape ConnectorTemplateSchema accepts. The snapshot is
-// stored in the connector row and read by getConnectorTemplateSnapshot().
-// ---------------------------------------------------------------------------
-
 function makeDynRegSnapshot(baseUrl: string): Record<string, unknown> {
   return {
     version: 1,
@@ -167,7 +149,6 @@ function makeDynRegSnapshot(baseUrl: string): Record<string, unknown> {
     },
     ingestion_source: "unsupported",
     ingestion_url: null,
-    // icon must be a non-null string per ConnectorTemplateSchema.
     icon: "test.svg",
     description: "Integration test template",
     category: "productivity",
@@ -194,10 +175,6 @@ function makeDynRegSnapshot(baseUrl: string): Record<string, unknown> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Suite
-// ---------------------------------------------------------------------------
-
 let server: HttpTestServer;
 let idp: MockIdPHandle;
 
@@ -205,10 +182,6 @@ beforeAll(async () => {
   server = await createHttpTestServer("oauth-dynreg");
   idp = await startMockIdP();
   __resetOAuth2CacheForTests();
-  // Set the engine's public_base_url so buildOAuthRedirectUri can
-  // synthesize the redirect_uri for the oauth/start handler. Without
-  // this config key the route throws BadRequestError(400) before
-  // even attempting dynamic registration.
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
 });
 
@@ -218,8 +191,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-// Reset the oauth cache between tests so discovery is re-done fresh.
-// This prevents stale cache entries from bleeding across tests.
 afterEach(() => {
   __resetOAuth2CacheForTests();
 });
@@ -244,7 +215,6 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
             issuer_url: idp.baseUrl,
             authorization_endpoint: `${idp.baseUrl}/authorize`,
             token_endpoint: `${idp.baseUrl}/token`,
-            // client_id is null → triggers dynamic registration.
             client_id: null,
             scope: "openid",
           },
@@ -266,21 +236,13 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
     expect(typeof body.authorization_url).toBe("string");
     expect(typeof body.state).toBe("string");
 
-    // Verify /register was called.
     const log = idp.requestLog().slice(before);
     const registerIdx = log.indexOf("POST /register");
     expect(registerIdx).toBeGreaterThanOrEqual(0);
 
-    // /register must appear before any authorize redirect in the log.
-    // (The engine calls the IdP's /authorize to build the URL, so the
-    // discovery + /register calls precede the /authorize fetch.)
     const authorizeIdx = log.findIndex((e) => e.includes("/authorize") || e.includes("GET /a"));
-    // The route builds the authorization URL client-side (buildAuthorizationUrl)
-    // without fetching /authorize — so we just assert /register was hit and
-    // the response has an authorization_url pointing at the IdP.
     expect(registerIdx).toBeGreaterThanOrEqual(0);
     expect(body.authorization_url).toContain(idp.baseUrl);
-    // If /authorize was fetched, it must come after /register.
     if (authorizeIdx >= 0) {
       expect(registerIdx).toBeLessThan(authorizeIdx);
     }
@@ -321,7 +283,6 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
     });
     expect(res.status).toBe(200);
 
-    // Assert credential row.
     const credRows = await server.db
       .select()
       .from(credentials)
@@ -329,7 +290,6 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
     expect(credRows.length).toBe(1);
     expect(credRows[0]!.mode).toBe("oauth2_client");
 
-    // Assert the connector config was updated with the resolved client_id.
     const updatedRows = await server.db
       .select()
       .from(connectors)
@@ -339,7 +299,6 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
     const updatedOauth = updatedConfig?.oauth as Record<string, unknown> | undefined;
     expect(updatedOauth?.client_id).toBe(dynClientId);
 
-    // Assert audit row.
     const auditRows = await server.db
       .select()
       .from(auditLog)
@@ -390,17 +349,14 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
       headers: { Authorization: `Bearer ${server.apiKey}` },
     });
 
-    // Route should return a non-2xx error.
     expect(res.status).toBeGreaterThanOrEqual(400);
 
-    // No credential should be persisted.
     const credRows = await server.db
       .select()
       .from(credentials)
       .where(and(eq(credentials.tenant_id, server.tenantId), eq(credentials.connector_id, row.id)));
     expect(credRows.length).toBe(0);
 
-    // Audit failure row must exist.
     const auditRows = await server.db
       .select()
       .from(auditLog)
@@ -416,12 +372,10 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
     expect(typeof meta.error_code).toBe("string");
     expect((meta.error_code as string).length).toBeGreaterThan(0);
 
-    // Reset for other tests.
     idp.setRegisterStatus(201);
   });
 
   test("wrong-tenant request returns 404 (connector not visible to other tenant)", async () => {
-    // Seed a connector for tenant A (the server's tenant).
     const [row] = await server.db
       .insert(connectors)
       .values({
@@ -443,11 +397,9 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
       .returning();
     if (!row) throw new Error("seed connector failed");
 
-    // Create a second HTTP test server (different tenant, different API key).
     const { createHttpTestServer } = await import("../../tests/setup.ts");
     const server2 = await createHttpTestServer("oauth-dynreg-iso");
     try {
-      // Tenant B tries to start oauth on tenant A's connector.
       const res = await fetch(`${server2.baseUrl}/v1/connectors/${row.id}/oauth/start`, {
         method: "POST",
         headers: { Authorization: `Bearer ${server2.apiKey}` },

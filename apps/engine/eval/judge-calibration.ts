@@ -1,26 +1,3 @@
-// Judge-calibration runner.
-//
-// The preview judge (`conversations/preview-judge.ts`) is an LLM gate: it
-// decides whether a previewed workflow output satisfies the user's goal. It had
-// LOGIC tests but no CALIBRATION — no check that its verdicts agree with human
-// judgment. A miscalibrated judge silently passes bad workflows (or blocks good
-// ones), so this runner measures agreement against a human-labeled golden set
-// (`eval/judge-golden.json`) and FAILS if agreement drops below the threshold.
-//
-//   MASTER_KEY=<64hex> SUBKIT_CONFIG=<config with llm.provider=anthropic and
-//     llm.providers.anthropic.api_key> bun run apps/engine/eval/judge-calibration.ts
-//
-// Needs Postgres (a throwaway migrated DB) + a real LLM key — it exercises the
-// REAL judge, not the mock. NOT part of the mock-only `bun run eval` gate; runs
-// pre-release / nightly (see .github/workflows/nightly-eval.yml). Exit 0 when
-// agreement >= AGREEMENT_THRESHOLD, else 1.
-
-// The LLM provider + key come from the config file the engine reads
-// (see the usage line above). This runner exercises the real judge WITHOUT
-// booting the engine, so main() must `await loadConfig()` itself — until it does,
-// the config is uninitialised and the judge silently resolves to the `gateway`
-// provider (every verdict `skipped`, a bogus 0% agreement).
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../src/config/loader.ts";
@@ -47,9 +24,6 @@ function loadGolden(): GoldenCase[] {
 }
 
 async function main(): Promise<void> {
-  // Initialise config the way the engine boot does, then require a ready
-  // anthropic provider — a misconfig fails fast here instead of silently
-  // resolving to `gateway` and reporting a bogus 0% agreement.
   await loadConfig();
   const setup = validateProviderSetup();
   if (setup.detected !== "anthropic" || !setup.ok) {
@@ -69,13 +43,6 @@ async function main(): Promise<void> {
       .returning();
     if (!tenant) throw new Error("seed tenant failed");
 
-    // Multi-trial: the judge is stochastic, so a single trial near the
-    // threshold flips the verdict run-to-run. Run N trials per case and gate on
-    // the POOLED mean agreement (more samples → smaller standard error). We
-    // deliberately do NOT gate on per-case unanimity: requiring every trial to
-    // agree is far stricter than the 80% threshold and would itself flake the
-    // gate. The weakest-case rate is surfaced so a single bimodal case a pooled
-    // mean could mask is still visible.
     const TRIALS = Math.max(1, Number(process.env.TRIALS ?? "3"));
     const totalTrials = cases.length * TRIALS;
     let exactHits = 0;
@@ -89,10 +56,6 @@ async function main(): Promise<void> {
         const outcome = await judgePreview({
           goal: c.goal,
           definition_summary: c.definition_summary,
-          // The LLM judge reads step_artifacts (the rendered step outputs). In the
-          // real gate the final step's output_preview carries the content; mirror
-          // that so the judge actually sees the output it is meant to grade
-          // (passing [] would test the judge against an empty preview).
           step_artifacts: [
             {
               step_id: "output",
@@ -107,7 +70,6 @@ async function main(): Promise<void> {
         });
         verdicts.push(outcome.verdict);
         if (outcome.verdict === c.label) exactHits += 1;
-        // Lenient: collapse to a binary "did it satisfy the goal?" (passes vs not).
         if ((outcome.verdict === "passes") === (c.label === "passes")) {
           lenientHits += 1;
           caseLenient += 1;

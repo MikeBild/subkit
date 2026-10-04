@@ -1,10 +1,3 @@
-// An approval that covers two workflows has to read as two workflows.
-//
-// The grouping is by call path and never by step id. A parent and the workflow
-// it starts may both call a step `publish` against different targets; merged,
-// the dialog would show one permission where two are being granted, and the
-// human would approve the second without seeing it.
-
 import { expect, test } from "bun:test";
 import { effectKey, groupByCall, requestsOfCall } from "./authority-calls";
 
@@ -84,7 +77,6 @@ test("own permissions come first, then one section per called workflow", () => {
   );
   expect(groups.map((g) => g.step_id)).toEqual([null, "b_call", "a_call"]);
   expect(groups[0]?.effects.map((e) => e.step_id)).toEqual(["collect"]);
-  // Named where the shape knows the workflow, honest where it does not.
   expect(groups[2]?.workflow_name).toBe("Publish essays");
   expect(groups[2]?.version).toBe(4);
   expect(groups[1]?.workflow_name).toBeNull();
@@ -111,13 +103,10 @@ test("a parent and a child sharing a step id stay two permissions", () => {
   );
   expect(groups[0]?.effects[0]?.target).toBe("https://parent.test/publish");
   expect(groups[1]?.effects[0]?.target).toBe("https://child.test/publish");
-  // And their React keys differ, or one row would replace the other.
   expect(effectKey(undefined, "publish")).not.toBe(effectKey(["run_child"], "publish"));
 });
 
 test("a call that contributes no permissions is still shown", () => {
-  // "This run starts that workflow" is part of what is being approved, even
-  // when the child turns out to do nothing outward-facing.
   const groups = groupByCall(
     manifest({
       effects: [effect("collect", "https://parent.test/collect")],

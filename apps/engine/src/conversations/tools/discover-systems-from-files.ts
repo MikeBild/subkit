@@ -1,28 +1,3 @@
-// discover_systems_from_files — fallback when the OpenAPI / introspection
-// chain returns nothing usable. The operator uploads a README, an
-// architecture document, a code dump, etc. as a knowledge source; this
-// tool asks Claude (via the `extract` flow) to enumerate the third-party
-// systems it can identify, with provisional endpoints, auth shapes, and
-// data-flow notes the operator can refine into real connectors.
-//
-// Why this exists. Wave-1 discovery handles "the API has a spec" — it
-// fails closed when the vendor doesn't publish one. Without a fallback
-// the agent had to give up or invent endpoints from training-data
-// memory (which is what surfaced the original session-00b93a52 bug
-// against DigitalOcean for endpoints discovery: hallucinated routes,
-// 404 cascades, ~216 K tokens burned). This tool keeps the agent on the
-// ingestion-driven path even when the spec is missing — the LLM is
-// reading actual operator-supplied text, not training data.
-//
-// Caching contract. The result is persisted as a `knowledge_sources` row
-// with `source_type = "connector_endpoint_candidates"` (free-form text
-// column on the schema, no migration). Slug is keyed off the source
-// upload's id so a repeat call against the same source within the 24h
-// freshness window returns the cached candidates instead of re-paying
-// for an LLM call. The single chunk holds the JSON envelope; the
-// existing chunk pipeline (audit, dedup, search) stays consistent with
-// how `discover_connector_endpoints` persists its index.
-
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
@@ -33,18 +8,10 @@ import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-/** 24h freshness window — matches the discovery cache window so the two
- *  fallback paths feel symmetric to operators. */
 export const CANDIDATES_TTL_MS = 24 * 60 * 60 * 1000;
 
-/** Hard cap on the source content the LLM analyses. Anything beyond this
- *  is refused with `knowledge_source_too_large` — operators are pointed
- *  at `fetch_connector_docs` instead (which has its own targeted-snippet
- *  pipeline). 100 KB is roughly 25 K tokens, well inside the converse
- *  context budget but a lot of money per call. */
 export const KNOWLEDGE_SOURCE_MAX_CHARS = 100_000;
 
-/** Free-form `knowledge_sources.source_type` discriminator. */
 const SOURCE_TYPE = "connector_endpoint_candidates" as const;
 
 const inputSchema = z
@@ -55,24 +22,8 @@ const inputSchema = z
 
 type DiscoverSystemsFromFilesArgs = z.infer<typeof inputSchema>;
 
-/**
- * What the candidate system *does* — used for chained-workflow proposals.
- *
- *   - source         — emits records, the subkit tenant reads them.
- *   - destination    — accepts records, the tenant writes to it.
- *   - bidirectional  — read + write are both expected.
- *   - processing     — neutral compute (transform, enrichment), no
- *                      durable state of its own.
- */
 const DataFlowRoleEnum = z.enum(["source", "destination", "bidirectional", "processing"]);
 
-/**
- * Capability fingerprint — a compact set of verbs the candidate
- * supports. Drives the chained-workflow detector: a `source` with
- * `read` chained to a `destination` with `write` is a textbook
- * workflow seed. The set is deliberately small so the LLM emits
- * stable, comparable values across files.
- */
 const CapabilityEnum = z.enum([
   "read",
   "write",
@@ -85,15 +36,6 @@ const CapabilityEnum = z.enum([
 
 const CandidateSchema = z.object({
   name: z.string(),
-  /**
-   * Four drivers, not five. `mcp` is deliberately absent: this enum is
-   * what the model may infer FROM A FILE, and no file artifact identifies
-   * an MCP server the way an OpenAPI document identifies an HTTP API or a
-   * DSN identifies a database. Offering the value without such a marker
-   * buys guesses, not discoveries. Widen it when a spec-shaped artifact
-   * exists to ground the choice — not to make the list symmetric with
-   * `DriverName`.
-   */
   kind: z.enum(["http", "graphql", "postgres", "s3"]),
   base_url_guess: z.string().nullable(),
   endpoints: z.array(
@@ -104,36 +46,21 @@ const CandidateSchema = z.object({
     }),
   ),
   auth_kind: z.enum(["none", "header", "query", "bearer", "basic", "oauth2", "unknown"]),
-  /** One short sentence describing how the operator's tenant exchanges
-   *  data with this system. Operators read this verbatim — keep prose. */
   data_flow_summary: z.string(),
-  /** Structured complement to the prose: source / destination / both. */
   data_flow_role: DataFlowRoleEnum,
-  /** Verbs the candidate supports. May be empty when unstated. */
   capabilities: z.array(CapabilityEnum).default([]),
 });
 
-/**
- * Edge between two candidates extracted from the same file set —
- * "Stripe charges flow into HubSpot deals", "Salesforce contacts feed
- * into Mailchimp lists". The downstream `chained-workflow-pattern`
- * skill-candidate detector reads this graph to seed workflow
- * proposals without a second LLM round-trip.
- */
 const PotentialConnectionSchema = z.object({
   from_system: z.string(),
   to_system: z.string(),
-  /** Free-form noun for the payload (e.g. "charges", "deals", "user
-   *  events"). Operators read it; the detector just hashes it. */
   data_type: z.string(),
   direction: z.enum(["one_way", "bidirectional"]).default("one_way"),
-  /** Optional rationale excerpted from the source. */
   evidence: z.string().nullable().default(null),
 });
 
 const CandidateEnvelopeSchema = z.object({
   candidates: z.array(CandidateSchema),
-  /** Inferred connections between the candidates above. May be empty. */
   potential_connections: z.array(PotentialConnectionSchema).default([]),
 });
 
@@ -167,8 +94,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
     "When the connector's API has no OpenAPI spec, fall back to analyzing an uploaded knowledge source (README, code, PDF, architecture doc) to synthesize provisional endpoints. Returns connector_endpoint_candidates: a list of {name, kind, base_url_guess, endpoints, auth_kind, data_flow_summary, data_flow_role, capabilities[]} plus a potential_connections[] graph between candidates so the agent can propose chained workflows without a second round-trip.",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   use_case:
     "Reach for this when `discover_connector_endpoints` returns no endpoints and no text_corpus, but the operator has uploaded a description of the system (README, architecture doc, code dump). The LLM enumerates third-party systems and provisional endpoints from the file.",
@@ -189,7 +114,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       source_id: args.knowledge_source_id,
     });
 
-    // 1) Load the operator-supplied knowledge source. Tenant-scoped.
     const sourceRows = await ctx.db
       .select()
       .from(knowledgeSources)
@@ -217,7 +141,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       };
     }
 
-    // 2) Idempotency — return the cached candidates row if it's fresh.
     const slug = deriveSlug(args.knowledge_source_id);
     const cached = await readCachedCandidates(ctx.db, ctx.tenant_id, slug);
     if (cached) {
@@ -240,7 +163,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       };
     }
 
-    // 3) Pull the source's chunks back into a single content blob.
     const chunkRows = await ctx.db
       .select()
       .from(knowledgeChunks)
@@ -280,10 +202,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       };
     }
 
-    // 4) Ask Claude to enumerate the systems described in the file
-    //    plus the data-flow graph between them. The structured
-    //    `data_flow_role` + `capabilities` complement the prose
-    //    `data_flow_summary` and feed the chained-workflow detector.
     const userContent = [
       "Analyze the following document and enumerate every third-party system or API it describes.",
       "For each system, return:",
@@ -332,9 +250,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
     const potentialConnections = llm.object?.potential_connections ?? [];
     const endpointCount = candidates.reduce((sum, c) => sum + c.endpoints.length, 0);
 
-    // 5) Persist the candidates + connection graph as a knowledge_sources
-    //    row keyed off the source's id so subsequent calls within 24h
-    //    hit the cache.
     const persisted = await persistCandidates(ctx, {
       slug,
       source_knowledge_source_id: args.knowledge_source_id,

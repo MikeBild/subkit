@@ -1,5 +1,3 @@
-// Wait-for-event schema + timeout-coupling regression tests.
-
 import { describe, expect, test } from "bun:test";
 import { WaitForEventStepSchema, WorkflowDefSchema } from "../types.ts";
 
@@ -66,7 +64,6 @@ describe("WorkflowDef.timeout_ms ≥ wait_for_event.timeout_ms (superRefine)", (
   });
 
   test("rejects when wait_for_event.timeout_ms exceeds the 6h default workflow timeout", () => {
-    // Workflow.timeout_ms omitted → defaults to 6h. A 30-day wait must be rejected.
     const r = WorkflowDefSchema.safeParse(
       workflowWith({ waitTimeoutMs: 30 * 24 * 60 * 60 * 1000 }),
     );

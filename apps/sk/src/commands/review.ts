@@ -1,15 +1,3 @@
-// `sk review` — one "what needs my attention" digest.
-//
-// Read-only fan-out over three existing engine list surfaces:
-//   - pending Patch Candidates    (GET /v1/patch-candidates)
-//   - proposed Skill Candidates   (GET /v1/skill-candidates?status=proposed)
-//   - recent failed executions    (GET /v1/executions?status=failed)
-//
-// No mutations. Every approvable row carries the exact next-step
-// command so the operator can act without hunting for ids. The engine
-// enforces the read permissions on each call; this command only
-// formats what the principal is allowed to see.
-
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -22,7 +10,6 @@ interface ReviewRow {
   summary: string;
   status?: string | undefined;
   created_at?: string | undefined;
-  /** The command the operator should run next, or undefined for read-only rows. */
   action?: string | undefined;
 }
 
@@ -50,9 +37,6 @@ const reviewCommand = defineCommand({
     const limit = Number(args.limit) || 10;
     const jsonMode = Boolean(args.json);
 
-    // Fan out the three list calls. Each is tolerant: a failing section
-    // (e.g. the principal lacks a read scope) degrades to an empty list
-    // plus a note rather than failing the whole digest.
     const notes: string[] = [];
 
     async function safeList(
@@ -69,8 +53,6 @@ const reviewCommand = defineCommand({
     }
 
     const [patchItems, skillItems, failedItems] = await Promise.all([
-      // Open decisions only: proposed AND reviewable on the current workflow
-      // version — the engine's one predicate, not a status filter of our own.
       safeList("patch-candidates", () => client.listPatchCandidates({ limit, reviewable: "true" })),
       safeList("skill-candidates", () => client.listSkillCandidates({ limit, status: "proposed" })),
       safeList("executions", () => client.listExecutions({ limit, status: "failed" })),
@@ -108,7 +90,6 @@ const reviewCommand = defineCommand({
         summary: str(it.workflow_id) ?? "(execution)",
         status: str(it.status) ?? "failed",
         created_at: str(it.started_at) ?? str(it.created_at),
-        // Failed executions are not approvable; the next step is to inspect.
         action: `sk executions get ${id}`,
       };
     });
@@ -147,8 +128,6 @@ const reviewCommand = defineCommand({
       }
     }
 
-    // Prioritized: pending patches first (they fix broken workflows),
-    // then proposed skills, then failed runs to triage.
     section("Pending patch candidates", patchRows, "approve");
     section("Proposed skill candidates", skillRows, "approve");
     section("Recent failed executions", failedRows, "inspect");

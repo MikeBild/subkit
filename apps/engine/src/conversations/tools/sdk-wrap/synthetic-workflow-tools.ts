@@ -1,45 +1,3 @@
-// Synthetic `wf_<slug>` tools for the chat palette.
-//
-// MCP exposes per-tenant saved workflows as first-class `tools/list`
-// entries (`wf_<slug>`). The chat LLM needs the same catalog so a
-// user message that names a workflow ("run acme-jira-test-plans")
-// dispatches in ONE tool call instead of bouncing through
-// find_workflow → get_workflow → run_workflow.
-//
-// Source of truth: `listWorkflowToolsForTenant` in
-// `apps/engine/src/workflows/catalog.ts` — MCP and chat read from
-// the same function. The `wf_` prefix is added here at the surface.
-//
-// Dispatch contract mirrors MCP's `tools/call` for `wf_<slug>`:
-//   1. `gateWorkflowRunRbac` enforces `workflow:run` before anything runs.
-//   2. Durable admission reserves an existing local execution authority, or
-//      holds the writes. When the run comes back carrying the mandatory
-//      `held_preview_no_writes` warning we mint an UNGRANTED approval over
-//      exactly that call's inputs and PAUSE THE TURN on an `ask_user_confirm`
-//      elicitation. The turn ending is the gate. A PERSON's answer resumes the
-//      conversation: the harness grants the approval on their behalf
-//      (`grantApproval`, via the channel they answered through) and only then
-//      releases the writes (`persistence/auto-persist.ts` →
-//      `commit_held_workflow_writes`), claiming the approval, deriving the
-//      workflow from the approval's own tool name, and replaying the encrypted
-//      inputs. Four things keep that unreachable from the model:
-//      `commit_held_workflow_writes` is not a member of the published
-//      `ask_user_*` commit_intent enum; `consumeApproval` claims only a row a
-//      human granted, and no model-callable path grants one; the approval id is
-//      stripped from every envelope that leaves the engine
-//      (`elicitationInputForClient`); and this tool's published schema carries
-//      no confirm marker. A model-settable approval marker is an escape hatch,
-//      not a gate.
-//      There is no pre-execution confirm envelope: `run_workflow` in dev
-//      resolves to `no_confirm`, so a gate here would never pause and the
-//      writes would never be reachable at all.
-//   3. `runExecution({ source: { kind: "saved", workflow_id } })`
-//      drives the run. Per-step progress is emitted via `ctx.onLog`
-//      the same way `run-workflow.ts` does.
-//   4. The envelope mirrors `run_workflow`: `status`, `execution_id`,
-//      `output`, `warnings`, `suggested_command: "/workflows run <slug>"`,
-//      `next_best_actions`.
-
 import { jsonSchema, type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
@@ -80,11 +38,6 @@ export interface BuildSyntheticWorkflowToolsParams {
   toolPolicies?: ToolPolicies;
 }
 
-/**
- * Build `wf_<slug>` SDK tools for the principal's tenant. Returned map
- * is keyed by the prefixed name and ready to splice into the AI SDK
- * `toolSet`. Empty when the principal has no saved workflows.
- */
 export async function buildSyntheticWorkflowTools(
   p: BuildSyntheticWorkflowToolsParams,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
@@ -107,12 +60,8 @@ function buildOneSyntheticWorkflowTool(
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const { entry, signals } = p;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
-    // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
     description: `${entry.description} — perform this saved workflow now. For inspection, repair verification, preview, or preparation for recurring operation use run_workflow with execute_writes: false instead; this tool may pause for a one-shot live execution decision. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
-    // The workflow's authored schema, verbatim. No confirm marker: the operator
-    // — not the model — releases the held writes, through the elicitation this
-    // tool raises. A model-settable approval slot would be the escape hatch.
     inputSchema: jsonSchema(entry.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       const prevChain = signals.toolChain;
@@ -134,22 +83,11 @@ async function executeSyntheticRun(
   p: BuildOneParams & { rawArgs: Record<string, unknown> },
 ): Promise<WrappedToolOutput> {
   const { entry, ctx, signals, events, db, name, principal, rawArgs } = p;
-  // Defence in depth — production callers always source ctx.tenant_id
-  // and principal.tenant_id from the same auth resolution, so a mismatch
-  // means an upstream refactor broke that invariant. Better to fail
-  // loud at the dispatch boundary than to write audit / execution rows
-  // for the wrong tenant.
   if (ctx.tenant_id !== principal.tenant_id) {
     throw new Error(
       `synthetic wf_<slug> dispatch: ctx.tenant_id (${ctx.tenant_id}) !== principal.tenant_id (${principal.tenant_id})`,
     );
   }
-  // Mirrors fast-path's actor_id invariant warning. Authenticated
-  // production calls always carry both `principal` and `ctx.actor_id`
-  // from the same auth resolution; if a user-kind principal arrives
-  // without an actor_id the audit row will fall back to actor_type=system,
-  // and operators should see the diagnostic instead of silently
-  // mis-attributing the dispatch.
   if (ctx.actor_id === null && principal.kind === "user") {
     logger.warn({
       module: "conversation_tool",
@@ -160,10 +98,6 @@ async function executeSyntheticRun(
       tool: name,
     });
   }
-  // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
-  // dispatch and the fast-path "run <slug>" branch. A POLICY_DENIED
-  // audit row is committed before this returns so an operator denied
-  // here sees the same evidence trail an MCP denial produces.
   const rbac = await gateWorkflowRunRbac({
     db,
     principal,
@@ -189,15 +123,8 @@ async function executeSyntheticRun(
     });
     return { ok: false, data: output };
   }
-  // A model-supplied marker cannot create authority. Admission below reserves
-  // a matching human-granted boundary or persists held preparation. The older
-  // one-shot review path is separate; it never extends the standing grant.
   const workflowInput = stripConfirmMarkers(rawArgs);
 
-  // Anchor an assistant message + tool-call row so this synthetic
-  // dispatch shows up in the same persisted trail real tool calls
-  // produce. `signals.assistantMessageId` is the per-turn anchor every
-  // sibling wrapper reuses; we ensure it's set the same way.
   const ensureAnchor = async (): Promise<string> => {
     if (signals.assistantMessageId) return signals.assistantMessageId;
     const messageId = await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "assistant", {});
@@ -270,9 +197,6 @@ async function executeSyntheticRun(
         hold_writes: admitted.hold_writes,
       },
     });
-    // Mirror run-workflow.ts:306-329 per-step log emission so the user
-    // sees identical progress whether the LLM picked `wf_<slug>` or the
-    // fallback `run_workflow`.
     for (const step of result.steps) {
       const errMsg =
         step.error && typeof step.error === "object" && step.error !== null
@@ -298,12 +222,7 @@ async function executeSyntheticRun(
       );
     }
     const ok = result.status === "succeeded";
-    // Did this run hold a write? A read-only workflow emits no held-preview
-    // warning and so never mints an approval nor pauses the turn.
     const heldPreview = result.warnings?.find((w) => w.code === HELD_PREVIEW_WARNING_CODE);
-    // Same-turn dedupe, mirroring invoke.ts's policy gate: a second pending
-    // elicitation in one turn would supersede the first (createElicitation
-    // cancels stale rows) and strand its approval. Refuse before minting.
     if (heldPreview && signals.pendingElicitation) {
       const dupOutput: Record<string, unknown> = {
         ok: false,
@@ -335,10 +254,6 @@ async function executeSyntheticRun(
     };
     const heldSteps = Array.isArray(heldDetails.held_steps) ? heldDetails.held_steps : [];
     const wouldWrite = Array.isArray(heldDetails.would_write) ? heldDetails.would_write : [];
-    // Persist the inputs this preview ran with, encrypted, under a single-use
-    // approval id. The id NEVER reaches the model — it rides on the
-    // elicitation's commit_intent, and the harness claims it after the
-    // operator answers (persistence/auto-persist.ts).
     let approvalId: string | null = null;
     let approvalUrl: string | null = null;
     if (heldPreview) {
@@ -350,26 +265,15 @@ async function executeSyntheticRun(
         tool: name,
         surface: "chat",
         via: "chat",
-        // Not a policy-table verdict: the RUN held its writes.
         reason: "held_writes",
-        // Use the same schedule environment that admission and execution checked.
         execution_mode: environment,
         args: workflowInput,
         prepared_execution_id: result.execution_id,
-        // Chat reaches a human in-band, so the portal is a fallback here rather
-        // than the only channel — but an approval is approvable from either, and
-        // both must show the same writes.
         preview: heldDetails,
       });
-      // The minted link used to be discarded outright, so an operator who could
-      // not answer in-band had no channel at all and the portal's completion
-      // bridge could not recognise the row.
       approvalUrl = requested.approval_url ?? null;
     }
     const output: Record<string, unknown> = {
-      // A preview reports the reads that ran, never a completed action. `ok:
-      // false` keeps the model from narrating "sent" for a run that held
-      // every write, while `status` stays the honest execution status.
       ok: heldPreview ? false : ok,
       status: result.status,
       execution_id: result.execution_id,
@@ -381,8 +285,6 @@ async function executeSyntheticRun(
       output: result.output,
       warnings: result.warnings ?? [],
       suggested_command: `/workflows run ${entry.slug}`,
-      // A held preview has NO next action for the model: the turn ends here and
-      // the operator decides. Re-running only reproduces the preview.
       next_best_actions: heldPreview
         ? []
         : result.status === "succeeded"
@@ -413,11 +315,6 @@ async function executeSyntheticRun(
       tool: name,
       output,
     });
-    // Model-visible envelope: the workflow output rides SAMPLED (mirrors
-    // run_workflow's envelope, same output_sampled markers the truncator
-    // protects). The full envelope above stays on the audit rows; pre-fix
-    // the raw output went back to the SDK unbounded and re-rode the
-    // cumulative prompt on every subsequent step of the turn.
     const sampledOutput = sampleWorkflowOutputForLlm(result.output);
     const modelOutput: Record<string, unknown> = {
       ...output,
@@ -437,20 +334,10 @@ async function executeSyntheticRun(
       output: modelOutput,
       parent_message_id: assistantMessageId,
     });
-    // The turn ENDS here when a write was held. `signals.pendingElicitation`
-    // makes runLoop resolve the turn as `awaiting_input`; the `pause` on the
-    // returned envelope trips `pausedStopCondition` so the SDK stops calling
-    // the model in this step. Between them the model cannot re-enter this tool
-    // — or any other — until a human answers. The commit_intent is what the
-    // harness dispatches on that answer.
     let pause: WrappedToolOutput["pause"];
     if (heldPreview && approvalId) {
       const heldCount = wouldWrite.length || heldSteps.length;
       const summary = `Run ${heldCount} held write step(s) of "${entry.slug}"`;
-      // `payload` carries the CAS predicate and the handle, nothing else: the
-      // workflow that runs is derived from the approval's own `tool` on claim
-      // (`persistence/auto-persist.ts`). A target field here would be a field an
-      // attacker could set.
       const elicitationInput: Record<string, unknown> = {
         kind: "external_write",
         question: `Workflow "${entry.slug}" previewed ${heldCount} write step(s) — nothing has been written yet. Perform them now?`,
@@ -465,10 +352,6 @@ async function executeSyntheticRun(
           description: `Perform the ${heldCount} held write step(s) of workflow ${entry.slug}.`,
         },
       };
-      // The handle stays on the persisted row the harness reads. Everything that
-      // leaves this process — the SDK tool-result the model is shown, the
-      // `elicit_request` frame, the pause envelope `conversation_get` relays —
-      // carries the same prompt minus the capability.
       const operatorInput = withoutApprovalHandle(elicitationInput);
       const elicitation = await createElicitation(
         {
@@ -523,13 +406,6 @@ async function executeSyntheticRun(
       execution_authority_id: admitted.execution_authority_id,
       paused_for_operator: pause !== undefined,
     });
-    // Mirror run-workflow.ts so chat-via-`wf_<slug>` and
-    // chat-via-`run_workflow` are observationally indistinguishable:
-    //   1. `conversation.run_workflow` audit row (operators searching
-    //      by this action surface both paths together);
-    //   2. `target_workflow_id` on the conversation (so "run it again"
-    //      heuristics in `service/run-turn.ts` still resolve);
-    //   3. `conversation_tool_calls_total` counter.
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
@@ -563,9 +439,6 @@ async function executeSyntheticRun(
     recordConversationToolCall({
       category: "tenant_write",
       tool: name,
-      // A held preview awaits the operator's confirmation — counting it as a
-      // completed run would skew the run-vs-pending ratio the same way the
-      // fast-path pending envelope would.
       outcome: heldPreview ? "pending" : ok ? "ok" : "error",
       duration_ms: 0,
     });

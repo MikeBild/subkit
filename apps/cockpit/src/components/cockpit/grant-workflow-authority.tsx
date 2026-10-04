@@ -88,15 +88,8 @@ export function GrantWorkflowAuthority({
   triggerLabel?: string;
   triggerVariant?: "default" | "outline";
   triggerTestId?: string;
-  /**
-   * Opens the dialog from outside its own trigger: every change of this
-   * number is one request to open. With it the dialog renders no trigger of
-   * its own — the caller owns the buttons, so one dialog can answer several.
-   */
   openRequest?: number;
-  /** Renders the own trigger beside `openRequest`: the dialog's opener in a strip that also answers requests. */
   withTrigger?: boolean;
-  /** `default` in a header, strip or sheet; `sm` in a card or row. */
   triggerSize?: "sm" | "default";
 }) {
   const { t, dateTime, locale } = useI18n();
@@ -107,17 +100,11 @@ export function GrantWorkflowAuthority({
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
   const [runs, setRuns] = useState("");
   const [hours, setHours] = useState("");
-  // An approval stands until it is revoked unless the reader chooses limits:
-  // a run count and a validity window are the exception, not the default.
   const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
   const limited = limit === "limited";
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
-  // When the trial run started, or null while nothing is running. A timestamp
-  // rather than a boolean, so the counter below survives a re-render without
-  // restarting — a number that jumps back to zero reads as a stall.
   const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  /** A trial run was already going when this dialog asked for one. */
   const [trialElsewhere, setTrialElsewhere] = useState(false);
   useEffect(() => {
     if (trialStartedAt === null) {
@@ -132,24 +119,12 @@ export function GrantWorkflowAuthority({
     return () => clearInterval(tick);
   }, [trialStartedAt]);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
-  // At most one environment correction per opening. The review names the half
-  // its steps really live in, so a second pass can never learn more than the
-  // first — and a flag that resets only on open is what keeps a disagreement
-  // between the two halves from becoming a loop.
   const corrected = useRef(false);
-  // Which review request is the current one. Every request takes the next
-  // number; closing the dialog takes one too. An answer is shown only while its
-  // number is still the latest — the request that FINISHES last is not the one
-  // that was ASKED last, and an older answer landing on top of a newer question
-  // put a review on screen that the confirm button then refused for good.
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
-  /** A webhook-started workflow waiting for the reviewer's sample call. */
   const [sample, setSample] = useState<{ slug: string; versionId: string } | null>(null);
   const [sampleText, setSampleText] = useState("");
   const [sampleInvalid, setSampleInvalid] = useState(false);
-  /** The newest call this workflow received, else an empty delivery envelope
-   *  — the shape the engine hands a webhook-started run. */
   async function sampleCall(): Promise<string> {
     if (session.permissions.includes("execution:read")) {
       try {
@@ -158,9 +133,7 @@ export function GrantWorkflowAuthority({
         );
         const received = newest.items[0]?.input;
         if (received !== undefined && received !== null) return JSON.stringify(received, null, 2);
-      } catch {
-        // The template below still lets the reviewer go on.
-      }
+      } catch {}
     }
     return JSON.stringify(
       { id: "sample", timestamp: Math.floor(Date.now() / 1000), type: "", headers: {}, body: {} },
@@ -177,9 +150,7 @@ export function GrantWorkflowAuthority({
     }: {
       env: "dev" | "prod";
       token: number;
-      /** The version to judge, when the caller already knows it (a repair). */
       version?: string;
-      /** The sample call the reviewer supplied for a webhook-started workflow. */
       input?: unknown;
     }): Promise<{
       review: WorkflowAuthorityPreview | null;
@@ -197,9 +168,6 @@ export function GrantWorkflowAuthority({
       let asked = env;
       let result = await preview(asked);
       if (!isLatest(token)) throw superseded();
-      // The answer to "which environment should this have been" arrives with
-      // the complaint: every effect names the environment its connector really
-      // belongs to, whichever one was asked about. Asked once, acted on once.
       if (!corrected.current) {
         const belongs = environmentToCorrectTo(result, asked);
         if (belongs) {
@@ -215,10 +183,6 @@ export function GrantWorkflowAuthority({
         result.preparation_required &&
         session.permissions.includes("workflow:run")
       ) {
-        // Opening this dialog STARTS a trial run. Nothing said so, and the wait
-        // showed a bare "loading" for minutes — which is why people opened a
-        // second tab and three runs started at once. The flag below is what the
-        // wait text reads to say what is actually happening.
         setTrialStartedAt(Date.now());
         let outcome: { prepared: boolean; reason?: string; trigger?: { slug: string } };
         try {
@@ -232,20 +196,11 @@ export function GrantWorkflowAuthority({
               }),
             },
           );
-          // A second tab, or a repair reload, meets a run that is already
-          // going. That is the engine doing the right thing — one run instead
-          // of three — and it must not arrive as a red failure. The review is
-          // simply not ready yet, and the line below says why.
           if (isLatest(token)) setTrialElsewhere(outcome.reason === "preparation_in_flight");
         } finally {
-          // Only this request's own timer: a newer request may be running one.
           if (isLatest(token)) setTrialStartedAt(null);
         }
         if (!isLatest(token)) throw superseded();
-        // A webhook's input is a delivery, and refused deliveries are not
-        // kept. The engine asks rather than running over `{}`; the reviewer
-        // supplies one call, and the review waits for it — not a refusal, and
-        // not yet something to judge.
         if (outcome.reason === "input_required" && outcome.trigger)
           return {
             review: null,
@@ -256,10 +211,6 @@ export function GrantWorkflowAuthority({
           };
         result = await preview(asked);
       }
-      // Stale: a newer question was asked (or the dialog closed) while this
-      // one was out — its answer is dropped. A mismatch on the latest request
-      // is still shown: `authorityGrantInput` refuses to approve from it and
-      // the footer offers the re-check, which is the way out of it.
       if (
         acceptReview(
           latestReview.current,
@@ -272,11 +223,6 @@ export function GrantWorkflowAuthority({
       return { review: result, versionId: targetVersion, environment: asked, token };
     },
   });
-  /**
-   * Start a review, superseding any still in flight. The answer is applied
-   * here, per request, and only while it is still the latest — never from the
-   * mutation's options, which run for every call that completes.
-   */
   function startReview(env: "dev" | "prod", version?: string, input?: unknown) {
     const token = latestReview.current + 1;
     latestReview.current = token;
@@ -316,8 +262,6 @@ export function GrantWorkflowAuthority({
   const input = review
     ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
     : null;
-  // The approval stands in the strip and in "Freigaben" the moment it is
-  // given; a refusal puts the read back and says so in the error line.
   const grant = useOptimisticAction({
     queryKey: ["workflow-authorities", workflowId],
     apply: (current: AuthorityPages | undefined) =>
@@ -356,8 +300,6 @@ export function GrantWorkflowAuthority({
       toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
     },
   });
-  // Putting the saved change into service. `then` says what follows: nothing
-  // ("Nur in Betrieb nehmen"), or the single run the caller prepares next.
   const activateOnly = useMutation({
     mutationFn: async (_then: "nothing" | "single_run") => {
       if (!review || !activation) throw new Error("activation_review_missing");
@@ -372,8 +314,6 @@ export function GrantWorkflowAuthority({
       });
     },
     onSuccess: async (_result, then) => {
-      // The catalog page shows the same workflow, and a version that is now
-      // running must stop being announced as one that is waiting.
       await invalidateWorkflowAutomation(client, workflowId);
       await client.invalidateQueries({ queryKey: ["conversation"] });
       await client.invalidateQueries({ queryKey: ["attention"] });
@@ -387,9 +327,6 @@ export function GrantWorkflowAuthority({
       }
     },
   });
-  // What SubKit can work out for itself about the steps that block this
-  // approval. Asked only when the review actually refused: otherwise this is a
-  // question about a problem nobody has.
   const repairable = useQuery({
     queryKey: ["boundary-proposals", workflowId],
     enabled: open && Boolean(review) && !review?.eligible_for_repeated_runs,
@@ -398,9 +335,6 @@ export function GrantWorkflowAuthority({
         proposals?: Array<{ step_id: string }>;
         unproposable?: Array<{ step_id: string; reason: string }>;
       }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals`);
-      // Shaped here, once. A dialog that reads fields straight off a response
-      // renders whatever the other side happened to send — a body without
-      // `proposals` took the whole page down in the sweep.
       return {
         proposals: Array.isArray(body?.proposals) ? body.proposals : [],
         unproposable: Array.isArray(body?.unproposable) ? body.unproposable : [],
@@ -409,9 +343,6 @@ export function GrantWorkflowAuthority({
   });
   const repair = useMutation({
     mutationFn: async () => {
-      // Which opening this repair belongs to. Closing the dialog moves the
-      // counter on, and a repair that lands after that must not reopen a
-      // review in a dialog nobody is looking at.
       const opening = latestReview.current;
       const current = await apiRequest<{ draft_version_id: string | null }>(
         `/v1/workflows/${encodeURIComponent(workflowId)}`,
@@ -421,22 +352,15 @@ export function GrantWorkflowAuthority({
         applied_step_ids: string[];
       }>(`/v1/workflows/${encodeURIComponent(workflowId)}/boundary-proposals/apply`, {
         method: "POST",
-        // Explicitly null when there is no draft yet: an omitted key is not
-        // "no draft", it is a body the engine refuses — and the caller would
-        // read that as the repair being impossible.
         body: JSON.stringify({ expected_draft_version_id: current.draft_version_id ?? null }),
       });
       return { ...result, opening };
     },
     onSuccess: async (result) => {
-      // The prepared version IS the thing to review now, so the dialog reloads
-      // onto it rather than leaving the reader looking at the old refusal.
       await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
       await client.invalidateQueries({ queryKey: ["workflow-draft-version", workflowId] });
       await client.invalidateQueries({ queryKey: ["boundary-proposals", workflowId] });
       if (latestReview.current !== result.opening) return;
-      // The draft by name: the version prop catches up only after the
-      // invalidation above re-renders the caller, which this does not wait for.
       startReview(environment, result.draft.version_id);
     },
   });
@@ -446,12 +370,8 @@ export function GrantWorkflowAuthority({
     (actionError.status === 401 ||
       actionError.code === "human_session_expired" ||
       actionError.code === "human_session_required");
-  // A submit in flight must not be abandoned by closing the dialog; a review
-  // that is only loading may be — its answer is then dropped (`latestReview`).
   const submitting = grant.isPending || activateOnly.isPending;
   const busy = prepare.isPending || repair.isPending || submitting;
-  // The sample did not fit the workflow's input: the reviewer's to correct,
-  // said beside the field — not the generic "could not be loaded".
   const sampleRefused =
     sample && prepare.error instanceof ApiError && prepare.error.code === "input_schema_violation"
       ? prepare.error.message
@@ -467,9 +387,6 @@ export function GrantWorkflowAuthority({
       effect.content_publication?.kind === "content_release" ? [effect.content_publication] : [],
     ) ?? [];
   const recurringContent = publications.length > 0 && !unsupported;
-  // One approval can cover more than one workflow. Own permissions first, then
-  // a section per called workflow — grouped by call path, because a parent and
-  // a child may use the same step id and must not be merged into one row.
   const callGroups = groupByCall(review?.manifest, review?.execution_shape);
   const issues = authorityIssues(review);
   const incomplete = review?.execution_shape.requests.some(
@@ -479,38 +396,27 @@ export function GrantWorkflowAuthority({
     limited && (!Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000);
   const invalidHours =
     limited && (!Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744);
-  // A saved change that reaches nothing the running version's live approval
-  // does not already cover: putting it into service carries that approval
-  // over, so the one decision left is to take it over — not a new approval.
   const carriesOver = Boolean(
     activation && review?.approval_carries_over && !unsupported && !incomplete,
   );
   const boundsVisible = review && !unsupported && !incomplete && !carriesOver;
   const context = useGrantContext(workflowId, open);
-  // An approval that already covers exactly this — the same version, the same
-  // environment. A further one is then an extension, and is offered as one.
   const existing =
     review && !unsupported && !activation
       ? existingGrant(context.authorities, reviewVersionId, environment, Date.now())
       : null;
-  // "You are approving a saved change" only where something can be approved.
   const scopeWarnings = grantScopeWarnings({
     environment,
     startedIn: context.startedIn,
     savedChange: Boolean(activation) && Boolean(review) && !unsupported,
     activeVersion: context.activeVersion,
   });
-  // The operations a run performs. Without any, the disclosure would open
-  // onto two sentences about nothing.
   const hasEffectDetails =
     review !== null &&
     review.manifest.effects.length +
       review.execution_shape.requests.length +
       review.execution_shape.iterations.length >
       0;
-  // What removes the refusal, where the gate diagnosis names an act for it.
-  // The in-dialog repair above is the stronger offer for the same steps: with
-  // it on screen a second repair button would be the same decision twice.
   const remedy = useGrantRemedy(
     workflowId,
     environment,
@@ -529,7 +435,6 @@ export function GrantWorkflowAuthority({
       setEnvironment(initialEnvironment);
       startReview(initialEnvironment);
     } else {
-      // Closing is a request too: whatever is still loading answers nobody.
       latestReview.current += 1;
       setReview(null);
       setTrialStartedAt(null);
@@ -537,13 +442,11 @@ export function GrantWorkflowAuthority({
     }
   }
   const requested = useRef(openRequest);
-  // A request is the number changing, nothing else; openDialog is this render's own.
   useEffect(() => {
     if (openRequest === undefined || openRequest === requested.current) return;
     requested.current = openRequest;
     if (!disabled) openDialog(true);
   }, [openRequest]);
-  // What failed, in the dialog's one error line.
   const failure = actionError
     ? `${t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")} ${t(
         sessionExpired ? "authority.sessionExpiredHint" : "authority.grantFailedDescription",
@@ -676,23 +579,6 @@ export function GrantWorkflowAuthority({
                 {t("authority.prepare")}
               </Button>
             )}
-          {/* Two different decisions, and a reader must be able to make the
-                smaller one. Putting a repaired version into service is not the
-                same as permitting repeated unattended runs — a called child
-                needs only the first, and forcing them together would make
-                every activation buy a permission nobody asked for.
-
-                Which is why it sits OUTSIDE the branch below. It used to live in
-                the approvable half only, so a version with one step still
-                unbound could not be put into service at all — and a child whose
-                other steps the repair had just bound stayed on its old version
-                because of the one step nobody could bind. The engine never asked
-                for that: `activate-draft` checks that the reviewed digest still
-                matches and nothing else, and authorizes no run.
-
-                Not while the review is stale or the session is gone: the smaller
-                decision is still a decision, and offering it when it cannot be
-                carried out is offering a dead button. */}
           {activation && review && !incomplete && !sessionExpired && !actionError && (
             <Button
               type="button"
@@ -856,9 +742,6 @@ export function GrantWorkflowAuthority({
           </div>
         </Notice>
       )}
-      {/* The reasons, wherever the version cannot be approved — not only on
-          the surface that has no approve button. A reviewer who cannot see
-          why is being asked to judge something they cannot see. */}
       {unsupported && issues.length > 0 && (
         <Notice testId="authority-issues">
           <NoticeTitle>{t("authority.issuesTitle")}</NoticeTitle>
@@ -875,11 +758,6 @@ export function GrantWorkflowAuthority({
                       : t("authority.issueStep", { step: issue.step_id })}
                   </span>
                   <br />
-                  {/* The engine's own reason when it gave one, and the
-                      blanket code only when it did not. Showing both would
-                      print two different statements about the same step —
-                      one of which says the target is unbounded for a step
-                      whose address is a constant. */}
                   {t(issue.reasonKey ?? issue.messageKey)}
                   {issue.evidence && (
                     <>
@@ -911,10 +789,6 @@ export function GrantWorkflowAuthority({
           </div>
         </Notice>
       )}
-      {/* The refusal used to end at "investigate the cause in the chat" — a
-          technical question handed to the one person who cannot answer it.
-          SubKit has read what these steps really did; this is it saying so
-          and offering to write it down. Approving stays a human act. */}
       {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
         <Notice testId="authority-repair">
           <NoticeTitle>{t("authority.repairTitle")}</NoticeTitle>
@@ -1059,10 +933,6 @@ export function GrantWorkflowAuthority({
         (trialStartedAt === null ? (
           <p role="status">{t("common.loading")}</p>
         ) : (
-          // Six minutes of "loading" is what sent people to a second tab.
-          // The counter is the part that makes waiting bearable: it says
-          // this is still moving, without claiming to know how long it
-          // takes — nothing here can know that.
           <Notice testId="authority-trial-running">
             <NoticeTitle>{t("authority.trial.title")}</NoticeTitle>
             <div className="flex flex-col gap-1">
@@ -1134,8 +1004,6 @@ export function GrantWorkflowAuthority({
       )}
       {review && (
         <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-          {/* The version, where the caller can name it. The environment
-              stands in the select above, and nowhere a second time. */}
           {versionLabel ? (
             <div className="flex flex-wrap gap-2">
               <span
@@ -1152,7 +1020,6 @@ export function GrantWorkflowAuthority({
             </p>
           ) : null}
           {review && growthLine(t, review.boundary_growth) ? (
-            // Why the earlier approval did not carry over to this version.
             <p className="text-sm font-medium" data-testid="authority-growth">
               {growthLine(t, review.boundary_growth)}
             </p>
@@ -1182,13 +1049,6 @@ export function GrantWorkflowAuthority({
                 </p>
                 {review.manifest.effects.map((effect) => (
                   <div key={effect.step_id} className="min-w-0 text-sm">
-                    {/* What happens and where it happens lead; the authored
-                        step id follows as provenance. It used to lead, and a
-                        reader deciding whether to approve was met with
-                        `fetch_route` — an identifier that answers a different
-                        question than the one they are being asked. Nothing is
-                        hidden and nothing is invented: every part of this was
-                        already on screen, in the wrong order. */}
                     <p className="font-medium">
                       {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
                       {" · "}
@@ -1243,7 +1103,6 @@ export function GrantWorkflowAuthority({
   );
 }
 
-/** One block of the review: a title and what it says. */
 function Notice({
   testId,
   tone,

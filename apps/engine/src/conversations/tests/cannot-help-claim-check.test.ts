@@ -1,25 +1,3 @@
-// `cannot_help` must not be able to abstain over a tool it actually has.
-//
-// Production incident: `author_workflow` failed on a pipeline timeout whose
-// message wrongly blamed the model. The model concluded the tooling was
-// broken and abstained —
-//
-//   missing_capability: "tool.author_workflow"
-//   reason: "…die Tools sind in diesem MCP-Surface nicht verfügbar."
-//
-// — minutes after calling `author_workflow` successfully in the same turn.
-// Two things went wrong, and only one of them was the model's: the engine
-// took a checkable claim on faith. It told the user something false, and it
-// filed a durable capability gap through `recordGapCandidate` for a
-// capability that exists. That backlog is read as evidence of what the
-// product lacks; a fabricated row there does not merely add noise, it
-// misdirects.
-//
-// The `tool.<name>` slug shape is documented on the tool itself, so it can be
-// checked against the palette the model was actually handed. Only the slug —
-// the free-text `reason` stays untouched, because prose scanning lives in
-// `loop/tool-not-available-guard.ts` and is observability only.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { discoveryArtifacts } from "../../db/schema/index.ts";
@@ -86,8 +64,6 @@ describe("cannot_help — the capability claim is checked, not believed", () => 
     const data = result.data as { error_code?: string; message?: string };
     expect(data.error_code).toBe("capability_claim_false");
     expect(data.message).toContain("author_workflow");
-    // The decisive assertion: the operator's capability backlog stays
-    // truthful. A false gap here would outlive the conversation.
     expect(await gapRowCount()).toBe(before);
   });
 
@@ -99,15 +75,10 @@ describe("cannot_help — the capability claim is checked, not believed", () => 
     });
     expect(result.ok).toBe(true);
     expect((result.data as { abstained?: boolean }).abstained).toBe(true);
-    // Without this, the "files no gap" assertion above proves nothing — a
-    // path that never writes a row would satisfy it for the wrong reason.
     expect(await gapRowCount()).toBeGreaterThan(before);
   });
 
   test("no palette threaded → the abstention is allowed through", async () => {
-    // Absent means "cannot verify", never "the claim is false". A harness or
-    // a call path that does not publish its palette must not lose the
-    // ability to abstain.
     const result = await cannotHelpTool.execute(makeCtx(), {
       reason: "the author_workflow tool is not available here",
       missing_capability: "tool.author_workflow",
@@ -117,8 +88,6 @@ describe("cannot_help — the capability claim is checked, not believed", () => 
   });
 
   test("a non-tool slug is never matched against the palette", async () => {
-    // `vendor_recipe.*`, `manifest.*` and friends say nothing about tools;
-    // checking them against tool names would reject legitimate abstentions.
     const result = await cannotHelpTool.execute(makeCtx(new Set(["author_workflow"])), {
       reason: "no verified Codex recipe exists in this engine yet",
       missing_capability: "vendor_recipe.author_workflow",

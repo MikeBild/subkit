@@ -1,13 +1,3 @@
-// Searching the run log by the name of the thing that ran.
-//
-// A run has no name of its own, so `q` reaches through `workflow_id` into the
-// workflow. Two properties matter and both are pinned here: the needle finds
-// runs beyond the first page, which is the whole reason the parameter exists;
-// and it never reaches across tenants, which is the way a search like this
-// goes wrong — the subquery that resolves the name is scoped separately from
-// the one that lists the runs, so a missing predicate there would be invisible
-// in the run list's own tenant filter.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executions, tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -53,7 +43,6 @@ beforeAll(async () => {
   reportWorkflow = report!.id;
   invoiceWorkflow = invoice!.id;
 
-  // The other tenant runs a workflow whose name contains the same needle.
   const [foreign] = await ctx.db
     .insert(workflows)
     .values({
@@ -64,8 +53,6 @@ beforeAll(async () => {
     })
     .returning();
 
-  // 60 invoice runs sit in front of the 3 report runs, so a needle that only
-  // narrowed the first page of 50 would find none of them.
   await ctx.db.insert(executions).values([
     ...Array.from({ length: 3 }, () => ({
       tenant_id: tenantA,

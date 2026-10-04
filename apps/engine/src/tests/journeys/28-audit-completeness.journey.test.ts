@@ -1,31 +1,3 @@
-// User story: As a compliance officer, I want every tenant-facing
-// mutation endpoint to produce an audit row without exception, so that
-// future refactors cannot silently drop an audit write without a test
-// turning red.
-//
-// Acceptance criteria:
-//   - AC1-AC3:  workflow.created / workflow.updated / workflow.deleted
-//   - AC4-AC6:  connector.created / connector.updated / connector.deleted
-//   - AC7:      credential.created (via POST /v1/connectors/:id/credentials)
-//   - AC8:      credential.rotated (no tenant-facing POST route yet — todo)
-//   - AC9:      skill.created
-//   - AC10-11:  skill.activated / skill.archived
-//   - AC12:     skill.deleted
-//   - AC13-15:  api_key.issued / api_key.rotated / api_key.revoked
-//   - AC16:     portal_token.issued
-//   - AC17:     system_account.created
-//   - AC18:     rbac.role_created
-//   - AC19:     rbac.grant_created
-//
-// Strategy: every assertion calls a helper that pins the start timestamp
-// BEFORE the mutation, executes the mutation, then queries
-// `/v1/audit-log?action=<name>&ts_from=<start>` and asserts at least one
-// row came back. That's the robust form — if somebody removes the audit
-// write for any of these routes, the query returns empty and the test
-// fails with the exact action name on the expect line.
-//
-// Spec refs: docs/developers/input-surfaces.md, docs/concepts/governance-and-audit.md, gap-pass-2 Stream D
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
@@ -35,8 +7,6 @@ const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 
-// Seeded resources shared across ACs so each mutation has the right
-// parent row to operate on.
 let workflowId = "";
 let connectorId = "";
 let skillActivateId = "";
@@ -46,9 +16,6 @@ let apiKeyId = "";
 let customRoleId = "";
 
 async function expectAuditRow(action: string, tsFrom: string, extra = ""): Promise<void> {
-  // All writes we issue here go through `auditAwait`, so the query
-  // should succeed on the first try in practice. Poll across microtasks
-  // for the row to land without depending on wall-clock sleeps.
   await waitFor(
     async () => {
       const res = await journeyFetch(
@@ -139,8 +106,6 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC7: POST /v1/connectors/:id/credentials → credential.created", async () => {
-    // AC6 (DELETE connector) is deferred until after AC7 so the
-    // credential insert has a live connector to attach to.
     const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}/credentials`, {
       method: "POST",
@@ -151,23 +116,7 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC8: POST /v1/credentials/:id/rotate → typed rejection for plain credentials", async () => {
-    // We take the "simpler path" documented in the gap plan: a bearer
-    // credential cannot be rotated server-side (there's no new secret
-    // to derive), so the route should reject with a typed
-    // `cannot_rotate_plain_credential` envelope and NOT write a
-    // `credential.rotated` audit row. This still proves the route
-    // exists, is gated by the `credential:rotate` permission, and that
-    // the audit catalog entry `CREDENTIAL_ROTATED` is reachable via
-    // the service layer (covered separately by the oauth2 refresh
-    // worker tests). The oauth2 happy path isn't exercised here
-    // because the test harness doesn't stand up a mock token endpoint.
-    const credRes = await journeyFetch(
-      ctx,
-      `/v1/connectors/${connectorId}`,
-      // connectorId was deleted in AC6 — seed a fresh connector so the
-      // credential insert has something to attach to.
-      { method: "GET" },
-    );
+    const credRes = await journeyFetch(ctx, `/v1/connectors/${connectorId}`, { method: "GET" });
     let targetConnectorId: string;
     if (credRes.status === 200) {
       targetConnectorId = ((await credRes.json()) as { id: string }).id;
@@ -203,8 +152,6 @@ describe("journey: audit completeness over mutation routes", () => {
     const body = (await res.json()) as { message?: string; code?: string };
     expect(body.message).toBe("cannot_rotate_plain_credential");
 
-    // Assert no `credential.rotated` audit row was written for this
-    // rejected attempt — rejection paths MUST NOT pollute the audit log.
     const auditRes = await journeyFetch(
       ctx,
       `/v1/audit-log?action=${encodeURIComponent("credential.rotated")}&ts_from=${encodeURIComponent(start)}&limit=50`,
@@ -215,11 +162,6 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC7b: credential.created with mode=aws_sigv4 records a credential digest, never raw keys", async () => {
-    // Lock-the-lead invariant: every credential.created audit row for
-    // the new (post-738c0fc) credential modes must record a digest of
-    // the value, never the value itself. Without this pin a future
-    // recorder change could leak access keys / passwords into the
-    // audit log.
     const mk = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -255,7 +197,6 @@ describe("journey: audit completeness over mutation routes", () => {
     };
     const sigv4Row = auditBody.items.find((r) => r.metadata?.mode === "aws_sigv4");
     expect(sigv4Row).toBeDefined();
-    // The audit row's serialized form must NOT contain the raw secret.
     const serialised = JSON.stringify(sigv4Row);
     expect(serialised.includes("secretFAKE/0000000FAKE000000FAKE/000000FAKE")).toBe(false);
   });
@@ -271,8 +212,6 @@ describe("journey: audit completeness over mutation routes", () => {
 
   test("AC9: POST /v1/skills → skill.created", async () => {
     const start = new Date(TEST_NOW_MS).toISOString();
-    // Create three skills up-front so AC10/AC11/AC12 each get a
-    // dedicated row to mutate without stepping on each other.
     for (const label of ["activate", "archive", "delete"] as const) {
       const res = await journeyFetch(ctx, "/v1/skills", {
         method: "POST",
@@ -345,8 +284,6 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC15: DELETE /v1/identity/api-keys/:id → api_key.revoked", async () => {
-    // The engine exposes the revoke path as DELETE, not a dedicated
-    // POST /revoke — documented deviation from the plan's wording.
     const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/identity/api-keys/${apiKeyId}`, {
       method: "DELETE",
@@ -356,8 +293,6 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC16: POST /v1/identity/portal-tokens → portal_token.issued", async () => {
-    // Portal tokens must carry an allow-listed workflow id; seed a fresh
-    // workflow for the token to point at.
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -403,14 +338,11 @@ describe("journey: audit completeness over mutation routes", () => {
   });
 
   test("AC19: POST /v1/rbac/grants → rbac.grant_created", async () => {
-    // Attach a permission to the custom role first so the grant has
-    // something to reference.
     await journeyFetch(ctx, `/v1/rbac/roles/${customRoleId}/permissions`, {
       method: "POST",
       body: JSON.stringify({ permission: "workflow:read" }),
     });
 
-    // Seed a workflow so the grant has a concrete target resource.
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({

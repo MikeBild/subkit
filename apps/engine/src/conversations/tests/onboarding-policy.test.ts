@@ -1,5 +1,3 @@
-// Onboarding policy — deterministic recommendations from draft state.
-
 import { describe, expect, test } from "bun:test";
 import { nextQuestion, nextRecommendedAction } from "../onboarding-policy.ts";
 import type { DraftDocument } from "../types.ts";

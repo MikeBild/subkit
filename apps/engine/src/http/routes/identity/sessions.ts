@@ -1,7 +1,3 @@
-// POST /v1/identity/sessions — exchange a configured provider assertion for
-// a personal SubKit API key. The route is protocol-aware and provider-neutral:
-// callers identify a configured adapter, never an issuer or vendor mode.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, or } from "drizzle-orm";
 import * as jose from "jose";

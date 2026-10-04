@@ -1,10 +1,3 @@
-/**
- * UI lifecycle coverage of a decision in Übersicht's review sheet; HTTP
- * integration tests enforce persistence and authorization.
- *
- * The entry leaves Übersicht the moment its last decision is taken and comes back
- * when the engine refuses it; the toast leads to the audit trail.
- */
 export async function verifyDecisionLifecycle(page, stand, id, locale, capture) {
   let applied = false;
   let attempts = 0;
@@ -166,7 +159,6 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
           !authority ||
           authority.workflow_version_id !== id ||
           authority.expected_manifest_digest !== "b".repeat(64) ||
-          // The dialog's default: no run limit and no end date, until revoked.
           authority.max_runs !== null ||
           authority.valid_until !== null ||
           authority.execution_environment !== "dev"
@@ -204,15 +196,11 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
       .waitFor();
     await capture("failed-review");
     if ((await card.count()) !== 1) throw new Error("Failed approval removed the card");
-    // A refused decision brings its entry back: it was taken off Übersicht the
-    // moment the button was pressed.
     await listed().waitFor({ state: "attached" });
     await openSheet();
     await card.waitFor();
     await card.locator('[data-testid$="-toggle"]').click();
     await approve.click();
-    // The last decision of the entry closes the sheet and takes the entry off
-    // Übersicht at once; the toast leads to the audit trail of what was decided.
     await page.getByTestId("attention-review").waitFor({ state: "hidden" });
     const audit = page.getByTestId("attention-decided-audit");
     await audit.waitFor();

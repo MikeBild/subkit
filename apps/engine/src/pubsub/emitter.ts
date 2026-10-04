@@ -1,25 +1,3 @@
-// Thin typed pub/sub emitter used by the listener to fan events out to
-// local subscribers. Not exposed over the wire — consumers in the same
-// process register handlers via `pubsub.on(channel, handler)` and the
-// listener calls `dispatch(envelope)` once the row has been hydrated.
-//
-// Durability contract:
-//
-//   The emitter holds in-process subscriber state ONLY. It is intentionally
-//   not durable across process restarts — every consumer that needs to
-//   pick up where it left off after a crash MUST persist its checkpoint
-//   to Postgres (see `pubsub/listener.ts` — it tracks `outboxCursors`
-//   per channel + listener so a fresh process re-reads from the cursor
-//   on boot rather than from in-memory state).
-//
-//   Operators relying on the emitter for cross-process delivery should
-//   restart the engine in tandem with any consumer process; otherwise
-//   handlers registered against the previous process are simply gone.
-//
-// State growth is bounded: handlers.size grows only when callers
-// register and shrinks on `off()` or `clear()`. There is no key
-// cardinality risk (channels are a closed enum).
-
 import { logger } from "../logging/logger.ts";
 import type { EventEnvelope, EventHandler, OutboxChannel } from "./types.ts";
 
@@ -90,5 +68,4 @@ export class PubSubEmitter {
   }
 }
 
-// Default shared emitter used by the engine's global listener.
 export const globalEmitter = new PubSubEmitter();

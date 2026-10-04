@@ -1,18 +1,3 @@
-// Catalog-assembly contracts — `assembleCatalog` publishes the FULL
-// authoring catalog for the resolved mode with no server-side budget,
-// trim, or compression loop (see the file header on catalog-budget.ts:
-// strict clients defer-load large catalogs natively, so the client's own
-// tool-search handles size — verified empirically with an 80-tool probe
-// on claude.ai + ChatGPT).
-//
-// Contracts pinned here:
-//   1. The mode hierarchy is monotone: authoring publishes every tool
-//      product publishes, plus the tools that BUILD definitions — the
-//      conversation cluster and everything declaring `authoring_only`.
-//      Product is the read-and-execute tier: reads plus the run tools.
-//   2. `confirm_tool_call` can trigger only an already human-granted local
-//      approval; its presence does not let a model approve its own work.
-
 import { describe, expect, test } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
@@ -71,9 +56,6 @@ describe("mode hierarchy is monotone · authoring ⊇ product", () => {
   });
 
   test("a run tool never ships without the tool that resolves its polling handle", () => {
-    // A `wf_<slug>` / `run_workflow` call that outruns the MCP inline window
-    // hands back an `execution_id`. Publishing the run tool while withholding
-    // `get_execution` advertises a result the caller can never fetch.
     for (const mode of ["product", "authoring"] as const) {
       const names = namesFor(mode);
       expect(names.has("run_workflow")).toBe(true);
@@ -85,17 +67,11 @@ describe("mode hierarchy is monotone · authoring ⊇ product", () => {
     const product = namesFor("product");
     const authoring = namesFor("authoring");
 
-    // Reading the tenant and calling an existing connector is what the
-    // read-and-execute tier is FOR. These used to be authoring-only, which
-    // left a plain credential with an 8-tool floor and no way to see anything.
     for (const readOrRun of ["call_connector", "list_skills", "list_workflows"]) {
       expect(product.has(readOrRun)).toBe(true);
       expect(authoring.has(readOrRun)).toBe(true);
     }
 
-    // What authoring adds is the composing: discovering an API's shape,
-    // dry-running a transform, opening an authoring conversation. Each of
-    // these declares `authoring_only` at its definition site.
     for (const buildsDefinitions of [
       "discover_connector_endpoints",
       "dry_run_transform",

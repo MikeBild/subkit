@@ -1,8 +1,3 @@
-// Resolve a pending `ask_user_*` elicitation with the operator's
-// answer and resume the conversation loop. Owns the
-// confirmation-state-machine mirror, the auto-persist hook, and the
-// committed-conversation short-circuit.
-
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
@@ -37,78 +32,19 @@ export interface RespondElicitationParams {
   conversation_id: string;
   elicitation_id: string;
   actor_id: string | null;
-  /**
-   * Resolved principal of the actor resuming the turn. Threaded into
-   * `runLoop` so a `run_workflow` triggered by the resumed turn runs
-   * under RBAC instead of failing `principal_required`. Absent on test
-   * harnesses; tools guard the undefined case.
-   */
   principal?: ResolvedPrincipal | null;
-  /**
-   * WHO answered. Required, and with no default: an approval is granted by a
-   * PERSON, and `principal` cannot tell us whether one answered — an MCP
-   * `conversation_respond_elicitation` authenticates as the same user principal
-   * the HTTP `/respond` route does, and the model is what calls it. The
-   * resuming surface declares the channel; only the `human` variant grants.
-   * See `conversations/answer-actor.ts`.
-   */
   answer_actor: AnswerActor;
-  /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
   output: unknown;
   reason?: string;
-  /** Explicit transport decision; free-form `reason` text never decides governance. */
   resolution_status?: "resolved" | "cancelled";
   permission_mode?: ConversationPermissionMode | null;
-  /**
-   * When true, require that `actor_id` matches the conversation's
-   * `owner_id` before resolving. Set by chat callers: a posted
-   * Block-Kit button is visible to every user in the channel; without
-   * this check any same-tenant user who can see the message could
-   * resolve another user's pending elicitation. The web portal +
-   * MCP surfaces leave this off because they have their own
-   * authorisation model upstream (per-resource grants, MCP token
-   * scopes) — gating universally here would over-restrict them.
-   */
   require_same_actor?: boolean;
-  /**
-   * Live event emitter. When the route is in SSE mode this fires for
-   * every TurnEvent the resumed runLoop produces, so the CLI sees
-   * real-time progress instead of a 1–2 minute spinner before the
-   * buffered JSON outcome arrives. Pre-fix the respond endpoint was
-   * JSON-only — the operator saw `summarising 28 tool results · 1m43s
-   * · 370886t` for the entire turn before any text or tool card
-   * rendered.
-   */
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
-  /** Pre-registered AbortController — see RunLoopParams.turn_abort_ctrl.
-   *  Required: the HTTP route handler / MCP tool path registers on
-   *  the synchronous frame of request-accept and threads through. */
   turn_abort_ctrl: AbortController;
-  /**
-   * MCP-native elicitation bridge — present only when the resume runs
-   * inside an MCP `tools/call` whose client advertised the
-   * `elicitation` capability. Threaded onto the resumed loop's
-   * `ToolContext`.
-   */
   elicitationBridge?: ElicitationBridge;
-  /**
-   * Surface the RESUMED turn runs on. Chat callers MUST pass `"chat"`:
-   * the resumed `runLoop` re-assembles the tool palette, and without
-   * the surface it would silently fall back to the full authoring
-   * palette — a user answering a chat approval card would resume into
-   * tools the channel forbids. Web/MCP callers leave this unset
-   * (unchanged behavior).
-   */
   surface?: Parameters<typeof runLoop>[0]["surface"];
 }
 
-/**
- * Resolve an `askUser.*` elicitation with the user's answer and
- * resume the conversation loop. This is the only pause-resume path —
- * the legacy approval flow has been removed.
- */
-/** Raised when `require_same_actor` is set and the actor isn't the
- *  conversation's owner. Treated as a permission-denied at the caller. */
 export class ElicitationActorMismatchError extends Error {
   readonly code = "ELICITATION_ACTOR_MISMATCH";
   constructor(
@@ -119,11 +55,6 @@ export class ElicitationActorMismatchError extends Error {
   }
 }
 
-/** Raised when the caller refers to a conversation that doesn't exist
- *  in this tenant — used so chat callers can map "unknown conversation"
- *  to a denied audit row + silent drop instead of a generic throw that
- *  pg-boss would retry. A crafted Block-Kit click carrying another
- *  tenant's UUID lands here. */
 export class ConversationNotFoundError extends Error {
   readonly code = "CONVERSATION_NOT_FOUND";
   constructor(public readonly conversation_id: string) {
@@ -131,10 +62,6 @@ export class ConversationNotFoundError extends Error {
   }
 }
 
-/** Raised when the elicitation id doesn't resolve. Crafted clicks
- *  carrying garbage or cross-tenant ids land here; chat callers map
- *  this to a denied audit row + silent drop, identical reasoning to
- *  ConversationNotFoundError. */
 export class ElicitationNotFoundError extends Error {
   readonly code = "ELICITATION_NOT_FOUND";
   constructor(public readonly elicitation_id: string) {
@@ -142,21 +69,6 @@ export class ElicitationNotFoundError extends Error {
   }
 }
 
-/** Raised when the answer violates the originating ask_user_* input
- *  declaration (required field missing, regex mismatch, out-of-options
- *  choice). The row stays `pending` — that IS the re-prompt: the HTTP
- *  route maps this to a 422 with `field_errors`, chat re-posts the
- *  form, and the client re-submits against the same elicitation_id.
- *  `pending_elicitation` carries the original prompt with the field
- *  errors merged in (`error_message` pins on form fields) so clients
- *  re-render the dialog the same way `pending_elicitation_blocked`
- *  re-arms it.
- *
- *  The prompt is stripped of the approval handle IN THE CONSTRUCTOR. This
- *  error is serialized straight into HTTP 422 bodies and SSE error frames, and
- *  the persisted row it is built from may carry an engine-authored
- *  `commit_intent.payload.approval_id`. Sanitizing here, not at each route,
- *  is what makes the invariant hold for every future reader. */
 export class ElicitationValidationError extends Error {
   readonly pending_elicitation: {
     id: string;
@@ -187,10 +99,6 @@ export class ElicitationValidationError extends Error {
   }
 }
 
-/** Merge per-field validation errors back into the originating
- *  ask_user_* input so the re-rendered prompt shows inline pins.
- *  Only ask_user_form carries per-field `error_message`; other tools
- *  surface the errors via the error message itself. */
 function mergeFieldErrorsIntoInput(
   tool_name: string,
   input: unknown,
@@ -215,12 +123,6 @@ export async function respondElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
-  // Chat callers (Slack Block-Kit buttons, view_submission, etc.) opt
-  // into a same-actor gate: a posted button is visible to every user
-  // in the channel, so without this any same-tenant user who can see
-  // the message could resolve another user's pending elicitation. The
-  // web portal and MCP surfaces leave this off because they enforce
-  // authorisation upstream via per-resource grants / token scopes.
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);
@@ -229,19 +131,8 @@ export async function respondElicitation(
     }
   }
 
-  // Server-side answer validation BEFORE resolving. A failure leaves
-  // the row `pending` (the re-prompt) — resolveElicitation never runs,
-  // so no state transition and no resolve audit row. Declines pass
-  // through unvalidated (see validate-answer.ts).
   const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
-  // Canonicalise an `ask_user_confirm` answer up front so the stored
-  // row, the interaction-log mirror, and the auto-persist write gate all
-  // read the same `{ confirmed: boolean }` shape. The portal posts
-  // `{ approved: true }`; without this every downstream reader would have
-  // to re-derive the decision, and a missed spelling silently turns an
-  // approval into a `user_declined` decline (the save_workflow_draft
-  // commit that never persisted).
   const output =
     pendingRow?.tool_name === "ask_user_confirm" ? normalizeConfirmOutput(p.output) : p.output;
   if (pendingRow && pendingRow.status === "pending") {
@@ -304,9 +195,6 @@ export async function respondElicitation(
       .limit(1);
     originatingToolCall = toolCall ?? null;
   } else if (isAskUserToolName(resolved.tool_name) && !isProseQuestionElicitation(resolved)) {
-    // Legacy ask_user_* rows were created without a tool_call_id. We
-    // infer the latest matching call so already-open dialogs can still
-    // resume correctly after the fix ships.
     const [toolCall] = await exec
       .select({
         id: conversationToolCalls.id,
@@ -325,11 +213,6 @@ export async function respondElicitation(
     originatingToolCall = toolCall ?? null;
   }
 
-  // Mirror the response to the interaction_log on the originating tool
-  // call. The confirmation state machine (see conversations/confirmation.ts)
-  // tracks user_confirmed / user_declined / user_partial / user_tested so
-  // the LLM can reason about what the operator actually said in the next
-  // turn instead of reading only the raw output payload.
   if (originatingToolCall) {
     const { recordTransition } = await import("../confirmation.ts");
     const out = (output ?? {}) as Record<string, unknown>;
@@ -367,23 +250,10 @@ export async function respondElicitation(
     .set({ status: "active", updated_at: new Date() })
     .where(eq(conversations.id, p.conversation_id));
 
-  // Auto-persist hook — when the resolved elicitation
-  // carries a `commit_intent`, the harness applies the intended write
-  // atomically BEFORE the next LLM turn. The dispatcher emits a
-  // synthetic tool-call + tool-result the runLoop's
-  // buildModelMessages will replay so the LLM sees the persistence as
-  // a normal tool result with `source: "harness_auto_persist"`.
-  // Decline path injects a synthetic decline result so the next turn
-  // carries the signal without firing the actual write. The
-  // credential-cache + auto-persist sequence is factored into
-  // `applyElicitationOutcome` so the MCP-native in-process bridge path
-  // (ask-user/common.ts) runs the exact same logic.
   const autoPersist = await applyElicitationOutcome({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
-    // The grant channel. A `relay` here means no person answered, so no
-    // approval is granted and an approval-bearing commit_intent cannot run.
     answer_actor: p.answer_actor,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
     ...(p.surface ? { surface: p.surface } : {}),
@@ -410,9 +280,6 @@ export async function respondElicitation(
       permission_mode: explicitPermissionMode,
     });
   }
-  // A successful save concludes this turn, not the workflow lifecycle.
-  // Bind the shortcut to this dispatch's exact saved version: an unrelated
-  // confirmation or failed save must never inherit an earlier draft's success.
   const savedDraft = z
     .object({
       workflow_id: z.string(),

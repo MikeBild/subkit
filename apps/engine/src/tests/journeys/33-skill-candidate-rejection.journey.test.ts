@@ -1,11 +1,3 @@
-// Journey 33: Skill candidate rejection blocks re-proposal.
-//
-// Seeds applied patch_candidates with the real diff shape (proposal nested
-// under diff.proposal) plus execution_fixtures so the repair-pattern detector
-// can inner-join on fixture_id → connector_id/endpoint_key. Proposes a
-// connector-scoped candidate, rejects it, re-runs analysis, and verifies the
-// same fingerprint does not produce a new candidate.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   connectors,
@@ -19,16 +11,14 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch }
 let ctx: JourneyCtx;
 let connectorId: string;
 
-// A timestamp well within the 30-day lookback window used by the detector.
 // allow-wall-clock: anchor for patch created_at — the detector computes its
 // own cutoff via now(), which falls back to Date.now() with no test override,
 // so tests must stay within the real 30-day window.
-const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
+const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("rejection");
 
-  // Seed a connector — the repair-pattern detector groups by connector_id.
   const [conn] = await ctx.db
     .insert(connectors)
     .values({
@@ -41,9 +31,6 @@ beforeAll(async () => {
   if (!conn) throw new Error("seed connector failed");
   connectorId = conn.id;
 
-  // The workflow exists only to satisfy patch_candidates.workflow_id (a NOT
-  // NULL FK). The rescoped detector groups by connector/endpoint, not by
-  // workflow, so the journey never asserts against it — keep the seed.
   const [wf] = await ctx.db
     .insert(workflows)
     .values({
@@ -55,8 +42,6 @@ beforeAll(async () => {
     .returning();
   if (!wf) throw new Error("seed workflow failed");
 
-  // Seed 5 applied patches on the same (connector, endpoint, kind) interface,
-  // each with its own execution_fixture, so the detector forms one group.
   for (let i = 0; i < 5; i++) {
     const [fix] = await ctx.db
       .insert(executionFixtures)

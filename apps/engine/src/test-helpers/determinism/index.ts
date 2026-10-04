@@ -1,8 +1,3 @@
-// Re-exports for the determinism test-helpers.
-//
-// Production code imports from this barrel so tests can swap underlying
-// implementations without rewriting import paths.
-
 export {
   createDeterministicClock,
   type DeterministicClock,

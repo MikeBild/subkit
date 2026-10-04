@@ -1,11 +1,3 @@
-// /learnings — thin prompt-dispatch slash.
-//
-// The Ink host intercepts /learnings in dispatchSlashSubmit and submits the
-// review-learnings starter prompt as a plain conversation turn (the same
-// prompt the review-learnings TaskAction submits, so slash and starter action
-// can't diverge). The registry gates it on skill:read; the dispatch path must
-// honor that gate before submitting.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { dispatchSlashSubmit, type SlashDispatchContext } from "../ink-app/submit-pipeline.ts";

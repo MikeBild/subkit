@@ -1,13 +1,3 @@
-// The host-side operator commands, graded where they decide things.
-//
-// Two questions live here. The first is whether the argument surface can be
-// talked into taking key material from anywhere but a file — argv is
-// world-readable and lands in shell history, so a `--value` flag that
-// merely "works" is the bug. The second is whether `--if-unreadable` and
-// `--rewrap-master-key` write exactly when they must: the first runs on
-// every deploy, so a version that still decrypts must come back untouched;
-// the second must refuse outright while any replica is still serving.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -72,7 +62,6 @@ function opsFor(state: FakeState, overrides: Partial<VaultOps> = {}): VaultOps {
     },
     prepareVersion: async (name, value, purpose, bindings) => {
       state.prepared.push({ name, value, purpose, bindings });
-      // Prepared, not current: the probe keeps answering with the old version.
       return { version: (state.version ?? 0) + 1 };
     },
     rebind: async (path, name, version) => {
@@ -101,16 +90,10 @@ function readValueFile(path: string): string {
   throw new Error(`unexpected path: ${path}`);
 }
 
-// ---------------------------------------------------------------------------
-
 describe("the argument surface", () => {
   const CLI_SOURCE = join(dirname(dirname(fileURLToPath(import.meta.url))), "vault-cli.ts");
 
   test("the module never reaches for the environment or for argv itself", () => {
-    // A test, not a comment: the file may only receive argv as a parameter
-    // and read key material through the injected file reader. If either
-    // string appears, the guarantee that a value cannot arrive from the
-    // environment is gone.
     const source = readFileSync(CLI_SOURCE, "utf8");
     expect(source).not.toContain("process.env");
     expect(source).not.toContain("process.argv");
@@ -275,8 +258,6 @@ describe("--vault-set", () => {
   });
 
   test("a binding that could not be re-pinned exits 1 even though the version exists", async () => {
-    // The new version is real; the deploy this was meant to unblock will
-    // still fail, because the revision still points at the old one.
     const outcome = await runVaultCli(
       command(["--vault-set", "tok", "--value-file", VALUE_FILE, "--bind", "no.such.path"]),
       {
@@ -385,7 +366,6 @@ describe("--vault-set --pending", () => {
     ]);
     expect(state.created).toEqual([]);
     expect(state.rebound).toEqual([]);
-    // The probe still answers with the version that IS current.
     expect(await opsFor(state).probeCurrentVersion("tok")).toMatchObject({ version: 2 });
   });
 

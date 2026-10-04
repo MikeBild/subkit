@@ -1,18 +1,3 @@
-// Bounded auto-repair of `language: "javascript"` transform bodies
-// (Fix F). Same discipline as the JSONata repair:
-//
-//   - fixes a broken function body (syntax / throw / empty result)
-//     within ≤2 attempts, mechanically verified in the QuickJS sandbox
-//     against the RECORDED scope (production context shape
-//     `{ scope, input }` — data at `input.scope.<step_id>.data…`),
-//   - a candidate that runs but still returns an empty result is
-//     rejected mechanically,
-//   - gives up cleanly after the attempt bound,
-//   - rides the recorded-eval pass with the site's language attached.
-//
-// LLM provider is the in-process mock (LLM_PROVIDER=mock bootstrap +
-// `generateOverrides.repair`) — no network, deterministic.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,9 +17,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* fall through */
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-transform-repair-js-"));
   await loadConfig({
     env: {
@@ -95,7 +78,7 @@ describe("repairTransformExpression — javascript function bodies", () => {
     getMockProvider().generateOverrides.repair = () => {
       calls += 1;
       return calls === 1
-        ? { expression: "const x = ;\nreturn x;" } // still broken
+        ? { expression: "const x = ;\nreturn x;" }
         : { expression: "return input.scope.fetch.data.items;" };
     };
     const outcome = await repairTransformExpression({
@@ -116,8 +99,8 @@ describe("repairTransformExpression — javascript function bodies", () => {
     getMockProvider().generateOverrides.repair = () => {
       calls += 1;
       return calls === 1
-        ? { expression: "return input.scope.fetch.data.nope;" } // runs, still empty
-        : { expression: "return input.scope.fetch.data.items;" }; // non-empty
+        ? { expression: "return input.scope.fetch.data.nope;" }
+        : { expression: "return input.scope.fetch.data.items;" };
     };
     const outcome = await repairTransformExpression({
       expression: "return input.scope.fetch.data.wrong_field;",

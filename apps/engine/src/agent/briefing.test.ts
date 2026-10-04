@@ -94,7 +94,6 @@ describe("trimToBudget", () => {
   });
 
   test("trims the knowledge index before skill bodies", () => {
-    // Force exactly one trim step: full render minus a single index entry.
     const full = trimToBudget(input(), 16000);
     const oneLess = trimToBudget(input(), countTokens(full.markdown) - 1);
     expect(oneLess.state.knowledgeCount).toBe(1);
@@ -103,8 +102,6 @@ describe("trimToBudget", () => {
   });
 
   test("collapses skill bodies last skill first, keeping pointer lines", () => {
-    // Skills 1+2 stay small, skill 3 alone blows the budget — the trim must
-    // drop the index, then collapse ONLY the last skill's body.
     const skills = [makeSkill(1, 20), makeSkill(2, 20), makeSkill(3, 2000)];
     const { markdown, state } = trimToBudget(input({ skills }), 800);
     expect(state.knowledgeCount).toBe(0);

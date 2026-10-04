@@ -1,10 +1,3 @@
-// Golden test matrix for the bare loop-item reference rewriter.
-//
-// Every rewrite must carry the structural equivalence proof; every
-// hazard must abort with ok:false. Where it sharpens the proof, cases
-// also evaluate the original expression with the bare name bound and the
-// rewritten expression with `$item` bound and assert equal results.
-
 import { describe, expect, test } from "bun:test";
 import { buildJsonataBindings } from "../../execution/jsonata-bindings.ts";
 import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
@@ -57,8 +50,6 @@ describe("rewriteBareItemRefs — single expressions", () => {
     const r = rewriteBareItemRefs(src, "num");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    // Only the bare path head `num.rows` is the loop binding; the
-    // lambda's `$num` argument and its body usage stay untouched.
     expect(r.rewritten).toBe("$map($item.rows, function($num) { $num.x })");
     await assertRuntimeEquivalent(src, r.rewritten, "num", { rows: [{ x: 1 }, { x: 2 }] });
   });
@@ -91,8 +82,6 @@ describe("rewriteBareItemRefs — single expressions", () => {
   });
 
   test("X inside a filter predicate is an item-field lookup, untouched", () => {
-    // `num` inside `[...]` resolves against each element of `items`,
-    // NOT against the loop binding — must not be rewritten.
     const r = rewriteBareItemRefs("items[num > 2].x", "num");
     expect(r.ok).toBe(true);
     if (!r.ok) return;

@@ -1,7 +1,3 @@
-// Preparation does not fabricate an approval. The replay tool cannot grant one.
-// A saved workflow needs its own finite local authority for live writes;
-// client annotations are advisory and cannot supply that authority.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
@@ -89,7 +85,6 @@ describe("mcp wf_<slug> preparation without invented approvals", () => {
     expect(hits.some((h) => h.url.startsWith("/data"))).toBe(true);
     expect(hits.some((h) => h.url.startsWith("/send"))).toBe(false);
 
-    // No approval was ever minted for this call.
     expect(await approvalRequestedCountForTool("wf_direct-write-probe")).toBe(0);
   });
 

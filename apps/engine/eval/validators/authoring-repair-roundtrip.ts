@@ -1,10 +1,3 @@
-// Authoring scenario (Fix E / CI mode): the repair round-trip. A
-// recorded-eval finding (broken JS function body that returns an empty
-// result against the recorded scope) earns a bounded, mechanically
-// VERIFIED repair proposal; ONE `edit_workflow_patch` applies it; the
-// recorded evaluation that rides the patch envelope is green. The
-// whole loop runs against recorded evidence only — zero live HTTP.
-
 import { runRecordedEval } from "../../src/conversations/recorded-eval.ts";
 import { stepFingerprint } from "../../src/conversations/step-fingerprint.ts";
 import { editWorkflowPatchTool } from "../../src/conversations/tools/edit-workflow-patch.ts";
@@ -56,7 +49,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
 
     const c = new Checks();
 
-    // ── 1. Recorded eval surfaces the finding WITH a verified repair ──
     const { result: report, fetch_calls: evalFetchCalls } = await withEgressTripwire(() =>
       runRecordedEval(
         { steps: [fetchStep, brokenShape] },
@@ -82,7 +74,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     );
     if (c.failed) return { pass: false, reason: c.failed };
 
-    // ── 2. ONE edit_workflow_patch applies the proposal → green ──
     const toolCtx = env.makeToolCtx({
       workflow: {
         name: "eval-repair-roundtrip",

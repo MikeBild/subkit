@@ -1,10 +1,3 @@
-// Determinism + secret-safety gate for the config-example generator.
-//
-// (1) Output is byte-stable across two runs.
-// (2) Every scalar leaf marked `secret: true` in ConfigSchema is rendered
-//     as the empty string. Structured secret-bearing leaves may retain
-//     non-secret defaults, but every credential-shaped field must be empty.
-
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -59,10 +52,6 @@ describe("gen-config-example", () => {
     expect(secrets.length).toBeGreaterThan(5);
     for (const leaf of secrets) {
       const value = readDeep(parsed, leaf.path);
-      // database.url is the one secret leaf intentionally pre-filled
-      // with a USER:PASSWORD@host/db placeholder so the example is
-      // copy-paste-valid JSON. Every other secret leaf must render
-      // empty so the operator must explicitly set it.
       if (leaf.path.join(".") === "database.url") {
         expect(typeof value).toBe("string");
         expect((value as string).length).toBeGreaterThan(0);

@@ -1,14 +1,3 @@
-// Tests for the digest- and learnings-driven starter-action injection logic.
-//
-// When a digest with failures is present AND the persona may run the triage
-// action, the REPL prepends a "guided triage" entry keyed "1". When proposed
-// session learnings are pending AND the persona may read skills, a "review
-// learnings" entry takes the next free number. The persona defaults renumber
-// after the injected entries. When neither gate fires, the defaults are left
-// unchanged. These tests exercise the REAL building blocks from
-// repl/starter-action-injection.ts (the same functions ink-app.tsx calls), so
-// the rendered list, the dispatch list, and the RBAC gate cannot drift.
-
 import { describe, expect, test } from "bun:test";
 import type { OperatorHealthDigest } from "../engine-client.ts";
 import {
@@ -25,11 +14,7 @@ import type { PersonaProbe } from "../slash.ts";
 
 const allowAll: PersonaProbe = { allows: () => true };
 const denyAll: PersonaProbe = { allows: () => false };
-// Allows everything except conversation:write — enough to read the digest, not
-// enough to run the triage action.
 const noWrite: PersonaProbe = { allows: (p) => p !== "conversation:write" };
-// Allows everything except skill:read — enough for triage, not enough to
-// review proposed learnings.
 const noSkillRead: PersonaProbe = { allows: (p) => p !== "skill:read" };
 
 function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
@@ -199,8 +184,6 @@ describe("learnings injection — combined with triage", () => {
   });
 
   test("learnings-only at key '1' when the probe lacks conversation:write", () => {
-    // noWrite hides the triage action AND the conversation:write defaults, so
-    // the learnings entry leads and the surviving defaults renumber after it.
     const rendered = buildStarterActions("admin", noWrite, makeDigest([3]), 1);
     expect(rendered[0]?.key).toBe("1");
     expect(rendered[0]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
@@ -237,8 +220,6 @@ describe("render ↔ dispatch parity", () => {
   });
 
   test("a probe that hides a default hides it from BOTH lists (no drift)", () => {
-    // conversation:write gates several defaults; denying it shrinks both lists
-    // equally so a rendered number key always maps to a dispatchable action.
     const rendered = buildStarterActions("admin", noWrite, makeDigest([3]));
     const dispatch = buildStarterTaskActions("admin", noWrite, makeDigest([3]));
     expect(rendered.length).toBe(dispatch.length);

@@ -1,8 +1,3 @@
-// llms-txt routes — unit tests via Hono's `app.request()`. No DB, no auth:
-// the routes are public and serve the docs embedded at build time. Config IS
-// loaded (zero-config boot, tmpdir) because the index re-renders with the
-// engine's resolved origin (server.public_base_url, else forwarded headers).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,13 +38,9 @@ describe("GET /llms.txt", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
-    // A binary carries the decision-and-install set, not the repository's whole
-    // documentation, and its index says which of the two this is.
     expect(body.startsWith("# sk\n")).toBe(true);
-    // `>` blockquote lede + full-text pointer at the configured origin.
     expect(body).toContain("\n> ");
     expect(body).toContain(`All pages in one file: ${ORIGIN}/llms-full.txt`);
-    // Drill-down links resolve to the engine origin, not repo-relative paths.
     expect(body).toContain(`(${ORIGIN}/llms/setup.md)`);
   });
 });
@@ -71,13 +62,10 @@ describe("GET /llms/{path}", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
-    // The body is the page itself, not the index.
     expect(body).toContain("# sk CLI reference");
   });
 
   test("does not carry a page outside the set", async () => {
-    // Keeping the set small is the point: if the whole corpus still resolved,
-    // the binary would be shipping documentation nobody asked it to carry.
     const res = await buildApp().request("/llms/concepts/workflows.md");
     expect(res.status).toBe(404);
   });
@@ -98,8 +86,6 @@ describe("GET /llms-full.txt", () => {
     const body = await res.text();
     expect(body.startsWith("# sk\n")).toBe(true);
     expect(body).toContain("<!-- Source: setup.md -->");
-    // Big enough to be useful, small enough that a model can hold it: the
-    // whole corpus was 705 KB and this is the reason it is not shipped.
     expect(body.length).toBeGreaterThan(20_000);
   });
 });

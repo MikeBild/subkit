@@ -1,17 +1,3 @@
-// The mcp connector probe.
-//
-// The probe drives the pool's own connect path rather than opening a
-// throwaway session, so what these tests exercise is what a real call
-// exercises. They assert the two things a probe is for: it reports the
-// remote's tool count when the handshake succeeds, and it reports a code
-// the caller can branch on when it does not — distinguishing "no session
-// is registered", "an operator disabled it" and "the remote refused".
-//
-// INJECTION PATTERN: the pool's documented TEST SEAM
-// (`__setMcpPoolFactoriesForTests`) swaps SDK Client construction for an
-// in-process fake. NO bun `mock.module` — module mocks are process-global
-// and leak into every other test file in the same worker.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -26,8 +12,6 @@ import { setConnectorEnabled } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 import { probeMcpConnector } from "./mcp.ts";
 
-// Hosts whose fake client refuses the handshake, so a test can express a
-// failing remote without a network.
 const REFUSING_HOSTS = new Set<string>();
 
 function makeFakeClient(url: string): McpClientLike {
@@ -62,13 +46,6 @@ let ctx: TestDb;
 let tenantId: string;
 const _origDatabaseUrl = process.env.DATABASE_URL;
 
-/**
- * Build the connector the probe sees.
- *
- * `id` is the load-bearing field: the pool addresses a session by the
- * connector's own id, so the view a probe is handed must carry the id of
- * the row the driver will look up.
- */
 function connectorView(p: {
   id: string;
   slug: string;
@@ -94,8 +71,6 @@ function connectorView(p: {
     template_version: null,
     template_snapshot: null,
     self_description: {},
-    // Fixed instants: this fixture only needs the columns to be dates, and a
-    // wall-clock read here makes the suite non-reproducible for no benefit.
     created_at: new Date(0),
     updated_at: new Date(0),
     enabled: true,
@@ -155,8 +130,6 @@ describe("probeMcpConnector", () => {
     });
     expect(res.ok).toBe(true);
     expect(res.detail).toContain("2 tool(s)");
-    // An MCP handshake has no HTTP status; inventing one would make the
-    // probe response lie about what was observed.
     expect(res.status).toBeUndefined();
     expect(res.error_code).toBeUndefined();
   });
@@ -209,8 +182,6 @@ describe("probeMcpConnector", () => {
     });
     expect(res.ok).toBe(false);
     expect(res.detail).toContain("disabled");
-    // Not `unknown_upstream_error`: no request left the host, so a reader who
-    // branches on the code must not be sent to investigate the remote.
     expect(res.error_code).toBe("connector_disabled");
 
     const missing = await probeMcpConnector({

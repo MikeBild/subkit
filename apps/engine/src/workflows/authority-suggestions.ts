@@ -1,36 +1,19 @@
 import { CronExpressionParser } from "cron-parser";
 
 const DAY_MS = 86_400_000;
-/** The window suggested for anything that starts runs without a person. */
 const AUTOMATIC_WINDOW_DAYS = 30;
 const MAX_RUNS = 10_000;
-/**
- * A hook's deliveries arrive in bursts a short observation does not show, so
- * the projection is doubled, and a hook that was barely called still gets
- * room for a few calls a day rather than a window it exhausts by noon.
- */
 export const HOOK_RUN_HEADROOM = 2;
 export const HOOK_MINIMUM_RUNS = 100;
 
-/**
- * The deliveries a workflow's inbound hooks verified over the last
- * `window_days` — started runs and deliveries the approval gate refused.
- */
 export interface HookDeliveryRate {
   deliveries: number;
   window_days: number;
 }
 
-/** Where a suggestion comes from, so a surface can explain it in one line. */
 export type AuthoritySuggestionBasis =
-  /** Nothing starts it automatically: one run, one day. */
   | { kind: "manual" }
-  /** The schedules' own occurrences over the window. */
   | { kind: "schedule"; scheduled_runs: number }
-  /**
-   * The hooks' recent delivery rate, projected over the window with headroom.
-   * `minimum_applied`: the projection was below the floor and the floor stands.
-   */
   | {
       kind: "hook";
       scheduled_runs: number;
@@ -58,23 +41,13 @@ function scheduledRuns(
           tz: schedule.timezone,
         });
         while (runs < MAX_RUNS && iterator.next().getTime() < until) runs++;
-      } catch {
-        // Invalid stored schedules do not create additional authority.
-      }
+      } catch {}
     }
     if (runs >= MAX_RUNS) break;
   }
   return runs;
 }
 
-/**
- * Suggestions are inert; the human still approves the displayed finite limits.
- *
- * `hooks` is the delivery rate of the workflow's active inbound hooks, or null
- * when none delivers in the reviewed environment. A hook-started workflow used
- * to get the manual default — one run in 24 hours — which its second delivery
- * already exhausted.
- */
 export function suggestAuthorityBounds(
   now: Date,
   schedules: readonly { cron: string; timezone: string }[],

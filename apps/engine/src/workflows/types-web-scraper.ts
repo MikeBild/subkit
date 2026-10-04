@@ -1,15 +1,3 @@
-// Web-scraper transform languages — schema sidecar for `types.ts`.
-//
-// Lives in its own file so `types.ts` stays under the 1000-LOC audit
-// ceiling. `types.ts` imports the three config + three output Zod
-// schemas from here and re-exports the output envelopes for downstream
-// consumers (executor, chat tools, OpenAPI generation).
-//
-// Each transform operates on the upstream step's HTML body (passed
-// through `input`) and returns a typed JSON envelope — no `expression`
-// is consumed; per-language config arrives via the matching nested
-// block on `TransformStep` (declared in `types.ts`).
-
 import { z } from "@hono/zod-openapi";
 
 export const ReadabilityConfigSchema = z
@@ -36,10 +24,6 @@ export const StructuredDataConfigSchema = z
       .optional(),
   })
   .openapi("StructuredDataConfig");
-
-// Typed JSON envelopes returned by the three transform languages.
-// Exposed in OpenAPI so downstream tooling (chat, dashboards, the
-// authoring gate) can address fields by name with confidence.
 
 export const ReadabilityOutputSchema = z
   .object({
@@ -79,14 +63,8 @@ export type ReadabilityOutput = z.infer<typeof ReadabilityOutputSchema>;
 export type MarkdownOutput = z.infer<typeof MarkdownOutputSchema>;
 export type StructuredDataOutput = z.infer<typeof StructuredDataOutputSchema>;
 
-/** Languages on `TransformStep.language` that require a non-empty
- *  `expression`. Transforms are JavaScript-only; JSONata survives only in
- *  the one-line slots (`data_selector`, `branch.when`, `output_transform`,
- *  `${...}` interpolation). Used by the superRefine in `types.ts`. */
 export const TRANSFORM_LANGUAGES_NEEDING_EXPRESSION = new Set(["javascript"]);
 
-/** Languages on `TransformStep.language` that forbid an `expression`
- *  field (the per-language config object is the carrier). */
 export const TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION = new Set([
   "readability",
   "html-to-markdown",

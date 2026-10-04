@@ -1,8 +1,3 @@
-// Confirmation / elicitation / dedupe helpers used by the wrapper.
-// Pure functions only — no side effects, no DB access. They translate
-// tool names + raw args + assistant text into commit-intent shapes,
-// risk metadata, and prose-confirmation matches.
-
 import { normalizeWorkflowInput } from "../workflow-input-normalize.ts";
 
 export function confirmationMetadataForTool(
@@ -15,9 +10,6 @@ export function confirmationMetadataForTool(
 } {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const slug = typeof obj.slug === "string" ? obj.slug : null;
-  // `run_workflow` accepts `workflow` (slug or uuid); legacy state-write
-  // tools (delete_workflow, update_workflow) carry `workflow_id`. Either
-  // is a useful target label when surfacing the risk envelope.
   const workflow = typeof obj.workflow === "string" ? obj.workflow : null;
   const workflowId = typeof obj.workflow_id === "string" ? obj.workflow_id : null;
   const connectorId = typeof obj.connector_id === "string" ? obj.connector_id : null;
@@ -33,20 +25,6 @@ export function confirmationMetadataForTool(
   };
 }
 
-/**
- * Map tenant_write tools to the `commit_intent.kind` value the harness
- * auto-persist dispatcher routes on. `buildPolicyGateCommitIntent`
- * attaches this carrier to the policy-gate elicitation so the write is
- * applied atomically the moment the operator confirms (no LLM re-issue).
- * Also used to label the forensic `policy.gate_*` logs.
- *
- * NOTE: this is NOT a confirm-dedup key. The confirm decision is the
- * deterministic `decideConfirm` rule (see `confirm-decision.ts`); the
- * only durable-approval shortcut left is the save path's
- * `findPriorSaveWorkflowApproval`.
- *
- * Kept in sync with `apps/engine/src/conversations/tools/ask-user/commit-intent.ts`.
- */
 export function mapToolToCommitIntentKind(tool: string): string | null {
   switch (tool) {
     case "save_workflow_draft":
@@ -59,14 +37,6 @@ export function mapToolToCommitIntentKind(tool: string): string | null {
       return "update_connector";
     case "update_workflow":
       return "update_workflow";
-    // Pre-fix (session 975a64b0): delete_connector / delete_workflow
-    // policy-gate elicitations carried NO commit_intent. The user
-    // clicked "approve", auto-persist found no intent, logged
-    // `auto_persist.skipped`, and the delete silently never ran.
-    // The LLM then claimed "Connector deleted" (hallucination) and
-    // moved on — leaving the row alive. The next save_connector_draft
-    // for the same slug then crashed with 23505 unique-violation
-    // (16:37:21).
     case "delete_connector":
       return "delete_connector";
     case "delete_workflow":
@@ -78,19 +48,6 @@ export function mapToolToCommitIntentKind(tool: string): string | null {
   }
 }
 
-/**
- * Top-level `input.kind` to stamp on a policy-gate elicitation so the
- * tool's downstream prior-approval gate (e.g. `commit-workflow.ts`'s
- * SQL filter `(input ->> 'kind') = 'save_workflow_draft'`) finds the resolved
- * row that authorizes the save.
- *
- * For `save_workflow_draft` we MUST use `"save_workflow_draft"` (not `"external_write"`)
- * — without this the policy-gate elicitation would never satisfy the
- * inner `commitWorkflowAtomic` prior-approval check, and the save would
- * loop indefinitely with `error: no_prior_approval`. Other
- * persisting tools fall back to `"external_write"` — they do not gate
- * themselves on a specific `input.kind` value.
- */
 export function topLevelElicitationKindForTool(
   tool: string,
 ): "save_workflow_draft" | "external_write" | "generic" {
@@ -98,35 +55,8 @@ export function topLevelElicitationKindForTool(
   return "external_write";
 }
 
-/**
- * Sentinel `input.kind` stamped on the post-execution review
- * elicitation the `confirm_after_execution` policy mode raises.
- *
- * This is NOT a member of the `ask_user_confirm` schema's `kind` enum
- * (`save_workflow_draft | external_write | generic`) — it is an
- * out-of-band marker the post-execution-review path uses to tag a
- * confirm whose subject is a result that has ALREADY been produced.
- *
- * `review_after_execution` is ADVISORY-ONLY by design: the underlying
- * `tenant_write` tools are mostly idempotent and non-rollbackable, so a
- * declined review has no automatic rollback path. `maybeAutoPersistFromElicitation`
- * therefore returns early for these (no `commit_intent` is attached),
- * and a decline is logged + surfaced for the model to react to on the
- * next turn — it does not trigger a harness write. The exported
- * constant exists so this sentinel is referenced by name everywhere
- * instead of as a bare magic string.
- */
 export const REVIEW_AFTER_EXECUTION_KIND = "review_after_execution" as const;
 
-/**
- * The universal `commit_intent` carrier for a policy-gated chat tool call.
- *
- * `approval_id` names a single-use, principal-bound, AES-GCM-encrypted approval
- * the gate minted over the exact args the call paused on. The harness claims it
- * and replays those args (`auto-persist.ts` → `execute_confirmed_tool_call`);
- * the model never sees the id, and no wrapped tool publishes a slot it could
- * carry one back in. Engine-authored only.
- */
 export function buildConfirmedToolCallIntent(
   tool: string,
   approvalId: string,
@@ -138,16 +68,6 @@ export function buildConfirmedToolCallIntent(
   };
 }
 
-/**
- * Build the shape-specific `commit_intent` carrier the harness reads in
- * `maybeAutoPersistFromElicitation` to atomically persist the write
- * the moment the operator confirms.
- *
- * Returns `null` when we have no shape contract for the tool's payload yet; the
- * caller then attaches `buildConfirmedToolCallIntent`, which replays the
- * approved args verbatim. Either way the HARNESS performs the call — the model
- * never re-issues it.
- */
 export function buildPolicyGateCommitIntent(
   tool: string,
   rawArgs: Record<string, unknown>,
@@ -222,16 +142,9 @@ export function buildPolicyGateCommitIntent(
       description: `Run workflow ${workflow ?? workflowId} in ${environment}.`,
     };
   }
-  // update_* and every other gated tool: no shape-specific payload contract, so
-  // the caller attaches `buildConfirmedToolCallIntent` and the harness replays
-  // the approved args verbatim.
   return null;
 }
 
-/**
- * Attach summary fields so `conversation.tool.succeeded/failed` logs
- * carry at least some shape context regardless of which tool emitted.
- */
 export function summarizeToolData(data: unknown): Record<string, number | string | boolean> {
   if (data === null || data === undefined) return {};
   if (Array.isArray(data)) return { data_length: data.length };
@@ -259,17 +172,6 @@ export function summarizeToolData(data: unknown): Record<string, number | string
   return out;
 }
 
-/**
- * Lift the rejection reason from a structured `ok:false` ToolResult into log
- * fields. The reason lives at the TOP LEVEL (`error_code`/`message`) on the
- * ToolResult, NOT inside `data` — so `summarizeToolData` (which inspects
- * `data`) misses it. Without this, `conversation.tool.failed` logged a bare
- * `ok:false` carrying only `data_keys`, leaving an operator with no WHY (the
- * production `ask_user_form` / `probe_connector_draft` credential_form_mismatch
- * failures read as silent). `message` maps to the log's `error` field so it
- * lines up with the throw-path's `error: msg`. Returns `{}` for an `ok:true`
- * result or one with no structured reason.
- */
 export function summarizeToolFailure(result: {
   ok: boolean;
   error_code?: string;
@@ -278,12 +180,6 @@ export function summarizeToolFailure(result: {
 }): Record<string, string> {
   if (result.ok) return {};
   const out: Record<string, string> = {};
-  // Most authoring tools pack the rejection reason INTO `data` (e.g.
-  // run_workflow's `data.error_code`, dry_run_workflow's `data.summary`)
-  // rather than at the top level — without a `data` fallback the tool.failed
-  // log read `undefined` for every one of them. Read top-level first (the
-  // canonical place), then fall back to the well-known `data` fields so the
-  // log carries WHY regardless of where the tool put it.
   const data = (result.data ?? {}) as {
     error_code?: unknown;
     reason?: unknown;
@@ -300,10 +196,6 @@ export function summarizeToolFailure(result: {
     (typeof data.message === "string" ? data.message : undefined) ??
     (typeof data.summary === "string" ? data.summary : undefined) ??
     (typeof data.error === "string" ? data.error : undefined);
-  // Bound both fields: a tool may interpolate an arbitrarily large payload
-  // (e.g. an upstream response body) into its rejection message, and this
-  // lands verbatim in the structured log. The field-level redactor still
-  // scrubs credential-shaped substrings; the cap just stops log bloat.
   if (typeof code === "string") out.error_code = code.slice(0, 80);
   if (typeof message === "string") out.error = message.slice(0, 500);
   return out;

@@ -1,37 +1,9 @@
-// P-GC5: notification rule matcher.
-//
-// Given an outbox event (type + optional workflow_id / severity /
-// request_source), return every active rule in the tenant whose
-// filters accept the event. Rule filters:
-//
-//   - event_pattern (glob):    `*`, `execution.*`, or exact.
-//   - workflow_pattern (glob): `*`, `wf-<slug>-*`, or exact UUID /
-//                              slug string. Always applied to the
-//                              `workflow_id` or `workflow_slug` field
-//                              of the event payload.
-//   - severity (ladder):       the event's severity must be ≥ the
-//                              rule's severity floor. Severity ladder:
-//                              debug < info < warn < error < critical.
-//   - request_source_filter:   `null` or an array of request sources
-//                              (`api | mcp | chat | webhook`). When an
-//                              array is given, the event's source must
-//                              appear in it.
-//
-// The matcher is a pure function of (db, tenant_id, event) — no side
-// effects, no rate limiting, no breaker logic.
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { type NotificationRuleRow, notificationRules } from "../db/schema/notifications.ts";
 import type { RequestSource } from "../execution/types.ts";
 
 export type NotificationSeverity = "debug" | "info" | "warn" | "error" | "critical";
-/**
- * Notification matcher uses the canonical `RequestSource` enum from
- * the execution layer. Pre-fix this was typed `... | string` which
- * silently accepted any value and broke filtering. The canonical enum
- * is the lead — narrowing here keeps the contract tight.
- */
 export type NotificationRequestSource = RequestSource;
 
 export interface NotificationEvent {
@@ -52,11 +24,9 @@ const SEVERITY_ORDER: Record<NotificationSeverity, number> = {
   critical: 4,
 };
 
-/** Simple comma-separated glob match: `*`, `prefix.*`, exact. */
 export function matchGlob(pattern: string, value: string | null | undefined): boolean {
   if (!pattern) return false;
   if (value == null) {
-    // A `*` wildcard matches the absence of a value as well.
     return pattern
       .split(",")
       .map((p) => p.trim())
@@ -74,7 +44,6 @@ export function matchGlob(pattern: string, value: string | null | undefined): bo
   return false;
 }
 
-/** Compare two severities; returns true iff `event` ≥ `floor`. */
 export function severityMeets(
   event: NotificationSeverity | undefined,
   floor: NotificationSeverity,
@@ -105,11 +74,6 @@ export interface MatchedRule {
   severity: NotificationSeverity;
 }
 
-/**
- * Returns every active `notification_rules` row in the tenant whose
- * filters accept the event. Results are ordered by rule creation time
- * ascending so callers that iterate get a stable order.
- */
 export async function matchRules(
   db: Db,
   tenant_id: string,

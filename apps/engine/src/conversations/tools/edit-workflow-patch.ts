@@ -1,16 +1,3 @@
-// edit_workflow_patch — THE workflow editor. An RFC 6902 JSON Patch
-// over the entire workflow draft in one call. It expresses every
-// targeted change: append/replace a step (`add /steps/-`,
-// `replace /steps/N`), set a single field or header
-// (`replace /steps/N/headers/Accept`), retarget references, add an edge
-// (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits
-// (rename a step + retarget every reference + change one URL) land
-// atomically instead of over N round-trips.
-//
-// The applied patch must produce a draft that still validates against
-// the WorkflowDef Zod schema. The patch fails atomically — if any
-// operation throws, the draft is left untouched.
-
 import { z } from "@hono/zod-openapi";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
@@ -52,16 +39,6 @@ const inputSchema = z
   )
   .openapi("EditWorkflowPatchToolInput");
 
-/**
- * The step map plus the field guidance a failed patch needs to self-correct.
- *
- * This used to live inline in the one branch that catches an unapplicable JSON
- * Pointer. Every other rejection — an unsupported placeholder, a definition that
- * fails validation — returned the bare error, so the only sentence in the engine
- * naming `s3.scope` was unreachable from the failures models actually hit. It is
- * shared now, and it names the derived fields explicitly because templating
- * `s3.max_keys` was a real invention, not a hypothetical one.
- */
 function repairExtras(draft: { steps?: Array<Record<string, unknown>> }): Record<string, unknown> {
   return {
     step_paths: (draft.steps ?? []).map((step, index) => ({
@@ -109,21 +86,6 @@ export const editWorkflowPatchTool: ConversationTool = {
   },
 };
 
-/**
- * THE draft-patch application core, extracted so both the LLM-driven
- * `edit_workflow_patch` tool AND the harness partial-accept dispatcher
- * (`apply_workflow_patch` commit_intent) share ONE gate chain + one
- * durability contract. Applies the RFC-6902 `patches` to the workflow
- * draft, runs every pre-flight gate (validation, cycle, placeholder,
- * reference), commits the patched draft, and
- * returns the recorded-eval findings. The patch fails atomically — an
- * invalid patch leaves the draft untouched.
- *
- * Partial-accept feeds a SUBSET of the originally-proposed ops here, so the
- * subset is re-validated as a standalone patch: a rename accepted without
- * its retarget correctly returns `workflow_unresolved_step_reference`
- * instead of silently landing a broken draft.
- */
 export async function applyWorkflowPatchToDraft(
   ctx: ToolContext,
   patches: ToolDiff[],
@@ -136,9 +98,6 @@ export async function applyWorkflowPatchToDraft(
     try {
       patched = applyDiffsToConfig(workflowDraft, patches);
     } catch (err) {
-      // fast-json-patch throws on invalid path / wrong op semantics.
-      // Surface the message so the LLM can correct without re-reading
-      // the whole draft.
       return {
         ok: false,
         data: buildGateError(currentDraft, {
@@ -154,15 +113,6 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    // A patch may legally target `steps`, and nothing upstream guarantees the
-    // op left an ARRAY behind — `applyDiffsToConfig` applies what it is given.
-    // `?? []` only covers null/undefined, so a `replace` that put an object
-    // there reached `.some()` and threw a raw TypeError
-    // ("(patched.steps ?? []).some is not a function"), escaping as an
-    // untyped crash instead of something the model could correct. Observed in
-    // production right after an in-band tool-call repair fed corrected args
-    // back into the loop. Fail the patch atomically, in the shape every other
-    // bad patch already uses.
     if (patched.steps !== undefined && !Array.isArray(patched.steps)) {
       return {
         ok: false,
@@ -176,13 +126,6 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    // Unsupported-placeholder pre-flight BEFORE the structural validator:
-    // validateWorkflowDef also parses placeholder grammar on addressing
-    // surfaces (audit M4) and would otherwise report e.g. `${user.email}`
-    // as a generic `patch_invalid`, shadowing the specific error code +
-    // did-you-mean the model's recovery hints key on. Runs on the RAW
-    // patched object; guarded because the draft may not even have a
-    // steps array yet — the structural validator below reports that case.
     if (Array.isArray((patched as WorkflowDef).steps)) {
       const placeholderErrors = validateUnsupportedPlaceholders(patched as WorkflowDef);
       if (placeholderErrors.length > 0) {
@@ -231,14 +174,7 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    // Cycle pre-flight on the patched draft. Reject patches that would
-    // introduce a cyclic step dependency — same typed error code +
-    // shape as author_workflow / dry_run_workflow so the LLM has a
-    // single contract to obey.
     {
-      // The draft is a WorkflowDef here: validateWorkflowDef just parsed it
-      // successfully above. The gates run on the RAW draft object (not the
-      // Zod-stripped parse result) so unknown-key placeholders still scan.
       const dag = buildStepDag(patched as WorkflowDef);
       const cycleReport = detectCycles(dag);
       if (cycleReport.has_cycle) {
@@ -262,11 +198,6 @@ export async function applyWorkflowPatchToDraft(
       }
     }
 
-    // Reference pre-flight on the patched draft. Only references this patch
-    // INTRODUCES block it. Shared transform code reads steps of sibling
-    // workflows that are absent here; refusing an unrelated field change over
-    // such a read made the author rewrite correct production logic to get past
-    // the gate. What the active version already had rides along as a notice.
     const references = await classifyStepReferences(
       ctx,
       "edit_workflow_patch",
@@ -293,15 +224,6 @@ export async function applyWorkflowPatchToDraft(
       };
     }
 
-    // Rename-aware evidence carry-over. A `replace /steps/N/id` rename
-    // does not change the step's recorded shape — only its address.
-    // Remap the trace's `step_id` AND recompute its fingerprint against
-    // the renamed definition so the fingerprint-keyed pruning in
-    // `withWorkflowDraft` keeps the evidence: an atomic
-    // rename + retarget must not cost a redundant dry-run. If the patch
-    // also changed other fields of the renamed step, the recomputed
-    // fingerprint won't match the patched step and the evidence drops —
-    // exactly the retention contract.
     const renamedStepIds = new Map<string, string>();
     for (let i = 0; i < patches.length; i++) {
       const op = patches[i]!;
@@ -355,13 +277,6 @@ export async function applyWorkflowPatchToDraft(
       });
     }
 
-    // Recorded-evaluation pass. The loop/transform authoring
-    // gates used to refuse a patch that INTRODUCED an un-previewed
-    // scope reference; the patch is accepted now and the same gate
-    // verdicts — plus compile caret errors and evaluation against
-    // fingerprint-valid recorded evidence — return as findings so the
-    // model repairs in the next call instead of thrashing through a
-    // dry-run detour. No live HTTP fires here.
     const probedConnectorSlugs = await collectProbedConnectorSlugs(
       ctx,
       patched.steps as ReadonlyArray<Record<string, unknown>>,

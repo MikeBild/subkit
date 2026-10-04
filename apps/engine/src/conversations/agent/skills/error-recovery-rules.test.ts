@@ -1,12 +1,3 @@
-// Pin the error-recovery skill body's hard-rule blocks so a future
-// rewrite can't quietly drop them. Every block here corresponds to a
-// real failure mode the operator hit in production:
-//
-//   - "Contact support" / fake CLI commands (session abeefb33 follow-up)
-//   - prose retry-vs-troubleshoot fork on auto_persist_failed
-//   - typed Postgres-error react-by-code, not by prose
-//   - mandatory ask_user_choice when a finite option set exists
-
 import { describe, expect, test } from "bun:test";
 import errorRecoveryAndRbac from "./content/error-recovery-and-rbac.md" with { type: "text" };
 
@@ -51,15 +42,12 @@ describe("error-recovery skill body — hard-rule pins", () => {
 
   test("requires ask_user_choice with explicit options for finite-choice forks", () => {
     expect(errorRecoveryAndRbac).toMatch(/ask_user_choice[^\n]*explicit[^\n]*options/);
-    // Concrete example labels appear in the rule body.
     expect(errorRecoveryAndRbac).toMatch(/Retry the save/);
     expect(errorRecoveryAndRbac).toMatch(/Inspect engine logs/);
     expect(errorRecoveryAndRbac).toMatch(/Abandon and start over/);
   });
 
   test("does NOT recommend 'sk status' as a real command (pinned out)", () => {
-    // The text MENTIONS sk status only to flag that it doesn't exist;
-    // tolerate the markdown backtick wrapping in the assertion.
     if (errorRecoveryAndRbac.includes("sk status")) {
       expect(errorRecoveryAndRbac).toMatch(/sk status[`\s]+does NOT exist/);
     }

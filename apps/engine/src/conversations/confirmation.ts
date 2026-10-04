@@ -1,25 +1,3 @@
-// Confirmation state machine for tool outputs.
-//
-// Replaces the binary "approval_required" flag with a typed multi-state
-// transition log. Each confirmable tool declares its `validActions` set;
-// the loop runs a pre-LLM-call pass that processes any pending
-// confirmations and rewrites the corresponding tool-result payloads so
-// the model sees the outcome on the next turn.
-//
-// States:
-//   proposed       — tool call emitted a confirmation request
-//   tested         — user tested the proposed change (read-only preview)
-//   confirmed      — user approved; tool should execute the real write
-//   partial        — user approved a subset; tool should execute only
-//                    that subset
-//   declined       — user rejected
-//   auto_declined  — timeout / superseded by a later user message
-//   oauth_success  — OAuth authorize flow completed
-//   oauth_failure  — OAuth authorize flow errored
-//
-// The interaction_log (on conversation_tool_calls.interaction_log) is
-// append-only. Every state transition writes one entry.
-
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
@@ -42,13 +20,7 @@ export interface InteractionLogEntry {
 }
 
 export interface ConfirmationConfig {
-  /** Valid states the tool recognises. */
   validActions: ReadonlyArray<ConfirmationState>;
-  /**
-   * Process a pending confirmation: given the prior tool output and the
-   * state-change event, return the new output payload + status. Called
-   * once per state transition.
-   */
   processConfirmation(
     input: unknown,
     currentOutput: unknown,
@@ -57,14 +29,6 @@ export interface ConfirmationConfig {
   ): Promise<{ status: "completed" | "declined"; output: unknown }>;
 }
 
-/**
- * Human-readable transcript marker for each terminal transition. The
- * markers are short, deterministic strings that render cleanly in the
- * chat scrollback so the user can see their own approve/decline action
- * — the confirmation dialog itself is ephemeral, and prior to this
- * marker the decision was only visible as `interaction_log` metadata
- * buried on the tool-call row.
- */
 function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined): string | null {
   const label = tool ?? "action";
   switch (state) {
@@ -81,20 +45,10 @@ function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined)
     case "oauth_failure":
       return `✗ OAuth failed: ${label}`;
     default:
-      // `proposed` and `tested` are intermediate states; don't clutter the
-      // transcript with a message for them.
       return null;
   }
 }
 
-/**
- * Persist a confirmation state transition on a tool-call row and append
- * an interaction_log entry. When a `conversation_id` is supplied, also
- * append a short user-visible transcript message describing the choice
- * so the user's approve/decline click isn't silently absorbed into
- * metadata. Idempotent-ish: callers should check that the target state
- * is not already the current state before invoking.
- */
 export async function recordTransition(
   db: Db,
   params: {
@@ -103,14 +57,7 @@ export async function recordTransition(
     to_state: ConfirmationState;
     data?: Record<string, unknown>;
     actor_id?: string | null;
-    /** Tool name — populated by callers for observability labelling. */
     tool?: string;
-    /**
-     * Conversation the tool call belongs to. When supplied, a visible
-     * `role: "user"` message is inserted alongside the interaction_log
-     * append, so the user's decision shows up in the transcript. Omit
-     * in tests or in internal transitions that shouldn't render.
-     */
     conversation_id?: string;
   },
 ): Promise<void> {
@@ -163,11 +110,6 @@ export async function recordTransition(
   recordConfirmationTransition({ to_state: params.to_state, tool: params.tool ?? "unknown" });
 }
 
-/**
- * Scan a message history for tool_call rows in a pending confirmation
- * state. Intended for the pre-LLM-call pass in the conversation loop.
- * Returns the set of tool_call ids whose state is one the tool accepts.
- */
 export function isTerminalState(s: ConfirmationState): boolean {
   return (
     s === "confirmed" ||

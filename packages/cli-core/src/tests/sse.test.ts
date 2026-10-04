@@ -11,8 +11,6 @@ describe("readSse", () => {
           controller.enqueue(
             encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
           );
-          // Deliberately leave the transport open. The protocol frame, not
-          // EOF, must be sufficient for a headless consumer to finish.
         },
         cancel() {
           cancelled = true;

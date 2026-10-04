@@ -1,25 +1,3 @@
-// Does a conversation's working draft hold workflow-DEFINITION edits that are
-// not yet persisted to its bound workflow's saved draft (or legacy active version)?
-//
-// Two callers need this exact question:
-//   - `conversation_commit` (MCP) — so it stops echoing "committed" when the
-//     draft still has uncommitted edits (RC2: it is a read-only status tool and
-//     must report honestly).
-//   - `update_workflow` (metadata-only tool) — so it refuses to "save" a draft
-//     whose STEPS changed (it writes only metadata via updateWorkflowMetadata and
-//     would silently drop step edits; those belong on the save_workflow_draft path).
-//
-// We compare only the STRUCTURAL def fields (steps/edges/schemas/trigger/
-// output_transform), never the metadata fields (name/slug/description/lifecycle).
-// Two reasons: (1) `description` has dual storage — canonical in the
-// `workflows.description` column, often null in the stored dag — so a metadata
-// compare against the dag is unreliable; (2) metadata edits are exactly what
-// `update_workflow` is FOR, so a pure metadata diff must not read as "dirty".
-//
-// The comparison mirrors the commit path (commit-workflow.ts): project the draft
-// via `workflowDefFromDraft`, validate+annotate so it is like-for-like with the
-// stored (already-annotated) dag, then structural-compare.
-
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -30,18 +8,6 @@ import { getWorkflowDraft } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
 import { workflowDefFromDraft } from "./commit-workflow.ts";
 
-/**
- * - `no_target`   — nothing was compared. The `reason` says why:
- *                   `unbound` (no target workflow id), `empty_draft` (no steps
- *                   to compare), `no_persisted_version` (workflow row missing,
- *                   deleted, or has no saved version), `unreadable_dag`
- *                   (a version row exists but its stored dag is missing or
- *                   fails schema parse).
- * - `clean`       — the draft's structural def matches the persisted draft
- *                   version (any difference is metadata-only, which is fine).
- * - `structural`  — the draft's steps/edges/schemas/trigger/output_transform
- *                   differ from the persisted version (uncommitted def edits).
- */
 export type DraftPersistedState =
   | { state: "clean" }
   | { state: "structural" }
@@ -75,12 +41,6 @@ function structuralFingerprint(def: Record<string, unknown>): string {
   return stableStringify(picked);
 }
 
-/**
- * Classify a conversation's working draft against the persisted draft version
- * of `target_workflow_id`. Best-effort and read-only: any ambiguity (unparseable
- * stored dag, draft that fails validation, no target) resolves to `no_target`
- * rather than a false `structural`, so neither caller blocks/denies on noise.
- */
 export async function classifyDraftVsPersisted(
   exec: Executor,
   tenant_id: string,
@@ -91,8 +51,6 @@ export async function classifyDraftVsPersisted(
 
   const draftDef = workflowDefFromDraft(getWorkflowDraft(draft));
   if (!Array.isArray(draftDef.steps) || draftDef.steps.length === 0) {
-    // An empty workflow draft (e.g. a connector-only or freshly-bound session
-    // before any edit) has nothing to compare.
     return { state: "no_target", reason: "empty_draft" };
   }
 
@@ -115,9 +73,6 @@ export async function classifyDraftVsPersisted(
   const bound = draft.state?.persisted_resources.find(
     (resource) => resource.kind === "workflow" && resource.id === target_workflow_id,
   );
-  // A stale observed base is not a successful save, even if another session
-  // happened to write identical steps. The caller must not announce that its
-  // exact draft version is current or substitute an active-version approval.
   if (bound?.persistence_kind === "draft" && bound.version_id !== currentVersionId) {
     return { state: "structural" };
   }
@@ -139,9 +94,6 @@ export async function classifyDraftVsPersisted(
   const parsedCurrent = WorkflowDefSchema.safeParse(dag);
   if (!parsedCurrent.success) return { state: "no_target", reason: "unreadable_dag" };
 
-  // Annotate the draft def so the comparison is like-for-like with the stored
-  // (annotated) dag; fall back to the raw projection if validation fails so an
-  // in-progress invalid draft still compares rather than throwing.
   const validated = validateWorkflowDef(draftDef);
   const draftForCompare =
     validated.ok && validated.workflow

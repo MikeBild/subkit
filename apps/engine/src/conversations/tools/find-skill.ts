@@ -1,10 +1,3 @@
-// find_skill — fuzzy keyword lookup over the entire skill library
-// (global + per-tenant + per-resource scopes). Pairs with load_skill:
-// find_skill discovers candidates, load_skill pulls the body.
-//
-// Distinct from list_skill_suggestions which uses heuristic relevance
-// against the user message; find_skill is a direct keyword query.
-
 import { z } from "@hono/zod-openapi";
 import { listSkills } from "../../skills/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -35,9 +28,6 @@ interface SkillSummary {
 
 function summarize(s: { id: string; title?: string; scope: string; body?: string }): SkillSummary {
   const body = s.body ?? "";
-  // Pull the first description-shaped line: prefer a `description:`
-  // frontmatter line, otherwise the first 120 chars of body sans
-  // markdown noise.
   const descMatch = body.match(/^description:\s*(.*?)$/m);
   const description = descMatch?.[1]?.trim() ?? null;
   const preview = body

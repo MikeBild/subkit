@@ -1,6 +1,3 @@
-// Tests for resolveSessionRef — the alias/id resolution used by the
-// new `sk ls/show/rename/rm` commands.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,13 +63,11 @@ describe("resolveSessionRef", () => {
         tenant_id: "t-prod",
       }),
     );
-    // Looking under a different engine URL won't find it.
     const wrong = resolveSessionRef("prod-ingest", {
       engine_url: "https://staging.example.test",
       tenant_id: "t-prod",
     });
     expect(wrong).toBeNull();
-    // Matching profile returns the row.
     const right = resolveSessionRef("prod-ingest", {
       engine_url: "https://prod.example.test",
       tenant_id: "t-prod",

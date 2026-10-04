@@ -13,12 +13,6 @@ import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "..
 import { detectMime } from "../utils/mime.ts";
 import { uploadPath } from "./files.ts";
 
-// Handlers throw rather than calling process.exit — errors render once
-// via `reportCommandError` (which honors the `--json` contract) and the
-// top-level `sk` dispatcher sets `process.exitCode`. The discipline
-// test in `tests/commands/knowledge-sources-error-discipline.test.ts`
-// enforces that handlers never short-circuit via process.exit.
-
 const listCommand = defineCommand({
   meta: { name: "list", description: "List knowledge sources" },
   args: {
@@ -30,8 +24,6 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const { items } = await client.listKnowledgeSources({ limit: Number(args.limit) });
-      // JSON output must stay machine-faithful (tags as a string[]); only the
-      // human table pre-joins `tags` to "a, b" rather than rendering raw JSON.
       if (args.json) {
         printJson(items);
         return;
@@ -125,7 +117,6 @@ const createCommand = defineCommand({
       };
       await renderIntent(intent, { jsonMode });
 
-      // Upload + create are required; link is best-effort.
       let file: Awaited<ReturnType<typeof uploadPath>>;
       let ks: Record<string, unknown>;
       try {
@@ -178,8 +169,6 @@ const createCommand = defineCommand({
         throw err;
       }
 
-      // Link is best-effort: the knowledge source already owns its
-      // bytes; the file_link is a cross-reference for provenance.
       let linkFailed = false;
       const ksId = typeof ks.id === "string" ? ks.id : null;
       if (ksId) {

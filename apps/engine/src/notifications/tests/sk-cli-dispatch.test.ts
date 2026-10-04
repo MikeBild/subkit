@@ -1,27 +1,3 @@
-// Dispatch tests for the sk_cli channel path.
-//
-// The sk_cli inbox is a local INSERT — no remote API to throttle and no
-// transient endpoint to circuit-break. This test asserts:
-//
-//   1. Dispatching an event to an sk_cli channel bypasses both the
-//      circuit-breaker and rate-limiter: a delivery is recorded and the
-//      inbox row is created even when a breaker row is marked `open` for
-//      that channel.
-//
-//   2. A notification_deliveries row with status `sent` is written.
-//
-//   3. An audit entry (chat.message.sent) is written.
-//
-//   4. The circuit-breaker `open` state for the sk_cli channel is not
-//      consumed (breaker state unchanged after delivery).
-//
-//   5. An event the inbox passes on (not actionable) is recorded as
-//      `skipped` / `not_actionable`, with no `sent` row and no audit entry.
-//
-// Approach: seed an sk_cli channel row with circuit_state = "open" and
-// circuit_open_until in the future, then dispatch — the outcome must be
-// `sent`, not `breaker_open`, and an inbox row must exist.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/index.ts";
@@ -77,9 +53,6 @@ describe("notifications: sk_cli channel dispatch", () => {
   test("delivers to sk_cli channel and inserts inbox row even when circuit_state is open", async () => {
     await wipe();
 
-    // Seed a sk_cli channel with circuit_state = "open" and a far-future
-    // open_until. The exact value is irrelevant — the breaker is bypassed for
-    // sk_cli — so a fixed timestamp keeps the test deterministic.
     const futureOpenUntil = new Date("2099-01-01T00:00:00.000Z");
     const [chan] = await ctx.db
       .insert(notificationChannels)
@@ -115,12 +88,10 @@ describe("notifications: sk_cli channel dispatch", () => {
       baseEvent(),
     );
 
-    // Must have delivered — not blocked by breaker.
     expect(result.matched).toBe(1);
     expect(result.delivered).toBe(1);
     expect(result.outcomes[0]?.status).toBe("sent");
 
-    // Inbox row must exist.
     const inboxRows = await ctx.db
       .select()
       .from(cliNotificationInbox)
@@ -128,7 +99,6 @@ describe("notifications: sk_cli channel dispatch", () => {
     expect(inboxRows.length).toBe(1);
     expect(inboxRows[0]?.event_type).toBe("connector.auth_failed");
 
-    // Delivery row with status `sent`.
     const deliveries = await ctx.db
       .select()
       .from(notificationDeliveries)
@@ -140,7 +110,6 @@ describe("notifications: sk_cli channel dispatch", () => {
       );
     expect(deliveries.length).toBe(1);
 
-    // Audit entry.
     await _drainAuditWritesForTests(ctx.db);
     const auditRows = await ctx.db
       .select()
@@ -153,7 +122,6 @@ describe("notifications: sk_cli channel dispatch", () => {
   test("sk_cli delivery is not suppressed by an exhausted rate-limit bucket on the same channel", async () => {
     await wipe();
 
-    // Seed an sk_cli channel with a very low rate limit.
     await ctx.db.insert(notificationChannels).values({
       tenant_id: ctx.tenant_id,
       workspace_id: "_cli",
@@ -175,10 +143,8 @@ describe("notifications: sk_cli channel dispatch", () => {
     const adapter = new SkCliAdapter(ctx.db);
     const resolver = () => adapter as unknown as NotificationAdapter;
 
-    // Send enough to exhaust a rate_limit_per_minute=1 bucket for a non-sk_cli channel.
     for (let i = 0; i < 3; i++) {
       const r = await dispatchEvent({ db: ctx.db, resolveAdapter: resolver }, baseEvent());
-      // sk_cli bypasses rate-limit, every send must succeed.
       expect(r.delivered).toBe(1);
       expect(r.outcomes[0]?.status).toBe("sent");
     }

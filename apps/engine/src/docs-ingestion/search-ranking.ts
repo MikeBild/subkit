@@ -8,10 +8,6 @@ export interface SearchHitCandidate {
   content: string;
   snippet: string;
   rank: number;
-  /**
-   * ISO-8601 timestamp of the source document's last successful fetch /
-   * refresh. Lets the caller (and the LLM) reason about doc staleness.
-   */
   fetched_at: string | null;
 }
 

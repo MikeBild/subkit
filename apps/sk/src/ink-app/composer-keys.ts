@@ -1,16 +1,3 @@
-// Composer key-input handling for the Ink REPL.
-//
-// The single `useInput` hook that owns the keyboard while the
-// composer is active: global shortcuts (pager, alt-screen, view and
-// permission-mode toggles), ghost-text accept/dismiss, Esc routing
-// (secret-redirect cancel → turn interrupt → notice dismiss),
-// next-best-action chips, welcome starter actions, slash-suggestion
-// navigation, history navigation, readline-style cursor/kill
-// bindings, newline-vs-submit, and the bracketed-paste heuristics.
-//
-// Everything arrives through the typed `ComposerKeyDeps` interface —
-// the hook holds no state of its own beyond what Ink's useInput needs.
-
 import type { PendingElicitation } from "@cli-core/index.ts";
 import { useInput, useStdout } from "ink";
 import type React from "react";
@@ -35,30 +22,23 @@ import type { TranscriptMode } from "./types.ts";
 import type { TranscriptNotice } from "./use-notices.ts";
 
 export interface ComposerKeyDeps {
-  // --- Composer buffer ---
   input: InputBuffer;
   setInput: React.Dispatch<React.SetStateAction<InputBuffer>>;
   insertPasteChunk: (pasted: string) => void;
-  /** Ink `isActive` gate — at most ONE useInput hook is live at a time. */
   composerActive: boolean;
-  // --- Session / engine ---
   conversationId: string | null;
   engineClient: EngineClient | undefined;
   pendingElicitation: PendingElicitation | null;
   busyRef: React.MutableRefObject<boolean>;
   onCancelConversation: ((conversationId: string) => Promise<unknown>) | undefined;
-  // --- Ghost text ---
   ghostHandledRef: React.MutableRefObject<boolean>;
-  // --- Slash suggestions ---
   slashNavigable: boolean;
   slashMatches: SlashCommand[];
   slashSelectedIndex: number;
   setSlashSelectedIndex: React.Dispatch<React.SetStateAction<number>>;
-  // --- History ring ---
   historyRef: React.MutableRefObject<string[]>;
   historyCursorRef: React.MutableRefObject<number>;
   historyDraftRef: React.MutableRefObject<InputBuffer | null>;
-  // --- Modal / overlay state ---
   pane: PaneSpec | null;
   setPane: (spec: PaneSpec | null) => void;
   notices: TranscriptNotice[];
@@ -69,10 +49,8 @@ export interface ComposerKeyDeps {
   setAltScreen: React.Dispatch<React.SetStateAction<boolean>>;
   setTranscriptMode: React.Dispatch<React.SetStateAction<TranscriptMode>>;
   setActiveMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  // --- Secret redirect ---
   secretRedirectArmed: boolean;
   cancelSecretRedirect: () => void;
-  // --- Actions / dispatch ---
   latestChipsRef: React.MutableRefObject<string[]>;
   invokeTaskAction: (action: TaskAction, mode?: "prefill" | "submit") => void;
   handleSubmit: (raw: string) => Promise<void>;
@@ -127,10 +105,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
 
   useInput(
     (char, key) => {
-      // --- Global shortcuts (active even under modal / busy) ----------
-      // Ctrl-P toggles the transcript pager — a modal showing
-      // every cell with full output / full diff. Distinct from the
-      // alt-screen inspect mode (Ctrl-T) which is a different rendering.
       if (key.ctrl && char === "p") {
         setPagerOpen((prev) => !prev);
         return;
@@ -155,13 +129,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         });
         return;
       }
-      // --- Ghost-text accept / dismiss --------------------------------
-      // The next-message preview rides on `input.ghost`. Right-Arrow at
-      // end-of-input accepts the full remainder; Tab does the same when
-      // no slash-suggest popover is showing (slash-suggest's own Tab
-      // handler runs lower down and wins precedence). Esc dismisses.
-      // Each branch fires a fire-and-forget feedback POST so dashboards
-      // can pivot accept-rate per tenant.
       if (input.ghost) {
         const cid = conversationId;
         if (key.rightArrow && input.cursor === input.value.length) {
@@ -173,9 +140,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
               source: "right-arrow",
             });
           }
-          // Slash-kind suggestions land in the buffer as `/skill ...`
-          // and the existing slash dispatcher picks them up on the
-          // next Enter — no special-case routing needed here.
           return;
         }
         if (key.tab && (!slashNavigable || slashMatches.length === 0)) {
@@ -198,33 +162,18 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
           return;
         }
       }
-      // Ctrl-R opens inline history-search (an above-composer
-      // widget). The modal pane is still reachable
-      // via `/resume` for users who prefer it.
       if (key.ctrl && char === "r") {
         if (historyRef.current.length > 0) setInlineSearchOpen(true);
         return;
       }
-      // Ctrl-L clears the terminal scroll buffer. Route through Ink's
-      // own stdout handle so the ANSI escape interleaves with the
-      // render tree instead of fighting it.
       if (key.ctrl && char === "l") {
         stdout?.write("\x1b[2J\x1b[H");
         return;
       }
-      // PR5 input-side credential filter: Esc clears an armed redirect
-      // without sending anything. Highest-priority Esc handler so the
-      // user can always bail out of a paste-was-detected prompt.
       if (key.escape && secretRedirectArmed) {
         cancelSecretRedirect();
         return;
       }
-      // Esc-to-interrupt for a long-running turn.
-      // Routes to the engine's cancel endpoint via the conversation
-      // id; the running stream sees its abort signal fire and the
-      // turn ends with a `cancelled` status. Only fires when the CLI
-      // is actually busy (busyRef) AND no other Esc-consumer is
-      // armed (no pending elicit, no notice, no pane).
       if (
         key.escape &&
         busyRef.current &&
@@ -235,9 +184,7 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         const cid = conversationId;
         if (cid && onCancelConversation) {
           showInfo("interrupting current turn — esc pressed");
-          void onCancelConversation(cid).catch(() => {
-            /* engine logs the failure; CLI surfaces the abort UX regardless */
-          });
+          void onCancelConversation(cid).catch(() => {});
         }
         return;
       }
@@ -251,19 +198,9 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
       if (busyRef.current) {
-        // While busy, still accept keystrokes into the buffer so the
-        // user can type ahead. Enter enqueues instead of spawning a
-        // concurrent turn (see handleSubmit).
       }
-      // Belt + braces: composerActive already excludes elicitOpen so
-      // this hook never fires while a prompt component owns input.
-      // Keep the guard in case isActive lags one frame behind a
-      // freshly-arrived elicit_request event.
       if (elicitOpen) return;
 
-      // When the portal-token pane is open, 'y' copies the (one-shot)
-      // URL to the OS clipboard via OSC 52. The pane closes after
-      // copy so the bytes never sit on screen longer than necessary.
       if (pane?.kind === "portal-token" && (char === "y" || char === "Y")) {
         const url = pane.url;
         void import("@cli-core/clipboard.ts").then(({ osc52Copy }) => {
@@ -274,13 +211,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
 
-      // --- Next-best-actions chip shortcut (digits 1..9) -------------
-      // Wins over the welcome-action shortcut below: a freshly-failed
-      // tool with chips might land in a session that hasn't pushed an
-      // assistant message yet (so showWelcomeActions is still true),
-      // and the operator should still be able to press 1..9 to run the
-      // suggested action. Empty-input gate is unchanged so the
-      // shortcut never breaks numeric input the user is typing.
       if (
         char &&
         char.length === 1 &&
@@ -309,10 +239,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         }
       }
 
-      // --- Slash-suggestion navigation (precedes history) ------------
-      // Only intercept arrows while the user is still typing the
-      // command name (no whitespace) and the match list is non-empty.
-      // Otherwise ↑/↓ fall through to history navigation below.
       if (slashNavigable && slashMatches.length > 0) {
         if (key.upArrow) {
           setSlashSelectedIndex((i) => (i <= 0 ? slashMatches.length - 1 : i - 1));
@@ -332,15 +258,10 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         }
       }
 
-      // --- History navigation via arrow keys -------------------------
       if (key.upArrow) {
-        // Mention picker wraps Up/Down itself; if a mention is open
-        // and the picker captured nothing, fall through to history
-        // only when the buffer is on the first row.
         if (mentionSpec) return;
         const pos = cursorPosition(input);
         if (pos.row > 0) {
-          // Move up one row within the buffer instead of cycling history.
           const targetOffset = Math.max(0, input.cursor - pos.column - 1);
           setInput(applyInput(input, { type: "set", value: input.value, cursor: targetOffset }));
           return;
@@ -374,8 +295,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         const next = Math.min(historyRef.current.length, historyCursorRef.current + 1);
         historyCursorRef.current = next;
         if (next === historyRef.current.length) {
-          // Past the newest entry — restore the stashed draft (if any)
-          // or land on an empty buffer.
           setInput(historyDraftRef.current ?? EMPTY_BUFFER);
           historyDraftRef.current = null;
         } else {
@@ -384,7 +303,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
 
-      // --- Cursor navigation -----------------------------------------
       if (key.leftArrow) {
         if (key.meta || key.ctrl) {
           setInput((prev) => applyInput(prev, { type: "moveWordLeft" }));
@@ -401,9 +319,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         }
         return;
       }
-      // Home / End — physical keys jump to start/end of the WHOLE buffer
-      // (distinct from the line-aware Ctrl-A/E below, which stop at the
-      // current line in a multi-line draft). Ink 7 surfaces key.home/end.
       if (key.home) {
         setInput((prev) => applyInput(prev, { type: "moveHome" }));
         return;
@@ -412,7 +327,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         setInput((prev) => applyInput(prev, { type: "moveEnd" }));
         return;
       }
-      // Ctrl-A / Ctrl-E — readline line start/end
       if (key.ctrl && char === "a") {
         setInput((prev) => applyInput(prev, { type: "moveLineStart" }));
         return;
@@ -421,7 +335,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         setInput((prev) => applyInput(prev, { type: "moveLineEnd" }));
         return;
       }
-      // Readline-style kill bindings
       if (key.ctrl && char === "u") {
         setInput((prev) => applyInput(prev, { type: "killLine" }));
         return;
@@ -434,37 +347,15 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         setInput((prev) => applyInput(prev, { type: "killPrevWord" }));
         return;
       }
-      // Alt / Meta Backspace — also "kill previous word" (terminal may
-      // send `\x1b` + DEL or similar; Ink normalizes it to meta + delete).
       if (key.meta && (key.backspace || key.delete)) {
         setInput((prev) => applyInput(prev, { type: "killPrevWord" }));
         return;
       }
-      // Alt+D — kill next word (emacs / bash convention)
       if (key.meta && char === "d") {
         setInput((prev) => applyInput(prev, { type: "killNextWord" }));
         return;
       }
 
-      // --- Newline vs submit ----------------------------------------
-      // Three ways to insert a newline (multi-line drafting), one to
-      // submit:
-      //
-      //   - Ctrl-J (line feed) — the tmux / emacs convention, works on
-      //     every terminal because the byte is unambiguous.
-      //   - Shift+Enter — only delivered as a distinct
-      //     event on terminals that speak the kitty keyboard protocol
-      //     (kitty, ghostty, recent iTerm2, foot, alacritty with
-      //     `keyboard_protocol = enabled`). On classic terminals
-      //     shift+enter is indistinguishable from plain enter and this
-      //     branch never fires; the user falls back to ctrl-j.
-      //   - Backslash + Enter — universal escape that works on every
-      //     terminal: typing `\` then Enter strips the trailing
-      //     backslash and inserts a newline. Mirrors shell heredoc /
-      //     readline line-continuation semantics so power users can
-      //     type multi-line drafts without leaving the home row.
-      //
-      // Plain Enter (carriage return, no shift) submits the buffer.
       if (key.ctrl && char === "j") {
         setInput((prev) => applyInput(prev, { type: "newline" }));
         return;
@@ -474,10 +365,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
       if (key.return) {
-        // Backslash + Enter line-continuation: strip the trailing `\`
-        // and insert a newline. Only fires when the cursor is past a
-        // single trailing backslash (avoids munging "C:\foo" pastes
-        // mid-line).
         if (
           input.cursor === input.value.length &&
           input.value.endsWith("\\") &&
@@ -487,15 +374,11 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
             applyInput(prev, {
               type: "set",
               value: `${prev.value.slice(0, -1)}\n`,
-              cursor: prev.value.length, // length of trimmed-then-newlined buffer
+              cursor: prev.value.length,
             }),
           );
           return;
         }
-        // Slash autocomplete: when the user is still typing the
-        // command name and a suggestion is highlighted, Enter submits
-        // the highlighted command instead of whatever exact prefix the
-        // buffer holds. Saves a Tab keystroke for the common case.
         if (slashNavigable && slashMatches.length > 0) {
           const picked = slashMatches[slashSelectedIndex] ?? slashMatches[0];
           if (picked) {
@@ -507,7 +390,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
 
-      // --- Backspace / delete ---------------------------------------
       if (key.backspace) {
         setInput((prev) => applyInput(prev, { type: "deletePrev" }));
         return;
@@ -517,13 +399,7 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         return;
       }
 
-      // --- Printable char(s) / paste heuristic ----------------------
       if (char && char.length > 0 && !key.ctrl && !key.meta) {
-        // Bracketed paste: the terminal frames pastes with
-        // ESC[200~…ESC[201~. Strip both markers and treat whatever was
-        // between them as a paste, regardless of length. Stops
-        // multi-line pastes from being fragmented into per-char key
-        // events.
         const BP_START = "\x1b[200~";
         const BP_END = "\x1b[201~";
         const startIdx = char.indexOf(BP_START);
@@ -540,13 +416,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
           return;
         }
         if (char.length > 1 && looksLikePaste(char)) {
-          // Short single-line pastes (typical "copy a name / id"
-          // workflow) are inlined verbatim — no attachment, no
-          // `[Pasted text #N]` ref. The attachment indirection only
-          // earns its keep when the paste is multi-line OR very long;
-          // forcing it on a 6-character word produced the confusing
-          // `[2] text · 1 line · acme-stock-price` dialog over the
-          // composer in session 64db7189.
           insertPasteChunk(char);
           return;
         }

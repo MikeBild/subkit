@@ -1,7 +1,3 @@
-// `resourceAccess` is `can()` for many resources at once — and must agree with
-// it on every resource, for every kind of reader. A batched evaluator that
-// drifted from the per-call one would show a list item its own page refuses.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -141,7 +137,6 @@ describe("resourceAccess agrees with can() on every resource", () => {
           });
           anyAllowed ||= single.allow;
         }
-        // `any` never claims a reach no resource confirms.
         if (!anyAllowed) expect(access.any).toBe(false);
       }
     });

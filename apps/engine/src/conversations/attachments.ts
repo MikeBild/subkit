@@ -1,29 +1,3 @@
-// Conversation attachment helpers — thin facade over the unified
-// `files` + `file_links` resource.
-//
-// Two responsibilities live here, one for each surface:
-//
-//   1. Chat-text rewriter — `@attachment:<slug>` tokens that operators
-//      type into conversation prose are converted into canonical
-//      `{ "$file": "fid_<uuid>" }` JSON refs at message ingest. A slug
-//      first names a file linked to the conversation; failing that, the
-//      tenant's file carrying that slug (`files.slug`, the reference the
-//      files page shows), which is then linked to the conversation.
-//      `{ "$file": "@attachment:<slug>" }` leaves resolve through
-//      `requireFileForTenant`.
-//
-//   2. JSON-tree resolver — re-exports `walkAndResolve` from
-//      `files/resolver.ts` so existing callers (sdk-wrap invoke,
-//      step-runner, conversation analysis) can keep importing from
-//      `../attachments.ts` without a churn in import paths. The
-//      canonical resolver lives under `files/`; this module is a
-//      facade.
-//
-// Pre-unification this module owned an in-process MEMORY_STORE plus a
-// dedicated `resolveAttachments(args)` walker that read the legacy
-// `conversation_attachments` table. Both are gone — see migration 0019
-// for the drop + the unified files routes for the replacement.
-
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { toFileId } from "../api/files-schemas.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -35,10 +9,6 @@ import { can } from "../rbac/index.ts";
 export type { FileRow, ResolvedFile, ResolverContext } from "../files/resolver.ts";
 export { FileNotFoundError, requireFileForTenant, walkAndResolve } from "../files/resolver.ts";
 
-/** Legacy chat-text token grammar — kept identical to the
- *  pre-unification regex so prose authored before the rewrite still
- *  parses. The slug must be lowercase alphanumeric plus `_-`, between
- *  1 and 63 chars. */
 export const ATTACHMENT_PREFIX = "@attachment:";
 const ATTACHMENT_RE = /@attachment:([a-z0-9][a-z0-9_-]{0,62})\b/g;
 
@@ -48,9 +18,6 @@ export interface AttachmentSlugMatch {
   raw: string;
 }
 
-/** Scan a chat-text string for every `@attachment:<slug>` token.
- *  Returns the match offsets so callers can splice in the resolved
- *  reference shape without re-walking the string. */
 export function parseAttachmentSlugs(value: string): AttachmentSlugMatch[] {
   const out: AttachmentSlugMatch[] = [];
   for (let m = ATTACHMENT_RE.exec(value); m !== null; m = ATTACHMENT_RE.exec(value)) {
@@ -70,16 +37,9 @@ export interface SlugLookupCtx {
   db: Db;
   tenant_id: string;
   conversation_id: string;
-  /**
-   * Who wrote the text. A slug the conversation does not hold names a tenant
-   * file only for someone who may read files (`file:read`): a slug is a
-   * readable name anyone can guess, unlike a `fid_` id. `null` is a system
-   * actor (trusted work); left out, the tenant is not searched at all.
-   */
   principal?: ResolvedPrincipal | null;
 }
 
-/** Whether a slug the conversation does not hold may name a tenant file. */
 async function mayReadTenantFiles(ctx: SlugLookupCtx): Promise<boolean> {
   if (ctx.principal === undefined) return false;
   if (ctx.principal === null) return true;
@@ -91,9 +51,6 @@ async function mayReadTenantFiles(ctx: SlugLookupCtx): Promise<boolean> {
   return decision.allow;
 }
 
-/** Map every slug referenced in the conversation to the corresponding
- *  wire-format file id (`fid_<uuid>`). Unknown slugs are absent from
- *  the returned map — callers decide whether to fail or fall back. */
 export async function lookupSlugsToFileIds(
   slugs: string[],
   ctx: SlugLookupCtx,
@@ -117,10 +74,6 @@ export async function lookupSlugsToFileIds(
   return out;
 }
 
-/** Load file rows for every slug referenced in the conversation. Used
- *  by the chat-text rewriter to surface filename / content_type when
- *  surfacing the resolved ref to downstream consumers (LLM context,
- *  message-multimodal builder). Unknown slugs are absent. */
 export async function lookupSlugsToFileRows(
   slugs: string[],
   ctx: SlugLookupCtx,
@@ -149,24 +102,11 @@ export async function lookupSlugsToFileRows(
 }
 
 export interface ChatTextRewriteResult {
-  /** The input string with every resolved slug replaced by the
-   *  canonical reference shape. */
   text: string;
-  /** Slugs that appeared in the input but could not be resolved
-   *  against `file_links`. Callers can surface this as a soft warning
-   *  on the user turn; the literal `@attachment:<slug>` token stays in
-   *  the text so the LLM can see what the user typed. */
   unresolved: string[];
-  /** Resolved slug → file id (wire format) — used by the LLM-context
-   *  layer to know which `$file` refs are in scope without re-parsing
-   *  the rewritten text. */
   resolved: Array<{ slug: string; file_id: string }>;
 }
 
-/** The file id each slug names for this conversation and writer. The
- *  conversation's own links win; a slug they do not hold names the tenant's
- *  file under that slug — for a writer who may read files — which the
- *  conversation then holds too. Unknown slugs are absent. */
 async function slugsToFileIds(slugs: string[], ctx: SlugLookupCtx): Promise<Map<string, string>> {
   const map = await lookupSlugsToFileIds(slugs, ctx);
   const tenantSlugs = slugs.filter((slug) => !map.has(slug));
@@ -200,12 +140,6 @@ async function slugsToFileIds(slugs: string[], ctx: SlugLookupCtx): Promise<Map<
   return map;
 }
 
-/**
- * A tool's arguments with every `{ "$file": "@attachment:<slug>" }` leaf
- * replaced by the `fid_` id it names, under the same rule chat text follows.
- * A slug the writer may not reach stays as written, and the resolver then
- * reports that file as not found.
- */
 export async function resolveAttachmentSlugsInArgs<T>(value: T, ctx: SlugLookupCtx): Promise<T> {
   const slugs = new Set<string>();
   const collect = (v: unknown): void => {
@@ -237,18 +171,6 @@ export async function resolveAttachmentSlugsInArgs<T>(value: T, ctx: SlugLookupC
   return replace(value) as T;
 }
 
-/**
- * Rewrite every `@attachment:<slug>` token in chat-text to the
- * canonical `{"$file":"fid_<uuid>"}` JSON-ref shape — encoded as the
- * literal sentinel `[file:fid_<uuid>]` inline so the surrounding text
- * stays human-readable. The chat-text pipeline (message ingest /
- * `buildUserContentParts`) consumes the sentinel to assemble
- * multimodal content parts.
- *
- * Unknown slugs are left in place so the LLM can see what the user
- * typed and ask a clarifying question on the next turn. The
- * `unresolved` array surfaces the same information to the caller.
- */
 export async function resolveAttachmentSlugsInText(
   text: string,
   ctx: SlugLookupCtx,
@@ -261,7 +183,6 @@ export async function resolveAttachmentSlugsInText(
   const map = await slugsToFileIds(distinctSlugs, ctx);
   const unresolved: string[] = [];
   const resolved: Array<{ slug: string; file_id: string }> = [];
-  // Walk back-to-front so splice offsets stay valid.
   const sorted = [...matches].sort((a, b) => b.span.start - a.span.start);
   let out = text;
   for (const match of sorted) {

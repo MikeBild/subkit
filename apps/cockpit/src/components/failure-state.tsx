@@ -7,23 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 
-/**
- * Which of four states a read is in — the one decision every page makes
- * before it renders anything.
- *
- * Several pages asked only two of the questions: pending, else rows. A failed
- * read has no rows either, so it fell through to the empty state and told the
- * reader "nothing here yet" about a list that had simply not arrived — the
- * people page said no one was a member, the settings page said nothing was
- * configured, and a conversation that could not be opened looked like a new
- * one.
- *
- * Error wins over pending as soon as the first attempt failed. React Query
- * keeps `isPending` true through its retries (three by default, about seven
- * seconds), so a page that waits for `error` shows skeletons for a request it
- * already knows went wrong. `failureReason` is set after the first failure;
- * data already on screen stays on screen while a refresh retries.
- */
 export type QueryView = "loading" | "error" | "empty" | "ready";
 
 export function queryView<T>(
@@ -35,18 +18,6 @@ export function queryView<T>(
   return "loading";
 }
 
-/**
- * A read that failed, said as a failure.
- *
- * The same shape as the connections page's error and the table's error row: a
- * destructive alert naming what did not load, one sentence on what to do, and
- * the retry. `children` holds a second way out where retrying is not the only
- * one — a conversation that cannot be opened offers a new one.
- *
- * Without `onRetry` there is no retry: a failure retrying cannot change (a
- * record that does not exist, or is not the reader's) says so in its own
- * `description` and offers only the ways out in `children`.
- */
 export function LoadFailed({
   title,
   description,

@@ -1,19 +1,9 @@
-import { ResumeFormFieldSchema } from "../../../conversations/index.ts";
-// Shared Zod schemas, types, and SSE-frame helpers for the
-// conversations REST surface. Every per-sub-resource module imports
-// from here.
-
 import { z } from "@hono/zod-openapi";
 import { SUGGEST_NEXT_KINDS, SUGGEST_NEXT_REASONS } from "@shared/suggest-next-reasons.ts";
 import type * as svc from "../../../conversations/index.ts";
+import { ResumeFormFieldSchema } from "../../../conversations/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 
-/**
- * Build the per-turn `runtime_context` block from the inbound HTTP
- * request and the resolved principal. Threaded through to runLoop ↣
- * assembleEnhancedPrompt ↣ the system prompt, so the model quotes the
- * real engine_url + actor instead of inventing placeholders.
- */
 export function buildRuntimeContextFromRequest(
   c: { req: { raw: Request } },
   principal: { email?: string; roles: string[] },
@@ -78,15 +68,11 @@ export const ConversationSchema = z
     owner_id: z.string().nullable(),
     model: z.string().nullable(),
     title: z.string().nullable(),
-    /** True once a person named it; the automatic titler leaves it alone. */
     title_locked: z.boolean().optional(),
-    /** `<provider>:<credential-id>` of the channel that opened it; null for a browser session. */
     origin_client: z.string().nullable().optional(),
-    /** Surface it was opened from: web, sk_interactive, sk_headless, mcp, chat, api. */
     surface: z.string().nullable().optional(),
     created_at: z.string(),
     updated_at: z.string(),
-    /** List path only — what the conversation has come to, as a reader would say it. */
     outcome: z
       .enum([
         "answered",
@@ -98,23 +84,14 @@ export const ConversationSchema = z
         "stale",
       ])
       .optional(),
-    /** Newest message time; the activity clock (updated_at also moves on bookkeeping). */
     last_activity_at: z.string().nullable().optional(),
     message_count: z.number().int().optional(),
     owner: ConversationOwnerSchema.nullable().optional(),
     target_workflow: ConversationTargetRefSchema.nullable().optional(),
     target_connector: ConversationTargetRefSchema.nullable().optional(),
-    /** Hidden by the calling person (see POST /hide). */
     hidden: z.boolean().optional(),
     last_message_role: z.string().nullable().optional(),
     last_message_excerpt: z.string().nullable().optional(),
-    // The pending prompt: when it lapses, what it asks, and which tool raised
-    // it. Populated by the list path only — like the two excerpt fields above —
-    // because the single-conversation responses that share this schema have no
-    // use for them and must not be forced to compute them.
-    //
-    // Unlike the two excerpt fields, the question is NOT clipped for display:
-    // it arrives whole, and the surface decides how much of it to show.
     pending_elicitation_expires_at: z.string().nullable().optional(),
     pending_elicitation_summary: z.string().nullable().optional(),
     pending_elicitation_tool: z.string().nullable().optional(),
@@ -135,12 +112,6 @@ export const UIMessageSchema = z
   })
   .openapi("UIMessage");
 
-/**
- * One persisted conversation tool call, as projected to clients.
- * `approved_by_user_id`, `confirmation_data` and `interaction_log` are
- * deliberately absent — a bare uuid, engine-internal bookkeeping, and a
- * field with no consumer respectively.
- */
 export const ConversationToolCallSchema = z
   .object({
     id: z.string(),
@@ -153,19 +124,10 @@ export const ConversationToolCallSchema = z
     parent_message_id: z.string().nullable().optional(),
     confirmation_state: z.string().nullable(),
     approved_at: z.string().nullable(),
-    // Null means "not recorded" (a row written before the engine persisted
-    // an outcome), never "succeeded".
     outcome: z.enum(["ok", "error", "denied", "pending"]).nullable(),
   })
   .openapi("ConversationToolCall");
 
-/**
- * What this conversation has consumed so far, from the LLM ledger. `tokens`
- * is the ledger's own weighting — the number the monthly budget counts.
- * `cost` is `null` when none of its calls had a rate; `unpriced_models`
- * names the models a non-null amount does not cover, so a partial amount is
- * read as a floor rather than a total.
- */
 export const ConversationUsageSchema = z
   .object({
     tokens: z.number().int().nonnegative(),
@@ -184,13 +146,7 @@ export const ConversationDetailSchema = z
   .object({
     conversation: ConversationSchema,
     owner: ConversationOwnerSchema.nullable(),
-    /** What this conversation brought into being, newest first. */
     created_resources: z.array(ConversationCreatedResourceSchema),
-    /**
-     * Parts-based `UIMessage` array — mirrors Vercel AI SDK UI's message
-     * shape. Built by `buildMessages` over the persisted message +
-     * tool-call rows.
-     */
     messages: z.array(UIMessageSchema),
     tool_calls: z.array(ConversationToolCallSchema),
     draft: z.unknown(),
@@ -219,21 +175,15 @@ export const ConversationDetailSchema = z
                 intent_kind: z.string().optional(),
                 authorization_url: z.string().optional(),
                 fields: z.array(ResumeFormFieldSchema).optional(),
-                /** The subject of an external MCP tool approval, as data a
-                 *  client phrases in its own language. */
                 external_tool: z
                   .object({
                     connector: z.string(),
                     tool: z.string(),
-                    /** What the remote server says about its own tool. Its
-                     *  claim, unverified — show it attributed to the server. */
                     server_claim: z.string().optional(),
                   })
                   .optional(),
               })
               .optional(),
-            /** When this approval lapses. Non-null: the column is NOT NULL and
-             *  `elicitationExpiry` stamps every row. */
             expires_at: z.string(),
           })
           .nullable(),
@@ -246,21 +196,12 @@ export const ConversationDetailSchema = z
   })
   .openapi("ConversationDetail");
 
-/**
- * One object the person @-mentioned in the composer. The prose carries a
- * readable token (`@customer-sync`); this carries the id, so the model is
- * handed an unambiguous target instead of a name to search for. `label` is
- * display text from the catalogue, constrained to slug/name characters so
- * the persisted row can never carry a pasted secret through it.
- */
 const REFERENCE_LABEL = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 export const ConversationReferenceSchema = z
   .object({
     type: z.enum(["workflow", "connector", "skill", "knowledge_source"]),
     id: z.string().uuid(),
-    // A refine, not `.regex()`: a Unicode-flagged pattern does not survive
-    // the OpenAPI export as a valid JSON-schema `pattern`.
     label: z
       .string()
       .min(1)
@@ -269,11 +210,6 @@ export const ConversationReferenceSchema = z
   })
   .openapi("ConversationReference");
 
-/**
- * Additive optional on both turn bodies, like `event`: an older engine
- * strips the unknown key and still gets the prose; an older client
- * simply never sends it.
- */
 const ReferencesField = z.array(ConversationReferenceSchema).max(20).optional();
 
 export const CreateBody = z
@@ -286,9 +222,6 @@ export const CreateBody = z
     title: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
-    // Additive optional: start this conversation as a playground/sandbox
-    // authoring surface (scratch draft, workflow-authoring preloaded,
-    // commit persists nothing). Durable on the draft row, never an env flag.
     playground: z.boolean().optional(),
     references: ReferencesField,
   })
@@ -301,30 +234,7 @@ export const AppendMessageBody = z
     permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
     references: ReferencesField,
-    /**
-     * Per-conversation opt-out for the next-message suggestion that
-     * normally rides on the SSE response. Sk-cli sets this to `true`
-     * after the user dismisses N suggestions in a row, and clears it
-     * the next time they accept one. Engine honors it by emitting a
-     * `next_suggestion` frame with `suggestion: null, reason:
-     * "client-suppress"` so the client still gets a deterministic
-     * close marker.
-     */
     client_suppress: z.boolean().optional(),
-    /**
-     * Typed client event driving a deterministic, no-LLM turn.
-     * Single-variant object for now — promote to a
-     * `z.discriminatedUnion("type", …)` when a second event type lands.
-     *
-     * `request_credential_form`: the sk composer detected a pasted
-     * secret and asks the engine to open the masked `ask_user_form`
-     * (password/sensitive field) directly instead of relaying prose for
-     * the model to re-derive. `credential_hint` is a short kind label
-     * (e.g. "digitalocean_pat") — NEVER the secret itself. Older
-     * clients that keep sending only the prose fallback stay on the
-     * LLM path unchanged; older engines strip the unknown key and fall
-     * back to the prose the same request carries as `message`.
-     */
     event: z
       .object({
         type: z.literal("request_credential_form"),
@@ -334,14 +244,6 @@ export const AppendMessageBody = z
   })
   .openapi("AppendConversationMessageBody");
 
-/**
- * Wire schema for the `next_suggestion` SSE frame. The frame is
- * additive — clients that don't recognize it ignore it. New consumers
- * import this schema to type the parsed payload. The `reason` and
- * `kind` enums come from `@shared/suggest-next-reasons` so a new
- * value lands here automatically (no drift between Zod, the TurnEvent
- * union, the service return type, and the client mirror).
- */
 export const NextSuggestionEventSchema = z
   .object({
     type: z.literal("next_suggestion"),
@@ -351,9 +253,6 @@ export const NextSuggestionEventSchema = z
   })
   .openapi("NextSuggestionEvent");
 
-/** A source ref attached to an answer (the "prove-after" grounding half).
- *  `RunOutcomeSchema.events` is `z.array(z.any())`, so these named
- *  component schemas are what document + type the citations frame. */
 export const CitationSchema = z
   .object({
     source_type: z.enum(["knowledge_chunk", "connector_doc"]),
@@ -371,11 +270,6 @@ export const CitationsEventSchema = z
   })
   .openapi("CitationsEvent");
 
-/**
- * Body for the lightweight feedback route the client posts after the
- * user accepts, dismisses, or types over a suggestion. Stored as a
- * counter only — never persisted with the suggestion text.
- */
 export const SuggestNextFeedbackBody = z
   .object({
     accepted: z.boolean(),
@@ -570,8 +464,6 @@ export const ContextSnapshotSchema = z
         current_version: z.number().nullable(),
       })
       .nullable(),
-    // What the LAST assembled turn dropped to fit the model context —
-    // null when no turn ran since engine start (in-process cache).
     last_context_budget: z
       .object({
         cap_tokens: z.number().int().nonnegative(),
@@ -580,9 +472,6 @@ export const ContextSnapshotSchema = z
         assembled_at: z.string(),
       })
       .nullable(),
-    // Whether the draft's grounding (the connector schema/knowledge it was
-    // built on) is still current, checked at resume. Advisory only — never
-    // blocks. `null` when the draft carries no grounding checkpoint.
     grounding_status: z
       .object({
         state: z.enum(["fresh", "stale", "unknown"]),
@@ -619,28 +508,13 @@ export function serializeConversation(c: svc.ConversationTurnOutcome): RunOutcom
   return out;
 }
 
-/**
- * True when the client asked for live SSE on a turn-driving POST.
- * We content-negotiate on `Accept: text/event-stream` so existing
- * JSON callers (web, MCP bridge, test suites) keep their current
- * single-response shape, while sk-cli opts in to live frames.
- */
 export function wantsSSE(accept: string | null | undefined): boolean {
   if (!accept) return false;
   return accept.toLowerCase().includes("text/event-stream");
 }
 
-/**
- * Terminal SSE event carrying the conversation row + final status that
- * JSON callers receive in the response body. Live consumers read this
- * to learn the conversation_id (on create) and to know the loop has
- * fully unwound. Distinct from the in-loop `completed` frame, which
- * carries the per-turn token usage.
- */
 export function outcomeFrame(c: svc.ConversationTurnOutcome): { event: string; data: string } {
   const json = serializeConversation(c);
-  // events[] is omitted from the SSE outcome — every event already
-  // streamed live, repeating them here would double-render.
   const { events: _drop, ...rest } = json;
   void _drop;
   return { event: "outcome", data: JSON.stringify(rest) };

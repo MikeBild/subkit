@@ -1,12 +1,3 @@
-// Reverse-bind helpers — `bindFromWorkflow` / `unbindFromWorkflow`.
-//
-// These exercise the schema-foundation portion of reverse-bind.
-// Executor logic for webhook firing lives elsewhere; here we only
-// confirm that saving a workflow with a `webhook` trigger produces an idempotent
-// `webhooks_inbound` row keyed on `(tenant_id, workflow_id)`, that
-// repeated saves are no-ops, and that unbind tears the row down with
-// the right audit signal.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, webhooksInbound } from "../../../db/schema/index.ts";
@@ -46,7 +37,6 @@ describe("inbound trigger bind/unbind helpers", () => {
     expect(first.row.verifier).toBe("stripe");
     expect(first.row.slug).toBe("wf-wf-test");
 
-    // Second call with identical trigger is a no-op.
     const second = await bindFromWorkflow(
       {
         tenant_id: ctx.tenantId,

@@ -39,8 +39,6 @@ describe("buildStepDag", () => {
   });
 
   test("JSONata $scope reference in a branch.when adds a data-flow edge", () => {
-    // JSONata survives in the branch.when slot; `$scope.a.data` there still
-    // produces a `jsonata_scope` edge.
     const dag = buildStepDag(
       wf([
         { id: "a", kind: "transform", language: "javascript", expression: "return input.input;" },
@@ -233,7 +231,6 @@ describe("detectCycles", () => {
     );
     const report = detectCycles(dag);
     expect(report.has_cycle).toBe(true);
-    // Cycle: router → yes (data ref) → router (containment)
     const nodes = [...(report.cycles[0]?.nodes ?? [])].sort();
     expect(nodes).toEqual(["router", "yes"]);
   });
@@ -276,8 +273,6 @@ describe("topoSort", () => {
   });
 
   test("forward refs cause topo to swap so deps run first", () => {
-    // s1 references s2 — declared in (s1, s2) order. topo must run
-    // s2 first because s1 depends on it.
     const dag = buildStepDag(
       wf([
         {
@@ -319,7 +314,6 @@ describe("topoSort", () => {
         { id: "beta", kind: "transform", language: "javascript", expression: "return 2;" },
       ]),
     );
-    // Both have zero in-degree; declaration order wins.
     expect(topoSort(dag)).toEqual(["alpha", "beta"]);
   });
 });

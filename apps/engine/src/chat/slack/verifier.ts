@@ -1,17 +1,8 @@
-// Slack request verification.
-//
-//   signature = "v0=" + HMAC_SHA256(signing_secret, "v0:" + ts + ":" + body)
-//
-// Reject requests older than five minutes (replay protection) and
-// compare the signature in constant time.
-
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export interface SlackVerifyOptions {
   signingSecret: string;
-  /** Clock skew tolerance in seconds. Defaults to 5 minutes. */
   maxSkewSeconds?: number;
-  /** Injectable clock for tests. */
   now?: () => number;
 }
 

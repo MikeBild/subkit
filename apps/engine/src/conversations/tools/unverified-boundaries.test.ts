@@ -1,5 +1,3 @@
-// A green preview vouches only for the bounded steps it reached.
-
 import { expect, test } from "bun:test";
 import type { StepDef } from "../../workflows/types.ts";
 import { unverifiedBoundaries } from "./unverified-boundaries.ts";
@@ -29,7 +27,6 @@ test("bounded steps the preview skipped, or never ran, are named", () => {
     { step_key: "store", status: "skipped" },
     { step_key: "shape", status: "skipped" },
   ]);
-  // `notify` is absent from the run altogether; `shape` and `publish` declare nothing.
   expect(notice?.step_ids).toEqual(["store", "notify"]);
   expect(notice?.message).toContain("`store`");
   expect(notice?.message).toContain("inspect_execution_step");

@@ -1,10 +1,3 @@
-// resolveDryRunEnvironment must NOT warn "no credential found" for keyless
-// connectors (auth_type: "none" — public APIs). Before the fix a workflow
-// built only from keyless connectors warned "the run may fail with 401/404"
-// even though such a run cannot fail on auth — a false positive that
-// mislabels a healthy dry-run. The warning must still fire when an
-// auth-REQUIRING connector genuinely lacks a credential.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

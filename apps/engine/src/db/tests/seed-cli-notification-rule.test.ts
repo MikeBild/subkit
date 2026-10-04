@@ -1,16 +1,3 @@
-// Idempotency tests for `seedDefaultCliNotificationRule`.
-//
-// Asserts:
-//   1. A freshly bootstrapped tenant has exactly one _cli/_inbox rule.
-//   2. Re-running seedDefaultCliNotificationRule on the same tenant is a
-//      no-op — the rule count stays at 1.
-//   3. The seeded rule has the correct fields (event_pattern = the actionable
-//      event list, severity="info", target_workspace_id="_cli",
-//      target_channel_id="_inbox").
-//   4. That event list is exactly the catalog's actionable events, and the
-//      migration narrowing existing default rules touches only a rule still
-//      in its seeded shape.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { matchGlob } from "../../notifications/matcher.ts";
@@ -103,7 +90,6 @@ describe("default inbox rule: actionable events only", () => {
       .map((entry) => entry.name)
       .sort();
     expect(DEFAULT_CLI_INBOX_EVENT_PATTERN.split(",").sort()).toEqual(actionable);
-    // Step events must not reach the inbox rule at all.
     expect(matchGlob(DEFAULT_CLI_INBOX_EVENT_PATTERN, "execution.step.started")).toBe(false);
     expect(matchGlob(DEFAULT_CLI_INBOX_EVENT_PATTERN, "execution.step.finished")).toBe(false);
     expect(matchGlob(DEFAULT_CLI_INBOX_EVENT_PATTERN, "execution.failed")).toBe(true);
@@ -123,8 +109,6 @@ describe("default inbox rule: actionable events only", () => {
       active: true,
     };
     const [seeded] = await ctx.db.insert(notificationRules).values(seededShape).returning();
-    // User-made rules: a catch-all of their own on the inbox, the default
-    // rule after the user raised its floor, and a catch-all on a chat channel.
     const [ownInbox] = await ctx.db
       .insert(notificationRules)
       .values({ ...seededShape, name: "all of it, please" })

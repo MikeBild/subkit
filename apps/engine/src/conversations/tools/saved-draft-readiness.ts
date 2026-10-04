@@ -1,14 +1,3 @@
-// Is the change that was just saved eligible for repeated runs — and if not,
-// what exactly has to change?
-//
-// The author learns eligibility from `review_workflow_automation`, and that
-// tool ENDS the turn with the review card. So an author who previewed green,
-// saved and handed over could not act on anything the review then reported: a
-// boundary the compiler had refused surfaced only on a card the human saw as
-// "still blocked". A green preview proves the requests fit their boundaries;
-// it says nothing about whether every boundary compiled. The answer therefore
-// rides on the save result, while the author can still repair it.
-
 import { inspectAutomationReview } from "../automation-review.ts";
 import type { ToolContext } from "./index.ts";
 
@@ -31,11 +20,6 @@ export async function savedDraftReadiness(
     return null;
   }
   if (!review) return null;
-  // Nothing scheduled means nothing asks for recurring permission — but a
-  // saved change still waits for a person to apply it before anything runs.
-  // Without saying so here, the author of a manual workflow had no handover,
-  // reached for `run_workflow`, and met a refusal that named a dialog it had
-  // never shown.
   if (review.schedules.length === 0) {
     if (!review.saved_change) return null;
     return {

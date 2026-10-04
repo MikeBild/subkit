@@ -1,11 +1,3 @@
-// Rich /status pane — shows every useful field in one modal.
-//
-// Composes with `<Pane>` for the frame. Data comes in as an array of
-// [label, value | null] tuples so the host can splice in whatever
-// is known at render time (engine-side snapshot + local session
-// state). Null / undefined / empty values render as "—" so the
-// layout stays aligned regardless of what's populated.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { Pane } from "./Pane.tsx";

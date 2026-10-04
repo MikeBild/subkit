@@ -22,8 +22,6 @@ describe("cockpit navigation contract", () => {
   });
 
   test("Übersicht shows for any source a reader may read, and for nothing else", () => {
-    // A reviewer with only a skill or a workflow grant still has something to
-    // do; gating Übersicht on `stats:read` hid it from exactly them.
     for (const permission of ATTENTION_READ_PERMISSIONS) expect(paths([permission])).toContain("/");
     expect(paths(["audit:read"])).not.toContain("/");
   });

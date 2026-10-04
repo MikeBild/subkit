@@ -1,13 +1,5 @@
-// Registration for the runtime-telemetry series (process memory, event-loop
-// lag, boot-phase + generic operation durations). Lives in this sibling so
-// the canonical `metrics.ts` registry file stays under the 1000-LOC audit
-// cap; `metrics.ts` calls `registerRuntimeTelemetryMetrics(reg)` once from its
-// series-definition pass. The series are consumed by `runtime-telemetry.ts`.
-
 import { METRIC_NAMES, type MetricsRegistry } from "./metrics.ts";
 
-// Same ladder as metrics.ts HISTOGRAM_DURATION_BUCKETS_MS (10ms → 1h); kept
-// local so this module has no cross-file constant dependency.
 const DURATION_BUCKETS_MS = [10, 50, 250, 1000, 5000, 30000, 300000, 3600000] as const;
 
 export function registerRuntimeTelemetryMetrics(reg: MetricsRegistry): void {

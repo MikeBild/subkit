@@ -1,9 +1,3 @@
-// chat-first scanner tests — locks the no-curl-no-shell-no-run-this-yourself
-// contract that the CHAT-FIRST CONTRACT block in the system prompt
-// asserts in prose. Without this scanner, the model occasionally falls
-// through to "paste this curl into your terminal" which breaks the
-// only-surface-is-this-chat invariant.
-
 import { describe, expect, it } from "bun:test";
 import { chatFirstScanner } from "../scanners/chat-first.ts";
 
@@ -40,8 +34,6 @@ describe("chatFirstScanner — fenced shell blocks", () => {
   });
 
   it("does not flag the sk CLI installer curl (the one grounded /install one-liner)", () => {
-    // Installing the CLI has no in-chat tool equivalent — the install curl
-    // must survive the guard, or the install answer comes out blank.
     const vs = chatFirstScanner.scan(
       bash("curl -fsSL https://subkit.example.com/install | bash"),
       ctx,
@@ -63,9 +55,6 @@ describe("chatFirstScanner — fenced shell blocks", () => {
   it("flags a multi-statement bash block where any statement is curl", () => {
     const text = bash("echo 'preparing'", "curl https://api.example.com/things");
     const vs = chatFirstScanner.scan(text, ctx);
-    // Either the echo (recognised as a generic shell head) or the
-    // curl line should produce a violation; at least one must be the
-    // curl_in_chat kind so the LLM gets the right diagnostic.
     expect(vs.some((v) => v.kind === "chat_first.curl_in_chat")).toBe(true);
   });
 });
@@ -110,7 +99,6 @@ describe("chatFirstScanner — prose run-in-terminal instructions", () => {
     const span = violation?.span;
     expect(span).toBeDefined();
     expect(text.slice(span!.start, span!.end)).toContain("Please run this in your terminal");
-    // Sentence-bounded, not full text.
     expect(span!.end - span!.start).toBeLessThan(text.length);
   });
 });

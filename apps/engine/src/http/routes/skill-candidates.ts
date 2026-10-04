@@ -1,9 +1,3 @@
-// Skill Candidates HTTP surface (programmatic / SDK access).
-//
-// The primary UX is conversational (list_skill_suggestions tool +
-// /approve slash command). These endpoints exist for SDK consumers
-// and admin tooling.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../skill-candidates/index.ts";
@@ -21,8 +15,6 @@ import type { AppEnv } from "../openapi.ts";
 const SkillCandidateListResponse = z
   .object({
     items: z.array(SkillCandidateSchema),
-    // True matching-row count for the applied filters (ignores limit/offset)
-    // — clients rendering counts must not derive them from a capped page.
     reviewable_total: z.number().int().min(0),
     total: z.number().int().min(0),
   })
@@ -41,8 +33,6 @@ const listRoute = createRoute({
         scope: z.enum(["global", "connector", "workflow"]).optional(),
         connector_id: z.string().uuid().optional(),
         workflow_id: z.string().uuid().optional(),
-        // The canonical pattern enum — a hand-copied subset here silently
-        // 400s filters for newer kinds (session_learning fell through).
         pattern_kind: SkillCandidatePatternSchema.optional(),
         reviewable: z.enum(["true", "false"]).optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
@@ -168,14 +158,6 @@ const rejectRoute = createRoute({
   },
 });
 
-/**
- * True when the approve body asks for the promoted Skill to go live
- * immediately (`status: "active"`).
- *
- * Reads the parsed body from Hono's body cache, so the zod validator on the
- * route still sees it. A missing or unparseable body is not an activation
- * request — the validator rejects it on its own terms.
- */
 async function approveBodyRequestsActivation(c: {
   req: { json: () => Promise<unknown> };
 }): Promise<boolean> {
@@ -194,19 +176,9 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (c.req.method === "GET") return requirePermission("skill:read")(c, next);
     return requirePermission("skill:write")(c, next);
   });
-  // Sub-paths need their own registration: a non-wildcard `app.use` matches
-  // its exact path only, so the two lines above never covered `/approve` and
-  // `/reject`. Without these, both ran on authentication alone — a read-only
-  // credential could promote a candidate into a Skill. Mirrors the explicit
-  // per-sub-path registration in `patch-candidates.ts` and `skills.ts`.
   app.use("/v1/skill-candidates/:id/evidence", requirePermission("skill:read"));
   app.use("/v1/skill-candidates/:id/approve", requirePermission("skill:write"));
   app.use("/v1/skill-candidates/:id/reject", requirePermission("skill:write"));
-  // Approving with `status: "active"` both promotes AND activates. Activating
-  // is a separate decision with its own permission (`POST /v1/skills/{id}/activate`
-  // enforces it), so this route must demand it too — otherwise it is a way
-  // around that gate. Registered after the `skill:write` check above, so the
-  // caller needs both.
   app.use("/v1/skill-candidates/:id/approve", async (c, next) => {
     if (!(await approveBodyRequestsActivation(c))) return next();
     return requirePermission("skill:activate")(c, next);
@@ -249,9 +221,6 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    // The service returns an empty array for a candidate in another tenant,
-    // which would read as "no evidence" rather than "not yours" — so the
-    // existence check happens here and answers 404.
     const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
     if (!candidate) throw new NotFoundError("skill_candidate");
     const items = await svc.getSkillCandidateEvidence(principal.tenant_id, id, db);

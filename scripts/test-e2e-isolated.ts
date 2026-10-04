@@ -12,9 +12,6 @@ if (tests.length === 0) {
 }
 
 for (const file of tests) {
-  // The default verify lane is hermetic. Nightly/explicit real-provider
-  // lanes keep their configured provider because nullish assignment does
-  // not overwrite LLM_PROVIDER.
   const childEnv = { ...process.env };
   childEnv.LLM_PROVIDER ??= "mock";
   const child = Bun.spawn(["bun", "test", "--timeout", "120000", file], {

@@ -1,13 +1,3 @@
-// Route-registry <-> OpenAPI-surface completeness.
-//
-// `openapi.test.ts` spot-checks fields of the generated spec; this asserts
-// coverage: every registered v1 API route appears in `/openapi.json` with at
-// least one method entry. A route only ends up in the spec when it's wired
-// via `app.openapi(createRoute(...))` (see `apps/engine/AGENTS.md`'s
-// Zod-first rule) — a plain `app.get/post/patch/delete(...)` call is fully
-// reachable at runtime but invisible to spec generation. That gap is real
-// drift (undocumented, untyped API surface) distinct from the deliberate
-// exclusions below.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -22,9 +12,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** `{name}` in openapi.json / `:name` (optionally `{regex}`-constrained, e.g.
- *  Hono's `:path{.+}`) in `app.routes` both collapse to a single `{param}`
- *  per path segment — only segment count + literal segments matter here. */
 function normalizeSegments(path: string): string {
   return path
     .split("/")
@@ -32,59 +19,29 @@ function normalizeSegments(path: string): string {
     .join("/");
 }
 
-// Deliberately undocumented — not application API surface, so absence from
-// the generated spec is by design, not drift:
 const EXCLUDED_ROUTES = new Set<string>([
-  // Self-describing / infra endpoints about the spec itself, or ops
-  // surfaces with no request/response schema worth modeling.
   "GET /docs",
   "GET /openapi.json",
   "GET /metrics",
   "GET /llms/{param}",
-  // Unversioned probe aliases. The probes themselves ARE documented — as
-  // `GET /health` and `GET /ready`, with their schemas. These two are
-  // the same handlers under the names an infrastructure probe defaults to;
-  // publishing them would put a second name for one operation into the spec
-  // and into every generated client. `routes/health.ts` owns the aliasing and
-  // `health.test.ts` pins that they answer identically and stay out of here.
   "GET /health",
   "GET /ready",
-  // Tool-approval decision forms and inbound webhooks have external/raw
-  // contracts. MCP authorization and browser identity flows are documented.
   "POST /v1/tool-approvals/decide",
-  // Inbound webhook receivers: request shape is dictated by the external
-  // platform (Slack/Google Chat/Teams/connector), not by this engine.
   "POST /v1/chat/slack/events",
   "POST /v1/chat/slack/interactions",
   "POST /v1/chat/slack/slash",
   "POST /v1/chat/google/events",
   "POST /v1/chat/teams/messages",
   "POST /v1/hooks/{param}",
-  // SSE / NDJSON: not representable in OpenAPI's JSON-schema response
-  // model (see `packages/cli-core/src/diagnostics-paths.ts`'s own
-  // comment: "the SSE stream is not modeled by the OpenAPI generator").
   "GET /v1/conversations/{param}/stream",
   "GET /v1/executions/{param}/stream",
   "GET /v1/diagnostics/logs/stream",
   "GET /v1/events/stream",
   "GET /v1/cockpit/events/stream",
   "GET /v1/audit-log/export.ndjson",
-  // Content-type-polymorphic raw-byte body (json/csv/yaml/xml/plaintext +
-  // binary pdf/docx/xlsx/pptx dispatched in the handler) — an OpenAPI body
-  // schema would second-guess that routing (see ai/extract.ts's module
-  // header). The typed JSON surface is the documented POST /v1/ai/extract;
-  // the response component ExtractFileResponse is registered standalone.
   "POST /v1/extract",
 ]);
 
-// Ratchet for undocumented application API surface — routes wired via
-// plain `app.get/post/...` instead of `createRoute()`, invisible to the
-// spec and the generated CLI types. The pin is exact: a NEW undocumented
-// route fails this test (add the registration, don't grow this list), and
-// documenting one fails it too until the entry is removed — the list only
-// ratchets down. It is empty today; keep it that way.
-// Mirrored (for the subset the CLI calls) in
-// packages/cli-core/src/engine-api/client-contract.test.ts.
 const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
 
 const MCP_AUTH_OPERATIONS = [
@@ -168,9 +125,6 @@ describe("openapi route coverage", () => {
   });
 
   test("route registry enumeration is not vacuous", () => {
-    // Canary: if `app.routes` ever stops exposing entries (Hono version
-    // bump, wrapper change), this fails loudly instead of the coverage
-    // test silently passing over zero routes.
     const registry = buildDefaultRegistry(ctx.db);
     const app = createApp({ db: ctx.db, registry });
     const registered = app.routes.filter((r) => r.method !== "ALL");
@@ -183,7 +137,7 @@ describe("openapi route coverage", () => {
 
     const registeredPairs = new Set<string>();
     for (const route of app.routes) {
-      if (route.method === "ALL") continue; // catch-all middleware, not an endpoint.
+      if (route.method === "ALL") continue;
       registeredPairs.add(`${route.method.toUpperCase()} ${normalizeSegments(route.path)}`);
     }
 

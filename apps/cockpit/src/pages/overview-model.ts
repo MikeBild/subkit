@@ -1,16 +1,3 @@
-// The Übersicht — the operations bar over the one list of what needs the
-// reader now — as pure functions.
-//
-// The engine answers the question once (`GET /v1/attention`, attention.v1) and
-// hands over facts, never sentences: a subject, a machine reason, counts, since
-// when. Everything a person reads on the list is composed HERE, in the reader's
-// language. The engine's residual wording (`detail`) is not part of a list
-// entry; the review sheet shows it, marked as the engine's.
-//
-// The rules that decide what the page says when the list is empty live here too,
-// because they are the part that can lie: "Alles erledigt" is only true when
-// every source this person may read has answered.
-
 import type { components } from "@/api/schema";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
@@ -24,20 +11,9 @@ export type HealthState = NonNullable<Attention["status"]>["health_state"];
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-// --------------------------------------------------------------------------
-// Entries decided in this tab.
-//
-// Deciding takes an entry off the list at once. But deciding the last fix of
-// a FAILING workflow does not end the entry: the workflow still fails, and the
-// engine lists it again — the same id, now with a chat as its way forward. So
-// an entry is hidden as the thing it WAS (reason, class, counts, primary
-// action), and it is back the moment the engine lists it as anything else.
-
-/** Hidden entry id → what the entry was when it was hidden. */
 export type HiddenEntries = ReadonlyMap<string, string>;
 export const NO_HIDDEN: HiddenEntries = new Map();
 
-/** What an entry asks of the reader — the part a decision changes. */
 export function entrySnapshot(item: AttentionItem): string {
   return JSON.stringify([
     item.reason,
@@ -51,11 +27,6 @@ export function isHidden(item: AttentionItem, hidden: HiddenEntries): boolean {
   return hidden.get(item.id) === entrySnapshot(item);
 }
 
-/**
- * Keep only what the engine still lists unchanged. An entry that went away,
- * or came back as something else, is no longer ours to hide. Returns the same
- * map when nothing changed.
- */
 export function settleHidden(
   hidden: HiddenEntries,
   items: readonly AttentionItem[],
@@ -70,22 +41,10 @@ export function settleHidden(
   return next.size === hidden.size ? hidden : next;
 }
 
-// --------------------------------------------------------------------------
-// One entry per subject.
-
-/** The thing an entry is about — its subject, or the entry itself where it has none. */
 export function subjectKey(item: AttentionItem): string {
   return item.subject ? `${item.subject.kind}:${item.subject.id}` : item.id;
 }
 
-/**
- * The entries in the engine's order, one per subject.
- *
- * The engine already merges a workflow's held schedule, failures and open fixes
- * into one entry. Held here as well, because a second line about the same
- * workflow is a second place to act on it — the defect this page exists to end.
- * The first entry wins: the engine orders the most pressing first.
- */
 export function attentionEntries(
   items: readonly AttentionItem[],
   hidden: HiddenEntries = NO_HIDDEN,
@@ -102,17 +61,10 @@ export function attentionEntries(
   return entries;
 }
 
-// --------------------------------------------------------------------------
-// What the page says.
-
 export type OverviewView =
-  /** Entries to act on. `unread` names the sources that could not be read. */
   | { kind: "items"; items: AttentionItem[]; unread: AttentionSource[] }
-  /** Nothing open, and every readable source answered. */
   | { kind: "calm"; status: Attention["status"] }
-  /** Nothing listed, but a source failed: no "all done", say what is missing. */
   | { kind: "unread"; unread: AttentionSource[] }
-  /** This person may read no source at all. */
   | { kind: "nothing_readable" };
 
 export function failedSources(attention: Attention): AttentionSource[] {
@@ -121,14 +73,6 @@ export function failedSources(attention: Attention): AttentionSource[] {
   );
 }
 
-/**
- * The page's state, from the engine's answer.
- *
- * A source the reader may not read (`not_permitted`) is simply absent — it is
- * neither an entry nor a gap. A source that FAILED is never counted as empty:
- * without it the list could be missing exactly the entry that matters, and
- * "Alles erledigt" would be a claim nobody checked.
- */
 export function overviewView(
   attention: Attention,
   hidden: HiddenEntries = NO_HIDDEN,
@@ -142,12 +86,6 @@ export function overviewView(
   return { kind: "calm", status: attention.status };
 }
 
-/**
- * What the page holds, top to bottom. The operations bar stands first in every
- * state — calm included, where it is the one place the installation's numbers
- * are read — and only for a reader who may read them. Below it: the list, the
- * calm sentence, or what could not be read; the one way to the history last.
- */
 export type OverviewSection = "operations" | "attention" | "calm" | "unread" | "history";
 
 export function overviewSections(
@@ -164,11 +102,6 @@ export function overviewSections(
   return sections;
 }
 
-/**
- * The navigation badge: the number of entries, red when anything is stopped,
- * absent at zero and while the list cannot be read. A stale or guessed number
- * is worse than none.
- */
 export function attentionBadge(
   attention: Attention | undefined,
   hidden: HiddenEntries = NO_HIDDEN,
@@ -178,9 +111,6 @@ export function attentionBadge(
   if (items.length === 0) return null;
   return { count: items.length, stopped: items.some((item) => item.class === "stopped") };
 }
-
-// --------------------------------------------------------------------------
-// The sentence.
 
 const REASON_KEYS = {
   awaiting_answer: "overview.reason.awaiting_answer",
@@ -214,13 +144,11 @@ const SUBJECT_KEYS = {
   secret: "overview.subject.secret",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
-/** The heartbeats the scheduler writes (operator/operational-overview.ts). */
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
   "self_healing.drift_scan": "overview.heartbeat.drift_scan",
   "connectors.reauth_scan": "overview.heartbeat.reauth_scan",
 };
 
-/** The critical signals the engine raises (operator/risk-signals.ts). */
 const SIGNAL_KEYS: Record<string, TranslationKey> = {
   pool_saturation: "overview.signal.pool_saturation",
   dlq_growth: "overview.signal.dlq_growth",
@@ -232,11 +160,8 @@ const SIGNAL_KEYS: Record<string, TranslationKey> = {
 };
 
 export interface AttentionSentence {
-  /** The cockpit's own words. */
   lead: string;
-  /** A value this build has no word for, shown as the engine's value (§15.2). */
   machine: string | null;
-  /** "seit 3 Tagen", or null when the engine names no start. */
   since: string | null;
 }
 
@@ -257,7 +182,6 @@ function counted(
   return t((count ?? 1) === 1 ? one : many, { count: count ?? 1 });
 }
 
-/** How long, in the coarsest honest unit — "seit 3 Tagen". */
 export function sinceLabel(since: string | null, now: number, t: Translate): string | null {
   if (!since) return null;
   const at = Date.parse(since);
@@ -274,13 +198,6 @@ export function sinceLabel(since: string | null, now: number, t: Translate): str
   return counted(Math.floor(days / 30), "overview.since.month", "overview.since.months", t);
 }
 
-/**
- * One entry as one sentence: its subject, its reason, and since when.
- *
- * A reason this build does not know is not swallowed and not called
- * "unbekannt": the subject is still named, and the engine's own value follows,
- * marked as a machine value.
- */
 export function attentionSentence(
   item: AttentionItem,
   t: Translate,
@@ -302,9 +219,6 @@ export function attentionSentence(
   switch (item.reason) {
     case "execution_authority_required":
     case "execution_authority_unavailable": {
-      // A webhook's refused calls said "its schedule waits", and people went
-      // looking for a schedule the workflow does not have. Read as optional:
-      // an engine that predates the field still gets the schedule sentence.
       const hook = item.trigger?.kind === "inbound_hook" ? item.trigger.name : null;
       if (!hook) return { lead: t(reasonKey, { subject }), machine: null, since };
       return {
@@ -319,8 +233,6 @@ export function attentionSentence(
       };
     }
     case "version_awaiting_approval": {
-      // Named for what would start it: a schedule, a webhook the reader may
-      // name, or — when its name is not theirs to read — any automatic start.
       const version = item.approval ? `v${item.approval.version}` : "";
       const key =
         item.trigger?.kind === "inbound_hook"
@@ -331,7 +243,6 @@ export function attentionSentence(
             ? reasonKey
             : "overview.reason.version_awaiting_approvalAny";
       const sentence = t(key, { subject, version, hook: item.trigger?.name ?? "" });
-      // Why the approval of the version before did not follow: what is new.
       const growth = growthLine(t, item.approval?.growth);
       return {
         lead: growth ? t("overview.withGrowth", { sentence, growth }) : sentence,
@@ -355,7 +266,6 @@ export function attentionSentence(
           sentence: lead,
           patches: counted(item.counts.patches, "overview.patches.one", "overview.patches.many", t),
         });
-      // A cause class the build has no word for is the engine's value, marked.
       const machine = item.cause_class && !cause ? item.cause_class : null;
       return { lead, machine, since };
     }
@@ -399,11 +309,6 @@ export function attentionSentence(
   }
 }
 
-/**
- * Why a version cannot be approved, in one line: the leading blocked step and
- * what is wrong with it, in words — the code's own when this build has them,
- * else what removes the block — and how many other steps wait with it.
- */
 function repairSentence(item: AttentionItem, subject: string, t: Translate): string {
   const version = item.approval ? `v${item.approval.version}` : "";
   const repair = item.repair;
@@ -428,17 +333,12 @@ function repairSentence(item: AttentionItem, subject: string, t: Translate): str
   });
 }
 
-/** The sentence as plain text — for tests and for accessible names. */
 export function sentenceText(sentence: AttentionSentence): string {
   const machine = sentence.machine ? ` (${sentence.machine})` : "";
   const since = sentence.since ? ` — ${sentence.since}` : "";
   return `${sentence.lead}${machine}${since}.`;
 }
 
-// --------------------------------------------------------------------------
-// The actions.
-
-/** The one primary action, and at most one secondary link. */
 export function entryActions(item: AttentionItem): {
   primary: AttentionAction | null;
   secondary: AttentionAction | null;
@@ -453,10 +353,7 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
     case "review":
       return "overview.action.review";
     case "open":
-      // The workflow page's panel is where the step is taken; the entry names
-      // the step, never "open".
       if (item.reason === "version_awaiting_approval") return "overview.action.approve";
-      // A version no approval may cover: the act its diagnosis offers, never "approve".
       if (item.reason === "version_needs_repair")
         return item.repair?.remedy_kind === "prepare"
           ? "overview.action.prepare"
@@ -508,10 +405,6 @@ const HEALTH_KEYS = {
   unknown: "overview.health.unknown",
 } as const satisfies Record<HealthState, TranslationKey>;
 
-/**
- * The one status line of the calm state: health · next scheduled run.
- * Null for a reader without `stats:read`, to whom the engine sends no status.
- */
 export function statusLine(
   status: Attention["status"],
   t: Translate,
@@ -525,7 +418,6 @@ export function statusLine(
   return `${health} · ${next}`;
 }
 
-/** Which kind of review an entry's sheet holds. */
 export type ReviewTarget =
   | { kind: "workflow"; workflowId: string }
   | { kind: "skills" }
@@ -538,12 +430,6 @@ export function reviewTarget(id: string): ReviewTarget {
   return { kind: "other" };
 }
 
-/**
- * Whether this reader can see what a review sheet holds: a workflow's fixes
- * and held schedule need `workflow:read`, the skill proposals `skill:read`.
- * Any other entry has nothing to review in the sheet — it is acted on where
- * its primary action leads.
- */
 export type ReviewAccess = "readable" | "not_permitted" | "nothing";
 
 export function reviewAccess(target: ReviewTarget, permissions: readonly string[]): ReviewAccess {
@@ -554,7 +440,6 @@ export function reviewAccess(target: ReviewTarget, permissions: readonly string[
   return "nothing";
 }
 
-/** The part of `window.history` the review sheet uses. */
 export interface ReviewHistory {
   readonly state: unknown;
   pushState(state: unknown, unused: string, url: string): void;
@@ -564,14 +449,6 @@ export interface ReviewHistory {
 
 const OPENED_HERE = "sk-attention-review";
 
-/**
- * The sheet's address, kept honest with Back.
- *
- * Opening from the list pushes an entry marked as ours; closing that sheet
- * goes BACK, so the history is what it was before it opened and Back never
- * reopens a closed sheet (or a decided one, now empty). A sheet that arrived
- * by link has no entry of ours to leave: closing it replaces the address.
- */
 export function reviewNavigation(history: ReviewHistory, href: (review: string | null) => string) {
   return {
     open(review: string): void {
@@ -584,10 +461,6 @@ export function reviewNavigation(history: ReviewHistory, href: (review: string |
     },
   };
 }
-
-// --------------------------------------------------------------------------
-// One entry as a row (R1): the object alone as its name, the reason in a few
-// words, the state as a badge — never the object named twice.
 
 const SHORT_REASON_KEYS = {
   awaiting_answer: "overview.short.awaiting_answer",
@@ -613,7 +486,6 @@ const SHORT_REASON_KEYS = {
   risk_critical: "overview.short.risk_critical",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
 
-/** The badge an entry carries: an engine-state word for the tone, and its label. */
 const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
   awaiting_answer: { state: "pending", label: "overview.state.answer" },
   execution_authority_required: { state: "pending", label: "workflowStrip.state.grant" },
@@ -639,11 +511,8 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
 };
 
 export interface AttentionRow {
-  /** The object alone: a workflow's name and the version it is about. */
   name: string;
-  /** The reason, in a few words, without the object. */
   reason: string;
-  /** A reason this build has no words for, as the engine's value. */
   machine: string | null;
   badge: { state: string; label: TranslationKey };
 }

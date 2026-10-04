@@ -4,20 +4,12 @@ import { Button } from "./button";
 
 interface BarAction {
   onClick(): void;
-  /** The label, where the default ("Verwerfen" / "Speichern") is not the act. */
   label?: string;
   pending?: boolean;
   disabled?: boolean;
   testId?: string;
 }
 
-/**
- * Unsaved changes, at the bottom of what holds them (P22): "N ungespeicherte
- * Änderungen · Verwerfen · Speichern". It stands only while there is
- * something to save — the caller renders it then and only then — and while
- * it stands it owns the view's one filled button. Settings, a skill's draft
- * and a person's role all use this bar.
- */
 export function SaveBar({
   count,
   line,
@@ -26,11 +18,8 @@ export function SaveBar({
   save,
   testId,
 }: {
-  /** How many changes wait; drawn as "N ungespeicherte Änderungen". */
   count: number;
-  /** A line of its own instead of the count. */
   line?: string;
-  /** A second line that must be read before saving, e.g. a conflict. */
   notice?: ReactNode;
   discard: BarAction;
   save: BarAction;

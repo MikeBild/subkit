@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { DETAIL_FIELDS, detailEntries, recordBarFacts } from "@/lib/detail-fields";
 import { CATALOGS } from "@/lib/i18n";
 
-// The record the connector detail page renders, in the engine's own key order.
-// It is the shape the screenshot round caught: an identifier first, a raw
-// instant last, and every label in between produced by machine.
 const CONNECTOR = {
   id: "018f4b4a-6d33-7b3a-9c2d-123456789abc",
   tenant_id: "018f4b4a-6d33-7b3a-9c2d-123456789abc",
@@ -27,8 +24,6 @@ describe("cockpit detail fields", () => {
     for (const field of DETAIL_FIELDS) {
       expect(CATALOGS.en[field.labelKey], `${field.key} has no English label`).toBeTruthy();
       expect(CATALOGS.de[field.labelKey], `${field.key} has no German label`).toBeTruthy();
-      // A German label that still reads as the engine's key would pass the
-      // catalog lookup and fail the reader.
       expect(CATALOGS.de[field.labelKey]).not.toBe(field.key.replaceAll("_", " "));
     }
   });
@@ -83,7 +78,6 @@ describe("what a record's bar may say", () => {
   test("a lifecycle word only when the record carries one", () => {
     expect(recordBarFacts({ status: "active" }).status).toBe("active");
     expect(recordBarFacts({ lifecycle: "stable" }).status).toBe("stable");
-    // A file has no lifecycle: no word is made up for it.
     expect(recordBarFacts({ filename: "report.pdf" }).status).toBeNull();
     expect(recordBarFacts({ status: "" }).status).toBeNull();
   });
@@ -91,7 +85,6 @@ describe("what a record's bar may say", () => {
   test("a version only when it is a number", () => {
     expect(recordBarFacts({ version: 3 }).version).toBe(3);
     expect(recordBarFacts({ current_version: "12" }).version).toBe(12);
-    // A knowledge source's version is a content marker, not a count.
     expect(recordBarFacts({ version: "knowledge-v4" }).version).toBeNull();
     expect(recordBarFacts({ version: "9f2c1e7ab0" }).version).toBeNull();
     expect(recordBarFacts({ version: 1.5 }).version).toBeNull();

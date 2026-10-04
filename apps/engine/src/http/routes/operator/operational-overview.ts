@@ -69,8 +69,6 @@ const Health = Metric.extend({
         .describe(
           "Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording.",
         ),
-      // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
-      // `allOf` and the generated client loses the null.
       cause_class: z.enum(PREVIEW_CLASSIFICATIONS).nullable(),
       drilldown: Drilldown,
     }),

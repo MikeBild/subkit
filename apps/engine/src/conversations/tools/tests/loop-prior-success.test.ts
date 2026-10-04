@@ -1,9 +1,3 @@
-// Regression (production A2): a loop-aborted `run_workflow` whose IDENTICAL
-// call already SUCCEEDED this turn must hand the finished run's output back
-// on the abort envelope (`prior_success_output`) — pre-fix the abort
-// envelope replaced the success in the fallback summary and the user read
-// "status=succeeded · no output" for a run whose data existed all along.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
@@ -81,15 +75,11 @@ describe("loop guard — prior-success attachment", () => {
     expect(run).toBeDefined();
 
     const sameArgs = { workflow: "org-top-repos", input: '{"org":"remotion-dev"}' };
-    // Call 1 — the workflow does not exist in this tenant so the call
-    // fails, but the repeat tracker records the canonical args hash.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     await (run!.execute as any)(sameArgs, { toolCallId: "t1", messages: [] });
     const recordedHash = signals.toolArgsRepeat.get("run_workflow")?.hash;
     expect(typeof recordedHash).toBe("string");
 
-    // Simulate the call having SUCCEEDED (the success branch records this
-    // exact shape — keyed by the same args hash the tracker computed).
     const successPayload = {
       status: "succeeded",
       output: { org: "remotion-dev", total: 95, top: [{ name: "remotion", stars: 49560 }] },
@@ -100,9 +90,6 @@ describe("loop guard — prior-success attachment", () => {
       output: successPayload,
     };
 
-    // Call 2 with IDENTICAL args — because the exact execution already
-    // succeeded this turn, the wrapper returns the prior output instead
-    // of creating a duplicate execution row.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result2 = await (run!.execute as any)(sameArgs, { toolCallId: "t2", messages: [] });
     const data2 = result2.data as {
@@ -113,9 +100,7 @@ describe("loop guard — prior-success attachment", () => {
     };
     expect(data2.error_code).toBe("tool_loop_detected");
     expect(data2.repeat_count).toBe(2);
-    // The finished run's output rides on the abort envelope…
     expect(data2.prior_success_output).toEqual(successPayload);
-    // …and the message tells the model to PRESENT it, not retry.
     expect(data2.message).toContain("prior_success_output");
   });
 
@@ -141,8 +126,6 @@ describe("loop guard — prior-success attachment", () => {
     });
     expect(text).toContain("already succeeded this turn");
     expect(text).toContain("status=succeeded");
-    // The misleading "no output" must NOT appear for a finished run that
-    // carried data.
     expect(text).not.toContain("no output");
   });
 });

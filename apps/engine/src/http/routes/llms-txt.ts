@@ -16,10 +16,6 @@ const RESPONSE_HEADERS = {
 
 const pages: LlmsPage[] = manifest.pages;
 
-// Split the embedded full text into Map<docsRelPath, sectionMarkdown> once, by
-// the `<!-- Source: docs/<path> -->` markers the generator emits. The key has
-// the leading `docs/` stripped (e.g. `concepts/connectors.md`) so it matches
-// the `/llms/{path}` request param and the index's repo-relative links.
 function buildSectionMap(full: string): Map<string, string> {
   const map = new Map<string, string>();
   const marker = /<!-- Source: (.+?) -->\n\n/g;
@@ -40,18 +36,7 @@ function buildSectionMap(full: string): Map<string, string> {
 
 const sections = buildSectionMap(llmsFullTxt);
 
-// Origin the engine is reached at: the configured public base URL (proxy- and
-// OAuth-issuer-correct), else the forwarded proto/host, else the request URL
-// origin. Trailing slashes stripped so `${origin}/llms/...` is well-formed.
-/** The public origin this engine is reached at: the configured base URL
- *  (proxy- and issuer-correct), else the forwarded proto/host, else the
- *  request URL. Exported so every self-description surface — the index, the
- *  descriptor, the root entry point — prints the same absolute links. */
 export function resolveOrigin(c: Context<AppEnv>): string {
-  // Tolerates an uninitialised loader on purpose. These are the routes a
-  // newcomer and a probe hit first, and answering 500 because configuration is
-  // not ready yet would be the worst possible first impression — the request
-  // itself already carries enough to name an origin.
   let configured = "";
   try {
     configured = getConfig().server.public_base_url ?? "";
@@ -138,11 +123,6 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(fullRoute, (c) => c.text(llmsFullTxt, 200, RESPONSE_HEADERS));
   app.openapi(descriptorRoute, (c) => {
     const origin = resolveOrigin(c);
-    // Hashed per request rather than cached. The documents are embedded at
-    // build time and cannot change while the process lives, so this is a hash
-    // of a few hundred kilobytes on a route nothing calls in a hot loop — and
-    // a cached hash that goes stale would make this endpoint lie in exactly
-    // the situation it exists to report.
     const sha = (text: string) => createHash("sha256").update(text).digest("hex");
     return c.json({
       service: "subkit",
@@ -155,15 +135,11 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
           sha256: sha(llmsFullTxt),
           updated_at: null,
         },
-        // The topology that runs this release. Listed here so a consumer that
-        // only reads the descriptor can still install without a checkout.
         compose: {
           url: `${origin}/docker-compose.yml`,
           sha256: sha(COMPOSE_YAML),
           updated_at: null,
         },
-        // The agent skill that asks the make-or-buy question mid-build; the
-        // installer lives at /install/skill, this is the file it writes.
         skill: {
           url: `${origin}/install/skill/SKILL.md`,
           sha256: sha(SKILL_MD),
@@ -184,10 +160,6 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
     });
   });
 
-  // Per-page drill-down. The path spans slashes (e.g. `concepts/connectors.md`),
-  // which @hono/zod-openapi's typed params can't express cleanly, so this one
-  // route is a plain Hono handler with a `{.+}` regex param and is left off the
-  // OpenAPI surface intentionally.
   app.get("/llms/:path{.+}", (c) => {
     const path = c.req.param("path");
     const section = sections.get(path);

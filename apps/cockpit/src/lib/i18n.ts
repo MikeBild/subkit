@@ -612,10 +612,6 @@ const EN = {
   "audit.action.secretPrepared": "Change prepared",
   "audit.action.secretApproved": "Change approved",
   "audit.action.secretRejected": "Change rejected",
-  // Named because production writes them by the thousand and a reader has to
-  // be able to tell what they were. Measured against the running installation:
-  // 182 distinct verbs written, and these ten are the ones with volume that a
-  // person is accountable for or would look for after an incident.
   "audit.action.conversationRanWorkflow": "Workflow started from a conversation",
   "audit.action.toolPolicyConfirmationRequired": "Confirmation demanded before the step",
   "audit.action.credentialUpdated": "Credential changed",
@@ -1410,7 +1406,6 @@ const EN = {
   "pattern.saveBar.unsaved.one": "1 unsaved change",
   "pattern.more": "+{count} more",
   "pattern.help": "Explanation",
-  // Platform layer: live updates, new-version notice, loading. One block.
   "platform.newVersion": "A new version is available",
   "platform.reload": "Reload",
   "platform.reloadDirty": "Save your input first; reloading would discard it.",
@@ -1617,9 +1612,6 @@ const EN = {
   "audit.detail.technical": "Technical details",
   "audit.detail.openRun": "Open run",
   "audit.detail.openRecord": "Open {resource}",
-  // The record behind a row. The table shows six of the sixteen fields the
-  // engine records and offered no way to reach the other ten, so the evidence
-  // of what a change actually changed was readable only from the terminal.
   "audit.detail.actorId": "Actor ID",
   "audit.detail.resourceId": "Resource ID",
   "audit.detail.trace": "Request key",
@@ -2058,8 +2050,6 @@ const EN = {
   "decisions.age.days": "Waiting {days} days",
   "decisions.agedTitle": "Been waiting a while",
   "decisions.agedHint": "Blocking nothing — and sitting here for more than three days.",
-  // Where a position came from. A queue that cannot say why something is in it
-  // is a list of demands without reasons.
   "decisions.origin.observedFailure": "From a failure observed in a run",
   "decisions.origin.repairPattern": "From a repair that worked before",
   "decisions.origin.failurePattern": "From a recurring failure",
@@ -2072,7 +2062,6 @@ const EN = {
   "decisions.origin.conversation": "From a conversation",
   "decisions.target.none": "No fixed target",
   "decisions.target.allWorkflows": "Applies to every workflow",
-  // The two things a position can be doing to you.
   "decisions.section.deferred": "Blocking nothing",
   "decisions.section.recentHint":
     "Blocking nothing — decide when you get to it. Nothing stops while these wait.",
@@ -2399,8 +2388,6 @@ const EN = {
   "tool.status.outputAvailable": "Completed",
   "tool.status.outputDenied": "Denied",
   "tool.status.outputError": "Error",
-  // Background reads: a present-tense word while it runs, a past-tense word
-  // afterwards. One line each, never a card.
   "tool.background.listWorkflows.active": "Listing workflows…",
   "tool.background.listWorkflows.past": "Listed workflows",
   "tool.background.listExecutions.active": "Looking through runs…",
@@ -2460,7 +2447,6 @@ const EN = {
   "tool.background.suggestConnectorTemplates.active": "Looking for a matching template…",
   "tool.background.suggestConnectorTemplates.past": "Looked for a matching template",
   "tool.background.collapsed": "{count} background actions",
-  // Actions that run, change or ask. These get a card.
   "tool.name.runWorkflow": "Ran a workflow",
   "tool.name.runNamedWorkflow": "Ran the workflow “{name}”",
   "tool.name.runWorkflow.notRun": "Did not run a workflow",
@@ -2523,7 +2509,6 @@ const EN = {
   "tool.name.cannotHelp": "Reported it could not help",
   "tool.name.askUser": "Asked you a question",
   "tool.name.askUserConfirm": "Asked you to decide",
-  // How a call ended.
   "tool.outcome.awaitingApproval": "Awaiting your approval",
   "tool.outcome.tested": "Trial run made",
   "tool.outcome.approved": "Approved",
@@ -2649,7 +2634,6 @@ const EN = {
   "remedy.reconnect": "Reconnect",
   "remedy.grant": "Review approval",
   "remedy.openRun": "Investigate run",
-  // Installation pages: people, access, notifications, settings, usage, audit.
   "people.change.intro": "{email} gets the role {role}.",
   "people.change.gains": "Can do afterwards:",
   "people.change.loses": "Can no longer do:",
@@ -2828,7 +2812,6 @@ const EN = {
   "audit.reason.refreshReplayed": "Refresh token used twice",
   "audit.reason.manualReissue": "Issued again by hand",
   "audit.reason.clientRetired": "Application retired for disuse",
-  // Chat: modes and their gates, a conversation that cannot be opened, retry.
   "chat.mode.asks": "Asks first:",
   "chat.mode.free": "Without asking:",
   "chat.mode.gate.readAndCheck": "reading drafts and dry runs",
@@ -2851,7 +2834,6 @@ const EN = {
     "Nothing is sent again by itself: check the refreshed conversation and send your message yourself if it is missing.",
   "chat.reauth.titleNamed": "Reconnect “{name}”",
   "chat.resume.settingUp": "You are setting up {target}.",
-  // Review follow-ups: who may leave admin, and why a change was refused.
   "people.change.note.leavesAdmin":
     "Without the Administrator role they can no longer manage people or roles — even a custom role with every permission does not include that.",
   "people.change.note.self": "This is your own role.",
@@ -2862,7 +2844,6 @@ const EN = {
   "people.refusal.forbidden": "Not changed: your access does not allow this change.",
   "people.refusal.notFound": "Not changed: this person no longer exists.",
   "people.refusal.engine": "Not changed — the engine says: {reason}",
-  // Every setting leaf by name (settings-leaf-coverage.test.ts walks the engine's config).
   "settings.leaf.log.level": "Log level",
   "settings.leaf.log.format": "Log format",
   "settings.leaf.server.port": "HTTP port",
@@ -3031,7 +3012,6 @@ const EN = {
   "settings.leaf.connectors.mcp.remote_tool_call_timeout_ms":
     "External MCP · tool call timeout (ms)",
   "settings.leaf.connectors.mcp.tools_list_max_pages": "External MCP · tool list pages",
-  // What to know before changing a setting (settings-leaf-coverage.test.ts lists which need it).
   "settings.help.auth.enable_signup":
     "Creates a member account for someone signing in by SSO for the first time. Off: only people who already have an account get in.",
   "settings.help.auth.mcp_oauth.access_token_ttl_seconds":
@@ -5223,7 +5203,6 @@ const DE: Record<TranslationKey, string> = {
   "pattern.saveBar.unsaved.one": "1 ungespeicherte Änderung",
   "pattern.more": "+{count} weitere",
   "pattern.help": "Erklärung",
-  // Platform layer: live updates, new-version notice, loading. One block.
   "platform.newVersion": "Neue Version verfügbar",
   "platform.reload": "Neu laden",
   "platform.reloadDirty": "Erst speichern – beim Neuladen gingen die Eingaben verloren.",
@@ -5435,9 +5414,6 @@ const DE: Record<TranslationKey, string> = {
   "audit.detail.technical": "Technische Angaben",
   "audit.detail.openRun": "Lauf öffnen",
   "audit.detail.openRecord": "{resource} öffnen",
-  // Der Eintrag hinter einer Zeile. Die Tabelle zeigt sechs der sechzehn
-  // festgehaltenen Felder und bot keinen Weg zu den übrigen zehn — was eine
-  // Änderung tatsächlich geändert hat, war nur im Terminal lesbar.
   "audit.detail.actorId": "Akteur-ID",
   "audit.detail.resourceId": "Ressourcen-ID",
   "audit.detail.trace": "Anfrage-Kennung",
@@ -5889,8 +5865,6 @@ const DE: Record<TranslationKey, string> = {
   "decisions.age.days": "Wartet {days} Tage",
   "decisions.agedTitle": "Liegt schon länger",
   "decisions.agedHint": "Blockiert nichts — und liegt seit mehr als drei Tagen hier.",
-  // Woher eine Position stammt. Eine Warteschlange, die nicht sagen kann, warum
-  // etwas darin liegt, ist eine Forderungsliste ohne Begründung.
   "decisions.origin.observedFailure": "Aus einem beobachteten Fehler in einem Lauf",
   "decisions.origin.repairPattern": "Aus einer Reparatur, die schon einmal geholfen hat",
   "decisions.origin.failurePattern": "Aus einem wiederkehrenden Fehlerbild",
@@ -5903,7 +5877,6 @@ const DE: Record<TranslationKey, string> = {
   "decisions.origin.conversation": "Aus einer Unterhaltung",
   "decisions.target.none": "Ohne festes Ziel",
   "decisions.target.allWorkflows": "Gilt für alle Workflows",
-  // Die zwei Dinge, die eine Position mit dir machen kann.
   "decisions.section.deferred": "Blockiert nichts",
   "decisions.section.recentHint":
     "Blockiert nichts — entscheide, wenn du dazu kommst. Während sie warten, steht nichts still.",
@@ -6242,8 +6215,6 @@ const DE: Record<TranslationKey, string> = {
   "tool.status.outputAvailable": "Abgeschlossen",
   "tool.status.outputDenied": "Abgelehnt",
   "tool.status.outputError": "Fehler",
-  // Hintergrund-Lesevorgänge: ein Wort für „läuft gerade", eines für „ist
-  // gelaufen". Je eine Zeile, nie eine Karte.
   "tool.background.listWorkflows.active": "Workflows werden aufgelistet…",
   "tool.background.listWorkflows.past": "Workflows aufgelistet",
   "tool.background.listExecutions.active": "Läufe werden durchgesehen…",
@@ -6303,7 +6274,6 @@ const DE: Record<TranslationKey, string> = {
   "tool.background.suggestConnectorTemplates.active": "Passende Vorlage wird gesucht…",
   "tool.background.suggestConnectorTemplates.past": "Passende Vorlage gesucht",
   "tool.background.collapsed": "{count} Aktionen im Hintergrund",
-  // Aktionen, die etwas ausführen, ändern oder fragen. Die bekommen eine Karte.
   "tool.name.runWorkflow": "Workflow ausgeführt",
   "tool.name.runNamedWorkflow": "Workflow „{name}“ ausgeführt",
   "tool.name.runWorkflow.notRun": "Workflow nicht ausgeführt",
@@ -6366,7 +6336,6 @@ const DE: Record<TranslationKey, string> = {
   "tool.name.cannotHelp": "Gemeldet, dass es nicht weiterhilft",
   "tool.name.askUser": "Dich etwas gefragt",
   "tool.name.askUserConfirm": "Dich um eine Entscheidung gebeten",
-  // Wie ein Aufruf ausgegangen ist.
   "tool.outcome.awaitingApproval": "Wartet auf deine Freigabe",
   "tool.outcome.tested": "Testlauf gemacht",
   "tool.outcome.approved": "Freigegeben",
@@ -6498,7 +6467,6 @@ const DE: Record<TranslationKey, string> = {
   "remedy.reconnect": "Neu verbinden",
   "remedy.grant": "Freigabe prüfen",
   "remedy.openRun": "Lauf untersuchen",
-  // Installation pages: people, access, notifications, settings, usage, audit.
   "people.change.intro": "{email} erhält die Rolle {role}.",
   "people.change.gains": "Kann danach:",
   "people.change.loses": "Kann danach nicht mehr:",
@@ -6679,7 +6647,6 @@ const DE: Record<TranslationKey, string> = {
   "audit.reason.refreshReplayed": "Aktualisierungs-Token doppelt verwendet",
   "audit.reason.manualReissue": "Von Hand neu ausgestellt",
   "audit.reason.clientRetired": "Anwendung wegen Nichtnutzung stillgelegt",
-  // Chat: modes and their gates, a conversation that cannot be opened, retry.
   "chat.mode.asks": "Fragt vorher:",
   "chat.mode.free": "Ohne Rückfrage:",
   "chat.mode.gate.readAndCheck": "Entwürfe lesen und Probeläufe",
@@ -6703,7 +6670,6 @@ const DE: Record<TranslationKey, string> = {
     "Nichts wird von selbst erneut gesendet: prüf die aktualisierte Unterhaltung und schick deine Nachricht selbst noch einmal ab, falls sie fehlt.",
   "chat.reauth.titleNamed": "„{name}“ erneut verbinden",
   "chat.resume.settingUp": "Du richtest {target} ein.",
-  // Review follow-ups: who may leave admin, and why a change was refused.
   "people.change.note.leavesAdmin":
     "Ohne die Rolle Administrator kann die Person keine Personen und Rollen mehr verwalten — auch eine eigene Rolle mit allen Berechtigungen umfasst das nicht.",
   "people.change.note.self": "Das ist deine eigene Rolle.",
@@ -6714,7 +6680,6 @@ const DE: Record<TranslationKey, string> = {
   "people.refusal.forbidden": "Nicht geändert: Dein Zugang erlaubt diese Änderung nicht.",
   "people.refusal.notFound": "Nicht geändert: Diese Person gibt es nicht mehr.",
   "people.refusal.engine": "Nicht geändert — die Engine sagt: {reason}",
-  // Every setting leaf by name (settings-leaf-coverage.test.ts walks the engine's config).
   "settings.leaf.log.level": "Protokollstufe",
   "settings.leaf.log.format": "Protokollformat",
   "settings.leaf.server.port": "HTTP-Port",
@@ -6892,7 +6857,6 @@ const DE: Record<TranslationKey, string> = {
   "settings.leaf.connectors.mcp.remote_tool_call_timeout_ms":
     "Externes MCP · Zeitgrenze je Werkzeugaufruf (ms)",
   "settings.leaf.connectors.mcp.tools_list_max_pages": "Externes MCP · Seiten der Werkzeugliste",
-  // What to know before changing a setting (settings-leaf-coverage.test.ts lists which need it).
   "settings.help.auth.enable_signup":
     "Legt beim ersten SSO-Login ein Mitgliedskonto an. Aus: nur wer schon ein Konto hat, kommt hinein.",
   "settings.help.auth.mcp_oauth.access_token_ttl_seconds":
@@ -7691,9 +7655,6 @@ export function translate(
 }
 
 export function formatDateTime(locale: Locale, value: string | Date | null | undefined): string {
-  // A missing timestamp is the same to a reader as an unreadable one, and it
-  // already had an answer for that. Without the null branch the absent case
-  // threw instead, taking the whole page down over one empty field.
   if (value === null || value === undefined) return "—";
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.valueOf())) return "—";
@@ -7703,24 +7664,6 @@ export function formatDateTime(locale: Locale, value: string | Date | null | und
   }).format(date);
 }
 
-/**
- * A time as distance from now — "vor 5 Min.", "3 h ago" — for lists where the
- * question is "when did this last move", not "on which date". The narrow
- * style keeps it inside a rail column; anything older than a month falls
- * back to the date, because "vor 3 Monaten" hides more than it tells.
- */
-/**
- * The same instant as `formatRelativeTime`, but as a stamp that fits a fixed
- * box at the end of a list row: "3 Wo." / "3w", never "vor 3 Wochen". A row
- * that reflows because one timestamp is wider than its neighbour is the noise
- * this list is trying to lose, so the caller gets a width it can reserve.
- *
- * Built from `Intl.NumberFormat` unit style rather than hand-written suffixes:
- * the abbreviations differ per language and are not ours to invent. "short"
- * rather than "narrow": German narrow collapses week to "W", month to "M" and
- * minute to "min", so a row read "3 W" and the reader had to guess between
- * week and something else. "3 Wo." still fits the box the row reserves.
- */
 export function formatShortRelativeTime(
   locale: Locale,
   value: string,

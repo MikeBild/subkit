@@ -1,6 +1,3 @@
-// list_skill_suggestions — surface pending Skill Candidates relevant
-// to the current conversation context.
-
 import { z } from "@hono/zod-openapi";
 import { listSkillCandidates } from "../../skill-candidates/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

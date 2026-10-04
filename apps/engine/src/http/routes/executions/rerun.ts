@@ -1,13 +1,3 @@
-// POST /v1/executions/{id}/rerun — faithful rerun with lineage.
-//
-// Creates a new execution pinned to the SAME workflow_version_id as
-// the original (a rerun is a question about that version's behavior,
-// not the workflow's latest), with `parent_execution_id` pointing at
-// the original and input defaulting to the original's persisted
-// `input` column. Saved-source executions only — draft/step runs have
-// no persisted definition to rehydrate; re-POST those to
-// POST /v1/executions instead.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -33,15 +23,11 @@ import { ClientDeclaredRunSourceSchema, RunResponseSchema } from "./schemas.ts";
 
 const RerunBody = z
   .object({
-    /** Override the original input. Omit to reuse it verbatim. */
     input: z.unknown().optional(),
-    /** Queue the rerun (202 + execution_id) instead of running inline. */
     async: z.boolean().optional(),
     hold_writes: z.boolean().optional(),
     execution_authority_id: z.string().uuid().optional(),
     idempotency_key: z.string().min(1).max(200).optional(),
-    /** Same rule as a run: a key-bearing caller may name its program. Without
-     *  this, `sk` recorded its runs as "cli" and its reruns as "api". */
     request_source: ClientDeclaredRunSourceSchema,
   })
   .openapi("RerunExecutionBody");
@@ -77,9 +63,6 @@ const rerunRoute = createRoute({
 });
 
 export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
-  // workflow:run, resource-scoped to the original's workflow when the
-  // row resolves — mirrors the body-peek pattern POST /v1/executions
-  // uses for its middleware gate.
   app.use("/v1/executions/:id/rerun", async (c, next) => {
     const id = c.req.param("id");
     const principal = c.get("principal");
@@ -132,10 +115,6 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const request_source = runRequestSource(c, body.request_source);
 
     if (!original.workflow_version_id) {
-      // Refused for the same class of reason as the codes caught below, and so
-      // written down the same way. Leaving it out would reinstate the very
-      // asymmetry this trail exists to remove: one refusal audited, its
-      // neighbour silent.
       const message = "the original version is unavailable";
       await auditAdmissionRefusal(
         {

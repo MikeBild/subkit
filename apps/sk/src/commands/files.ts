@@ -1,11 +1,3 @@
-// `sk files` — operator surface for the unified files resource.
-//
-// Seven verbs: list, get, upload, download, delete, link, stats. The
-// `upload` verb picks inline vs authenticated streamed PUT based on Bun.file size;
-// the routing is invisible to the user. Existing CLI conventions:
-// `--json` on read verbs, exit codes per `headless.ts:9-10`, lazy
-// profile resolution via `resolveProfile`.
-
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
@@ -29,8 +21,6 @@ import {
   type UploadProgressEvent,
 } from "../utils/upload-progress.ts";
 
-// ---------- Shared helpers ----------
-
 function makeClient(): EngineClient {
   const { engine_url, api_key, active_tenant_id } = resolveProfile();
   return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
@@ -48,14 +38,6 @@ function humanBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-/** Parse `<resource_type>:<uuid>` — used by --link-to and --linked-to.
- *  Validates the resource_type against the engine's enum so a typo
- *  fails locally instead of at the wire boundary.
- *
- *  Exported so the command-layer guard can be exercised directly from
- *  unit tests without spinning up the engine — the unknown-resource-
- *  type rejection path is a public contract surface even though the
- *  helper itself is local to this module. */
 export function parseResourceRef(s: string): {
   resource_type: FileLinkResourceType;
   resource_id: string;
@@ -79,16 +61,6 @@ interface UploadProgressOpts {
   json: boolean;
 }
 
-/** Render an `UploadProgressEvent` to the right surface.
- *
- *  - `--quiet` or `--json`: silent. `--json` on `sk files upload` is a
- *    single-row output contract (the final `FileWire` printed by
- *    `printJson(row)`); interleaving progress events with the row
- *    breaks every downstream `JSON.parse` consumer including the e2e
- *    `parseJson` harness. Scripted streaming callers that want
- *    per-chunk events should consume the engine's SSE notifications,
- *    not the CLI's stdout.
- *  - Otherwise overwrite-in-place on TTY stderr. */
 function renderProgress(ev: UploadProgressEvent, opts: UploadProgressOpts): void {
   if (opts.quiet || opts.json) return;
   if (process.stderr.isTTY) {
@@ -96,22 +68,11 @@ function renderProgress(ev: UploadProgressEvent, opts: UploadProgressOpts): void
   }
 }
 
-/** Final newline after a TTY progress line — silent on --quiet/--json. */
 function finishProgress(opts: UploadProgressOpts): void {
   if (opts.quiet || opts.json) return;
   if (process.stderr.isTTY) process.stderr.write("\n");
 }
 
-/** Upload a local path, picking inline or authenticated streamed PUT based on size.
- *  Returns the resulting `FileWire` row. Shared by file upload
- *  commands, REPL file-paste, knowledge / discovery / workflow, and
- *  headless flows.
- *
- *  `opts.onProgress` is invoked once per uploaded chunk during the
- *  streamed PUT phase. Callers that want a custom UX (e.g. the Ink
- *  REPL's status line) pass this in lieu of `quiet`/`json` so they
- *  can route the cumulative event into their own renderer without
- *  having stderr scribbled on. */
 export async function uploadPath(
   client: EngineClient,
   rawFilePath: string,
@@ -123,12 +84,6 @@ export async function uploadPath(
     onProgress?: (ev: UploadProgressEvent) => void;
   } = {},
 ): Promise<FileWire> {
-  // Single chokepoint for *every* file-upload surface (Ink file-paste,
-  // Ink `/knowledge`, `sk file upload`, `sk file attach`, `sk
-  // knowledge-sources create`). Stripping invisible Unicode here means
-  // copy-paste from any source (Slack, Markdown, browser) survives —
-  // see lib/path-input.ts for the offending codepoints. The original
-  // string is preserved in errors via `renderSuspiciousCodepoints`.
   const filePath = sanitizePathInput(rawFilePath);
   if (!existsSync(filePath)) {
     throw new Error(`file not found: ${rawFilePath}${renderSuspiciousCodepoints(rawFilePath)}`);
@@ -144,17 +99,12 @@ export async function uploadPath(
     json: opts.json ?? false,
   };
 
-  // Routing decision is invisible to the user. The 5 MB threshold
-  // mirrors the engine's MAX_INLINE_BYTES; above it we stream via the engine.
   if (st.size <= MAX_INLINE_BYTES) {
     const bytes = readFileSync(filePath);
     const content_base64 = bytes.toString("base64");
     return await client.uploadInline({ filename, content_type, content_base64 });
   }
 
-  // Streamed path: batch-create → authenticated PUT → finalize. The sha256 is
-  // computed up-front so the engine can dedup on the request rather
-  // than re-hashing on finalize.
   const bytes = readFileSync(filePath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const batch = await client.batchCreateFiles({
@@ -170,16 +120,12 @@ export async function uploadPath(
   const entry = batch.files[0];
   if (!entry) throw new Error("batch-create returned no entries");
   if (entry.dedup) {
-    // Engine recognised an existing file by sha256 — no upload needed.
     return await client.getFile(entry.id);
   }
   const stream = readableFromBytes(bytes, filename, entry.id, bytes.byteLength, (ev) => {
     renderProgress(ev, progress);
     opts.onProgress?.(ev);
   });
-  // The provider-neutral object-store contract requires a known length.
-  // Bun's `fetch` adds `transfer-encoding: chunked` for ReadableStream
-  // bodies unless we set `content-length` explicitly.
   const headers: Record<string, string> = {
     ...entry.headers,
     "content-length": String(bytes.byteLength),
@@ -192,8 +138,6 @@ export async function uploadPath(
   }
   return await client.finalizeFile(entry.id, sha256);
 }
-
-// ---------- list ----------
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List files" },
@@ -238,8 +182,6 @@ const listCommand = defineCommand({
   },
 });
 
-// ---------- get ----------
-
 const getCommand = defineCommand({
   meta: { name: "get", description: "Show file metadata" },
   args: {
@@ -272,8 +214,6 @@ const getCommand = defineCommand({
     }
   },
 });
-
-// ---------- upload ----------
 
 const uploadCommand = defineCommand({
   meta: {
@@ -330,8 +270,6 @@ const uploadCommand = defineCommand({
   },
 });
 
-// ---------- download ----------
-
 const downloadCommand = defineCommand({
   meta: { name: "download", description: "Download a file by id" },
   args: {
@@ -348,7 +286,6 @@ const downloadCommand = defineCommand({
       const dl = await client.downloadFile(args.id);
       const outPath = args.output ? String(args.output) : `./${dl.filename}`;
       if (outPath === "-") {
-        // stdout sink — useful for piping into another command.
         const reader = dl.stream.getReader();
         while (true) {
           const { done, value } = await reader.read();
@@ -382,8 +319,6 @@ const downloadCommand = defineCommand({
   },
 });
 
-// ---------- delete ----------
-
 const deleteCommand = defineCommand({
   meta: { name: "delete", description: "Soft-delete a file" },
   args: {
@@ -394,8 +329,6 @@ const deleteCommand = defineCommand({
     const client = makeClient();
     try {
       if (!args.force && process.stdin.isTTY) {
-        // Tiny inline confirm to keep `sk files delete` from being a
-        // foot-gun. Scripts can pass --force.
         const prompts = await import("@clack/prompts");
         const ok = await prompts.confirm({ message: `delete ${args.id}?`, initialValue: false });
         if (prompts.isCancel(ok) || ok === false) {
@@ -410,8 +343,6 @@ const deleteCommand = defineCommand({
     }
   },
 });
-
-// ---------- link ----------
 
 const linkCommand = defineCommand({
   meta: {
@@ -444,8 +375,6 @@ const linkCommand = defineCommand({
     }
   },
 });
-
-// ---------- stats ----------
 
 const statsCommand = defineCommand({
   meta: { name: "stats", description: "Aggregate file counters for this tenant" },
@@ -489,8 +418,6 @@ const statsCommand = defineCommand({
   },
 });
 
-// ---------- Aggregate ----------
-
 export const filesCommand = defineCommand({
   meta: { name: "files", description: "Manage files (upload, download, link, …)" },
   subCommands: {
@@ -503,12 +430,6 @@ export const filesCommand = defineCommand({
     stats: statsCommand,
   },
 });
-
-// ---------- `sk attach <conversation-id> <path>` shortcut ----------
-//
-// Equivalent to `sk files upload <path> --link-to conversation:<id>`,
-// but takes the conversation id as a leading positional so it reads
-// naturally. The result is the FileRow plus the inserted link.
 
 export const attachCommand = defineCommand({
   meta: {

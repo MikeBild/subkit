@@ -1,19 +1,3 @@
-// AES-256-GCM at-rest encryption for secrets.
-//
-// Uses Node's built-in `crypto` module (NOT WebCrypto) because GCM's
-// authTag is exposed as a separate buffer, which is exactly what the
-// credentials schema stores (ciphertext + iv + auth_tag triples).
-//
-// IV is a random 12 bytes per encrypt. Auth tag is 16 bytes. `aad`
-// (additional authenticated data) binds a ciphertext to its logical
-// context — passing `tenant_id:credential_id` prevents a ciphertext from
-// being lifted out of one credential row and replayed into another.
-//
-// The master key is loaded once at module load from `env.MASTER_KEY`
-// (validated by the zod schema at boot). A short fingerprint (first 8
-// hex chars of SHA-256) is logged so operators can tell which key is in
-// use without exposing the key itself.
-
 import {
   createCipheriv,
   createDecipheriv,
@@ -44,13 +28,6 @@ export class CryptoError extends Error {
   }
 }
 
-/**
- * Decode a 64-hex master key into its 32 raw bytes. Exported so the
- * host-side rewrap path (`engine --rewrap-master-key --from-file`) can
- * hold a PREVIOUS key without it becoming the process-wide cached key —
- * a rewrap decrypts under one key and re-encrypts under another, so it
- * is the one caller that legitimately needs two.
- */
 export function parseMasterKeyHex(hex: string): Buffer {
   return parseKey(hex);
 }
@@ -99,28 +76,16 @@ export interface EncryptedPayload {
   auth_tag: Uint8Array;
 }
 
-/**
- * Encrypt a UTF-8 plaintext with AES-256-GCM. `aad` is optional — pass
- * `tenant_id:credential_id` to bind a ciphertext to its row so it can't
- * be lifted and replayed under a different identity.
- */
 export function encryptSecret(plaintext: string, aad?: string): EncryptedPayload {
   return encryptSecretWithKey(getKey(), plaintext, aad);
 }
 
-/** A domain-separated comparison proof, not an authorization token. Unlike a
- * plain digest it does not expose low-entropy secret payloads to guessing. */
 export function secretComparisonProof(domain: string, plaintext: string): string {
   return createHmac("sha256", getKey())
     .update(JSON.stringify([domain, plaintext]))
     .digest("hex");
 }
 
-/**
- * Same as `encryptSecret` but with an explicitly supplied key. Only the
- * rewrap path uses this; every request path goes through `encryptSecret`
- * so there is exactly one place the running key is read.
- */
 export function encryptSecretWithKey(
   key: Buffer,
   plaintext: string,
@@ -148,19 +113,10 @@ export function encryptSecretWithKey(
   };
 }
 
-/**
- * Decrypt a payload produced by `encryptSecret`. Tamper, AAD mismatch,
- * or wrong key all throw `CryptoError("decrypt_failed")`.
- */
 export function decryptSecret(payload: EncryptedPayload, aad?: string): string {
   return decryptSecretWithKey(getKey(), payload, aad);
 }
 
-/**
- * Same as `decryptSecret` but with an explicitly supplied key — the
- * rewrap path reads every stored version under the PREVIOUS key before
- * writing it back under the running one.
- */
 export function decryptSecretWithKey(key: Buffer, payload: EncryptedPayload, aad?: string): string {
   if (payload.iv.length !== AES_IV_BYTES) {
     throw new CryptoError(`iv length ${payload.iv.length}, expected ${AES_IV_BYTES}`, "iv_length");
@@ -189,10 +145,6 @@ export function decryptSecretWithKey(key: Buffer, payload: EncryptedPayload, aad
   }
 }
 
-/**
- * Constant-time comparison helper for secret-equality checks (e.g. to
- * verify a plaintext matches a ciphertext without leaking timing info).
- */
 export function secureEqual(a: Uint8Array | string, b: Uint8Array | string): boolean {
   const ba = typeof a === "string" ? Buffer.from(a, "utf8") : Buffer.from(a);
   const bb = typeof b === "string" ? Buffer.from(b, "utf8") : Buffer.from(b);
@@ -200,46 +152,14 @@ export function secureEqual(a: Uint8Array | string, b: Uint8Array | string): boo
   return timingSafeEqual(ba, bb);
 }
 
-// Eager key validation moved to runServer() — module load must not
-// touch env.MASTER_KEY so that arg-only flags (`engine --smoke`,
-// `engine --version`, `engine --check-update`, `engine --self-update`)
-// run on a binary that has not yet been configured. Operators still
-// get the loud-on-boot guarantee via `assertCryptoKeyOrExit()`.
-
-/**
- * Env vars that intentionally bypass the `getConfig()` snapshot in
- * the engine: their consumer runs BEFORE the config loader. Today
- * that's only MASTER_KEY (consumed by `assertCryptoKeyOrExit()`
- * below). Hot-rotating MASTER_KEY via `sk settings set` would render
- * every previously-encrypted credential unreadable on next boot, so
- * the leaf is intentionally NOT in subkit.config.json.
- *
- * `apps/engine/src/http/routes/diagnostics/setup.ts:buildCryptoSection`
- * imports this list to document the exception in its surface; adding
- * to this list is a deliberate, reviewable change (every caller
- * grep's the symbol).
- */
 export const BOOTSTRAP_ONLY_ENV_KEYS = ["MASTER_KEY"] as const;
 
-// Type-level fence: tsc fails if the tuple's shape changes without
-// updating the buildCryptoSection consumer (which renders one row
-// per entry in the diagnostic and currently knows the MASTER_KEY
-// shape). Catches a future addition at typecheck time, not at
-// first-request runtime. The runtime assert in setup.ts is
-// belt-and-braces.
 type _AssertSingleBootstrapEnv = typeof BOOTSTRAP_ONLY_ENV_KEYS extends readonly ["MASTER_KEY"]
   ? true
   : never;
 const _bootstrapEnvShapeCheck: _AssertSingleBootstrapEnv = true;
 void _bootstrapEnvShapeCheck;
 
-/**
- * Force a key parse + cache. Call once during server startup so a bad
- * MASTER_KEY surfaces in the boot log, before any request can reach an
- * encrypt/decrypt path. Reads `process.env.MASTER_KEY` because that
- * env var is the only entry in `BOOTSTRAP_ONLY_ENV_KEYS` — the config
- * loader has not run yet.
- */
 export function assertCryptoKeyOrExit(): void {
   getKey();
 }

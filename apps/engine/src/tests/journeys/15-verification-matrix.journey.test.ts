@@ -1,11 +1,3 @@
-// User story: As a release manager, I want to run the 17-step
-// verification matrix against a single running engine and know whether
-// the release is green.
-// Acceptance criteria: each `test(...)` title is a verification step
-// from docs/operators/observability.md, scoped down to what the automated
-// harness can observe through engine-only contracts.
-// Spec refs: docs/operators/observability.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -72,8 +64,6 @@ describe("journey: verification matrix (docs/33)", () => {
       checks: { lifecycle: "pass", database: "pass" },
     });
 
-    // `/metrics` requires an authenticated principal. The seeded admin
-    // key is accepted here; production scraping uses metrics:read only.
     const metricsRes = await fetch(`${ctx.baseUrl}/metrics`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
     });
@@ -207,16 +197,11 @@ describe("journey: verification matrix (docs/33)", () => {
   test.todo("07. Install chat workspaces (Slack/Teams/Google)", () => {});
 
   test("08. Conversational authoring inside chat — module reachable", async () => {
-    // Full end-to-end coverage of this matrix row lives in
-    // apps/engine/src/tests/journeys/02-ai-chat-authoring.journey.test.ts.
-    // The rollup here only asserts that the chat dispatcher module is
-    // reachable so a missing wiring surfaces in the matrix as a failure.
     const mod = await import("../../chat/dispatcher.ts");
     expect(typeof mod.handleChatEvent).toBe("function");
   });
 
   test("09. Notification rules — create via REST", async () => {
-    // Notifications REST is read/write; smoke it via the list endpoint.
     const res = await journeyFetch(ctx, "/v1/notifications");
     expect([200, 404]).toContain(res.status);
   });
@@ -254,9 +239,6 @@ describe("journey: verification matrix (docs/33)", () => {
   }, 15_000);
 
   test("12. Self-healing on upstream drift — loop + classifier reachable", async () => {
-    // Full drift-to-auto-apply coverage is exercised in journey 06. This
-    // rollup checks that the repair loop, classifier, and fixture runner
-    // are still wired into the engine's module graph.
     const loop = await import("../../self-healing/service.ts");
     const classifier = await import("../../self-healing/classifier.ts");
     const fixture = await import("../../self-healing/fixture-runner.ts");
@@ -297,13 +279,10 @@ describe("journey: verification matrix (docs/33)", () => {
       ).status;
     expect(await probe(oldKey)).toBe(200);
     expect(await probe(newKey)).toBe(200);
-    // Touch unused import.
     void apiKeys;
   });
 
   test("14. Abort propagation — cancel a queued execution", async () => {
-    // Cheap variant: cancel via the execution cancel endpoint and
-    // make sure the aborted state is reachable.
     const asyncRun = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       body: JSON.stringify({
@@ -324,8 +303,6 @@ describe("journey: verification matrix (docs/33)", () => {
   test.todo("15. Crash and recover mid-execution (requires docker kill)", () => {});
 
   test("16. Promote dev -> prod — `x-subkit-environment: prod` tags the run", async () => {
-    // Seed a sibling prod connector using the same slug so the engine's
-    // env-aware connector resolver has a peer to pick.
     const prodRes = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -353,8 +330,6 @@ describe("journey: verification matrix (docs/33)", () => {
   });
 
   test("17. Extract — the endpoint exists and responds to GET liveness", async () => {
-    // POST /v1/ai/extract is authenticated; GET returns 405/404 — we
-    // just verify the route is registered by checking auth behavior.
     const res = await fetch(`${ctx.baseUrl}/v1/ai/extract`, { method: "POST" });
     expect([400, 401, 405, 415]).toContain(res.status);
   });

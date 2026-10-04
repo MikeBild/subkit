@@ -1,10 +1,3 @@
-// Elicitation-resolution endpoints. Both routes resolve a pending
-// `ask_user_*` elicitation; the second route resumes by tool_call_id
-// (alias for clients that tracked the originating tool call).
-//
-//   POST /v1/conversations/{id}/elicitations/{elicitation_id}/respond
-//   POST /v1/conversations/{id}/tool-calls/{tool_call_id}/respond
-
 import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -50,11 +43,6 @@ const respondElicitationRoute = createRoute({
   },
 });
 
-// Resume by tool_call_id alias. Looks up the active elicitation
-// linked to the given tool_call and resolves it with the same body
-// shape as the canonical `/elicitations/:elicitation_id/respond`
-// route. Lets clients that tracked the originating tool_call_id
-// resume without a separate elicitation_id round-trip.
 const respondByToolCallRoute = createRoute({
   method: "post",
   path: "/v1/conversations/{id}/tool-calls/{tool_call_id}/respond",
@@ -86,11 +74,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // Register synchronously on request-accept so
-    // a cancel arriving in the first ~40ms always finds a controller.
-    // SSE branch transfers ownership to its inner `finally` (Hono's
-    // `streamSSE` does not await its callback); non-SSE branch keeps
-    // the outer `finally`. Same pattern as `messages.ts`.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     let ownershipTransferred = false;
     try {
@@ -99,14 +82,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         elicitation_id,
         actor_id: principal.id,
-        // Thread the authenticated principal so the resumed turn can run
-        // a workflow under RBAC. Without it `run_workflow` hits
-        // `principal_required` and the loop guard blocks after 3 retries
-        // (root cause of the `run_workflow.no_principal` warn floods).
         principal,
-        // A person answered, in an authenticated session. This is the grant
-        // channel for every approval the chat gate raises — 244 of these in
-        // production, against 0 fulfilled in-band MCP elicitations.
         answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
@@ -114,17 +90,9 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
 
-      // SSE branch — when the CLI sends `Accept: text/event-stream`,
-      // stream every TurnEvent the resumed runLoop produces in real
-      // time. Pre-fix this route was JSON-only, so an elicit response
-      // that triggered a 1–2 minute LLM turn left the operator staring
-      // at a `summarising N tool results · 1m43s` spinner with no
-      // incremental progress until the buffered JSON came back.
-      // Mirrors the SSE branch on `/messages`.
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            // A new turn starts: whatever killed the previous one is history.
             await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const outcome = await svc.respondElicitation(
               {
@@ -147,8 +115,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               return;
             }
             if (error instanceof svc.ElicitationValidationError) {
-              // Row stays pending — the client re-renders the prompt with
-              // the field errors and re-submits against the same id.
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_validation_failed",
@@ -161,8 +127,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            // The resumed turn failed like any other: typed, and kept on the
-            // conversation so a reload still says why.
             const failure = svc.describeTurnFailure(error);
             await svc
               .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
@@ -171,9 +135,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          // streamSSE returns a plain Response; the openapi handler wants the
-          // typed JSON shape — the SSE branch is runtime-correct (see the
-          // createRouteSpec branch in collection.ts).
         }) as Response & RouteConfigToTypedResponse<typeof respondElicitationRoute>;
         ownershipTransferred = true;
         return response;
@@ -194,9 +155,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           });
         }
         if (error instanceof svc.ElicitationValidationError) {
-          // Row stays pending — 422 carries the per-field errors plus the
-          // original prompt (with error pins merged) so the client
-          // re-renders the same dialog and re-submits.
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
             details: {
               elicitation_id: error.elicitation_id,
@@ -215,10 +173,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // Resume-by-tool-call alias. Resolves tool_call_id → elicitation_id
-  // by reading the active row, then delegates to the same service
-  // handler the canonical route uses, keeping the
-  // elicitation-id-based wire shape as the canonical resume key.
   app.openapi(respondByToolCallRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -231,7 +185,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    // Same sync-register pattern as the canonical route above.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     let ownershipTransferred = false;
     try {
@@ -240,8 +193,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         elicitation_id: elicit.id,
         actor_id: principal.id,
-        // Same authenticated person, reaching the same dialog by the tool_call
-        // id they tracked instead of the elicitation id.
         answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
@@ -252,7 +203,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            // A new turn starts: whatever killed the previous one is history.
             await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const outcome = await svc.respondElicitation(
               {
@@ -275,8 +225,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               return;
             }
             if (error instanceof svc.ElicitationValidationError) {
-              // Row stays pending — the client re-renders the prompt with
-              // the field errors and re-submits against the same id.
               await stream.writeSSE(
                 errorFrame({
                   code: "elicitation_validation_failed",
@@ -289,8 +237,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
               );
               return;
             }
-            // The resumed turn failed like any other: typed, and kept on the
-            // conversation so a reload still says why.
             const failure = svc.describeTurnFailure(error);
             await svc
               .recordConversationTurnFailure(db, principal.tenant_id, id, failure)
@@ -299,9 +245,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          // streamSSE returns a plain Response; the openapi handler wants the
-          // typed JSON shape — the SSE branch is runtime-correct (see the
-          // createRouteSpec branch in collection.ts).
         }) as Response & RouteConfigToTypedResponse<typeof respondByToolCallRoute>;
         ownershipTransferred = true;
         return response;
@@ -322,9 +265,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           });
         }
         if (error instanceof svc.ElicitationValidationError) {
-          // Row stays pending — 422 carries the per-field errors plus the
-          // original prompt (with error pins merged) so the client
-          // re-renders the same dialog and re-submits.
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
             details: {
               elicitation_id: error.elicitation_id,

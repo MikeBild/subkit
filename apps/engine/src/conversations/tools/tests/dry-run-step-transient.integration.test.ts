@@ -1,16 +1,3 @@
-// Integration test: dry_run_step transient-retry absorbs flaky upstreams.
-//
-// Codifies the bounded-retry contract in dry_run_step.ts:
-//   A step that fails twice with a transient code (http_5xx) and succeeds on
-//   the third attempt returns ok:true from dryRunStepTool.execute().
-//
-// WHY this matters: without the retry, two transient failures from the same
-// step would produce the same error_code twice in one turn, and the sdk-wrap
-// loop would eventually trip `tool.error_code_repeat_block` — stalling the
-// entire authoring session on an upstream blip unrelated to the draft.
-//
-// Requires Postgres — set REQUIRES_PG=0 to skip.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { EngineClient } from "../../../engine-client/index.ts";
@@ -44,7 +31,6 @@ afterAll(async () => {
   await convCtx?.cleanup();
 }, 30_000);
 
-/** Build a ToolContext whose draft contains a single request step. */
 function makeCtxWithStep(stepUrl: string): ToolContext {
   const draft = withWorkflowDraft(createEmptyDraftDocument("workflow_authoring"), {
     name: "transient-retry-test",
@@ -54,8 +40,6 @@ function makeCtxWithStep(stepUrl: string): ToolContext {
         kind: "request",
         method: "GET",
         url: stepUrl,
-        // max_retries:0 — driver makes exactly one attempt per runSingleStep call;
-        // dry_run_step's bounded retry adds the conversation-level safety net.
         max_retries: 0,
       },
     ],
@@ -89,7 +73,6 @@ describe.skipIf(skip)("dry_run_step — transient-retry absorbs flaky upstreams"
     requestCount = 0;
     mockHandler = (_, res) => {
       if (requestCount < 3) {
-        // 503 → driver code http_5xx → isTransientRunResult=true → dry_run_step retries
         jsonResponse(res, 503, { error: "Service temporarily unavailable" });
         return;
       }
@@ -99,9 +82,7 @@ describe.skipIf(skip)("dry_run_step — transient-retry absorbs flaky upstreams"
     const ctx = makeCtxWithStep(`${mock.baseUrl}/data`);
     const result = await dryRunStepTool.execute(ctx, { step_id: "fetch" });
 
-    // The tool must succeed because the transient-retry loop cleared the blip.
     expect(result.ok).toBe(true);
-    // Server was hit 3 times: initial attempt + 2 dry_run_step retries.
     expect(requestCount).toBe(3);
   }, 60_000);
 
@@ -114,7 +95,6 @@ describe.skipIf(skip)("dry_run_step — transient-retry absorbs flaky upstreams"
     const ctx = makeCtxWithStep(`${mock.baseUrl}/data`);
     const result = await dryRunStepTool.execute(ctx, { step_id: "fetch" });
 
-    // A deterministic 4xx must not retry — exactly one request made.
     expect(result.ok).toBe(false);
     expect(requestCount).toBe(1);
   }, 10_000);

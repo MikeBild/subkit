@@ -1,10 +1,3 @@
-// Integration-ish guard: the transform STEP (not just the pure detector)
-// attaches transform_empty_extraction / transform_dropped_fields to its
-// StepResult.warnings after running the real QuickJS body. This is the layer
-// the unit detector test (transform-warnings.test.ts) does not cover — it
-// proves the wiring from a live transform execution to the warning that the
-// dry-run repair gate consumes.
-
 import { describe, expect, test } from "bun:test";
 import { RunLlmBudget } from "../../../llm/accounting/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
@@ -48,7 +41,6 @@ describe("runTransformStep · silent-data-loss warnings", () => {
         id: "to_markdown",
         kind: "transform",
         language: "javascript",
-        // Mimics a renderer that matches nothing and returns empty.
         expression: "return [];",
       },
       scope,

@@ -1,8 +1,3 @@
-// End to end: `engine --token-exchange --key-file <path>` on the host mints a
-// token the running engine accepts. Spawns the real entrypoint against the
-// suite's database (DATABASE_URL), reads the token from stdout, then calls a
-// protected route with it — and proves the key never has to leave the file.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,8 +26,6 @@ async function runCli(
     env: {
       ...process.env,
       DATABASE_URL: ctx.testDb.url,
-      // An isolated config file: a subkit.config.json in the cwd would win
-      // over DATABASE_URL and point the command at another database.
       SUBKIT_CONFIG: join(keyDir, "subkit.config.json"),
     },
     stdout: "pipe",

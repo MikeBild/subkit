@@ -130,7 +130,6 @@ describe("<ThemeProvider>", () => {
       expect(apiRef.current).not.toBeNull();
       expect(tokensRef.current).toEqual(PALETTES.dark);
       apiRef.current!.setTheme("highContrast");
-      // setTheme triggers a state change; wait for the next frame.
       for (let i = 0; i < 20 && tokensRef.current !== PALETTES.highContrast; i++) {
         await flush();
       }

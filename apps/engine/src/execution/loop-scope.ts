@@ -1,13 +1,3 @@
-// Loop-iteration scope construction — extracted from engine.ts so the
-// binding contract has a single owner with focused tests. The loop-item
-// bindings are `$item` + `$loop_index`.
-//
-// `resolveForEachCollection` is the shared collection-resolver for the
-// `for_each` per-step inline iteration path. It reuses the runJs path
-// and the typed `did_you_mean` diagnostics from `steps/loop.ts` so
-// the two paths (`loop` kind + `for_each` inline) share a
-// single implementation.
-
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../workflows/levenshtein.ts";
 import type { StepResult } from "./types.ts";
@@ -24,28 +14,11 @@ export function buildLoopChildScope(
   };
 }
 
-/**
- * Resolve a `for_each` JS selector string into an array of items.
- *
- * Returns `{ kind: "collection", items: unknown[] }` on success, or
- * `{ kind: "failure", result: StepResult }` when the selector throws,
- * resolves to a non-array, or would exceed the iteration cap.
- *
- * Mirrors the `data_selector` resolution in `steps/loop.ts` including
- * the `did_you_mean` diagnostics — shared rather than duplicated.
- */
 export async function resolveForEachCollection(
   forEachSelector: string,
   stepId: string,
   scope: Record<string, unknown>,
   start: number,
-  // Deterministic clock/id context for `sk.now()`/`sk.uuid()` inside the
-  // selector — mirrors how `steps/transform.ts` wires the execution's
-  // fixed `started_at` and a per-scope seed. Required-with-explicit-null
-  // (same contract as `RunJsOptions.clock`): a real execution passes the
-  // clock; a pure lint/preview caller passes `null` to opt into the
-  // constant-epoch case. Making it required keeps a forgotten wiring a
-  // COMPILE error instead of a silent epoch read at runtime.
   clock: { now_ms: number; seed: string } | null,
 ): Promise<
   | { kind: "collection"; items: unknown[] }
@@ -64,7 +37,6 @@ export async function resolveForEachCollection(
     collection = (out as { output: unknown }).output;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // did_you_mean: same error-message pattern matching as loop.ts data_selector path.
     const propMatch =
       msg.match(/cannot read propert(?:y|ies) '([\w_-]+)' of undefined/i) ??
       msg.match(/cannot read propert(?:y|ies) of undefined\s+\(reading '([\w_-]+)'\)/i);

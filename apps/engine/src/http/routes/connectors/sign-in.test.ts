@@ -1,20 +1,3 @@
-// A connector states how a person signs it in, and both sign-in routes say
-// why one cannot start.
-//
-// What the tests pin:
-//   1. `sign_in` on the connector representation: a web service with an
-//      account starts at `/oauth/start`, an MCP server with an account at
-//      `/mcp/authorize`, and a key or a machine-to-machine OAuth has none.
-//   2. A web service made by hand with its OAuth client details is signed in
-//      through the route its representation names, and its client secret
-//      never comes back.
-//   3. A sign-in service whose discovery fails is a named 502, not a 500.
-//   4. The Cockpit is told the redirect address an OAuth app must allow.
-//   5. `sign_in` is exactly what the start routes accept: the route it names
-//      takes the connector, the other route refuses it by name, and a
-//      connector with no `sign_in` — a Cognito password grant included — is
-//      refused by both.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import {
@@ -41,8 +24,6 @@ beforeAll(async () => {
   publicBaseUrlBefore = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
   mock = await startMockOAuthServer();
-  // The MCP start without a remote: persist what the SDK driver persists and
-  // ask for the browser step.
   __setSdkAuthForTests((async (provider: OAuthClientProvider) => {
     await provider.saveCodeVerifier("verifier");
     await provider.redirectToAuthorization(new URL("https://as.example.test/authorize"));
@@ -93,7 +74,6 @@ describe("the connector states its sign-in", () => {
       auth_type: "oauth2",
     });
     expect(c.sign_in).toEqual({ kind: "mcp", start: `/v1/connectors/${c.id}/mcp/authorize` });
-    // The list and the single read say the same.
     const one = (await (
       await fetch(`${server.baseUrl}/v1/connectors/${c.id}`, { headers: auth() })
     ).json()) as Record<string, unknown>;
@@ -210,7 +190,6 @@ describe("the Cockpit is told the redirect address", () => {
 });
 
 describe("sign_in is exactly what the start routes accept", () => {
-  // A refusal by the shared predicate, as either route words it.
   const REFUSALS = new Set(["no_browser_sign_in", "sign_in_route_mismatch"]);
 
   async function start(id: string, route: "oauth/start" | "mcp/authorize") {
@@ -297,7 +276,6 @@ describe("sign_in is exactly what the start routes accept", () => {
     const [named, other] = expected === "oauth" ? [oauth, mcpStart] : [mcpStart, oauth];
     expect(refused(named)).toBe(false);
     expect(other.code).toBe("sign_in_route_mismatch");
-    // The route the connector names begins the flow when it is configured.
     if (label.includes("authorization-code") || expected === "mcp") {
       expect(named.status).toBe(200);
     }

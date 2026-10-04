@@ -1,14 +1,3 @@
-// Workflow audit recorders.
-//
-// Paths:
-//   - commitWorkflowAtomic / save_workflow_draft → recordWorkflowCreated /
-//     recordWorkflowUpdated (depending on whether the conversation had
-//     a target_workflow_id pinned)
-//   - save_workflow_draft with force_commit override → recordWorkflowCommitted
-//     with override=true so the commit_override row is the canonical
-//     "force_commit happened" trail
-//   - delete_workflow → recordWorkflowDeleted
-
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
 import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
@@ -20,16 +9,8 @@ export interface RecordWorkflowCreatedParams extends RecorderBase {
   reason: string;
   source: "harness_auto_persist" | "tool_call" | "service";
   commit_intent_kind?: string;
-  /** Set when this version was committed over a failed dry-run via
-   *  force_commit (only the `runtime_data` class is force-eligible). Records
-   *  that the commit cleared a failed preview + which class, so the audit
-   *  trail answers "was this committed over a failed dry-run?" without
-   *  correlating logs by timestamp. */
   forced_over_runtime_data?: boolean;
   preview_failure_class?: string;
-  /** True when this commit skipped the prior-approval gate because the session
-   *  ran in `permission_mode=auto`. Without it the row reads like any approved
-   *  commit and "did anyone approve this?" is unanswerable from the audit log. */
   bypassed_prior_approval?: boolean;
 }
 
@@ -73,17 +54,11 @@ export interface RecordWorkflowUpdatedParams extends RecorderBase {
   workflow_version_id?: string | null;
   reason: string;
   source: "harness_auto_persist" | "tool_call" | "service";
-  /** "save_via_tool" | "auto_persist" | "preview_override" — surfaces in metadata. */
   kind?: string;
   tool?: string;
   commit_intent_kind?: string;
-  /** See RecordWorkflowCreatedParams — set when this version updated over a
-   *  force_commit-cleared runtime/data dry-run failure. */
   forced_over_runtime_data?: boolean;
   preview_failure_class?: string;
-  /** True when this commit skipped the prior-approval gate because the session
-   *  ran in `permission_mode=auto`. Without it the row reads like any approved
-   *  commit and "did anyone approve this?" is unanswerable from the audit log. */
   bypassed_prior_approval?: boolean;
 }
 
@@ -152,27 +127,15 @@ export async function recordWorkflowDeleted(
   );
 }
 
-/**
- * Force-commit override record. Only emitted when `save_workflow_draft` was
- * called with `force_commit: true` AND the most recent dry-run preview
- * was failing/missing. Mirrors the connector `saved_override` row.
- */
 export interface RecordWorkflowCommittedParams extends RecorderBase {
   workflow_id: string;
   workflow_version_id?: string | null;
   version?: number | null;
   reason: string;
   source: "harness_auto_persist" | "tool_call";
-  /** Captured preview summary so operators can see why the override fired. */
   latest_preview_summary?: unknown;
   latest_preview_warnings?: unknown[];
   tool?: string;
-  /**
-   * Override the metadata `kind` tag. Defaults to "force_save_override"
-   * (the canonical marker). The tool path passes
-   * "preview_override" so the audit trail mirrors the existing
-   * tooling vocabulary.
-   */
   kind?: string;
 }
 
@@ -207,18 +170,9 @@ export async function recordWorkflowCommitted(
   );
 }
 
-/**
- * Defence-in-depth row for Root A: a workflow whose name+description
- * carries cadence phrasing was committed with `trigger.kind = "request"`.
- * The row is `result: "success"` because the commit itself was valid
- * (the check constraint on `audit_log.result` only permits
- * success / denied / error); the warning semantics live in
- * `metadata.kind = "warning"` and the matched phrase set.
- */
 export interface RecordWorkflowScheduleNotBoundParams extends RecorderBase {
   workflow_id: string;
   slug: string;
-  /** Phrases that matched the temporal regex — for operator triage. */
   matched_phrases: string[];
 }
 

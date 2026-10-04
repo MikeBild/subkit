@@ -1,29 +1,3 @@
-// Placeholder syntax recognised inside any string value that the engine hands
-// to a step driver or to a conversation-tool output envelope.
-//
-// Seven token kinds:
-//
-//     ${cred.<slug>.<field>}                     — credential field
-//     ${connector.<slug>.base_url}               — connector base URL
-//     ${connector.<slug>.config.<pointer>}       — arbitrary connector config
-//     ${input.<pointer>}                         — workflow / tool input
-//     ${scope.<step_id>.<pointer>}               — previous step's data envelope
-//     ${item.<pointer>}                          — current loop iteration item
-//     ${state.<into_var>}                        — persistent workflow state
-//     ${state.<into_var>.<pointer>}              — nested path into a JSON value
-//
-// Escapes:
-//
-//     $${...}                                    — literal ${...} (NOT substituted)
-//
-// Grammar is deliberately conservative: identifiers are `[A-Za-z0-9_-]+`,
-// segments are dot-separated, and no nested braces are allowed. The parser is a
-// single-pass state machine; it never invokes `eval`, `Function`, or a regex on
-// user input (regex is used only for identifier shape after extraction).
-//
-// The parser is pure: it does not read DB, does not resolve anything, and does
-// not log token values (there are none to log — it only sees names/paths).
-
 export type PlaceholderKind =
   | "cred"
   | "connector_url"
@@ -35,18 +9,11 @@ export type PlaceholderKind =
 
 export interface Placeholder {
   kind: PlaceholderKind;
-  /** Connector or system slug, when applicable. */
   slug?: string;
-  /** Credential field name, only for `cred`. */
   field?: string;
-  /** Step ID, only for `scope`. */
   stepId?: string;
-  /** Dotted path after the kind-specific prefix. Always non-empty except for
-   * `connector_url`, where the path is always `["base_url"]`. */
   path: string[];
-  /** Character span inside the source string. */
   span: { start: number; end: number };
-  /** The full `${...}` substring verbatim, useful for audit logging. */
   raw: string;
 }
 
@@ -82,36 +49,28 @@ export function parsePlaceholders(text: string): ParseResult {
   while (i < n) {
     const ch = text.charCodeAt(i);
 
-    // `$$` followed by `{` → escape; consume `$$` and let the `${...}` appear
-    // as a literal in output. We do NOT emit a token for escaped forms.
-    if (ch === 0x24 /* $ */ && i + 1 < n && text.charCodeAt(i + 1) === 0x24) {
-      if (i + 2 < n && text.charCodeAt(i + 2) === 0x7b /* { */) {
-        // skip the `$$`; leave `${...}` as literal — parser intentionally
-        // ignores the inside of an escaped placeholder.
+    if (ch === 0x24 && i + 1 < n && text.charCodeAt(i + 1) === 0x24) {
+      if (i + 2 < n && text.charCodeAt(i + 2) === 0x7b) {
         i += 2;
-        // now scan past the `{...}` so we don't accidentally treat it as a
-        // placeholder on the next iteration.
         i = skipBalancedBraces(text, i);
         continue;
       }
-      // lone `$$` not followed by `{` — treat as literal chars.
       i += 2;
       continue;
     }
 
-    if (ch === 0x24 /* $ */ && i + 1 < n && text.charCodeAt(i + 1) === 0x7b /* { */) {
+    if (ch === 0x24 && i + 1 < n && text.charCodeAt(i + 1) === 0x7b) {
       const start = i;
       i += 2;
       const bodyStart = i;
-      // Find the matching `}`. No nested braces allowed.
       let bodyEnd = -1;
       while (i < n) {
         const c = text.charCodeAt(i);
-        if (c === 0x7d /* } */) {
+        if (c === 0x7d) {
           bodyEnd = i;
           break;
         }
-        if (c === 0x7b /* { */) {
+        if (c === 0x7b) {
           errors.push({
             code: "unclosed_placeholder",
             message: "nested '{' is not allowed inside a placeholder",
@@ -152,9 +111,7 @@ export function hasPlaceholders(text: string): boolean {
   const n = text.length;
   for (let i = 0; i < n - 1; i++) {
     if (text.charCodeAt(i) === 0x24 && text.charCodeAt(i + 1) === 0x7b) {
-      // `${`
       if (i > 0 && text.charCodeAt(i - 1) === 0x24) {
-        // escaped `$${` — doesn't count
         continue;
       }
       return true;
@@ -163,13 +120,9 @@ export function hasPlaceholders(text: string): boolean {
   return false;
 }
 
-/** Strip all placeholders from the string; useful when logging a
- *  config surface without revealing even the token names (e.g. in free-form
- *  audit metadata that must not hint at which credentials exist). */
 export function stripPlaceholders(text: string): string {
   const { tokens } = parsePlaceholders(text);
   if (tokens.length === 0) return text;
-  // Sort by start desc so splicing doesn't shift indexes.
   const sorted = [...tokens].sort((a, b) => b.span.start - a.span.start);
   let out = text;
   for (const t of sorted) {
@@ -178,17 +131,12 @@ export function stripPlaceholders(text: string): string {
   return out;
 }
 
-/** Return the raw token names (e.g. `${cred.stripe.secret_key}`) without values.
- *  Safe to include in audit metadata and LLM-visible spans. */
 export function collectTokenNames(text: string): string[] {
   const { tokens } = parsePlaceholders(text);
   return tokens.map((t) => t.raw);
 }
 
-// ---------------------------------------------------------------------------
-
 function skipBalancedBraces(text: string, fromIndex: number): number {
-  // fromIndex points at '{'. Returns index after matching '}'.
   let depth = 0;
   let i = fromIndex;
   while (i < text.length) {
@@ -217,7 +165,6 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
 
   switch (head) {
     case "cred": {
-      // ${cred.<slug>.<field>}
       if (parts.length !== 3) {
         return {
           ok: false,
@@ -242,7 +189,6 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       };
     }
     case "connector": {
-      // ${connector.<slug>.base_url} | ${connector.<slug>.config.<pointer…>}
       if (parts.length < 3) {
         return {
           ok: false,
@@ -338,7 +284,6 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       return { ok: true, token: { kind: "input", path: pathParts, span, raw } };
     }
     case "scope": {
-      // ${scope.<step_id>.<path…>}
       if (parts.length < 3) {
         return {
           ok: false,
@@ -368,7 +313,6 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       return { ok: true, token: { kind: "scope", stepId, path: pathParts, span, raw } };
     }
     case "item": {
-      // ${item.<path…>}
       if (parts.length < 2) {
         return {
           ok: false,
@@ -391,7 +335,6 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       return { ok: true, token: { kind: "item", path: pathParts, span, raw } };
     }
     case "state": {
-      // ${state.<into_var>} | ${state.<into_var>.<pointer…>}
       if (parts.length < 2) {
         return {
           ok: false,

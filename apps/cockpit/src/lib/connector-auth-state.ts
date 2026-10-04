@@ -1,12 +1,5 @@
 import type { TranslationKey } from "./i18n";
 
-/**
- * A connection states where it stands as a word (§11). The list carries the
- * reconciled health verdict and the credential-rejection flag, which is enough
- * to say "connected" or "expired" but not enough to prove that credentials
- * were ever stored — that stays "not proven yet" until a probe resolves it,
- * rather than being guessed.
- */
 export type ConnectorAuthState =
   | "connected"
   | "expired"
@@ -22,34 +15,16 @@ export interface ConnectorAuthInput {
   auth_failed_at?: string | null;
 }
 
-/**
- * What the connector's own credential read says (`GET /v1/connectors/{id}/credential`):
- * `null` once loaded means nothing is stored; `undefined` means not read (the
- * list has no such column). A credential that sends a Kontoverbindung carries
- * that connection's state, so an expired grant reads as an expired sign-in
- * before any request fails.
- */
 export type CredentialEvidence = {
   mode: string;
   connection: { state: "valid" | "expiring" | "expired" | "unreadable" } | null;
 } | null;
 
-/** Probe outcome, used to refine the state once the connection was tested. */
 export interface ProbeOutcome {
   ok: boolean;
   error_code?: string;
 }
 
-/**
- * Auth types whose material lives in the credential table and is returned by
- * the connector's credential read. For these an empty read means nothing is
- * stored — whatever `health_state` says, because a new connector's health
- * defaults to "ok" and deleting its credential resets nothing.
- *
- * Not here: `none`; `oauth2_client`, whose rows the credential read leaves out
- * on purpose (client identity, not applicable auth); and a postgres connector,
- * whose login is its DSN.
- */
 const STORED_AUTH_TYPES = new Set([
   "header",
   "query",
@@ -88,9 +63,7 @@ export function connectorAuthState(
   const grant = credential?.connection?.state;
   if (grant === "expired" || grant === "unreadable") return "expired";
   if (connector.auth_type === "none") return "not_required";
-  // Read and empty for a kind that is stored there: nothing to sign in with.
   if (credential === null && credentialIsStored(connector)) return "credentials_missing";
-  // A credential that was accepted at least once and never rejected since.
   if (connector.health_state === "ok" && !connector.auth_failed_at) return "connected";
   return "unproven";
 }
@@ -99,7 +72,6 @@ export function authStateLabel(state: ConnectorAuthState): TranslationKey {
   return LABELS[state];
 }
 
-/** Only an expired credential names a renewal path; the rest need no red. */
 export function needsRenewal(state: ConnectorAuthState): boolean {
   return state === "expired" || state === "credentials_missing";
 }
@@ -112,11 +84,6 @@ const HEALTH_LABELS: Record<string, TranslationKey> = {
   needs_attention: "connectors.healthState.needsAttention",
 };
 
-/**
- * The connector rollup has its own vocabulary; running it through the run-status
- * labels rendered every one of them as "unknown", which the state vocabulary
- * forbids. An unmapped value returns null so the caller omits the line.
- */
 export function connectorHealthLabel(healthState: string): TranslationKey | null {
   return HEALTH_LABELS[healthState] ?? null;
 }

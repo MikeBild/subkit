@@ -1,23 +1,3 @@
-// User story: As a platform operator, I want to issue a short-lived,
-// workflow-scoped portal token for a specific end-user so they can
-// drive exactly one workflow on their own behalf.
-// Acceptance criteria:
-//   - AC1: An admin can issue a portal token bound to one workflow and
-//          receive a plaintext token.
-//   - AC2: The token lands in `/v1/identity/portal-tokens` with the
-//          correct `allowed_workflows`.
-//   - AC3: Revocation flips the row and removes it from the list.
-//   - AC4: Using the plaintext portal token the end-user can POST to
-//          the scoped workflow's `/run` endpoint and get a 2xx.
-//   - AC5: The same portal token is 403 denied when used against a
-//          workflow outside its allowlist, and the deny is audited.
-//   - AC6: An expired portal token (expires_at in the past) is 401.
-//   - AC7: Over MCP, `tools/call` enforces the same allowlist: a
-//          portal-token bearer calling `wf.<slug>` for a workflow
-//          outside its scope errors with `workflow_not_in_allowlist`
-//          and an audit row lands with the same reason.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/admins/rbac-and-roles.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -50,8 +30,6 @@ beforeAll(async () => {
     ],
   });
   workflowId = wf.id;
-  // A second workflow with no relation to the portal token — used by
-  // AC5 to prove the allowlist is enforced.
   const other = await seedWorkflow(ctx, {
     slug: "not-allowed",
     name: "Not Allowed",
@@ -111,15 +89,9 @@ describe("journey: portal token end-user", () => {
       items: Array<{ id: string; revoked_at: string | null }>;
     };
     const row = body.items.find((r) => r.id === tokenId);
-    // The list endpoint surfaces the revoked row with `revoked_at` set.
     expect(row?.revoked_at).not.toBeNull();
   });
 
-  // --- AC4-AC6: portal-token auth provider is live -------------------
-  //
-  // Each of these issues a *fresh* portal token so the revoked row
-  // from AC3 doesn't poison the test. The plaintext is held inside
-  // the closure and dropped at the end of the block.
   async function issueFreshPortalToken(allowed: string[]): Promise<{
     id: string;
     plaintext: string;
@@ -161,7 +133,6 @@ describe("journey: portal token end-user", () => {
         input: { hello: "world" },
       }),
     });
-    // Sync runs return 200 + the full execution envelope.
     expect(res.status).toBe(200);
     const body = (await res.json()) as { execution_id: string; status: string };
     expect(typeof body.execution_id).toBe("string");
@@ -178,7 +149,6 @@ describe("journey: portal token end-user", () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe("forbidden");
 
-    // Audit row lands durably before the 403 returns.
     const rows = await ctx.db
       .select()
       .from(auditLog)
@@ -197,8 +167,6 @@ describe("journey: portal token end-user", () => {
 
   test("AC6: expired portal token returns 401", async () => {
     const issued = await issueFreshPortalToken([workflowId]);
-    // Force the token into the past. The provider checks `expires_at`
-    // on every resolve and must reject.
     await ctx.db
       .update(portalTokens)
       .set({ expires_at: new Date(TEST_NOW_MS - 1_000) })
@@ -213,11 +181,6 @@ describe("journey: portal token end-user", () => {
   test("AC7: MCP tools/call enforces allowed_workflows", async () => {
     const issued = await issueFreshPortalToken([workflowId]);
 
-    // Connect a real MCP client to the engine's Streamable HTTP surface
-    // using the portal-token as the bearer. The registered providers
-    // will resolve the token and hand the MCP layer a principal with
-    // `allowed_workflows: [workflowId]` — which we then try to violate
-    // by calling the *other* workflow's tool.
     const transport = new StreamableHTTPClientTransport(new URL(ctx.mcpUrl), {
       requestInit: { headers: { authorization: `Bearer ${issued.plaintext}` } },
     });
@@ -240,8 +203,6 @@ describe("journey: portal token end-user", () => {
     const msg = caught instanceof Error ? caught.message : String(caught);
     expect(msg).toContain("workflow_not_in_allowlist");
 
-    // Audit row confirming the deny fired on the MCP path, not the HTTP
-    // path — the reason is the same but the metadata `via` differs.
     const rows = await ctx.db
       .select()
       .from(auditLog)

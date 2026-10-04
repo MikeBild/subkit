@@ -1,16 +1,3 @@
-// Hono middleware that bumps `http_requests_total` and observes
-// `http_request_duration_ms` for every served request. Path is
-// canonicalised by the route's matched template (e.g.
-// `/v1/workflows/:id`) when available so the cardinality does not
-// explode with one entry per real id.
-//
-// Beyond the Prometheus signals, the middleware emits a
-// `request.telemetry` structured log per response (and `request.error`
-// for 5xx). The two records carry the same identity envelope —
-// `tenant_id`, `trace_id`, `request_source` — so an operator can
-// correlate a slow request, an error spike, and an audit row by a
-// single id.
-
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
 import { logger } from "../logging/logger.ts";
@@ -23,12 +10,6 @@ import { emitRequestEvent } from "./analytics.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 function templatePath(c: { req: { routePath?: string; url: string } }): string {
-  // Hono exposes `routePath` on the Context once the matcher resolves.
-  // Fall back to the raw pathname if the matcher missed (404). The
-  // catch-all route is registered as `/*` (and Hono may also expose a bare
-  // `*`), so BOTH sentinels must fall through — otherwise every unmatched
-  // request logs the literal route pattern `/*` instead of the URL the
-  // caller actually hit, hiding the source of 404 traffic.
   const direct = c.req.routePath;
   if (direct && direct !== "*" && direct !== "/*") return direct;
   try {
@@ -38,7 +19,6 @@ function templatePath(c: { req: { routePath?: string; url: string } }): string {
   }
 }
 
-/** Canonical, bounded usage route. Unmatched requests never persist the raw path. */
 function usagePath(c: { req: { routePath?: string } }): string {
   const route = c.req.routePath;
   if (!route || route === "*" || route === "/*") return "unmatched";
@@ -74,10 +54,6 @@ function isInternalUsageRoute(path: string): boolean {
   );
 }
 
-/**
- * Hand the response-body lifetime to a privacy-safe usage event. This records
- * completion vs client cancellation without inspecting any SSE frame content.
- */
 function trackUsageStream(
   body: ReadableStream<Uint8Array>,
   onEnd: (outcome: "completed" | "cancelled" | "errored", bytes: number) => void,
@@ -128,8 +104,6 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
       throw err;
     } finally {
       const path = templatePath(c);
-      // Don't instrument the metrics endpoint itself — it would create
-      // a feedback loop on every scrape.
       if (path !== "/metrics") {
         const duration = Date.now() - started;
         const reg = getMetrics();
@@ -143,13 +117,6 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
           path,
         });
 
-        // Structured event mirroring the metric so operators can search
-        // logs by trace_id / tenant_id / route — the metric label set
-        // is too narrow to filter against in incident triage. Pull the
-        // identity envelope from `service_metadata` when bound;
-        // unauthenticated requests fall back to the raw context fields
-        // so the row still carries trace_id + request_source even
-        // without a tenant.
         const meta = c.get("service_metadata");
         const principal = c.get("principal");
         const tenant_id = meta?.tenant_id ?? principal?.tenant_id ?? null;
@@ -173,9 +140,6 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
             action: "request.telemetry",
             msg: "request served",
           });
-          // Product analytics: reuse this existing per-response point.
-          // emitRequestEvent is a no-op when analytics is disabled — no
-          // parallel hook, no extra middleware, no conditional branch cost.
           emitRequestEvent({
             method,
             path,
@@ -198,10 +162,6 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
           });
         }
 
-        // Product-internal usage: `/mcp` has a richer transport-level writer
-        // (JSON-RPC method + session lifecycle), and chat dispatch has its own
-        // normalized writer. Conversation HTTP routes are classified into the
-        // dedicated conversations surface; the remaining API is HTTP.
         const route = usagePath(c);
         if (route !== "/mcp" && tenant_id) {
           const db = c.get("db");

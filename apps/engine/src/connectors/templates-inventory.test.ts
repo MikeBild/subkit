@@ -1,20 +1,9 @@
-// Connector-template catalog — inventory identity pin + webhook-catalog
-// cross-consistency. `templates.test.ts` validates every entry against
-// ConnectorTemplateSchema and pins the catalog *count*, but nothing pins
-// *which* templates exist or their `version` / `capabilities` — removing
-// a template, bumping its version, or downgrading capabilities passes as
-// long as the Zod shape still holds. This file pins that identity.
-
 import { describe, expect, test } from "bun:test";
 import { EVENT_TYPES } from "../webhooks/events/catalog.ts";
 import { loadBuiltinTemplates, type TemplateCapabilities } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
 
-// Derived from the real apps/engine/src/connectors/templates.json content
-// (58 templates) as of this pin — slug -> { version, capabilities }, sorted
-// by slug for determinism. Update deliberately when a template is added,
-// removed, or its version/capabilities intentionally change.
 const EXPECTED_INVENTORY = {
   airtable: {
     version: 1,
@@ -320,16 +309,6 @@ describe("connector-template catalog — inventory identity pin", () => {
 });
 
 describe("connector-template catalog — webhook-catalog cross-consistency", () => {
-  // `capabilities.webhook_events` documents the THIRD-PARTY VENDOR's own
-  // webhook event names (e.g. GitHub "push", Stripe "charge.created") for
-  // the authoring LLM/UI. `apps/engine/src/webhooks/events/catalog.ts`
-  // (EVENT_TYPES) enumerates subkit's OWN internal outbox events
-  // (execution.succeeded, workflow.updated, ...) emitted for
-  // tenant-configured OUTBOUND webhook subscriptions. These are disjoint
-  // vocabularies by design — a vendor event never becomes a subkit
-  // EVENT_TYPES member — so this cross-check is a collision guard, not an
-  // equivalence check: no template may advertise a vendor event name that
-  // shadows a subkit-internal event name.
   test("templates carry the webhook_events field and it never collides with subkit's internal EVENT_TYPES", () => {
     const withEvents = templates.filter((t) => t.capabilities.webhook_events.length > 0);
     expect(withEvents.length).toBeGreaterThan(0);

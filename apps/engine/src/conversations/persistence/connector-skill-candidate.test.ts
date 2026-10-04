@@ -7,7 +7,6 @@ import {
   extractPagingHints,
 } from "./connector-skill-candidate.ts";
 
-// Descriptions as a real Metabase MCP server lists them.
 const METABASE_TOOLS: RemoteToolDescriptor[] = [
   {
     name: "search",
@@ -107,7 +106,6 @@ describe("buildConnectorCapabilitySignal", () => {
       connector_id: "11111111-1111-4111-8111-111111111111",
     });
     expect(signal.endpoint_key).toBeUndefined();
-    // The first line is what the ambient skill index shows (cut at 120).
     const firstLine = signal.body.split("\n")[0] ?? "";
     expect(firstLine).toStartWith("Start at `metabase://databases`, follow the ids it returns");
     expect(firstLine).toContain("lists are paged");
@@ -183,7 +181,6 @@ describe("buildConnectorCapabilitySignal", () => {
     );
     expect(signal.body.length).toBeLessThanOrEqual(4_000);
     expect(signal.body).toMatch(/- … and \d+ more\n/);
-    // The cap trims the tool list, never the navigation facts.
     expect(signal.body).toContain("`app://thing/0`");
     expect(signal.body).toContain("Paging, as the tool descriptions state it");
     expect(signal.body).toContain("listed 80 tool(s)");

@@ -1,17 +1,3 @@
-// Integration tests: run_workflow principal threading via buildMcpStubCtx.
-//
-// Codifies the fix for the principal_required regression: previously,
-// buildMcpStubCtx omitted ctx.principal, causing run_workflow to refuse
-// with error_code:"principal_required" for ALL mcp calls. Now it threads
-// principal correctly.
-//
-// Cases:
-//   A. Principal WITH workflow:run (admin role) via buildMcpStubCtx → succeeds.
-//   B. Principal WITHOUT workflow:run (empty roles) → permission_denied,
-//      NOT principal_required (principal is present, just lacks the permission).
-//
-// Requires Postgres — set REQUIRES_PG=0 to skip.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -35,7 +21,6 @@ beforeAll(async () => {
   convCtx = await createConversationTestCtx("rw-mcp-rbac");
   mock = await createMockServer((_, res) => jsonResponse(res, 200, { ok: true }));
 
-  // Seed a simple workflow the test can run.
   workflowSlug = "rw-mcp-rbac-wf";
   const [wf] = await convCtx.testDb.db
     .insert(workflows)
@@ -76,7 +61,6 @@ afterAll(async () => {
   await convCtx?.cleanup();
 }, 30_000);
 
-/** Build a seeded conversation so run_workflow can write to it. */
 async function seedConversation(): Promise<string> {
   const [row] = await convCtx.testDb.db
     .insert(conversations)
@@ -98,18 +82,13 @@ describe.skipIf(skip)("run_workflow via buildMcpStubCtx — RBAC threading", () 
       kind: "user",
       id: convCtx.user_id,
       tenant_id: convCtx.tenant_id,
-      // admin role grants all permissions including workflow:run
       roles: ["admin"],
     };
 
-    // Build the MCP stub context — this is the path that had the
-    // principal_required bug before ctx.principal was threaded.
     const stubCtx = buildMcpStubCtx({
       db: convCtx.testDb.db,
       principal: adminPrincipal,
     });
-    // run_workflow resolves the workflow from its own conversation
-    // context; override getDraft/setDraft to avoid FK failures.
     const draftDoc = createEmptyDraftDocument();
     let liveDraft = draftDoc;
     const ctx = {
@@ -126,17 +105,10 @@ describe.skipIf(skip)("run_workflow via buildMcpStubCtx — RBAC threading", () 
       environment: "dev",
     });
 
-    // Must NOT refuse with principal_required — the principal is present.
     const data = result.data as Record<string, unknown>;
     expect(data.error_code).not.toBe("principal_required");
 
-    // Should succeed (or optionally need confirm if the workflow write-gates
-    // are tripped, but NOT principal_required or permission_denied).
-    // The admin role bypasses the RBAC gate.
     if (!result.ok) {
-      // If execution itself failed for an unrelated reason (e.g. mock server
-      // responded but the workflow run failed), that's acceptable — what
-      // we're testing is the RBAC gate, not execution correctness.
       expect(data.error_code).not.toBe("principal_required");
       expect(data.error_code).not.toBe("permission_denied");
     } else {
@@ -146,7 +118,6 @@ describe.skipIf(skip)("run_workflow via buildMcpStubCtx — RBAC threading", () 
 
   test("principal WITHOUT workflow:run (empty roles) → permission_denied, NOT principal_required", async () => {
     const convId = await seedConversation();
-    // Empty roles → no permissions → workflow:run denied.
     const restrictedPrincipal: ResolvedPrincipal = {
       provider: "api_key",
       kind: "user",
@@ -194,8 +165,6 @@ describe.skipIf(skip)("run_workflow via buildMcpStubCtx — RBAC threading", () 
     expect(result.ok).toBe(false);
     const data = result.data as Record<string, unknown>;
 
-    // CRITICAL: must NOT be principal_required — the fix threads principal
-    // so the null-principal guard never fires. Must be permission_denied.
     expect(data.error_code).not.toBe("principal_required");
     expect(data.error_code).toBe("permission_denied");
   }, 30_000);

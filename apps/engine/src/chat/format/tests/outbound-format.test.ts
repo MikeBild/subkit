@@ -1,5 +1,3 @@
-// Unit tests for the outbound CommonMark -> platform-dialect formatter.
-
 import { describe, expect, test } from "bun:test";
 import { formatChatText } from "../outbound-format.ts";
 
@@ -65,7 +63,6 @@ describe("formatChatText — google_chat dialect", () => {
   });
 
   test("digits and decimals in prose are never treated as placeholders", () => {
-    // Regression: an empty/greedy sentinel would eat numbers like 16.9.
     expect(g("Min 16.9 Max 20.9 across 36 items")).toBe("Min 16.9 Max 20.9 across 36 items");
   });
 
@@ -108,13 +105,11 @@ describe("formatChatText — GFM pipe tables", () => {
       "| Quelle | Vom Operator hochgeladen | Vordefiniert im Skill-Katalog |",
     ].join("\n");
     const out = g(table);
-    // Row key becomes a bold head; other columns become labeled bullets.
     expect(out).toContain("*Zweck*");
     expect(out).toContain("* Knowledge Sources: Tenant-spezifisches Referenzmaterial");
     expect(out).toContain("* Skills: Interne Verhaltensspezifikationen");
     expect(out).toContain("*Quelle*");
     expect(out).toContain("* Knowledge Sources: Vom Operator hochgeladen");
-    // No raw table syntax survives to render as literal pipes.
     expect(out).not.toContain("|");
     expect(out).not.toContain("---");
   });
@@ -143,7 +138,6 @@ describe("formatChatText — GFM pipe tables", () => {
 
   test("a pipe inside a fenced code block is NOT treated as a table", () => {
     const src = ["```", "| not | a | table |", "|---|---|---|", "```"].join("\n");
-    // The fence is protected verbatim, so its pipes survive untouched.
     expect(g(src)).toContain("| not | a | table |");
   });
 

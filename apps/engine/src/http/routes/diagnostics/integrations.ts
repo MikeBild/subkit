@@ -1,18 +1,3 @@
-// Connector/workflow health rollup diagnostics endpoint.
-//
-//   GET /v1/diagnostics/integrations
-//
-// The "find out early" surface: which connectors are broken (needs_reauth),
-// pointing at removed/deprecated endpoints (needs_update, with the vendor's
-// announced successor URI and sunset date), or degraded — plus the workflows
-// flagged needs_attention because a dependency went bad. `sk doctor` renders
-// this so an operator learns about a dead integration from a health check,
-// not from an unattended run returning "0 results" (the production failure
-// mode this subsystem exists to kill).
-//
-// Mirrors the layering of `diagnostics/version.ts`: path-scoped RBAC in
-// `diagnostics/index.ts`, an audited read, Zod response components.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -32,15 +17,10 @@ const ConnectorHealthEntry = z
     id: z.string(),
     slug: z.string(),
     environment: z.string(),
-    /** Reconciled verdict across health_state / needs_reauth / circuit_state
-     *  (precedence: needs_reauth > needs_update > degraded > ok) — the ONE
-     *  value displays should branch on. */
     effective_health: z.enum(["ok", "degraded", "needs_update", "needs_reauth"]),
     health_reason: z.string().nullable(),
     health_error_code: z.string().nullable(),
-    /** Vendor-announced removal date (Sunset header), when known. */
     sunset_at: z.string().nullable(),
-    /** Vendor-announced replacement endpoint/docs URI, when known. */
     successor_uri: z.string().nullable(),
     needs_reauth: z.boolean(),
     circuit_state: z.string(),
@@ -59,7 +39,6 @@ const WorkflowHealthEntry = z
 const IntegrationsResponse = z
   .object({
     connectors: z.array(ConnectorHealthEntry),
-    /** Only workflows whose health_state is not "ok" — the attention list. */
     workflows_attention: z.array(WorkflowHealthEntry),
     summary: z.object({
       connectors_total: z.number().int().nonnegative(),

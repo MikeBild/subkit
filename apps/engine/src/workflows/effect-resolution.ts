@@ -1,5 +1,3 @@
-// Server-only preparation. Reading a version must not execute it, decrypt a
-// credential, refresh OAuth, or invoke a connector probe.
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
@@ -60,14 +58,10 @@ const inputSchema = z
     workflow_id: z.string().uuid(),
     workflow_version_id: z.string().uuid(),
     execution_environment: z.enum(["dev", "prod"]),
-    // Computed by the admitting service from its effective runtime options,
-    // never forwarded from an HTTP/MCP caller as an authority claim.
     execution_options_digest: z.string().regex(/^[a-f0-9]{64}$/),
   })
   .strict();
 
-/** A connector that cannot serve one of this workflow's own steps in the
- *  previewed environment. Reported beside the manifest, never inside it. */
 export interface UnavailableConnector {
   step_id: string;
   connector_id: string;
@@ -76,33 +70,11 @@ export interface UnavailableConnector {
   reason: FoundConnectorUnavailability;
 }
 
-/** Targets shown to people omit userinfo, query values and fragments. The
- * exact authored request and full connector configuration remain digest-bound.
- * Credential-bearing URLs are not eligible for a reusable authority. */
 function displayTarget(url: URL): string | null {
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
   return `${url.origin}${url.pathname}`;
 }
 
-/** Use the caller's transaction when issuing an authority. The admitting
- * service must lock the exact version and recheck this result before effects;
- * a read-only review result is not a durable authorization. */
-/**
- * Which refusal a step under a stricter profile actually earned.
- *
- * A content publication has its own review and is unchanged. For a report
- * e-mail the honest answer depends on what the evidence shows, and saying so is
- * the whole point: "no preparation run exists" is fixed by letting one run,
- * "the run reached the step and observed nothing usable" is fixed by looking at
- * that step, and "the run never reached the step" cannot be fixed by running
- * another one — the step sits behind a branch whose condition depends on the
- * writes a preparation holds back. A person told to run a preparation for that
- * third case is being sent in a circle.
- *
- * `null` when the profile already produced a boundary: there is nothing
- * refused, and reporting one made every healthy report step carry a refusal on
- * every single preview.
- */
 function profileRefusal(
   step_id: string,
   isContent: boolean,
@@ -152,18 +124,10 @@ export async function resolveWorkflowEffectManifest(
   const own = await resolveBindings(input, definition, db, options);
   const bindings = own.bindings;
   const unavailable_steps = own.unavailable_steps;
-  // The root's own steps only: a run's admission resolves this workflow's
-  // connectors, not those of a workflow it calls, and a connector listed here
-  // blocks an environment in the run dialog.
   const unavailable_connectors = own.unavailable_connectors;
   const storage_refusals = own.storage_refusals;
   const request_refusals = own.request_refusals;
   const contentShapes = own.contentShapes;
-  // Each workflow this one starts is resolved by the same code, one level
-  // deep. A child never receives the proposal-derived profiles: those were
-  // reviewed for THIS workflow's context, and handing them down would grant a
-  // permission in a place nobody looked at. Passing EMPTY maps rather than
-  // omitting them also stops the child from proposing its own.
   const calls: ResolvedCall[] = [];
   const callShapes: ResolvedCallShape[] = [];
   for (const step of definition.steps) {
@@ -172,17 +136,12 @@ export async function resolveWorkflowEffectManifest(
     if (!resolved) continue;
     calls.push(resolved.call);
     callShapes.push(resolved.shape);
-    // A child step whose connector is unavailable makes the CALLING step
-    // unavailable: that is the step this workflow's reader can act on.
     if (resolved.unavailable_steps.length > 0) unavailable_steps.push(step.id);
     for (const refusal of resolved.storage_refusals)
       storage_refusals.push({ ...refusal, call_path: [step.id] });
     for (const refusal of resolved.request_refusals)
       request_refusals.push({ ...refusal, call_path: [step.id] });
   }
-  // What this workflow's own steps have really written. Looked up once, for
-  // the storage steps that declare a folder, and passed as evidence — the
-  // compiler decides, this only supplies the facts.
   const declaredFolders = bindings.flatMap((binding) =>
     binding.storage ? [{ step_id: binding.step_id, key_prefix: binding.storage.key_prefix }] : [],
   );
@@ -232,11 +191,6 @@ export async function resolveWorkflowEffectManifest(
   };
 }
 
-/** Everything a workflow's own steps resolve to: which connector and
- *  credential each request binds, which boundary profile it earned, and why a
- *  step earned none. Called once for this workflow and once per workflow it
- *  starts, so a child is resolved by exactly the code that resolves a parent.
- */
 async function resolveBindings(
   input: z.infer<typeof inputSchema>,
   definition: WorkflowDef,
@@ -260,19 +214,12 @@ async function resolveBindings(
     options.report_boundaries === undefined ? undefined : { boundaries: options.report_boundaries };
   const bindings: ResolvedEffectBinding[] = [];
   const unavailable_steps: string[] = [];
-  // Which connector keeps a step from running, and why — decided by the same
-  // predicate the run admission refuses with, so the run dialog can say
-  // beforehand what the run would be refused for.
   const unavailable_connectors: UnavailableConnector[] = [];
-  // Why an s3 step compiled no boundary. Reported beside the manifest, never
-  // inside it: this is repair evidence, and the digest must not depend on it.
   const storage_refusals: Array<{
     step_id: string;
     reason: StorageBoundaryRefusal;
     call_path?: string[];
   }> = [];
-  // The same for an HTTP request boundary: why it was refused, beside the
-  // manifest and never inside it.
   const request_refusals: Array<{
     step_id: string;
     reason: RequestBoundaryRefusal;
@@ -315,20 +262,13 @@ async function resolveBindings(
         );
       if (driver === "graphql" && connector?.base_url)
         target = displayTarget(new URL(connector.base_url));
-      // Other drivers remain ineligible until their own target resolution is
-      // shared with this path; guessing an HTTP target for S3/SQL/MCP is unsafe.
-    } catch {
-      // A malformed or unresolved URL is an unbound target, never a probe.
-    }
+    } catch {}
     const compiledStorage =
       driver === "s3" ? compileStorageBoundary(step, storageBaseUrl(connector?.config)) : null;
     const storage = compiledStorage?.boundary ?? null;
     if (compiledStorage?.refusal)
       storage_refusals.push({ step_id: step.id, reason: compiledStorage.refusal });
     if (storage) target = storageTarget(storage);
-    // An authored boundary takes precedence over the derived read profiles, so a
-    // step's target comes from exactly one place. Steps without `boundary` take
-    // bit-for-bit the path they took before — that is what keeps live grants valid.
     const authoredBoundary = driver === "http" && step.boundary !== undefined;
     const readPath =
       driver === "http" && !authoredBoundary ? readPathBoundary(step, connector?.base_url) : null;
@@ -344,19 +284,8 @@ async function resolveBindings(
     if (supportedContent) target = contentShape.target;
     if (reportEvidence === undefined && supportsReportDelivery(step, target))
       reportEvidence = await proposeReportDeliveryBoundaries(input, db);
-    // An author who states the recipient is believed here and held to it at
-    // dispatch, where the real message is decoded and compared byte for byte.
-    // It takes precedence over an observation because it is the more specific
-    // statement: an observation says what one run happened to do, this says
-    // what every run may do. Only for a step the profile actually covers —
-    // elsewhere it would be a field with no meaning that a reviewer still reads.
     const statedDelivery =
       step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
-    // A statement is believed until this very version shows otherwise: a
-    // preparation reached the step with a message the profile refuses, or one
-    // addressed differently. Approving it then would approve a send the wire
-    // refuses on every run — and there is no observation to fall back on,
-    // because the author said something else.
     const contradicted =
       statedDelivery !== null &&
       (reportEvidence?.inspections?.get(step.id) ?? []).some(
@@ -366,8 +295,6 @@ async function resolveBindings(
     const declaredDelivery = contradicted ? null : statedDelivery;
     let boundary: RequestBoundary | null = null;
     if (driver === "http" && (authoredBoundary || hasRuntimeValue(step))) {
-      // A report e-mail or a content publication has its own stricter review
-      // (the recipient, the receipts). `boundary` must not be a way around it.
       const stricter = supportsReportDelivery(step, target) || contentShape !== null;
       const profile = stricter
         ? contradicted
@@ -376,15 +303,10 @@ async function resolveBindings(
             ? null
             : profileRefusal(step.id, contentShape !== null, reportEvidence)
         : undefined;
-      // The profile produced a boundary, so nothing is refused. Reporting one
-      // anyway made every healthy report step carry a refusal on every preview
-      // — noise that buries the steps a person actually has to act on.
       if (!stricter || profile !== null) {
         const compiled = stricter
           ? ({ refusal: profile as RequestBoundaryRefusal } as const)
-          : // The connector itself appends query parameters (query-mode auth or
-            // `static_query`), so dispatch would never match a reviewed query.
-            connector?.auth_type === "query" ||
+          : connector?.auth_type === "query" ||
               Object.keys(
                 (connector?.config as { static_query?: Record<string, unknown> } | undefined)
                   ?.static_query ?? {},
@@ -420,15 +342,6 @@ async function resolveBindings(
       target,
       configuration_digest: workflowJsonDigest(configuration),
       credential_binding_digest: credentials ? workflowJsonDigest(credentials.binding) : null,
-      // Template documentation examples are digest-bound but never substituted
-      // into a request; only runtime connector fields can rewrite its target.
-      //
-      // A cursor injects response data into the next request, which is why
-      // pagination counted as rewriting the target. A boundary that NAMES the
-      // paging keys is exactly the constraint that was missing: origin and path
-      // stay fixed, every other key stays exact, and the step's page cap bounds
-      // how many requests there can be. Without such a boundary a paginating
-      // step still rewrites its target and still needs concrete-run review.
       rewrites_target:
         (Boolean(step.pagination) && !boundary?.pagination) ||
         JSON.stringify({
@@ -438,13 +351,9 @@ async function resolveBindings(
         }).includes("${"),
     });
   }
-  // A release publishes only receipts from approved revision-producing steps
-  // on this same connection. Runtime verifies the complete fixed member set.
   for (const binding of bindings) {
     const shape = contentShapes.get(binding.step_id);
     if (binding.content_publication || shape?.kind !== "content_release") continue;
-    // Rechecking an existing grant must use its immutable boundary, never
-    // expand it from a newer preview or silently invent a missing profile.
     if (options.content_boundaries !== undefined) continue;
     const sources = bindings.flatMap((source) =>
       source.connector_id === binding.connector_id &&
@@ -475,15 +384,6 @@ async function resolveBindings(
   };
 }
 
-/** One `call` step's target, resolved one level deep.
- *
- * Returns nothing when the step does not name exactly one workflow or the
- * target cannot be loaded — the compiler turns that into the refusal the
- * author reads, so the reason is decided in one place rather than two. A child
- * that itself calls a workflow IS returned, with no bindings: the compiler
- * refuses it as `child_calls_workflow`, and resolving its grandchildren here
- * would be work whose result is thrown away.
- */
 async function resolveCall(
   step: { id: string; workflow_id?: string | undefined; workflow_slug?: string | undefined },
   input: z.infer<typeof inputSchema>,
@@ -536,9 +436,6 @@ async function resolveCall(
     workflow_id: row.id,
     workflow_version_id: row.version_id,
   };
-  // The options digest uses the ROOT's formula over the CHILD's normalized
-  // definition, so a child whose step schema normalizes differently moves the
-  // parent's digest and the approval is re-asked for.
   const execution_options_digest = workflowJsonDigest({
     runtime_options_digest: input.execution_options_digest,
     normalized_definition: parsed.data,

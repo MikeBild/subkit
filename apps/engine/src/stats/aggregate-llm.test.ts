@@ -1,14 +1,3 @@
-// Integration tests for aggregateLlm.
-//
-// Covers:
-//   - empty window → zero totals and empty groups
-//   - two-dim group_by (model, flow) key shapes are correct
-//   - by_result exact counts
-//   - token sums are correct
-//   - wrong tenant → zero results (tenant isolation)
-//
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { executions } from "../db/schema/executions.ts";
 import { tenants } from "../db/schema/identity.ts";
@@ -23,13 +12,10 @@ let testDb: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 
-// Fixed window: from = 2024-01-01, to = 2024-01-02 (one day)
 const FROM = new Date("2024-01-01T00:00:00.000Z");
 const TO = new Date("2024-01-02T00:00:00.000Z");
-// A timestamp inside the window.
 const INSIDE_TS = new Date("2024-01-01T12:00:00.000Z");
 
-/** Compute a YYYYMM month_bucket for a date. */
 function monthBucket(d: Date): number {
   return d.getUTCFullYear() * 100 + (d.getUTCMonth() + 1);
 }
@@ -78,7 +64,6 @@ describe.skipIf(skip)("aggregateLlm", () => {
     expect(result.totals.calls.by_result).toEqual({});
     expect(result.totals.tokens.total).toBe(0);
     expect(result.totals.latency_ms.total).toBe(0);
-    // No group_by → synthetic group is always present; its buckets are empty.
     expect(result.groups).toHaveLength(1);
     expect(result.groups[0]!.buckets).toHaveLength(0);
   });
@@ -126,9 +111,9 @@ describe.skipIf(skip)("aggregateLlm", () => {
 
     expect(result.totals.calls.total).toBe(2);
     expect(result.totals.calls.by_result).toEqual({ success: 1, failure: 1 });
-    expect(result.totals.tokens.total).toBe(250); // 150 + 100
-    expect(result.totals.tokens.prompt).toBe(180); // 100 + 80
-    expect(result.totals.tokens.completion).toBe(70); // 50 + 20
+    expect(result.totals.tokens.total).toBe(250);
+    expect(result.totals.tokens.prompt).toBe(180);
+    expect(result.totals.tokens.completion).toBe(70);
     expect(result.totals.latency_ms.total).toBeGreaterThan(0);
   });
 
@@ -184,9 +169,6 @@ describe.skipIf(skip)("aggregateLlm", () => {
   });
 
   test("group_by workflow attributes spend to the workflow that ran the call", async () => {
-    // The question a model-and-flow breakdown cannot answer, and the reason
-    // this dimension exists: two workflows on the same model are one row until
-    // you can split them.
     const [wf] = await testDb.db
       .insert(workflows)
       .values({ tenant_id: tenantId, slug: "editorial", name: "Editorial", lifecycle: "active" })
@@ -219,8 +201,6 @@ describe.skipIf(skip)("aggregateLlm", () => {
         month_bucket: monthBucket(INSIDE_TS),
       },
       {
-        // No execution at all — a conversational call. It must still be
-        // counted, under an empty key, not dropped by the join.
         tenant_id: tenantId,
         flow: "converse",
         model: "claude-fable-5",
@@ -250,12 +230,10 @@ describe.skipIf(skip)("aggregateLlm", () => {
     expect(attributed!.totals.calls).toBe(1);
     expect(attributed!.totals.tokens.total).toBe(1500);
 
-    // The unattributed call is present, not swallowed.
     const orphan = result.groups.find((g) => g.key.workflow === "");
     expect(orphan).toBeDefined();
     expect(orphan!.totals.calls).toBe(1);
 
-    // And the join must not change the window total.
     expect(result.totals.calls.total).toBe(2);
   });
 
@@ -332,7 +310,6 @@ describe.skipIf(skip)("aggregateLlm", () => {
     });
 
     expect(result.totals.calls.total).toBe(0);
-    // No group_by → synthetic group with 0 calls; buckets empty.
     expect(result.groups[0]!.totals.calls).toBe(0);
     expect(result.groups[0]!.buckets).toHaveLength(0);
   });

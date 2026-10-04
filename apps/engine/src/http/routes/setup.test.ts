@@ -1,10 +1,3 @@
-// POST /v1/setup integration test — real DB via createTestDb, real Hono app.
-//
-// Uses an explicit test app (not the `createHttpTestServer` helper from
-// http/tests/setup.ts) because the helper pre-seeds a tenant + admin
-// user, which would short-circuit the bootstrap-pending check we are
-// trying to exercise.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { type ServerType, serve } from "@hono/node-server";
 import { eq } from "drizzle-orm";
@@ -14,7 +7,6 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as bootstrap from "../../onboarding/bootstrap.ts";
 import { _resetRateLimitForTests } from "../../onboarding/bootstrap.ts";
 
-// settings/clearCache removed in v3.5 — runtime config moved to subkit.config.json
 const clearCache = (): void => {};
 
 import { buildDefaultRegistry, createApp } from "../server.ts";

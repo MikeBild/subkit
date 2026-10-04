@@ -1,8 +1,3 @@
-// `sk join` unit tests — driven through `runJoin` so we never stand up
-// a real engine or touch disk. Mirrors `init.test.ts`: inject
-// `fetchImpl` + `saveProfileImpl`, assert the saved profile, the
-// printed banner, and the typed-error mapping.
-
 import { describe, expect, test } from "bun:test";
 import { joinCommand, runJoin } from "../join.ts";
 
@@ -63,7 +58,6 @@ describe("runJoin — happy path", () => {
     expect(result.status).toBe("ok");
     expect(result.exitCode).toBe(0);
     expect(captured!.url).toBe("http://engine.test/v1/identity/invites/redeem");
-    // UNAUTHENTICATED — no Authorization header is sent.
     const headers = captured!.init.headers as Record<string, string>;
     expect(headers.authorization).toBeUndefined();
     const sent = JSON.parse(String(captured!.init.body)) as Record<string, unknown>;
@@ -103,8 +97,8 @@ describe("runJoin — typed redeem errors", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("invite_expired");
-    expect(result.exitCode).toBe(1); // 400 → exit 1
-    expect(saveCalls).toBe(0); // no profile written on failure
+    expect(result.exitCode).toBe(1);
+    expect(saveCalls).toBe(0);
     const all = errs.join("");
     expect(all).toContain("expired");
     expect(all).toContain("code=invite_expired");

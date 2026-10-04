@@ -1,17 +1,8 @@
-// Every setting the engine has is named, in both languages, and no two
-// settings on one tab read the same.
-//
-// Walks the engine's own config (`listConfigLeaves`), the way the permission
-// test reads permissions.json: a setting added there without a name here fails
-// CI instead of reaching the German page as "Api key" or a raw path.
-
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { CATALOGS, translate } from "@/lib/i18n";
 import { settingHelpKey, settingLabel, settingSectionOf } from "@/pages/settings-model";
 
-// A computed specifier: the cockpit's type-check does not follow it into the
-// engine's sources, and bun runs it as the engine does.
 const WALK = resolve(import.meta.dir, "../../../engine/src/config/walk.ts");
 const { listConfigLeaves } = (await import(WALK)) as {
   listConfigLeaves(): Array<{
@@ -55,12 +46,6 @@ describe("the engine's settings", () => {
   });
 });
 
-// What to know before changing a setting. Not every leaf needs a sentence, but
-// the ones people come to change do — the model, the budget, sign-in,
-// notifications — and so does every setting that needs a restart (the reader
-// must know before saving) and every choice among engine values (the values
-// alone do not say what they do). The engine has no `chat.*` settings; chat
-// platforms live under `platform.*`, which need a restart and are covered by it.
 const MUST_EXPLAIN = LEAVES.filter(
   (leaf) =>
     /^(llm|tokens|auth|notifications|chat)$/.test(leaf.path[0] ?? "") ||
@@ -97,7 +82,6 @@ describe("help on a setting", () => {
 
   test("a setting without help shows none", () => {
     expect(settingHelpKey("sandbox.tick_budget")).toBeNull();
-    // The list of settings with help, for the reader of a failure above.
     expect(HELPED.length).toBeGreaterThanOrEqual(MUST_EXPLAIN.length);
   });
 });

@@ -58,7 +58,6 @@ describe("credentials/service", () => {
     );
     expect(row.id).toBeDefined();
 
-    // Ciphertext in db must not contain plaintext bytes.
     const dbRows = await ctx.db.select().from(credentials).where(eq(credentials.id, row.id));
     const dbRow = dbRows[0]!;
     const hex = Buffer.from(dbRow.ciphertext).toString("hex");
@@ -72,7 +71,6 @@ describe("credentials/service", () => {
       expect(fetched!.value.token).toBe("sk-secret-123");
     }
 
-    // Audit row for credential.created.
     const audits = await ctx.db
       .select()
       .from(auditLog)

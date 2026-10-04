@@ -1,12 +1,3 @@
-// Integration tests: GraphQL retry loop + error_policy.
-//
-// Uses a real mock GraphQL server + a connector row with driver="graphql".
-// Covers:
-//   (i)  transient 429 → retry → succeeded, retry_count reflects attempts
-//   (ii) transient body error (extensions.code THROTTLING) → retry → succeeded
-//   (iii) persistent partial (200+data+errors, error_policy:"all") → succeeded+partial
-//   (iv) permanent error (error_policy:"none") → failed
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { connectors } from "../../db/schema/index.ts";
@@ -24,7 +15,6 @@ let ctx: EngineTestCtx;
 let mock: MockServer;
 let connectorId: string;
 let requestCount = 0;
-// Closure vars for the mock handler — set per-test.
 let mockHandler: (req: IncomingMessage, res: ServerResponse) => void = (_, res) => {
   jsonResponse(res, 200, { data: { items: [] } });
 };
@@ -61,7 +51,6 @@ beforeEach(() => {
   requestCount = 0;
 });
 
-// Helper: create a workflow with a single graphql request step.
 async function createGqlWorkflow(
   name: string,
   opts: { error_policy?: "none" | "all"; max_retries?: number; retry_backoff_ms?: number } = {},
@@ -107,7 +96,7 @@ describe("graphql retry · HTTP 429", () => {
 
     expect(result.status).toBe("succeeded");
     const step = result.steps?.find((s) => s.step_key === "gql");
-    expect(step?.retry_count).toBe(2); // attempt 0 + 1 → attempt 2 succeeds
+    expect(step?.retry_count).toBe(2);
     expect(requestCount).toBe(3);
   });
 });
@@ -138,7 +127,7 @@ describe("graphql retry · transient body error", () => {
 
     expect(result.status).toBe("succeeded");
     const step = result.steps?.find((s) => s.step_key === "gql");
-    expect(step?.retry_count).toBe(1); // attempt 0 throttled, attempt 1 succeeds
+    expect(step?.retry_count).toBe(1);
     expect(requestCount).toBe(2);
   });
 });
@@ -165,11 +154,9 @@ describe("graphql retry · error_policy all", () => {
     expect(result.status).toBe("succeeded");
     const step = result.steps?.find((s) => s.step_key === "gql");
     expect(step?.status).toBe("succeeded");
-    // Partial flag on request_meta.extras
     expect(
       (step!.request_meta as { extras?: { partial?: boolean } } | undefined)?.extras?.partial,
     ).toBe(true);
-    // Warnings are rolled up on the run result, keyed by step_key.
     const warn = result.warnings?.find(
       (w) => w.step_key === "gql" && w.code === "graphql_partial_errors",
     );
@@ -222,7 +209,6 @@ describe("graphql retry · permanent failure exhausts retries", () => {
     });
 
     expect(result.status).toBe("failed");
-    // A 400 is not retryable — exactly one request made.
     expect(requestCount).toBe(1);
   });
 });
@@ -234,7 +220,6 @@ describe("graphql retry · data+errors on transient response", () => {
     // entry triggers retry under the default error_policy (not partial-success).
     mockHandler = (_, res) => {
       if (requestCount < 2) {
-        // Both data AND a transient throttle error — retry must still fire.
         jsonResponse(res, 200, {
           data: { items: [{ id: "stale" }] },
           errors: [{ message: "Rate exceeded", errorType: "ThrottlingException" }],
@@ -257,7 +242,6 @@ describe("graphql retry · data+errors on transient response", () => {
 
     expect(result.status).toBe("succeeded");
     const step = result.steps?.find((s) => s.step_key === "gql");
-    // Attempt 0 was throttled; attempt 1 succeeded → retry_count===1.
     expect(step?.retry_count).toBe(1);
     expect(requestCount).toBe(2);
   });
@@ -295,9 +279,7 @@ describe("graphql retry · exhaust transient retries", () => {
     expect(result.status).toBe("failed");
     const step = result.steps?.find((s) => s.step_key === "gql");
     expect(step?.status).toBe("failed");
-    // retry_count = finalAttempt = MAX_RETRIES (parity with the HTTP path).
     expect(step?.retry_count).toBe(MAX_RETRIES);
-    // Total requests = 1 initial + MAX_RETRIES retries.
     expect(requestCount).toBe(MAX_RETRIES + 1);
   });
 });

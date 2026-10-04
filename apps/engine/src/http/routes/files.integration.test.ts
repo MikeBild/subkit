@@ -1,10 +1,3 @@
-// Integration tests for the unified files HTTP surface.
-//
-// Covers: full inline cycle, authenticated streaming cycle, dedup, range requests,
-// RBAC (401 / 403), tenant isolation (404 cross-tenant), and malformed
-// finalize rejection. Real Postgres via createHttpTestServer (includes
-// loadConfig); in-memory provider-neutral object-store test double.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -14,7 +7,6 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 
-// Deterministic 24-byte source for synthetic api keys. Seeded for replay.
 const nextHex = createDeterministicHexFactory(0xf117e7);
 
 function sha256Hex(v: string | Buffer): string {
@@ -30,15 +22,11 @@ function genKey() {
 let srv: HttpTestServer;
 let tenantBId: string;
 let tenantBKey: string;
-/** API key bound to a user whose role is `portal_token_user` — that
- *  built-in role lacks `file:read`, `file:write`, and `file:delete`.
- *  Every `/v1/files/*` route should respond 403 for this principal. */
 let portalKey: string;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-http");
 
-  // Seed a second tenant for cross-tenant isolation tests
   const [tB] = await srv.db
     .insert(tenants)
     .values({ slug: "fhttp-b", display_name: "Files HTTP B" })
@@ -65,10 +53,6 @@ beforeAll(async () => {
   });
   tenantBKey = k.pt;
 
-  // Seed a portal-tier user in tenant A bound to the built-in
-  // `portal_token_user` role. That role grants conversation:*
-  // permissions but not the file vocabulary; the API key inherits the
-  // user's role and the RBAC evaluator returns deny → HTTP 403.
   const [portalRole] = await srv.db
     .select({ id: roles.id })
     .from(roles)
@@ -81,7 +65,6 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "portal@fhttp-a.local",
-      // legacy enum; the evaluator reads role_id
       role_id: portalRole.id,
     })
     .returning();
@@ -152,19 +135,16 @@ describe("files HTTP integration", () => {
     expect(created.id).toMatch(/^fid_/);
     expect(created.filename).toBe("hello.txt");
 
-    // GET metadata
     const gr = await getFile(created.id, srv.apiKey);
     expect(gr.status).toBe(200);
     const got = (await gr.json()) as { id: string };
     expect(got.id).toBe(created.id);
 
-    // GET content
     const cr2 = await getContent(created.id, srv.apiKey);
     expect(cr2.status).toBe(200);
     const text = await cr2.text();
     expect(text).toBe(content);
 
-    // DELETE
     const dr = await deleteFile(created.id, srv.apiKey);
     expect(dr.status).toBe(204);
   });
@@ -213,12 +193,10 @@ describe("files HTTP integration", () => {
     const r1 = (await first.json()) as { id: string };
 
     const second = await post("/v1/files/inline", srv.apiKey, body);
-    // Dedup hit returns 200
     expect(second.status).toBe(200);
     const r2 = (await second.json()) as { id: string };
     expect(r2.id).toBe(r1.id);
 
-    // Audit row should have dedup:true
     const auditRows = await srv.db
       .select()
       .from(auditLog)
@@ -228,7 +206,7 @@ describe("files HTTP integration", () => {
   });
 
   test("range request returns 206 Partial Content with exact byte slice", async () => {
-    const content = "0123456789abcdef"; // 16 bytes
+    const content = "0123456789abcdef";
     const b64 = Buffer.from(content).toString("base64");
     const cr = await post("/v1/files/inline", srv.apiKey, {
       filename: "range.txt",
@@ -266,7 +244,6 @@ describe("files HTTP integration", () => {
     const entry = bcBody.files[0]!;
     expect(entry.id).toMatch(/^fid_/);
 
-    // PUT to the authenticated engine upload endpoint.
     const putUrl = entry.upload_url.startsWith("http")
       ? entry.upload_url
       : `${srv.baseUrl}${entry.upload_url}`;
@@ -281,13 +258,11 @@ describe("files HTTP integration", () => {
     });
     expect(pr.status).toBe(200);
 
-    // finalize
     const fr = await post(`/v1/files/${entry.id}/finalize`, srv.apiKey, { sha256 });
     expect(fr.status).toBe(200);
     const finalized = (await fr.json()) as { status: string };
     expect(finalized.status).toBe("ready");
 
-    // GET content
     const gr = await getContent(entry.id, srv.apiKey);
     expect(gr.status).toBe(200);
     const text = await gr.text();
@@ -324,7 +299,6 @@ describe("files HTTP integration", () => {
   test("finalize with wrong sha256 is rejected with 422", async () => {
     const content = "wrong-sha-content";
     const realSha = sha256Hex(Buffer.from(content));
-    // Flip one hex char to make it wrong
     const wrongSha = realSha[0] === "a" ? `b${realSha.slice(1)}` : `a${realSha.slice(1)}`;
 
     const bcr = await post("/v1/files/batch-create", srv.apiKey, {
@@ -352,13 +326,11 @@ describe("files HTTP integration", () => {
   });
 
   test("403 on /v1/files surfaces for principal lacking file:* permissions", async () => {
-    // GET /v1/files — needs file:read; portal_token_user lacks it.
     const list = await fetch(`${srv.baseUrl}/v1/files`, {
       headers: { authorization: `Bearer ${portalKey}`, connection: "close" },
     });
     expect(list.status).toBe(403);
 
-    // POST /v1/files/inline — needs file:write; same role lacks it.
     const inline = await fetch(`${srv.baseUrl}/v1/files/inline`, {
       method: "POST",
       headers: {
@@ -373,9 +345,6 @@ describe("files HTTP integration", () => {
     });
     expect(inline.status).toBe(403);
 
-    // DELETE /v1/files/<some-fid> — needs file:delete. Use a synthetic
-    // fid; the permission gate fires before the row lookup, so the
-    // existence (or not) of the row is moot.
     const del = await fetch(`${srv.baseUrl}/v1/files/fid_00000000-0000-0000-0000-000000000123`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${portalKey}`, connection: "close" },

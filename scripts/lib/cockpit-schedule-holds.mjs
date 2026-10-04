@@ -1,6 +1,5 @@
 import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
 
-/** Database enforcement is covered by the scheduler and HTTP integration suites. */
 export async function verifyScheduleHolds(page, stand, workflowId, locale, capture) {
   const schedulePattern = "**/v1/schedules*";
   const attentionPattern = "**/v1/attention*";
@@ -26,10 +25,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     workflow_id:
       index === 0 ? workflowId : `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     workflow_name: index === 0 ? "Held publishing workflow" : `Scheduled workflow ${index + 1}`,
-    // One of them has its repair already saved and waiting. That is the
-    // ordinary shape of a hold that has been worked on, and it needs a
-    // different next step: not "approve what is running" — that version is
-    // exactly why it is held — but "put the prepared one into service".
     prepared_version_id: index === 1 ? "00000000-0000-4000-8000-000000000301" : null,
     admission_hold: {
       ...schedule.admission_hold,
@@ -40,8 +35,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
   let cleared = false;
   const open = () => (cleared ? heldSchedules.slice(1) : heldSchedules);
   const schedules = (route) => route.fulfill({ json: { schedules: open(), total: open().length } });
-  // Übersicht's answer for the same installation: one stopped entry per held
-  // workflow, and nothing else — so the badge has one number to agree with.
   const attention = (route) =>
     route.fulfill({
       json: {
@@ -91,15 +84,12 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
   await page.route(attentionPattern, attention);
   try {
     await stand.visit(page, "");
-    // One row per entry; its id rides on the completing verb (table or cards).
     const entries = page.locator('[data-testid="attention-list"] [data-attention-id]:visible');
     await entries.first().waitFor();
     if ((await entries.count()) !== 13)
       throw new Error(`Übersicht lists ${await entries.count()} held workflows, not 13`);
     if (await page.getByTestId("attention-calm").count())
       throw new Error("Held schedules presented as all done");
-    // The badge sits in the sidebar, which narrow widths render off-canvas and
-    // so not at all until opened; there the list carries the check alone.
     const badgeLocator = page.getByTestId("nav-overview-count");
     if (await badgeLocator.count()) {
       const badge = (await badgeLocator.first().innerText()).trim();
@@ -124,7 +114,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       throw new Error("The sheet holds another workflow's hold");
     if ((await card.innerText()).includes(locale === "de" ? "vorbereitet" : "prepared"))
       throw new Error("A hold with nothing prepared claims a prepared version");
-    // The action under the words it acts on, not askew beside them.
     const actionBox = await card.getByTestId("schedule-admission-review").boundingBox();
     const sinceBox = await card.getByTestId("schedule-admission-since").boundingBox();
     if (!actionBox || !sinceBox || actionBox.y < sinceBox.y + sinceBox.height - 1)
@@ -138,8 +127,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       throw new Error("Schedule details not keyboard accessible");
     await page.keyboard.press("Enter");
     await capture("decision");
-    // Back closes the sheet: it has an address, so the browser's own button
-    // is the way out.
     await page.goBack();
     await sheet.waitFor({ state: "hidden" });
     await stand.visit(page, `?review=workflow:${heldSchedules[1].workflow_id}`);
@@ -151,9 +138,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
     await card.waitFor();
     await card.getByRole("link").click();
     await page.getByTestId("detail-workflows").waitFor();
-    // The held schedule is the page's one state — "approval needed" — with the
-    // one action that resolves it, in the panel and nowhere else on the page.
-    // No badge repeats it, and nothing only scrolls to it.
     const automation = page.getByTestId("workflow-automation");
     await page.getByTestId("workflow-automation-action").waitFor();
     if ((await automation.getAttribute("data-state")) !== "grant")
@@ -231,7 +215,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
         (locale === "de" ? "Workflow gespeichert" : "Workflow saved")
       )
         throw new Error("Saved workflow still presented as running");
-      // No review card in this transcript: the hand-off is the one way in.
       await page.waitForLoadState("networkidle");
       await assertSingleTriggers(page, `${locale}/chat hand-off`, {
         ...TRANSCRIPT,
@@ -239,8 +222,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       });
       await capture("chat-saved-handoff");
       await page.getByTestId("chat-context-toggle").click();
-      // The context panel is a view of its own. It says the held schedule's
-      // sentence once — under the next action — and offers the review once.
       const panel = page.getByRole("dialog");
       await panel.getByTestId("chat-context-review-schedule").waitFor();
       const sentence =

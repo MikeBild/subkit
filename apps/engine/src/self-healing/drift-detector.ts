@@ -1,18 +1,6 @@
-// Drift detector.
-//
-// Given a failing `execution_steps` row + its step-result snapshot + the
-// last known `SchemaShape` for the endpoint, return either a typed
-// `DriftSignal` or `null`. Nulls mean "this is a normal failure, not
-// self-healable" — the caller continues along the retry/backoff path.
-//
-// The detector never mutates inputs and never reads from the database.
-// It is a pure function the loop composes with `getLatestShape` on one
-// side and the repair queue on the other.
-
 import { deriveShape, diffShapes } from "../schema-versions/service.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
 
-/** Minimal view of the failing step the detector needs. */
 export interface FailingStepSnapshot {
   id: string;
   step_key?: string;
@@ -21,7 +9,6 @@ export interface FailingStepSnapshot {
   error?: unknown;
   request_meta?: import("../execution/types.ts").RequestMeta | null;
   output_preview?: unknown;
-  // `expression` is populated when the failing step is a transform.
   expression?: string;
 }
 
@@ -30,14 +17,6 @@ function asObj(v: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/**
- * Per-variant narrowing of RequestMeta into the {method, url, path}
- * triple the http-drift signal needs. Exhaustive switch — TS will
- * fail to compile if a new RequestMeta variant lands without a case.
- * Untagged shapes (legacy fixtures) fall through to a tolerant
- * key-by-key read so the detector doesn't refuse to operate on old
- * data.
- */
 function extractRequestFromMeta(
   meta: import("../execution/types.ts").RequestMeta | null | undefined,
 ): { method?: string | undefined; url?: string | undefined; path?: string | undefined } {
@@ -61,9 +40,6 @@ function extractRequestFromMeta(
       return { ...(typeof m.method === "string" ? { method: m.method } : {}) };
     }
     case "postgres": {
-      // No URL/path/method on the postgres variant; query_preview is
-      // the closest analog. Surface it under `path` so the drift
-      // signal still tells the operator which statement misbehaved.
       const m = meta as { query_preview?: string };
       return {
         ...(typeof m.query_preview === "string" ? { path: m.query_preview } : {}),
@@ -77,7 +53,6 @@ function extractRequestFromMeta(
       };
     }
     default: {
-      // Untagged / legacy shape — read tolerantly without TS narrowing.
       const obj = asObj(meta) ?? {};
       return {
         ...(typeof obj.method === "string" ? { method: obj.method as string } : {}),
@@ -88,23 +63,6 @@ function extractRequestFromMeta(
   }
 }
 
-/**
- * Analyse a failing step. The detector consumes whatever structure the
- * driver left in the row:
- *
- *   - `error.kind === "http"` + `error.status >= 400` + `error.body` →
- *     check whether the new body shape differs from the recorded
- *     `schema_versions` row. If it does, emit `http_status_new_shape`.
- *   - `error.kind === "jsonata_miss"` + `error.expression` +
- *     `error.missing_path` → emit `jsonata_path_miss`.
- *   - Anything else with a recorded shape diff at the top level →
- *     emit `schema_diff`.
- *   - Otherwise `null`.
- *
- * The detector trusts the driver to tag errors in a normalised envelope
- * — if a driver emits a raw `{ error: "boom" }` we fall through to
- * null and the retry path handles it.
- */
 export function analyzeStepFailure(
   step: FailingStepSnapshot,
   lastKnownShape: SchemaShape | null,
@@ -112,12 +70,6 @@ export function analyzeStepFailure(
   const err = asObj(step.error);
   if (!err) return null;
 
-  // --- Workflow-level invariant violation --------------------------------
-  // The engine surfaces `validation_failed` on the run envelope when a
-  // workflow's `validation_expression` returned falsy. The shape is
-  // `{ code: "validation_failed", details: { expression, actual_value } }`.
-  // We funnel that into a typed drift signal so the repair flow can
-  // propose a patch that re-satisfies the invariant.
   if (err.code === "validation_failed") {
     const details = asObj(err.details);
     const expression = typeof details?.expression === "string" ? details.expression : "";
@@ -130,7 +82,6 @@ export function analyzeStepFailure(
     }
   }
 
-  // --- JSONata path miss --------------------------------------------------
   if (err.kind === "jsonata_miss" || err.kind === "jsonata_path_miss") {
     const expression =
       typeof err.expression === "string" ? err.expression : (step.expression ?? "");
@@ -145,14 +96,6 @@ export function analyzeStepFailure(
     }
   }
 
-  // --- GraphQL schema error (vendor removed / never implemented a field) --
-  // Tagged by graphql-retry when the response errors declare a schema
-  // mismatch (FieldUndefined, no resolver, unknown field) — always at
-  // HTTP 200, so the http branch below can never catch it. Mapped onto
-  // the existing endpoint_contract variant: semantically the vendor
-  // removed a root field a committed workflow references, and that
-  // variant is already classified never-auto (classifier.ts) so the
-  // candidate PARKS for operator review.
   if (err.kind === "graphql_schema_error") {
     const details = asObj(err.details);
     const rootField = typeof details?.root_field === "string" ? details.root_field : null;
@@ -170,7 +113,6 @@ export function analyzeStepFailure(
     };
   }
 
-  // --- HTTP 4xx/5xx with a new error shape -------------------------------
   if (err.kind === "http") {
     const statusRaw = err.status;
     const status =
@@ -178,13 +120,7 @@ export function analyzeStepFailure(
     const body = err.body;
     if (Number.isFinite(status) && status >= 400 && body !== undefined) {
       const after = deriveShape(body);
-      // Only surface as drift if the new body shape *differs* from the
-      // last known successful shape for this endpoint. A 500 that still
-      // matches the known error envelope is not drift.
       if (lastKnownShape && !shapesEqual(lastKnownShape, after)) {
-        // Per-variant narrowing through the discriminated RequestMeta
-        // union. Each driver has its own canonical shape; the legacy
-        // untagged payload falls through to `asObj` for tolerance.
         const request = extractRequestFromMeta(step.request_meta);
         return {
           kind: "http_status_new_shape",
@@ -197,7 +133,6 @@ export function analyzeStepFailure(
     }
   }
 
-  // --- Schema diff against recorded successful shape ---------------------
   if (lastKnownShape) {
     const captured = err.captured_response ?? step.output_preview;
     if (captured !== undefined) {
@@ -221,12 +156,6 @@ export function analyzeStepFailure(
   return null;
 }
 
-/**
- * Render a DriftSignal as a compact text block for the LLM prompt. The
- * `repair` flow forwards this unchanged through `assembleEnhancedPrompt`
- * as `PriorFailure.schema_diff`, so the signal becomes the grounding
- * evidence for the proposed patch.
- */
 export function renderDriftDiff(signal: DriftSignal): string {
   switch (signal.kind) {
     case "jsonata_path_miss":
@@ -285,7 +214,6 @@ export function renderDriftDiff(signal: DriftSignal): string {
   }
 }
 
-/** Structural equality on SchemaShape. */
 function shapesEqual(a: SchemaShape, b: SchemaShape): boolean {
   if (a.type !== b.type) return false;
   if (a.type === "object" && b.type === "object") {

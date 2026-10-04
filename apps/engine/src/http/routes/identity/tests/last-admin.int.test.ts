@@ -1,11 +1,3 @@
-// The last administrator cannot leave the role.
-//
-// Admin-only routes check the role NAME, so moving the only admin to member,
-// to a custom role (even one holding every permission), or deactivating them
-// leaves a workspace nobody can manage people or roles in. Each path refuses
-// with 409 `last_admin` and changes nothing; with a second admin present the
-// same change goes through.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { roles, users } from "../../../../db/schema/index.ts";

@@ -1,21 +1,3 @@
-// askUser.confirm prompt — single source of truth for confirmation
-// rendering. Digit keybinds (1 Approve / 3 Reject), arrow+Enter
-// fallback, Tab reveals a free-text feedback area (output `feedback`).
-// The `kind` input picks the sub-body (save-workflow-draft diff,
-// external-write target, generic).
-//
-// `destructive: true` flips the default selection to Reject and
-// colors the title red.
-//
-// All input flows through a single `useInput` owned by this
-// component. When the reason panel is open, printable chars /
-// Backspace route into `reason`; Tab closes the panel; Enter commits
-// the reason and closes the panel (it does NOT submit the form — the
-// user must then press 1, 3, or arrow+Enter to decide). The
-// single-owner input model avoids the bug where the embedded
-// `@inkjs/ui` TextInput would swallow Tab and treat Enter as
-// "submit the whole form".
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
@@ -33,18 +15,10 @@ export interface ConfirmPromptProps {
   diff?: unknown;
   target?: unknown;
   destructive?: boolean | undefined;
-  /** Pre-selected answer if the user just presses Enter. */
   defaultChoice?: "approve" | "reject" | undefined;
   riskLevel?: "low" | "medium" | "high" | "critical" | string | undefined;
   targetLabel?: string | undefined;
   reversible?: boolean | undefined;
-  /**
-   * Structured "what will happen" preview produced by the gated tool's
-   * `buildPendingOutput` policy hook. When present, the prompt renders
-   * each key/value as a labelled row (e.g. `target: wf-abc`,
-   * `environment: prod`) so the user can see WHAT they're approving
-   * without parsing raw JSON in `diff` / `target`.
-   */
   pendingOutput?: Record<string, unknown> | undefined;
   onResponse: (value: { confirmed: boolean; feedback?: string }) => void;
   inputDisabled?: boolean | undefined;
@@ -137,9 +111,6 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   const [reason, setReason] = useState("");
 
   const submit = (confirmed: boolean): void => {
-    // The operator's typed text is free-form feedback, not a machine
-    // code — it travels in `feedback` (inside the `output` payload),
-    // never in the machine-code-only `decision_reason` audit column.
     const out: { confirmed: boolean; feedback?: string } = { confirmed };
     const trimmed = reason.trim();
     if (trimmed) out.feedback = trimmed;
@@ -154,7 +125,6 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
           return;
         }
         if (key.return) {
-          // Commit the typed reason and close the panel — do NOT submit.
           setReasonOpen(false);
           return;
         }
@@ -168,12 +138,6 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
         return;
       }
 
-      // Number keys mirror the displayed labels (1=Approve, 3=Reject).
-      // Letter shortcuts (`y`/`a` = approve, `n`/`r` = reject) match
-      // the convention every CLI confirm uses; they are case-insensitive
-      // so a paste-mode user with shift held doesn't lose the binding.
-      // Arrow keys move focus, Enter submits the focused choice, Tab
-      // opens the optional decision_reason input.
       const lower = input.toLowerCase();
       if (input === "1" || lower === "y" || lower === "a") submit(true);
       else if (input === "3" || lower === "n" || lower === "r") submit(false);

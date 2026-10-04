@@ -54,24 +54,16 @@ const authoritySchema = z
     execution_environment: z.enum(["dev", "prod"]),
     target_constraints: z.object({ targets: z.array(z.string()) }),
     valid_from: z.string().datetime(),
-    /** Null: no end date — the approval stands until it is revoked. */
     valid_until: z.string().datetime().nullable(),
-    /** Null: no run limit. */
     max_runs: z.number().int().nullable(),
-    /** Runs started under this approval so far. */
     reserved_runs: z.number().int(),
-    /** Null when there is no run limit. */
     remaining_runs: z.number().int().nullable(),
-    /** Neither an end date nor a run limit: it stands until revoked. */
     open_ended: z.boolean(),
     created_by: z.string().uuid(),
     created_at: z.string().datetime(),
     revoked_at: z.string().datetime().nullable(),
     revoked_by: z.string().uuid().nullable(),
-    /** The approval this one continues for a newer version whose effect
-     *  boundary did not grow; null when a person granted it directly. */
     inherited_from: z.string().uuid().nullable(),
-    /** The approval that continued this one for a newer version. */
     superseded_by: z.string().uuid().nullable(),
     active_version: z.boolean(),
     ready_for_new_run: z.boolean(),
@@ -95,12 +87,6 @@ const previewSchema = z
     preparation_required: z.boolean().optional(),
     content_items: z.array(z.object({ id: z.string().uuid(), label: z.string() })).optional(),
     unavailable_steps: z.array(z.string()),
-    // Which connector keeps one of this workflow's own steps from running in
-    // the previewed environment, and why — the same predicate a run's
-    // admission refuses with (409 `prepared_credential_unavailable`), so a
-    // client can say before the run what it would be refused for. Advisory: a
-    // step whose connector cannot be found at all is not listed here, and the
-    // run's refusal stays the authority. Beside the manifest, never inside it.
     unavailable_connectors: z
       .array(
         z.object({
@@ -112,10 +98,6 @@ const previewSchema = z
         }),
       )
       .optional(),
-    // Why a declared folder was refused, in the terms a human can act on: the
-    // key the step really wrote and the folder that does not contain it. The
-    // manifest carries only the issue code; without this the reviewer is told
-    // that something changed and not what.
     boundary_contradictions: z
       .array(
         z.object({
@@ -126,14 +108,6 @@ const previewSchema = z
         }),
       )
       .optional(),
-    // Why a boundary was refused, in the engine's own words. The manifest
-    // carries one blanket code per step — `dynamic_request` for every http
-    // refusal — and the reader was shown that instead: "where this request goes
-    // is decided at runtime" for a step whose path is a constant, whose real
-    // refusal was that a stricter profile already reviews it. Reported here
-    // rather than inside the manifest on purpose: this is repair evidence and
-    // the digest must not depend on it, which is also why surfacing it cannot
-    // invalidate a live approval.
     request_refusals: z
       .array(
         z.object({
@@ -153,13 +127,7 @@ const previewSchema = z
       )
       .optional(),
     execution_shape: AuthorityExecutionShapeSchema,
-    // What this version reaches beyond the newest approval a person gave this
-    // workflow in this environment, by the rule approval inheritance applies.
-    // Empty: the boundary did not grow. Absent: there is no earlier approval.
     boundary_growth: z.array(BoundaryGrowthSchema).optional(),
-    // True when this version is not the active one and activating it would
-    // carry a live approval of the active version over (its boundary does not
-    // grow): putting it into service needs no new approval.
     approval_carries_over: z.boolean(),
     schedules: z.array(
       z.object({ cron: z.string(), timezone: z.string(), next_run_at: z.string().nullable() }),
@@ -169,9 +137,6 @@ const previewSchema = z
       valid_until: z.string().datetime(),
       max_runs: z.number().int(),
     }),
-    // Where the suggestion comes from, so the review can say it in one line.
-    // Beside the bounds, not inside them: the bounds are exactly what a grant
-    // accepts, and a client may send them back as they are.
     suggested_bounds_basis: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("manual") }),
       z.object({ kind: z.literal("schedule"), scheduled_runs: z.number().int() }),
@@ -251,9 +216,6 @@ const automationStatus = createRoute({
                 next_run_at: z.string().nullable(),
               }),
             ),
-            /** The other thing that starts runs without a person. Same states
-             *  as a schedule; a hook's deliveries always run in production.
-             *  Empty unless the caller holds `inbound_hook:read`. */
             inbound_hooks: z.array(
               z.object({
                 inbound_hook_id: z.string(),
@@ -262,9 +224,6 @@ const automationStatus = createRoute({
                 state: automationStateSchema,
                 ready: z.boolean(),
                 environment: z.literal("prod"),
-                /** Set while the authority gate refuses its deliveries; cleared
-                 *  by an admitted delivery or a grant. Null on a deactivated
-                 *  hook, which receives nothing. */
                 admission_hold: z
                   .object({
                     reason_code: z.enum([
@@ -274,10 +233,6 @@ const automationStatus = createRoute({
                     observed_at: z.string(),
                   })
                   .nullable(),
-                /** The newest refused delivery, from the audit trail, whatever
-                 *  refused it (signature, authority, lifecycle), within the last
-                 *  30 days. The reason is audit-log content: null unless the
-                 *  caller holds `audit:read`. */
                 last_refused_at: z.string().nullable(),
                 last_refused_reason: z.string().nullable(),
               }),
@@ -303,11 +258,6 @@ const prepareReport = createRoute({
           schema: z
             .object({
               environment: z.enum(["dev", "prod"]),
-              /** A sample of what really starts this workflow — for a webhook,
-               *  one delivery envelope {id, timestamp, type, headers, body}.
-               *  Validated against the version's input schema; the held run
-               *  receives exactly this. (No `.describe()`: the schema is a
-               *  shared component and would carry this text everywhere.) */
               input: JsonValueSchema.optional(),
             })
             .strict(),
@@ -320,18 +270,10 @@ const prepareReport = createRoute({
       description: "Preparation completed; review the current boundary next",
       content: {
         "application/json": {
-          // `false` with a reason, not a blanket `true`: the caller was told a
-          // preparation had run when nothing had, and the derivation that
-          // depended on it then reported the steps as never executed.
           schema: z.object({
             prepared: z.boolean(),
             reason: z.string().optional(),
-            /** With `input_required`: what starts this workflow, whose
-             *  delivery the preparation needs as `input`. */
             trigger: z.object({ kind: z.literal("inbound_hook"), slug: z.string() }).optional(),
-            /** With `prepared: true`: why the review still refuses a step
-             *  after the preparation ran — code, step and remedy, never the
-             *  message the step would have sent. Absent when nothing is left. */
             diagnoses: z
               .array(
                 z.object({
@@ -456,8 +398,6 @@ function translate(error: unknown): never {
     authority_revoked: 409,
     authority_preparation_ambiguous: 409,
     authority_preparation_failed: 409,
-    // A preparation run refused before its first step: the connector it names
-    // must be fixed, and the input it was given did not fit the workflow.
     prepared_credential_unavailable: 409,
     input_schema_violation: 400,
   };
@@ -600,9 +540,6 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
     const tenant = principal.tenant_id;
     const workflow = c.req.valid("param").id;
     const db = c.get("db");
-    // The route is gated for schedules. Hooks carry their own read permission,
-    // and a refusal's reason is audit-log content: a caller sees each only
-    // with the permission that already covers it elsewhere.
     const probe = async (permission: "inbound_hook:read" | "audit:read") =>
       (await can(db, { tenant_id: tenant, principal, permission, quiet: true })).allow;
     return c.json(
@@ -683,8 +620,6 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         .limit(1);
       if (!found) throw new NotFoundError("authority cursor");
     }
-    // Keep the timestamp in PostgreSQL: converting a microsecond timestamp to
-    // a JS Date before the keyset comparison could silently skip history rows.
     const anchor = db
       .select({
         created_at: workflowExecutionAuthorities.created_at,
@@ -759,7 +694,6 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
       const { basis, ...suggested_bounds } = suggestAuthorityBounds(
         new Date(now),
         schedules,
-        // Hooks deliver to production only; a development review has none.
         c.req.valid("query").environment === "prod"
           ? await inboundHookDeliveryRate(principal.tenant_id, id, c.get("db"), new Date(now))
           : null,

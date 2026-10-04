@@ -1,24 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-// How a list's rows change between two renders, so a live update can show
-// itself: a row that arrived washes in with the accent, a row that went fades
-// out where it stood. Neither happens on the first rows, on a page of older
-// rows appended at the end, or when a search or a filter replaced the list —
-// those are the reader's own doing and need no announcement.
-
 export interface RowChange<T> {
-  /** Ids that appeared among the rows already shown. */
   arrived: ReadonlySet<string>;
-  /** Rows that went, with the place they stood. */
   left: readonly { id: string; index: number; row: T }[];
 }
 
 const NONE: RowChange<never> = { arrived: new Set(), left: [] };
 
-/**
- * The change from `previous` to `next`. A list where fewer than half of the
- * rows shown before are still there was replaced, not updated.
- */
 export function rowChange<T>(
   previous: readonly { id: string; row: T }[] | null,
   next: readonly { id: string; row: T }[],
@@ -28,8 +16,6 @@ export function rowChange<T>(
   const kept = previous.filter((entry) => nextIds.has(entry.id)).length;
   if (kept * 2 < previous.length) return NONE;
   const before = new Set(previous.map((entry) => entry.id));
-  // The last row that was already shown: anything new after it is a page of
-  // older rows, appended — not an arrival.
   let lastKnown = -1;
   next.forEach((entry, index) => {
     if (before.has(entry.id)) lastKnown = index;
@@ -43,7 +29,6 @@ export function rowChange<T>(
   return { arrived, left };
 }
 
-/** `rows` with the rows that just left put back where they stood, for their fade. */
 export function withLeaving<T>(
   rows: readonly T[],
   leaving: readonly { index: number; row: T }[],
@@ -54,15 +39,9 @@ export function withLeaving<T>(
   return out;
 }
 
-/** How long a leaving row stays for its fade (the base duration). */
 export const LEAVE_MS = 180;
-/** How long an arrived row keeps its accent class (the arrival wash). */
 export const ARRIVAL_MS = 1_200;
 
-/**
- * The row motion of one list. Without `getRowId` rows have no identity
- * across renders, and nothing moves.
- */
 export function useRowMotion<T>(
   rows: readonly T[],
   getRowId: ((row: T) => string) | undefined,

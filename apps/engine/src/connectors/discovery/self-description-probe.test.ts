@@ -1,28 +1,19 @@
-// Unit tests for probeAllSelfDescriptionLinks.
-//
-// Uses the driver-fetch seam (`withDriverFetchForTests`) so no real outbound
-// HTTP is made — mirrors the pattern in llms-txt.test.ts.
-
 import { describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { probeAllSelfDescriptionLinks } from "./self-description-probe.ts";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-// Minimal OpenAPI spec JSON body — enough for the plausibility check.
 const OPENAPI_BODY = JSON.stringify({
   openapi: "3.0.0",
   info: { title: "Test API", version: "1" },
   paths: {},
 });
 
-// Minimal llms-full.txt body (must exceed MIN_PLAUSIBLE_BYTES = 40).
 const LLMS_FULL_BODY = `# Test API llms-full\n\nThis connector publishes its docs via llms-full.txt. Authenticate with a Bearer token.\n`;
 
-// A valid GraphQL `{ __typename }` response.
 const GRAPHQL_TYPENAME_RESPONSE = JSON.stringify({ data: { __typename: "Query" } });
 
-// Helper: build a mock fetch that returns different responses per URL pattern.
 function buildMockFetch(
   routes: Array<{ match: (url: string) => boolean; status: number; body: string }>,
   defaultStatus = 404,
@@ -39,7 +30,6 @@ function buildMockFetch(
   return fn as unknown as typeof fetch;
 }
 
-// Wrap each test body in the driver-fetch seam.
 function seamTest(name: string, body: () => Promise<void>): void {
   test(name, async () => {
     await body();
@@ -100,7 +90,6 @@ describe("probeAllSelfDescriptionLinks", () => {
   seamTest("base URL that is a graphql endpoint is probed first", async () => {
     const mockFetch = buildMockFetch([
       {
-        // The base URL IS the graphql endpoint (path ends with /graphql).
         match: (u) => u === "https://api.example.com/graphql",
         status: 200,
         body: GRAPHQL_TYPENAME_RESPONSE,
@@ -126,9 +115,6 @@ describe("probeAllSelfDescriptionLinks", () => {
   });
 
   seamTest("egress-blocked origin → returns [] non-fatally", async () => {
-    // `localhost` is blocked by assertEgressAllowed in both strict and
-    // permissive modes (the permissive-mode short-list includes it). The
-    // probe must catch the EgressBlockedError and return [] without throwing.
     const mockFetch = mock<FetchLike>(() => Promise.resolve(new Response(null, { status: 200 })));
 
     let caught: Error | null = null;
@@ -171,13 +157,11 @@ describe("probeAllSelfDescriptionLinks", () => {
     );
 
     const llmsLink = links.find((l) => l.kind === "llms_txt" || l.kind === "llms_full");
-    // The full variant was 404, so the index variant wins.
     expect(llmsLink?.kind).toBe("llms_txt");
     expect(llmsLink?.source).toBe("self_healing");
   });
 
   seamTest("openapi body without spec keywords is not recorded", async () => {
-    // A 200 response with an HTML body should NOT be treated as an OpenAPI spec.
     const mockFetch = buildMockFetch([
       {
         match: (u) => u.endsWith("/openapi.json"),

@@ -1,5 +1,3 @@
-// Unit tests for the placeholder scanner.
-
 import { describe, expect, it } from "bun:test";
 import { placeholderScanner } from "../scanners/placeholder.ts";
 

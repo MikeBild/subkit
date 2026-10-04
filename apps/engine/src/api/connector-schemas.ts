@@ -1,19 +1,4 @@
-// Cross-surface connector Zod schemas.
-//
-// These types are reflected by both the conversation tools (via
-// `inputSchema`) and the public HTTP routes
-// (`POST /v1/connectors/discover`, `POST /v1/connectors/{id}/call`).
-// Keeping them here means a single Zod object owns the OpenAPI shape —
-// generated SDKs, Scalar UI, and any Zod consumer all see the same
-// envelope.
-//
-// Mirror the runtime types in `connectors/discovery/types.ts` and
-// `connectors/services/call-connector.ts`. If those types change, this
-// file must change with them — there is no implicit reflection.
-
 import { z } from "@hono/zod-openapi";
-
-// ---- Discovery -------------------------------------------------------------
 
 export const DiscoveredEndpointParamSchema = z
   .object({
@@ -97,23 +82,10 @@ export const DiscoveryResultSchema = z
   })
   .openapi("DiscoveryResult");
 
-// ---- Connector call --------------------------------------------------------
-
 const CallMethodEnum = z
   .enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
   .openapi("ConnectorCallMethod");
 
-/**
- * Flat schema mirroring the multi-driver shape used by the
- * `call_connector` conversation tool. Driver-specific fields are
- * optional at this level — the service helper validates the right
- * combination based on `connector.driver`.
- *
- * For the public HTTP route we only honour `http` and `graphql` paths
- * today (Postgres / SFTP / S3 are conversation-tool-only while the
- * Wave-2 multi-driver work stabilises). Calls with unsupported drivers
- * surface as `driver_not_supported_for_call_connector` (HTTP 422).
- */
 export const ConnectorCallRequestSchema = z
   .object({
     method: CallMethodEnum.optional(),
@@ -146,11 +118,6 @@ export const ConnectorCallResponseSchema = z
     truncated: z.boolean(),
     body_byte_count: z.number().int().nonnegative(),
     raw_ref: z.string().optional(),
-    // Connector-response health. Connector-level faults (auth_failed /
-    // endpoint_gone) mean the connector is unusable — an empty body must not
-    // be read as "no data". Request-level verdicts (not_found / rate_limited),
-    // the `deprecated` early warning, and transient `degraded` carry guidance
-    // while the connector itself stays usable.
     health: z.enum([
       "ok",
       "auth_failed",

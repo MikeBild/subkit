@@ -1,28 +1,3 @@
-// Foundation test for in-skill JSON examples.
-//
-// Every fenced ```json block in seed/skills/*.md teaches the LLM the
-// canonical authoring shape. If the example drifts from the live Zod
-// schema, the LLM faithfully copies the wrong shape and produces invalid
-// drafts. Keeping examples literal avoids that failure mode; this test
-// pins the contract.
-//
-// Two layers:
-//
-//  1. Parseability — every ```json block must be valid JSON (or be
-//     marked illustrative via a placeholder pattern that signals
-//     "this isn't meant to parse").
-//
-//  2. Shape lint — blocks that look like a workflow step (have `kind`)
-//     or a workflow definition (have `steps`) must not use the
-//     `config: {…}` wrapper that no schema in this repo defines, and
-//     `kind` must be a member of the discriminated union.
-//
-// Full Zod validation is intentionally NOT applied because example IDs
-// like `<digitalocean_connector_id>` are illustrative placeholders, not
-// real UUIDs. Catching shape drift is what matters here; type-system
-// pedantry would force every example to use real UUIDs and erode
-// readability.
-
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,11 +23,6 @@ function extractJsonBlocks(file: string, body: string): Block[] {
       file,
       index: idx++,
       body: content,
-      // Heuristics for "this block is documentation, not a parseable
-      // example". JS-style block comments, line comments, ellipsis
-      // values, angle-bracketed placeholders (<anything>, <connector_id>),
-      // or shell-style # comments inside the block all signal an
-      // illustrative block that is not meant to round-trip JSON.parse.
       isIllustrative:
         /\/\*[\s\S]*?\*\//.test(content) ||
         /(^|\s)\/\/[^\n]*/.test(content) ||
@@ -90,17 +60,12 @@ describe("seed/skills/*.md · ```json blocks · parse", () => {
 });
 
 describe("seed/skills/*.md · ```json blocks · shape lint", () => {
-  // The `config: {…}` wrapper appears in older example blocks but no
-  // schema in apps/engine/src/workflows/types.ts defines a `config`
-  // field on a step. The LLM faithfully copies whatever shape the
-  // examples use, so this lint rejects the wrapper outright.
   for (const block of parseableBlocks) {
     test(`${block.file.replace(`${SKILLS_DIR}/`, "")}#${block.index} no \`config\` wrapper on step-shaped objects`, () => {
       let parsed: unknown;
       try {
         parsed = JSON.parse(block.body);
       } catch {
-        // parse-failure is caught by the prior describe block; skip.
         return;
       }
       const offenders: string[] = [];
@@ -266,14 +231,6 @@ function walk(value: unknown, path: string, offenders: string[]): void {
   }
 }
 
-/**
- * Lint pagination drift: the real PaginationSchema uses `strategy:`
- * (offset/page/cursor) plus the schema-canonical field names. Older
- * skill examples used `mode:` + `total_path` /
- * `cursor_param` / `cursor_path` / `page_size_param` / `has_more_path`,
- * none of which exist on the type. Surface those so the drift fix
- * doesn't silently regress.
- */
 const PAGINATION_DRIFT_FIELDS = new Set([
   "mode",
   "total_path",
@@ -305,17 +262,6 @@ function lintPaginationDrift(value: unknown, path: string, offenders: string[]):
   }
 }
 
-/**
- * Lint `onError: { mode: ... }` drift. The real schema is
- * `on_error: "fail" | "continue"` directly on the step, with retry
- * fields (`max_retries`, `retry_backoff_ms`, `retry_on_status`) at
- * the same level. The nested `onError` envelope never existed.
- */
-/**
- * Lint sql block: must declare `query`. Variable interpolation into
- * the query string is the SQL-injection hatch the doc explicitly
- * forbids — flag any `${…}` substring inside `sql.query`.
- */
 function lintSqlBlocks(value: unknown, path: string, offenders: string[]): void {
   if (Array.isArray(value)) {
     value.forEach((v, i) => {
@@ -346,11 +292,6 @@ function lintSqlBlocks(value: unknown, path: string, offenders: string[]): void 
   }
 }
 
-/**
- * Lint s3 block: LIST needs `prefix`; the other verbs need `key` (or
- * `step.path`). The runtime superRefine catches this too, but the
- * lint runs against documentation examples where Zod isn't applied.
- */
 function lintS3Blocks(value: unknown, path: string, offenders: string[]): void {
   if (Array.isArray(value)) {
     value.forEach((v, i) => {
@@ -362,11 +303,7 @@ function lintS3Blocks(value: unknown, path: string, offenders: string[]): void {
     const obj = value as Record<string, unknown>;
     if ("s3" in obj && typeof obj.s3 === "object" && obj.s3 !== null && !Array.isArray(obj.s3)) {
       const s3 = obj.s3 as Record<string, unknown>;
-      // step.method is the single source of truth; s3.method was
-      // removed.
       const method = typeof obj.method === "string" ? obj.method : "GET";
-      // Reject legacy `s3.method` so old skill examples can't drift
-      // back in.
       if ("method" in s3) {
         offenders.push(`${path}.s3.method (use step.method instead)`);
       }
@@ -388,18 +325,6 @@ function lintS3Blocks(value: unknown, path: string, offenders: string[]): void {
   }
 }
 
-/**
- * Cross-driver lint: `expected_statuses` and `expected_row_count`
- * are dispatch-mutually-exclusive (HTTP/S3 vs Postgres). The
- * superRefine rejects this at runtime; the lint catches doc drift
- * before it hits the schema.
- */
-/**
- * `output_transform` (JSONata) and `output_transform_function` (JS)
- * are mutually exclusive at authoring time. Catch examples that set
- * both before the schema does — keeps doc samples consistent with
- * the runtime contract.
- */
 function lintOutputTransformMix(value: unknown, path: string, offenders: string[]): void {
   if (Array.isArray(value)) {
     value.forEach((v, i) => {

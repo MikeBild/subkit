@@ -85,8 +85,6 @@ describe("<SchemaForm>", () => {
     try {
       await flush();
       expect(ui.text()).toContain('"a": 1');
-      // Press enter without changes — onChange should fire with the
-      // parsed value matching the original.
       await ui.press("enter");
       await flush();
       expect((captured as { a: number } | null)?.a).toBe(1);
@@ -110,7 +108,6 @@ describe("<SchemaForm>", () => {
     );
     try {
       await flush();
-      // Inject garbage and submit.
       await ui.type("xx");
       await flush();
       await ui.press("enter");

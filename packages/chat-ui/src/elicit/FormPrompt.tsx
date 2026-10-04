@@ -1,24 +1,3 @@
-// askUser.form prompt — vertical stack of typed fields. All input
-// flows through a single `useInput` hook owned by this component. No
-// child component registers its own input handler, so Tab/Shift+Tab/Enter cannot be
-// swallowed by a nested input (the exact bug `@inkjs/ui`'s TextInput
-// produced here prior to this rewrite).
-//
-// Key map:
-//   Tab / Shift+Tab  — cycle focus between fields (wraps).
-//   Enter            — validate and submit from any field.
-//                      For `json` fields with content, Enter inserts a
-//                      newline (use Ctrl-D to commit a JSON buffer
-//                      without leaving focus, or Tab off the field).
-//   Esc              — onCancel if provided.
-//   Backspace/Delete — pop last char from focused text/number/password/json field.
-//   Space            — toggle focused boolean / `multi` option; literal space in text.
-//   ← / →            — cycle options on focused select field.
-//   ↑ / ↓            — move focused row inside `multi` checkbox grid.
-//   Ctrl-D           — confirm a `json` buffer (parse + clear inline error).
-//   Printable char   — append to focused text/number/password/json field
-//                      (number fields filter to [0-9.\-]).
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
@@ -33,17 +12,7 @@ export interface FormFieldOption {
 export interface FormField {
   name: string;
   label: string;
-  /**
-   * Field render mode. `text/number/boolean/select` are the original
-   * four; `password` masks input (single-line); `json` accepts a
-   * multi-line buffer parsed on blur; `multi` is a checkbox grid that
-   * yields a `string[]` subset of `options`.
-   */
   type: "text" | "number" | "boolean" | "select" | "password" | "json" | "multi";
-  /**
-   * `select` expects `Array<{value,label}>`. `multi` expects
-   * `string[]`. The renderer normalizes both.
-   */
   options?: FormFieldOption[] | string[] | undefined;
   placeholder?: string | undefined;
   default?: unknown;
@@ -52,17 +21,7 @@ export interface FormField {
   priority?: number | undefined;
   rows?: number | undefined;
   required?: boolean | undefined;
-  /**
-   * When true, the rendered value is masked (bullet characters). `password`
-   * fields imply `sensitive: true`. Used by the credential-collection
-   * flow so typed secrets never appear on the terminal.
-   */
   sensitive?: boolean | undefined;
-  /**
-   * Optional error pin shown beneath the field (e.g. "invalid JSON: …").
-   * Server populates this when it re-prompts; the renderer may also
-   * set it locally for immediate feedback.
-   */
   error_message?: string | undefined;
 }
 
@@ -122,14 +81,6 @@ function isPrintable(input: string, key: { ctrl: boolean; meta: boolean }): bool
   return isPrintableChar(code);
 }
 
-/**
- * Strip bracketed-paste wrappers + control chars from a paste chunk.
- * Single-line form fields strip newlines too; multi-line-aware fields
- * (json) keep newlines.
- */
-// Built via `new RegExp` with a unicode escape so the source file
-// doesn't embed a literal ESC (0x1b) byte that lint flags as a control
-// char in regex-literal syntax.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: literal ESC byte is exactly what we strip — RegExp(...) constructor triggers the opposite "prefer literal" rule.
 const BRACKETED_PASTE_RE = /\[20[01]~/g;
 
@@ -214,10 +165,7 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
   const [cursor, setCursor] = useState(0);
   const [values, setValues] = useState<FieldValues>(() => initialValues(orderedFields));
   const [error, setError] = useState<string | null>(null);
-  // Per-field local error pin (currently driven by the json parser).
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
-  // Inner cursor for `multi` rows — which option is currently focused
-  // inside the focused multi field.
   const [multiRow, setMultiRow] = useState<Record<string, number>>({});
 
   const setFieldError = (name: string, msg: string | null): void => {
@@ -235,9 +183,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
 
       const f = orderedFields[cursor];
 
-      // Tab navigation; before leaving a `json` field we re-validate
-      // so the operator sees the parse error pin without needing
-      // Ctrl-D first.
       if (key.tab) {
         setError(null);
         if (f && f.type === "json") {
@@ -252,8 +197,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      // Ctrl-D commits a json buffer (parse-only — does NOT submit
-      // the whole form). The operator stays on the field if invalid.
       if (f?.type === "json" && key.ctrl && (input === "d" || input === "\x04")) {
         const buf = typeof values[f.name] === "string" ? (values[f.name] as string) : "";
         const parsed = tryParseJson(buf);
@@ -270,9 +213,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
           });
           return;
         }
-        // For json fields with non-empty content, Enter inserts a
-        // newline rather than submitting — so the operator can write
-        // multi-line JSON without prematurely committing.
         if (f && f.type === "json") {
           setError(null);
           setValues((v) => {
@@ -346,7 +286,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      // text / number / password / json
       if (key.backspace || key.delete) {
         setError(null);
         setValues((v) => {
@@ -357,10 +296,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
         return;
       }
 
-      // Paste: whole clipboard comes in as one chunk. For number
-      // fields keep only digits; for text / password allow any
-      // printable char. Json fields preserve newlines so a pasted
-      // multi-line JSON document survives intact.
       if (!key.ctrl && !key.meta && input.length > 1) {
         const isJson = f.type === "json";
         const clean = sanitizePasteChunk(input, !isJson);
@@ -379,8 +314,6 @@ export const FormPrompt: React.FC<FormPromptProps> = ({
 
       if (isPrintable(input, key)) {
         if (f.type === "number" && !isNumericChar(input)) return;
-        // password rejects newlines server-side; the renderer never
-        // gets one through `isPrintable` anyway, but be explicit.
         if (f.type === "password" && (input === "\n" || input === "\r")) return;
         setError(null);
         setValues((v) => {

@@ -1,27 +1,9 @@
-// Retention sweep for `chat_events_seen`.
-//
-// Slack retries arrive within minutes (Slack's stated cap is 3 retries
-// over a few minutes); anything older than ~24h is unreachable replay
-// surface. Without pruning the table grows monotonically — at e.g. 1
-// Slack message/sec across all installed workspaces, that's ~86k rows
-// per day per engine. The DELETE filters by `seen_at < now() -
-// interval`, so multi-instance overlap is a no-op (the second
-// instance's sweep finds nothing fresh to delete).
-//
-// Mirrors `mcp-oauth-cleanup-runner.ts` and `files-cleanup-runner.ts`:
-// one summary audit row under SYSTEM_TENANT_ID after the sweep, errors
-// caught + logged but never abort the rest of the reconciler tick.
-
 import { lt, sql } from "drizzle-orm";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { chatEventsSeen } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-/** Grace window for replay protection. 24 h is well past Slack's
- *  documented retry window (~5 attempts in a few minutes) and gives
- *  any operator inspecting recent dedup behavior a working sample
- *  before rows disappear. */
 const REPLAY_GRACE = sql`interval '24 hours'`;
 
 export async function runChatDedupCleanup(now: Date, db: Db): Promise<void> {
@@ -60,10 +42,6 @@ export async function runChatDedupCleanup(now: Date, db: Db): Promise<void> {
     },
     db,
   );
-  // Log every run (even deleted=0), symmetric with files-cleanup
-  // (`files_cleanup.fired`) and mcp-oauth-cleanup so an operator scanning
-  // structured logs sees the hourly sweep regardless of whether it pruned
-  // rows — not just on the rare non-empty sweep.
   logger.info({
     module: "scheduler",
     action: "chat_dedup_cleanup.completed",

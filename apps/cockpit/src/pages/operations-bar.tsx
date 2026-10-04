@@ -31,18 +31,15 @@ const FIGURE_LABEL: Record<OperatingFigureId, TranslationKey> = {
   budget: "overview.operations.budget",
 };
 
-/** What a figure with nothing to count says instead of a 0. */
 const NONE_TEXT: Record<OperatingFigureId, TranslationKey> = {
   runs: "overview.operations.none.runs",
   successRate: "overview.operations.none.successRate",
   connectorHealth: "overview.operations.none.connectorHealth",
   repairRate: "overview.operations.none.repairRate",
   cost: "overview.operations.none.cost",
-  // The budget is never "nothing to count": no cap is its own state.
   budget: "overview.operations.uncapped",
 };
 
-/** The basis beside a label; the chosen window needs no word, the header names it. */
 const BASIS_LABEL: Record<FigureBasis, TranslationKey | null> = {
   window: null,
   now: "overview.operations.current",
@@ -61,18 +58,10 @@ const PRESSURE_TONE = {
   critical: "text-destructive",
 } as const;
 
-/** Whether the reader may see the bar at all: every figure but one is a stats read. */
 export function canReadOperations(permissions: readonly string[]): boolean {
   return permissions.includes("stats:read");
 }
 
-/**
- * The reads the six figures are made of, over one fixed window. Runs, success
- * rate, connector health and repair rate are one read — the engine's own count
- * (`GET /v1/stats/operating-figures`), the answer the MCP tool and the
- * operational overview give too. Cost and budget are the reads Nutzung makes.
- * All of them are `stats:read`, like the bar itself.
- */
 export function useOperationsFigures(bounds: WindowBounds, permissions: readonly string[]) {
   const can = (permission: string) => permissions.includes(permission);
   const allowed = canReadOperations(permissions);
@@ -83,23 +72,17 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     queryFn: () => apiRequest<unknown>(operatingFiguresEndpoint(bounds)),
   });
 
-  // The window's model calls and their money — the same query Nutzung makes
-  // for the window, without a breakdown axis.
   const spend = useQuery({
     queryKey: ["operations-spend", bounds],
     enabled: allowed,
     queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds)),
   });
-  // The calendar month's money, for the budget figure — a month, whatever the
-  // window. Fixed when the window is chosen, like the window's own bounds: a
-  // `to` re-read at every render would be a new query each time.
   const monthEndpoint = useMemo(() => monthSpendEndpoint(new Date(bounds.to)), [bounds.to]);
   const monthSpend = useQuery({
     queryKey: ["operations-spend", "month", monthEndpoint],
     enabled: allowed,
     queryFn: () => apiRequest<unknown>(monthEndpoint),
   });
-  // The calendar month against the cap: a month, whatever the window.
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
@@ -123,15 +106,10 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
       budgetSetting: can("settings:write"),
     },
   });
-  // Every read has answered — or failed — before any figure is shown: a
-  // figure that appears late moves the ones beside it.
   const pending = counts.isPending || spend.isPending || status.isPending || monthSpend.isPending;
-  // Runs, success rate, connector health and repair rate share one read: a
-  // retry on any of them asks it again.
   const retry = (id: OperatingFigureId) => {
     if (id === "cost") void spend.refetch();
     else if (id === "budget") {
-      // The month's usage is two reads: its money and its share of the cap.
       void status.refetch();
       void monthSpend.refetch();
     } else void counts.refetch();
@@ -139,12 +117,6 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
   return { allowed, figures, pending, retry };
 }
 
-/**
- * Six figures — three by two on a desktop, six in a row on a wide screen, two
- * columns on a phone — each a link into the list or page that counts the same
- * thing over the same window (§10.1). Compact on purpose: the attention list
- * below it has to stay on the first screen, and the bar never scrolls sideways.
- */
 export function OperationsBar({
   figures,
   pending,
@@ -154,7 +126,6 @@ export function OperationsBar({
   figures: readonly OperatingFigure[];
   pending: boolean;
   onRetry: (id: OperatingFigureId) => void;
-  /** The figures shown, in order — the Übersicht leads with four (R1). */
   ids?: readonly OperatingFigureId[];
 }) {
   const { t } = useI18n();
@@ -189,15 +160,11 @@ function Figure({
   const label = (
     <p className="truncate text-xs text-muted-foreground">
       {t(FIGURE_LABEL[figure.id])}
-      {/* A state measured now, or over the calendar month, not over the window. */}
       {basis ? ` · ${t(basis)}` : null}
     </p>
   );
   const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-3 py-2";
   if (figure.state !== "value") {
-    // Two answers that are words, not numbers, and still have somewhere to go:
-    // calls without a price lead to Nutzung, which names the models; no cap
-    // leads to the setting, for someone who may set one.
     const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
     return (
       <div
@@ -246,7 +213,6 @@ function Figure({
     );
   }
   const compact = new Intl.NumberFormat(tag, { notation: "compact", maximumFractionDigits: 1 });
-  // A partly priced window is a floor, and says so: "mind. 412,87 €".
   const partial = figure.money && figure.money.unpricedCalls > 0;
   const display =
     figure.id === "runs"
@@ -281,7 +247,6 @@ function Figure({
         <span
           className={[
             "truncate text-xl font-semibold leading-7 tabular-nums",
-            // The number carries the state only when it needs someone.
             pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null,
           ]
             .filter(Boolean)
@@ -302,8 +267,7 @@ function Figure({
         {figure.budget ? (
           <span className="truncate text-xs text-muted-foreground">
             {figure.money
-              ? // The month's money leads; its share of the cap stands beside it.
-                t("overview.operations.budgetShare", {
+              ? t("overview.operations.budgetShare", {
                   percent: figure.budget.percent,
                   budget: compact.format(figure.budget.budgetTokens),
                 })

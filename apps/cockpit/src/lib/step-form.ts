@@ -1,9 +1,3 @@
-/**
- * The step dialog's form (R16): a step as the fields a person fills in, and
- * back. Only the kinds a form can describe completely are edited this way —
- * a call to a connector, a transformation and a pause; any other kind keeps
- * its stored configuration.
- */
 export type StepFormKind = "request" | "transform" | "wait";
 
 export const STEP_FORM_KINDS: readonly StepFormKind[] = ["request", "transform", "wait"];
@@ -21,19 +15,16 @@ export interface StepForm {
   wait: string;
 }
 
-/** The transformation a new step starts with. */
 export const DEFAULT_TRANSFORM = "return {\n  ...input,\n  checked: true,\n};";
 
 type RecordValue = Record<string, unknown>;
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
-/** Whether a stored step can be edited field by field. */
 export function isFormKind(kind: unknown): kind is StepFormKind {
   return kind === "request" || kind === "transform" || kind === "wait";
 }
 
-/** "5 min", "30 s", "2 h" → milliseconds; null when it is no duration. */
 export function parseDuration(text: string): number | null {
   const match = /^(\d+(?:[.,]\d+)?)\s*(s|sek|sec|min|m|h|std)?$/i.exec(text.trim());
   if (!match) return null;
@@ -44,14 +35,12 @@ export function parseDuration(text: string): number | null {
   return ms > 0 && ms <= 24 * 3_600_000 ? ms : null;
 }
 
-/** Milliseconds as the dialog writes them: whole hours, minutes, else seconds. */
 export function formatDuration(ms: number): string {
   if (ms % 3_600_000 === 0) return `${ms / 3_600_000} h`;
   if (ms % 60_000 === 0) return `${ms / 60_000} min`;
   return `${Math.round(ms / 1_000)} s`;
 }
 
-/** The form a step opens with: the stored step's values, or a new step's. */
 export function formFromStep(step: unknown, firstConnectorId: string): StepForm {
   const raw = step && typeof step === "object" ? (step as RecordValue) : {};
   const kind = isFormKind(raw.kind) ? raw.kind : "request";
@@ -76,11 +65,6 @@ export type StepFormError =
   | "codeMissing"
   | "waitInvalid";
 
-/**
- * The step the form describes, or what is wrong with it. An edited step
- * keeps every stored field the form does not show, as long as its kind
- * stays the same.
- */
 export function stepFromForm(
   form: StepForm,
   previous: unknown,

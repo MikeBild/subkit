@@ -1,10 +1,3 @@
-// The save result says whether the saved change is eligible for repeated runs.
-//
-// `review_workflow_automation` ends the turn, so an author who learns of a
-// refused boundary only there cannot repair it. On a real repair two steps
-// listed a BODY placeholder under `boundary.variables`; the preview was green,
-// the draft was saved, and the human got a card that said "still blocked".
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { workflows, workflowsSchedules, workflowVersions } from "../../db/schema/index.ts";
@@ -66,7 +59,6 @@ async function seed(opts: { variables: Record<string, unknown>; scheduled: boole
       workflow_id: wf.id,
       cron: "0 5 * * *",
       timezone: "UTC",
-      // The fixture connector lives in dev; another mode is a different finding.
       execution_mode: "dev",
       paused: false,
       input: { space: "reports" },
@@ -89,7 +81,6 @@ test("a body placeholder listed under variables is reported with its remedy at s
   expect(readiness?.eligible_for_repeated_runs).toBe(false);
   expect(readiness?.issues).toEqual([{ step_id: "ingest", code: "dynamic_request" }]);
   expect(readiness?.repair_guidance?.[0]?.instruction).toContain("only in the body gets no entry");
-  // The reason this rides on the save result at all.
   expect(readiness?.message).toContain("ends the turn");
 });
 
@@ -105,13 +96,9 @@ test("the corrected boundary is reported eligible", async () => {
 test("an unscheduled saved change still hands over to the review that applies it", async () => {
   const id = await seed({ variables: { "input.space": { enum: ["reports"] } }, scheduled: false });
   const readiness = await savedDraftReadiness(toolCtx(), id);
-  // No recurring permission is asked for, but nothing runs the change until a
-  // person applies it — without this the author reached for run_workflow and
-  // met a refusal naming a dialog it had never shown.
   expect(readiness?.issues).toBeUndefined();
   expect(readiness?.message).toContain("review_workflow_automation");
   expect(readiness?.message).not.toMatch(/curl -|\/v1\//);
-  // Once applied, nothing waits and nothing is said.
   const [row] = await ctx.testDb.db
     .select({ draft: workflows.draft_version_id })
     .from(workflows)

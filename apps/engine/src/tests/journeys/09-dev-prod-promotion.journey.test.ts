@@ -1,14 +1,3 @@
-// User story: As a platform operator, I want to maintain separate dev
-// and prod environments for a connector and run the same workflow
-// against either, so that I can promote changes safely.
-// Acceptance criteria:
-//   - AC1: Creating a connector with environment=dev exposes a dev
-//          credential slot.
-//   - AC2: Creating a matching prod connector (same slug, different
-//          environment) lives in its own row.
-//   - AC3: Running the workflow against dev records execution_mode=dev.
-// Spec refs: docs/concepts/connectors.md, docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -95,7 +84,6 @@ describe("journey: dev/prod promotion", () => {
     expect(res.status).toBe(201);
     prodConnectorId = ((await res.json()) as { id: string }).id;
 
-    // Prod has its own credential distinct from dev.
     const credRes = await journeyFetch(ctx, `/v1/connectors/${prodConnectorId}/credentials`, {
       method: "POST",
       body: JSON.stringify({ mode: "bearer", token: "prod-secret-xyz" }),
@@ -143,8 +131,6 @@ describe("journey: dev/prod promotion", () => {
   });
 
   test("AC4: `x-subkit-environment: prod` routes to the prod connector row and tags execution_mode=prod", async () => {
-    // Sanity: the AC3 run above already incremented dev hits and zero
-    // prod hits.
     expect(devHits).toBeGreaterThanOrEqual(1);
     expect(prodHits).toBe(0);
     const devHitsBefore = devHits;
@@ -158,14 +144,12 @@ describe("journey: dev/prod promotion", () => {
     const rb = (await run.json()) as { execution_id: string; status: string };
     expect(rb.status).toBe("succeeded");
 
-    // The prod mock was hit, not dev.
     expect(prodHits).toBe(1);
     expect(devHits).toBe(devHitsBefore);
 
     const rows = await ctx.db.select().from(executions).where(eq(executions.id, rb.execution_id));
     expect(rows[0]?.execution_mode).toBe("prod");
 
-    // Touch prodConnectorId so the unused-variable lint stays quiet.
     expect(prodConnectorId.length).toBeGreaterThan(0);
   });
 });

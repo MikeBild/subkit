@@ -1,7 +1,3 @@
-// Lightweight REPL ↔ engine integration: drive the bootstrap +
-// persona resolution flow against the fake EngineClient and verify
-// the same allow-set the slash registry consumes flows through.
-
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +10,7 @@ describe("integration: REPL persona resolution drives slash gating", () => {
   test("admin allow-set unlocks /audit and /clear", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "sk-repl-int-"));
     try {
-      const client = createFakeEngineClient(); // default = full UX permissions
+      const client = createFakeEngineClient();
       const snap = await loadBootstrap(client, ANONYMOUS_PROFILE, { cacheDir });
       expect(hasCommand("audit", snap.probe)).toBe(true);
       expect(hasCommand("clear", snap.probe)).toBe(true);
@@ -52,7 +48,6 @@ describe("integration: REPL persona resolution drives slash gating", () => {
       expect(snap.source).toBe("fallback");
       expect(snap.allowed.size).toBe(0);
       expect(hasCommand("audit", snap.probe)).toBe(false);
-      // Ungated commands always allowed.
       expect(hasCommand("help", snap.probe)).toBe(true);
     } finally {
       rmSync(cacheDir, { recursive: true, force: true });

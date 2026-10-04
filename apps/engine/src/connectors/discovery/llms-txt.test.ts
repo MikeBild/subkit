@@ -3,9 +3,6 @@ import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { llmsTxtStrategy } from "./llms-txt.ts";
 import { DiscoveryError } from "./types.ts";
 
-// Spy signature covers only the (input, init) subset the strategies use
-// — `typeof fetch` would force every mockImplementation to also carry
-// `preconnect`.
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 let fetchSpy: ReturnType<typeof mock<FetchLike>>;
@@ -14,10 +11,6 @@ beforeEach(() => {
   fetchSpy = mock<FetchLike>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
@@ -115,7 +108,6 @@ describe("llmsTxtStrategy", () => {
     expect(corpus).toContain("Bearer tokens");
     expect(corpus).toContain("List widgets");
     expect(corpus).toContain("Update gadgets");
-    // All three index entries should have been fetched.
     expect(calls).toContain("https://docs.acme.example.com/auth.md");
     expect(calls).toContain("https://docs.acme.example.com/widgets.md");
     expect(calls).toContain("https://docs.acme.example.com/gadgets.md");
@@ -139,7 +131,6 @@ describe("llmsTxtStrategy", () => {
 
     const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/api", {});
 
-    // Root is the canonical spec location, probed before /.well-known/.
     expect(result.source_url).toBe("https://docs.acme.example.com/llms-full.txt");
     expect(result.text_corpus ?? "").toContain("ACME API");
     expect(calls[0]).toBe("https://docs.acme.example.com/llms-full.txt");
@@ -148,8 +139,6 @@ describe("llmsTxtStrategy", () => {
   seamTest("uses root /llms.txt when it is the only file present", async () => {
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      // Only the root index exists; both -full variants and the
-      // .well-known mirror 404.
       if (url === "https://docs.acme.example.com/llms.txt") {
         return Promise.resolve(
           new Response(FULL_MARKDOWN, {

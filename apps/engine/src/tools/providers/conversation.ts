@@ -1,22 +1,3 @@
-// ConversationToolProvider — wraps the existing
-// `apps/engine/src/conversations/tools/index.ts` registry and exposes
-// every tool to both surfaces, with category-based + mode-based
-// visibility filtering.
-//
-// MCP-mode visibility (matches legacy capabilities/tools.ts behavior):
-//   product   — only tools in PRODUCT_MODE_ALLOW_LIST surface (matches
-//               the hand-picked set the legacy push exposed in product
-//               mode). All other conversation tools hidden.
-//   authoring — adds every other tenant_read / tenant_write tool, plus
-//               draft_write tools marked `disabled`.
-//   admin     — same as authoring; the per-tool RBAC and the
-//               read-only flag continue to gate writes.
-//
-// readOnly hides every tenant_write tool regardless of mode.
-//
-// The chat surface ignores mcpMode entirely (it has its own
-// authoring-palette + skill-gate filters in sdk-wrap).
-
 import type {
   ConversationTool,
   ToolCategory,
@@ -38,43 +19,13 @@ export interface ConversationProviderEntry {
   readonly execute: ConversationToolExecutor;
 }
 
-/** Conversation tools that surface in PRODUCT mode. Anything not in this set
- *  is gated behind authoring/admin mode.
- *
- *  `find_workflow` + `run_workflow` are the search-first core: they let a
- *  product/strict client discover and execute the full workflow library on
- *  demand when the per-workflow `wf_` palette is trimmed to its Top-N for the
- *  catalog token budget. Without them, a trimmed palette would make the long
- *  tail unreachable. (`run_workflow` is `tenant_write` — see the readOnly
- *  exemption below; it is a workflow *run*, exactly like the `wf_` palette
- *  tools, which already surface in product mode regardless of `readOnly`.
- *  Authorization stays with `gateWorkflowRunRbac`, not this list.)
- *
- *  `get_execution` completes the run contract: a `wf_<slug>` / `run_workflow`
- *  call that outruns the MCP inline window hands back an `execution_id` polling
- *  handle (`mcp/capabilities/tools.ts`). Publishing the run tool while
- *  withholding the only tool that resolves its handle advertises a result the
- *  caller can never fetch. (`enduser`, the read-only chat/MCP role, holds
- *  `execution:read` — the dispatcher's RBAC entry gates it either way.)
- *
- *  Other `tenant_write` tools (e.g. `import_connector_from_spec`) stay out:
- *  exposing a config-mutating write to product callers is a category
- *  violation — those remain authoring+admin only.
- *
- *  Anything added here is automatically published in `authoring` too:
- *  `mcp/capabilities/catalog-budget.ts` unions this set into the authoring
- *  catalog so the mode hierarchy can never invert. */
 const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "match_connector_template_by_url",
   "test_connector",
   "inspect_recipe",
-  // probe_connector_draft is reachable in product mode too — useful for
-  // headless connector bootstrap.
   "probe_connector_draft",
-  // search-first core (see comment above)
   "find_workflow",
   "run_workflow",
-  // resolves the polling handle a long run hands back (see comment above)
   "get_execution",
 ]);
 
@@ -83,50 +34,18 @@ function visibilityFor(
   surface: ToolSurface,
 ): "visible" | "disabled" | "hidden" {
   if (surface === "chat") return "visible";
-  // MCP: draft_write tools are conversation-scoped — only the engine's
-  // internal authoring loop (started via `conversation_start`) may call
-  // them. We keep the descriptor marked `disabled` so `resolve()` still
-  // returns it and a stateless `tools/call` short-circuits to
-  // `not_available_on_surface` (with the actionable "use conversation_start"
-  // reason) BEFORE any audit/elicitation. The catalog itself omits these
-  // tools — see `list()` below — because external clients (e.g. claude.ai)
-  // ignore the `_meta.subkit.disabled` badge, call the tool anyway, and
-  // churn on rejection instead of authoring. Hidden-from-list +
-  // rejected-on-call is the honest, non-trapping surface.
   if (category === "draft_write") return "disabled";
   return "visible";
 }
 
 function describeDisabled(category: ToolCategory): { reason: string } | undefined {
   if (category === "draft_write") {
-    // Same actionable message `policyDecide` emits when a draft_write
-    // tool is actually called on MCP — sourced from `policy.ts` so the
-    // `tools/list` badge and the call-time rejection never drift.
     return { reason: DRAFT_WRITE_MCP_UNAVAILABLE_REASON };
   }
   return undefined;
 }
 
-/** Per-tool RBAC overrides. Conversation tools are pure (no inline
- *  `can()` calls); the dispatcher enforces RBAC declared here.
- *
- *  Coverage rule: every `tenant_write` tool AND every `tenant_read`
- *  inventory/identity tool reachable from MCP needs a permission
- *  entry. Read tools are covered because the LLM-mediated chat path
- *  and the direct MCP path both dispatch through here, while the
- *  typed fast-path already gates the equivalent list intents on
- *  `*:read` (`fast-path.ts` `READ_PERMISSION_BY_LIST`); without an
- *  entry those two paths would leak the full inventory tenant-wide,
- *  asymmetric with the fast-path. The one deliberate carve-out is
- *  `whoami`, which returns the CALLER'S OWN identity and must stay
- *  ungated so a principal can discover its own rights before being
- *  denied (mirrors `rbac/self-introspection.ts`). Keep this table
- *  in sync with `rbac/permissions.json`. */
 const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]>>> = {
-  // inspect_execution is a tenant_read reachable on MCP; the dispatcher
-  // enforces execution:read centrally. The resource is scoped to the
-  // execution when an explicit id is supplied; when omitted (latest),
-  // the tenant-scoped permission check is the gate.
   inspect_execution: {
     permission: "execution:read",
     resource: (args) => {
@@ -141,29 +60,12 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
     },
   },
-  // import_connector_from_spec: no resource — the tool creates a NEW
-  // connector (no pre-existing id to scope to). Tenant-scoped
-  // permission check is the authorization boundary.
   import_connector_from_spec: {
     permission: "connector:write",
   },
-  // save_connector_draft: no resource — the tool operates on the
-  // conversation's draft via `ctx.connector_id`, which the dispatcher
-  // doesn't see (it lives in ToolContext, not args). The conversation
-  // tool's own execute() enforces tenant isolation via `ctx.tenant_id`;
-  // declaring a resource extractor that always returns `null` would
-  // be misleading. Tenant-scoped permission check is the gate.
   save_connector_draft: {
     permission: "connector:write",
   },
-  // authenticate_oauth: connector_id is OPTIONAL — when absent, the
-  // tool falls back to `ctx.connector_id`. We declare no resource
-  // here because the dispatcher cannot inspect ctx; a resource-scoped
-  // grant for connector X would NOT match when the args use the ctx
-  // fallback, leading to silently inconsistent authorization
-  // (resource-scoped grants work for explicit `connector_id` args
-  // but not for the ctx-fallback path). Tenant-scoped permission
-  // check applies uniformly.
   authenticate_oauth: {
     permission: "connector:oauth",
   },
@@ -174,15 +76,9 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "role", id } : null;
     },
   },
-  // create_knowledge_source: no resource — the tool creates a NEW
-  // knowledge source (no pre-existing id to scope to). Tenant-scoped
-  // permission check is the authorization boundary.
   create_knowledge_source: {
     permission: "knowledge:write",
   },
-  // save_learning creates a NEW proposed skill candidate (no pre-existing
-  // id to scope to). Deliberately `skill:propose`, NOT `skill:write` —
-  // proposing must never imply the authority to approve.
   save_learning: {
     permission: "skill:propose",
   },
@@ -207,9 +103,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
     },
   },
-  // create_skill: no resource — the tool creates a NEW skill (no
-  // pre-existing id to scope to). Tenant-scoped permission check is the
-  // authorization boundary.
   create_skill: {
     permission: "skill:write",
   },
@@ -234,20 +127,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
     },
   },
-  // restore_workflow_version replaces what is LIVE, so it needs the same
-  // `workflow:restore` the HTTP route enforces
-  // (`POST /v1/workflows/{id}/restore/{version}`). It shipped with neither an
-  // entry here nor a `permission` descriptor, so the dispatcher never called
-  // can(): its only gate was the confirm policy — a HUMAN gate standing where a
-  // PERMISSION gate was documented. Both paths are now covered: this entry for
-  // the dispatcher (MCP/admin), the tool's own `permission` for the
-  // LLM-mediated conversation path.
-  //
-  // Resource scoping is best-effort by design: the tool also accepts `slug`,
-  // and resolving it to a UUID needs a DB round-trip this sync extractor cannot
-  // make. A slug-only call therefore falls back to the tenant-scoped check
-  // (same shape as inspect_execution's omitted-id case); the tool's own
-  // descriptor does the resolved-id check on the path that can await it.
   restore_workflow_version: {
     permission: "workflow:restore",
     resource: (args) => {
@@ -256,22 +135,7 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
     },
   },
 
-  // ── tenant_read inventory / identity ───────────────────────────────
-  // These are enforced on the LLM-mediated chat path and the direct
-  // MCP path, symmetric with the typed fast-path (`READ_PERMISSION_BY_LIST`).
-  // `whoami` is intentionally absent (self-introspection carve-out).
-  //
-  // `get_engine_status` is intentionally NOT gated: the `enduser` role
-  // (the read-only chat/MCP principal) deliberately lacks `stats:read`
-  // (rbac/seed.ts), and get_engine_status is the DESIGNATED low-sensitivity
-  // self-status surface — the sensitive operator health digest is a
-  // separate, already `stats:read`-gated surface kept out of this tool
-  // (conversations/tools/engine-api/status.ts). Gating it here would break
-  // the core self-assistant use case (an enduser asking the engine to
-  // describe its own status).
   get_execution: {
-    // Symmetric with inspect_execution (execution:read). get_execution's
-    // id arg is `id`, not `execution_id`.
     permission: "execution:read",
     resource: (args) => {
       const id = (args as { id?: unknown }).id;
@@ -302,8 +166,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
     },
   },
   read_knowledge: {
-    // Full-content read — strictly more sensitive than the gated
-    // list/get above; must never ship weaker than them on the MCP path.
     permission: "knowledge:read",
     resource: (args) => {
       const id = (args as { knowledge_source_id?: unknown }).knowledge_source_id;
@@ -339,29 +201,12 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   list_capability_gaps: {
     permission: "discovery:read",
   },
-  // The audit trail. `GET /v1/audit-log` and `/export.ndjson` both demand
-  // `audit:read`; these two tools are the SAME trail on MCP and shipped with
-  // no entry here at all, so `descriptorFor` produced no `rbac` and the
-  // dispatcher's `if (descriptor.rbac)` skipped `can()` entirely — every MCP
-  // principal could page the tenant's whole audit history. Their neighbours
-  // (`list_users`, `list_api_keys`, `read_knowledge`) were all covered; the
-  // trail was simply missed, which is what the descriptor-coverage guard in
-  // `apps/engine/src/tools/tests/rbac-descriptor-coverage.test.ts` now stops repeating.
   list_audit: {
     permission: "audit:read",
   },
-  // No resource extractor: `audit:read` is declared over resource_type
-  // `audit` (rbac/permissions.json) and there is no per-row grant to scope
-  // to — the HTTP route gates the single-entry read tenant-scoped too
-  // (`app.use("/v1/audit-log/*", requirePermission("audit:read"))`). Both
-  // surfaces now ask the same question.
   get_audit_entry: {
     permission: "audit:read",
   },
-  // Content reads that the enduser role does not hold (connector:read,
-  // schedule:read) — gated to match the typed fast-path
-  // (`READ_PERMISSION_BY_LIST`) so the LLM-mediated and direct-MCP paths
-  // do not leak connectors/schedules the fast-path would deny.
   list_connectors: {
     permission: "connector:read",
   },
@@ -383,9 +228,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
     permission: "schedule:read",
   },
   review_workflow_automation: { permission: "schedule:read" },
-  // The gate diagnosis reads one workflow's saved version and run evidence;
-  // the repair proposal files an inert candidate against it. Both are scoped
-  // to the workflow they name.
   diagnose_workflow: {
     permission: "workflow:read",
     resource: (args) => {
@@ -402,19 +244,6 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   },
 };
 
-/** Fall back to the tool's OWN `permission` declaration when the table above
- *  has no entry.
- *
- *  Those declarations are enforced by `wrapOne` on the chat path only; the
- *  dispatcher never saw them, because `descriptorFor` copied nothing but the
- *  override. A tool like `delete_workflow` therefore carried the comment
- *  "RBAC is enforced centrally via the `permission` descriptor" and was true
- *  on chat, false on MCP. Deriving here makes ONE declaration cover both
- *  surfaces, and it can only ever ADD a `can()` call where there was none.
- *
- *  Async `resolveResourceId` declarations need the execution context and are
- *  resolved by the dispatcher before its RBAC check. The catalog descriptor
- *  records the permission; it does not replace that exact-resource check. */
 function derivedRbac(t: ConversationTool): NonNullable<ToolDescriptor["rbac"]> | undefined {
   const p = t.permission;
   if (!p) return undefined;
@@ -447,42 +276,18 @@ function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescripto
   };
 }
 
-/** Single chokepoint for "should this tool surface for this filter?".
- *  Used by both `list()` (catalog) and `resolve()` (dispatch). They must
- *  agree for executable tools — otherwise a write tool hidden from the
- *  catalog could still be dispatched by a confirmed re-issue (audit-review
- *  caught this gap). The one deliberate exception is draft_write on MCP:
- *  `list()` drops it from the catalog while `resolve()` keeps returning
- *  its disabled descriptor, which is safe because such a call can never
- *  execute — it always short-circuits to `not_available_on_surface`. */
 function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolean {
-  // Skill gate.
   if (t.requires_skill && filter.loadedSkills) {
     if (!filter.loadedSkills.has(t.requires_skill)) return false;
   }
   if (filter.surface !== "mcp") return true;
 
-  // MCP-mode gating. draft_write stays "visible" to this predicate so
-  // `resolve()` keeps returning its disabled descriptor (the call-time
-  // not_available_on_surface backstop); the catalog drop happens in
-  // `list()` above, not here.
-  //
-  // `product` is the read-and-execute tier: read the tenant, run what is
-  // already there. It withholds the tools that BUILD definitions — declared
-  // per tool via `authoring_only`, because category cannot tell
-  // `discover_connector_endpoints` from `list_workflows` when both are
-  // `tenant_read`. `PRODUCT_MODE_ALLOW_LIST` remains for the handful of tools
-  // that are neither plain reads nor authoring steps and still belong here.
   if (t.category !== "draft_write" && filter.mcpMode === "product") {
     if (t.authoring_only) return false;
     const readable = t.category === "tenant_read" || t.visible_when_readonly === true;
     if (!readable && !PRODUCT_MODE_ALLOW_LIST.has(t.name)) return false;
   }
 
-  // readOnly hides every tenant_write regardless of mode — except tools
-  // that declare `visible_when_readonly` on their definition (a run rather
-  // than a config mutation, or a self-gated capture-loop write; the WHY
-  // lives at each definition site). RBAC still gates them.
   if (filter.readOnly && t.category === "tenant_write" && !t.visible_when_readonly) {
     return false;
   }
@@ -496,14 +301,6 @@ export const conversationToolProvider: ToolProvider = {
     const out: ToolDescriptor[] = [];
     for (const t of listTools()) {
       if (!isVisibleForFilter(t, filter)) continue;
-      // Catalog omits draft_write on MCP: they are conversation-scoped and
-      // always rejected on a stateless `tools/call`. Listing them (even as
-      // disabled) traps clients that ignore the badge into calling and
-      // churning. `resolve()` deliberately still returns the disabled
-      // descriptor so a guessed/forced call short-circuits to
-      // `not_available_on_surface` with the actionable reason — list and
-      // resolve intentionally disagree here, which is safe because the
-      // tool can never actually execute on this surface.
       if (filter.surface === "mcp" && t.category === "draft_write") continue;
       const d = descriptorFor(t, filter.surface);
       if (d) out.push(d);
@@ -513,9 +310,6 @@ export const conversationToolProvider: ToolProvider = {
   resolve(name, filter) {
     const tool = listTools().find((t) => t.name === name);
     if (!tool) return undefined;
-    // Apply the same visibility filter the catalog uses, so a write
-    // tool that doesn't appear in tools/list also can't be dispatched
-    // via a guessed call + sk_confirm round-trip.
     if (!isVisibleForFilter(tool, filter)) return undefined;
     const descriptor = descriptorFor(tool, filter.surface);
     if (!descriptor) return undefined;

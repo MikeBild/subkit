@@ -1,19 +1,3 @@
-// Execution engine entry point. `runExecution` walks the steps in
-// declaration order (no DAG topo-sort yet — P3 ships linear pipelines
-// plus branch/parallel/loop control hints). It:
-//
-//   1. creates an `executions` row (status=queued)
-//   2. registers an AbortController under the execution id
-//   3. transitions to `running` and emits `execution.started`
-//   4. for each step: inserts an execution_steps row, runs the driver via
-//      step-runner, applies onError semantics
-//   5. transitions to a terminal state, audits + outbox-events, releases
-//      the AbortController
-//
-// Tool chaining: a `call` step looks up the target workflow + version,
-// invokes runExecution recursively with parent_execution_id set,
-// request_source='tool-chain' and depth+1.
-
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -92,29 +76,8 @@ import {
 export { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 export type { ScopeEnvelope } from "./engine/envelope.ts";
 
-/** Default upper bound on concurrent `for_each` iterations when the
- *  engine auto-selects parallelism (read-classified request bodies).
- *  Kept modest so an unattended fan-out cannot stampede a target API
- *  past its rate budget — the per-iteration 429/Retry-After path still
- *  applies on top. Authors opt into a higher bound via
- *  `step.for_each_concurrency`. */
 const DEFAULT_FOR_EACH_CONCURRENCY = 8;
 
-/**
- * Resolve how many `for_each` iterations may run concurrently.
- *
- *   - explicit `step.for_each_concurrency` (>= 1) always wins, clamped
- *     to the item count.
- *   - otherwise auto-select from the step's side-effect class: a
- *     READ-classified `request` body fans out at the default bound;
- *     write-classified requests and every non-request body (transform,
- *     …) stay strictly sequential (1).
- *
- * Reuses {@link classifyRequestStepSideEffects} — the single seam that
- * already owns read/write knowledge for HTTP/GraphQL/SQL/S3 plus the
- * author's `side_effects` override — rather than re-deriving a
- * method/keyword list here.
- */
 export function resolveForEachConcurrency(step: StepDef, itemCount: number): number {
   if (itemCount <= 1) return 1;
   const explicit = (step as { for_each_concurrency?: number }).for_each_concurrency;
@@ -125,16 +88,6 @@ export function resolveForEachConcurrency(step: StepDef, itemCount: number): num
   return 1;
 }
 
-/**
- * Hold-writes (Fix G): find the first DAG dependency of `stepId` whose
- * response data is missing because that dependency was held (a
- * write-classified step that materialized but never dispatched) or was
- * itself skipped for depending on one. Checks EVERY edge kind — a
- * data-flow reference to a held step means its placeholders cannot
- * resolve, and a containment edge to a skipped container (branch /
- * parallel / loop) means the container never ran. Returns the
- * dependency's id (for the skip label) or null.
- */
 function findHeldDependency(
   dag: StepDag,
   stepId: string,
@@ -151,29 +104,12 @@ function findHeldDependency(
 export interface RunExecutionParams {
   db: Db;
   tenant_id: string;
-  /** Discriminated union: "saved" | "draft" | "step". The engine pipeline
-   *  is identical for all three; only the origin differs. */
   source: RunExecutionSource;
   input: unknown;
   options?: RunOptions;
-  /** The caller answers this request itself with the refusal (a synchronous
-   *  HTTP run). Only then is a connector refusal announced as
-   *  `execution.refused`: nobody else has to be told. A queued run whose
-   *  caller already got its 202 keeps `execution.failed`, so it reaches the
-   *  inbox. */
   refusal_answered_to_caller?: boolean;
 }
 
-/**
- * A caller that pre-created the row (`existing_execution_id`) hands its fate
- * to this call. A throw before the run starts — an input that fails its
- * schema, a connector that cannot serve the prepared run — used to leave that
- * row `queued` forever, and a queued held row is what the preparation lock
- * reads as "one is already in flight". The refusal is recorded on the row
- * before it is rethrown. Only a row still `queued` is touched: once it is
- * `running` the engine owns its terminal state, and a row another worker is
- * running is never ours to fail.
- */
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   try {
     return await executeRun(p);
@@ -185,13 +121,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         details && typeof details === "object" && !Array.isArray(details)
           ? (details as { step_id?: unknown; connector_id?: unknown; reason?: unknown })
           : {};
-      // Only the connector refusal is announced as refused: every other early
-      // throw (input schema, depth, definition) is a failure someone may have
-      // to act on, and keeps its `execution.failed`.
       const connectorRefusal = code === "prepared_credential_unavailable";
       const refused = connectorRefusal && p.refusal_answered_to_caller === true;
-      // A finalize that cannot be written (database gone) must not replace the
-      // refusal the caller is about to report; the queue worker retries its own.
       await finalizeExecution(
         p.db,
         p.tenant_id,
@@ -231,24 +162,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     throw new Error(`call chain depth exceeded ${MAX_CALL_DEPTH}`);
   }
 
-  // Resolve the execution definition from one of three sources:
-  //   saved — persisted workflow + current_version_id
-  //   draft — inline WorkflowDef (validated, not persisted)
-  //   step  — single StepDef wrapped as a one-step WorkflowDef
   const resolved = await resolveDefinition(db, tenant_id, bound.source);
   const def = resolved.def;
   const workflow_id = resolved.workflow_id;
   const workflow_version_id = resolved.workflow_version_id;
 
-  // Validate the run input BEFORE any side-effecting setup (execution row,
-  // abort registration, total-timeout timer). The check is pure — it only
-  // needs the normalized input and the def's schema — so an invalid input
-  // throws here with zero side effects: no orphaned `running` row, no
-  // leaked AbortController in the process-global registry, no armed 6h
-  // timer. On the async (queue) path the pre-created row stays `queued`
-  // and the worker's catch finalizes it to `failed`. Validate even when
-  // input is null/undefined so a required-input workflow run with no input
-  // (e.g. a schedule) fails fast and named, not deep inside a later step.
   if (def.input_schema) {
     const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
     if (!check.valid) {
@@ -277,8 +195,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     );
   }
 
-  // Persist actual start time, but replay an approved preparation's evaluation
-  // clock/seed so time-dependent requests still match the reviewed proof.
   const execution_started_at_date = new Date();
   const preparedClock =
     opts.tool_approval_id && resolved.source_kind === "saved"
@@ -295,10 +211,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const evaluationInstant = preparedClock?.instant ?? execution_started_at_date;
   const execution_started_at = evaluationInstant.getTime();
 
-  // Persist queued execution row (unless one already exists — the queue
-  // worker passes `existing_execution_id` so the HTTP-created row is
-  // reused instead of spawning a new one). For draft / step runs the
-  // workflow_id / workflow_version_id columns stay NULL.
   const execution_id = opts.existing_execution_id
     ? opts.existing_execution_id
     : await createExecution(db, {
@@ -319,8 +231,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
 
   const evaluationSeed = preparedClock?.seed ?? execution_id;
 
-  // Wire abort: external signal (if any) feeds into the per-execution
-  // controller. The controller is registered so cancel API can find it.
   const ctrl = registerAbort(execution_id, tenant_id);
   if (opts.signal) {
     if (opts.signal.aborted) ctrl.abort("aborted");
@@ -343,10 +253,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     execution_started_at_date,
   );
   if (!started) {
-    // A durable cancel may win while the queue is handing this job to a
-    // worker. Refuse the run before any step, completion audit, outcome
-    // tracking, or workflow-recency mutation can occur. The cancel path owns
-    // the terminal row; this worker only releases its process-local resources.
     ctrl.abort("cancelled");
     clearTimeout(totalTimer);
     unregisterAbort(execution_id);
@@ -377,10 +283,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     db,
   );
 
-  // Per-run LLM-token budget. The cap lives on the workflow def; null
-  // means "no per-run cap" (the per-tenant monthly budget still
-  // applies independently). Threaded through every StepRunContext so
-  // drivers that issue an LLM-provider call can consult it.
   const llmBudget = new RunLlmBudget(def.max_llm_tokens_per_run ?? null);
 
   const scope: Record<string, unknown> = { $input: normalizedInput };
@@ -389,51 +291,22 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const stepSummaries: RunResult["steps"] = [];
   let lastOutput: unknown = null;
   let lastError: { code: string; message: string } | null = null;
-  // The step whose failure tripped the run — carried into the
-  // `execution.failed` event so a notification names what broke.
   let failedStepId: string | null = null;
-  // Populated by the workflow-level `validation_expression` check
-  // when it returns a falsy verdict or throws. Used to surface a
-  // typed `validation_failed` error on the run result so the
-  // self-healing flow can act on it.
   let validationError: {
     code: string;
     message: string;
     details?: unknown;
   } | null = null;
   const skippedStepIds = new Set<string>();
-  // Hold-writes bookkeeping: ids of steps whose response data is
-  // missing — either held (write materialized but never dispatched) or
-  // skipped because a DAG dependency was held. Steps depending on this
-  // set are skipped explicitly with the labeled
-  // `skipped_dependency_held` error instead of failing deep in the
-  // driver with `placeholder_unresolved`. Only consulted when
-  // `opts.hold_writes` is set; live runs never touch it.
   const heldOrSkippedStepIds = new Set<string>();
   const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
-  // Topologically sort the steps so a step that references
-  // `$scope.<id>.data` runs AFTER `<id>` even when declared earlier.
-  // The DAG combines data-flow refs with control-flow containment
-  // (branch arms / parallel branches / loop bodies depend on their
-  // container), so contained steps still run after their container —
-  // identical semantics to the old linear walk for declaration-ordered
-  // workflows, but correct ordering for forward-ref workflows. Cycles
-  // are rejected at authoring time; a cycle here would have been
-  // caught by build_workflow / dry_run_workflow / edit_workflow_patch.
   const dag = buildStepDag(def);
   const stepIndexById = new Map(def.steps.map((s, i) => [s.id, i] as const));
   let executionOrder: ReadonlyArray<string>;
   try {
     executionOrder = topoSort(dag);
   } catch (err) {
-    // Should not be reachable — pre-flight cycle checks gate every
-    // tool that produces a WorkflowDef. If a cycle slipped through,
-    // fall back to declaration order so the run can still emit step
-    // summaries (and the existing unresolved-identifier warnings will
-    // surface the bug downstream). Log loudly so the contract violation
-    // is visible in operator triage instead of disguising itself as a
-    // generic step-resolution warning further down the run.
     logger.error({
       module: "execution",
       action: "engine.topo_sort_fallback",
@@ -447,13 +320,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     executionOrder = def.steps.map((s) => s.id);
   }
 
-  // Static container-child exclusion: compute the union of ids that are
-  // managed INSIDE their container driver and must not run at the top level.
-  // Applies to: loop bodies (run by the loop driver per item) and parallel
-  // branches (run by the parallel driver concurrently). Does NOT include
-  // branch arms — branch arms execute in the top-level walk; only the
-  // NOT-TAKEN arm is excluded at runtime via the `skippedStepIds` set that
-  // is populated after the branch step reports which arm it chose.
   const containerChildIds = new Set<string>();
   for (const s of def.steps) {
     if (s.kind === "parallel") {
@@ -472,7 +338,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     const i = stepIndexById.get(id) ?? topoIdx;
     const step = def.steps[i] as StepDef;
     if (signal.aborted) {
-      // Drain remaining steps as aborted summary entries.
       stepSummaries.push({
         step_key: step.id,
         step_index: i,
@@ -484,13 +349,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
-    // Container children are excluded from the top-level walk — they run
-    // inside their container (branch arm, parallel branch, loop body).
-    // The static `containerChildIds` set catches them regardless of
-    // container outcome (success, failure, held), fixing the bug where a
-    // failed or held container left its children to run at top level with
-    // unbound `$item`. The `skippedStepIds` set handles the branch arm
-    // that was NOT taken (runtime control flow).
     if (skippedStepIds.has(step.id) || containerChildIds.has(step.id)) {
       stepSummaries.push({
         step_key: step.id,
@@ -503,30 +361,12 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
-    // Step-output fixture short-circuit. Used by the dry-run cache so
-    // re-previewing a draft where only a downstream transform changed
-    // skips the unchanged upstream request entirely (session fb930dcb's
-    // 12 identical Jira fetches). The caller is responsible for
-    // selecting only deterministic steps (GETs, transforms, query-only
-    // GraphQL); the engine writes the supplied envelope verbatim into
-    // scope and records a synthetic step summary marked
-    // `replayed_from_fixture: true` so consumers can tell.
     const fixtureEnvelope = opts.step_output_fixtures?.[step.id];
     if (fixtureEnvelope !== undefined) {
       const envObj = fixtureEnvelope as Record<string, unknown>;
       const fixtureData = (envObj as { data?: unknown }).data;
       scope[step.id] = fixtureEnvelope;
       lastOutput = fixtureData;
-      // `output_preview` MUST mirror the normal path (line ~603), which
-      // records the RAW step output — NOT the `{ data, … }` scope envelope.
-      // The dry-run cache re-wraps `output_preview` into a fresh fixture
-      // envelope (`{ data: output_preview }`) on the next iteration; if we
-      // stored the already-enveloped `fixtureEnvelope` here, each rerun would
-      // wrap one `.data` layer deeper — `$scope.<step>.data.slug` →
-      // `.data.data.slug` → ad infinitum (SUBKIT_BUGS.md Bug 2, and the
-      // root of Bugs 1 & 3, where URL/JSONata refs then point at the wrong
-      // depth). Recording the unwrapped `fixtureData` keeps the replay path
-      // idempotent with the live path: the cached shape never drifts.
       stepSummaries.push({
         step_key: step.id,
         step_index: i,
@@ -539,10 +379,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
       continue;
     }
-    // Hold-writes: a step that depends (data-flow ref or containment)
-    // on a held / held-skipped step cannot run — its scope key carries
-    // no data. Skip it explicitly and labeled, mirroring the branch
-    // control-flow skip shape, and propagate transitively.
     if (opts.hold_writes) {
       const heldDep = findHeldDependency(dag, step.id, (sid) => heldOrSkippedStepIds.has(sid));
       if (heldDep) {
@@ -583,8 +419,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       depth,
       signal,
       scope,
-      // One evaluation instant for the whole execution (or its preparation),
-      // shared by every step + the workflow-scope sandboxes.
       started_at: evaluationInstant,
       evaluation_seed: evaluationSeed,
       workflow_slug: resolved.workflow_slug,
@@ -620,13 +454,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       });
     };
 
-    // for_each inline iteration: resolve the JS selector to an array,
-    // then run THIS SAME step once per item with a child scope that
-    // binds $item + $loop_index. The iteration results accumulate into
-    // the same envelope shape as a legacy `loop` body, so downstream
-    // transforms read `$scope.<step>.data[0].data` uniformly. The
-    // container step row (inserted above) records the aggregate; each
-    // iteration gets its own per-iteration row keyed `<step>[N]`.
     if (step.for_each) {
       const forEachStart = Date.now();
       const collectionResult = await resolveForEachCollection(
@@ -634,27 +461,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         step.id,
         scope,
         forEachStart,
-        // Deterministic clock/id for `sk.now()`/`sk.uuid()` in the
-        // selector — the execution's fixed instant + a per-step seed, same
-        // wiring as steps/transform.ts.
         {
           now_ms: ctx.started_at.getTime(),
           seed: `${evaluationSeed}:${step.id}`,
         },
       );
-      // Circuit-breaker preflight (audit H1): when the target connector's
-      // breaker is already open, every iteration would fail fast with
-      // `circuit_open` anyway — but each one still schedules, inserts its
-      // own step row and reports its own failure (observed: a 5×-422 open
-      // breaker turned one fan-out into 464 doomed step failures in 3.5
-      // minutes). Fail ONCE at the container instead of scheduling N
-      // branches. Half-open probing is untouched: past the reset window the
-      // predicate stands down and the first iteration performs the probe.
-      //
-      // A connector that is switched off, or a write that resolved to the
-      // other environment's connector, refuses every iteration the same way,
-      // so it fails the container once too — asked first and in the
-      // dispatcher's order, so it is never reported as an open breaker.
       let fanOutCircuitFailure: StepResult | null = null;
       if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
         const target = await getConnectorForEnvironment(
@@ -695,9 +506,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         }
       }
       if (collectionResult.kind === "failure" || fanOutCircuitFailure !== null) {
-        // Collection resolution failed (or the fan-out preflight tripped) —
-        // record the failure as the step outcome, write the step row, and
-        // apply the on_error semantics.
         const failedResult =
           fanOutCircuitFailure ?? (collectionResult as { result: StepResult }).result;
         const failureOutcome: import("./step-runner.ts").RunStepOutcome = {
@@ -762,9 +570,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             }
             break;
           }
-          // on_error:"continue" — author-declared tolerance. The run keeps
-          // its succeeded status, so the failure surfaces as a warning
-          // instead of on RunResult.error.
           warningsAccum.push({
             code: "step_failed_continued",
             step_key: step.id,
@@ -778,7 +583,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         continue;
       }
       if (collectionResult.kind === "empty_warning") {
-        // Selector resolved to non-array — zero iterations, warn.
         const warnResult = collectionResult.result;
         scope[step.id] = wrapEnvelope({
           data: [],
@@ -817,23 +621,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         });
         continue;
       }
-      // kind === "collection" — iterate. Iterations are independent:
-      // each binds $item/$loop_index off the PARENT scope via
-      // buildLoopChildScope, mutates only its own child scope, and
-      // contributes one entry to a fixed result slot. That independence
-      // lets a read-classified fan-out run with bounded concurrency
-      // (resolveForEachConcurrency) while write/transform bodies stay
-      // strictly sequential. Result order is preserved regardless —
-      // every iteration writes its own index, never appends.
       const items = collectionResult.items;
       const slots: (Record<string, unknown> | undefined)[] = new Array(items.length);
-      // First failed iteration body (status failed/aborted/timed_out). A
-      // for_each runs THIS step once per item, so the iteration's failure
-      // is the step's failure — without surfacing it the container always
-      // finalized "succeeded" and a write that 400'd inside a loop body was
-      // masked as a successful execution (silent data-loss class). The
-      // single-threaded check-and-set is race-free across bounded-parallel
-      // workers (no await between read and write).
       let forEachFailure: import("./step-runner.ts").RunStepOutcome | null = null;
 
       const runIteration = async (itemIdx: number): Promise<void> => {
@@ -847,10 +636,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           kind: step.kind,
         });
         if (opts.hold_writes) {
-          // The held decision is iteration-invariant — it depends only on
-          // the global held/skipped set, not on sibling iterations — so
-          // each iteration reads it read-only, the same contract parallel
-          // branches use for `heldOrSkippedStepIds`.
           const heldDep = findHeldDependency(dag, step.id, (sid) => heldOrSkippedStepIds.has(sid));
           if (heldDep) {
             const skippedEnv = wrapEnvelope({
@@ -890,10 +675,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             ),
         });
         recordHeldChild(`${step.id}[${itemIdx}]`, iterCtx, iterOutcome);
-        // Retain $item + $loop_index on the scope for downstream
-        // string/JSONata refs within this iteration. The child scope
-        // already has them; the parent scope's step.id key carries the
-        // aggregate after all iterations complete.
         childScope[step.id] = envelopeFor(iterOutcome);
         slots[itemIdx] = {
           [step.id]: bodyEnvelopeForLoopAccumulator(iterOutcome),
@@ -910,17 +691,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
 
       const concurrency = resolveForEachConcurrency(step, items.length);
       if (concurrency <= 1) {
-        // Sequential: honour cooperative cancellation between iterations,
-        // exactly as before.
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           if (signal.aborted) break;
           await runIteration(itemIdx);
         }
       } else {
-        // Bounded-parallel: a fixed worker set pulls the next index off a
-        // shared cursor, so at most `concurrency` iterations are in
-        // flight at once. A mid-flight abort stops claiming new indices;
-        // slots never claimed stay empty and compact out below.
         let cursor = 0;
         const worker = async (): Promise<void> => {
           for (;;) {
@@ -934,8 +709,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
         );
       }
-      // Compact away any slots left empty by an abort; completed
-      // iterations keep their original relative order.
       const iterationResults: unknown[] = slots.filter((s) => s !== undefined);
       if (childHeld) heldOrSkippedStepIds.add(step.id);
       recordForEachExecution({
@@ -952,7 +725,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         error: null,
       });
       lastOutput = iterationResults;
-      // Empty-loop-body warning reuse: same heuristic as the legacy loop.
       if (iterationResults.length > 0) {
         let offloadedIterations = 0;
         const productiveIterations = iterationResults.filter((iter) => {
@@ -981,14 +753,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         }
       }
       const forEachDurationMs = Date.now() - forEachStart;
-      // A failed iteration body is the for_each's failure: report the
-      // container's status as the failing iteration's status (not a blanket
-      // "succeeded") so the step row, the step summary, and the execution
-      // final_status all reflect it. on_error governs propagation exactly as
-      // for a non-loop step.
-      // The cast restores the declared union: TS resets `forEachFailure` to
-      // `null` at this read because its only assignment lives in the
-      // `runIteration` closure.
       const failedOutcome = forEachFailure as import("./step-runner.ts").RunStepOutcome | null;
       const forEachStatus: "succeeded" | "failed" | "aborted" | "timed_out" = failedOutcome
         ? (failedOutcome.result.status as "failed" | "aborted" | "timed_out")
@@ -1038,8 +802,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           if (forEachStatus === "aborted") finalStatus = "aborted";
           else if (forEachStatus === "timed_out") finalStatus = "timed_out";
           else finalStatus = "failed";
-          // Mark every remaining step in the topological order as skipped —
-          // same contract as the shared post-step failure handling below.
           for (let j = topoIdx + 1; j < executionOrder.length; j++) {
             const remainingId = executionOrder[j]!;
             const remainingIdx = stepIndexById.get(remainingId) ?? j;
@@ -1060,9 +822,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           }
           break;
         }
-        // on_error:"continue" — author-declared tolerance. The run keeps
-        // its succeeded status, so the failure surfaces as a warning
-        // instead of on RunResult.error.
         warningsAccum.push({
           code: "step_failed_continued",
           step_key: step.id,
@@ -1106,18 +865,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         scope_value: undefined,
       };
     }
-    // Wrap every step's output in the documented envelope
-    //   { data, status_code?, headers?, duration_ms, error? }
-    // so transforms can read `$scope.<id>.data` — the contract the
-    // data-handling skill has promised forever but the runtime used to
-    // ignore (stepId was the raw body). Loop/branch/parallel keep their
-    // special array/record shape under `.data` too so authors can write
-    // `$scope.each.data.length` etc. uniformly.
     scope[step.id] = envelopeFor(outcome);
     lastOutput = outcome.scope_value;
-    // Hold-writes: a held step's response data does not exist — record
-    // it so downstream dependents skip explicitly (see the labeled
-    // skip above) instead of resolving placeholders against null.
     if (hasHeldOutput(outcome.result)) {
       heldOrSkippedStepIds.add(step.id);
     }
@@ -1127,8 +876,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       }
     }
 
-    // Branch control flow: mark skipped arm's steps so they are skipped in the
-    // linear walk.
     if (step.kind === "branch" && outcome.result.status === "succeeded") {
       const arm = (outcome.result.output as { arm?: string })?.arm;
       const branchStep = step as BranchStep;
@@ -1138,21 +885,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       }
     }
 
-    // Loop iteration: after the loop driver resolves the collection, iterate
-    // each item through the body steps sequentially.
     if (step.kind === "loop" && outcome.result.status === "succeeded") {
       const loopStep = step as LoopStep;
       const items = outcome.result.output;
       if (Array.isArray(items)) {
         const iterationResults: unknown[] = [];
-        // First failed body step (status failed/aborted/timed_out) whose own
-        // on_error is the default "fail". Pre-fix a write that 400'd inside a
-        // loop body was stored only in the per-iteration envelope and never
-        // propagated to the execution's final_status — the loop driver's
-        // outcome stayed "succeeded" (it only resolves the collection), so an
-        // operator saw `succeeded` over silently lost writes. A body step that
-        // sets on_error:"continue" opts out of this, exactly as in the linear
-        // walk.
         let loopBodyFailure: {
           step_id: string;
           result: import("./types.ts").StepResult;
@@ -1161,11 +898,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           const item = items[itemIdx];
           const childScope = buildLoopChildScope(scope, item, itemIdx);
           const bodyResults: Record<string, unknown> = {};
-          // Hold-writes: held body steps hold PER ITERATION — each
-          // iteration materializes its own held_request from its own
-          // `$item`. The set resets every iteration so a body step
-          // depending on a held sibling is skipped within THIS
-          // iteration only.
           const iterationHeldIds = new Set<string>();
           for (const bodyStepId of loopStep.body) {
             const bodyStep = def.steps.find((s) => s.id === bodyStepId) as StepDef | undefined;
@@ -1240,13 +972,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                     runCallStep(db, cctx, cstep as CallStep, cscope),
                 ),
             });
-            // Per-iteration trace: surface the post-substitution URL +
-            // status + outcome so an operator (or the LLM author reading
-            // diagnose_run) can see which iteration of which body step
-            // ran where. Pre-fix the engine logged only the unresolved
-            // template, leaving session f00b8d1c blind to which item
-            // produced the 404. Best-effort — only fires on HTTP-shaped
-            // request_meta variants where a resolved URL exists.
             const bodyMeta = bodyOutcome.result.request_meta ?? null;
             if (bodyMeta && (bodyMeta.driver === "http" || bodyMeta.driver === "connectorless")) {
               logger.info({
@@ -1260,19 +985,9 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                 outcome: bodyOutcome.result.status,
               });
             }
-            // Full envelope in `childScope` so later body steps in THIS
-            // iteration can read `$scope.<id>.data`. `bodyResults`
-            // accumulates into the run-resident `iterationResults`, so it
-            // gets the OffloadRef-swapped envelope: a large body payload
-            // is replaced by a reference to its already-persisted
-            // storage_uri (no second write), bounding loop memory.
             childScope[bodyStep.id] = envelopeFor(bodyOutcome);
             recordHeldChild(`${bodyStep.id}[${itemIdx}]`, bodyCtx, bodyOutcome);
             bodyResults[bodyStep.id] = bodyEnvelopeForLoopAccumulator(bodyOutcome);
-            // Hold-writes: per-iteration held tracking — siblings later
-            // in THIS iteration's body skip explicitly. The envelopes
-            // above already carry `held` + `held_request` (envelopeFor)
-            // so each iteration's artifact rides the loop accumulator.
             if (hasHeldOutput(bodyOutcome.result)) {
               iterationHeldIds.add(bodyStep.id);
             }
@@ -1289,10 +1004,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               }
               if (loopStep.fail_fast === true) break;
             } else if (bodyFailed) {
-              // on_error:"continue" on the body step — the container stays
-              // green, so the tolerated failure surfaces as a warning
-              // instead of on RunResult.error. Once per body step, not
-              // once per iteration.
               const bodyError = bodyOutcome.result.error ?? {
                 code: "step_failed",
                 message: "step failed",
@@ -1324,21 +1035,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         });
         if (childHeld) heldOrSkippedStepIds.add(step.id);
         lastOutput = iterationResults;
-        // Empty-loop-body detection (P2): the loop driver produced N
-        // items, every body step "succeeded", but no iteration's body
-        // output carried a productive payload. Without this signal the
-        // workflow reports `succeeded` and the LLM truthfully claims
-        // "loop completed" while the user sees zero rows — the
-        // session-79bf2cca false-positive. Emit a structured warning
-        // with the actual envelope shape so the LLM can fix its
-        // JSONata next turn instead of guessing.
         if (iterationResults.length > 0) {
-          // Count offloaded iterations alongside productive ones — an
-          // iteration whose body payload was offloaded to durable
-          // storage holds an `OffloadRef` in the run-resident scope
-          // instead of the full envelope (the OOM fix). Surfacing the
-          // tally as a metric makes big-loop memory pressure
-          // observable to operators.
           let offloadedIterations = 0;
           const productiveIterations = iterationResults.filter((iter) => {
             const { productive, offloaded } = classifyBodyIteration(iter);
@@ -1375,11 +1072,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             });
           }
         }
-        // Surface a failed loop-body step as the loop's outcome so the shared
-        // post-step handling below propagates it to final_status (honouring
-        // the LOOP step's on_error). The per-iteration envelopes already carry
-        // each iteration's error under `$scope.<loop>.data[i]`; here we only
-        // flip the container status that was masked as "succeeded".
         if (loopBodyFailure) {
           outcome = {
             ...outcome,
@@ -1396,7 +1088,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       }
     }
 
-    // Parallel fan-out: run each branch concurrently via Promise.all.
     if (step.kind === "parallel" && outcome.result.status === "succeeded") {
       const parallelStep = step as ParallelStep;
       let branchFailure: RunStepOutcome | null = null;
@@ -1413,9 +1104,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             parallelStep.branches.map(async (branchStepIds) => {
               const branchScope: Record<string, unknown> = { ...scope };
               const branchOutput: Record<string, unknown> = {};
-              // Hold-writes: per-branch held tracking, same contract as
-              // the loop-body iteration set above. The global set is
-              // only read here (branches run concurrently).
               const branchHeldIds = new Set<string>();
               for (const branchStepId of branchStepIds) {
                 const branchStepDef = def.steps.find((s) => s.id === branchStepId) as
@@ -1537,20 +1225,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         };
     }
 
-    // Capture an output preview for this step. For request/transform/
-    // simple steps we use the raw `outcome.result.output`; for loop +
-    // parallel we use the just-assembled scope envelope which carries
-    // the iterationResults / branchResults so downstream transforms
-    // can be authored against the canonical shape. Truncated downstream by previewOf when
-    // serialised for the LLM.
     let outputPreview: unknown = outcome.result.output;
     if (step.kind === "loop" || step.kind === "parallel") {
       const wrapped = scope[step.id] as { data?: unknown } | undefined;
       if (wrapped && typeof wrapped === "object" && "data" in wrapped) {
-        // For a loop, `wrapped.data` (iterationResults) may embed
-        // `OffloadRef` placeholders. The step summary is a preview
-        // surface for the LLM — collapse each ref to its inline
-        // `preview` string rather than re-hydrating from storage.
         outputPreview = previewOffloadRefs(wrapped.data);
       }
     }
@@ -1584,11 +1262,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         if (outcome.result.status === "aborted") finalStatus = "aborted";
         else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
         else finalStatus = "failed";
-        // Mark every remaining step in the topological order as skipped.
-        // Iterating `executionOrder` rather than the raw declaration array
-        // ensures contained branch arms / parallel branches that haven't been
-        // visited yet still surface a summary entry — and we don't
-        // double-count any step already executed earlier in the topo walk.
         for (let j = topoIdx + 1; j < executionOrder.length; j++) {
           const remainingId = executionOrder[j]!;
           const remainingIdx = stepIndexById.get(remainingId) ?? j;
@@ -1609,9 +1282,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         }
         break;
       }
-      // continue mode: keep scope value; the run keeps its succeeded
-      // status, so the failure surfaces as a warning instead of on
-      // RunResult.error (author-declared tolerance).
       warningsAccum.push({
         code: "step_failed_continued",
         step_key: step.id,
@@ -1624,23 +1294,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Re-hydrate any `OffloadRef` placeholders in the final output BEFORE
-  // output_transform / response_filters / output_schema / validation /
-  // the aggregate `maybeOffload`. The loop runner keeps `iterationResults`
-  // bounded by substituting refs (the OOM fix); here — once — we resolve
-  // them so downstream consumers and the PERSISTED result see plain JSON.
-  // An `OffloadRef` must never cross an external surface. A re-hydration
-  // failure throws `OffloadResolutionError`, failing the run.
   if (lastOutput !== undefined && lastOutput !== null) {
     try {
       lastOutput = await deepResolveOffloadRefs(db, tenant_id, lastOutput, signal);
     } catch (err) {
-      // A re-hydration failure must NOT bubble out of `runExecution` as
-      // an unhandled 500 — it has to be audited as a proper failed
-      // execution record, the same shape as an output_transform throw
-      // just below. Stamp the typed error and fall through to the
-      // persistence layer. The error `.message` is already REDACTED to
-      // the locator scheme by `OffloadResolutionError`.
       logger.warn({
         module: "execution",
         action: "execution.offload_resolution_failed",
@@ -1656,25 +1313,9 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Optional final-output transform. The two forms are mutually
-  // exclusive at authoring time (Zod superRefine), so exactly one
-  // branch runs per workflow:
-  //   - `output_transform` (JSONata)
-  //   - `output_transform_function` (JS, evaluated in QuickJS)
-  // Both shape the workflow's public payload BEFORE output_schema /
-  // validation_expression / validation_function gate the returned
-  // value.
   if (lastOutput !== undefined && finalStatus === "succeeded") {
     if (def.output_transform) {
       try {
-        // Bind `$scope` + `$input` exactly like transform STEPS do
-        // (jsonata-bindings.buildJsonataBindings). Without these bindings the
-        // output_transform could only see the last step's output as the bare
-        // root — every `$scope.<step>.data…` reference resolved to nothing, so
-        // an object-constructor transform collapsed to `{}` even though all
-        // steps succeeded (the `wf_<slug>` envelope returned `{}` while
-        // inspect_execution showed the real per-step data). `lastOutput`
-        // stays the data root so bare-path transforms keep working.
         const transformed = await evaluateJsonata(def.output_transform, lastOutput, {
           input: normalizedInput,
           scope,
@@ -1726,12 +1367,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Workflow-level response filters. Run AFTER output_transform so the
-  // operator-defined transform shapes the payload first, then filters
-  // mask/redact/strip last. Per-step filters on individual
-  // `RequestStep.response_filters`
-  // already cleaned each step's HTTP response inline; this layer is
-  // the last gate before the payload crosses the tenant boundary.
   if (
     def.response_filters &&
     def.response_filters.length > 0 &&
@@ -1756,23 +1391,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Workflow output contract (Fix 11). Validate the FINAL output (post
-  // output_transform / response_filters) against the definition's
-  // declared `output_schema` via the shared Ajv validator. NON-blocking
-  // on live runs: the run stays succeeded and the violation rides
-  // `RunResult.warnings` with field-level `$output/...` paths — the
-  // dry-run preview is where the same code blocks (auto-commit refusal
-  // in dry_run_workflow). A schema that fails to compile is an
-  // authoring bug the workflow validator gate should have refused;
-  // log-only here.
-  // Hold-writes interplay: the contract asserts the LIVE final output.
-  // When a hold-writes preview held (or hold-skipped) any step, the real
-  // final output cannot exist by design — `lastOutput` is null for a
-  // held terminal step, or a stale upstream value when the terminal step
-  // was skipped behind a hold. Validating that against the schema would
-  // make every preview of a send-terminated workflow permanently red.
-  // Skip with an explicit log; live runs and hold-free previews still
-  // validate.
   const outputUnavailableDueToHolds = opts.hold_writes === true && heldOrSkippedStepIds.size > 0;
   if (def.output_schema && outputUnavailableDueToHolds && finalStatus === "succeeded") {
     logger.info({
@@ -1783,19 +1401,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       held_or_skipped: heldOrSkippedStepIds.size,
     });
   }
-  // Honest preview (Fix A). When a hold-writes preview held a write — or
-  // skipped a step behind a held write — the run still reports
-  // `succeeded`, and `lastOutput` is whatever upstream read/transform last
-  // produced. Without a signal this is indistinguishable from a real run:
-  // exactly the "gemeldet ≠ geschrieben" no-op (a search-over-POST held →
-  // the whole write chain skipped → the caller saw the converted blocks
-  // and reported success while nothing was written). Emit a MANDATORY
-  // warning (rides RunResult.warnings → the MCP envelope) so the caller
-  // knows nothing was persisted. The warning states the STATE only — the
-  // remedy is a tool argument (`execute_writes`) or an approval handle
-  // (`confirm_id`), and only the tool surface knows which of the two it
-  // publishes. Step ids + method/url only — never the (already-redacted)
-  // held bodies.
   if (outputUnavailableDueToHolds && finalStatus === "succeeded") {
     const heldWriteSteps = stepSummaries.filter((s) => s.held === true);
     const skippedDepSteps = stepSummaries.filter(
@@ -1824,9 +1429,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       },
     });
   }
-  // Persisted on the execution row so a reader can tell a run whose output
-  // broke its contract from one that honoured it — the warning below rides
-  // only the in-flight RunResult.
   let outputContract: OutputContractVerdict = "none";
   if (
     def.output_schema &&
@@ -1861,17 +1463,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Optional `validation_expression` — evaluated AFTER output_schema so
-  // shape errors surface first. A falsy result trips finalStatus to
-  // failed and stamps the typed `validation_failed` error code; the
-  // self-healing flow recognises this code and produces a
-  // `validation_failed` drift signal that carries the expression text
-  // and the offending value, so the repair LLM can propose a patch.
   if (def.validation_expression && lastOutput !== undefined && finalStatus === "succeeded") {
     try {
-      // Same binding fix as output_transform above — a validation_expression
-      // that references `$scope.<step>` or `$input` must resolve them, not
-      // silently see `undefined` (which is falsy → spurious validation_failed).
       const verdict = await evaluateJsonata(def.validation_expression, lastOutput, {
         input: normalizedInput,
         scope,
@@ -1918,10 +1511,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
   }
 
-  // Optional `validation_function` — JS escape hatch for invariants
-  // JSONata can't express. Runs in the QuickJS sandbox with the
-  // final output bound as `input`. A `false` return (or any throw)
-  // trips the same `validation_failed` envelope.
   if (def.validation_function && lastOutput !== undefined && finalStatus === "succeeded") {
     try {
       const result = await runJs<unknown>({
@@ -1971,8 +1560,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   }
 
   clearTimeout(totalTimer);
-  // Re-evaluate finalStatus if the total timeout fired or the run was
-  // aborted — and only then settle what the row records about it.
   const settled = settleTerminalOutcome({
     status: finalStatus,
     timed_out: totalTimeoutCtrl.signal.aborted,
@@ -1981,23 +1568,16 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     failure: validationError ?? lastError,
   });
   finalStatus = settled.status;
-  // A step refused for its connector names it on the run too, so a reader of
-  // the failed run can open the connector that has to be fixed.
   const refusedConnector = settled.failure ? refusedConnectorOf(settled.failure) : null;
 
-  // Offload top-level execution result.
   const offload = await maybeOffload(db, {
     tenant_id,
     execution_id,
     step_id: null,
     result: lastOutput ?? null,
   });
-  void previewOf; // re-export safety
+  void previewOf;
 
-  // Persist the same error the RunResult envelope reports below:
-  // workflow-level validation/offload failures take precedence over the
-  // last step error, so a run that failed validation (with every step
-  // green) records the typed `validation_failed` code instead of null.
   await finalizeExecution(
     db,
     tenant_id,
@@ -2016,15 +1596,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     offload.sha256,
     settled.output_contract,
   );
-  // Closed-loop patch-candidate outcome tracking: every finalised
-  // execution updates any open outcome window for this workflow so
-  // operators can see whether a recently-applied patch actually
-  // prevented recurrence. Best-effort — tracker swallows errors.
-  //
-  // The optional `self_healing.enabled = false` opt-out lets the eval
-  // runner compare `mode=one_shot` against `mode=self_healing` against
-  // the same fixture. When unset the engine falls back to the tenant
-  // policy resolved by the self-healing service itself.
   if (opts.self_healing?.enabled !== false) {
     await recordExecutionOutcome(
       {
@@ -2035,9 +1606,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       db,
     );
   }
-  // Touch `last_executed_at` for saved runs so the `wf_<slug>` tool
-  // catalog can rank by recency. Drafts and one-shot step runs do not
-  // touch a persisted workflow row.
   if (resolved.persist_workflow_refs && workflow_id) {
     try {
       await db
@@ -2054,15 +1622,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         execution_id,
         error: err instanceof Error ? err.message : String(err),
       });
-      // SRE dashboards page on a non-zero rate — catalog LRU silently
-      // degrades when this drifts, so make it observable.
       try {
         getMetrics().inc(METRIC_NAMES.WORKFLOWS_LAST_EXECUTED_AT_WRITE_FAILED_TOTAL, {
           tenant_id,
         });
-      } catch {
-        // metrics inc is itself best-effort; never let it mask the run.
-      }
+      } catch {}
     }
   }
   await auditAwait(
@@ -2081,10 +1645,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       metadata: {
         final_status: finalStatus,
         workflow_id,
-        // Cumulative LLM-provider tokens consumed across every
-        // request step the run dispatched. Always emitted (even on
-        // runs that issued zero LLM calls) so dashboards can plot a
-        // per-tenant burn-down without having to filter on action.
         total_llm_tokens: llmBudget.total,
         ...(def.max_llm_tokens_per_run !== undefined
           ? { max_llm_tokens_per_run: def.max_llm_tokens_per_run }
@@ -2100,11 +1660,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     execution_id,
     status: finalStatus,
     output: lastOutput,
-    // Workflow-level `validation_expression` failures take precedence
-    // over step-level errors on the result envelope: if the steps
-    // succeeded but the invariant didn't hold, the operator and the
-    // self-healing flow need to see the typed `validation_failed`
-    // code, not whatever the last step happened to be.
     error: validationError
       ? { code: validationError.code, message: validationError.message }
       : lastError,
@@ -2116,14 +1671,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   return runResult;
 }
 
-/** Extract one ConnectorResolutionSummary per unique connector id from the
- *  step summaries. Each request/graphql step writes a `connector` sub-object
- *  into `request_meta`; this rollup dedupes so the operator sees one row per
- *  connector regardless of how many steps touched it. First occurrence wins
- *  — the step_key on the summary is the first step that used that connector.
- *  Exported for unit testing. */
-/** Every `${cred.…}` token anywhere in a value, by raw name. Walks the whole
- *  structure because the token can sit at any depth of the call input. */
 function collectCredentialTokens(value: unknown): string[] {
   const found: string[] = [];
   const walk = (v: unknown): void => {
@@ -2145,12 +1692,6 @@ function collectCredentialTokens(value: unknown): string[] {
   return [...new Set(found)];
 }
 
-// `scope` is REQUIRED, deliberately. It arrived optional so a caller without one
-// would keep the old behaviour — but the old behaviour is the defect this fixes:
-// no scope means `${scope.…}` and `${input.…}` reach the child as literal text,
-// and that failure is silent at the boundary (the child receives a plausible
-// string and fails later, somewhere else). All four call sites already pass it;
-// making it required means a fifth cannot quietly opt back into the bug.
 async function runCallStep(
   db: Db,
   ctx: StepRunContext,
@@ -2167,8 +1708,6 @@ async function runCallStep(
     .from(executions)
     .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.id, ctx.execution_id)))
     .limit(1);
-  // The parent's prepared HTTP proof does not cover a newly resolved child DAG.
-  // Never drop a single-use boundary while crossing an internal call step.
   if (parent?.approval) {
     await auditAwait(
       {
@@ -2210,7 +1749,6 @@ async function runCallStep(
       },
     };
   }
-  // Resolve target workflow id by id or slug.
   let targetId: string | undefined = step.workflow_id;
   if (!targetId && step.workflow_slug) {
     const rows = await db
@@ -2234,14 +1772,9 @@ async function runCallStep(
       error: { code: "call_target_missing", message: "workflow not found" },
     };
   }
-  // Which child version an approved run may start is decided by the approval,
-  // not by the workflow catalog at run time.
   let authorityLink: { root_execution_id: string; call_path: string[] } | null = null;
   let pinnedChildVersion: string | null = null;
   if (parent?.linked_root) {
-    // Depth one at run time as well as at review time: a called workflow that
-    // calls one was refused when the approval was compiled, so reaching this
-    // point means the running definition is not the approved one.
     return {
       status: "failed",
       retry_count: 0,
@@ -2306,22 +1839,8 @@ async function runCallStep(
     pinnedChildVersion = pin.workflow_version_id;
     authorityLink = { root_execution_id: ctx.execution_id, call_path: [step.id] };
   }
-  // Interpolate the call input against the caller's scope. Type-preserving
-  // because a resolved `${scope.x.data.ids}` must reach the child as an array,
-  // not as its JSON text — the same reason the request body uses this walker.
   let resolvedInput: unknown = step.input ?? null;
   if (step.input !== undefined && step.input !== null) {
-    // A credential must not travel through a call input, because unlike a
-    // request body this value is PERSISTED: `createExecution` stores the child's
-    // input verbatim so a rerun can default to it, and the execution read schema
-    // serves that column to anything holding execution:read — including the
-    // read-and-execute MCP tier. Resolving `${cred.…}` here would write a secret
-    // in clear text into a row that outlives the run and is visible from a lower
-    // tier than the one that could read the credential in the first place.
-    //
-    // Refusing costs nothing: a child resolves `${cred.…}` itself, against its
-    // own connectors, at the step that actually needs it. The parent never has
-    // to hand it over.
     const credTokens = collectCredentialTokens(step.input);
     if (credTokens.length > 0) {
       return {
@@ -2369,9 +1888,6 @@ async function runCallStep(
       source: {
         kind: "saved",
         workflow_id: targetId,
-        // Run the version the approval pins, not whatever is active now. The
-        // check above already refused a drift, so this only makes the intent
-        // explicit at the place the run is started.
         ...(pinnedChildVersion ? { version_id: pinnedChildVersion } : {}),
       },
       input: resolvedInput,
@@ -2383,16 +1899,12 @@ async function runCallStep(
         signal: ctx.signal,
         trace_id: ctx.trace_id ?? null,
         execution_mode: ctx.execution_mode,
-        // Hold-writes propagates into tool-chained child runs — a
-        // preview must not leak a write through a `call` step.
         ...(ctx.hold_writes ? { hold_writes: true } : {}),
         ...(ctx.principal ? { principal: ctx.principal } : {}),
       },
     });
     return {
       status: child.status === "succeeded" ? "succeeded" : "failed",
-      // A successful child preview can still hold every external write.
-      // Preserve its evidence when the parent summarizes the call.
       ...(child.warnings?.length ? { warnings: child.warnings } : {}),
       output: {
         execution_id: child.execution_id,
@@ -2423,5 +1935,4 @@ async function runCallStep(
 }
 
 export type { RunExecutionSource, WorkflowDef };
-// Re-export the schema so consumers (workflow service) can validate.
 export { WorkflowDefSchema };

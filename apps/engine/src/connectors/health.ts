@@ -1,24 +1,3 @@
-// Connector-response health classification.
-//
-// A connector call can complete at the transport layer (no thrown error)
-// yet prove the connector *unusable*: the credential was rejected, the
-// endpoint was removed upstream, or the vendor is failing. Left unclassified,
-// these collapse into "the call succeeded, the body is just empty" — which
-// is how a dead Jira credential surfaced as "0 test plans" instead of
-// "your Jira login is broken".
-//
-// This classifier is pure over (status, headers) so the ad-hoc
-// `call_connector` surfaces, the workflow request-step executor, and the
-// proactive scanners all share one verdict. It NEVER inspects the body —
-// only the HTTP status and a small set of well-known headers.
-//
-// Verdict tiers — not every verdict means "connector broken":
-//   connector-level faults  auth_failed, endpoint_gone   (unusable until fixed)
-//   early warning           deprecated                   (2xx that announces removal)
-//   request-level outcomes  not_found, rate_limited      (connector itself fine)
-//   transient vendor fault  degraded                     (5xx — retry later)
-// Use `isConnectorUnusable` when only the connector-level faults matter.
-
 export type ConnectorHealth =
   | "ok"
   | "auth_failed"
@@ -28,48 +7,15 @@ export type ConnectorHealth =
   | "rate_limited"
   | "degraded";
 
-// Atlassian (Jira / Confluence, Seraph auth) serve an *unauthenticated*
-// request as HTTP 200 with `X-Seraph-LoginReason: AUTHENTICATED_FAILED`
-// rather than a 401 — a JQL search then returns an empty result set with a
-// 200. This is the documented Seraph signal; the header name is unique to
-// Atlassian, so matching it globally cannot misfire on another vendor.
 const SERAPH_LOGIN_REASON_HEADER = "x-seraph-loginreason";
 const SERAPH_AUTH_FAILED = "AUTHENTICATED_FAILED";
 
-/**
- * Vendor deprecation announcement parsed from response headers. Vendors send
- * these on *successful* responses for months before an endpoint is removed
- * (e.g. Atlassian announced the `/rest/api/3/search` removal via
- * `Deprecation` + `Link rel="deprecation"` long before it started 410ing) —
- * parsing them converts "discover the removal at the final 410" into
- * "discover it inside the migration window".
- *
- * - `Deprecation`: `true` or an HTTP-date / @unix timestamp (RFC draft).
- * - `Sunset`: HTTP-date after which the endpoint stops working (RFC 8594).
- * - `Link`: `<uri>; rel="deprecation"` (docs) / `rel="successor-version"`
- *   (the replacement endpoint).
- */
 export interface DeprecationSignal {
-  /** ISO/HTTP date string when known, "true" when announced without a date. */
   deprecated: string;
-  /** Sunset header value (HTTP-date) — when the endpoint stops working. */
   sunset: string | null;
-  /** Replacement/documentation URI from the Link header, if announced. */
   successor_uri: string | null;
 }
 
-/**
- * Parse vendor deprecation headers. `headers` must use lowercased keys (the
- * HTTP driver normalizes them via `Headers.forEach`). Returns null when the
- * response carries no deprecation signal.
- *
- * A `Link` carrying rel="successor-version" / rel="deprecation" counts as a
- * signal even WITHOUT a `Deprecation`/`Sunset` header — vendors commonly
- * attach only the successor link to the final 410, and harvesting it is the
- * difference between "endpoint removed, good luck" and "migrate to <uri>".
- * The rel matching is narrow, so generic pagination Link headers never
- * trigger this.
- */
 export function parseDeprecation(headers?: Record<string, string>): DeprecationSignal | null {
   if (!headers) return null;
   const deprecation = headers.deprecation?.trim();
@@ -83,15 +29,9 @@ export function parseDeprecation(headers?: Record<string, string>): DeprecationS
   };
 }
 
-/**
- * Extract the deprecation/successor URI from a `Link` header. Handles
- * multiple comma-separated links; prefers `rel="successor-version"` (the
- * replacement endpoint) over `rel="deprecation"` (the announcement docs).
- */
 function parseDeprecationLink(link: string | undefined): string | null {
   if (!link) return null;
   let docsUri: string | null = null;
-  // `<uri>; rel="x"` segments — a quoted rel list may hold several tokens.
   for (const match of link.matchAll(/<([^>]+)>\s*;([^,]*)/g)) {
     const uri = match[1]!;
     const params = match[2]!.toLowerCase();
@@ -103,10 +43,6 @@ function parseDeprecationLink(link: string | undefined): string | null {
   return docsUri;
 }
 
-/**
- * Classify a completed connector response. `headers` must use lowercased
- * keys (the HTTP driver normalizes them via `Headers.forEach`).
- */
 export function classifyConnectorHealth(
   status: number,
   headers?: Record<string, string>,
@@ -120,27 +56,17 @@ export function classifyConnectorHealth(
   if (status === 404) return "not_found";
   if (status === 429) return "rate_limited";
   if (status >= 500) return "degraded";
-  // A successful response that announces its own removal is an early
-  // warning, not a failure — callers must NOT fail the request on it.
   if (status >= 200 && status < 400 && parseDeprecation(headers)) {
     return "deprecated";
   }
   return "ok";
 }
 
-/**
- * True only for the connector-level faults that make the connector unusable
- * until a human/agent intervenes. Request-level outcomes (not_found,
- * rate_limited), the deprecated early warning, and transient 5xx are NOT
- * unusable — callers that previously branched on `health !== "ok"` for
- * "is the connector broken?" must use this instead.
- */
 export function isConnectorUnusable(health: ConnectorHealth): boolean {
   return health === "auth_failed" || health === "endpoint_gone";
 }
 
 export interface ConnectorHealthHint {
-  /** Stable machine-readable code for routing/health rollup. */
   error_code:
     | "auth_rejected"
     | "endpoint_removed"
@@ -152,21 +78,12 @@ export interface ConnectorHealthHint {
   next_best_actions: string[];
 }
 
-/** Optional request context that sharpens the hint text. */
 export interface ConnectorHealthHintContext {
-  /** Request path — enables path-aware guidance (e.g. /orgs/{x} vs /users/{x}). */
   path?: string | null;
-  /** Parsed deprecation signal, when the caller already has it. */
   deprecation?: DeprecationSignal | null;
-  /** Retry-After in seconds, when the caller parsed it. */
   retry_after_s?: number | null;
 }
 
-/**
- * Human/LLM-facing guidance for a non-ok verdict. Returns null for "ok" so
- * callers attach nothing on the healthy path. `slug` names the connector in
- * the suggestion so the model can tell the user which one to fix.
- */
 export function connectorHealthHint(
   health: ConnectorHealth,
   slug: string,

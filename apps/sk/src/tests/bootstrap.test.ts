@@ -67,9 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(cacheDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 const successResp: BootstrapResp = {
@@ -101,7 +99,7 @@ const successResp: BootstrapResp = {
     quietHoursEnd: "",
     portalTokenTtlMin: 15,
   },
-  server_time: "2024-11-14T22:13:20.000Z", // FROZEN_NOW (1_700_000_000_000)
+  server_time: "2024-11-14T22:13:20.000Z",
 };
 
 describe("loadBootstrap", () => {
@@ -124,13 +122,11 @@ describe("loadBootstrap", () => {
     await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });
     expect(client.bootstrapCalls).toBe(1);
     const cached = JSON.parse(readFileSync(path, "utf8")) as { v: number; allowed: string[] };
-    // Cache version: bumped to 2 when `prefs` was added, then to 3 with
-    // portalTokenTtlMin.
     expect(cached.v).toBe(3);
     expect(cached.allowed).toEqual(["conversation:read", "workflow:read"]);
 
     const snap2 = await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });
-    expect(client.bootstrapCalls).toBe(1); // hit cache, no new call
+    expect(client.bootstrapCalls).toBe(1);
     expect(snap2.source).toBe("cache");
     expect(snap2.allowed.has("conversation:read")).toBe(true);
   });
@@ -154,7 +150,6 @@ describe("loadBootstrap", () => {
     });
     expect(client.bootstrapCalls).toBe(1);
 
-    // Walk the clock past the TTL.
     const ttl = 6 * 60 * 60 * 1000;
     await loadBootstrap(client as unknown as EngineClient, PROFILE, {
       cacheDir,
@@ -193,9 +188,6 @@ describe("bootstrapCachePath", () => {
 
   test("uses the `__no_tenant__` sentinel slug when no tenant is set", () => {
     const p = bootstrapCachePath({ ...PROFILE, active_tenant_id: null }, "/tmp/x");
-    // The sentinel uses double-underscores, which the sanitiser
-    // (`[^A-Za-z0-9_-]` → `_`) cannot produce from a real tenant
-    // slug, so collisions with sanitised slugs are impossible.
     expect(p).toContain("__no_tenant__");
   });
 
@@ -205,9 +197,6 @@ describe("bootstrapCachePath", () => {
     expect(noTenant).not.toBe(namedGlobal);
   });
 
-  // W11 review fix: cache key must include a token fingerprint so two
-  // different api_keys against the same (engine, tenant) don't share a
-  // cache file (and thus permission allow-set).
   test("two different api_keys against the same (engine, tenant) get distinct cache files", () => {
     const a = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_admin1234" }, "/tmp/x");
     const b = bootstrapCachePath({ ...PROFILE, api_key: "wf_portal_other987" }, "/tmp/x");

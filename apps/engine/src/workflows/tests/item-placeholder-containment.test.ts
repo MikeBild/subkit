@@ -46,15 +46,10 @@ describe("validateWorkflowDef · item-placeholder containment", () => {
         },
       ],
     });
-    // `loop body never references the iteration item` doesn't fire
-    // because we DO use ${item.id}; placeholder containment passes
-    // because iter_body is in iter.body[]. This passes.
     expect(result.ok).toBe(true);
   });
 
   test("rejects a body step whose item placeholder is `${notitem.id}` if no loop", () => {
-    // Sanity: only `${item.…}` triggers the rule. Other placeholders
-    // pass through.
     const result = validateWorkflowDef({
       name: "t",
       steps: [
@@ -74,15 +69,10 @@ describe("validateWorkflowDef · item-placeholder containment", () => {
           over: "$scope.x.data",
           body: ["a"],
         },
-        // a is in iter.body, even though iter.over references unknown `x` —
-        // the test isolates only the placeholder-containment rule, not other
-        // validators.
         { id: "a", kind: "request", method: "GET", url: "https://x/${item.id}" },
-        // x must exist for the loop validator to pass — add a dummy step.
         { id: "x", kind: "transform", language: "javascript", expression: "[1, 2]" },
       ],
     });
-    // The loop is structurally OK now; the body step is contained.
     expect(result.ok).toBe(true);
   });
 });

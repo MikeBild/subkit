@@ -1,25 +1,3 @@
-// Credential HTTP surface — tenant-facing.
-//
-// Most credential lifecycle operations are driven through
-// `POST /v1/connectors/:id/credentials` (create) or the oauth2 callback.
-// This module adds the `POST /v1/credentials/:id/rotate` endpoint so
-// operators can force a rotation without waiting for the inline refresh
-// worker to observe expiry, and `DELETE /v1/credentials/:id` so operators
-// can revoke a credential outright.
-//
-// Behaviour:
-//   * `oauth2` credentials: runs the refresh grant using the parent
-//     connector's oauth2 config and persists the new access + refresh
-//     tokens via `rotateOAuth2Tokens`, which also writes the
-//     `credential.rotated` audit row.
-//   * Plain credentials (`bearer`, `basic`, `header`, `query`): rejected
-//     with a typed `cannot_rotate_plain_credential` error. Manual
-//     credentials have no way to derive a new secret server-side, so
-//     rotation has to go through the `POST /v1/connectors/:id/credentials`
-//     write path with a fresh payload.
-//
-// RBAC: rotate is gated on `credential:rotate`, delete on `credential:delete`.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
@@ -115,10 +93,6 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
 
-    // Load the credential row first to figure out which rotation path
-    // applies + to resolve the parent connector. Soft-deleted rows are
-    // excluded — rotating a deleted credential would resurrect a secret
-    // the operator already revoked.
     const rows = await db
       .select()
       .from(credentials)
@@ -140,9 +114,6 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    // This route rotates connector-owned oauth2 credentials. MCP-server
-    // credentials (connector_id null) are not rotatable here — their
-    // refresh path is driven through the MCP client subsystem.
     if (row.connector_id == null) {
       throw new BadRequestError("cannot_rotate_non_connector_credential", {
         hint: "credential is not owned by a connector",
@@ -158,9 +129,6 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
     }
 
-    // Decrypt the current refresh token via the service so AAD logic
-    // lives in one place. `getCredentialForConnector` handles the
-    // refresh triple.
     const fetched = await getCredentialForConnector(
       principal.tenant_id,
       connectorId,
@@ -189,8 +157,6 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // Re-fetch metadata for the response envelope. We deliberately do
-    // NOT return plaintext here — this endpoint is a compliance surface.
     const updatedRows = await db
       .select()
       .from(credentials)

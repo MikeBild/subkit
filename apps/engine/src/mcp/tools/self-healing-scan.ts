@@ -1,21 +1,3 @@
-// MCP `self_healing.scan` admin tool.
-//
-// Triggers a proactive drift scan from the chat-driven surface so an
-// operator can ask "scan our connectors for drift now" inside a
-// conversation. Wraps the same `scanForDrift` + `processDriftSignal`
-// pipeline the admin HTTP endpoint uses, with `allowAutoApply: false`
-// hard-wired so the tool never silently mutates a workflow — every
-// proposed candidate still lands in the existing patch-candidate
-// review flow.
-//
-// Visibility is gated in two layers:
-//   * tools/list — only includes this tool in MCP admin mode
-//     (principal carries `mcp:admin` scope OR `SK_MCP_MODE=admin`).
-//     See `mcp/capabilities/tools.ts` for the registration filter.
-//   * tools/call — the handler below additionally enforces the
-//     `admin` role on the principal so a misconfigured catalog can't
-//     leak the tool to a non-admin invoker.
-
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
@@ -62,8 +44,6 @@ export interface SelfHealingScanResult {
   scan_id: string;
   signals_detected: number;
   candidates_created: number;
-  /** Count of drift signals not promoted to a Patch Candidate
-   *  (hook surfaces / orphan connectors). Matches `unanchored.length`. */
   unanchored_detected: number;
   duration_ms: number;
   candidates: Array<{
@@ -133,9 +113,6 @@ export async function handleSelfHealingScan(
   const unanchored: SelfHealingScanResult["unanchored"] = [];
 
   try {
-    // TRIGGERED audit lives inside the try block so audit-insert
-    // failures still flow through the same row-finalisation path —
-    // no orphan `status='running'` rows on any failure mode.
     await auditAwait(
       {
         tenant_id: principal.tenant_id,

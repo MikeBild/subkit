@@ -2,10 +2,6 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec.ts";
 
-// Smoke tests for the conversation tool — no DB or draft state needed.
-// The tool's execute() is passed a null context because it only uses
-// stateless parsers + template matching.
-
 // biome-ignore lint/suspicious/noExplicitAny: minimal stub for stateless tool
 const nullCtx = null as any;
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
@@ -20,9 +16,6 @@ describe("importConnectorFromSpecTool", () => {
   });
 
   test("curl command with GitHub URL → template_match for github", async () => {
-    // The tool strips the path from the curl URL (base URL = protocol+host) and
-    // matches against url_pattern. GitHub's pattern matches the host-only URL;
-    // Stripe's pattern requires /v1 so it doesn't match on base-URL-only input.
     const result = await importConnectorFromSpecTool.execute(nullCtx, {
       source: "curl",
       content:

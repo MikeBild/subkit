@@ -1,14 +1,3 @@
-// Tiny in-process Hono server simulating the engine's OAuth2 surface.
-//
-// Exposes:
-//   GET  /oauth/poll/:state    — returns { status: "pending" | "complete" | "failed" }
-//   POST /oauth/callback/:state — flips state to complete with a credential
-//   POST /oauth/fail/:state    — flips state to failed
-//
-// Tests instantiate one server per case, drive the OAuthWaitView's
-// poll callback against it, and shut it down on cleanup. Mirrors the
-// engine's `/v1/credentials/oauth2/poll/:state` shape.
-
 import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
 
@@ -21,10 +10,8 @@ interface State {
 export interface FakeOAuthServer {
   baseUrl: string;
   setState: (stateId: string, next: State) => void;
-  /** Convenience: simulate an external callback completing a flow. */
   completeFlow: (stateId: string, credential: { id: string; [k: string]: unknown }) => void;
   failFlow: (stateId: string, error?: string) => void;
-  /** Pollster the OAuthWaitView component can call directly. */
   buildPoll: (stateId: string) => () => Promise<{
     status: "pending" | "complete" | "failed";
     credential?: { id: string; [k: string]: unknown };

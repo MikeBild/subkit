@@ -118,8 +118,6 @@ describe("parseOffer — skill-aware resolution", () => {
   });
 
   test("only the FIRST word of the action is matched as the verb", () => {
-    // 'commit and deploy' would NOT trigger the deploy skill because
-    // the first word is 'commit', not 'deploy'.
     const result = parseOffer({
       assistant_text: "Want me to commit and deploy?",
       loaded_skills: loadedSkills,

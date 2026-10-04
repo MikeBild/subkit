@@ -29,7 +29,6 @@ const uuid = createDeterministicUuidFactory(0x0ff10ad);
 
 beforeAll(async () => {
   ctx = await createEngineCtx("offload");
-  // 12 KB string payload — exceeds 10KB threshold.
   const big = "x".repeat(12 * 1024);
   mock = await createMockServer((_, res) => jsonResponse(res, 200, { blob: big }));
 });
@@ -132,8 +131,6 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded REFUSES a cross-tenant fixture id", async () => {
-    // A fixture owned by tenant A must not resolve under tenant B —
-    // the `tenant_id` predicate is the isolation chokepoint.
     const [otherTenant] = await ctx.testDb.db
       .insert(tenants)
       .values({ slug: "offload-other", display_name: "offload-other-tenant" })
@@ -155,7 +152,6 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
       preview: "{}",
       size_bytes: 32,
     };
-    // ctx.tenantId is a DIFFERENT tenant — must throw, never return the body.
     await expect(resolveOffloaded(ctx.testDb.db, ctx.tenantId, ref)).rejects.toBeInstanceOf(
       OffloadResolutionError,
     );
@@ -186,8 +182,6 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   });
 
   test("resolveOffloaded THROWS on an s3:// ref when offload S3 is unconfigured", async () => {
-    // The locator names a different bucket and therefore cannot be
-    // honoured — it must throw, not fall back.
     const ref: OffloadRef = {
       $offloaded: true,
       storage_uri: "s3://some-bucket/offload/key.json",
@@ -242,8 +236,6 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
       preview: "{}",
       size_bytes: 8,
     });
-    // Shape mirrors a loop's iterationResults: array of iteration objects,
-    // each holding body-step envelopes whose `.data` is an OffloadRef.
     const iterationResults = [
       { fetch: { data: mkRef(rows[0]!.id), error: null, duration_ms: 5 } },
       { fetch: { data: mkRef(rows[1]!.id), error: null, duration_ms: 7 } },
@@ -262,15 +254,12 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   test("deepResolveOffloadRefs returns the input untouched when nothing is offloaded", async () => {
     const plain = { a: 1, b: [2, 3], c: { d: "e" } };
     const resolved = await deepResolveOffloadRefs(ctx.testDb.db, ctx.tenantId, plain);
-    // Same reference — a loop with no downstream consumer never re-materialises.
     expect(resolved).toBe(plain);
   });
 });
 
 describe("loop body offload — iterationResults hold references", () => {
   test("bodyEnvelopeForLoopAccumulator swaps a large body payload for an OffloadRef", () => {
-    // A body step whose payload exceeded the inline threshold: the
-    // step-runner already persisted it and surfaced result_storage_uri.
     const offloadedOutcome: RunStepOutcome = {
       result: { status: "succeeded", retry_count: 0, duration_ms: 12 },
       scope_value: { huge: "x".repeat(20_000) },
@@ -283,7 +272,6 @@ describe("loop body offload — iterationResults hold references", () => {
     const ref = env.data as OffloadRef;
     expect(ref.storage_uri).toBe("fixture://11111111-1111-1111-1111-111111111111");
     expect(ref.size_bytes).toBe(20_010);
-    // The small envelope fields stay inline — no re-hydration needed for them.
     expect(env.duration_ms).toBe(12);
     expect(env.error).toBeNull();
   });
@@ -302,10 +290,6 @@ describe("loop body offload — iterationResults hold references", () => {
   });
 
   test("a loop over large body envelopes yields references in iterationResults", async () => {
-    // Two-iteration loop; each iteration's body request returns a 12 KB
-    // blob (> 10 KB inline threshold). The run-resident iterationResults
-    // must hold OffloadRefs, not the full payloads — and the persisted
-    // execution result must be fully re-hydrated plain JSON.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-offload",
       steps: [
@@ -336,10 +320,7 @@ describe("loop body offload — iterationResults hold references", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    // The PERSISTED / returned result must be plain JSON — no OffloadRef
-    // ever crosses the run boundary.
     expect(containsOffloadRef(result.output)).toBe(false);
-    // Each per-iteration body step was offloaded individually.
     const stepRows = await ctx.testDb.db
       .select()
       .from(executionSteps)

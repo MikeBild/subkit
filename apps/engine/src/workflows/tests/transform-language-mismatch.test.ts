@@ -1,14 +1,3 @@
-// Transforms are JavaScript-only. JSONata is NOT a transform `language`
-// (the enum dropped it), so the old "JS body tagged language=jsonata"
-// direction can no longer exist — there is nothing to detect.
-//
-// The one guard that survives: a `language: "javascript"` transform whose
-// expression contains the JSONata pipe operator `~>` is an unambiguous
-// signal the author pasted JSONata into a JS body. The schema rejects it
-// early with a structured `language_mismatch` issue carrying
-// `suggested_language: "javascript"` so the LLM rewrites the body in JS
-// instead of burning a runtime QuickJS parse error.
-
 import { describe, expect, test } from "bun:test";
 import { TransformStepSchema } from "../types.ts";
 
@@ -36,8 +25,6 @@ describe("TransformStepSchema — JSONata pipe in a JavaScript body (language_mi
   });
 
   test("missing language defaults to javascript — JS body without language tag is accepted", () => {
-    // The default language is `javascript`. A JS expression body with no
-    // `language` field must NOT trip the `~>` heuristic.
     const result = TransformStepSchema.safeParse({
       kind: "transform",
       id: "shape",
@@ -57,9 +44,6 @@ describe("TransformStepSchema — JSONata pipe in a JavaScript body (language_mi
   });
 
   test("language=jsonata is no longer a valid transform language (enum rejects it)", () => {
-    // The `jsonata` enum value was removed entirely — a transform can no
-    // longer declare it. Parsing must fail on the enum, BEFORE any body
-    // heuristic runs.
     const result = TransformStepSchema.safeParse({
       kind: "transform",
       id: "shape",
@@ -70,8 +54,6 @@ describe("TransformStepSchema — JSONata pipe in a JavaScript body (language_mi
   });
 
   test("a JS body that mentions `const` inside a string literal is accepted", () => {
-    // The `~>` heuristic must not false-positive on JS that quotes prose
-    // containing JSONata-shaped substrings.
     const result = TransformStepSchema.safeParse({
       kind: "transform",
       id: "shape",

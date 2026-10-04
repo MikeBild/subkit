@@ -1,41 +1,6 @@
-// Bootstrap a minimal `pgboss` schema for tests that exercise code
-// paths which query the queue substrate (e.g. the files cleanup cron's
-// in-flight fid scan).
-//
-// `createBoss` performs a full pg-boss `schemaInstall()` which creates
-// every queue table + indexes + functions. That is overkill (and slow)
-// for tests that don't actually enqueue jobs — they just need the
-// SELECTs against `pgboss.job` / `pgboss.schedule` to return zero rows
-// instead of throwing `relation does not exist`. pg-boss 12.x does NOT
-// ship a separate `pgboss.archive` table — completed/failed jobs stay
-// in `pgboss.job` until the maintenance routine deletes them — so the
-// minimal bootstrap is just two tables + the job_state enum.
-//
-// W5: the files-cleanup runner now treats a failed pg-boss scan as a
-// deploy regression (not a benign warning) and skips the unlinked-TTL
-// soft-delete pass for the tick. Tests that genuinely want to exercise
-// the soft-delete behaviour MUST bootstrap a pgboss schema so the
-// in-flight scan can succeed and the soft-delete proceeds.
-
 import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 
-/** Install the minimal `pgboss` schema needed for the files-cleanup
- *  cron's in-flight scan to succeed (with zero rows). Just schema +
- *  the three tables the cleanup runner queries with the columns it
- *  references (`name`, `state`, `data`). Idempotent — `IF NOT EXISTS`
- *  on every statement. Cheap: no indexes, no functions, no triggers,
- *  unlike `createBoss(...)`'s full `schemaInstall()`.
- *
- *  The `state` column is the real `pgboss.job_state` ENUM, mirrored
- *  from `node_modules/pg-boss/dist/plans.js` JOB_STATES:
- *  `created | retry | active | completed | cancelled | failed`. Tests
- *  that query against it then fail-fast when a query references a
- *  state pg-boss does not have. Pre-fix the column was plain `text`
- *  and the `'scheduled'` regression in `loadInFlightFidStrings` only
- *  surfaced in production (`invalid input value for enum
- *  pgboss.job_state: "scheduled"`). Don't widen this enum without
- *  also widening pg-boss's own definition. */
 export async function bootstrapMinimalPgbossSchema(db: Db): Promise<void> {
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS pgboss`);
   await db.execute(sql`
@@ -67,10 +32,4 @@ export async function bootstrapMinimalPgbossSchema(db: Db): Promise<void> {
       data jsonb
     )
   `);
-  // No pgboss.archive — pg-boss 12.x merged it back into pgboss.job.
-  // A previous version of this bootstrap created the table and the
-  // production code happily SELECTed from it; prod doesn't have the
-  // table and the cleanup cron threw `relation "pgboss.archive" does
-  // not exist` until the engine-side query was fixed. Keep this in
-  // lockstep with `node_modules/pg-boss/dist/plans.js`.
 }

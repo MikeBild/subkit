@@ -1,12 +1,3 @@
-// Integration tests for `POST /v1/executions/transform`.
-//
-// A stateless transform + filter pipeline, no `executions` row. The
-// route shape, RBAC (`workflow:run`), audit (`EXECUTION_COMPLETED`
-// with `source_kind: "transform"`), and error semantics
-// (`output_transform_failed`, `response_filter_failed`,
-// `output_schema_violation`) all match the in-pipeline
-// equivalents in `engine.ts`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -52,8 +43,6 @@ describe("POST /v1/executions/transform", () => {
   test("applies a JS output_transform_function via QuickJS sandbox", async () => {
     const r = await callTransform({
       payload: { count: 7 },
-      // QuickJS body convention (matches engine.ts usage): the script
-      // body is a function body — must use `return` to produce a value.
       output_transform_function: "return input.count * 2",
     });
     expect(r.status).toBe(200);
@@ -79,7 +68,6 @@ describe("POST /v1/executions/transform", () => {
       response_filters: [{ target: "KEYS", action: "FAIL", pattern: "^ssn$" }],
     });
     expect(r.status).toBe(422);
-    // Error body is a flat envelope: { code, message, details }.
     expect((r.body as { details?: { code?: string } }).details?.code).toBe(
       "response_filter_failed",
     );

@@ -1,60 +1,29 @@
-// `@`-mentions in the composer: the text keeps a readable token, the
-// structured reference travels beside it.
-//
-// One scanner (`scanMentionTokens`) is the single source of truth for
-// "where in this text are mention tokens". The chip overlay, whole-token
-// deletion and reference reconciliation all build on it, which is what
-// keeps the three from disagreeing about what counts as a token — the
-// failure mode being `@sync` shadowing `@sync-orders`, or a match inside
-// an e-mail address.
-
 import type { components } from "@/api/schema";
 
 export type ConversationReference = components["schemas"]["ConversationReference"];
 export type ConversationReferenceType = ConversationReference["type"];
 
-/** Prefix that opens the picker. */
 export const MENTION_TRIGGER = "@";
 
-/** Same character set the engine accepts for a label. */
 const LABEL_RE = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
-/** Characters that continue a token word; a candidate followed by one of
- *  these is part of a longer word (`@sync` inside `@sync-orders`). A slash
- *  continues one too: labels may contain it, and `@kategorie/notion` must not
- *  chip a workflow slugged `kategorie`. */
 const TOKEN_CONTINUATION = /[\p{L}\p{N}_./-]/u;
 
-/**
- * A category is written into the prose as `@kategorie/<name>` — plain text, no
- * structured reference: the engine recognises the phrase and lists the block
- * without a model in between. One literal in every language, so a sentence
- * typed in English reaches the same rule.
- */
 export const CATEGORY_MENTION_PREFIX = "kategorie/";
 
-/** The token for a catalog category, e.g. `@kategorie/notion`. */
 export function categoryMentionToken(category: string): string {
   return `${MENTION_TRIGGER}${CATEGORY_MENTION_PREFIX}${category}`;
 }
 
 export interface MentionQuery {
-  /** Index of the trigger character in the text. */
   start: number;
-  /** Everything typed between the trigger and the caret. */
   query: string;
 }
 
-/** The token written into the composer for a reference, e.g. `@customer-sync`. */
 export function mentionTokenText(reference: Pick<ConversationReference, "label">): string {
   return `${MENTION_TRIGGER}${reference.label}`;
 }
 
-/**
- * Detects whether the caret sits inside an unfinished `@…` token. A mention
- * only starts at the beginning of the text or after whitespace, so an
- * e-mail address never opens the picker; a space closes the query.
- */
 export function findMentionQuery(text: string, caret: number): MentionQuery | null {
   if (caret < 0 || caret > text.length) return null;
   const before = text.slice(0, caret);
@@ -67,7 +36,6 @@ export function findMentionQuery(text: string, caret: number): MentionQuery | nu
   return { start, query };
 }
 
-/** Replaces the in-progress token with the final one; returns the caret to restore. */
 export function insertMention(
   text: string,
   start: number,
@@ -77,7 +45,6 @@ export function insertMention(
   return insertMentionText(text, start, caret, mentionTokenText(reference));
 }
 
-/** The same replacement for a token that carries no reference (a category). */
 export function insertMentionText(
   text: string,
   start: number,
@@ -100,8 +67,6 @@ function hasTokenBoundaries(text: string, start: number, end: number): boolean {
   if (before && !/\s/.test(before)) return false;
   const after = end >= text.length ? "" : text[end];
   if (!after) return true;
-  // A dot is a label character (`stripe.prod`), but a dot that ends the
-  // sentence is punctuation: `run @customer-sync.` must still be a token.
   if (after === ".") {
     const afterDot = end + 1 >= text.length ? "" : text[end + 1];
     return !(afterDot && TOKEN_CONTINUATION.test(afterDot));
@@ -109,12 +74,6 @@ function hasTokenBoundaries(text: string, start: number, end: number): boolean {
   return !TOKEN_CONTINUATION.test(after);
 }
 
-/**
- * Longest tokens claim their ranges first (a token that is a prefix of
- * another can never shadow it), candidates need word boundaries on both
- * sides, and claimed ranges never overlap. References that share one
- * label are grouped and occurrences are distributed across the group.
- */
 export function scanMentionTokens(
   text: string,
   references: readonly ConversationReference[],
@@ -147,8 +106,6 @@ export function scanMentionTokens(
   return matches.sort((a, b) => a.start - b.start);
 }
 
-/** Drops references whose token no longer appears — deleting `@customer-sync`
- *  by hand also removes the structured reference. */
 export function reconcileReferences(
   text: string,
   references: readonly ConversationReference[],
@@ -159,7 +116,6 @@ export function reconcileReferences(
   return references.filter((r) => present.has(`${r.type}:${r.id}`));
 }
 
-/** Mentioning the same object twice sends it once. */
 export function dedupeReferences(
   references: readonly ConversationReference[],
 ): ConversationReference[] {
@@ -177,7 +133,6 @@ export interface MentionSegment {
   reference?: ConversationReference;
 }
 
-/** Splits text into plain runs and mention tokens for chip rendering. */
 export function splitByMentions(
   text: string,
   references: readonly ConversationReference[],
@@ -195,7 +150,6 @@ export function splitByMentions(
   return segments;
 }
 
-/** The token covering a character index — one Backspace removes the whole reference. */
 export function findTokenAt(
   text: string,
   references: readonly ConversationReference[],
@@ -205,9 +159,6 @@ export function findTokenAt(
   return scanMentionTokens(text, references).find((m) => index >= m.start && index < m.end) ?? null;
 }
 
-/** True when the caret sits strictly inside a completed token: a click there
- *  is not a query, and a selection would orphan the token's tail. A caret
- *  directly after the token is allowed — re-selection replaces it cleanly. */
 export function isInsideMentionToken(
   text: string,
   references: readonly ConversationReference[],
@@ -216,37 +167,22 @@ export function isInsideMentionToken(
   return scanMentionTokens(text, references).some((m) => caret > m.start && caret < m.end);
 }
 
-/** A label that can be written as a token and will pass the engine's schema. */
 export function isMentionableLabel(label: string): boolean {
   return LABEL_RE.test(label) && !/\s/.test(label);
 }
 
-/**
- * What the picker offers: an object that becomes a reference, a category
- * (a phrase in the text), or a stored file (it joins the message as an
- * attachment, not as a token).
- */
 export type MentionCandidateType = ConversationReferenceType | "category" | "file";
 
-/** Candidate entries the picker shows, before one becomes a reference. */
 export interface MentionCandidate {
   type: MentionCandidateType;
   id: string;
-  /** The token text — a slug, so it survives as one word in the prose. */
   label: string;
-  /** What the person reads next to the token: the display name. */
   title: string;
-  /** A category's size, as the catalog counts it. */
   count?: number;
-  /** A file's size and type, for its chip and preview. */
   size?: number;
   contentType?: string | null;
 }
 
-/**
- * The catalog's categories as picker entries, matched on the category name
- * and on the `kategorie/` prefix, so `@kat` and `@not` both find `notion`.
- */
 export function categoryCandidates(
   categories: readonly { category: string; count: number }[],
   query: string,
@@ -269,7 +205,6 @@ export function categoryCandidates(
     );
 }
 
-/** Prefix matches first, then substring matches, both on label and title. */
 export function rankCandidates(
   candidates: readonly MentionCandidate[],
   query: string,
@@ -289,7 +224,6 @@ export function rankCandidates(
   });
 }
 
-/** A category or a file never becomes a reference; only catalog objects do. */
 export function candidateToReference(
   candidate: MentionCandidate & { type: ConversationReferenceType },
 ): ConversationReference {

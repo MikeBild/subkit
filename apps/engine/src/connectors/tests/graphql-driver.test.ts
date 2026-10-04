@@ -1,11 +1,3 @@
-// GraphQL driver test.
-//
-// Spins up a tiny Hono server on a random port that mocks a GraphQL
-// endpoint. The server understands two queries — `{ __typename }` and
-// `{ users(limit: $n) { id name } }` — plus a no-op `createUser`
-// mutation. The driver is then exercised through the connector layer so
-// the credential + auth path is also covered.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -76,8 +68,6 @@ async function startMockGraphQL(): Promise<MockServer> {
       send(200, { data: { createUser: { id: "uX", name } } });
       return;
     }
-    // AppSync convention: a schema/resolver error arrives as HTTP 200
-    // with a populated top-level `errors` array.
     if (q.includes("brokenField")) {
       send(200, { data: null, errors: [{ message: "Cannot query field 'brokenField'" }] });
       return;
@@ -208,10 +198,7 @@ describe("graphql driver", () => {
       connector: fresh!,
       query: "query Broken { brokenField }",
     });
-    // AppSync answers HTTP 200 even though the query logically failed.
     expect(res.status).toBe(200);
-    // The request step turns a non-null result here into a FAILED step
-    // (see dispatch.ts) so a broken query cannot dry-run "green".
     expect(graphqlErrorMessages(res.body)).toEqual(["Cannot query field 'brokenField'"]);
   });
 
@@ -233,8 +220,6 @@ describe("graphql driver", () => {
     }
     const entry = warnings.find((w) => w.action === "graphql.request.error");
     expect(entry).toBeDefined();
-    // The boolean flag alone forced a DB round-trip to diagnose schema drift;
-    // the messages must ride in the log so `FieldUndefined` is visible directly.
     expect(entry?.has_graphql_errors).toBe(true);
     expect(entry?.error_messages).toEqual(["Cannot query field 'brokenField'"]);
   });
@@ -326,8 +311,6 @@ describe("graphql driver", () => {
     expect(res.status).toBe(200);
     const body = res.body as { extensions?: { auth?: string } };
     expect(body.extensions?.auth).toBe("Bearer tk-shh");
-    // Reports the applied auth method back to callers — the request step
-    // threads this onto request_meta.connector.auth_method for audit.
     expect(res.auth_method).toBe("bearer");
   });
 
@@ -357,9 +340,6 @@ describe("graphql driver", () => {
   });
 
   test("credential_override skips the DB lookup (draft-time probe)", async () => {
-    // Use the unauthenticated connector but inject a draft bearer credential
-    // — mirrors the HTTP driver's `credential_override` path used by
-    // probe_connector_draft to test pre-persist drafts.
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     const res = await gqlQuery({
       db: testDb.db,
@@ -372,15 +352,9 @@ describe("graphql driver", () => {
     expect(res.auth_method).toBe("bearer");
     const body = res.body as { extensions?: { auth?: string } };
     expect(body.extensions?.auth).toBe("Bearer draft-only");
-    // No persisted credential row was created — the override path bypasses
-    // the DB so credential_id stays null.
     expect(res.credential_id).toBeNull();
   });
 
-  // Audit anti-pattern C1: a malformed header bag must throw
-  // HttpRequestInvalidError before reaching `fetch()`. Without this
-  // the GraphQL pipeline crashed inside `new Headers()` with an
-  // obtuse "Invalid header name" message routed as `graphql_error`.
   test("rejects an invalid outbound header name with HttpRequestInvalidError", async () => {
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     await expect(
@@ -394,13 +368,7 @@ describe("graphql driver", () => {
     ).rejects.toBeInstanceOf(HttpRequestInvalidError);
   });
 
-  // RC-2: probeGraphQLConnector with a credential_override applied to an
-  // auth-required connector that has NO persisted credential row in the DB.
-  // The override must bypass the DB lookup and the probe must succeed. The
-  // mock server must also have received the Authorization header stamped from
-  // the override so we know the token was forwarded, not silently dropped.
   test("probeGraphQLConnector with credential_override succeeds for auth-required connector with no DB row", async () => {
-    // Create a bearer connector with NO stored credential row.
     const authRequired = await createConnector(
       {
         tenant_id: tenantId,
@@ -417,7 +385,6 @@ describe("graphql driver", () => {
     );
     const fresh = await getConnector(tenantId, authRequired.id, testDb.db);
 
-    // Capture the auth header received by the mock server.
     const captured: { auth: string | null } = { auth: null };
     const origFetch = globalThis.fetch;
     const patchedFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -438,9 +405,6 @@ describe("graphql driver", () => {
     expect(captured.auth).toBe("Bearer override-draft-token");
   });
 
-  // RC-2: probeGraphQLConnector with NO credential_override and no DB row
-  // must return { ok: false, detail: "credential_required" } and must NOT
-  // reach the mock server.
   test("probeGraphQLConnector without credential_override and no DB row returns credential_required", async () => {
     const authRequired = await createConnector(
       {
@@ -476,11 +440,6 @@ describe("graphql driver", () => {
     expect(serverHit).toBe(false);
   });
 
-  // A failed probe must carry the upstream's own words — the first
-  // GraphQL error message as `detail`, the scrubbed body snippet, and the
-  // allowlisted diagnostic headers. Pre-fix three consecutive 403 probes
-  // surfaced only "GraphQL probe failed: HTTP 403" while the response
-  // body/headers naming the real problem were dropped in scope.
   test("failed probe carries detail, body_snippet, and allowlisted response_headers", async () => {
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     const stubFetch = async () =>
@@ -538,11 +497,6 @@ describe("graphql driver", () => {
   });
 });
 
-// Regression: the request step unwraps the GraphQL transport envelope so
-// `$scope.<step>.data` is the GraphQL `data` payload — a single `data`,
-// consistent with the REST driver. Before this, the step output was the
-// whole `{ data, errors }` body, forcing transforms to write a confusing
-// double `$scope.<step>.data.data.<field>`.
 describe("graphql request step · envelope unwrap", () => {
   async function makeGraphqlStepCtx(step: RequestStep): Promise<StepRunContext> {
     const [exec] = await testDb.db
@@ -609,16 +563,12 @@ describe("graphql request step · envelope unwrap", () => {
     const r = await runRequestStep({ ctx, step, scope: {} });
 
     expect(r.status).toBe("succeeded");
-    // The payload sits directly under output — `output.users`, NOT
-    // `output.data.users`. A downstream transform reads
-    // `$scope.fetch_users.data.users`.
     expect(r.output).toEqual({
       users: [
         { id: "u1", name: "alice" },
         { id: "u2", name: "bob" },
       ],
     });
-    // The `{ data, errors }` transport wrapper is gone.
     expect((r.output as Record<string, unknown>).data).toBeUndefined();
     expect((r.output as Record<string, unknown>).errors).toBeUndefined();
   });
@@ -636,8 +586,6 @@ describe("graphql request step · envelope unwrap", () => {
     const r = await runRequestStep({ ctx, step, scope: {} });
 
     expect(r.status).toBe("failed");
-    // `data` was null on the wire → unwrapped output is null, never the
-    // `errors` array. Errors surface on the step error channel.
     expect(r.output ?? null).toBeNull();
     expect(r.error?.code).toBe("graphql_error");
   });

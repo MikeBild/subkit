@@ -1,8 +1,3 @@
-// validate_draft — re-run the workflow validator on the current draft.
-//
-// The loop can call this after a propose_step to get a clean summary
-// of the remaining validation errors, or after a round of fixes.
-
 import { z } from "@hono/zod-openapi";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withWorkflowValidation } from "../authoring-state.ts";

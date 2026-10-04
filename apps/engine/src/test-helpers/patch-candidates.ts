@@ -1,12 +1,3 @@
-// Patch-candidate fixtures that readiness can actually evaluate.
-//
-// An open decision is `proposed` AND reviewable on the workflow's current
-// version, so a fixture that only inserts a `proposed` row with a bare
-// description is no longer a decision anybody can make — it has no step to
-// rewrite. These helpers seed a workflow whose current version carries the one
-// step the proposals below rewrite, and the diffs that make a candidate
-// reviewable (a real path move) or provably undecidable (a move to itself).
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -17,7 +8,6 @@ export function patchableDag(dataSelector = "data.id") {
   return { steps: [{ id: PATCHABLE_STEP_ID, kind: "request", data_selector: dataSelector }] };
 }
 
-/** A workflow whose current version holds the step the fixtures patch. */
 export async function seedPatchableWorkflow(
   db: Db,
   tenant_id: string,
@@ -33,7 +23,6 @@ export async function seedPatchableWorkflow(
   return { workflow_id: wf.id, version_id };
 }
 
-/** Write a new version and make it current — what a workflow edit does. */
 export async function addWorkflowVersion(
   db: Db,
   tenant_id: string,
@@ -63,7 +52,6 @@ function proposal(description: string, value: string) {
   };
 }
 
-/** A proposal the current version can take: `data.id` moves to `data.result.id`. */
 export function reviewableDiff(description: string, extra: Record<string, unknown> = {}) {
   return {
     proposal: proposal(description, "data/result/id"),
@@ -72,7 +60,6 @@ export function reviewableDiff(description: string, extra: Record<string, unknow
   };
 }
 
-/** A proposal that moves `data.id` to itself — readiness `no_change`. */
 export function noChangeDiff(description: string, extra: Record<string, unknown> = {}) {
   return {
     proposal: proposal(description, "data/id"),

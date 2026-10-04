@@ -1,12 +1,3 @@
-// Skill-gated palette regression tests.
-//
-// The palette is skill-gated rather than state-gated.
-// Loading the canonical authoring skills (`connector-creation-guidance`,
-// `workflow-authoring`) exposes a fixed tool set; tools never silently
-// disappear once loaded. Wrong-state calls return a structured
-// `tool_unavailable_in_state` envelope from `state-gate.ts` rather than
-// a phantom "tool not in palette" message.
-
 import { describe, expect, test } from "bun:test";
 import {
   createEmptyDraftDocument,
@@ -57,8 +48,8 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("ask_user_text");
     expect(visible).toContain("list_skills");
     expect(visible).toContain("load_skill");
-    expect(visible).toContain("list_connectors"); // always-visible reads
-    expect(visible).toContain("delete_connector"); // always-visible cleanup
+    expect(visible).toContain("list_connectors");
+    expect(visible).toContain("delete_connector");
     expect(visible).not.toContain("save_connector_draft");
     expect(visible).not.toContain("save_workflow_draft");
     expect(visible).not.toContain("edit_workflow_patch");
@@ -89,11 +80,8 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("inspect_connector_draft");
     expect(visible).toContain("probe_connector_draft");
     expect(visible).toContain("validate_connector_draft");
-    // The session 00b93a52 fix: save_connector_draft must NOT disappear
-    // just because the draft is incomplete. Calling it surfaces the
-    // structured envelope from state-gate.ts.
     expect(visible).toContain("save_connector_draft");
-    expect(visible).not.toContain("edit_workflow_patch"); // workflow-skill not loaded
+    expect(visible).not.toContain("edit_workflow_patch");
     expect(visible).not.toContain("create_api_key");
   });
 
@@ -121,7 +109,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("run_workflow");
     expect(visible).toContain("diagnose_latest_execution");
     expect(visible).toContain("dry_run_workflow");
-    expect(visible).not.toContain("save_connector_draft"); // connector-skill not loaded
+    expect(visible).not.toContain("save_connector_draft");
   });
 
   test("persisted connector keeps connector authoring + workflow palette visible (when both loaded)", () => {
@@ -159,7 +147,6 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("edit_workflow_patch");
     expect(visible).toContain("inspect_workflow_draft");
     expect(visible).toContain("authenticate_oauth");
-    // Tools never disappear once a skill is loaded.
     expect(visible).toContain("save_connector_draft");
   });
 
@@ -218,10 +205,6 @@ describe("authoring tool palette — skill-gated visibility", () => {
   });
 });
 
-// An inert proposal files a PROPOSED item behind a human review gate and
-// changes nothing live. Hiding `create_skill` behind a skill load left "file a
-// skill proposal" without a verb on every authoring surface, and the model sent
-// the user to the REST API instead.
 describe("authoring tool palette — inert proposals", () => {
   const proposals = listTools().filter((t) => t.inert_proposal === true);
 
@@ -258,9 +241,6 @@ describe("authoring tool palette — inert proposals", () => {
   });
 });
 
-// `create_skill` tells the user a candidate can be approved "right here". The
-// decision that does so must be on the same authoring palette — behind its own
-// confirm gate, never on the read-only chat surface.
 describe("authoring tool palette — review decisions", () => {
   test("the set is exactly the skill-candidate approval", () => {
     expect([...REVIEW_DECISIONS].sort()).toEqual(["approve_skill_candidate"]);

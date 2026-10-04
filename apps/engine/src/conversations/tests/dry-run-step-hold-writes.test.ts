@@ -1,13 +1,3 @@
-// dry_run_step · hold-writes contract.
-//
-// A write-classified step previewed via the dry_run_step TOOL is HELD:
-// fully resolved (URL/headers/body materialized) but never dispatched —
-// the same cannot-publish contract dry_run_workflow carries. The egress
-// tripwire is the mock upstream's request log: a held write must leave
-// ZERO entries. The result envelope carries the explicit `held` marker
-// (top level + step_traces) with the materialized `held_request`
-// artifact.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
@@ -25,7 +15,6 @@ const uuid = createDeterministicUuidFactory(0x4e1d_3a7);
 let ctx: ConversationTestCtx;
 let mock: MockServer;
 
-/** Every request the mock upstream actually received — the tripwire. */
 const hits: Array<{ method: string; url: string }> = [];
 
 beforeAll(async () => {
@@ -113,12 +102,10 @@ describe("dry_run_step · hold-writes", () => {
     });
 
     expect(result.ok).toBe(true);
-    // Egress tripwire: the write NEVER hit the wire.
     expect(hitsFor("/send")).toHaveLength(0);
 
     const data = result.data as HeldEnvelope;
     expect(data.held).toBe(true);
-    // The materialized-but-never-dispatched request is the artifact.
     expect(data.held_request?.method).toBe("POST");
     expect(data.held_request?.url).toBe(`${mock.baseUrl}/send`);
     expect(data.held_request?.body).toEqual({ subject: "Welcome" });

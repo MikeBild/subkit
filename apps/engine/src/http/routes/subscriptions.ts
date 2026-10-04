@@ -1,12 +1,3 @@
-// Subscriptions HTTP surface.
-//
-//   GET    /v1/subscriptions
-//   GET    /v1/subscriptions/:id
-//   POST   /v1/subscriptions
-//   PATCH  /v1/subscriptions/:id
-//   DELETE /v1/subscriptions/:id
-//   POST   /v1/subscriptions/:id/deliveries/:delivery_id/replay
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
@@ -161,7 +152,6 @@ const replayRoute = createRoute({
 });
 
 export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating.
   app.use("/v1/subscriptions", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("subscription:read")(c, next);
     if (c.req.method === "POST") return requirePermission("subscription:write")(c, next);
@@ -275,10 +265,6 @@ export function registerSubscriptionRoutes(app: OpenAPIHono<AppEnv>): void {
       | undefined;
     const boss = bossOverride ?? getBoss();
 
-    // Reconstruct the original payload from the outbox row so the replay
-    // produces an identical body + signature — essential for subscribers
-    // that rely on event dedup by request_hash. Fall back to a minimal
-    // replay envelope when the outbox event has been pruned.
     const timestamp = Math.floor(Date.now() / 1000);
     let body: string;
     if (existing.outbox_event_id != null) {

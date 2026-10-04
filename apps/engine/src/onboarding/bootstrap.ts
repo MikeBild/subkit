@@ -1,29 +1,3 @@
-// First-run bootstrap orchestrator.
-//
-// On engine boot — after RBAC seeding — `bootstrap.run()` self-detects
-// whether the deployment is a fresh install:
-//
-//   1. `engine_settings.bootstrap.completed` sentinel is unset, AND
-//   2. `tenants` table is empty.
-//
-// Both checks must agree. The `tenants` count alone is not enough: a
-// stale fixture or a partially-completed setup would mis-classify; the
-// sentinel alone is not enough either, because a bug-cleared sentinel
-// must not silently re-arm the wizard against an already-populated
-// engine. When both gates open, the orchestrator mints a one-time token,
-// persists its sha256 + expiry into `engine_settings`, and prints a
-// copy-paste banner pointing the operator at `sk init --token <token>`.
-//
-// `consume()` is the single-use redemption path: it validates the
-// token, runs the tenant-bootstrap transaction (delegating row writes
-// to `seedTenantBootstrap` so the env-var path stays parity-equivalent),
-// writes the LLM settings via `settings.setGlobal`, flips the sentinel,
-// and revokes the token. Subsequent calls return `gone`.
-//
-// Audit rows for the wizard are written under `SYSTEM_TENANT_ID`
-// (see audit/types.ts) — there is no real tenant_id to attribute them
-// to until the bootstrap transaction lands.
-
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import pc from "picocolors";
@@ -45,26 +19,14 @@ import {
 } from "../runtime-config/service.ts";
 import { now } from "../utils/clock.ts";
 
-/** Storage key for the post-bootstrap sentinel.  Boolean payload.  */
 export const BOOTSTRAP_COMPLETED_KEY = "bootstrap.completed";
-/** Storage key for the one-time bootstrap token envelope. */
 export const BOOTSTRAP_TOKEN_KEY = "bootstrap.token";
 
-/** Banner-displayed token TTL.  15 minutes is the upper end of "operator
- *  watching the boot logs"; long enough to copy-paste, short enough that
- *  a leaked log line stops being useful before any attacker notices.   */
 export const BOOTSTRAP_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-/** Per-IP attempt budget in the rate-limit window.  Five matches the
- *  acceptance criterion and the existing `rateLimitMiddleware` style.   */
 export const BOOTSTRAP_MAX_ATTEMPTS = 5;
-/** Rate-limit window length.  Re-uses the same span as the token TTL so
- *  there is no awkward "token still valid, but ip throttled" gap.       */
 export const BOOTSTRAP_WINDOW_MS = 15 * 60 * 1000;
 
-/** Provider enum kept narrow.  Mirrors the `llm.provider` registry
- *  spec.  Listed once here so the route schema and the in-process
- *  bootstrap helper agree byte-for-byte.                               */
 export const BOOTSTRAP_LLM_PROVIDERS = [
   "mock",
   "anthropic",
@@ -77,11 +39,6 @@ export const BOOTSTRAP_LLM_PROVIDERS = [
 
 export type BootstrapLlmProvider = (typeof BOOTSTRAP_LLM_PROVIDERS)[number];
 
-/**
- * The four-field setup payload accepted by `POST /v1/setup` and the
- * `sk init` headless path.  Identical Zod schema is exported so the
- * route can re-use it without a drift risk.
- */
 export const BootstrapSetupPayloadSchema = z.object({
   admin_email: z.string().email().min(3).max(254),
   tenant_name: z.string().min(1).max(120),
@@ -103,7 +60,6 @@ interface RateLimitEntry {
 
 const ipAttempts = new Map<string, RateLimitEntry>();
 
-/** Reset the in-process IP tracker.  Tests use this between cases.    */
 export function _resetRateLimitForTests(): void {
   ipAttempts.clear();
 }
@@ -113,10 +69,6 @@ function sha256Hex(input: string): string {
 }
 
 function constantTimeEquals(a: string, b: string): boolean {
-  // timingSafeEqual rejects mismatched lengths up-front, so we widen
-  // the shorter buffer to avoid a length-based oracle.  Both sides are
-  // sha256 hexes here so they're always 64 chars, but defensive code
-  // is cheap.
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
@@ -151,11 +103,6 @@ async function tenantsCount(db: Db): Promise<number> {
   return rows.length;
 }
 
-/**
- * `true` when the engine should run the first-run setup wizard:
- * sentinel unset AND no tenants exist.  Both gates required — see the
- * file-level note on stale fixtures.
- */
 export async function isBootstrapPending(db: Db): Promise<boolean> {
   const sentinel = await readSetting<boolean>(db, BOOTSTRAP_COMPLETED_KEY);
   if (sentinel === true) return false;
@@ -163,12 +110,6 @@ export async function isBootstrapPending(db: Db): Promise<boolean> {
   return count === 0;
 }
 
-/**
- * `true` when bootstrap is still pending but the banner token on file
- * has expired. `GET /v1/setup` surfaces this so `sk init` can explain
- * the failure mode up front (a retry against `POST /v1/setup` re-mints
- * the token and reprints the banner).
- */
 export async function isBootstrapTokenExpired(db: Db): Promise<boolean> {
   if (!(await isBootstrapPending(db))) return false;
   const envelope = await readSetting<TokenEnvelope>(db, BOOTSTRAP_TOKEN_KEY);
@@ -176,15 +117,7 @@ export async function isBootstrapTokenExpired(db: Db): Promise<boolean> {
   return envelope.expires_at_ms < now();
 }
 
-/**
- * Mint a fresh 32-byte hex token, persist its sha256 + expiry, and
- * return the plaintext for banner printing.  The plaintext never
- * round-trips through storage.
- */
 async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date }> {
-  // 32 bytes -> 64-char hex.  randomBytes is cryptographically secure
-  // — this is the operator-facing one-time secret, treat it like any
-  // bearer credential.
   const plaintext = process.env.SUBKIT_BOOTSTRAP_KEY ?? randomBytes(32).toString("hex");
   if (plaintext.length < 64 || plaintext.length > 128) {
     throw new Error("SUBKIT_BOOTSTRAP_KEY must contain 64..128 characters");
@@ -197,11 +130,6 @@ async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date 
   return { plaintext, expires_at: new Date(envelope.expires_at_ms) };
 }
 
-/**
- * Banner printed to stdout on first-run boot — the only place the
- * plaintext token ever appears.  Operator copy-pastes the rendered
- * `sk init --token <token>` line.
- */
 export function buildBootstrapBanner(plaintextToken: string, expiresAt: Date): string {
   const banner = pc.bgYellow(pc.black(" SUBKIT FIRST-RUN BOOTSTRAP "));
   const headline = pc.bold("This engine has no tenants yet. Complete first-run setup:");
@@ -213,23 +141,14 @@ export function buildBootstrapBanner(plaintextToken: string, expiresAt: Date): s
 
 export interface BootstrapRunResult {
   status: "minted" | "already_completed";
-  /** Present only when status === "minted". */
   plaintext_token?: string;
-  /** Present only when status === "minted". */
   expires_at?: Date;
 }
 
 export interface BootstrapRunDeps {
-  /** Override stdout for tests. */
   stdout?: { write: (chunk: string) => unknown };
 }
 
-/**
- * Boot-time entry point.  Called by `apps/engine/src/index.ts` right
- * after the RBAC seed.  No-op if a tenant already exists OR if the
- * sentinel is set.  Otherwise mints a one-time token and prints a
- * banner so the operator can complete setup via `sk init`.
- */
 export async function run(db: Db, deps: BootstrapRunDeps = {}): Promise<BootstrapRunResult> {
   if (!(await isBootstrapPending(db))) {
     logger.info({
@@ -274,37 +193,15 @@ export type ConsumeOutcome =
       status: "failed";
       code: ConsumeFailureCode;
       message: string;
-      /** Remediation hint surfaced on the HTTP error envelope. */
       hint?: string;
     };
 
 export interface ConsumeOptions {
   ip?: string;
   user_agent?: string | null;
-  /** Override stdout for tests — the expired-token path reprints the
-   *  bootstrap banner with a freshly minted token. */
   stdout?: { write: (chunk: string) => unknown };
 }
 
-/**
- * Single-use token redemption + tenant materialisation.  Orchestration:
- *
- *   1. Check the per-IP rate-limit window first — every other failure
- *      mode also costs an attempt against the same bucket so a
- *      brute-force loop can't bypass the budget by varying payloads.
- *   2. Check the post-bootstrap sentinel + tenant count — if either
- *      says "already done", return `gone` without touching anything.
- *   3. Validate the token (envelope present, not expired, sha256
- *      matches in constant time).
- *   4. Validate the payload via the same Zod schema the route uses.
- *   5. Run the bootstrap transaction (`seedTenantBootstrap`), then
- *      write the three `llm.*` settings, then flip the sentinel +
- *      delete the token envelope.  Audit `SETUP_COMPLETED` /
- *      `SETUP_FAILED` rows are emitted under `SYSTEM_TENANT_ID`.
- *
- * The route handler delegates to this function and turns the outcome
- * into the matching HTTP status.
- */
 export async function consume(
   db: Db,
   rbacIds: SeededRoleIds,
@@ -321,9 +218,6 @@ export async function consume(
     };
   }
 
-  // Sentinel + tenants check happens INSIDE the rate-limited path so a
-  // post-completion polling loop still costs against the budget.  This
-  // is the "second invocation returns 410" guarantee.
   const sentinel = await readSetting<boolean>(db, BOOTSTRAP_COMPLETED_KEY);
   if (sentinel === true || (await tenantsCount(db)) > 0) {
     await emitFailure(db, "gone", "bootstrap already completed", opts);
@@ -344,12 +238,6 @@ export async function consume(
     };
   }
   if (envelope.expires_at_ms < now()) {
-    // Bootstrap is still pending (the sentinel + tenant gate above
-    // passed) — the operator just took longer than the TTL. Mint a
-    // fresh token and reprint the banner so the remediation is "copy
-    // the new command from the engine logs", not "restart the engine".
-    // The plaintext never crosses HTTP — log/stdout only, preserving
-    // the trust model.
     const reminted = await mintToken(db);
     (opts.stdout ?? process.stdout).write(
       buildBootstrapBanner(reminted.plaintext, reminted.expires_at),
@@ -393,10 +281,6 @@ export async function consume(
   }
   const payload = parsed.data;
 
-  // Materialise the tenant + admin user + admin API key. The seed
-  // helper is call-driven — pass the operator payload directly rather
-  // than relying on `BOOTSTRAP_*` env vars. The transaction
-  // guarantees no half-bootstrap state on partial failure.
   const result = await seedTenantBootstrap(db, rbacIds, {
     admin_email: payload.admin_email,
     tenant_name: payload.tenant_name,
@@ -404,11 +288,6 @@ export async function consume(
     create_metrics_key: false,
   });
 
-  // The upsert path skips key minting when an un-revoked admin key
-  // already exists for this system account. On a true first-run
-  // bootstrap this branch is unreachable (no prior keys), but defend
-  // anyway so a re-bootstrap attempt against a stale fixture surfaces
-  // a clean failure rather than crashing on `result.api_key.plaintext`.
   if (result.api_key === null) {
     await emitFailure(db, "validation_failed", "tenant bootstrap returned no api key", opts);
     return {
@@ -419,9 +298,6 @@ export async function consume(
   }
   const completedResult = { ...result, api_key: result.api_key };
 
-  // Persist the new tenant's LLM settings as one immutable DB revision.
-  // Unit tests that drive consume() without runtime-config initialization
-  // keep the legacy in-process fallback below.
   try {
     const state = await getRuntimeConfigState(db);
     const secret = await createSecretVersion(db, {
@@ -503,19 +379,8 @@ async function finishBootstrap(
   payload: BootstrapSetupPayload,
   opts: ConsumeOptions,
 ): Promise<ConsumeOutcome> {
-  // Flip the sentinel and revoke the token in the same logical step.
   await writeSetting(db, BOOTSTRAP_COMPLETED_KEY, true);
   await deleteSetting(db, BOOTSTRAP_TOKEN_KEY);
-  // Give the fresh tenant something that actually runs. Without this the only
-  // route to a first execution is the conversational authoring loop, which
-  // needs a real LLM provider — measured on 2026-09-02, a newcomer with the
-  // mock provider reaches setup and then has an empty workspace and no way
-  // forward. The three demo workflows are credential-free and idempotent per
-  // slug, so a re-bootstrap against an existing tenant is a no-op.
-  //
-  // Deliberately non-fatal: bootstrap has already minted the admin key and
-  // flipped the sentinel above. A seed failure must leave the operator with a
-  // usable installation, not a half-completed one they cannot retry.
   try {
     const { seedOnboardingDemo } = await import("./demo-seed.ts");
     const seeded = await seedOnboardingDemo(
@@ -614,9 +479,6 @@ async function emitFailure(
       db,
     );
   } catch (err) {
-    // Best-effort: a missing audit row must not stop us from returning
-    // the proper HTTP failure to the caller.  The structured logger
-    // line above already captured the failure reason for SOC2 review.
     logger.warn({
       module: "onboarding.bootstrap",
       action: "bootstrap.audit_failed",
@@ -627,12 +489,6 @@ async function emitFailure(
   }
 }
 
-/**
- * Derive a URL-safe tenant slug from the operator-supplied display name.
- * Lower-cased, non-alphanumerics collapsed to `-`, leading/trailing
- * dashes stripped, length capped at 60.  Falls back to "subkit" when the
- * derived slug is empty (e.g. an all-emoji display name).
- */
 export function deriveTenantSlug(name: string): string {
   const slug = name
     .toLowerCase()
@@ -642,7 +498,6 @@ export function deriveTenantSlug(name: string): string {
   return slug.length > 0 ? slug : "subkit";
 }
 
-/** Internal hooks for tests — never re-exported through index.ts.  */
 export const _internal = {
   readSetting,
   writeSetting,
@@ -652,6 +507,4 @@ export const _internal = {
   sha256Hex,
 };
 
-/** Convenience for callers that already hold a payload object — used by
- *  the route handler so it doesn't have to know the storage keys.       */
 export type { TenantBootstrapPayload };

@@ -1,35 +1,3 @@
-// Bundled-binary download endpoint — opt-in, served from the
-// `engine-with-cli` Docker image variant.
-//
-// An operator running on an air-gapped or proxy-restricted network cannot
-// reach github.com to download the `sk` binary. This route serves it
-// directly from the engine itself, from
-// `/usr/local/share/subkit/binaries/` (override via SUBKIT_BINARIES_DIR).
-//
-// The default slim engine image does NOT bundle binaries — every route
-// here returns 404 with a pointer message. The `/install` shell script
-// probes the bundled URL first and falls back to GitHub Releases, so a
-// single install command works for both image variants.
-//
-// URL grammar:
-//   GET /install/sha256sums            → text/plain SHA256SUMS file
-//   GET /install/sk-<platform>-<arch>  → application/octet-stream sk binary
-//
-// Allowed combos match the release matrix:
-//   sk × darwin × {arm64,x64}
-//   sk × linux  × {arm64,x64}
-//   sk × windows × x64        (.exe on disk, no .exe in URL)
-//
-// On disk the artifact names use underscores (`sk_darwin_arm64`,
-// `sk_windows_x64.exe`) — matching what the release workflow uploads to
-// GitHub. The handler maps URL hyphens to disk underscores.
-//
-// Public, unauthenticated. Same trust posture as the existing /install
-// shell-script endpoint and the Tailscale precedent it follows: the
-// bytes are SHA256-verified by the install script against
-// /install/sha256sums (or, when bundled, the headers expose
-// `x-subkit-sha256` for clients that prefer header verification).
-
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -43,14 +11,10 @@ const POINTER_BODY =
   "binary not bundled in this engine image — pull the engine-with-cli variant or fetch from https://github.com/MikeBild/subkit/releases\n";
 
 interface BundleManifest {
-  sums: Map<string, string>; // filename → sha256 hex
-  sumsRaw: string; // verbatim SHA256SUMS content
+  sums: Map<string, string>;
+  sumsRaw: string;
 }
 
-// Only real manifests are cached. Absence is deliberately NOT cached: an
-// engine that booted before the deploy staged binaries into
-// SUBKIT_BINARIES_DIR must start serving them on the next request without a
-// process restart. Re-reading a missing small file on a miss is cheap.
 const manifestCache = new Map<string, BundleManifest>();
 
 function getBinariesDir(): string {

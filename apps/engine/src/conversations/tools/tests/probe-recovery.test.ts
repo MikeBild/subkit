@@ -1,7 +1,3 @@
-// probe-recovery — same mapping, three call sites. The mapping
-// itself is hoisted out of probe_connector_draft so probe_connector
-// and dry_run_step can reuse it; this test pins the contract once.
-
 import { describe, expect, test } from "bun:test";
 import { pickProbeRecoveryActions, probeStatusHint } from "../probe-recovery.ts";
 
@@ -52,8 +48,6 @@ describe("pickProbeRecoveryActions", () => {
   });
 
   test("request_timeout maps to the same timeout bucket", () => {
-    // dry_run_step emits `request_timeout`; probe_*_draft emits
-    // `probe_timeout`. Both should land in the same recovery branch.
     expect(pickProbeRecoveryActions({ failure_code: "request_timeout" })).toEqual([
       "update_connector_draft",
       "fetch_connector_docs",
@@ -76,9 +70,6 @@ describe("pickProbeRecoveryActions", () => {
     ]);
   });
 
-  // New assertions for the multi-fix: 401/403 must include update_connector_draft
-  // so the LLM is told to check base_url (a valid credential against the wrong host
-  // still returns 401).
   test("401 includes update_connector_draft alongside setup_connector_credentials", () => {
     const actions = pickProbeRecoveryActions({ status: 401 });
     expect(actions).toContain("update_connector_draft");

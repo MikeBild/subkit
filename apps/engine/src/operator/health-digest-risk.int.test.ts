@@ -1,11 +1,3 @@
-// Integration test: risk signals in the digest, the attention list, and the
-// audit edges the scheduler — not a reader — records for them.
-//
-// Drives the live metrics registry + config into a state where one predictive
-// threshold is exceeded, then asserts that the digest carries the signal, the
-// attention list turns a CRITICAL one into an item, and that reading any of it
-// writes no audit row while the scheduler tick does.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,8 +45,6 @@ beforeEach(async () => {
   resetMetricsRegistryForTests();
   _resetRssHighWaterForTests();
   await _resetRiskSignalEdgesForTests(testDb.db);
-  // The attention list caches tenant facts for 10 s; each case changes the
-  // process metrics under it.
   invalidateAttention();
   invalidateOperationalOverview();
 });
@@ -67,7 +57,6 @@ async function clearRiskAudits(): Promise<void> {
 }
 
 async function riskAudits(): Promise<number> {
-  // Drain first: a fire-and-forget write still in flight must count.
   await _drainAuditWritesForTests(testDb.db);
   const rows = await testDb.db
     .select({ id: auditLog.id })
@@ -85,7 +74,6 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
   });
 
   test("a critical DLQ signal is in risk[] and is one attention item", async () => {
-    // Default dlq_critical_depth = 5; set DLQ depth to exactly 5 → triggers.
     setDlqJobCount("execution.dlq", 5);
 
     const digest = await buildOperatorHealthDigest(testDb.db, adminPrincipal(tenant_id));
@@ -116,7 +104,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
 
 describe("risk-signal audit edges belong to the scheduler, not to a reader", () => {
   test("reading the digest, the MCP summary and the attention list writes no audit row", async () => {
-    setDlqJobCount("execution.dlq", 10); // crosses the critical DLQ edge
+    setDlqJobCount("execution.dlq", 10);
     await clearRiskAudits();
 
     const summary = await buildOperatorHealthSummary(testDb.db, adminPrincipal(tenant_id));
@@ -126,8 +114,6 @@ describe("risk-signal audit edges belong to the scheduler, not to a reader", () 
     expect(await riskAudits()).toBe(0);
     expect(await testDb.db.select().from(riskSignalEdges)).toEqual([]);
 
-    // Positive control: the same critical state IS recorded — by the tick,
-    // once, with no read in between.
     const edges = await runRiskSignalEdges(testDb.db, { instance: "a" });
     expect(edges.raised).toContain("dlq_growth");
     const rows = await testDb.db
@@ -151,7 +137,6 @@ describe("risk-signal audit edges belong to the scheduler, not to a reader", () 
     await clearRiskAudits();
     setDlqJobCount("execution.dlq", 10);
     expect((await runRiskSignalEdges(testDb.db, { instance: "a" })).raised).toEqual(["dlq_growth"]);
-    // A standing critical is not raised again on the next tick.
     expect((await runRiskSignalEdges(testDb.db, { instance: "a" })).raised).toEqual([]);
     setDlqJobCount("execution.dlq", 0);
     expect((await runRiskSignalEdges(testDb.db, { instance: "a" })).cleared).toEqual([
@@ -193,7 +178,6 @@ describe("risk-signal audit edges belong to the scheduler, not to a reader", () 
   });
 });
 
-// Cross-caller edge dedup through the shared table.
 describe("takeRiskEdges — whose edge it is", () => {
   const signal = (kind: string): RiskSignal => ({
     kind,
@@ -223,19 +207,14 @@ describe("takeRiskEdges — whose edge it is", () => {
 
   test("a process-local signal is each process's own edge — no flapping between processes", async () => {
     const pool = signal("pool_saturation");
-    // Process a is saturated, process b is not.
     expect((await takeRiskEdges(testDb.db, [pool], "a")).raised.map((s) => s.kind)).toEqual([
       "pool_saturation",
     ]);
-    // b's healthy pass must not clear a's edge…
     expect((await takeRiskEdges(testDb.db, [], "b")).cleared).toEqual([]);
-    // …so a's next pass does not raise it again.
     expect((await takeRiskEdges(testDb.db, [pool], "a")).raised).toEqual([]);
-    // b saturating is its own, separate edge.
     expect((await takeRiskEdges(testDb.db, [pool], "b")).raised.map((s) => s.kind)).toEqual([
       "pool_saturation",
     ]);
-    // a recovering clears a's edge only.
     expect((await takeRiskEdges(testDb.db, [], "a")).cleared).toEqual(["pool_saturation"]);
     expect((await takeRiskEdges(testDb.db, [pool], "b")).raised).toEqual([]);
   });

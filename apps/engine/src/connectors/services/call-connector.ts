@@ -1,32 +1,3 @@
-// `call_connector` execution helper behind `POST /v1/connectors/{id}/call`.
-//
-// The `call_connector` conversation tool answers the same question for the
-// authoring loop but does NOT run through here — it has its own dispatch in
-// `conversations/tools/call-connector.ts` and reaches two drivers this one
-// does not (postgres, s3). The one thing the two do share is
-// `callConnectorDriverRefusal` below: what an author is told when the driver
-// is not callable this way has to be the same sentence on both surfaces,
-// because it is the same fact about the driver.
-//
-// RBAC is handled by the caller (the route uses the standard
-// `requirePermission` middleware). This helper takes over once the
-// connector + tenant have been authenticated, and is responsible for:
-//
-//   1. Connector lookup (tenant-scoped).
-//   2. Credential check — return `credential_required` when the
-//      connector requires auth and no row is persisted.
-//   3. Driver routing — HTTP and GraphQL only here. Every other driver
-//      surfaces `driver_not_supported_for_call_connector` so callers can
-//      hand off to a workflow step.
-//   4. Audit row via `recordConnectorInvoked`.
-//   5. Body truncation envelope (`truncated`, `body_byte_count`,
-//      optional `raw_ref`) so prompt budgets stay bounded for the LLM
-//      surface while the HTTP surface gets the same envelope shape.
-//
-// Returning a discriminated `{ kind: "ok" | "error", ... }` keeps the
-// callers' adapter code thin: the tool wraps it in `ToolResult`, the
-// route maps to a JSON envelope.
-
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import { truncateForLlm } from "../../conversations/tools/truncate.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
@@ -62,7 +33,6 @@ export interface CallConnectorRequest {
   body?: unknown;
   timeout_ms?: number;
   signal?: AbortSignal;
-  /** Surfaces the conversation context onto the audit row when present. */
   conversation_id?: string;
 }
 
@@ -75,17 +45,8 @@ export interface CallConnectorOk {
   body_byte_count: number;
   truncated: boolean;
   raw_ref?: string;
-  /**
-   * Connector-response health. Connector-level faults (auth_failed /
-   * endpoint_gone) mean the connector itself is unusable — the caller must
-   * NOT read an empty body as "no data". Request-level verdicts (not_found /
-   * rate_limited), the `deprecated` early warning, and transient `degraded`
-   * carry guidance but the connector itself is fine.
-   */
   health: ConnectorHealth;
-  /** Present only when `health !== "ok"`. */
   health_suggestion?: string;
-  /** Present only when `health !== "ok"`. */
   next_best_actions?: string[];
   metadata: {
     connector_id: string;
@@ -110,10 +71,7 @@ export interface CallConnectorErr {
   kind: "error";
   error_code: CallConnectorErrorCode;
   message: string;
-  /** Driver of the connector when known — null if the connector itself
-   *  could not be resolved. */
   driver: string | null;
-  /** Wall-clock latency of the failed attempt; 0 for early failures. */
   latency_ms: number;
   next_best_actions?: string[];
   metadata?: Record<string, unknown>;
@@ -121,21 +79,6 @@ export interface CallConnectorErr {
 
 export type CallConnectorResult = CallConnectorOk | CallConnectorErr;
 
-/**
- * What to tell an author whose connector `call_connector` will not dispatch.
- *
- * Shared by both `call_connector` surfaces so the two cannot answer the same
- * question differently. They deliberately allow different driver sets — this
- * one dispatches http + graphql, the conversation tool also dispatches
- * postgres + s3 — but a driver refused by either is refused for the same
- * reason, and that reason belongs in one place.
- *
- * `mcp` is refused permanently, not "not yet". `call_connector` takes a method,
- * a path and a body; an MCP call names a tool and passes arguments. There is no
- * method to choose and no path to hit, so widening the allowlist would mean
- * inventing a mapping from one shape to the other. The request step's `mcp`
- * sub-block is the shape that already fits, so the refusal names it.
- */
 export function callConnectorDriverRefusal(driver: string): {
   message: string;
   next_best_actions: string[];
@@ -153,12 +96,6 @@ export function callConnectorDriverRefusal(driver: string): {
   };
 }
 
-/**
- * What to tell a caller whose connector is switched off. `call_connector`
- * refuses it on both surfaces exactly as a workflow step is refused: the code
- * `connector_disabled`, and details that name the connector and its
- * environment so the caller knows which one to enable. Nothing is sent.
- */
 export function callConnectorDisabledRefusal(
   connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment">,
 ): {
@@ -210,7 +147,6 @@ interface DispatchSuccess {
   headers: Record<string, string>;
   body: unknown;
   url_host: string;
-  /** The driver's verdict: the persisted credential authenticated the call. */
   stored_credential_used: boolean;
 }
 
@@ -244,9 +180,6 @@ async function dispatchGraphql(
   req: CallConnectorRequest,
   connector: ConnectorView,
 ): Promise<DispatchSuccess | { invalid_input: string }> {
-  // GraphQL connectors expect `body: { query, variables?, operation? }`. A
-  // caller (or an MCP client that stringified the object) may pass it as a
-  // JSON string — parse it back before the shape check so the call dispatches.
   const rawBody =
     typeof req.body === "string"
       ? (() => {
@@ -293,18 +226,6 @@ async function dispatchGraphql(
   };
 }
 
-/**
- * Execute an ad-hoc HTTP / GraphQL call against a persisted connector.
- *
- * Audit semantics:
- *   - On every reachable invocation we emit `connector.invoked` —
- *     including upstream 4xx / 5xx (the call happened, only the upstream
- *     responded with an error). We do NOT emit when the connector lookup
- *     fails (`connector_not_found`) or when the credential row is
- *     missing (`credential_required`) — neither path actually invoked
- *     anything. The `driver_not_supported` branch likewise predates the
- *     dispatch.
- */
 export async function callConnector(req: CallConnectorRequest): Promise<CallConnectorResult> {
   logger.info({
     module: "connector_service",
@@ -334,8 +255,6 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     };
   }
 
-  // A switch that still sends the request switches nothing off — the same
-  // refusal a workflow step and a probe of this connector get.
   if (!connector.enabled) {
     logger.warn({
       module: "connector_service",
@@ -429,9 +348,6 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
 
   const latency_ms = Date.now() - started;
 
-  // Validation failures (`invalid_input`) never reach the wire — no
-  // audit row, just a typed rejection. Network failures DO get audited
-  // because the call was attempted.
   if (invalidInput) {
     return {
       kind: "error",
@@ -444,17 +360,8 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
 
   const status = dispatch?.status ?? 0;
   const url_host = dispatch?.url_host ?? "";
-  // A response that completed at the transport layer can still prove the
-  // connector unusable (rejected credential, removed endpoint, Seraph
-  // anonymous-200). Classify so the audit row and the LLM-facing envelope
-  // both reflect that instead of recording a blind "success".
   const health = dispatch ? classifyConnectorHealth(status, dispatch.headers) : "ok";
 
-  // The re-auth clearing edge is "a successful authenticated call proves the
-  // credential is live" (see connectors/reauth.ts). A request step and a probe
-  // each close it; this call reaches the remote through neither. It proves
-  // the STORED credential only: a call that carried its own, or went to
-  // another host, lifts nothing.
   if (dispatch) {
     await clearReauthIfProved(req.db, connector, {
       status,
@@ -464,13 +371,8 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     });
   }
 
-  // Phase 2: per-call health counter — a climbing non-ok share for a slug is
-  // the leading signal of connector drift (rotated credential, removed
-  // endpoint, vendor degradation) before it cascades into failed workflows.
   recordConnectorCall({ slug: connector.slug, health });
 
-  // for a write call (non-idempotent method) lift the created/sent
-  // resource id from the response so the audit row records WHAT went out.
   const createdResourceId = dispatch
     ? extractCreatedResourceId(req.method, dispatch.body)
     : undefined;
@@ -488,8 +390,6 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
     url_host,
     status_code: status,
     latency_ms,
-    // `deprecated` is a successful response that merely announces a future
-    // removal — it must audit as success, not error.
     outcome: errorDetail || (health !== "ok" && health !== "deprecated") ? "error" : "success",
     ...(req.conversation_id ? { conversation_id: req.conversation_id } : {}),
     ...(createdResourceId ? { created_resource_id: createdResourceId } : {}),

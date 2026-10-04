@@ -1,8 +1,3 @@
-// Zod round-trip tests for the unified files HTTP schemas.
-//
-// Pins the wire format so a schema refactor produces a failing test
-// rather than silent client breakage.
-
 import { describe, expect, test } from "bun:test";
 import {
   BatchCreateRequestSchema,
@@ -84,11 +79,8 @@ describe("FileRefSchema", () => {
   });
 
   test("rejects an object with extra keys beside $file", () => {
-    // Zod object ignores extra keys by default; schema uses strict() behaviour
-    // only if openapi schema enforces strict — not the focus here. What matters
-    // is that $file alone is required and must be valid.
     const r = FileRefSchema.safeParse({ $file: VALID_FID, extra: "x" });
-    expect(r.success).toBe(true); // extra keys are stripped, not rejected by default
+    expect(r.success).toBe(true);
   });
 
   test("rejects missing $file key", () => {
@@ -194,12 +186,6 @@ describe("FinalizeRequestSchema", () => {
 });
 
 describe("MAX_FINALIZE_VERIFY_BYTES / MAX_STREAM_UPLOAD_BYTES coupling", () => {
-  // The finalize verifier rehashes the object after the streaming PUT;
-  // its size ceiling is the same payload-shape contract the upload slot
-  // accepted at batch-create time. Keeping the two in lockstep prevents
-  // a silent drift where upload would accept N bytes but finalize
-  // would refuse to verify them, leaving the row stuck in `pending`
-  // until the cleanup cron reaps it.
   test("MAX_FINALIZE_VERIFY_BYTES === MAX_STREAM_UPLOAD_BYTES so a future split is intentional", () => {
     expect(MAX_FINALIZE_VERIFY_BYTES).toBe(MAX_STREAM_UPLOAD_BYTES);
   });

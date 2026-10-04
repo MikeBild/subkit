@@ -9,7 +9,6 @@ import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
 import type { RunExecutionSource } from "./resolve-definition.ts";
 import type { RunOptions } from "./types.ts";
 
-/** Queue envelopes identify a run; they cannot expand its persisted boundary. */
 export async function bindExistingRun(
   db: Db,
   tenant_id: string,

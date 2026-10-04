@@ -1,19 +1,3 @@
-// start_connector_from_description must BIND a matched template:
-// the template's canonical base_url (when the LLM's guess is on the
-// same host), the template auth shape, and the template's
-// setup_instructions + credential_hints in the tool result — so the
-// model knows the canonical setup steps immediately instead of probing
-// a guessed URL into a 404.
-//
-// Forensic root cause (conversation 68b5c87e): the LLM guessed
-// `https://xray.cloud.getxray.app/graphql` while the matched template
-// carried `/api/v2/graphql`; the draft card displayed the template but
-// kept the guessed base_url and dropped every credential hint.
-//
-// These tests run against SYNTHETIC tenant templates
-// (connector_templates rows) — templates.json is owned by a concurrent
-// change and must not be referenced here.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectorTemplates } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
@@ -170,17 +154,14 @@ describe("start_connector_from_description — template binding", () => {
     expect(data.connector.template_slug).toBe("zephyr-board");
     expect(data.connector.auth_type).toBe("bearer");
 
-    // The DRAFT carries the template's canonical base_url, not the guess.
     expect(toolCtx.base.getDraft().connector?.base_url).toBe(
       "https://zephyr.example.test/api/v2/graphql",
     );
 
-    // The result surfaces the template's canonical setup steps + credential shape.
     expect(data.matched_template?.slug).toBe("zephyr-board");
     expect(data.matched_template?.setup_instructions).toBe(CANONICAL_SETUP);
     expect(data.matched_template?.credential_hints?.[0]?.field).toBe("token");
 
-    // The disagreement is explicit.
     expect(data.base_url_conflict).toBeDefined();
     expect(data.base_url_conflict?.overridden).toBe(true);
     expect(data.base_url_conflict?.supplied_base_url).toBe("https://zephyr.example.test/graphql");
@@ -202,8 +183,6 @@ describe("start_connector_from_description — template binding", () => {
     if (!started.ok) throw new Error("expected ok result");
     const data = started.data as BindingPayload;
     expect(data.connector.template_slug).toBe("zephyr-selfhosted");
-    // Host differs from the template's placeholder base_url — the
-    // operator's URL is ground truth for self-hosted instances.
     expect(toolCtx.base.getDraft().connector?.base_url).toBe("https://acme.zephyrwild.example/api");
     expect(data.matched_template?.setup_instructions).toContain("Admin → Tokens");
     expect(data.base_url_conflict).toBeDefined();

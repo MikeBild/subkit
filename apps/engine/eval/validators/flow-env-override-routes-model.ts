@@ -1,6 +1,3 @@
-// Integration-eval: per-flow env override routes the target flow to the
-// override model while leaving other flows on the base route.
-
 import { applyFlowEnvOverrides } from "../../src/llm/core/invoke.ts";
 import type { LlmFlow, ModelRoute } from "../../src/llm/types.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
@@ -15,7 +12,6 @@ interface Input {
 
 export function validate(fixture: FixtureRecord): ValidationResult {
   const input = fixture.input as Input;
-  // Snapshot and restore env so the fixture doesn't bleed into sibling runs.
   const saved: Record<string, string | undefined> = {};
   for (const k of Object.keys(input.env)) saved[k] = process.env[k];
   for (const [k, v] of Object.entries(input.env)) process.env[k] = v;

@@ -38,8 +38,6 @@ const syncCommand = defineCommand({
         process.exitCode = 2;
         return;
       }
-      // Root = the directory that declares the domains; a bare --domains
-      // call syncs into the current directory.
       const root = fromFile ? dirname(dirname(fromFile.path)) : process.cwd();
       const wantedTags = new Set(domains.map((d) => `domain:${d}`));
 

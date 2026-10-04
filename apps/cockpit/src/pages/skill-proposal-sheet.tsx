@@ -22,12 +22,6 @@ import { skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import { skillScopeKey } from "@/pages/skills-model";
 
-/**
- * One proposed skill, decided where it is read: its content, what it applies
- * to, why it was proposed — then "Übernehmen" or, confirmed, "Verwerfen". The
- * same engine decision the Übersicht's review sheet calls, so the audit trail
- * does not depend on the page it was taken on.
- */
 export function SkillProposalSheet({
   candidate,
   permissions,
@@ -41,8 +35,6 @@ export function SkillProposalSheet({
 }) {
   const { t } = useI18n();
   const canWrite = permissions.includes("skill:write");
-  // Adopting activates the skill, so it takes both permissions — the same
-  // pair the review sheet on the Übersicht asks for.
   const canAdopt = canWrite && permissions.includes("skill:activate");
   const names = useNameIndex(permissions, Boolean(candidate));
   const [rejecting, setRejecting] = useState(false);
@@ -100,7 +92,6 @@ export function SkillProposalSheet({
           { label: t("skills.proposal.reason"), value: t(ORIGIN_LABEL[item.origin]) },
         ]
       : [];
-  // What adoption carries beside the body: part of the content, not commentary.
   const lists = detail
     ? [
         { label: t("decisions.detail.examples"), items: detail.sections.examples, id: "examples" },

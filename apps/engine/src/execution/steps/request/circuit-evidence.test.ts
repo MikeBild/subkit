@@ -1,14 +1,3 @@
-// The circuit breaker's evidence vocabulary, driver by driver.
-//
-// Why this suite exists: the four non-HTTP drivers each recorded their own
-// verdict, and two of them were wrong in opposite directions. The s3 branch
-// credited reachability for ANY response it got back, including a 500 — so a
-// store that was failing every request kept its breaker closed. The graphql
-// branch credited reachability for nothing at all and handed the availability
-// predicate only the error detail, never the endpoint's status — so an
-// exhausted retry loop against a 502 counted as "not the remote's fault".
-// One rule now decides for all four, and these tests are that rule.
-
 import { describe, expect, test } from "bun:test";
 import type { ConnectorResolutionSummary, RequestMeta } from "../../types.ts";
 import {
@@ -30,8 +19,6 @@ describe("evidenceFromStatus", () => {
   });
 
   test("every other status is an answer, however unwelcome", () => {
-    // A missing key is not evidence of an unavailable store, and a rejected
-    // request is not evidence of an unreachable host.
     expect(evidenceFromStatus(200)).toBe("answered");
     expect(evidenceFromStatus(204)).toBe("answered");
     expect(evidenceFromStatus(400)).toBe("answered");
@@ -49,12 +36,7 @@ describe("evidenceFromThrow", () => {
   });
 
   test("an exception is never treated as an answer", () => {
-    // A driver that throws may have been refused by the remote or may never
-    // have reached it. Crediting reachability here would close a breaker on
-    // evidence we do not have — so an unrecognised throw observes nothing.
     expect(evidenceFromThrow(new Error("headers must be a flat object"))).toBe("none");
-    // A postgres syntax error: the statement was wrong, the server was fine.
-    // It must not count against the breaker either way.
     expect(evidenceFromThrow(Object.assign(new Error("syntax error"), { code: "42601" }))).toBe(
       "none",
     );
@@ -72,9 +54,6 @@ describe("requestFailureEvidence", () => {
   });
 
   test("a rejected credential or a wrong path is an answer, not an outage", () => {
-    // The regression this pins: every failure that reached the HTTP path's
-    // outer handler was counted, so repeated 401s opened the breaker and the
-    // reader was told `circuit_open` about a remote that answered every call.
     expect(requestFailureEvidence(new RequestError("http 401", "http_4xx", 401), false)).toBe(
       "answered",
     );
@@ -87,14 +66,9 @@ describe("requestFailureEvidence", () => {
   });
 
   test("a transport failure counts whatever the runtime called it", () => {
-    // No status and a message no transport pattern recognises: the kind the
-    // retry loop assigned is the evidence.
     expect(requestFailureEvidence(new RequestError("Unable to connect", "connection"), false)).toBe(
       "unavailable",
     );
-    // The dispatcher's own fallback text. Read by its message alone it
-    // observes nothing — which is why this is not left to `evidenceFromThrow`:
-    // a real outage would never open the breaker.
     const fallback = new RequestError("connection error", "connection");
     expect(evidenceFromThrow(fallback)).toBe("none");
     expect(requestFailureEvidence(fallback, false)).toBe("unavailable");
@@ -105,7 +79,6 @@ describe("requestFailureEvidence", () => {
 
   test("an abort counts only when the step's own timer fired", () => {
     expect(requestFailureEvidence(new RequestError("aborted", "abort"), true)).toBe("unavailable");
-    // A cancelled run says nothing about the remote.
     expect(requestFailureEvidence(new RequestError("aborted", "abort"), false)).toBe("none");
   });
 
@@ -146,9 +119,6 @@ describe("graphqlEvidence", () => {
   });
 
   test("an exhausted retry loop against a 5xx counts against the breaker", () => {
-    // The regression this pins: the status lived on request_meta while only
-    // the error detail was ever classified, so `graphql endpoint returned
-    // 502` matched no transport shape and the breaker never moved.
     expect(
       graphqlEvidence({
         status: "failed",
@@ -182,8 +152,6 @@ describe("graphqlEvidence", () => {
   });
 
   test("no request_meta means no response arrived, so the throw decides", () => {
-    // runGraphqlWithRetry omits request_meta only on the path where the
-    // attempt threw before a response existed.
     expect(
       graphqlEvidence({
         status: "failed",
@@ -208,8 +176,6 @@ describe("mcpEvidence", () => {
     expect(
       mcpEvidence({ status: "failed", error: { code: "mcp_unavailable", message: "no session" } }),
     ).toBe("unavailable");
-    // The server answered and rejected the arguments. Retrying is pointless,
-    // but the connector is serving — the same verdict s3 gives a 404.
     expect(
       mcpEvidence({
         status: "failed",
@@ -222,8 +188,6 @@ describe("mcpEvidence", () => {
     expect(
       mcpEvidence({ status: "failed", error: { code: "mcp_cancelled", message: "aborted" } }),
     ).toBe("none");
-    // Defaulting an unknown code to "answered" would let a future failure
-    // mode silently close breakers.
     expect(
       mcpEvidence({ status: "failed", error: { code: "mcp_step_invalid", message: "bad tool" } }),
     ).toBe("none");

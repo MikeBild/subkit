@@ -1,7 +1,3 @@
-// Verifies the /logs slash command is a pure HTTP call into the
-// engine's /v1/diagnostics/errors surface — no spawn, no ssh, no
-// doctl, no environment-variable side channels.
-
 import { describe, expect, test } from "bun:test";
 import { initialSessionState } from "@cli-core/index.ts";
 import type { EngineClient, EngineErrorEntry } from "../engine-client.ts";
@@ -75,9 +71,9 @@ describe("/logs slash", () => {
     await handleSlash("logs", ["9999"], mkCtx(client));
     expect(spy.query.limit).toBe(200);
     await handleSlash("logs", ["0"], mkCtx(client));
-    expect(spy.query.limit).toBe(20); // 0 → falsy fallback to default
+    expect(spy.query.limit).toBe(20);
     await handleSlash("logs", ["nope"], mkCtx(client));
-    expect(spy.query.limit).toBe(20); // NaN → fallback
+    expect(spy.query.limit).toBe(20);
   });
 
   test("renders the empty-buffer message when no items", async () => {

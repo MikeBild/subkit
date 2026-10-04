@@ -26,9 +26,6 @@ beforeAll(async () => {
       return;
     }
     if (req.url?.startsWith("/seraph")) {
-      // Atlassian Seraph anonymous response: HTTP 200 + empty result set +
-      // X-Seraph-LoginReason header. A dead credential must fail loudly here,
-      // not transform an empty body as if it were real data.
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
       res.setHeader("x-seraph-loginreason", "AUTHENTICATED_FAILED");
@@ -90,8 +87,6 @@ describe("onError modes", () => {
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    // Without the health classifier this step would "succeed" with an empty
-    // body. It must fail because the upstream served an unauthenticated 200.
     expect(result.status).toBe("failed");
     expect(result.steps[0]?.status).toBe("failed");
   });
@@ -160,8 +155,6 @@ describe("onError modes", () => {
     });
     expect(result.steps[0]?.status).toBe("failed");
     expect(result.steps[1]?.status).toBe("succeeded");
-    // Result honesty: the tolerated failure must NOT ride RunResult.error
-    // (the run is a success) — it surfaces as a warning instead.
     expect(result.error).toBeNull();
     expect(result.warnings).toEqual(
       expect.arrayContaining([
@@ -171,10 +164,6 @@ describe("onError modes", () => {
   });
 
   test("a continued failure followed by a genuine on_error=fail failure reports the failing step's error", async () => {
-    // The tolerated failure must not leak onto RunResult.error — the
-    // genuine downstream failure owns it. The two steps fail with
-    // distinct codes (http_4xx vs http_5xx) so the assertion proves
-    // WHICH error the envelope carries.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "continue-then-fail",
       steps: [
@@ -211,10 +200,6 @@ describe("onError modes", () => {
   });
 
   test("a write that fails inside a for_each body surfaces in execution final_status", async () => {
-    // Pre-fix the for_each container always finalized "succeeded" — a write
-    // that 400'd/404'd inside the loop body was masked as a successful
-    // execution (silent data-loss class). The failing iteration must now
-    // drive final_status to "failed" under the default on_error.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "for-each-write-fail",
       steps: [
@@ -240,9 +225,6 @@ describe("onError modes", () => {
   });
 
   test("for_each body failure with on_error=continue does NOT fail the execution", async () => {
-    // The opt-out path: a body that sets on_error:"continue" tolerates its
-    // own failure exactly as a non-loop step does — final_status stays
-    // succeeded even though the iteration failed.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "for-each-write-continue",
       steps: [
@@ -273,10 +255,6 @@ describe("onError modes", () => {
   });
 
   test("a write that fails inside a loop-step body surfaces in execution final_status", async () => {
-    // The loop driver only resolves the collection (status "succeeded");
-    // pre-fix a failed body write was stored only in the per-iteration
-    // envelope and never propagated. The body step's default on_error must
-    // drive final_status to "failed".
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-write-fail",
       steps: [

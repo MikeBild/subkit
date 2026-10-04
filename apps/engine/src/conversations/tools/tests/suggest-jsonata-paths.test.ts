@@ -1,7 +1,3 @@
-// suggest_jsonata_paths — read-only tool that returns ranked
-// JSONata path candidates from a step's recorded preview. Pure-ish:
-// uses an in-memory draft via a fake context.
-
 import { describe, expect, test } from "bun:test";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";

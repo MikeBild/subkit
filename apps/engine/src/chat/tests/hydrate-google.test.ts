@@ -1,17 +1,3 @@
-// Google Chat hydration:
-//
-//   1. With complete `platform.googlechat.*` credentials, every
-//      google_chat workspace row registers the ONE app-level adapter
-//      (+ the platform fallback for pre-workspace verify()).
-//   2. With incomplete credentials the row is skipped WITH a
-//      CHAT_WORKSPACE_HYDRATE_SKIPPED audit — the guard that also
-//      closes the adapter's fail-open verify path (a registered
-//      adapter always carries the pinned production jwksUrl).
-//
-// No bot-token decryption is involved: Google outbound auth is the
-// app-level service account from config, so the seeded cipher columns
-// hold junk bytes on purpose.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
@@ -28,9 +14,6 @@ import { ChatAdapterRegistry } from "../registry.ts";
 const nextHex = createDeterministicHexFactory(0x60091e);
 const detBytes = (n: number): Buffer => Buffer.from(nextHex(n), "hex");
 
-// Deterministic test-only RSA key material is NOT needed: hydration only
-// stores the PEM string on the adapter; no signing happens until an
-// outbound send.
 const TEST_PEM = "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----";
 
 let ctx: ConversationTestCtx;
@@ -98,8 +81,6 @@ describe("google chat hydration", () => {
     });
     expect(adapter).not.toBeNull();
     expect(adapter?.platform).toBe("google_chat");
-    // Pre-workspace verify() resolution — the route looks up the
-    // fallback before it knows which space sent the event.
     expect(registry.findVerifier("google_chat")).not.toBeNull();
   });
 });

@@ -1,31 +1,3 @@
-// What stands beside a record's title: the page's OWN actions, each once.
-//
-// The title used to carry a second copy of whatever the page's sections
-// already offered — "Jetzt freigeben" above the panel that says "Jetzt
-// freigeben", "Neu verbinden" as a jump to the card that signs in again. A
-// reader saw the same action two or three times and could not tell which one
-// counted. The rule (apps/cockpit/UI-UX.md, "Action hierarchy"): an action
-// exists once per view; the header carries the page's own action, a section's
-// action lives in that section, and other places show status, not triggers.
-//
-// Fixtures follow the engine's real schemas and each holds exactly one state:
-//
-// - a workflow whose webhook the authority gate holds  → the title offers
-//   "Ausführen" and the menu; "Jetzt freigeben" stands in the panel, once,
-//   and is the one element that opens the approval;
-// - a workflow whose development Mail lost its sign-in → no authority review
-//   on page open (the run dialog asks that);
-// - a workflow whose newest run failed                  → the run is in the
-//   list of recent runs; the title does not repeat it;
-// - a workflow with nothing wrong                       → "Im Chat ändern" is
-//   in the menu, a conversation that opens with a real intent, not a label;
-// - a connector whose sign-in expired                   → "Neu anmelden" in
-//   its sign-in card, once; nothing beside the title jumps to it;
-// - a healthy connector                                 → "Verbindung testen";
-// - a skill, a knowledge source                         → the record's own
-//   actions, each once; its state in one status strip under the title — no
-//   badge beside it, no "Steuerung" label, no sentence about steps;
-
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
@@ -155,7 +127,6 @@ function runs(workflowId) {
     created_at: at(minutes).toISOString(),
     failure: status === "failed" ? { step_key: "send", cause_class: "upstream_error" } : null,
   });
-  // Only the newest run decides: an older failure under a newer success is history.
   const items =
     workflowId === FAILED
       ? [row(FAILED_RUN, "failed", 5), row(`${FAILED_RUN.slice(0, -2)}20`, "succeeded", 65)]
@@ -235,7 +206,6 @@ const isDetailApi = (url) => {
 
 const STALE = ["Sicher im Chat fortsetzen", "Continue safely in chat"];
 
-/** The test ids of what stands beside the title, in order. */
 async function besideTitle(page) {
   return page
     .locator('[data-slot="page-actions"]')
@@ -243,7 +213,6 @@ async function besideTitle(page) {
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
 }
 
-/** A workflow page, settled: its title carries the page's own actions only. */
 async function expectWorkflowTitle(page, where) {
   await page.getByTestId("workflow-automation-state").waitFor({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
@@ -257,13 +226,6 @@ async function expectWorkflowTitle(page, where) {
     if (body.includes(stale)) throw new Error(`${where}: the page still offers "${stale}"`);
 }
 
-/**
- * A record's state stands once, in the status strip under its title — never a
- * badge beside the title as well. Its header holds "Im Chat ändern" and the
- * menu, each once. The page used to carry a row headed "Steuerung" that told
- * every reader "Den Namen änderst du hier, die Schritte im Chat." — on a file,
- * which has neither.
- */
 async function assertRecordHeader(page, where, de) {
   const found = await page.evaluate(() => ({
     strips: document.querySelectorAll('[data-slot="status-strip"]').length,
@@ -280,7 +242,6 @@ async function assertRecordHeader(page, where, de) {
     if (found.body.includes(gone)) throw new Error(`${where}: the page still says "${gone}"`);
   if (found.strips !== 1) throw new Error(`${where}: ${found.strips} status strips, not one`);
   if (found.titleBadges !== 0) throw new Error(`${where}: the state stands beside the title too`);
-  // "Im Chat ändern" once; whatever else the reader's rights allow, once each.
   if (!found.actions.includes("detail-action"))
     throw new Error(
       `${where}: the header lacks "Im Chat ändern" — ${JSON.stringify(found.actions)}`,
@@ -295,14 +256,12 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
   const handler = detailApi(state);
   await page.route(isDetailApi, handler);
   try {
-    // ── A workflow its webhook is held for ────────────────────────────────────
     let where = `/workflows/<held> (${localeName})`;
     await stand.visit(page, `workflows/${HELD}`);
     await expectWorkflowTitle(page, where);
     const approve = de ? "Freigeben…" : "Approve…";
     const panelAction = (await page.getByTestId("workflow-automation-action").innerText()).trim();
     if (panelAction !== approve) throw new Error(`${where}: the panel offers "${panelAction}"`);
-    // Once, by its words — wherever on the page it would stand.
     const offered = await page
       .getByTestId("detail-workflows")
       .getByText(approve, { exact: true })
@@ -315,17 +274,12 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await assertSingleTriggers(page, where, { approvalOpeners: 1 });
     await assertNoVisibleUuids(page.locator("header").first(), where);
     await capture("detail-action-held");
-    // The press opens the approval dialog.
     await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-cancel").waitFor({ state: "visible", timeout: 10_000 });
     if (state.previews < 1) throw new Error(`${where}: the action opened no review`);
     await page.getByTestId("authority-grant-cancel").click();
     await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
 
-    // ── A workflow whose development Mail must be reconnected ───────────────
-    // The page does not run the authority review on open: that review is a
-    // full resolution, asked for when the run dialog opens (where development
-    // is then offered disabled) and when a reviewer opens the approval.
     where = `/workflows/<unavailable> (${localeName})`;
     state.previews = 0;
     await stand.visit(page, `workflows/${UNAVAILABLE}`);
@@ -334,9 +288,6 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
       throw new Error(`${where}: opening the page ran ${state.previews} authority reviews`);
     await assertSingleTriggers(page, where);
 
-    // ── A workflow whose newest run failed ────────────────────────────────────
-    // The run stands in "Verlauf", with its cause, and opens its sheet on this
-    // page; the title offers no second way to it.
     where = `/workflows/<failed> (${localeName})`;
     await stand.visit(page, `workflows/${FAILED}`);
     await expectWorkflowTitle(page, where);
@@ -355,12 +306,10 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
       throw new Error(`${where}: the newest run's row leads to ${newest}`);
     await assertSingleTriggers(page, where);
 
-    // ── A workflow with nothing wrong: a conversation with a real intent ─────
     where = `/workflows/<plain> (${localeName})`;
     await stand.visit(page, `workflows/${PLAIN}`);
     await expectWorkflowTitle(page, where);
     await assertSingleTriggers(page, where);
-    // "Im Chat ändern" stands beside the title, a named button of its own.
     const change = page.getByTestId("workflow-menu-change");
     await change.waitFor({ state: "visible" });
     if ((await change.innerText()).trim() !== (de ? "Im Chat ändern" : "Change in chat"))
@@ -379,14 +328,11 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
       throw new Error(`${where}: the conversation opens with "${prompt}", not "${intent}"`);
     await page.keyboard.press("Escape");
 
-    // ── A connector whose sign-in expired ─────────────────────────────────────
     where = `/connectors/<expired> (${localeName})`;
     await stand.visit(page, `connectors/${EXPIRED_CONNECTOR}`);
     const renew = page.getByTestId("connector-renew-signin");
     await renew.waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
-    // Renewing has one home: the status strip (D6). The title used to carry
-    // "Neu verbinden", a link that only scrolled to it.
     if (await page.getByTestId("detail-action").count())
       throw new Error(`${where}: a second trigger for the sign-in stands beside the title`);
     const renewLabel = (await renew.innerText()).trim();
@@ -397,10 +343,8 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await assertSingleTriggers(page, where);
     await capture("detail-action-reconnect");
 
-    // ── A healthy connector: the test button is its action ───────────────────
     where = `/connectors/<healthy> (${localeName})`;
     await stand.visit(page, `connectors/${HEALTHY_CONNECTOR}`);
-    // Testing the connection stands in the page's menu.
     await page.getByTestId("connector-menu").waitFor({ state: "visible", timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     if (await page.getByTestId("detail-action").count())
@@ -413,9 +357,6 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await page.unroute(isDetailApi, handler);
   }
 
-  // ── The records that are one document: a skill, a knowledge source ─
-  // Served by the sweep's own fixtures; each action of the page once. A file
-  // is a sheet over its list and is swept as `files/$id`.
   for (const resource of ["skills", "knowledge"]) {
     const where = `/${resource}/<record> (${localeName})`;
     await stand.visit(page, `${resource}/${uuid}`);

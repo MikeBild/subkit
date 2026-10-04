@@ -36,9 +36,6 @@ describe("quickjs runtime", () => {
       threw = err;
     }
     expect(threw).not.toBeNull();
-    // Either memory cap or interrupt — both are acceptable failure modes
-    // because QuickJS may hit the cap inside the allocator or abort the
-    // running bytecode via the interrupt handler first.
     expect(
       threw instanceof SandboxMemoryError ||
         threw instanceof SandboxInterruptError ||
@@ -85,7 +82,6 @@ describe("quickjs runtime", () => {
 
   test("peak_memory_bytes is populated and bounded by the memory limit", async () => {
     const { stats } = await runJs<number>({
-      // Allocate ~4 MB of strings to force memory usage above idle noise.
       code: "var bucket = []; for (var i = 0; i < 64; i++) { bucket.push(new Array(1024).join('x')); } return bucket.length;",
       input: null,
       limits: { memory_bytes: 32 * 1024 * 1024, wall_ms: 3_000 },

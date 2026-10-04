@@ -1,12 +1,3 @@
-// Resolver tests against a real Postgres via createTestDb. Covers:
-//
-//   - cred / connector_url / connector_config / input / scope happy paths
-//   - environment trennung
-//   - slug_not_found / key_not_found errors
-//   - RBAC deny with a real principal
-//   - Canary test: a credential value that must never appear in any log line.
-//   - resolvePlaceholders walks nested objects / arrays.
-
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -144,7 +135,6 @@ describe("resolver — cred", () => {
     });
     expect(r.unresolved).toHaveLength(1);
     expect(r.unresolved[0]!.code).toBe("slug_not_found");
-    // Remainder still resolved; unresolved token kept literally.
     expect(r.value.startsWith(`A=\${cred.missing.token}`)).toBe(true);
   });
 
@@ -303,8 +293,6 @@ describe("resolver — input + scope", () => {
 
   test("item key_not_found suggests the closest actual key (did-you-mean)", async () => {
     const { tenant_id } = await seed({ slug: "none7b", mode: "none" });
-    // The exact production drift: workflow reads `${item.messageId}` but the
-    // Gmail list payload carries `message_id`. The hint must name it.
     const r = await resolveStringPlaceholders(`\${item.messageId}`, {
       tenant_id,
       environment: "dev",
@@ -324,7 +312,6 @@ describe("resolver — escape handling", () => {
       { tenant_id, environment: "dev", db: ctx.db },
     );
     expect(r.value).toBe(`keep \${cred.esc1.token} but sub visible`);
-    // Only the non-escaped one is counted in placeholders_used.
     expect(r.placeholders_used).toEqual([`\${cred.esc1.token}`]);
   });
 });
@@ -352,7 +339,6 @@ describe("resolver — RBAC enforcement", () => {
     expect(r.unresolved[0]!.code).toBe("rbac_denied");
     expect(r.value).toContain(`\${cred.rbac1.token}`);
     expect(r.value).not.toContain("private-abc");
-    // Reach through connector_id just to make TS happy about unused symbol:
     expect(connector_id).toBeTruthy();
   });
 });
@@ -382,7 +368,6 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
         db: ctx.db,
       });
       expect(r.value).toBe(`X-${CANARY}-Y`);
-      // Every log call argument must be free of the canary value.
       for (const call of logSpy.mock.calls) {
         const serialised = JSON.stringify(call);
         expect(serialised.includes(CANARY)).toBe(false);
@@ -407,9 +392,6 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
         db: ctx.db,
       });
       expect(r.unresolved[0]!.code).toBe("slug_not_found");
-      // The only canary in this DB belongs to a different slug — it must not
-      // leak into logger.warn calls. We also confirm the resolver itself
-      // surfaces the token name in its unresolved entry (that's the safe channel).
       const serialised = JSON.stringify(logSpy.mock.calls);
       expect(serialised.includes(CANARY)).toBe(false);
       expect(r.unresolved[0]!.token).toBe(`\${cred.not-seeded.token}`);
@@ -419,7 +401,6 @@ describe("resolver — canary redaction (values never appear in logs)", () => {
   });
 });
 
-// A fixture marker, not a credential.
 const CONFIG_SECRET = "fixture-config-secret-not-real";
 
 describe("a connector config token does not read a secret", () => {
@@ -437,7 +418,6 @@ describe("a connector config token does not read a secret", () => {
     "oauth.client_secret",
     "oauth.token_request_body_mapping.assertion",
     "static_headers.X-Session-Id",
-    // A subtree is the secret it contains.
     "oauth",
     "static_headers",
   ])("config.%s is withheld from a string and from a typed value", async (path) => {
@@ -535,7 +515,6 @@ describe("describeConnectorPlaceholders", () => {
       environment: "dev",
       db: ctx.db,
     });
-    // jsonb does not keep key order.
     expect([...d.config].sort()).toEqual([
       `\${connector.dsc2.config.oauth.token_endpoint}`,
       `\${connector.dsc2.config.region}`,
@@ -619,7 +598,6 @@ describe("resolvePlaceholders — walks nested structures", () => {
       nested: [{ value: "TOP" }, "literal"],
       raw: "plain",
     });
-    // deduped — even though the token appears twice
     expect(r.placeholders_used).toEqual([`\${cred.deep1.token}`]);
   });
 });
@@ -776,15 +754,11 @@ describe("resolvePlaceholdersTypePreserving — preserves native JSON types", ()
         input: { name: "Ada" },
       },
     );
-    // Mirrors the existing `resolver — escape handling` test: the escape is
-    // honored when it sits alongside a real placeholder in the same string.
     expect(r.value).toEqual({ template: `\${input.name} = Ada` });
   });
 
   test("placeholder + adjacent literal text — single-token detection does NOT trigger", async () => {
     const { tenant_id } = await seed({ slug: "tp11", mode: "none" });
-    // Even with `${...}` at start, the trailing text means it's a mixed
-    // string and must resolve to a string (not a number).
     const r = await resolvePlaceholdersTypePreserving<Record<string, unknown>>(
       { x: `\${input.n}-suffix` },
       {
@@ -800,22 +774,12 @@ describe("resolvePlaceholdersTypePreserving — preserves native JSON types", ()
 });
 
 describe("resolver — soft-delete filtering (regression: /v2/v2 double prefix)", () => {
-  // Prod 2026-06-11: three soft-deleted `linkedin` rows coexisted with the
-  // live one (the partial unique index only governs live rows). One dead row
-  // had base_url ending in `/v2`; fetchConnector lacked `deleted_at IS NULL`
-  // and an ORDER BY, so `${connector.linkedin.base_url}/v2/userinfo` resolved
-  // the dead row → `/v2/v2/userinfo` → 404.
-
   test("soft-deleted same-slug connector is never resolved — live row wins", async () => {
     const { tenant_id } = await seed({
       slug: "linkedin",
       mode: "none",
       baseUrl: "https://api.linkedin.test",
     });
-    // Insert a NEWER soft-deleted duplicate with the poison base_url. If the
-    // resolver forgot the deleted_at filter, ORDER BY created_at DESC would
-    // deterministically pick this row — the test would fail loudly instead of
-    // depending on physical row order.
     await ctx.db.insert(connectors).values({
       tenant_id,
       slug: "linkedin",
@@ -864,8 +828,6 @@ describe("resolver — soft-delete filtering (regression: /v2/v2 double prefix)"
       mode: "bearer",
       tokenValue: "should-not-resolve",
     });
-    // Soft-delete the credential without freeing the unique slot — exactly
-    // what a soft-delete writer would leave behind (see oauth2/tests/wait.test.ts).
     await ctx.db
       .update(credentials)
       .set({ deleted_at: new Date() }) // allow-wall-clock: deleted_at marker, value irrelevant

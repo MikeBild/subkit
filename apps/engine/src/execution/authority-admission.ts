@@ -75,10 +75,6 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-/** Caller checks its normal workflow:run permission first. This service checks
- * the product-local human authority and atomically creates the charged run.
- * It never enqueues; callers may retry enqueueing the SAME queued execution
- * after a queue failure, without making a second reservation. */
 export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executor) {
   const input = admissionSchema.parse(raw);
   const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
@@ -214,10 +210,6 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
   });
 }
 
-/** Existing reservations remain usable when remaining_runs reaches zero.
- * Revocation, expiry, active-version or manifest drift still stop NEW dispatch.
- * This read must be repeated immediately before each outbound effect, including
- * after credential refresh. It cannot undo an already-dispatched remote call. */
 export async function assertExecutionAuthorityCurrent(
   db: Db,
   tenant_id: string,
@@ -232,11 +224,6 @@ export async function assertExecutionAuthorityCurrent(
   if (!execution) fail("execution_boundary_mismatch", "execution unavailable");
   if (execution.tool_approval_id)
     return assertToolApprovalDispatch(db, tenant_id, execution_id, snapshot);
-  // A run started by a `call` step of an approved run holds no approval of its
-  // own. Its permission is the ROOT's, and each dispatch here is measured
-  // against the effect that root's manifest carries at this call path. Falling
-  // through the early return below — the answer for an ordinary unapproved run
-  // — would let such a child dispatch anything at all under the root's grant.
   let authorityId = execution.execution_authority_id;
   let path: string[] = [];
   const governing = [execution];
@@ -260,7 +247,6 @@ export async function assertExecutionAuthorityCurrent(
       );
     authorityId = root.execution_authority_id;
     path = execution.authority_call_path ?? [];
-    // Cancelling the root must stop its children too, so both rows are tested.
     governing.push(root);
   }
   if (!authorityId) return;
@@ -316,9 +302,6 @@ export async function assertExecutionAuthorityCurrent(
             (candidate) =>
               candidate.step_id === parsed.data.step_id &&
               candidate.configuration_digest === parsed.data.configuration_digest &&
-              // The call path is part of the identity. A parent and a child may
-              // use the same step id against different targets; without this,
-              // one would be admitted against the other's approved effect.
               isDeepStrictEqual(candidate.call_path ?? [], path),
           )
         : undefined;
@@ -348,9 +331,6 @@ export async function assertExecutionAuthorityCurrent(
           db,
         )
       : null;
-    // Restoring a credential after resolution cannot authorize a request that
-    // already captured no credential. Auth-free connectors intentionally do
-    // not load an otherwise present credential row.
     if (parsed.data.credential_id !== null || (system && system.connector.auth_type !== "none")) {
       const metadata = await system?.getAuthorityMetadata();
       if (

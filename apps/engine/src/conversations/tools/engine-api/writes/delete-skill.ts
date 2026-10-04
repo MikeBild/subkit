@@ -1,14 +1,3 @@
-// delete_skill — hard-delete a tenant Skill by id.
-//
-// Mirrors `delete_knowledge_source` (cleanup.ts): parse the id, call the
-// engine-client `skills.delete` facet, emit a surface audit, and return the
-// uniform { ok, data } envelope. The service hard-deletes the row (no
-// soft-delete) — operators should prefer archiving the skill instead.
-//
-// The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); the in-execute check
-// below stays because the chat surface invokes execute() directly and does
-// not route through the dispatcher's descriptor.rbac yet.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 

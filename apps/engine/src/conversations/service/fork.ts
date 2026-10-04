@@ -1,22 +1,3 @@
-// Fork a conversation at a specific message id. Creates a new
-// conversation row owned by the same actor + tenant, copies every
-// message up to and including the anchor message into the new
-// conversation, and returns the new conversation id.
-//
-// Tool calls and elicitations are NOT copied — they're tied to the
-// message ids in the source conversation and re-running them in the
-// fork would duplicate their side effects. The forked conversation
-// IS seeded with the source's `draft`, `memory`, `model`,
-// target_connector_id, target_workflow_id, and `loaded_skills` so the
-// next turn lands in the same authoring state the operator was in.
-//
-// Caveat: assistant messages whose content text references
-// `tool_call_id` values from the source will keep those references
-// even though the matching tool_call rows are not copied. The CLI
-// renderer treats unknown tool_call_id refs as plain text, so the
-// fork is still readable; flagged for incident-reading audit
-// consumers.
-
 import { and, asc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import type { AuditActorType } from "../../audit/types.ts";
@@ -37,21 +18,8 @@ export interface ForkConversationParams {
   source_conversation_id: string;
   anchor_message_id: string;
   actor_id: string | null;
-  /** Audit `actor_type`. Routes derive this from the resolved
-   *  `principal.kind` via the canonical `actorType()` helper in
-   *  `audit/actor.ts`; cron / engine callers pass `"system"` with
-   *  `actor_id: null`. Required (no default) so a `system_account`
-   *  principal can never be silently mis-tagged as `"user"` by an
-   *  `actor_id`-truthiness heuristic. */
   actor_type: AuditActorType;
-  /** Optional title override; defaults to "fork — <source>". */
   title?: string | null;
-  /**
-   * Canonical request_source value identifying the calling channel
-   * (`api`, `cli`, `scheduler`, etc.). Recorded on the audit row so
-   * SIEM/BI consumers can split forks by source without correlating
-   * trace_ids.
-   */
   request_source: "api" | "cli" | "scheduler" | "mcp" | "webhook" | "tool-chain" | "ui" | "chat";
 }
 
@@ -60,42 +28,15 @@ export interface ForkConversationResult {
   source_conversation_id: string;
   anchor_message_id: string;
   copied_message_count: number;
-  /**
-   * True when the fork hit `FORK_COPY_MESSAGE_CAP` and copied only
-   * the most-recent `FORK_COPY_MESSAGE_CAP` messages up to the anchor
-   * instead of every message from index 0. Surfaces a deliberate
-   * truncation to operators + audit consumers. The fork is still
-   * functional (the anchor message is always included) — older
-   * context is dropped to bound storage / memory amplification.
-   */
   truncated: boolean;
 }
 
-/**
- * Hard cap on messages copied per fork operation. Without it, a
- * multi-thousand-message conversation fed into `/fork` linearly
- * amplifies storage + memory: the SELECT pulls every row, the INSERT
- * writes every row, and a malicious caller with `conversation:write`
- * could repeatedly fork from second-to-last to amplify storage
- * indefinitely.
- *
- * 5,000 chosen as 5x the typical incident-mode authoring loop length
- * (~1,000 turns × ~3 rows/turn ≈ 3,000) — well above any realistic
- * working session, well below where the linear ops become noticeable.
- */
 export const FORK_COPY_MESSAGE_CAP = 5_000;
 
 export async function forkConversation(
   p: ForkConversationParams,
   exec: Db,
 ): Promise<ForkConversationResult | null> {
-  // Look up the source conversation + ALL its messages in created_at
-  // order. We resolve the anchor by id-match in the in-memory list
-  // rather than by `lte(created_at, anchor.created_at)` because JS
-  // Date is millisecond-precision but Postgres `timestamp with time
-  // zone` is microsecond-precision — round-tripping the anchor's
-  // timestamp through JS truncates to ms and then `lte` excludes the
-  // anchor's own row whenever its µs portion is non-zero.
   const [source] = await exec
     .select()
     .from(conversations)
@@ -112,20 +53,10 @@ export async function forkConversation(
         eq(conversationMessages.conversation_id, p.source_conversation_id),
       ),
     )
-    // Tiebreak on id so identical `created_at` clock-ticks (Postgres
-    // `defaultNow()` resolves to `clock_timestamp()` per insert; bulk
-    // inserts can return ties) produce a deterministic order. The
-    // findIndex anchor lookup is already id-keyed, but the sliced
-    // copy and the test assertions assume insertion order matches
-    // `ORDER BY`.
     .orderBy(asc(conversationMessages.created_at), asc(conversationMessages.id));
   const anchorIdx = allMessages.findIndex((m) => m.id === p.anchor_message_id);
   if (anchorIdx < 0) return null;
 
-  // Copy the source row's connector + workflow + draft + memory + model +
-  // loaded_skills verbatim. Status resets to "active". The fork inherits
-  // the prior loaded-skills set so the next turn doesn't need a fresh
-  // catalog probe; if downstream skills change, the loop re-derives.
   const forkTitle = p.title ?? `fork — ${source.title ?? source.id.slice(0, 8)}`;
   const [row] = await exec
     .insert(conversations)
@@ -139,9 +70,6 @@ export async function forkConversation(
       draft: source.draft,
       owner_id: p.actor_id ?? source.owner_id ?? null,
       loaded_skills: source.loaded_skills,
-      // Copy the source turn counter so recency math stays coherent in the
-      // fork — without it the fork resets to turn 0 and instantly demotes
-      // every loaded skill for K turns.
       turn_count: source.turn_count,
       title: forkTitle,
       memory: source.memory,
@@ -150,17 +78,6 @@ export async function forkConversation(
     .returning();
   assertInsertRow(row, "conversations");
 
-  // Copy messages [0..anchorIdx] inclusive. Concurrent appends to the
-  // source past the anchor are naturally excluded because they were
-  // not in `allMessages` at fetch time (the SELECT happened before the
-  // INSERT below — read-then-write semantics). New rows get fresh ids;
-  // `created_at` is set to "now" so the fork's timeline orders cleanly.
-  //
-  // Clamp to FORK_COPY_MESSAGE_CAP to bound storage amplification on
-  // long sessions. When the cap fires we keep the most recent N
-  // messages up to and including the anchor; older context is
-  // dropped. The anchor message is always preserved (slice end is
-  // anchorIdx+1).
   const fullSlice = allMessages.slice(0, anchorIdx + 1);
   const truncated = fullSlice.length > FORK_COPY_MESSAGE_CAP;
   const messagesToCopy = truncated
@@ -182,14 +99,6 @@ export async function forkConversation(
     copiedCount = messagesToCopy.length;
   }
 
-  // Duplicate every `file_links` row that points at the source
-  // conversation so the fork holds independent references to the same
-  // `files.id`s. Without this, the cleanup cron's orphan sweep could
-  // reap a file the moment the source conversation is deleted — even
-  // though the fork still uses it. The new rows reuse the same
-  // (slug, role) so the chat-text rewriter resolves identically in
-  // the fork; `onConflictDoNothing` keeps the operation idempotent
-  // if the same fork is replayed.
   const sourceLinks = await exec
     .select({
       file_id: fileLinks.file_id,
@@ -219,12 +128,6 @@ export async function forkConversation(
       )
       .onConflictDoNothing();
 
-    // Per-row audit emission — one `FILE_LINK_ADDED` per duplicated
-    // link with `source: "fork"` so compliance can distinguish
-    // user-initiated links (HTTP `/v1/files/...`, REPL attach) from
-    // fork-cascaded ones. Per-row matches the rest of the audit
-    // surface (each `FILE_LINK_ADDED` upstream is one row); the noise
-    // is bounded by typical conversation size (≤10 attachments).
     for (const l of sourceLinks) {
       await auditAwait(
         {
@@ -235,10 +138,6 @@ export async function forkConversation(
           resource_type: "file",
           resource_id: l.file_id,
           result: "success",
-          // `.parse(...)` matches every other FILE_LINK_ADDED emitter in
-          // the codebase; without it the missing `file_id` field would
-          // silently land in the audit row and SIEM queries on
-          // `metadata->>'file_id'` would miss every fork-cascaded link.
           metadata: FileLinkAddedMetadataSchema.parse({
             file_id: l.file_id,
             resource_type: "conversation",
@@ -254,9 +153,6 @@ export async function forkConversation(
     }
   }
 
-  // Log under `conversation.forked` (not `created`) so structured-log
-  // readers can split forks from greenfield creates the same way the
-  // audit row does.
   log.conversation.forked({
     conversation_id: row.id,
     tenant_id: p.tenant_id,
@@ -276,37 +172,17 @@ export async function forkConversation(
       tenant_id: p.tenant_id,
       actor_type: p.actor_type,
       actor_id: p.actor_id,
-      // Distinct fork action for audit-log incident readers. Metadata
-      // still records source + anchor + count so a CREATED-style
-      // query path can be reconstructed by joining on `forked_from`.
       action: AuditAction.CONVERSATION_FORKED,
       resource_type: "conversation",
       resource_id: row.id,
       result: "success",
       reason: `forked from ${p.source_conversation_id} at message ${p.anchor_message_id}`,
-      // Metadata is Zod-validated against
-      // `ConversationForkedMetadataSchema` before audit emit so a
-      // future contributor cannot drop a load-bearing field
-      // (`request_source`, `truncated`, `tool_calls_omitted`, ...)
-      // without a parse-time error. The `.parse()` call throws on
-      // contract drift, which is the right failure mode here — the
-      // audit row is the compliance-of-record for the fork.
       metadata: ConversationForkedMetadataSchema.parse({
         forked_from: p.source_conversation_id,
         anchor_message_id: p.anchor_message_id,
         copied_message_count: copiedCount,
-        // The deliberately omitted side-effect rows are
-        // self-describing on the audit row, so an incident reader
-        // reconstructing state from `audit_log` alone doesn't have to
-        // open the source comment to learn what the fork did NOT
-        // carry over. The contract is documented in the route
-        // description (`lifecycle.ts`) and the service-layer header
-        // above; the audit row is the third independent home for it.
         tool_calls_omitted: true,
         elicitations_omitted: true,
-        // Record both the cap-hit flag and the original count so
-        // audit-only incident readers can detect a truncation event
-        // without joining back to the source conversation.
         truncated,
         source_message_count: fullSlice.length,
         copy_cap: FORK_COPY_MESSAGE_CAP,

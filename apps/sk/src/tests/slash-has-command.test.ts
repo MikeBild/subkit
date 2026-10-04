@@ -15,7 +15,6 @@ describe("resolveSlashCommand", () => {
   });
 
   test("resolves alias to its canonical command", () => {
-    // /clear has alias /new
     const cmd = resolveSlashCommand("new");
     expect(cmd?.name).toBe("clear");
   });

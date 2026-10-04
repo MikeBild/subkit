@@ -1,12 +1,3 @@
-// Identity provisioning: user create/deactivate + the single-use invite
-// lifecycle (create / list / revoke / redeem). Split out of `service.ts`
-// to keep both files under the 1000-LOC ceiling.
-//
-// Import direction is ONE-WAY: this module depends on `service.ts`
-// (issueApiKey + its result/type aliases); `service.ts` never imports back.
-// Every mutation writes its audit row inside the same transaction so a
-// partial failure cannot orphan an audit entry.
-
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -22,11 +13,6 @@ import { assertAdminRemains } from "./last-admin.ts";
 import { revokeConnectionsForUser } from "./oauth-connections.ts";
 import { type IssueApiKeyResult, issueApiKey, type UserRole, type UserStatus } from "./service.ts";
 
-// ---------- users -----------------------------------------------------------
-
-/** Thrown by `createUser` when a non-deleted user already exists for the
- *  `(tenant_id, email)` pair. The route layer maps this to a 409. Kept as
- *  a domain-layer error so the service never reaches into `http/errors`. */
 export class DuplicateUserError extends Error {
   readonly code = "duplicate_user" as const;
   constructor(email: string) {
@@ -44,13 +30,6 @@ export interface CreateUserInput {
   actor_id: string | null;
 }
 
-/**
- * Create a user row in the caller's tenant. Rejects a duplicate
- * `(tenant_id, email)` among non-deleted users with `DuplicateUserError`.
- * Writes a `USER_CREATED` audit row inside the same transaction. Without
- * `role_id` the user gets the built-in role named by `role` (default
- * `member`).
- */
 export async function createUser(input: CreateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
@@ -102,22 +81,6 @@ export interface DeactivateUserInput {
   actor_id: string | null;
 }
 
-/**
- * Soft-deactivate a user: set `deleted_at` + `status='disabled'`, revoke
- * every one of the user's non-revoked api keys, every OAuth connection the
- * user approved, AND every one of the user's still-pending (un-redeemed,
- * un-revoked) invites — all in the SAME transaction. Revoking the keys is
- * what severs existing key access; revoking the access and refresh tokens
- * does the same for the MCP connections the person approved, so a withdrawal
- * ends them at once rather than at expiry (tranche E, rule 2 — the resolvers
- * refuse a withdrawn person too, and this closes the gap in the same breath
- * by making the rows themselves dead); revoking the pending invites closes
- * the resurrection path where a deactivated user redeems a still-live invite
- * to mint a fresh key (the redeem claim's `isNull(revoked_at)` guard then
- * fails). Writes one `USER_DELETED` audit row, an `API_KEY_REVOKED` row per
- * key, one `MCP_OAUTH_TOKEN_REVOKED` row for the connections, and an
- * `INVITE_REVOKED` row per invite. Returns `null` if the user is already gone.
- */
 export async function deactivateUser(input: DeactivateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
@@ -168,10 +131,6 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       );
     }
 
-    // End the OAuth connections this person approved. An access token that
-    // outlives its person is the hole tranche E closed: the resolver now
-    // refuses a withdrawn user, and revoking the rows here means the refusal
-    // does not depend on a later read of the users table.
     const revokedConnections = await revokeConnectionsForUser(
       tx,
       input.tenant_id,
@@ -199,13 +158,6 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       );
     }
 
-    // Sever live BROWSER sessions too. Revoking only the api keys left a
-    // deactivated account holding a valid `subkit_session` cookie, and the MCP
-    // consent screen reads that cookie — so a disabled user could still walk an
-    // OAuth authorization to a code. Login re-checks `status`/`deleted_at`, but
-    // an already-issued session never passed back through login. Same tx as the
-    // disable, so there is no window in which the row is disabled and the
-    // session still live.
     const revokedSessions = await tx
       .update(sessions)
       .set({ revoked_at: nowTs })
@@ -234,10 +186,6 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       );
     }
 
-    // Sever still-pending invites so a deactivated user can't redeem one to
-    // mint a fresh key. Same tx → a concurrent redeem either loses the claim
-    // (this revoke commits first) or mints a key that the api-key revoke above
-    // catches; either ordering leaves the user with no live credential.
     const revokedInvites = await tx
       .update(userInvites)
       .set({ revoked_at: nowTs, updated_at: nowTs })
@@ -289,11 +237,7 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
   });
 }
 
-// ---------- user invites ----------------------------------------------------
-
-// Default invite TTL — 7 days. Long enough for an onboarding email to be
-// actioned, short enough that a stale invite stops being redeemable.
-export const INVITE_DEFAULT_TTL_MINUTES = 7 * 24 * 60; // 10080
+export const INVITE_DEFAULT_TTL_MINUTES = 7 * 24 * 60;
 
 export interface InviteView {
   id: string;
@@ -342,13 +286,6 @@ export interface CreateInviteResult {
   plaintext: string;
 }
 
-/**
- * Mint a single-use invite for an existing user in the tenant. The scopes
- * recorded here are EXACTLY what the redeemed personal api key will carry —
- * redemption never widens them. The returned `plaintext` is shown to the
- * admin once so they can hand it to the invited user; the engine stores
- * only the sha256. Writes a `USER_INVITED` audit row.
- */
 export async function createInvite(
   input: CreateInviteInput,
   exec?: Executor,
@@ -413,11 +350,6 @@ export interface ListInvitesOptions {
   status?: "pending" | "redeemed" | "revoked" | "expired";
 }
 
-/**
- * List invites for a tenant, newest first. The optional `status` filter is
- * derived at read time from the timestamp columns (no denormalised status
- * column on the row).
- */
 export async function listInvites(
   tenantId: string,
   opts: ListInvitesOptions = {},
@@ -446,12 +378,6 @@ export interface RevokeInviteInput {
   actor_id: string | null;
 }
 
-/**
- * Revoke an un-redeemed, un-revoked invite. Returns `null` when no such
- * invite exists in the tenant. Writes an `INVITE_REVOKED` audit row inside
- * the same transaction as the stamp — `enforce()` only audits on deny, so
- * without this the successful revoke would be invisible in the audit trail.
- */
 export async function revokeInvite(
   input: RevokeInviteInput,
   exec?: Executor,
@@ -508,18 +434,6 @@ export interface RedeemInviteInput {
   token: string;
 }
 
-/**
- * Redeem a single-use invite. UNAUTHENTICATED entry point — the caller has
- * no principal yet; the invite token IS the proof. In one transaction:
- * mint a personal api key for the invite's user carrying exactly the
- * invite's scopes + allow lists, stamp `redeemed_at`, and flip the user to
- * `status='active'`. The api key plaintext is returned ONCE and is never
- * visible to the admin who issued the invite.
- *
- * The lookup is by indexed prefix, then a constant-time sha256 compare, so
- * a wrong-but-well-formed token can't act as a timing oracle. Expiry /
- * revocation / prior-redemption all map to distinct typed error codes.
- */
 export async function redeemInvite(
   input: RedeemInviteInput,
   exec?: Executor,
@@ -528,11 +442,6 @@ export async function redeemInvite(
   const parsed = parseInviteToken(input.token);
   if (!parsed) return { ok: false, code: "invite_invalid" };
 
-  // Pre-read by indexed prefix + constant-time sha256 compare. Pre-tenant:
-  // the tenant_id is read out of the resolved invite row to scope every
-  // subsequent write. These three states (invalid / revoked / expired) are
-  // stable — they cannot be reached by a concurrent redeem, so deciding
-  // them here (before the claim) keeps the typed error codes precise.
   // tenant-filter:exempt — prefix-based credential lookup pre-tenant.
   const rows = await db
     .select()
@@ -548,11 +457,6 @@ export async function redeemInvite(
   if (invite.redeemed_at) return { ok: false, code: "invite_already_redeemed" };
   if (invite.expires_at.getTime() <= now()) return { ok: false, code: "invite_expired" };
 
-  // Defense-in-depth: refuse to resurrect a deactivated user. deactivateUser
-  // revokes pending invites in-tx (so the concurrent path fails the claim
-  // below), but a non-concurrent invite-for-an-already-deleted-user must also
-  // be rejected. Surface the generic invalid code — never reveal user state to
-  // an unauthenticated redeemer.
   const userRows = await db
     .select({ deleted_at: users.deleted_at })
     .from(users)
@@ -563,11 +467,6 @@ export async function redeemInvite(
   return db.transaction(async (tx) => {
     const redeemedAt = new Date(now());
 
-    // Claim-first: this conditional UPDATE is the serialization point. Two
-    // concurrent redeems both reach here; the row lock the UPDATE takes
-    // serializes them, and the `isNull(redeemed_at)` guard means the loser
-    // updates 0 rows. It returns `invite_already_redeemed` and NEVER mints a
-    // key — issueApiKey runs only after a successful claim below.
     const [claimed] = await tx
       .update(userInvites)
       .set({ redeemed_at: redeemedAt, updated_at: redeemedAt })
@@ -581,9 +480,6 @@ export async function redeemInvite(
       .returning();
     if (!claimed) return { ok: false, code: "invite_already_redeemed" };
 
-    // Mint the user's OWN api key inside this tx. actor_id is null —
-    // there is no authenticated principal; the api key is attributed to a
-    // system actor in the audit trail, owned by the invited user.
     const apiKey = await issueApiKey(
       {
         tenant_id: claimed.tenant_id,

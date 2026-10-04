@@ -1,16 +1,3 @@
-// Infers JSON Schema draft-07 from a sample value. Deliberately simple:
-//
-//   - null / undefined  →  {}  (permissive)
-//   - string / number / boolean / bigint → { type: "<prim>" }
-//   - arrays: { type: "array", items: <merge of all element schemas> }
-//     * mixed element types produce `{ oneOf: [...] }` after de-dup
-//   - objects: { type: "object", properties: {...}, required: [keys] }
-//     * every observed key is `required` in the inferred schema
-//
-// This produces tight schemas from concrete samples. Authors who want
-// looser schemas should edit the result rather than expect sample-
-// driven looseness.
-
 export type JsonSchema7 = Record<string, unknown>;
 
 export function sampleToSchema(sample: unknown): JsonSchema7 {
@@ -33,8 +20,6 @@ export function sampleToSchema(sample: unknown): JsonSchema7 {
     for (const k of keys) {
       properties[k] = sampleToSchema(obj[k]);
     }
-    // Objects with no keys: `{ type: "object" }` — the schema matches
-    // any object (including non-empty). Callers can tighten later.
     if (keys.length === 0) return { type: "object" };
     return {
       type: "object",
@@ -45,11 +30,8 @@ export function sampleToSchema(sample: unknown): JsonSchema7 {
   return {};
 }
 
-/** Merge N schemas that all describe array items into one schema. Equal
- *  schemas collapse; mixed primitives become `oneOf`. */
 function mergeSchemas(list: JsonSchema7[]): JsonSchema7 {
   if (list.length === 0) return {};
-  // De-dup by JSON-canonical form.
   const seen = new Map<string, JsonSchema7>();
   for (const s of list) {
     const key = canonical(s);
@@ -57,9 +39,6 @@ function mergeSchemas(list: JsonSchema7[]): JsonSchema7 {
   }
   const unique = [...seen.values()];
   if (unique.length === 1) return unique[0]!;
-  // Multiple shapes — preserve all via oneOf. If they are all objects,
-  // we do an additional shallow "union properties" pass so the schema
-  // captures every observed key.
   if (unique.every((s) => s.type === "object")) {
     return unionObjectSchemas(unique);
   }
@@ -72,8 +51,6 @@ function unionObjectSchemas(list: JsonSchema7[]): JsonSchema7 {
   for (const s of list) {
     const props = (s.properties ?? {}) as Record<string, JsonSchema7>;
     for (const [k, v] of Object.entries(props)) {
-      // If the same key exists with different shapes across list items,
-      // recurse through mergeSchemas so nested objects union properly.
       if (properties[k] === undefined) {
         properties[k] = v;
       } else {
@@ -85,8 +62,6 @@ function unionObjectSchemas(list: JsonSchema7[]): JsonSchema7 {
       requiredCounts.set(k, (requiredCounts.get(k) ?? 0) + 1);
     }
   }
-  // Keep a key required only if ALL items had it. Anything less and the
-  // union schema must treat it as optional.
   const required = [...requiredCounts.entries()]
     .filter(([, c]) => c === list.length)
     .map(([k]) => k);
@@ -95,7 +70,6 @@ function unionObjectSchemas(list: JsonSchema7[]): JsonSchema7 {
   return out;
 }
 
-/** Canonical JSON (sorted keys) for use as a dedup key. */
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;

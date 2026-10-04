@@ -1,14 +1,3 @@
-// Headless runner for `sk -p "..."`.
-//
-// Takes a resolved profile, a prompt, and an output format, drives a
-// single conversation turn end-to-end through the engine's
-// /v1/conversations endpoints, and prints the result.
-//
-// Exit codes for `sk -p` and other headless `sk` entry points:
-//   0 — completed cleanly
-//   1 — engine returned an error (validation, bad request)
-//   2 — auth / permission / network failure
-
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import {
   applyTurnEvent,
@@ -44,30 +33,14 @@ export interface HeadlessRunOptions {
   profile: ResolvedProfile;
   prompt: string;
   output: OutputFormat;
-  /** Override for settings cwd (tests). */
   cwd?: string;
-  /** Disable SK.md injection. */
   noMemory?: boolean;
-  /** Resume an existing conversation id instead of creating one. */
   resume?: string;
-  /** Optional initial connector / workflow binding for a new conversation. */
   connector_id?: string;
   workflow_id?: string;
-  /** Optional per-turn engine step budget. */
   maxTurns?: number;
-  /** Suppress non-critical human warnings on stderr. */
   quiet?: boolean;
-  /**
-   * Paths to upload + link as attachments BEFORE the prompt runs.
-   * Each path is uploaded through `uploadPath`, linked to the
-   * (possibly freshly minted) conversation with `role: "attachment"`,
-   * and (under `--output stream-json`) a `{"file_attached": ...}`
-   * line is emitted per file. A read / upload / link failure
-   * short-circuits the whole turn — the prompt does not run with
-   * partial attachments.
-   */
   attach?: readonly string[];
-  /** Optional writable sink — tests pass a memory buffer. */
   stdout?: { write: (s: string) => void };
   stderr?: { write: (s: string) => void };
 }
@@ -82,10 +55,6 @@ function writeLine(stream: { write: (s: string) => void } | undefined, line: str
   (stream ?? process.stdout).write(`${line}\n`);
 }
 
-/** Derive an `@attachment:`-addressable slug from a filename. Must
- *  match the engine's slug charset (`[a-z0-9][a-z0-9_-]{0,62}`) — any
- *  other character collapses to `-`. Returns null when nothing
- *  slug-able remains (the link is then created slug-less, as before). */
 function attachmentSlug(filename: string): string | null {
   const slug = filename
     .toLowerCase()
@@ -97,7 +66,6 @@ function attachmentSlug(filename: string): string | null {
 
 function sanitizeError(err: unknown): { status: number; message: string; exit: 1 | 2 } {
   if (isEngineError(err)) {
-    // 400/422 → exit 1 (validation). 401/403/404 → exit 2 (auth/not-found).
     const exit: 1 | 2 =
       err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 403 ? 1 : 2;
     return { status: err.status, message: err.message, exit };
@@ -170,11 +138,6 @@ async function resolveResourceSelector(
   throw new Error(`${kind} '${selector}' was not found`);
 }
 
-/**
- * Run a single headless turn end-to-end. Returns the final session
- * state plus an exit code. Does NOT call process.exit so tests can
- * assert on the state.
- */
 export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
   const stdout = opts.stdout ?? process.stdout;
   const stderr = opts.stderr ?? process.stderr;
@@ -300,14 +263,11 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     return { exitCode: e.exit, session, conversation_id: conversationId };
   }
 
-  // Start the turn on its POST SSE response so completion cannot race a later replay subscription.
-  // When `--attach` is set we create first, link files, then append over SSE.
   try {
     if (conversationId) {
       const detail = await client.getConversation(conversationId);
       session = hydratePersistedMessages(session, detail.messages);
       if (hasAttach) {
-        // Defer the append until after attachments are uploaded + linked.
       } else {
         streamResponse = await client.appendConversationMessageStream(
           conversationId,
@@ -331,7 +291,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     } else if (hasAttach) {
       const created = await client.createConversation(
         {
-          // Skip initial_message so the engine cannot run before file links exist.
           ...(memory.content ? { memory: memory.content } : {}),
           ...(connectorId ? { connector_id: connectorId } : {}),
           ...(workflowId ? { workflow_id: workflowId } : {}),
@@ -351,9 +310,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         },
         traceContext(),
       );
-      // Cache the session locally so `sk -c` can reattach without a
-      // round-trip. Wrapped in a try so filesystem errors never fail
-      // the user's prompt.
       try {
         const now = new Date().toISOString();
         saveSessionMetadata({
@@ -365,9 +321,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           created_at: now,
           last_used_at: now,
         });
-      } catch {
-        /* cache write is best-effort */
-      }
+      } catch {}
     } else {
       streamResponse = await client.createConversationStream(
         {
@@ -398,9 +352,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           created_at: new Date().toISOString(),
           last_used_at: new Date().toISOString(),
         });
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
   } catch (err) {
     const e = sanitizeError(err);
@@ -422,21 +374,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     return { exitCode: e.exit, session, conversation_id: conversationId };
   }
 
-  // Upload + link every `--attach` before the prompt runs.
-  // Stream-json emits `{"file_attached": fid, "filename": ...}` per
-  // file; text/json modes report on stderr. Any upload/link error
-  // short-circuits with ATTACH_FAILED so the prompt never runs
-  // against a partial attachment set.
   if (hasAttach && conversationId) {
     try {
       for (const p of attachPaths) {
         const row = await uploadPath(client, p, { quiet: true });
-        // Filename-derived slug so the prompt can address the file as
-        // `@attachment:<slug>` — a slug-less link is invisible to the
-        // engine's mention rewriter and the model can only see the
-        // attachment listed, never its content. On a slug conflict
-        // (same filename attached twice) fall back to a slug-less
-        // link rather than failing the turn.
         const slug = attachmentSlug(row.filename);
         try {
           await client.linkFile(row.id, {
@@ -476,7 +417,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           stderr.write(`sk: attached ${row.id} (${row.filename})${mention}\n`);
         }
       }
-      // Now that every file is linked, start the first turn on the append response stream.
       streamResponse = await client.appendConversationMessageStream(
         conversationId,
         {
@@ -520,7 +460,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     }
   }
 
-  // Fold the POST SSE frames into the session.
   let streamState = session;
   if (!streamResponse) {
     stderr.write("sk: turn stream was not opened\n");
@@ -593,20 +532,15 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       verbose ? { event: ev } : { event_type: ev.type },
       traceContext(),
     );
-    // stream-json: one JSON object per frame on stdout, unbuffered.
     if (opts.output === "stream-json") {
       writeLine(stdout, JSON.stringify(ev));
     }
     streamState = applyTurnEvent(streamState, ev);
-    // `completed` is the conversation protocol's terminal turn frame.
-    // Do not additionally wait for HTTP EOF: proxies and Hono's SSE adapter
-    // may keep the response alive even though the engine has finished.
     if (ev.type === "completed") return false;
     return true;
   });
   debugLog("sse.close", { final_status: streamState.status }, traceContext());
 
-  // After the stream closes, format the final result for text / json.
   const assistantText = lastAssistantText(streamState);
   if (opts.output === "text") {
     const text = assistantText.trim();
@@ -615,18 +549,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       const footer = formatCitationsFooter(terminalAssistantCitations(streamState.messages));
       if (footer) writeLine(stdout, footer);
     } else {
-      // Tool-only turn: the model ran the work but produced no prose
-      // (production sessions saw `sk -p "run X and show results"` exit
-      // SILENTLY while the data sat in toolCalls[].result). Render the
-      // last succeeded execution payload so text mode always answers.
       const exec = lastExecutionResult(streamState);
       if (exec) {
         writeLine(stdout, renderExecutionOutput(exec));
       } else {
-        // Neither prose nor an execution. Two baseline runs on 2026-09-02/03
-        // hit exactly this with the mock provider: the canned authoring plan
-        // stopped at a confirmation gate, and text mode printed nothing and
-        // exited 0 — a failure in the costume of success. Say what happened.
         const calls = streamState.toolCalls;
         if (calls.length === 0) {
           writeLine(
@@ -643,7 +569,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         }
       }
     }
-    // Surface mention warnings for the operator.
     if (!opts.quiet) {
       for (const w of resolved.warnings) stderr.write(`sk: ${w}\n`);
     }
@@ -654,9 +579,6 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       assistant_text: assistantText,
       messages: streamState.messages,
       tool_calls: streamState.toolCalls,
-      // Surface the open askUser.* elicitation (if any) so scripted
-      // consumers can POST to `/elicitations/:id/respond` without
-      // having to re-parse the event stream themselves.
       pending_elicitation: streamState.pendingElicitation,
       committed_workflow_id: streamState.committedWorkflowId,
       validation_errors: streamState.validationErrors,

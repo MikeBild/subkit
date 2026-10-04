@@ -1,27 +1,10 @@
-// User story: As an operator, I want to manage connectors via the
-// `sk connectors` CLI so I can automate connector lifecycle without
-// writing raw HTTP.
-// Acceptance criteria:
-//   - AC1: `connectors list --json` returns an array (may be empty initially).
-//   - AC2: After creating a connector via the HTTP API, `connectors get <id>`
-//          returns the connector with the correct id and name.
-//   - AC3: `connectors patch <id> --name "Updated Name"` updates the name.
-//   - AC4: `connectors list --json` after create contains at least 1 item.
-//   - AC5: `connectors delete <id> --yes` outputs "deleted".
-//   - AC6: `connectors get <id>` after delete produces an error / process.exit.
-// Spec refs: docs/concepts/connectors.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectorsCommand } from "../../../../sk/src/commands/connectors.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
 let connectorId = "";
-// The engine stores connector names in the `display_name` column; the REST
-// response therefore uses `display_name`, not `name`.
 const connectorDisplayName = "Journey HTTP Connector";
-
-// ---------- stdout / stderr capture ----------
 
 interface Captured {
   stdout: string;
@@ -73,9 +56,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -92,9 +73,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -185,13 +164,9 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// ---------- lifecycle ----------
-
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-connectors");
 
-  // Create the connector directly via the HTTP API so the journey is
-  // not coupled to the `connectors create` command's template look-up.
   const resp = await journeyFetch(ctx, "/v1/connectors", {
     method: "POST",
     body: JSON.stringify({
@@ -211,8 +186,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
-
-// ---------- tests ----------
 
 describe("journey 36: sk connectors CLI", () => {
   test("AC1: connectors list --json returns an array initially", async () => {
@@ -255,8 +228,6 @@ describe("journey 36: sk connectors CLI", () => {
   test("AC6: connectors get <id> after delete produces an error", async () => {
     const { message, captured } = await runExpectError(connectorsCommand, ["get", connectorId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
-    // The engine returns 404; the CLI surfaces this as a process.exit(1)
-    // or an EngineError message. Accept either.
     expect(
       combined.includes("404") ||
         combined.includes("not found") ||

@@ -1,11 +1,3 @@
-// Recording a patch candidate, once.
-//
-// A candidate becomes visible through three writes that must agree: the row,
-// the PATCH_CANDIDATE_PROPOSED audit entry and the `patch.proposed`
-// notification. Both producers — the drift repair loop and the gate repair —
-// go through this function, so neither can announce a candidate the other
-// would have closed at birth, or write the row without its audit entry.
-
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -18,26 +10,16 @@ import { closeIfUndecidable } from "./open-decisions.ts";
 export interface PersistPatchCandidateInput {
   tenant_id: string;
   workflow_id: string;
-  /** Endpoint anchor for dedup; null for workflow-scoped signals. */
   connector_id: string | null;
   endpoint_key: string | null;
   classification: "safe" | "unsafe";
-  /** Stamped only when a fixture dry-run actually ran against it. */
   fixture_id?: string | null;
   diff: Record<string, unknown>;
-  /** Merged into the PATCH_CANDIDATE_PROPOSED audit metadata. */
   audit_metadata: Record<string, unknown>;
-  /** Merged into the `patch.proposed` notification payload. */
   event_payload: Record<string, unknown>;
-  /** Extra fields for the `patch.proposed` log line. */
   log_fields?: Record<string, unknown>;
 }
 
-/**
- * Insert a `proposed` candidate inside the caller's transaction. Readiness
- * runs before any announcement: a provably undecidable candidate is closed at
- * birth and gets its closure audit only — no proposed audit, no notification.
- */
 export async function persistPatchCandidate(tx: Executor, input: PersistPatchCandidateInput) {
   const [candidate] = await tx
     .insert(patchCandidates)

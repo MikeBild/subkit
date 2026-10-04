@@ -1,10 +1,3 @@
-// stdio entry point.
-//
-// Launched via `bun run apps/engine/src/mcp/stdio.ts` or `sk mcp`. Reads an API key from
-// `SUBKIT_API_KEY`, resolves the principal through the api-key provider,
-// then boots an MCP server over a `StdioServerTransport`. Runs in-process
-// against the engine's own db pool — no remote-engine federation path.
-
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { closeDb, getDb } from "../../db/client.ts";
 import { newTraceId, withContext } from "../../logging/context.ts";
@@ -37,7 +30,6 @@ async function main(): Promise<void> {
     tenant_id: principal.tenant_id,
   });
 
-  // Park — stdio transport keeps the process alive via stdin.
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({
       module: "mcp",
@@ -46,9 +38,7 @@ async function main(): Promise<void> {
     });
     try {
       await server.close();
-    } catch {
-      // ignore
-    }
+    } catch {}
     await closeDb().catch(() => {});
     process.exit(0);
   };

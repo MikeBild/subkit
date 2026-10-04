@@ -1,23 +1,3 @@
-// An anchorless candidate is closed — and its closure never mutes a drift a
-// person could decide.
-//
-// A since-fixed bug produced candidates with no step anchor (neither the
-// definition step nor the failing execution step). Readiness proves them
-// `no_step_anchor`: no answer can make them land. They sat `proposed`, out of
-// every count, and stood in for their drift in the active lookup, so a
-// correctly anchored re-proposal of the same drift deduplicated against them.
-//
-// Closing them must not repeat the known mistake of a terminal status that
-// matches by fingerprint forever. Pinned here, each against the same drift
-// fingerprint:
-//   1. the sweep closes the legacy row as `inapplicable` / `no_step_anchor`,
-//      bound to the version it was proven against, with a system audit row;
-//   2. an equally anchorless re-proposal on that version is suppressed — the
-//      one that would be closed at birth again and loop on every scan;
-//   3. on a NEW version the same anchorless drift is evaluated again;
-//   4. an ANCHORED re-proposal is never suppressed by an anchorless closure —
-//      including a legacy closure that stored no drift signal at all.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -68,7 +48,6 @@ async function driftSignal() {
   return signal;
 }
 
-/** The legacy shape: a proactive scan that dropped every anchor. */
 const anchorlessCtx = () => ({
   tenant_id: ctx.tenant_id,
   workflow_id: ctx.workflow_id,
@@ -180,13 +159,10 @@ describe("anchorless candidates", () => {
     );
     expect(result.created).toBe(true);
     expect(result.candidate_id).not.toBe(legacyId);
-    // Still anchorless, so still undecidable: closed at birth, never announced.
     expect(result.status).toBe("inapplicable");
   });
 
   test("an anchored re-proposal is never suppressed by an anchorless closure", async () => {
-    // A legacy closure with no stored drift signal on this anchored endpoint —
-    // the lenient fallback that would otherwise dedup by endpoint alone.
     await ctx.testDb.db.insert(patchCandidates).values({
       tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,

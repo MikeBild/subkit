@@ -1,7 +1,3 @@
-// Pure-function tests for the SigV4 signer. The real `aws4` library
-// is exercised end-to-end; we just assert the headers it produces
-// land on the caller's bag and contain the right tokens.
-
 import { describe, expect, test } from "bun:test";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { HttpRequestInvalidError } from "./http.ts";
@@ -29,11 +25,7 @@ describe("signSigV4Request", () => {
     expect(headers.Authorization).toMatch(/\/eu-central-1\/appsync\/aws4_request/);
     expect(headers.Authorization).toContain("SignedHeaders=");
     expect(headers.Authorization).toContain("Signature=");
-    // X-Amz-Date is stamped by aws4 for every service.
     expect(headers["X-Amz-Date"]).toMatch(/^\d{8}T\d{6}Z$/);
-    // X-Amz-Content-Sha256 is service-specific (S3 + a handful of
-    // others) — don't assert it here.
-    // Original headers preserved.
     expect(headers["content-type"]).toBe("application/json");
   });
 
@@ -68,17 +60,12 @@ describe("signSigV4Request", () => {
         secret_access_key: "secret",
       },
     });
-    // Lowercase + uppercase variants both absent.
     expect(headers.Host).toBeUndefined();
     expect(headers.host).toBeUndefined();
-    // But Host IS in SignedHeaders (aws4 always signs it).
     expect(headers.Authorization).toMatch(/SignedHeaders=[^,]*host/);
   });
 
   test("idempotent — re-signing the same request twice yields the same Authorization", () => {
-    // Aside from X-Amz-Date which encodes wall-clock seconds. We assert
-    // the credential / scope segment stays stable so retries produce
-    // canonical signatures.
     const headers1: Record<string, string> = {};
     const headers2: Record<string, string> = {};
     const url = new URL("https://api.example-region.amazonaws.com/");
@@ -107,11 +94,6 @@ describe("signSigV4Request", () => {
     );
   });
 
-  // Audit anti-pattern E1: malformed sigv4 inputs used to throw a
-  // generic Error that the request-step retry loop misclassified as a
-  // transient `connection` error and retried 5×. Now they throw
-  // `HttpRequestInvalidError` and the loop converts to
-  // `RequestError("...", "request_invalid")` which is non-retryable.
   describe("malformed inputs throw HttpRequestInvalidError", () => {
     const url = new URL("https://example.amazonaws.com/x");
     const cred = {

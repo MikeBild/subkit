@@ -1,11 +1,3 @@
-// load_skill tool — appends a skill's markdown body to the conversation's
-// volatile context block for the remainder of the session. The loaded
-// skill set is persisted on `conversations.loaded_skills` so resumed
-// sessions keep their palette.
-//
-// This tool also unlocks any `tenant_write` tools that declare a
-// `requires_skill` gate — see `tools/gated.ts`.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { recordConversationSkillLoaded } from "../../audit/recorders/index.ts";
@@ -16,8 +8,6 @@ import type { ConversationTool } from "./index.ts";
 
 const Input = z.object({ slug: z.string().min(1) }).openapi("LoadSkillToolInput");
 
-/** Classic O(n·m) edit distance — small inputs (skill slug list),
- *  avoids pulling in a lib. */
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   if (!a.length) return b.length;
@@ -49,13 +39,10 @@ export const loadSkillTool: ConversationTool = {
   ],
   example_input: { slug: "workflow-authoring" },
   inputSchema: Input,
-  // Mutates persisted conversations.loaded_skills — a tenant-visible write, so
-  // it must audit and must NOT be treated as a read by the confirmation gate.
   category: "tenant_write",
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
     const wanted = args.slug.toLowerCase();
-    // Match by slug (preferred, stable cross-tenant id), then id, then title.
     const candidates = await ctx.engineClient.skills.list();
     const match = candidates.find(
       (s) =>
@@ -64,7 +51,6 @@ export const loadSkillTool: ConversationTool = {
         s.title.toLowerCase() === wanted,
     );
     if (!match) {
-      // Suggest the closest slugs so the model doesn't retry blindly.
       const pool = candidates
         .map((s) => s.slug ?? s.title.toLowerCase().replace(/\s+/g, "-"))
         .filter((x): x is string => !!x);
@@ -106,19 +92,9 @@ export const loadSkillTool: ConversationTool = {
         raw,
       }),
     );
-    // The loop increments `turn_count` at turn start, before any tool can
-    // run, so the persisted value IS the current turn — stamp `last_turn`
-    // with it so the freshly-loaded skill is full-body this turn and for
-    // the K-turn recency window.
     const currentTurn = rows[0]?.turn_count ?? 0;
-    // Persist the SLUG (not the UUID id) so downstream palette gating
-    // and prompt-context lookup can both rely on the stable cross-tenant
-    // identifier. The context-assembler reads id-or-slug, since persisted
-    // rows may still hold UUIDs.
     const key = match.slug ?? match.id;
     if (current.some((e) => e.slug === key)) {
-      // Already loaded — refresh recency so an explicit re-load re-promotes
-      // a demoted skill back to full body.
       const refreshed = current.map((e) =>
         e.slug === key ? { slug: key, last_turn: currentTurn } : e,
       );

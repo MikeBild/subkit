@@ -1,6 +1,3 @@
-// Tiny shared field-access helpers. Used by the dispatcher entry,
-// the synthetic-result builder, and the per-kind dispatchers.
-
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 
 export function readString(

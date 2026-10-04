@@ -1,18 +1,3 @@
-// Coverage pin for the tenant_read inventory / identity / content tools.
-//
-// Two enforcement paths must agree for every gated read tool:
-//   - LLM-mediated (chat / direct-invoke): `ConversationTool.permission`,
-//     enforced by `checkToolPermission` in sdk-wrap/invoke.ts + direct-invoke.ts.
-//   - Direct MCP (tools/call): the dispatcher's `descriptor.rbac`, sourced
-//     from `RBAC_OVERRIDES` in tools/providers/conversation.ts.
-//
-// This test pins BOTH so a future read tool cannot silently ship ungated
-// (the asymmetry the typed fast-path `READ_PERMISSION_BY_LIST` already guards).
-// It also pins the two deliberate carve-outs: `whoami` (self-introspection —
-// returns the caller's OWN identity) and `get_engine_status` (the accessible
-// low-sensitivity self-status surface the enduser role reaches without
-// stats:read) must stay ungated.
-
 import { describe, expect, it, test } from "bun:test";
 import { AuditAction } from "../../../audit/types.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
@@ -131,9 +116,6 @@ describe("read tools carry a matching descriptor.rbac on the direct MCP path (RB
 
   for (const c of GATED) {
     const d = byName.get(c.tool.name);
-    // Only assert for tools visible on the MCP surface; visibility is
-    // governed elsewhere. Every gated read tool that IS exposed on MCP
-    // must declare the SAME permission on both paths.
     if (!d) continue;
     it(`${c.tool.name} MCP descriptor.rbac.permission === ${c.action}`, () => {
       expect(d.rbac?.permission).toBe(c.action);
@@ -150,14 +132,8 @@ describe("read tools carry a matching descriptor.rbac on the direct MCP path (RB
   });
 });
 
-// Functional deny on the direct-MCP dispatch path. A principal with NO
-// permissions (empty scopes/roles/grants) against an empty permission
-// catalog (makeStubDb) is denied by `can()` for every gated read tool —
-// BEFORE the executor runs — and exactly one POLICY_DENIED audit row is
-// written. No Postgres required: the deny fires before any real query.
 describe("gated read tools deny an unauthorized principal on MCP + write POLICY_DENIED", () => {
   const registry = buildRegistry([conversationToolProvider]);
-  // One representative tool per distinct permission.
   const DENY_CASES: Array<{ name: string; args: Record<string, unknown> }> = [
     { name: "list_all_skills", args: {} },
     { name: "list_knowledge_sources", args: {} },
@@ -165,14 +141,7 @@ describe("gated read tools deny an unauthorized principal on MCP + write POLICY_
     { name: "list_api_keys", args: {} },
     { name: "list_portal_tokens", args: {} },
     { name: "list_capability_gaps", args: {} },
-    // A well-formed id so the call reaches the RBAC gate: the dispatcher
-    // canonicalizes args before RBAC (step 4 → step 5) so a resource-scoped
-    // permission can read the parsed resource id. Empty args would stop at
-    // `invalid_args` before RBAC ever runs — a real denial, but not the one
-    // this suite asserts.
     { name: "get_execution", args: { id: "00000000-0000-4000-8000-0000000000ff" } },
-    // Full-content knowledge read — the most sensitive knowledge surface;
-    // must deny BEFORE the executor could stream chunk content.
     {
       name: "read_knowledge",
       args: { knowledge_source_id: "00000000-0000-4000-8000-0000000000aa" },
@@ -197,10 +166,6 @@ describe("gated read tools deny an unauthorized principal on MCP + write POLICY_
   }
 });
 
-// The two carve-outs must NOT be RBAC-denied for the same unauthorized
-// principal: whoami (self-introspection) and get_engine_status (accessible
-// self-status). They may still error at the executor on the stub client —
-// what matters is that no POLICY_DENIED row is written (RBAC did not gate).
 describe("carve-out read tools are not RBAC-denied on MCP", () => {
   const registry = buildRegistry([conversationToolProvider]);
   for (const name of ["whoami", "get_engine_status"]) {

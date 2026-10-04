@@ -1,16 +1,3 @@
-// Unit tests for `registerResourcesCapability` portal-scope handling.
-//
-// The lifecycle dispatcher and the
-// ListResources handler must both honour the `allowed_workflows`
-// narrowing on a portal-scoped principal — narrowing only at read
-// time leaks workflow names / slugs via list, and not re-checking RBAC
-// at notification time lets a session subscribe to a URI it learned
-// out-of-band and receive lifecycle pings it could not `readResource`.
-//
-// These tests bypass the streamable-HTTP harness and exercise the
-// capability registration directly with a stubbed MCP `Server` so we
-// can swap principals freely.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type {
   ListResourcesRequest,
@@ -91,8 +78,6 @@ beforeAll(async () => {
   if (!t) throw new Error("seed tenant");
   tenantId = t.id;
 
-  // Two active workflows in the same tenant — the portal token below
-  // is narrowed to one of them.
   for (const slug of ["scoped", "hidden"]) {
     const [wf] = await testDb.db
       .insert(workflows)
@@ -188,13 +173,6 @@ function portalPrincipal(allowedWorkflows: string[] | "all"): ResolvedPrincipal 
   };
 }
 
-/**
- * Principal with a built-in role that does NOT include `workflow:read`.
- * Proves the lifecycle dispatcher re-checks RBAC even for non-portal
- * principals, because a tenant can
- * mint a role that omits workflow:read and observe lifecycle timing
- * out of the URI alone.
- */
 function nonPortalPrincipalWithoutWorkflowRead(): ResolvedPrincipal {
   return {
     id: METRICS_PRINCIPAL_ID,
@@ -297,9 +275,6 @@ describe("lifecycle dispatcher re-checks RBAC", () => {
       emitter,
     });
 
-    // Out-of-band subscribe to the hidden workflow's URI (mirrors the
-    // attack vector — the client learned the id elsewhere and tried to
-    // piggy-back via the subscribe channel).
     const subscribeHandler = handlerFor(stub, "resources/subscribe");
     await subscribeHandler({
       method: "resources/subscribe",
@@ -398,11 +373,6 @@ describe("RBAC re-check runs for non-portal principals too", () => {
     registerResourcesCapability({
       server: stub as unknown as Parameters<typeof registerResourcesCapability>[0]["server"],
       db: testDb.db as unknown as Db,
-      // metrics_scraper is a built-in role with `metrics:read` only —
-      // explicitly lacks `workflow:read`. The lifecycle dispatcher must
-      // still re-check `can()` even though this
-      // principal has NO `allowed_workflows` array — otherwise it
-      // would observe timing of every workflow state change.
       principal: nonPortalPrincipalWithoutWorkflowRead(),
       emitter,
     });

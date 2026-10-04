@@ -1,10 +1,3 @@
-// Regression guard: the SettingsModal outer tab strip MUST render
-// exactly the 5 canonical tabs (Status, Config, Usage, Skills,
-// Knowledge) and NONE of the legacy / moved tabs (Settings, Stats,
-// Permissions, Profile, Admin). If this test fails, you have probably
-// re-introduced one of the dropped tabs — they belong in their own
-// SinglePane slash command instead.
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { EngineClient } from "../../engine-client.ts";
@@ -59,24 +52,17 @@ describe("SettingsModal — outer tab strip regression", () => {
     );
     const frame = stripAnsi(lastFrame() ?? "");
     try {
-      // Present
       expect(frame).toMatch(/\bStatus\b/);
       expect(frame).toMatch(/\bConfig\b/);
       expect(frame).toMatch(/\bUsage\b/);
       expect(frame).toMatch(/\bSkills\b/);
       expect(frame).toMatch(/\bKnowledge\b/);
 
-      // Absent (operator surfaces moved to SinglePane; Stats merged
-      // into Status; the old engine-section "Settings" tab deleted)
       expect(frame).not.toMatch(/\bPermissions\b/);
       expect(frame).not.toMatch(/\bProfile\b/);
       expect(frame).not.toMatch(/\bAdmin\b/);
       expect(frame).not.toMatch(/\bStats\b/);
 
-      // "Settings" word IS allowed in the shell title `sk settings`,
-      // but NOT as a tab label. Locate the header-strip line and
-      // assert "Settings" is not in it. The header strip is the line
-      // containing the first two tab names (Status + Config).
       const lines = frame.split("\n");
       const stripLine = lines.find((l) => /Status/.test(l) && /Config/.test(l));
       expect(stripLine, "tab-strip line not found").toBeTruthy();

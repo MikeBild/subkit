@@ -1,25 +1,3 @@
-// Thin typed client over the subkit engine's REST API, scoped to the
-// surfaces the `sk` end-user CLI needs. Hand-written rather than
-// `hono/client` so the compiled binary stays tight — pulling the
-// engine's `AppType` through Hono drags the entire server module
-// graph in.
-//
-// Naming convention: wire-shape fields stay
-// snake_case to match the engine's OpenAPI surface — `tenant_id`,
-// `tenant_slug`, `retry_after`, `trace_id`. Local-only fields use
-// camelCase. This means TS callers occasionally see `err.retry_after`
-// next to `err.message` / `err.code`; the snake_case names are the
-// authoritative wire shape and are deliberate.
-//
-// This module owns the client class and the shared transport plumbing
-// (auth headers, trace ids, JSON / SSE / multipart request paths). The
-// per-resource method groups live in `./engine-client/*.ts` — each
-// exports a plain object of methods typed with an explicit
-// `this: EngineClient` parameter, merged into the class below via
-// declaration merging + `Object.assign(EngineClient.prototype, …)`.
-// The resource modules import only the `EngineClient` TYPE from here,
-// so there is no runtime import cycle.
-
 import { EngineError, TransportError } from "@cli-core/errors.ts";
 import {
   type DebugCorrelationFields,
@@ -53,10 +31,6 @@ import { skillsMethods } from "./engine-client/skills.ts";
 import { statsMethods } from "./engine-client/stats.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
-// ---------- Re-exported resource-module surface ----------
-// The wire types (and the few value exports) moved with their method
-// groups into `./engine-client/*.ts`; re-exporting them here keeps
-// every existing `from "./engine-client.ts"` import site working.
 export type { ConnectorPromotionResponse } from "./engine-client/connectors.ts";
 export type {
   ConversationContextSnapshot,
@@ -146,18 +120,11 @@ export interface ClientOptions {
   api_key: string;
   tenant?: string | null | undefined;
   fetchImpl?: FetchLike | undefined;
-  /** User-Agent header value. sk-cli sets its own to tag audit rows. */
   user_agent?: string | undefined;
-  /** Optional mode tag used in debug traces. */
   debug_mode?: DebugMode | undefined;
 }
 
 export class EngineClient {
-  // Internal transport plumbing. Not `private` because the resource
-  // method modules under `./engine-client/` execute with
-  // `this: EngineClient` and need it — they are the same logical unit
-  // as this class, split across files for size. Not part of the
-  // supported surface for other callers.
   readonly base: string;
   readonly apiKey: string;
   readonly tenant: string | null;
@@ -188,10 +155,6 @@ export class EngineClient {
   }
 
   newClientTraceId(): string {
-    // Per-request trace id, sent outbound as `x-sk-trace-id`. The
-    // engine's traceMiddleware accepts it (validated) and reuses it as
-    // the request's trace_id, so the CLI's debug.log records and the
-    // engine's structured logs share one id.
     const rand =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID().replace(/-/g, "")
@@ -199,12 +162,6 @@ export class EngineClient {
     return `cli-${rand.slice(0, 16)}`;
   }
 
-  /** #304: the elicitation-respond POST body carries the operator's typed
-   *  answer — which may be a connector secret entered into a masked form.
-   *  The engine already redacts it at rest and on replay; the CLI's verbose
-   *  debug.log must not capture the raw POST body regardless of the value's
-   *  key name or entropy (the shared `redact()` only catches known key names
-   *  / value shapes). Match the endpoint and drop the body wholesale. */
   private isSensitiveRequestBodyPath(path: string): boolean {
     return /\/elicitations\/[^/]+\/respond$/.test(path);
   }
@@ -394,13 +351,6 @@ export class EngineClient {
     }
   }
 
-  /**
-   * POST a JSON body and consume an SSE response. Used by the
-   * conversations create+append routes when the client wants live
-   * progress frames. The engine content-negotiates: callers that send
-   * `Accept: text/event-stream` get a stream; everyone else still gets
-   * the buffered JSON outcome.
-   */
   async streamPost(
     path: string,
     body: unknown,
@@ -494,7 +444,6 @@ export class EngineClient {
     return res;
   }
 
-  // -------------------- Multipart helper --------------------
   async requestForm<T = unknown>(
     method: string,
     path: string,
@@ -503,7 +452,6 @@ export class EngineClient {
   ): Promise<T> {
     const qs = "";
     const url = `${this.base}${path}${qs}`;
-    // Omit content-type so the browser/bun sets it with boundary automatically.
     const h: Record<string, string> = {
       accept: "application/json",
       "user-agent": this.userAgent,
@@ -605,13 +553,8 @@ export class EngineClient {
   }
 }
 
-/** Strips the explicit `this: EngineClient` parameter each resource
- *  module declares, so the merged interface exposes plain instance
- *  methods. */
 type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 
-// Declaration merging: the per-resource method groups become part of
-// the `EngineClient` instance type…
 export interface EngineClient
   extends ApiMethods<typeof agentMethods>,
     ApiMethods<typeof chatMethods>,
@@ -631,8 +574,6 @@ export interface EngineClient
     ApiMethods<typeof statsMethods>,
     ApiMethods<typeof workflowsMethods> {}
 
-// …and of the runtime prototype. Method names are globally unique
-// across the groups, so assignment order carries no meaning.
 Object.assign(
   EngineClient.prototype,
   agentMethods,

@@ -1,16 +1,9 @@
-// What a refused saved-workflow run answers over HTTP — shared by
-// POST /v1/executions and POST /v1/executions/{id}/rerun so the two routes
-// can never map the same engine refusal to different answers.
-
 import { actorType } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { Executor } from "../../../db/client.ts";
 import { auditAdmissionRefusal } from "../../../execution/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 
-/** Codes that are a refusal of THIS run — not a fault of the engine. A
- *  connector that cannot serve the prepared run is one: the operator fixes it
- *  on the connector, and the answer names which one. */
 function isRefusal(code: string | undefined): code is string {
   return (
     code !== undefined &&
@@ -21,12 +14,6 @@ function isRefusal(code: string | undefined): code is string {
   );
 }
 
-/**
- * Turn an engine refusal into its HTTP answer, auditing it on the way; any
- * other error is rethrown unchanged. The refusal's `details` (for a connector:
- * step, connector, environment and reason — never a credential field) travel
- * in the body so a client can say which connector to fix and link to it.
- */
 export async function admissionRefusal(
   error: unknown,
   context: {
@@ -34,7 +21,6 @@ export async function admissionRefusal(
     principal: ResolvedPrincipal;
     workflow_id: string;
     request_source: string;
-    /** The row admission already created, when the refusal came after it. */
     execution_id?: string | null;
     extra?: Record<string, unknown>;
   },

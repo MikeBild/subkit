@@ -1,11 +1,3 @@
-// A tool result is read by a model and, over MCP, by that model's client. The
-// connector view the tools read carries the OAuth client secret and the
-// connection-string password for the server's own use, so no tool may hand
-// the view on: `get_connector` returns the public projection, a draft
-// hydrated from a saved connector holds the mask, and a template dry run does
-// not resolve a connector token into its result. `update_connector`, fed the
-// projection back, must keep the secret the mask stands for.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   CONNECTOR_SECRET_MASK,
@@ -25,7 +17,6 @@ import type { ToolContext } from "../index.ts";
 import { probeConnectorTool } from "../probe-connector.ts";
 import { resolveDraftProbeSecrets } from "../probe-draft-secrets.ts";
 
-// Fixture markers, not credentials.
 const CLIENT_SECRET = "fixture-client-secret-not-real";
 const DSN_SECRET = "fixture-dsn-secret-not-real";
 
@@ -144,7 +135,6 @@ describe("update_connector fed a get_connector result keeps the secret", () => {
     const view = await getConnector(ctx.tenant_id, oauthConnectorId, ctx.testDb.db);
     if (!view) throw new Error("connector vanished");
     expect(view.config.timeout_ms).toBe(9000);
-    // The same resolution `oauth/start` and the refresh worker go through.
     const oauth = await resolveConnectorOAuthConfig(ctx.testDb.db, ctx.tenant_id, view);
     expect(oauth?.client_secret).toBe(CLIENT_SECRET);
   });
@@ -178,8 +168,6 @@ describe("a connector config token does not carry the secret into a probe", () =
   });
 
   test("probe_connector refuses the token instead of sending the secret upstream", async () => {
-    // A reflecting endpoint would hand back whatever the request carried —
-    // any connector's, not only the one the token names.
     await createConnector(
       {
         tenant_id: ctx.tenant_id,
@@ -266,7 +254,6 @@ describe("a draft hydrated from a saved connector is conversation state", () => 
     const text = JSON.stringify([hydrateDraftFromSavedConnector(oauth), pgDraft]);
     expect(text).not.toContain(CLIENT_SECRET);
     expect(text).not.toContain(DSN_SECRET);
-    // The masked dsn is the stored value, not an edit to write back.
     expect(connectorFieldPatch(pgDraft, pg)).toEqual({});
   });
 });

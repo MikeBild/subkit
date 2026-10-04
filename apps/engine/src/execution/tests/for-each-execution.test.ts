@@ -1,20 +1,3 @@
-// for_each per-step inline iteration — engine integration tests.
-//
-// Verifies:
-//   1. A step with `for_each` runs once per item, binding $item +
-//      $loop_index into each iteration's scope.
-//   2. Iteration results accumulate under $scope.<step>.data as an
-//      array of per-iteration envelopes (A2/A3 fixed by construction).
-//   3. Container-child static exclusion: branch/parallel/loop body
-//      steps are excluded from the top-level walk regardless of
-//      container outcome (failed container no longer leaks its children
-//      to top level with unbound $item).
-//   4. An empty/non-array for_each selector emits loop_over_unresolved
-//      warning and produces zero iterations.
-//   5. The container execution_steps row for a for_each step ends in a
-//      terminal status (never left as "running") — regression guard for
-//      the bug where the container row was inserted but never finalized.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executionSteps } from "../../db/schema/index.ts";
@@ -168,7 +151,6 @@ describe("static container-child exclusion", () => {
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    // loop_body_step must not appear as an independently-run top-level step.
     const topLevelBodyStep = result.steps.find(
       (s) => s.step_key === "loop_body_step" && !s.step_key.includes("["),
     );
@@ -211,10 +193,8 @@ describe("static container-child exclusion", () => {
     expect(result.status).toBe("succeeded");
     const checkStep = result.steps.find((s) => s.step_key === "check");
     expect(checkStep?.status).toBe("succeeded");
-    // then_step is the taken arm — runs in the top-level walk normally.
     const thenStep = result.steps.find((s) => s.step_key === "then_step");
     expect(thenStep?.status).toBe("succeeded");
-    // else_step was the non-taken arm — added to skippedStepIds at runtime.
     const elseStep = result.steps.find((s) => s.step_key === "else_step");
     if (elseStep) {
       expect(elseStep.status).toBe("skipped");
@@ -223,11 +203,6 @@ describe("static container-child exclusion", () => {
 });
 
 describe("for_each · container execution_steps row finalization", () => {
-  // Regression guard: the container DB row (step_key == step id, not
-  // step_key[N]) must never be left stuck in "running" after the
-  // for_each block completes.  Before the fix, the row was inserted via
-  // insertStepRow but finalizeStepRow was never called on it, leaving
-  // the row in status="running" indefinitely.
   test("container row reaches a terminal status after successful iteration", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "for-each-row-finalize",
@@ -254,15 +229,12 @@ describe("for_each · container execution_steps row finalization", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    // Query the persisted execution_steps row for the container step.
     const rows = await ctx.testDb.db
       .select({ step_key: executionSteps.step_key, status: executionSteps.status })
       .from(executionSteps)
       .where(eq(executionSteps.execution_id, result.execution_id));
-    // The container row is keyed "doubled" (no [N] suffix).
     const containerRow = rows.find((r) => r.step_key === "doubled");
     expect(containerRow).toBeDefined();
-    // Must be in a terminal status — never "running".
     expect(containerRow?.status).toBe("succeeded");
   });
 
@@ -330,9 +302,7 @@ describe("resolveForEachConcurrency · auto-selection from side-effect class", (
   });
 
   test("explicit side_effects override flips the class", () => {
-    // A GET the author marks as a write must NOT auto-parallelize…
     expect(resolveForEachConcurrency(get({ side_effects: "write" }), 50)).toBe(1);
-    // …and a POST marked as a read (a search endpoint) may.
     expect(resolveForEachConcurrency(post({ side_effects: "read" }), 50)).toBe(8);
   });
 
@@ -340,7 +310,6 @@ describe("resolveForEachConcurrency · auto-selection from side-effect class", (
     expect(resolveForEachConcurrency(get({ for_each_concurrency: 3 }), 50)).toBe(3);
     expect(resolveForEachConcurrency(transform({ for_each_concurrency: 4 }), 50)).toBe(4);
     expect(resolveForEachConcurrency(post({ for_each_concurrency: 100 }), 50)).toBe(50);
-    // `1` is the author's escape hatch back to strict sequential.
     expect(resolveForEachConcurrency(get({ for_each_concurrency: 1 }), 50)).toBe(1);
   });
 
@@ -351,11 +320,6 @@ describe("resolveForEachConcurrency · auto-selection from side-effect class", (
 });
 
 describe("for_each · bounded-parallel iteration preserves order", () => {
-  // A transform body forced parallel via explicit `for_each_concurrency`
-  // exercises the worker-pool path with deterministic compute: the slot
-  // mechanism must reconstruct iteration order independent of completion
-  // order. (Transforms are normally sequential by default; the explicit
-  // bound opts this one into the parallel branch.)
   test("explicit concurrency over a transform body keeps results index-ordered", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "for-each-parallel-order",
@@ -370,7 +334,6 @@ describe("for_each · bounded-parallel iteration preserves order", () => {
           id: "proc",
           kind: "transform",
           language: "javascript",
-          // Return the index so order is directly assertable downstream.
           expression: "return input.scope.$loop_index;",
           for_each: "(sourceData) => sourceData.src.data",
           for_each_concurrency: 4,
@@ -390,8 +353,6 @@ describe("for_each · bounded-parallel iteration preserves order", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    // Slots reconstruct [0,1,2,3,4,5] regardless of which worker finished
-    // first — order is a property of the index, not the schedule.
     expect(result.output).toEqual([0, 1, 2, 3, 4, 5]);
   });
 

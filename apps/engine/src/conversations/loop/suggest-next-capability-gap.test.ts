@@ -1,9 +1,3 @@
-// Phase 3 — deterministic capability-gap next-suggestion.
-//
-// When a turn abstains via cannot_help, the emitter must surface the
-// gap-closing path as the next prompt WITHOUT a model call, ahead of the
-// model fallback. Pure unit test — no DB, no model.
-
 import { describe, expect, test } from "bun:test";
 import type { TurnEvent } from "../types.ts";
 import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";

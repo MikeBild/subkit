@@ -1,14 +1,3 @@
-// Lazy loader for engine-served Zod schemas.
-//
-// The CLI's settings UI used to bake every Zod schema client-side,
-// so each new setting required a CLI rebuild. This loader fetches
-// the schema description from the engine and materializes a Zod
-// shape good enough for SchemaForm's form/code modes. The engine
-// returns a small, stable "schema description" payload (subset of
-// JSON Schema) — we don't try to be a full converter, just cover
-// the field kinds SchemaForm renders (string, number, boolean,
-// enum, optional).
-
 import { z } from "zod";
 import { debugLog } from "../../debug.ts";
 
@@ -20,12 +9,10 @@ export interface EngineFieldDescriptor {
 }
 
 export interface EngineSchemaDescriptor {
-  /** Field name → kind. */
   fields: Record<string, EngineFieldDescriptor>;
 }
 
 export interface EngineSchemaSource {
-  /** Fetch the descriptor for a known schema name (e.g. "settings.tenant"). */
   fetchDescriptor: (schemaName: string) => Promise<EngineSchemaDescriptor>;
 }
 
@@ -40,16 +27,6 @@ export class EngineSchemaError extends Error {
   }
 }
 
-/**
- * Materialize a Zod schema from an engine descriptor. The shape is
- * compatible with SchemaForm's `_describeFieldsForTests` walker.
- *
- * Strict: an empty enum or an unknown field type **throws** an
- * `EngineSchemaError` — silent fallbacks were a bug.
- * Dropped the previous `permissive: true` escape hatch
- * because no in-tree caller used it (YAGNI). Re-add when a real
- * bug-report path needs the fallback shape.
- */
 export function materializeSchema(
   d: EngineSchemaDescriptor,
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
@@ -91,11 +68,6 @@ export function materializeSchema(
   return z.object(shape);
 }
 
-/**
- * Convenience: fetch + materialize in one call. Resolved schemas are
- * memoized per process so the settings UI doesn't re-fetch on every
- * tab toggle.
- */
 const memoCache = new Map<string, z.ZodObject<Record<string, z.ZodTypeAny>>>();
 
 export async function loadEngineSchema(

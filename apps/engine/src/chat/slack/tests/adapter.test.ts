@@ -1,6 +1,3 @@
-// Slack adapter outbound HTTP test. A tiny Hono server stands in
-// for api.slack.com and records every call the WebClient makes.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -81,10 +78,6 @@ describe("slack adapter", () => {
     expect(approvalBody).toContain("reject:ap-1");
   });
 
-  // ---------------------------------------------------------------------
-  // receive() — normalization for the new inbound shapes added in
-  // Checkpoint 1 and 3.
-  // ---------------------------------------------------------------------
   describe("receive() — DM (`message.im`)", () => {
     test("normalizes a real DM into a `mention`-kind event", async () => {
       const adapter = new SlackAdapter({ signingSecret: "x", botToken: "xoxb-test" });
@@ -107,7 +100,7 @@ describe("slack adapter", () => {
       expect(ev.kind).toBe("mention");
       expect(ev.channel_id).toBe("D123");
       expect(ev.user_id).toBe("U_ALICE");
-      expect(ev.thread_id).toBe("1700000000.000100"); // falls back to ts
+      expect(ev.thread_id).toBe("1700000000.000100");
       expect(ev.event_key).toBe("Ev_DM_1");
       expect(ev.text).toBe("hello bot");
     });

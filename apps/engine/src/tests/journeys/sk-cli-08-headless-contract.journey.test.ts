@@ -1,24 +1,3 @@
-// User story: As a script author piping `sk -p "..."` into another
-// tool, I need every output format to produce a stable, parseable
-// contract: `text` prints only the final assistant message, `json`
-// emits a single well-formed object, and `stream-json` emits one
-// JSON object per line ending with a `completed` frame.
-//
-// Acceptance criteria:
-//
-//   AC1. text output prints a single line of assistant text on
-//        stdout and exits 0.
-//   AC2. json output emits a parseable JSON blob containing
-//        `session_id`, `status`, `assistant_text`, `tool_calls`,
-//        `committed_workflow_id`, `validation_errors`, `usage`,
-//        `warnings`, `memory_sources`.
-//   AC3. stream-json output emits NDJSON where every line parses
-//        and the final line is `type=completed`.
-//   AC4. --no-memory suppresses the `memory_sources` array (stays
-//        empty) and no `conversation.memory_injected` row is
-//        written by the engine.
-//   AC5. A failing prompt (engine returns 4xx) exits non-zero.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
@@ -80,11 +59,6 @@ describe("journey: sk headless output contract", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.conversation_id).not.toBeNull();
-    // Text output may be empty ONLY when the turn produced neither
-    // assistant text nor a succeeded execution result — when a
-    // run_workflow/wf_* call succeeded, headless renders its payload
-    // (see turn-event.execution-result.test.ts). stderr must never
-    // carry an error line either way.
     expect(stderr.toString()).not.toContain("sk:");
   });
 
@@ -109,7 +83,6 @@ describe("journey: sk headless output contract", () => {
     expect(Array.isArray(parsed.validation_errors)).toBe(true);
     expect(Array.isArray(parsed.warnings)).toBe(true);
     expect(Array.isArray(parsed.memory_sources)).toBe(true);
-    // assistant_text is always present even when empty.
     expect(typeof parsed.assistant_text).toBe("string");
   });
 
@@ -127,11 +100,9 @@ describe("journey: sk headless output contract", () => {
     expect(result.exitCode).toBe(0);
     const lines = stdout.lines();
     expect(lines.length).toBeGreaterThan(0);
-    // every line is a valid JSON object
     for (const line of lines) {
       expect(() => JSON.parse(line)).not.toThrow();
     }
-    // the last line is a `completed` event
     const last = JSON.parse(lines[lines.length - 1] ?? "{}") as { type?: string };
     expect(last.type).toBe("completed");
   });

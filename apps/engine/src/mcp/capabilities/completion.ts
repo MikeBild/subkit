@@ -1,27 +1,3 @@
-// MCP `completion/complete` handler.
-//
-// The MCP completion endpoint returns argument-name suggestions for prompts,
-// tools, and resources. The current request shape is `{ ref, argument }`
-// where `ref` identifies the target (a prompt, tool, or resource) and
-// `argument` holds the partial value the client wants completed.
-//
-// Resolution rules:
-//
-//   tools (`wf.<slug>`)     — load the workflow's current version, parse its
-//                             `input_schema` (raw JSON Schema), and return
-//                             the top-level property names that match the
-//                             argument name prefix.
-//
-//   prompts (`skill.<id>`)  — load the skill row and read the optional
-//                             `arguments` jsonb column (added in 0013).
-//                             Return matching argument names.
-//
-//   resources (`connector://`) — connector URIs do not take arguments in v1
-//                                so we always return an empty list.
-//
-// `values` is `string[]` per the MCP schema; descriptions are not part of
-// the wire format yet, so we just return matching names.
-
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -31,11 +7,6 @@ import { skills, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
 
-// Custom request schema that allows the forward-looking `ref/tool` shape
-// alongside the standard `ref/prompt` and `ref/resource` discriminators.
-// We can't reuse the SDK's `CompleteRequestSchema` because its zod union
-// only enumerates prompts + resources, so a `ref/tool` request would be
-// dropped by the server pre-handler validation.
 export const SubkitCompleteRequestSchema = z
   .object({
     method: z.literal("completion/complete"),
@@ -91,10 +62,6 @@ export interface RegisterCompletionParams {
 export function registerCompletionCapability(p: RegisterCompletionParams): void {
   const { server, db, principal } = p;
 
-  // The MCP server validates inbound requests against the registered
-  // capabilities — `completion/complete` is gated on a `completions`
-  // capability key. Without this declaration the server rejects the
-  // request with `Server does not support completions`.
   server.registerCapabilities({ completions: {} });
 
   server.setRequestHandler(SubkitCompleteRequestSchema, async (req) => {
@@ -108,7 +75,6 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
     });
 
     if (ref.type === "ref/resource") {
-      // Connector URIs are static — no arguments to complete.
       return { completion: { values: [], total: 0, hasMore: false } };
     }
 
@@ -133,17 +99,6 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
       });
       if (!decision.allow) return { completion: { values: [], total: 0, hasMore: false } };
       const args = Array.isArray(row.arguments) ? (row.arguments as SkillArgument[]) : [];
-      // Response shape:
-      //   - The client asks for completions of an `argument.name`. If
-      //     that name matches one of the skill's declared argument
-      //     descriptors AND the descriptor carries an `enum`, we
-      //     return the enum values (prefix-filtered by the current
-      //     `argument.value`). This is what LLM agents use to surface
-      //     enum choices in-editor.
-      //   - Otherwise we return the flat list of argument names, plus
-      //     any enum values declared on those arguments. Argument
-      //     authors can therefore use the same call to discover both
-      //     halves of the API without a second round-trip.
       const names = args
         .filter((a): a is SkillArgument => typeof a?.name === "string")
         .map((a) => a.name);

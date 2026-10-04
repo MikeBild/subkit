@@ -1,15 +1,6 @@
-// Setup-banner helper tests. The real fetch is stubbed via the
-// `fetch` injection point so we never touch the network. Failure
-// modes (timeout, non-OK response, malformed JSON) all collapse to
-// the fail-open snapshot — exercising every branch keeps a transient
-// diagnostics outage from regressing into a CLI startup blocker.
-
 import { describe, expect, test } from "bun:test";
 import { fetchSetupStatus } from "../setup-banner.ts";
 
-// Bun's `typeof fetch` includes a `preconnect` member the test stubs
-// don't need. Cast through `unknown` to satisfy exactOptionalProps
-// without weakening the production signature on `fetchSetupStatus`.
 type StubFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 function asFetch(stub: StubFetch): typeof globalThis.fetch {
   return stub as unknown as typeof globalThis.fetch;
@@ -112,10 +103,6 @@ describe("fetchSetupStatus", () => {
   });
 
   test("returns fail-open snapshot when AbortSignal.timeout fires", async () => {
-    // The stub rejects with a DOMException carrying the same name the
-    // AbortSignal raises ("TimeoutError"), simulating what fetch would
-    // throw if the 5s timer beat the response. The helper catches it
-    // and returns the fail-open snapshot.
     const stubFetch = asFetch(async () => {
       throw new DOMException("aborted", "TimeoutError");
     });
@@ -134,8 +121,6 @@ describe("fetchSetupStatus", () => {
       }),
     );
     const result = await fetchSetupStatus("http://localhost:3000", "k", { fetch: stubFetch });
-    // Unknown overall coerces to "ok" so the banner stays hidden when
-    // the schema drifts on the server. Counts ride along defensively.
     expect(result.overall_status).toBe("ok");
     expect(result.warning_count).toBe(9);
     expect(result.error_count).toBe(9);

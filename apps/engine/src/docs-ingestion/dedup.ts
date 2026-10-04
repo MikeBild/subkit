@@ -1,15 +1,3 @@
-// Within-run dedup for the documentation ingestion pipeline.
-//
-// Algorithm:
-//   - Each chunk carries a set of 5-gram word-shingle hashes.
-//   - Jaccard similarity = |A ∩ B| / |A ∪ B|.
-//   - If similarity ≥ 0.9 against any already-accepted chunk, drop the
-//     new one. Identical fingerprints short-circuit the comparison.
-//
-// We deliberately keep this a single-run check. Cross-run dedup will land
-// in a later phase once we have a real similarity index; for P6 the
-// happy path is "fresh ingest replaces prior ingest".
-
 import { DEDUP_THRESHOLD } from "./budgets.ts";
 import type { FingerprintedChunk } from "./types.ts";
 

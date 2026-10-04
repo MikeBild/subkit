@@ -1,5 +1,3 @@
-// Google API Discovery source normalizer.
-
 import {
   type GoogleDiscoveryObject,
   googleDiscoveryBaseUrl,

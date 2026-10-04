@@ -29,12 +29,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// The chat harness only mints a claimable approval when a REAL principal is
-// resolvable (`ctx.principal ?? resolveConversationPrincipal(...)` in
-// `sdk-wrap/invoke.ts`); every production HTTP route always threads one
-// through from `requireAuth`. Mirror that here — the same admin principal on
-// both the pausing turn (mints the approval) and the resume (grants + claims
-// it), exactly like `run-workflow-tool.test.ts`.
 function testPrincipal(): ResolvedPrincipal {
   return {
     provider: "test",
@@ -45,9 +39,6 @@ function testPrincipal(): ResolvedPrincipal {
   };
 }
 
-/** Read the single-use `approval_id` a policy-gated `ask_user_confirm`
- *  minted into `commit_intent.payload` — the same handle
- *  `execute_confirmed_tool_call` claims in `auto-persist.ts`. */
 async function approvalIdForElicitation(elicitationId: string): Promise<string> {
   const [row] = await ctx.testDb.db
     .select({ input: conversationElicitations.input })
@@ -114,10 +105,6 @@ describe("cleanup write tools in the conversation loop", () => {
       },
       ctx.testDb.db,
     );
-    // Two steps, not three: the model NEVER re-issues a gated write. Its call
-    // pauses on the policy gate's ask_user_confirm, and the HARNESS performs
-    // the delete when the operator answers (auto-persist's
-    // `execute_confirmed_tool_call` claims the approval the gate minted).
     getMockProvider().setConversePlan(conversation.conversation.id, [
       { tool: "list_workflows", args: {} },
       { tool: "delete_workflow", args: { slug: workflow.slug } },
@@ -142,8 +129,6 @@ describe("cleanup write tools in the conversation loop", () => {
     ]);
     expect(await countAudit("workflow.deleted", workflow.id)).toBe(0);
 
-    // The gate minted a claimable-once-a-human-decides approval — UNGRANTED,
-    // exactly like the MCP `wf_<slug>` confirm loop (`wf-confirm-loop.test.ts`).
     const approvalId = await approvalIdForElicitation(first.result.pending_elicitation_id!);
     const mintedApproval = await getApproval(approvalId);
     expect(mintedApproval).not.toBeNull();
@@ -164,8 +149,6 @@ describe("cleanup write tools in the conversation loop", () => {
       ctx.testDb.db,
     );
     expect(resumed.result.status).toBe("active");
-    // The model issued NO tool call on the resume turn — the harness had
-    // already performed the delete before the LLM was re-entered.
     const resumedCalls = resumed.result.events.filter((e) => e.type === "tool_call_start");
     expect(resumedCalls.map((e) => (e.type === "tool_call_start" ? e.tool : ""))).toEqual([]);
     const deletedWorkflow = await ctx.testDb.db
@@ -175,15 +158,9 @@ describe("cleanup write tools in the conversation loop", () => {
     expect(deletedWorkflow).toHaveLength(1);
     expect(await countAudit("conversation.delete_workflow", workflow.id)).toBe(1);
 
-    // The operator's answer (a human, chat surface) is what granted it —
-    // never the model — and the harness's own claim burned the handle.
     const claimedApproval = await getApproval(approvalId);
     expect(claimedApproval?.granted_at).not.toBeNull();
     expect(claimedApproval?.consumed_at).not.toBeNull();
-    // The deeper tool-approval lifecycle row (`conversation_tool_call`,
-    // keyed on the approval id) is distinct from the unconditional
-    // elicitation-resolution log sharing the same action name — this one
-    // only exists because the harness actually claimed and ran the write.
     expect(await countAudit(AuditAction.APPROVAL_APPROVED, approvalId)).toBe(1);
   });
 
@@ -223,11 +200,6 @@ describe("cleanup write tools in the conversation loop", () => {
     expect(first.result.status).toBe("awaiting_input");
     expect(first.result.pending_elicitation_id).toBeTruthy();
 
-    // `revoke_api_key` has no shape-specific commit_intent carrier
-    // (`mapToolToCommitIntentKind` only covers save/delete/create_api_key/
-    // run_workflow/update_*), so it always takes the universal
-    // `execute_confirmed_tool_call` path: a real, principal-bound approval was
-    // minted — UNGRANTED — for this call.
     const approvalId = await approvalIdForElicitation(first.result.pending_elicitation_id!);
     const mintedApproval = await getApproval(approvalId);
     expect(mintedApproval).not.toBeNull();
@@ -251,9 +223,6 @@ describe("cleanup write tools in the conversation loop", () => {
     expect(await countAudit("api_key.revoked", apiKey!.id)).toBe(1);
     expect(await countAudit("conversation.revoke_api_key", apiKey!.id)).toBe(1);
 
-    // The operator's chat answer granted the approval, and the harness's
-    // claim (`execute_confirmed_tool_call` in auto-persist.ts) burned it and
-    // then ran `revoke_api_key` with the replayed args.
     const claimedApproval = await getApproval(approvalId);
     expect(claimedApproval?.granted_at).not.toBeNull();
     expect(claimedApproval?.consumed_at).not.toBeNull();
@@ -261,10 +230,6 @@ describe("cleanup write tools in the conversation loop", () => {
   });
 
   test("a universal-carrier confirm surfaces the approval portal link when a public base URL is set", async () => {
-    // The out-of-band approval link is the ONLY channel a UI-less MCP client
-    // has to answer a policy confirmation. It is minted only when the engine
-    // has a public base URL; set one for this case and restore it after so the
-    // rest of the suite keeps its default.
     const prevBaseUrl = getConfig().server.public_base_url;
     await setConfigKey("server.public_base_url", "https://engine.example", { force: true });
     try {
@@ -300,8 +265,6 @@ describe("cleanup write tools in the conversation loop", () => {
       const elicitationId = first.result.pending_elicitation_id!;
       expect(elicitationId).toBeTruthy();
 
-      // The link lands on the elicitation input, so it flows out on the
-      // `elicit_request` frame the client renders (and routes url-mode delivery).
       const [row] = await ctx.testDb.db
         .select({ input: conversationElicitations.input })
         .from(conversationElicitations)

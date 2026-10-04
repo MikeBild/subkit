@@ -1,7 +1,3 @@
-// evaluateExpectedRowCount — pure-function pin for the polymorphic
-// expectation surface. Number = exact, [min,max] = inclusive range,
-// {min}/{max}/{min,max} = half-open or two-sided bounds.
-
 import { describe, expect, test } from "bun:test";
 import { evaluateExpectedRowCount } from "../expected-row-count.ts";
 

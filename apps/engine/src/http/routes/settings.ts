@@ -1,33 +1,7 @@
-// GET /v1/settings[?tenant=<id>] — return the effective config tree
-// (deep-merged for the tenant if provided), with sensitive leaves
-// masked, plus a parallel `_meta` tree per leaf.
-//
-// GET /v1/settings/{path}[?tenant=<id>] — one leaf by dotted path.
-//
-// PUT /v1/settings/{path}[?tenant=<id>] — write one leaf. Scope rules:
-//   - `?tenant=<id>` set + leaf scope=global   → 403 scope_violation
-//   - `?tenant=<id>` set + leaf scope=tenant   → write tenant overlay
-//   - `?tenant=<id>` unset + leaf scope=tenant → write global default
-//   - `?tenant=<id>` unset + leaf scope=global → write global
-// Three response envelopes:
-//   - 200 success: { value, requiresRestart }
-//   - 422 validation: { code, message, path, expected }
-//   - 409 restart-required: { code, message, requiresRestart }
-// Tenant operators must have settings:write; the route additionally
-// enforces that `?tenant=<id>` matches the actor's principal_tenant_id
-// unless the actor has settings:write:global (operators of the system
-// tenant can manage any tenant).
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
-// Header names + allowed values come from the shared package directly
-// — the engine's audit/audit-source.ts only adds the Zod wrappers.
 import { AUDIT_SOURCE_HEADER, DEPLOY_VERSION_HEADER } from "@shared/audit-source.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-// `@shared` is a separate package, so importing the constants above
-// satisfies the route_layering invariant. The engine-side Zod
-// wrappers and audit helpers go through the audit subsystem's
-// barrel `index.ts` per AGENTS.md.
 import {
   AuditAction,
   AuditSourceEnum,
@@ -63,23 +37,12 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-// Cross-tenant authority. A bare `roles.includes("admin")` is NOT a
-// platform-admin check: every tenant's own bootstrap admin holds the
-// shared built-in "admin" role (role definition tenant_id is null, but it
-// is assigned per-tenant), so that test let any tenant admin read/write
-// any OTHER tenant's settings. Per this route's documented contract,
-// cross-tenant management belongs to operators of the SYSTEM tenant (or a
-// principal explicitly granted the global settings scope). In the common
-// single-tenant deployment `?tenant` always equals the actor's own tenant,
-// so this branch never triggers.
 function canManageOtherTenants(principal: ReturnType<typeof requireAuth>): boolean {
   if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) {
     return true;
   }
   return principal.scopes?.includes("settings:write:global") ?? false;
 }
-
-// -------- schemas --------
 
 const LeafMetaSchema = z
   .object({
@@ -89,9 +52,7 @@ const LeafMetaSchema = z
     requiresRestart: z.boolean(),
     description: z.string().optional(),
     kind: z.string(),
-    /** The schema's default; absent for a leaf that has none (a bootstrap binding). */
     default: z.unknown().optional(),
-    /** The allowed values of an enum leaf, in schema order. */
     enum_values: z.array(z.string()).optional(),
   })
   .openapi("SettingLeafMeta");
@@ -139,10 +100,6 @@ const PutBody = z
   .openapi("SettingPutBody");
 
 export type { AuditSource } from "@shared/audit-source.ts";
-// X-Subkit-Audit-Source + X-Subkit-Deploy-Version are validated as
-// Zod-typed headers on the PUT route boundary; their taxonomy is
-// owned by `audit/audit-source.ts` (re-exported here for downstream
-// imports that came in before the move).
 export { AuditSourceEnum };
 
 const PutHeaders = z.object({
@@ -181,8 +138,6 @@ const PutSuccessSchema = z
   })
   .openapi("SettingPutResult");
 
-// -------- helpers --------
-
 function maskedValue(leaf: ConfigLeaf, value: unknown): unknown {
   return maskedSettingValue(!!leaf.meta.secret, value);
 }
@@ -195,8 +150,6 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
   }
   return cursor;
 }
-
-// -------- routes --------
 
 const listRoute = createRoute({
   method: "get",
@@ -287,8 +240,6 @@ const putRoute = createRoute({
   },
 });
 
-// -------- registration --------
-
 export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/settings", requirePermission("settings:read"));
   app.use("/v1/settings/*", (c, next) => {
@@ -309,7 +260,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         403,
       );
     }
-    // The reader `subkit_settings` answers from: same entries, same state.
     return c.json(await readSettingsList(c.get("db"), targetTenant), 200);
   });
 
@@ -356,7 +306,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Scope guard: when ?tenant is set, the leaf must be scope:tenant.
     if (tenant && leaf.meta.scope !== "tenant") {
       return c.json(
         {
@@ -367,10 +316,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Cross-tenant guard. Only a SYSTEM-tenant operator (or a principal
-    // granted the global settings scope) may target a tenant overlay other
-    // than its own — a tenant's own "admin" role must not reach across the
-    // tenant boundary. See canManageOtherTenants.
     if (tenant && tenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
       return c.json(
         {
@@ -385,11 +330,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     if (tenant !== undefined) setOpts.tenantId = tenant;
     if (body.force !== undefined) setOpts.force = body.force;
 
-    // X-Subkit-Audit-Source + X-Subkit-Deploy-Version — both validated
-    // by Zod on the putRoute headers schema, so by the time we read
-    // them they're either undefined or known-good. The route boundary
-    // is the only place these headers are parsed; downstream code is
-    // type-safe.
     const headers = c.req.valid("header");
     const auditSource = headers[AUDIT_SOURCE_HEADER] ?? null;
     const deployVersion = headers[DEPLOY_VERSION_HEADER] ?? null;
@@ -483,8 +423,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
             db,
           );
           if (restartRequired && !body.force) {
-            // A hot leaf saved on top of a revision that still waits for its
-            // restart waits with it; name what the restart is waiting for.
             throw new RestartRequiredError(
               `${leaf.path.join(".")} was saved as revision ${saved.saved_revision} and becomes active with the next process restart (waiting for it: ${saved.pending_restart_fields.join(", ")}).`,
             );
@@ -512,13 +450,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
         result = await setConfigKey(leaf.path, body.value, setOpts);
       }
 
-      // Audit the change against the request-bound db so test setups
-      // that point Hono at a testcontainer (and not the engine's own
-      // pool) still write the row to the right place. Production
-      // boot wires `c.get("db")` to the same pool getDb() returns.
-      // before/after carry the masked primitive value directly —
-      // matches the existing audit_log convention used by other
-      // resource_types (credential / knowledge_source / workflow).
       const db = c.get("db");
       try {
         await auditAwait(
@@ -544,20 +475,6 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
       } catch (err) {
-        // Audit row failed AFTER the in-memory + on-disk write
-        // already landed. The compliance ledger is now out of sync
-        // with the live state. Surface a `setting.apply_failed` log
-        // so an operator dashboard catches the divergence, then
-        // rethrow so the route returns 500 (the catch below maps
-        // unhandled errors). The previously-applied write remains
-        // in effect — rolling it back would require a second write
-        // that could itself fail and compound the divergence.
-        //
-        // Use the static `logger` (not a dynamic import): a dynamic
-        // import that itself throws (filesystem race, ESM module-graph
-        // corruption mid-request) would HIDE the original audit-failure
-        // error — exactly the divergence this catch is supposed to
-        // surface.
         logger.error({
           module: "config",
           action: "setting.apply_failed",

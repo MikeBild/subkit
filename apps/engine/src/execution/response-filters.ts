@@ -1,23 +1,3 @@
-// Tenant DLP layer — tenant-configurable field-level redaction applied
-// to step outputs before they feed either downstream steps or the LLM
-// context.
-//
-// Sits ABOVE the existing `execution/response-filter.ts` which handles
-// per-workflow ResponseFilter rules. This module owns the per-TENANT
-// defaults (PII patterns every tenant inherits unless they turn them
-// off) plus explicit rules in the `tenant_dlp_rules` table.
-//
-// Each rule has:
-//   - path_match: dotted path with `*` (any key) and `**` (any descent)
-//   - pattern_regex: optional. Only redact when the value matches.
-//   - action: mask | drop | hash
-//   - reason: surfaced on the audit metadata so operators can tell
-//             WHY a field was redacted.
-//
-// The API is intentionally tiny: one resolver (`loadDlpRules`), one
-// applier (`applyDlpFilters`). The applier is pure; the resolver hits
-// the DB once and caches per-tenant for 60 seconds.
-
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -45,9 +25,6 @@ export interface DlpResult<T> {
   redacted: RedactedField[];
 }
 
-// Default rules every tenant inherits. They cover the most common PII
-// shapes — operators can disable by inserting a rule with action=drop
-// and pattern_regex set to `^$`, or by deleting the row.
 export const DEFAULT_DLP_RULES: readonly DlpRule[] = [
   {
     path_match: "**.email",
@@ -80,9 +57,6 @@ export const DEFAULT_DLP_RULES: readonly DlpRule[] = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Cache
-
 interface CacheEntry {
   rules: DlpRule[];
   expires_at: number;
@@ -95,8 +69,6 @@ export function resetDlpCache(tenant_id?: string): void {
   else CACHE.clear();
 }
 
-/** Resolve the effective rule set for a tenant: DB rules UNION defaults,
- *  with disabled rows stripped. Cached for 60 seconds. */
 export async function loadDlpRules(tenant_id: string, db: Db): Promise<DlpRule[]> {
   const now = Date.now();
   const cached = CACHE.get(tenant_id);
@@ -118,13 +90,6 @@ export async function loadDlpRules(tenant_id: string, db: Db): Promise<DlpRule[]
   return rules;
 }
 
-// ---------------------------------------------------------------------------
-// Path matcher
-
-/** Compile a path_match expression into a predicate. Supports:
- *    - literal segments
- *    - `*`  (single segment wildcard)
- *    - `**` (zero or more segments — prefix match suffix) */
 function pathMatcher(expr: string): (segments: string[]) => boolean {
   const parts = expr.split(".");
   return (segments) => matchHere(parts, 0, segments, 0);
@@ -134,7 +99,6 @@ function matchHere(pat: string[], pi: number, seg: string[], si: number): boolea
   while (pi < pat.length) {
     const p = pat[pi]!;
     if (p === "**") {
-      // Try to match zero or more segments.
       if (pi === pat.length - 1) return true;
       for (let k = si; k <= seg.length; k++) {
         if (matchHere(pat, pi + 1, seg, k)) return true;
@@ -157,8 +121,6 @@ function hashValue(v: unknown): string {
 function applyAction(value: unknown, action: DlpAction): unknown {
   if (action === "drop") return undefined;
   if (action === "hash") return hashValue(value);
-  // mask: keep a small shape hint for strings; other types go to
-  // "***redacted***".
   if (typeof value === "string") {
     if (value.length <= 4) return "****";
     return `${value.slice(0, 2)}****${value.slice(-2)}`;
@@ -166,8 +128,6 @@ function applyAction(value: unknown, action: DlpAction): unknown {
   return "***redacted***";
 }
 
-/** Apply DLP rules to a value. Returns the redacted copy + a list of
- *  (path, action, reason) entries for the audit trail. */
 export function applyDlpFilters<T>(value: T, rules: DlpRule[]): DlpResult<T> {
   const compiled = rules
     .filter((r) => r.enabled !== false)

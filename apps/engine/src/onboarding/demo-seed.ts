@@ -1,14 +1,3 @@
-// OnboardingDemoSeed — curated starter workflows for a fresh tenant.
-//
-// When someone opens the portal for the first time we want *something to
-// run*, not an empty workspace. These three workflows point at public APIs
-// that need no credentials so the very first `POST /v1/executions` call
-// succeeds.
-//
-// The seed is idempotent: re-running against a tenant that already has
-// any of the demo slugs is a no-op per slug. Call once per tenant from
-// HTTP onboarding, CLI onboarding, or db/seed.ts#seedDevFixtures.
-
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -24,11 +13,6 @@ export interface DemoWorkflowSpec {
   dag: unknown;
 }
 
-/**
- * All demo workflows shipped with a fresh tenant. Every DAG round-trips
- * through WorkflowDefSchema so a schema drift test fails at seed time,
- * not at first execution.
- */
 export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
   {
     slug: "demo-httpbin-echo",
@@ -72,7 +56,6 @@ export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
           kind: "transform",
           id: "top_names",
           language: "javascript",
-          // JS slice + map: take the first 5 elements, keep name + stars.
           expression:
             "return (input.scope.fetch_repos.data || []).slice(0, 5).map((r) => ({ name: r.name, stars: r.stargazers_count }));",
         },
@@ -124,8 +107,6 @@ export async function seedOnboardingDemo(
   const skipped: string[] = [];
 
   for (const spec of DEMO_WORKFLOWS) {
-    // Validate the DAG every run so a typo in the seed surfaces as a loud
-    // unit-test failure instead of a silent runtime error at first execute.
     WorkflowDefSchema.parse(spec.dag);
 
     const existing = await exec

@@ -1,8 +1,3 @@
-// Minimal SSE reader shared by the `sk` CLI surfaces via
-// `@cli-core/index.ts`. The engine emits
-// `event: <name>\ndata: <json>\n\n` frames; we parse them into
-// `{ event, data }` objects and surface each through a callback.
-
 export interface SseFrame {
   event: string;
   data: string;
@@ -35,9 +30,6 @@ export async function readSse(
         buffer = buffer.slice(sepIdx + 2);
         const frame = parseFrame(chunk);
         if (frame && onFrame(frame) === false) {
-          // A protocol-level terminal frame is stronger than transport EOF.
-          // Actively cancel so a keep-alive SSE response cannot strand a
-          // headless client after the operation has already completed.
           await reader.cancel().catch(() => {});
           return;
         }
@@ -48,9 +40,7 @@ export async function readSse(
     signal?.removeEventListener("abort", onAbort);
     try {
       reader.releaseLock();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
 }
 

@@ -1,16 +1,3 @@
-// Secret-mask leak audit — every secret leaf in ConfigSchema gets a
-// known sentinel value via PUT, then we scan every operator-readable
-// surface for the literal sentinel:
-//
-//   - PUT 200 response body
-//   - GET /v1/settings/{path} response body
-//   - GET /v1/settings list response body
-//   - audit_log row's `before` + `after` + `metadata` columns
-//   - structured logs captured during the round-trip
-//
-// A regression that bypasses the masker (route layer, audit helper, or
-// loader) leaks the sentinel and fails the test loudly.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -85,16 +72,11 @@ describe(`secret-mask leak audit — ${SECRET_LEAVES.length} secret leaves`, () 
     let salt = 0;
     for (const leaf of SECRET_LEAVES) {
       const dotted = dottedPath(leaf);
-      // Sentinel: a 24-char string that must never appear in any
-      // operator-readable surface. Long enough that a substring match
-      // is unambiguous; recognizable in failure messages.
       const sentinel = `SENTINEL-${salt++}-${dotted.replaceAll(".", "-")}-do-not-leak`;
-      // auth.session.secret enforces min(32). Pad if needed.
       const v = sentinel.length >= 32 ? sentinel : sentinel.padEnd(32, "x");
       captured.length = 0;
       await server.db.delete(auditLog);
 
-      // 1) PUT — returns the masked value.
       const putRes = await authedFetch(`/v1/settings/${dotted}`, {
         method: "PUT",
         body: JSON.stringify({ value: v, force: true }),
@@ -106,17 +88,14 @@ describe(`secret-mask leak audit — ${SECRET_LEAVES.length} secret leaves`, () 
       const putBody = await putRes.text();
       if (putBody.includes(v)) failures.push(`${dotted}: PUT response body leaks sentinel`);
 
-      // 2) GET single leaf
       const getRes = await authedFetch(`/v1/settings/${dotted}`);
       const getBody = await getRes.text();
       if (getBody.includes(v)) failures.push(`${dotted}: GET single leaks sentinel`);
 
-      // 3) GET list
       const listRes = await authedFetch("/v1/settings");
       const listBody = await listRes.text();
       if (listBody.includes(v)) failures.push(`${dotted}: GET list leaks sentinel`);
 
-      // 4) audit row
       const rows = await server.db
         .select()
         .from(auditLog)
@@ -124,7 +103,6 @@ describe(`secret-mask leak audit — ${SECRET_LEAVES.length} secret leaves`, () 
       const auditBlob = JSON.stringify(rows);
       if (auditBlob.includes(v)) failures.push(`${dotted}: audit_log leaks sentinel`);
 
-      // 5) structured logs
       const logBlob = captured.join("");
       if (logBlob.includes(v)) failures.push(`${dotted}: structured log leaks sentinel`);
     }

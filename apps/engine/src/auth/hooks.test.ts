@@ -1,13 +1,3 @@
-// Before-request hook evaluator — coverage for evaluateHook() branch
-// logic (role gating, version-per-role collapse, deny/allow/malformed
-// sandbox outputs, exception fail-closed, audit-on-denial) and
-// lintHookSource()'s syntax vs. runtime error split.
-//
-// apps/engine/src/sandboxes/quickjs/tests/hook.test.ts pins the two
-// smoke-test cases (allow / throw) from the sandbox side; this file
-// lives under auth/ so it counts toward the auth coverage floor and
-// fills in the branches that file doesn't reach.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, requestHooks, tenants } from "../db/schema/index.ts";
@@ -102,8 +92,6 @@ describe("evaluateHook — version collapse per role", () => {
       principal: principal([role]),
       requestCtx: ctx(),
     });
-    // Only the version-2 row should be consulted — version 1's denial
-    // must not win.
     expect(decision.allowed).toBe(true);
   });
 
@@ -221,9 +209,6 @@ describe("evaluateHook — deny outcomes and audit trail", () => {
   });
 
   test("multiple roles: the first denying role (sorted order) short-circuits later roles", async () => {
-    // Role names sort lexicographically ("role-a" before "role-z"), so
-    // role-a's denial must win even though role-z would also deny with
-    // a different reason — proof the loop stops at the first denial.
     await testDb.db.insert(requestHooks).values([
       {
         tenant_id: tenantId,

@@ -1,11 +1,3 @@
-// Modal pane renderers for the Ink REPL.
-//
-// One component per `PaneSpec` kind (template picker, connector /
-// workflow drafts, probe / preview results, setup diagnostics, …) plus
-// `PaneHost` — the single modal slot that maps the active `PaneSpec`
-// to its component. Only one pane renders at a time; every pane
-// dismisses back through `onDismiss` so the composer regains focus.
-
 import { ConversationBrowser, FormPrompt, Pane, StatusPane } from "@chat-ui/index.ts";
 import type { SkSessionState } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
@@ -444,46 +436,24 @@ const SetupDiagnosticsPane: React.FC<{
 ));
 SetupDiagnosticsPane.displayName = "SetupDiagnosticsPane";
 
-// ---------- Modal pane host ----------
-
 export interface PaneHostProps {
-  /** Active pane spec; `null` renders nothing. */
   pane: PaneSpec | null;
-  /** Engine client — settings / permissions / profile / admin panes
-   *  and the fork-from-turn action need it; those branches stay
-   *  hidden when it's absent. */
   engineClient?: EngineClient | undefined;
-  /** Active conversation id (fork anchor + settings session id). */
   conversationId: string | null;
-  /** Live transcript messages — feeds the rewind timeline in the
-   *  conversations browser. */
   messages: SkSessionState["messages"];
-  /** `session.usage?.turn_tokens ?? null` for the settings pane. */
   turnTokens: number | null;
-  /** `statusSnapshot?.tenant.id` fallback for the settings pane. */
   statusTenantId: string | undefined;
   activeMode: PermissionMode;
-  /** Config-form input gate — the task launcher wins the keyboard. */
   launcherOpen: boolean;
   onDismiss: () => void;
   showInfo: (message: string) => void;
   showError: (message: string) => void;
   onSelectConversation?: ((id: string) => Promise<void>) | undefined;
-  /** Profile pane "new-session" action — resets the live session. */
   onNewSession: () => void;
-  /** Profile pane "sign-out" action — exits the app (host callback
-   *  first, Ink exit as fallback). Runs after `onDismiss`. */
   onSignOut: () => void;
-  /**
-   * Task-launcher node rendered between the wizard pane and the
-   * text / portal-token / structured panes — the exact spot it
-   * occupied before the pane host was extracted, so the visual
-   * stacking of launcher-over-pane stays byte-identical.
-   */
   launcherSlot?: React.ReactNode;
 }
 
-/** Modal slot — one pane at a time (/status, /resume browser, …). */
 export const PaneHost: React.FC<PaneHostProps> = ({
   pane,
   engineClient,
@@ -521,14 +491,6 @@ export const PaneHost: React.FC<PaneHostProps> = ({
         currentTurns={messages
           .filter((m): m is typeof m & { id: string } => m.role === "assistant" && Boolean(m.id))
           .map((m) => ({
-            // Only persisted messages (carrying an engine-issued
-            // id) appear in the rewind timeline. MessageState
-            // doesn't currently carry the engine-side `created_at`,
-            // so we pass `null` and `ConversationBrowser` renders
-            // `—`. Fabricating `new Date().toISOString()` at render
-            // time would stamp every turn with the same "now" and
-            // re-stamp them on every keystroke; the `string | null`
-            // type encodes the missing case explicitly.
             message_id: m.id,
             excerpt: typeof m.content === "string" ? m.content : "(non-text turn)",
             created_at: null,
@@ -542,10 +504,6 @@ export const PaneHost: React.FC<PaneHostProps> = ({
               void onSelectConversation?.(res.conversation.id);
             })
             .catch((err: unknown) => {
-              // Surface 403/404/5xx from the fork endpoint (RBAC
-              // denial, cross-tenant, server) into the NoticeStack
-              // so the operator sees the failure instead of a
-              // frozen pane.
               const msg = err instanceof Error ? err.message : String(err);
               showError(`fork failed: ${msg}`);
               onDismiss();
@@ -618,8 +576,6 @@ export const PaneHost: React.FC<PaneHostProps> = ({
             onSignOut();
             return;
           }
-          // switch-tenant requires REPL restart; ProfileTab has
-          // already written the config and surfaced a notice.
         }}
       />
     ) : null}
@@ -641,10 +597,6 @@ export const PaneHost: React.FC<PaneHostProps> = ({
         onProbe={pane.onProbe}
         onSave={pane.onSave}
         onDone={(result) => {
-          // Hand the terminal status back to the slash-handler hook
-          // so it can log a notice if it wants, then dismiss the
-          // pane. The wizard component itself does not own pane
-          // lifecycle — that's the host's job.
           const { onComplete } = pane;
           onComplete(result);
           onDismiss();

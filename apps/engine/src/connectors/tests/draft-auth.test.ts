@@ -1,12 +1,3 @@
-// Tests for the credential_required contract that replaced the old
-// draft-time auth shortcut. When auth_type !== "none" and no credential
-// row exists, the probe returns a structured error instead of sending an
-// unauthenticated request that would silently 404 or 401.
-//
-// applyAuthMaterial now does nothing for the no-credential case — it only
-// applies static_headers / static_query from config. Auth injection
-// requires a real DecryptedCredential from the store.
-
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { applyAuthMaterial } from "../drivers/http.ts";
@@ -52,7 +43,6 @@ describe("applyAuthMaterial — no credential row (credential_required contract)
       headers,
       {},
     );
-    // The shortcut has been removed; no auth material is injected without a credential row.
     expect(headers.Authorization).toBeUndefined();
   });
 
@@ -106,7 +96,6 @@ describe("applyAuthMaterial — no credential row (credential_required contract)
       headers,
       {},
     );
-    // static_headers always apply; auth material does not.
     expect(headers["x-static"]).toBe("v1");
     expect(headers.Authorization).toBeUndefined();
   });

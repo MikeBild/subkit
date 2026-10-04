@@ -1,23 +1,9 @@
-// Browser-launch + poll loop for OAuth credential authorization.
-//
-// 1. Renders the auth URL and tries to open the user's default browser.
-// 2. Polls `pollUrl` on a backoff schedule (1s, 2s, 4s, 8s, capped).
-// 3. Returns the credential payload via `onConnected` when the engine
-//    reports the authorization completed.
-// 4. Always lets the operator paste a token manually as a fallback —
-//    no browser, no problem.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { defaultOpenBrowser } from "../../lib/open-browser.ts";
 
-// Validate the engine→CLI poll response at the
-// boundary. The credential payload arrives over HTTP and lands in
-// `onConnected` — exactly the kind of "CLI input" AGENTS.md says
-// should be Zod-validated. `passthrough()` keeps unknown extras
-// (e.g. provider-specific identity fields) without dropping them.
 const OAuthCredentialSchema = z.object({ id: z.string() }).passthrough();
 
 const OAuthPollResponseSchema = z.object({
@@ -29,13 +15,6 @@ const OAuthPollResponseSchema = z.object({
 export type OAuthPollResponse = z.infer<typeof OAuthPollResponseSchema>;
 export type OAuthCredential = z.infer<typeof OAuthCredentialSchema>;
 
-// Validate `authUrl` itself before launching it
-// via `spawn(bin, [authUrl])`. The `spawn(..., { shell: false })`
-// guard prevents shell-injection but it does NOT prevent URL-scheme
-// abuse — `xdg-open file:///etc/passwd` would still launch a file
-// reader if a tampered connector template snuck through. Restrict
-// to plain `http(s)://` and reject `file:`, `javascript:`, `data:`,
-// or anything else exotic.
 export const AuthUrlSchema = z
   .string()
   .url()
@@ -45,30 +24,14 @@ export const AuthUrlSchema = z
 
 export interface OAuthWaitViewProps {
   authUrl: string;
-  /** Canonical redirect URI the operator must add to their OAuth
-   *  provider's allowlist before opening `authUrl`. Synthesized by the
-   *  engine from `server.public_base_url + /v1/oauth/callback`. When
-   *  set, the view surfaces it above the authorize URL so the
-   *  operator has a chance to configure the provider before the
-   *  browser opens. Without this, providers return
-   *  `redirect_uri_mismatch` on first authorize. */
   redirectUri?: string;
-  /** Function the view calls to poll the engine. Tests inject a mock
-   *  here. The returned value is parsed through `OAuthPollResponseSchema`
-   *  before reaching `onConnected`. */
   poll: () => Promise<unknown>;
   onConnected: (credential: OAuthCredential) => void;
   onCancel?: () => void;
-  /** Initial poll delay (ms). Doubles each attempt up to `maxIntervalMs`. */
   initialIntervalMs?: number;
   maxIntervalMs?: number;
-  /** Override the browser-launch hook. Defaults to spawning `open`/`xdg-open`. */
   openBrowser?: (url: string) => Promise<void>;
 }
-
-// Argv-style browser launch lives in the shared `lib/open-browser.ts`
-// util — see that file for the shell-injection / URL-scheme threat
-// model. The REPL's OAuth-elicitation path reuses the same helper.
 
 export function OAuthWaitView({
   authUrl,
@@ -81,9 +44,6 @@ export function OAuthWaitView({
   openBrowser = defaultOpenBrowser,
 }: OAuthWaitViewProps): React.ReactElement {
   const tokens = useTheme();
-  // Validate the URL up-front. A malformed or unsupported-scheme URL
-  // lands the view in the "manual" phase with an error rather than
-  // launching `xdg-open file:///etc/passwd` or similar.
   const urlCheck = AuthUrlSchema.safeParse(authUrl);
   const [phase, setPhase] = useState<"launching" | "waiting" | "manual">(
     urlCheck.success ? "launching" : "manual",
@@ -94,9 +54,6 @@ export function OAuthWaitView({
   const [attempts, setAttempts] = useState(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Step 1 — launch the browser. Failures fall through to the manual
-  // path; the URL is always printed for copy-paste. Skips entirely
-  // when the URL didn't pass the scheme check.
   useEffect(() => {
     if (!urlCheck.success) return undefined;
     let cancelled = false;
@@ -115,7 +72,6 @@ export function OAuthWaitView({
     };
   }, [authUrl, openBrowser, urlCheck.success]);
 
-  // Step 2 — poll loop.
   useEffect(() => {
     if (phase !== "waiting") return undefined;
     let cancelled = false;
@@ -126,8 +82,6 @@ export function OAuthWaitView({
       try {
         const raw = await poll();
         if (cancelled) return;
-        // Validate the wire shape at the CLI boundary. A malformed
-        // engine response lands in `setError` rather than crashing the view.
         const parsed = OAuthPollResponseSchema.safeParse(raw);
         if (!parsed.success) {
           setError(`malformed poll response: ${parsed.error.message}`);

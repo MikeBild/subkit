@@ -1,8 +1,3 @@
-// Session-briefing surface for external coding agents (Claude Code, Codex).
-//
-// A SessionStart hook (or `sk agent briefing`) fetches a budgeted, domain-
-// scoped grounding block at session start. Read-only: no audit entry.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   buildAgentBriefing,
@@ -80,9 +75,6 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("domains must be comma-separated lowercase slugs (a-z, 0-9, -, _)");
     }
 
-    // The knowledge index exposes source names/descriptions, so it stays
-    // behind `knowledge:read`. A skill-only principal still gets the
-    // conventions — same capability-probe pattern as the MCP connect digest.
     const knowledgeDecision = await can(db, {
       tenant_id: principal.tenant_id,
       principal,

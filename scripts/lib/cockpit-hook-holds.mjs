@@ -1,10 +1,3 @@
-/**
- * A workflow only a webhook starts, held by the authority gate: Übersicht names
- * the webhook, the review sheet's hook card opens the approval where it stands,
- * and the approval asks for a sample call instead of running over `{}`.
- *
- * Database enforcement is covered by the engine journey for refused webhooks.
- */
 export async function verifyHookHolds(page, stand, workflowId, locale, capture) {
   const slug = "findings-inbox";
   const observedAt = new Date().toISOString();
@@ -94,12 +87,9 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
           effects: [],
           issues: [],
         },
-        // Unbound until the held run has observed a real call.
         eligible_for_repeated_runs: prepared,
         preparation_required: !prepared,
         unavailable_steps: prepared ? [] : ["notify"],
-        // What the engine suggests for a hook that was barely called: thirty
-        // days and the floor, with the reason beside it.
         suggested_bounds: {
           valid_from: from,
           valid_until: new Date(Date.parse(from) + 30 * 86_400_000).toISOString(),
@@ -130,7 +120,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     prepared = true;
     return route.fulfill({ json: { prepared: true } });
   };
-  // The newest call this workflow received — what the sample field starts from.
   const executions = (route) => {
     const search = new URL(route.request().url()).searchParams;
     if (search.get("request_source") !== "webhook" || search.get("workflow_id") !== workflowId)
@@ -147,13 +136,11 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
   for (const [pattern, handler] of routes) await page.route(pattern, handler);
   try {
     await stand.visit(page, "");
-    // The entry's row: its name and reason; its verb carries the entry's id.
     const entry = page
       .locator('[data-testid="attention-list"] [data-attention-id]:visible')
       .first();
     await entry.waitFor();
     const sentence = await page.getByTestId("attention-list").innerText();
-    // The row names the workflow alone; the webhook is named on its card.
     if (sentence.includes(locale === "de" ? "Zeitplan" : "schedule"))
       throw new Error(`A held webhook is announced as a schedule: ${sentence}`);
     await capture("today");
@@ -169,8 +156,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     const reason = card.getByTestId("inbound-hook-admission-reason");
     await action.waitFor();
     await reason.waitFor();
-    // Both boxes in one frame: the sheet slides in, and two separate reads
-    // measure two different positions of the same card.
     const [actionBox, reasonBox] = await card.evaluate((element) =>
       [
         '[data-testid="inbound-hook-admission-review"]',
@@ -182,7 +167,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     );
     if (!actionBox || !reasonBox)
       throw new Error("The hook card's action or reason is not laid out");
-    // Under the words it acts on, and aligned with them — not beside them.
     if (actionBox.y < reasonBox.y + reasonBox.height - 1)
       throw new Error(
         `The hook card's action sits beside its text (action top ${actionBox.y}, text bottom ${reasonBox.y + reasonBox.height})`,
@@ -210,9 +194,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await capture("hook-sample");
     await page.getByTestId("authority-sample-prepare").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    // A hook is not offered one run for one day: thirty days, sized from its
-    // calls, with one line that says where the numbers come from — once the
-    // reader chooses limits instead of "until revoked".
     await page.getByTestId("authority-limit-limited").click();
     if (
       (await page.getByTestId("authority-runs").inputValue()) !== "100" ||
@@ -233,9 +214,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await page.goBack();
     await sheet.waitFor({ state: "hidden" });
 
-    // On the workflow's own page the held hook is the one state — "approval
-    // needed", judged in production, where a hook's deliveries run — with the
-    // hook named in the panel and no badge beside it.
     await stand.visit(page, `workflows/${workflowId}`);
     const panel = page.getByTestId("workflow-automation");
     await page.getByTestId("workflow-automation-action").waitFor();
@@ -243,7 +221,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
       throw new Error(
         `A held webhook reads as "${await panel.getAttribute("data-state")}", not as approval needed`,
       );
-    // "Verwenden" says how it is called: by webhook.
     if (!(await page.getByTestId("workflow-automation-triggers").innerText()).includes("Webhook"))
       throw new Error("The page does not say it is called by webhook");
     if (

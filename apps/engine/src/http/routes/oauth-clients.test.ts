@@ -1,10 +1,3 @@
-// Integration tests for GET /v1/oauth/clients and DELETE /v1/oauth/clients/{client_id}.
-//
-// Covers:
-//   - GET lists registered clients
-//   - DELETE soft-disables a client; subsequent /authorize with that client_id is rejected
-//   - Both routes return 403 for a member-role principal without the admin permission
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -20,7 +13,6 @@ import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
 let priorBaseUrl = "";
-// Member-role API key — no mcp_oauth_client:read or :revoke permissions.
 let memberApiKey = "";
 
 beforeAll(async () => {
@@ -29,10 +21,6 @@ beforeAll(async () => {
   priorBaseUrl = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", "https://test.example.com", { force: true });
 
-  // Mint a member-role user bound to a no-permissions custom role so we can
-  // exercise the 403 branch. The built-in member role already excludes
-  // mcp_oauth_client:* via memberPermissionFilter, but we use a noop role to
-  // be explicit about the absence of those grants.
   const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-oauth-clients", "no permissions");
   const [member] = await ctx.db
     .insert(users)
@@ -62,8 +50,6 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
 async function seedClient(clientId: string): Promise<string> {
   const [row] = await ctx.db
     .insert(mcpOauthClients)
@@ -80,7 +66,6 @@ async function seedClient(clientId: string): Promise<string> {
   return row.id;
 }
 
-/** A person in this tenant who can approve a connection. */
 let personSeq = 0;
 async function seedPerson(): Promise<{ id: string; email: string }> {
   const email = `approver-${++personSeq}@test.local`;
@@ -92,11 +77,6 @@ async function seedPerson(): Promise<{ id: string; email: string }> {
   return row;
 }
 
-/**
- * One approved connection: the access token and the refresh token a consent
- * mints. `state` picks whether it is still live — the approval list must count
- * a live grant and ignore a dead one.
- */
 let tokenSeq = 0;
 async function seedApprovedConnection(
   clientId: string,
@@ -144,8 +124,6 @@ function memberAuthHeader(): { Authorization: string } {
   return { Authorization: `Bearer ${memberApiKey}` };
 }
 
-// ── GET /v1/oauth/clients ─────────────────────────────────────────────────────
-
 describe("GET /v1/oauth/clients", () => {
   test("returns 401 without auth", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients`);
@@ -173,18 +151,10 @@ describe("GET /v1/oauth/clients", () => {
     expect(found).toBeDefined();
     expect(typeof found?.id).toBe("string");
     expect(found?.client_name).toBe(`Test Client ${clientId}`);
-    // No secret fields
     expect(found?.client_secret).toBeUndefined();
     expect(found?.token_sha256).toBeUndefined();
   });
 
-  // These three exist because the route once answered 500 in production while
-  // every local suite was green. The approval fields were read from a raw
-  // `execute()` result — an object under the node-postgres driver, not the
-  // array a cast claimed it was — and no test called the route with a live
-  // token behind it. A test that only asserts the shape of a client row would
-  // have missed it again; these assert the VALUES, which means the query has
-  // to have really run and really been read.
   test("names the people whose approval keeps a client connected", async () => {
     const clientId = "approved-by-client-bbb222";
     await seedClient(clientId);
@@ -196,7 +166,6 @@ describe("GET /v1/oauth/clients", () => {
     const found = (await listClients()).find((i) => i.client_id === clientId);
     expect(found).toBeDefined();
     expect(found?.approved_by).toEqual([first.email, second.email].sort());
-    // One connection per person, however many token rows carry it.
     expect(found?.live_connections).toBe(2);
   });
 
@@ -222,8 +191,6 @@ describe("GET /v1/oauth/clients", () => {
     expect(found?.live_connections).toBe(0);
   });
 });
-
-// ── DELETE /v1/oauth/clients/{client_id} ──────────────────────────────────────
 
 describe("DELETE /v1/oauth/clients/{client_id}", () => {
   test("returns 401 without auth", async () => {
@@ -265,7 +232,6 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
     });
     expect(res.status).toBe(204);
 
-    // Row still exists but disabled_at is set
     const rows = await ctx.db
       .select({ disabled_at: mcpOauthClients.disabled_at })
       .from(mcpOauthClients)
@@ -295,20 +261,16 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
     const clientId = "disabled-auth-test-eee555";
     await seedClient(clientId);
 
-    // Disable it
     const del = await fetch(`${ctx.baseUrl}/v1/oauth/clients/${clientId}`, {
       method: "DELETE",
       headers: authHeader(),
     });
     expect(del.status).toBe(204);
 
-    // Try to authorize with the disabled client
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?client_id=${clientId}&redirect_uri=https://example.com/callback&response_type=code&code_challenge=abc&code_challenge_method=S256`,
       { redirect: "manual", headers: { accept: "application/json" } },
     );
-    // The provider's getClient filters isNull(disabled_at), so an unknown/disabled client
-    // returns 400 invalid_client.
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("invalid_client");

@@ -1,15 +1,3 @@
-// Unit tests for analytics.ts no-op contract.
-//
-// When analytics is disabled (`enabled=false`) or the endpoint is empty,
-// `emitRequestEvent` MUST issue ZERO requests. This is the
-// "no-overkill / no-external-when-disabled" gate: a config change that
-// accidentally re-enables the send path must trip this test.
-//
-// We use a real Bun.serve loopback rather than stubbing globalThis.fetch:
-// a global-fetch stub leaks into sibling suites under Bun's shared-process
-// concurrency (see the no_global_fetch_stub_in_tests invariant). The
-// loopback also exercises the real fetch path end to end.
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,9 +25,6 @@ let server: ReturnType<typeof Bun.serve>;
 let ingestUrl = "";
 let captured: CapturedRequest[] = [];
 
-// Wait until the loopback has captured `n` requests, or a short budget
-// elapses. The send path is fire-and-forget over real loopback I/O, so we
-// poll rather than await a single microtask.
 async function waitForCaptured(n: number, budgetMs = 500): Promise<void> {
   const deadline = Date.now() + budgetMs; // allow-wall-clock: poll deadline
   while (captured.length < n && Date.now() < deadline) {
@@ -47,7 +32,6 @@ async function waitForCaptured(n: number, budgetMs = 500): Promise<void> {
   }
 }
 
-// Give any (unexpected) async send a chance to land before asserting zero.
 async function settle(): Promise<void> {
   await new Promise((r) => setTimeout(r, 30)); // allow-wall-clock: I/O flush
 }
@@ -68,7 +52,6 @@ async function ensureConfig(): Promise<void> {
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     async fetch(req) {
       captured.push({

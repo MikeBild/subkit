@@ -90,11 +90,6 @@ describe("buildNextSuggestionFrame", () => {
   });
 
   test("frame ordering: appended after `completed` produces message → completed → next_suggestion", async () => {
-    // Pins the SSE wire contract documented in apps/engine/AGENTS.md
-    // and CHANGELOG.md: the next_suggestion frame fires AFTER the
-    // assistant `message` and the per-turn `completed` envelope, never
-    // before. Simulates the exact pattern in loop.ts after the
-    // `events.push({ type: "completed", ... })` call.
     const stream: TurnEvent[] = [
       { type: "message", role: "user", content: { text: "should I commit?" } },
       {
@@ -116,8 +111,6 @@ describe("buildNextSuggestionFrame", () => {
       "completed",
       "next_suggestion",
     ]);
-    // And the suggestion content carries the offer-parse result so a
-    // wire consumer can drive ghost-text without a second round-trip.
     if (frame.type !== "next_suggestion") throw new Error("unreachable");
     expect(frame.suggestion).toBe("commit and push it");
   });
@@ -144,16 +137,7 @@ describe("buildNextSuggestionFrame", () => {
     expect(modelCalls).toBe(0);
   });
 
-  // Polish B regression: AI SDK 6 emits assistant message content as a
-  // multi-part array `[{ type: "text", text: "..." }, { type: "tool_use", ... }]`.
-  // Before the extractor learned this shape, `content_shape_unrecognized`
-  // fired 16× per session and the offer-parser never saw the visible
-  // prose. The text part must flow through to offer detection.
   test("multi-part content array flattens text parts so the offer parser sees them", async () => {
-    // The Anthropic multi-part shape isn't in TurnEvent's narrow `content`
-    // type today (it expects `{ text }`). Cast through `unknown` so the
-    // test exercises the extractor's array branch without weakening the
-    // exported types.
     const multiPartEvents = [
       { type: "message", role: "user", content: { text: "build a workflow" } },
       {

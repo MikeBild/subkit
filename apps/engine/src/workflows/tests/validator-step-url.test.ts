@@ -1,10 +1,3 @@
-// The string fixtures below intentionally embed the literal
-// `${connector.<slug>.base_url}` placeholder syntax — that is the
-// shape the workflow validator must accept. Biome's
-// `noTemplateCurlyInString` rule fires on plain strings that contain
-// `${...}`, so we suppress the rule for this whole file (it is
-// declarative-fixture-only).
-//
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal placeholder fixtures
 import { describe, expect, test } from "bun:test";
 import { validateWorkflowDef } from "../validator.ts";

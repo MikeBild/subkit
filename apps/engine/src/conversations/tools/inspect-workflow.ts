@@ -1,18 +1,3 @@
-// inspect_workflow — read multiple sections + per-step config and
-// captured results from the current draft in one call.
-//
-// API shape:
-//   sections: ["instruction" | "input_schema" | "output_schema" |
-//              "output_transform" | "payload" | "response_filters" |
-//              "execution_guards"]
-//   steps:    [{ stepId, include: ["config" | "result" |
-//                                   "data_selector" | "instruction"] }]
-//
-// Authoring loops produced 30+ iterations of update_param when the LLM
-// guessed scope paths instead of reading the actual captured shape.
-// inspect_workflow returns config + captured result side-by-side so the
-// next patch is authored against the real shape, not an imagined one.
-
 import { z } from "@hono/zod-openapi";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { deriveOutputBehavior } from "../../workflows/output-behavior.ts";
@@ -72,10 +57,6 @@ export const inspectWorkflowTool: ConversationTool = {
     const args = Input.parse(rawArgs);
     const draft = ctx.getDraft();
     const workflow = getWorkflowDraft(draft);
-    // Build the captured-results lookup. The canonical surface is
-    // `latest_preview.step_traces` populated by dry_run_workflow /
-    // run_workflow — one entry per step with output_preview,
-    // raw_preview, and scope_at_step.
     const previewSteps = (() => {
       const latest = draft.latest_preview as
         | { step_traces?: Array<Record<string, unknown>> }
@@ -101,17 +82,7 @@ export const inspectWorkflowTool: ConversationTool = {
             result.instruction = workflow.description ?? null;
             break;
           case "input_schema": {
-            // Raw declared schema (may be absent — that is the whole point of
-            // the payload-first idiom).
             result.input_schema = wf.input_schema ?? null;
-            // Payload-first (D4): surface the RESOLVED input contract the
-            // run/dry-run actually present — declared `input_schema`, else the
-            // sample-derived tier, else the structural synth — carrying its
-            // real required-list and the tier that won. Plus the literal
-            // `input_schema_sample` it can be derived from. Lets the model see
-            // WHAT a run will require (and whether that is a real declared/
-            // sampled shape or a best-effort structural guess) instead of
-            // inferring it from the raw declared schema alone.
             const contract = resolveWorkflowInputContract(wf as unknown as WorkflowDef);
             result.input_contract = contract
               ? {
@@ -129,22 +100,9 @@ export const inspectWorkflowTool: ConversationTool = {
             break;
           case "output_transform":
             result.output_transform = wf.output_transform ?? null;
-            // Derived hint so the LLM doesn't infer the public-output
-            // contract from the absence of `output_transform`. See
-            // `apps/engine/src/workflows/output-behavior.ts` for the
-            // mapping to the engine's evaluation branches (single
-            // source of truth so CLI preview + diagnose_latest_execution
-            // can reuse it). Stops the misdiagnosis from session
-            // 0498925e: "workflow doesn't define an output_transform,
-            // so output is null."
             result.output_behavior = deriveOutputBehavior(wf);
             break;
           case "payload": {
-            // Prefer the schema sample (declared canonical input).
-            // When absent, fall back to the most recent dry_run /
-            // run input persisted on latest_preview.input — gives
-            // the LLM a concrete payload to author against without
-            // requiring the user to maintain input_schema_sample.
             const samplePayload = wf.input_schema_sample;
             const recentInput = (draft.latest_preview as { input?: unknown } | null | undefined)
               ?.input;
@@ -189,8 +147,6 @@ export const inspectWorkflowTool: ConversationTool = {
         for (const inc of req.include) {
           switch (inc) {
             case "config": {
-              // Strip transient fields from the step itself; everything
-              // else IS the step config in the flattened shape.
               const { id: _id, kind: _kind, ...config } = step as Record<string, unknown>;
               entry.config = config;
               entry.kind = step.kind ?? null;

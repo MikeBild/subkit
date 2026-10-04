@@ -1,10 +1,3 @@
-// OAuthWaitView ↔ poll-loop integration.
-//
-// Drives the component against the in-process fake-oauth server so we
-// exercise the real fetch pipeline (URL formation, JSON encoding,
-// status mapping). Component state transitions: launching → waiting
-// → connected (or failed).
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
 import {
@@ -42,8 +35,6 @@ describe("integration: OAuthWaitView poll loop", () => {
       </ThemeProvider>,
     );
     try {
-      // OAuth poll loop schedules ticks via setTimeout (macrotask).
-      // ui.waitFor's sleepMs opts in to wall-clock progress for this
       // case via the test helper's `allow-wall-clock` annotation.
       await ui.waitFor(() => credential !== null, { tries: 100, sleepMs: 10 });
       expect(credential).not.toBeNull();
@@ -68,7 +59,6 @@ describe("integration: OAuthWaitView poll loop", () => {
       </ThemeProvider>,
     );
     try {
-      // Same backoff caveat as the complete-poll test — needs sleepMs.
       await ui.waitFor((t) => t.includes("user_denied"), { tries: 100, sleepMs: 10 });
       expect(ui.text()).toContain("user_denied");
     } finally {

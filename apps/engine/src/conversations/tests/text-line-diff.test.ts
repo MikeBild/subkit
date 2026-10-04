@@ -1,5 +1,3 @@
-// Pure-function tests for the line-diff utility.
-
 import { describe, expect, test } from "bun:test";
 import { canonicalJson, computeLineDiff } from "../text-line-diff.ts";
 

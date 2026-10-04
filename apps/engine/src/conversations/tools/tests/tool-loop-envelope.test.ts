@@ -1,11 +1,3 @@
-// Bug 3a — the loop-breaker must return a STRUCTURED envelope with
-// next_best_actions (ask_user_choice, ask_user_text) so the LLM can
-// recover gracefully instead of cutting mid-sentence with "I've hit a
-// tool call limit. Let me analyze..." (session 09219b6d). Also pins
-// the new tenant_read cap of 6 (raised from 3) so tools like
-// inspect_execution_step can be called enough times to debug a
-// non-trivial workflow without the mid-debug abort.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
@@ -80,11 +72,6 @@ describe("adaptive loop-breaker structured envelope", () => {
     );
     const inspect = wrapped.inspect_execution_step;
     expect(inspect).toBeDefined();
-    // Reads are exempt from the per-tool breaker. Even 10 calls with
-    // IDENTICAL args must not trip the breaker — the LLM legitimately
-    // re-reads state to ground its next move. The tool may still
-    // return its own typed error (execution_not_found), but never
-    // tool_loop_detected.
     for (let i = 1; i <= 10; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (inspect!.execute as any)(
@@ -129,7 +116,6 @@ describe("adaptive loop-breaker structured envelope", () => {
     );
     const editPatch = wrapped.edit_workflow_patch;
     expect(editPatch).toBeDefined();
-    // Same args three times in a row → trips on the 3rd.
     const sameArgs = {
       patches: [
         {
@@ -153,7 +139,6 @@ describe("adaptive loop-breaker structured envelope", () => {
       const data = result.data as { error_code?: string };
       expect(data.error_code).not.toBe("tool_loop_detected");
     }
-    // 3rd identical call trips.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result3 = await (editPatch!.execute as any)(sameArgs, {
       toolCallId: "t3",
@@ -202,9 +187,6 @@ describe("adaptive loop-breaker structured envelope", () => {
       {},
     );
     const editPatch = wrapped.edit_workflow_patch;
-    // Five edit_workflow_patch calls with DIFFERENT step ids — the
-    // canonical incremental build. The args differ each time so no
-    // repeat is detected.
     for (let i = 1; i <= 5; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (editPatch!.execute as any)(

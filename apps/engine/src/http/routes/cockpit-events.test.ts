@@ -1,7 +1,3 @@
-// GET /v1/cockpit/events/stream — what a signed-in reader hears, and what it
-// never does: another tenant's rows, a family it may not read, any payload
-// field that is not an id, or history from before it connected.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { and, asc } from "drizzle-orm";
@@ -52,7 +48,6 @@ function openStream(principal: ResolvedPrincipal, headers: Record<string, string
   });
 }
 
-/** Read frames until `until` holds or the budget is spent, then hang up. */
 async function frames(
   res: Response,
   until: (seen: Frame[]) => boolean,
@@ -63,8 +58,6 @@ async function frames(
   const seen: Frame[] = [];
   let buffer = "";
   const deadline = Date.now() + budgetMs; // allow-wall-clock: bounded SSE read
-  // One read in flight at a time: a read abandoned to a timeout would still
-  // take the next chunk, and the frame in it would be lost.
   let pending: ReturnType<typeof reader.read> | null = null;
   try {
     // allow-wall-clock: bounded SSE read
@@ -92,7 +85,6 @@ async function frames(
     }
   } finally {
     await reader.cancel().catch(() => {});
-    // Hang up as a browser would: the server loop ends on the request's abort.
     for (const controller of open.splice(0)) controller.abort();
   }
   return seen;
@@ -122,7 +114,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // A hung-up stream finishes the poll it is in before it sees the abort.
   await Bun.sleep(500); // allow-wall-clock: drain the last poll before the pool closes
   await ctx.cleanup();
 });
@@ -134,7 +125,6 @@ describe("GET /v1/cockpit/events/stream", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const pending = frames(res, (seen) => seen.some((f) => f.event === "execution.succeeded"));
-    // Written after the stream opened: these are the ones it may carry.
     await Bun.sleep(400); // allow-wall-clock: let the stream announce its tail first
     await emit(tenantB, "execution.status", "execution.failed", { execution_id: EXECUTION });
     await emit(tenantA, "execution.status", "execution.succeeded", { execution_id: EXECUTION });
@@ -142,7 +132,6 @@ describe("GET /v1/cockpit/events/stream", () => {
     expect(seen[0]?.event).toBe("hello");
     expect(seen[0]?.data).toMatchObject({ version: OPENAPI_INFO.version, truncated: false });
     const changes = seen.filter((f) => f.event !== "hello" && f.event !== "ping");
-    // No replay of the earlier queued row, and nothing from tenant B.
     expect(changes.map((f) => f.event)).toEqual(["execution.succeeded"]);
   });
 

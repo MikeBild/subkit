@@ -1,12 +1,3 @@
-// Boundary test: an `ask_user_*` call whose arguments carry a literal
-// `ß` (the model double-encoded non-ASCII) is stored readable — both in
-// the tool-call row the cockpit renders options and placeholders from, and in
-// the elicitation row every surface renders the question from. The answer the
-// user types is stored as given.
-//
-// The call goes through the SDK wrapper, the one place model arguments enter;
-// calling the tool's own `execute` would skip that layer.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
@@ -103,7 +94,6 @@ describe("ask_user_text with a double-encoded question", () => {
       .where(eq(conversationElicitations.conversation_id, conversation_id));
     expect(row?.input).toMatchObject({ question: readable, placeholder: "Straße" });
 
-    // The answer is the user's own text: an escape they type stays literal.
     const answer = "Gr\\u00fc\\u00dfe";
     await resolveElicitation(
       {

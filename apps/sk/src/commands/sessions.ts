@@ -1,11 +1,3 @@
-// sk session commands — ls / show / rename / rm.
-//
-// Thin wrappers over `sessions.ts`. They read the local cache at
-// `~/.sk/sessions/*.json`; the engine-side conversation rows are
-// unaffected. `rm` only removes the local file — on the server the
-// conversation row is preserved (history remains queryable), it just
-// won't appear in the user's sk cache anymore.
-
 import { existsSync, unlinkSync } from "node:fs";
 import { defineCommand } from "citty";
 import Fuse from "fuse.js";
@@ -55,7 +47,6 @@ function printSessionRows(rows: SessionRow[], totalMatched: number): void {
   }
 }
 
-/** Pure fuzzy ranking over cached session metadata (title/alias/id). */
 export function rankSessions<T extends SessionRow>(rows: T[], query: string, limit: number): T[] {
   const fuse = new Fuse(rows, {
     threshold: 0.4,
@@ -175,14 +166,12 @@ const renameCommand = defineCommand({
       process.stderr.write(`${pc.red("not found")}: ${args.ref}\n`);
       process.exit(1);
     }
-    // Reject obviously-bad aliases.
     if (!/^[a-z0-9_-]{1,48}$/.test(args.alias)) {
       process.stderr.write(
         `${pc.red("invalid alias")}: must match /^[a-z0-9_-]{1,48}$/ (lowercase, digits, dash, underscore)\n`,
       );
       process.exit(1);
     }
-    // Refuse a collision with an existing alias on the same profile.
     const collision = listSessionMetadata({
       engine_url: profile.engine_url,
       tenant_id: profile.active_tenant_id ?? null,
@@ -222,11 +211,10 @@ const rmCommand = defineCommand({
     process.stdout.write(
       `${pc.green("ok")} removed ${meta.conversation_id.slice(0, 8)}${meta.alias ? ` (${meta.alias})` : ""} from local cache\n`,
     );
-    // Reassure the user the server row is still there.
     process.stdout.write(
       `${pc.dim("the server-side conversation row is preserved; use `sk -r ")}${meta.conversation_id.slice(0, 8)}${pc.dim("` to reattach")}\n`,
     );
-    void loadSessionMetadata; // tsc: keep the re-export live
+    void loadSessionMetadata;
   },
 });
 
@@ -241,6 +229,4 @@ export const sessionsCommand = defineCommand({
   },
 });
 
-// Also export the subcommands directly so `sk ls` / `sk show` etc.
-// can be mounted as top-level aliases.
 export { lsCommand as skLs, renameCommand as skRename, rmCommand as skRm, showCommand as skShow };

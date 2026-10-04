@@ -14,9 +14,6 @@ function sha256Hex(s: string): string {
 }
 
 function mintKey(): { plaintext: string; prefix: string; hash: string } {
-  // Deterministic literal — randomBytes is banned in *.test.ts by the
-  // determinism gate. One member key per file, inserted into this file's own
-  // isolated test DB, so a fixed value is unique where it matters.
   const plaintext = "wf_live_negres_member_0001";
   return {
     plaintext,
@@ -106,12 +103,6 @@ describe("mcp resources", () => {
     );
   });
 
-  // Regression guard for the MCP round-trip failure: when a `wf.*`
-  // tool result is offloaded the envelope hands the client a
-  // `fixture://<id>` URI, and the client MUST be able to read it back via
-  // `resources/read`. Before this test the read path threw
-  // `-32603: unsupported uri: fixture://...` and the offloaded body was
-  // unreachable from outside the conversation surface.
   test("read fixture resource (offloaded wf.* payload round-trip)", async () => {
     const payload = {
       page_id: "87263947",
@@ -203,9 +194,6 @@ describe("mcp resources", () => {
   });
 
   test("operator health digest is neither enumerated nor readable without stats:read", async () => {
-    // Insert a member-role user. The member role excludes stats:read
-    // (see apps/engine/src/rbac/seed.ts memberPermissionFilter), so the
-    // digest must not appear in listResources and readResource must throw.
     const [memberUser] = await suite.http.db
       .insert(users)
       .values({
@@ -237,11 +225,9 @@ describe("mcp resources", () => {
     await memberClient.connect(transport as unknown as Transport);
 
     try {
-      // The digest URI must not appear in the member's resource list.
       const memberUris = await listAllResourceUris(memberClient);
       expect(memberUris).not.toContain("subkit://operator/health-digest");
 
-      // A direct read must be rejected with a permission_denied JSON-RPC error.
       await expect(
         memberClient.readResource({ uri: "subkit://operator/health-digest" }),
       ).rejects.toThrow();
@@ -249,7 +235,6 @@ describe("mcp resources", () => {
       await memberClient.close();
     }
 
-    // Confirm the gate is permission-based: admin sees the digest URI.
     const adminClient = await suite.connect();
     const adminUris = await listAllResourceUris(adminClient);
     expect(adminUris).toContain("subkit://operator/health-digest");
@@ -280,7 +265,6 @@ describe("mcp resources", () => {
     expect(read.contents.length).toBe(1);
     const content = read.contents[0] as { mimeType?: string; text?: string };
     expect(content.mimeType).toBe("text/markdown");
-    // Metadata rides along as a leading comment; the actual knowledge follows.
     expect(content.text).toContain(`id: ${knowledge_source.id}`);
     expect(content.text).toContain("Run the deploy script.");
     expect(content.text).toContain("/runbooks/deploy.md");
@@ -289,9 +273,6 @@ describe("mcp resources", () => {
 
   test("knowledge:// read pages past 200 chunks without truncation (loop advances)", async () => {
     const { upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts");
-    // 250 small files → 250 chunks (> the 200-per-page limit) but well
-    // under the 1 MiB cap, so the pagination loop must advance offset
-    // and terminate with the FULL content.
     const files = Array.from({ length: 250 }, (_, i) => ({
       path: `notes/n${String(i).padStart(3, "0")}.md`,
       content: `note ${i}: compact unique body ${i}.`,
@@ -318,9 +299,6 @@ describe("mcp resources", () => {
 
   test("knowledge:// read caps at 1 MiB with a truncation notice", async () => {
     const { upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts");
-    // ~1.5 MiB across three files — must exceed the 1 MiB read cap.
-    // Every paragraph is position-unique so neither the whole-file dedup
-    // nor the per-chunk fingerprint dedup collapses the volume.
     const big = (label: string) =>
       Array.from(
         { length: 8_000 },
@@ -350,9 +328,6 @@ describe("mcp resources", () => {
     expect(content.text).toContain("read_knowledge");
   });
 
-  // B1 — MCP 2025-11-25 compliance: resource-not-found MUST be JSON-RPC
-  // error code -32002 (not the generic internal-error -32603). Each URI
-  // family has its own handler; all must emit the same code.
   test("B1: unknown file:// URI returns JSON-RPC error code -32002", async () => {
     const client = await suite.connect();
     const err = await client
@@ -385,14 +360,10 @@ describe("mcp resources", () => {
     expect((err as { code?: number }).code).toBe(-32002);
   });
 
-  // P2 — resources/unsubscribe succeeds (the per-session subscribed-Set is
-  // updated server-side; the MCP spec requires an empty result).
   test("P2: resources/unsubscribe removes a previously-subscribed URI and returns empty", async () => {
     const { id } = await suite.seedConnector({ slug: "unsub-probe" });
     const client = await suite.connect();
-    // Subscribe first so there is something to unsubscribe.
     await client.subscribeResource({ uri: `connector://${id}` });
-    // Unsubscribe — must not throw and must return an empty result.
     const res = await client.unsubscribeResource({ uri: `connector://${id}` });
     expect(res).toBeDefined();
   });

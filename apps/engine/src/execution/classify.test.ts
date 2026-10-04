@@ -1,11 +1,3 @@
-// Unit truth-table for isTransientRunResult.
-// Pure function — no database, no network.
-//
-// Codifies the contract from classify.ts:
-//   - transient transport/rate-limit codes → retryable
-//   - timeout is explicitly EXCLUDED (terminal outcome)
-//   - deterministic failures (auth, 4xx, schema) → not retryable
-
 import { describe, expect, test } from "bun:test";
 import { isTransientRunResult } from "./classify.ts";
 import type { RunResult } from "./types.ts";
@@ -58,8 +50,6 @@ describe("isTransientRunResult — timeout is NOT retryable", () => {
   });
 
   test("failed status with step_timeout code → not transient", () => {
-    // A run that records the timeout code but surfaces failed status
-    // must still not retry — the budget is gone.
     expect(isTransientRunResult(failedRun("step_timeout"))).toBe(false);
   });
 });

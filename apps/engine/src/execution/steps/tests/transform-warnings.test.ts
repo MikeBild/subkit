@@ -1,13 +1,6 @@
-// Unit tests for detectTransformWarnings — the silent-data-loss emit that was
-// specified in execution/types.ts + consumed by the dry-run repair loop but
-// never wired. Covers the two production failure shapes that motivated the
-// codes: a renderer that returns empty for every input (Notion blocks), and a
-// projection that drops a field while mapping (the dropped-`resources` shape).
-
 import { describe, expect, test } from "bun:test";
 import { detectTransformWarnings } from "../transform-warnings.ts";
 
-// Scope envelope mirrors the engine: scope[stepId] = { data: <output> }.
 const env = (data: unknown) => ({ data });
 
 describe("transform_empty_extraction", () => {

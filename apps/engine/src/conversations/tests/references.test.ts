@@ -1,9 +1,3 @@
-// Pin the `@`-mention contract: a reference resolves per turn with tenant +
-// RBAC scoping into a narrow projection; a missing or withdrawn object is
-// reported with one truthful sentence; the persisted user row carries the
-// references (label scrubbed) and, after resolution, the unresolved subset;
-// the transcript projection hands both to the client.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -96,7 +90,6 @@ describe("resolveReferences", () => {
     expect(out.block).toContain(`WORKFLOW @customer-sync (id: ${workflowId})`);
     expect(out.block).toContain(`"lifecycle": "active"`);
     expect(out.block).toContain(`CONNECTOR @${connectorSlug} (id: ${ctx.connector_id})`);
-    // Auth TYPE is fine; a credential value or config blob is not.
     expect(out.block).toContain(`"auth_type"`);
     expect(out.block).not.toContain(`"config"`);
     expect(out.block).not.toContain(`"dsn"`);
@@ -169,7 +162,6 @@ describe("resolveReferences", () => {
     expect(denied.outcomes[0]?.outcome).toBe("missing_or_forbidden");
     const strip = (s: string | null) => (s ?? "").replace(/\(id: [^)]+\)/g, "(id)");
     expect(strip(denied.block)).toBe(strip(missing.block));
-    // The projection never leaks to a principal that may not read it.
     expect(denied.block).not.toContain(`"lifecycle"`);
   });
 
@@ -227,8 +219,6 @@ describe("references on the persisted user row", () => {
       ctx.testDb.db,
     );
     const conversation_id = created.conversation.id;
-    // The label regex at the HTTP boundary rejects this; the persist
-    // chokepoint scrubs anyway (defense in depth for non-HTTP callers).
     const secretLabel = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
     expect(scrubString(secretLabel)).not.toBe(secretLabel);
     await appendUserMessage(
@@ -280,7 +270,6 @@ describe("references on the persisted user row", () => {
     expect(JSON.stringify(content)).not.toContain(secretLabel);
     expect(content.unresolved_references).toEqual(unresolved);
 
-    // The transcript projection hands both lists to the client on the text part.
     const ui = toMessageParts(
       {
         id: last.id,

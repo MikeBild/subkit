@@ -1,12 +1,3 @@
-// Schedule lifecycle over the HTTP surface.
-//
-//   * POST /v1/schedules creates — and upserts on (tenant, workflow),
-//     preserving the one-schedule-per-workflow invariant.
-//   * PUT /v1/schedules/:id patches cron / paused; DELETE removes.
-//   * Archiving a workflow tears down its schedule rows (same contract
-//     as delete) — an archived workflow must not keep live-looking
-//     bindings that only a reconciler filter stops from firing.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -107,7 +98,7 @@ describe("schedules HTTP write surface", () => {
       input: unknown;
       upsert_status: string;
     };
-    expect(row2.id).toBe(row.id); // upsert, not a second fire time
+    expect(row2.id).toBe(row.id);
     expect(row2.cron).toBe("30 9 * * *");
     expect(row2.execution_mode).toBe("dev");
     expect(row2.input).toBe("scalar-input");
@@ -258,7 +249,6 @@ describe("archive tears down schedule bindings", () => {
       );
     expect(audits.length).toBe(1);
 
-    // The list surface agrees — nothing live-looking remains.
     const list = await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, {
       headers: headers(),
     });
@@ -329,11 +319,6 @@ test("persisted admission holds are readable and suppressed for paused schedules
 });
 
 test("a held schedule reports the prepared version waiting beside the running one", async () => {
-  // Three production workflows were blocked at once with the repair already
-  // saved as a draft. The decision surface could not see it, so the only offer
-  // it could make was to approve the running version — the very version that
-  // could not be bound. This is the field that lets the reader be told the
-  // truth: something is prepared, and putting it into service is the next step.
   const wf = await createWorkflow("prepared-http");
   const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
     method: "POST",
@@ -348,8 +333,6 @@ test("a held schedule reports the prepared version waiting beside the running on
     (await (
       await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, { headers: headers() })
     ).json()) as { schedules: Array<{ prepared_version_id: string | null }> };
-  // Activation clears the draft pointer, so a workflow with nothing waiting
-  // must not claim one — otherwise every row would carry the notice.
   expect((await read()).schedules[0]?.prepared_version_id).toBeNull();
   const draft = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}/draft`, {
     method: "PUT",

@@ -1,22 +1,3 @@
-// Configurable HMAC verifier.
-//
-// For senders that sign with a shared-secret HMAC but use neither the
-// Standard Webhooks, GitHub nor Stripe header layout. The binding's
-// `native_verifier_config.hmac` object describes the sender's scheme:
-//
-//   * signature_header  header carrying the signature
-//   * signature_prefix  literal prefix stripped before decoding, e.g. "v1="
-//   * encoding          "hex" | "base64" digest encoding
-//   * signed_payload    template of the signed string; placeholders
-//                       {timestamp}, {id} and {body} (required)
-//   * timestamp_header  required when the template uses {timestamp};
-//                       enables the replay window (tolerance_seconds)
-//   * id_header         stable per-delivery id used for replay dedup
-//   * type_header / type_field  optional event type source (header, or a
-//                       top-level field of the JSON body)
-//
-// The raw body is signed exactly as received — never re-serialized.
-
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { logger } from "../../../logging/logger.ts";
@@ -78,7 +59,6 @@ export type HmacVerifierConfig = z.infer<typeof HmacVerifierConfig>;
 
 function decodeDigest(value: string, encoding: "hex" | "base64"): Buffer | null {
   if (encoding === "hex") {
-    // Buffer.from(…, "hex") silently truncates at the first invalid pair.
     if (value.length !== 64 || !/^[0-9a-fA-F]+$/.test(value)) return null;
     return Buffer.from(value, "hex");
   }
@@ -94,9 +74,7 @@ function eventType(input: VerifyInput, cfg: HmacVerifierConfig): string {
       const parsed = JSON.parse(input.rawBody) as Record<string, unknown>;
       const value = parsed?.[cfg.type_field];
       if (typeof value === "string" && value.length > 0) return value;
-    } catch {
-      // Non-JSON body: the type stays unknown.
-    }
+    } catch {}
   }
   return "unknown";
 }

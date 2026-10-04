@@ -1,8 +1,3 @@
-// Worker for the `knowledge.ingest` queue.
-//
-// The job payload carries IDs + upload content. The handler calls
-// ingestKnowledgeSource from the knowledge service.
-
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
@@ -22,8 +17,6 @@ export interface IngestKnowledgeJob {
   content: string;
   mime?: string;
   actor_id?: string | null;
-  /** A scheduled refresh: read the source's address again instead of
-   *  ingesting `content`. Only address (url) sources can be read again. */
   read_address_again?: boolean;
 }
 
@@ -32,8 +25,6 @@ export interface RegisterIngestKnowledgeOptions {
   db: Db;
 }
 
-/** Process one `knowledge.ingest` job. Exported as the unit seam — the
- *  worker loop below and the DB-backed tests both drive it. */
 export async function processIngestKnowledgeJob(
   job: Job<IngestKnowledgeJob>,
   db: Db,
@@ -97,11 +88,6 @@ export async function processIngestKnowledgeJob(
       error: message,
       duration_ms: Date.now() - started,
     });
-    // Surface the failure on the source row so the operator sees it in
-    // `sk knowledge-sources list/get` instead of only in the logs. The
-    // rethrow below keeps pg-boss retry semantics; a later successful
-    // ingest clears both fields again (service.ts sets status='active',
-    // last_error=null).
     await markIngestFailed(db, data.tenant_id, data.knowledge_source_id, message);
     throw err;
   }
@@ -139,8 +125,6 @@ async function markIngestFailed(
       db,
     );
   } catch (markErr) {
-    // Best-effort: failing to mark the row must not mask the original
-    // ingest error (the rethrow above carries it to pg-boss).
     log.queue.job.failed({
       msg: "knowledge.ingest failed to mark source row as error",
       queue: INGEST_KNOWLEDGE_QUEUE,

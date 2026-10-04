@@ -1,44 +1,3 @@
-// `request_connector_reauth` — recovery affordance for a dead connector
-// credential.
-//
-// When a connector's credential goes stale (OAuth refresh_token revoked,
-// static API key rotated upstream, login lapsed), the connector is flagged
-// `needs_reauth` and authed calls come back `health:auth_failed`. This tool
-// turns that dead-end into a one-click fix:
-//
-//   - OAuth2 (authorization_code): mints a single-use grant URL
-//     (skog_… token, 10-min TTL) that the operator can open in a browser.
-//     The link opens the connector's own sign-in route — the one its
-//     `sign_in` names: `/oauth/start` for a web service, `/mcp/authorize`
-//     for an MCP server.
-//     The URL is presented verbatim on its own line — never wrapped in
-//     markdown, never shortened. Opening it redirects to the provider
-//     sign-in. The grant is single-use; if it expires, call this tool again.
-//
-//   - OAuth2 (client_credentials_json): performs the M2M token exchange
-//     synchronously and returns {status:"reauthorized"} — no browser needed.
-//
-//   - Non-OAuth (basic/bearer/header/query) on sk-cli/web: binds a re-issue
-//     draft and collects the new secret via ask_user_form; rotates in place.
-//
-//   - Non-OAuth (basic/bearer/header/query) over MCP: mints a single-use
-//     credential-setup grant and pauses on a URL-mode elicitation. The URL is
-//     sent server→client, never returned as model text. The browser form keeps
-//     the secret outside MCP form/chat payloads and rotates in place.
-//
-// Resolution:
-//   - `connector_id` (uuid) takes precedence.
-//   - `slug` resolves to the connector via the connectors list when
-//     `connector_id` is omitted.
-//   - both omitted ⇒ `invalid_input` asking for one.
-//
-// RBAC: `connector:write` on the target connector — the non-OAuth path stages
-// a credential rotation, so this is a write-class affordance (resolution
-// pattern still mirrors `call_connector`: resolveConversationPrincipal + can()).
-//
-// This is NOT a skill-gated tool: a broken credential can surface in any
-// conversation, so the recovery path must always be reachable.
-
 import { z } from "@hono/zod-openapi";
 import { mintCredentialSetupGrantUrl } from "../../connectors/credential-setup-grant.ts";
 import { beginConnectorOAuthDance } from "../../connectors/oauth-start.ts";
@@ -81,8 +40,6 @@ function structuredError(
   };
 }
 
-// ---- the tool --------------------------------------------------------------
-
 export const requestConnectorReauthTool: ConversationTool = {
   name: "request_connector_reauth",
   description:
@@ -100,10 +57,6 @@ export const requestConnectorReauthTool: ConversationTool = {
   ],
   example_input: { slug: "digitalocean" },
   inputSchema: RequestConnectorReauthInput,
-  // draft_write: the non-OAuth path calls ctx.setDraft to stage a credential
-  // re-issue (same as probe_connector_draft / start_connector_*). The actual
-  // credential write happens downstream through the elicitation → auto-persist
-  // path, which carries its own gate.
   category: "draft_write",
   authoring_resource: "connector",
   permission: {
@@ -130,7 +83,6 @@ export const requestConnectorReauthTool: ConversationTool = {
       );
     }
 
-    // Resolve slug → id when connector_id is omitted.
     let connectorId = args.connector_id ?? null;
     if (!connectorId && args.slug) {
       const { rows: list } = await ctx.engineClient.connectors.list();
@@ -143,9 +95,6 @@ export const requestConnectorReauthTool: ConversationTool = {
       connectorId = match.id;
     }
 
-    // Narrowed: the early guard above rejects the both-missing case, and slug
-    // resolution either sets connectorId or returns. This makes connectorId a
-    // plain string for the rest of the flow (no non-null assertions).
     if (!connectorId) {
       return structuredError(
         "invalid_input",
@@ -153,11 +102,6 @@ export const requestConnectorReauthTool: ConversationTool = {
         { next_best_actions: ["find_connector", "list_connectors"] },
       );
     }
-
-    // RBAC (`connector:write` on the target connector — the non-OAuth path
-    // stages a credential rotation, so read is not enough) is enforced
-    // centrally via the `permission` descriptor before execute runs; the
-    // resolver mirrors the slug→id lookup above. See permission-gate.ts.
 
     const connector = await getConnector(ctx.tenant_id, connectorId, ctx.db);
     if (!connector) {
@@ -168,30 +112,13 @@ export const requestConnectorReauthTool: ConversationTool = {
 
     const { method } = buildReauthUrl(connector);
 
-    // Resolve the OAuth grant type up front — it decides browser vs. machine
-    // vs. in-chat re-issue.
     const oauthCfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenant_id, connector);
     const grantType = oauthCfg?.grant_type ?? null;
 
-    // `method` follows the connector's `sign_in`: a connector with no browser
-    // sign-in is re-issued, not signed in. That includes Cognito
-    // USER_PASSWORD_AUTH (`cognito_user_password`), which is OAuth2-typed but
-    // has no authorization endpoint — the engine stores only the refresh
-    // token + username, never the password, so the repair is the SAME in-chat
-    // re-issue used for basic/bearer/etc.: re-collect email + password.
     const needsInteractiveReissue = method === "portal_setup";
 
-    // Non-OAuth (basic/bearer/header/query) connectors — and password grants
-    // like Cognito USER_PASSWORD_AUTH — have no working click-through flow.
-    // Repair IN CHAT: bind the saved connector into a re-issue draft, then have
-    // the LLM collect the new secret via a masked `ask_user_form`. The
-    // submission flows through the existing auto-persist re-issue path
-    // (`saveConnectorAtomic` → `upsertCredential` → `clearConnectorReauth`),
-    // rotating the credential on the SAME connector id — no delete+recreate,
-    // no orphaned workflows.
     if (needsInteractiveReissue) {
       const isCognito = grantType === "cognito_user_password";
-      // A `none`-auth connector has no credential to rotate.
       if (connector.auth_type === "none") {
         return structuredError(
           "no_credential_to_reissue",
@@ -200,17 +127,6 @@ export const requestConnectorReauthTool: ConversationTool = {
         );
       }
 
-      // D7: over MCP the in-chat `ask_user_form` credential re-issue is
-      // NOT reachable — a secret must never be collected as chat text
-      // there (see `ask-user/common.ts`). Route to a real secure
-      // credential-setup page instead: mint a single-use grant URL
-      // (`/v1/connectors/:id/credentials/setup?grant=sksg_…`), presented
-      // verbatim for the operator to open in a browser. That endpoint is
-      // token-gated and unauthenticated (mirrors the OAuth `/oauth/start`
-      // grant flow) — unlike the API-key-protected `/credentials` route,
-      // it actually renders a form. On sk-cli / web the masked in-chat
-      // form stays (a local operator may paste the secret), so this
-      // branch is scoped to `surface === "mcp"`.
       if (ctx.surface === "mcp") {
         const grantResult = await mintCredentialSetupGrantUrl(ctx.db, {
           tenant_id: ctx.tenant_id,
@@ -292,8 +208,6 @@ export const requestConnectorReauthTool: ConversationTool = {
       };
     }
 
-    // Machine-to-machine (client_credentials_json): run the exchange
-    // synchronously — no browser dance needed.
     if (grantType === "client_credentials_json") {
       const redirect_uri = buildOAuthRedirectUri();
       if (!redirect_uri) {
@@ -335,7 +249,6 @@ export const requestConnectorReauthTool: ConversationTool = {
       }
     }
 
-    // Authorization-code OAuth2: mint a single-use grant URL (10-min TTL).
     const grantResult = await mintOAuthStartGrantUrl(ctx.db, {
       tenant_id: ctx.tenant_id,
       connector,
@@ -352,7 +265,6 @@ export const requestConnectorReauthTool: ConversationTool = {
           "engine has no resolvable public origin — set server.public_base_url",
         );
       }
-      // no_browser_flow — shouldn't reach here since we handled ccj above
       return structuredError("no_browser_flow", "connector does not use a browser OAuth flow");
     }
 

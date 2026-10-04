@@ -1,7 +1,3 @@
-// Per-conversation tool policy overrides:
-//   GET /v1/conversations/{id}/tool-policies
-//   PUT /v1/conversations/{id}/tool-policies
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { getConversation, getToolPolicies, setToolPolicy } from "../../../conversations/index.ts";
@@ -51,7 +47,6 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    // Confirm the conversation belongs to the tenant before reading.
     const detail = await getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
     const policies = await getToolPolicies(db, principal.tenant_id, id);
@@ -65,10 +60,6 @@ export function registerToolPoliciesRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const detail = await getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
-    // The service-layer setToolPolicy owns the audit emission and
-    // runs each change inside a transaction. The route just walks
-    // the request body and forwards the actor identity / request
-    // source so the audit row carries the right context.
     for (const [toolName, mode] of Object.entries(body.policies)) {
       await setToolPolicy(db, principal.tenant_id, id, toolName, mode, {
         actor_type: principal.kind,

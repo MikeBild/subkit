@@ -1,15 +1,3 @@
-// Profile tab — read-only identity card from skBootstrap plus an
-// inline action menu.
-//
-// Actions:
-//   n  Start a new session  (clears the active conversation id)
-//   t  Switch tenant         (writes config.active_tenant_id; restart applies)
-//   s  Sign out              (clears the api_key in config; restart applies)
-//
-// Actions that mutate the on-disk profile use `saveProfile()` and emit
-// a "restart sk to apply" notice — the running REPL holds the previous
-// session state and can't be re-bootstrapped from inside the modal.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -18,20 +6,7 @@ import type { EngineClient } from "../../engine-client.ts";
 
 interface Props {
   client: EngineClient;
-  /**
-   * Optional action sink — when supplied, the tab forwards declarative
-   * action requests to the host (ink-app.tsx) which has access to
-   * session state. When omitted (e.g. running inside the standalone
-   * `sk settings` CLI), the tab still writes config but skips actions
-   * that need REPL-runtime cooperation.
-   */
   onAction?: (action: ProfileAction) => void;
-  /**
-   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
-   * ProfileTab owns Esc while the tenant picker is open so the outer
-   * shell (SinglePane / SettingsModal) doesn't dismiss the pane on
-   * the same Esc keystroke that closes the picker.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -110,14 +85,6 @@ export const ProfileTab: React.FC<Props> = ({ client, onAction, onInnerEscape })
     }
   };
 
-  // Defer the disk I/O off the render thread via `queueMicrotask`
-  // so a slow mount or antivirus hook on `~/.sk/config.json` doesn't
-  // hitch Ink's reconciler. The function still returns the updated
-  // profile synchronously to the caller — the disk write happens on
-  // the next microtask tick. `loadConfig` / `saveProfile` remain
-  // sync because every other caller in the CLI assumes synchronous
-  // semantics; switching this single call site is the lowest-cost
-  // mitigation.
   const persistTenant = (tenant_id: string): ResolvedProfile | null => {
     try {
       const cfg = loadConfig();

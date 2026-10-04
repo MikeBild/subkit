@@ -1,7 +1,3 @@
-// chained-workflow-pattern detector — reads the discovery envelopes
-// stashed by `discover_systems_from_files` and emits one Skill Candidate
-// per unique cross-system data flow.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
@@ -161,9 +157,6 @@ describe("detectChainedWorkflowPatterns", () => {
     expect(s.title).toContain("HubSpot");
     expect(s.title).toContain("charges");
     expect(s.body).toContain("Capability alignment is clean");
-    // Aligned + 1 envelope of evidence still yields low (count < 5),
-    // but the consistency ratio is 1.0. Confidence floor is "low" until
-    // the chain shows up in multiple envelopes — which we test below.
     expect(s.confidence).toBe("low");
   });
 
@@ -206,8 +199,6 @@ describe("detectChainedWorkflowPatterns", () => {
     }
     const signals = await detectChainedWorkflowPatterns(tenant_id, ctx.db);
     expect(signals).toHaveLength(1);
-    // 5 distinct envelopes + clean capability alignment ⇒ medium
-    // confidence (>= 5 evidence and >= 0.8 ratio).
     expect(signals[0]!.confidence).toBe("medium");
     expect(signals[0]!.evidence.length).toBeGreaterThanOrEqual(5);
   });

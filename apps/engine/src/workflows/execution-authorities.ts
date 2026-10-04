@@ -40,9 +40,7 @@ export const GrantWorkflowAuthoritySchema = z
     expected_manifest_digest: z.string().regex(/^[a-f0-9]{64}$/),
     execution_environment: z.enum(["dev", "prod"]),
     valid_from: z.string().datetime({ offset: true }),
-    // Null or absent: no end date — the approval stands until it is revoked.
     valid_until: z.string().datetime({ offset: true }).nullable().optional(),
-    // Null or absent: no run limit. Runs are still counted.
     max_runs: z.number().int().min(1).max(10_000).nullable().optional(),
     activation: z
       .object({ expected_current_version_id: z.string().uuid().nullable() })
@@ -55,8 +53,6 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-// Admitted runs must use these options, not caller overrides. Automatic
-// repair may prepare a new version but cannot replace the authorized version.
 export function workflowAuthorityExecutionOptions(environment: "dev" | "prod") {
   return {
     execution_mode: environment,
@@ -146,12 +142,6 @@ async function resolveGrantedAdmissionHolds(
   tx: Executor,
 ) {
   if (activeVersion !== authority.workflow_version_id) return;
-  // A hook's deliveries only ever run in production. A live grant is what its
-  // hold was waiting for; the next delivery is the first run, so nothing else
-  // moves. Every hook of the workflow is locked first, held or not: a refusal
-  // that judged the hook before this grant committed still holds its row, and
-  // an UPDATE filtered on `admission_hold IS NOT NULL` passed over that
-  // not-yet-held row, letting the refusal write its hold after the grant.
   if (authority.execution_environment === "prod") {
     await tx
       .select({ id: webhooksInbound.id })
@@ -219,16 +209,6 @@ async function resolveGrantedAdmissionHolds(
       ).valid
     )
       continue;
-    // Approving is not running. While a schedule is held the scheduler keeps
-    // its missed occurrence due (it restores the watermark after every refused
-    // attempt), so lifting the hold alone makes that occurrence fire on the very
-    // next tick — seconds after the click. The dialog the human just confirmed
-    // says no run starts now and names the next scheduled time; in production a
-    // destructive retention run and a report e-mail both went out within
-    // seconds of an approval instead. Moving the watermark to the moment of
-    // approval makes the statement true: the first run is the first cron
-    // occurrence AFTER the approval, the same rule a newly created schedule
-    // already follows. Occurrences missed while held are not replayed.
     await tx
       .update(workflowsSchedules)
       .set({ admission_hold: null, last_enqueued_at: sql`clock_timestamp()` })
@@ -270,7 +250,6 @@ export const ActivateWorkflowDraftSchema = z
   })
   .strict();
 
-/** Explicit human activation, without a grant or dispatch, also for one-shot-only effects. */
 export async function activateWorkflowDraft(
   workflow_id: string,
   raw: unknown,
@@ -303,8 +282,6 @@ export async function activateWorkflowDraft(
       principal.id,
       true,
     );
-    // Activating without a new grant: an approval of the replaced version
-    // follows when the new boundary is no wider.
     await carryApprovalsForward(tx, {
       tenant_id: principal.tenant_id,
       workflow_id,
@@ -378,8 +355,6 @@ export async function grantWorkflowAuthority(
         "authority_effect_unbound",
         "the workflow requires concrete-run review for an unbound or unavailable effect",
       );
-    // The workflow lock serializes identical browser retries. A lost response
-    // must not grant another max_runs allowance or resurrect a revoked grant.
     const [existing] = await tx
       .select()
       .from(workflowExecutionAuthorities)

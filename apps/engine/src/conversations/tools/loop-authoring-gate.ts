@@ -1,39 +1,11 @@
-// `assertLoopAuthoringInspection` — gate that refuses a workflow draft
-// whose loop steps depend on upstream step output the LLM has never
-// actually seen.
-//
-// The pre-fix failure mode (sessions ebd66982 / 86de186b): the LLM
-// authors a loop with `over: "$scope.X.data.projects"`, the path is
-// wrong, the loop returns 0 rows, and the LLM cycles through 4–9
-// variants of the same path before giving up. Each retry costs a full
-// dry-run cycle plus 20–30k tokens.
-//
-// The contract this gate enforces: before adding (or replacing) a
-// `loop` step that references some `$scope.<X>...` or `$steps.<X>...`
-// path, either:
-//   1) `inspect_workflow_draft` was called since the upstream step's
-//      most recent mutation (the `workflow_inspected` checkpoint is
-//      `fresh`), AND a `latest_preview` for X exists with a populated
-//      `scope_at_step`, OR
-//   2) the upstream step is a `transform` over `$input` (no other
-//      step shapes to inspect), in which case the gate doesn't apply.
-//
-// When the gate refuses, it returns the typed `loop_authoring_requires_inspect`
-// error code with concrete `next_best_actions` so the LLM converges
-// in one round-trip instead of guessing.
-
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "../types.ts";
 
 export interface LoopGateBlock {
-  /** id of the loop step that triggered the block. */
   loop_step_id: string;
-  /** Upstream step id the loop's `over` / `data_selector` references. */
   referenced_step_id: string;
-  /** Source expression text (truncated) so the LLM sees what it wrote. */
   source: string;
-  /** Why the gate refused — one of the enumerated reasons. */
   reason:
     | "no_preview_for_referenced_step"
     | "preview_missing_scope"
@@ -41,9 +13,6 @@ export interface LoopGateBlock {
     | "preview_stale_for_referenced_step";
 }
 
-/** One-line human rendering of a block — single source for every tool
- *  that surfaces a loop-gate verdict (update_param's refusal message,
- *  the recorded-eval report on build/propose/patch). */
 export function describeLoopGateBlock(b: LoopGateBlock): string {
   const why =
     b.reason === "no_dry_run_yet"
@@ -83,22 +52,10 @@ function pickLoopSource(step: LoopLikeStep): string | null {
   return null;
 }
 
-/** Optional set of connector slugs the operator successfully probed
- *  during the current conversation. When the loop's referenced step
- *  is a `request` step routed through one of these connectors, the
- *  probe counts as shape evidence and the gate is exempted — even
- *  without a recorded workflow dry_run. Probes are the primary
- *  shape-discovery surface. */
 export interface LoopAuthoringGateOptions {
   probedConnectorSlugs?: ReadonlySet<string>;
 }
 
-/**
- * Walk the draft's loop steps. For each, extract the referenced step
- * ids from the `over` / `data_selector` expression. Cross-reference
- * against the latest dry-run's `step_traces` slot. Return the list of
- * blocks (empty when the gate is satisfied).
- */
 export function evaluateLoopAuthoringGate(
   workflow: { steps: ReadonlyArray<Record<string, unknown>> },
   latestPreview: DraftDocument["latest_preview"],
@@ -112,8 +69,6 @@ export function evaluateLoopAuthoringGate(
   for (const t of traces) traceById.set(t.step_id, t);
 
   const stepIds = new Set<string>();
-  // Map step_id → the underlying step object so we can check whether
-  // the referenced step is a `request` against a probed connector.
   const stepById = new Map<string, Record<string, unknown>>();
   for (const step of workflow.steps) {
     if (
@@ -129,16 +84,6 @@ export function evaluateLoopAuthoringGate(
 
   const probedSlugs = options.probedConnectorSlugs ?? new Set<string>();
 
-  /**
-   * Walk a step's structural ancestry up to a depth-bounded limit and
-   * decide whether the step transitively depends only on probed
-   * connectors. Pre-fix, the gate exempted only DIRECT references to a
-   * probed-connector request step; a `loop → transform → request`
-   * chain (the canonical reshape pattern) failed the gate because the
-   * intermediate transform had no `connector_slug`. Transitively
-   * propagating the exemption lets a probed connector feed an arbitrary
-   * number of derived transforms before driving a loop.
-   */
   function transitivelyExempt(stepId: string, seen = new Set<string>()): boolean {
     if (seen.has(stepId) || seen.size > 16) return false;
     seen.add(stepId);
@@ -147,12 +92,6 @@ export function evaluateLoopAuthoringGate(
     if (typeof s.connector_slug === "string" && probedSlugs.has(s.connector_slug as string)) {
       return true;
     }
-    // Placeholder-based binding: a step using
-    // `url: "${connector.<slug>.base_url}/..."` (or any other string
-    // leaf with a `${connector.<slug>.*}` reference) is bound to that
-    // connector for runtime purposes. Mirror the binding shape
-    // `collectProbedConnectorSlugs` picks up so a successful probe
-    // exempts the step regardless of which binding the LLM wrote.
     try {
       const json = JSON.stringify(s);
       const re = /\$\{\s*connector\.([a-zA-Z][a-zA-Z0-9_-]*)\b/g;
@@ -160,9 +99,7 @@ export function evaluateLoopAuthoringGate(
         const slug = m[1];
         if (slug && probedSlugs.has(slug)) return true;
       }
-    } catch {
-      // fall through to the transform-chain check
-    }
+    } catch {}
     if ((s as { kind?: unknown }).kind !== "transform") return false;
     const expr =
       typeof s.expression === "string"
@@ -183,15 +120,7 @@ export function evaluateLoopAuthoringGate(
     const referenced = extractStepIdReferences(source);
     if (referenced.length === 0) continue;
     for (const ref of referenced) {
-      // Only enforce on references that point at SIBLING steps in
-      // this draft. References to step ids that don't exist are
-      // already caught by `validateStepReferences` earlier in the
-      // pipeline.
       if (!stepIds.has(ref)) continue;
-      // Probe-evidence exemption (transitive): when the referenced
-      // step is a `request` against a probed connector — directly or
-      // through a chain of transforms — the probe counts as shape
-      // evidence and the gate is exempted.
       if (transitivelyExempt(ref)) continue;
       const trace = traceById.get(ref);
       if (!trace) {
@@ -203,12 +132,6 @@ export function evaluateLoopAuthoringGate(
         });
         continue;
       }
-      // Fingerprint-keyed evidence: a trace recorded against a
-      // DIFFERENT definition of the referenced step is not evidence —
-      // the upstream shape may have changed with it. Traces without a
-      // fingerprint (fixtures, pre-fingerprint drafts) keep the legacy
-      // trust; the mutation-time pruning in `applyWorkflowMutation`
-      // is what keeps those honest.
       const referencedStep = stepById.get(ref);
       if (
         typeof trace.fingerprint === "string" &&

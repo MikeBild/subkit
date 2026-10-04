@@ -35,14 +35,6 @@ import type {
 import { ageInDays, approveBlockedReason, decisionKey } from "@/pages/decisions-model";
 import { GrantWorkflowAuthority } from "./grant-workflow-authority";
 
-/**
- * Only the two kinds this card can decide.
- *
- * A waiting conversation used to render here too, with no approve, no reject
- * and a link into the chat as its only action — a card in a decision queue that
- * could not decide anything. It is counted on the tile above the queue now and
- * answered where it was asked (§8.5b).
- */
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
@@ -72,7 +64,6 @@ const CONFIDENCE_LABEL: Record<"low" | "medium" | "high", TranslationKey> = {
   high: "decisions.confidence.high",
 };
 
-/** How much time is left, in the coarsest honest unit. */
 function deadlineLabel(
   expiresAt: string | null,
   now: number,
@@ -92,14 +83,12 @@ function deadlineLabel(
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
-/** True when expanding this card would actually show something. */
 function detailHasContent(item: DecidableItem): boolean {
   const detail = item.detail;
   if (detail.kind === "patch") return true;
   return detail.body.trim().length > 0;
 }
 
-/** Translate one decision's raw evidence into the two context columns. */
 function decisionContext(
   item: DecidableItem,
   t: Translate,
@@ -134,7 +123,6 @@ function decisionContext(
   return skillContext(detail.evidence, labels, names);
 }
 
-/** The two columns: what produced this, and what a decision would act on. */
 function ContextColumns({ context, testId }: { context: DecisionContext; testId: string }) {
   const { t } = useI18n();
   if (context.sources.length === 0 && context.targets.length === 0) return null;
@@ -190,7 +178,6 @@ function ContextColumn({
                 {safe(entry.label)}
               </span>
             )}
-            {/* An endpoint key is engine prose and routinely embeds an id. */}
             {entry.note && (
               <span className="min-w-0 truncate font-mono text-muted-foreground text-xs">
                 {safe(entry.note)}
@@ -203,8 +190,6 @@ function ContextColumn({
   );
 }
 
-/** A labelled block of raw evidence. Renders nothing when there is none — an
- *  empty heading claims the engine recorded something it did not. */
 function DetailBlock({
   heading,
   children,
@@ -235,8 +220,6 @@ function DetailList({ items }: { items: string[] }) {
   );
 }
 
-/** Free text from the engine, with ids taken out. Reasoning, drift output and
- *  skill bodies all quote real records; none of it may put an id on screen. */
 function DetailText({
   children,
   className,
@@ -250,12 +233,6 @@ function DetailText({
   );
 }
 
-/**
- * What the convention calls for when a row is expanded: the full reasoning and
- * the raw source data (§8.4). Every field below already arrived with the list —
- * a reviewer was being asked to approve a change whose justification, whose
- * observed cause and whose actual text were all one property away.
- */
 function DecisionDetailPanel({
   item,
   testId,
@@ -311,8 +288,6 @@ function DecisionDetailPanel({
             <DetailList items={evidence.classificationReasons} />
           </DetailBlock>
         )}
-        {/* Why earlier attempts were dropped is the most honest account of why a
-            proposal is still rated unsafe. */}
         {evidence.rejections.length > 0 && (
           <DetailBlock heading={t("decisions.detail.rejected")} testId={`${testId}-rejections`}>
             <DetailList items={evidence.rejections} />
@@ -368,8 +343,6 @@ function DecisionDetailPanel({
   }
 }
 
-/** The runs a proposed skill was distilled from. The count was always on the
- *  card; the cases themselves were recorded, indexed, and read by nothing. */
 function SkillEvidenceList({
   id,
   testId,
@@ -401,8 +374,6 @@ function SkillEvidenceList({
               <span className="min-w-0 max-w-prose break-words">
                 {hideTechnicalIdentifiers(entry.summary, t("tool.referenceHiddenInline"))}
               </span>
-              {/* A run the person cannot open is not linked — the permission is
-                  evaluated per object, so the link would lead to a refusal. */}
               {entry.execution_id && canReadRuns && (
                 <a
                   href={absolute(runHref(entry.execution_id))}
@@ -429,11 +400,7 @@ export interface DecisionCardProps {
   onApprove: (item: DecisionItem, reviewDigest?: string) => void;
   onReject: (item: DecisionItem, reason: string) => void;
   testIdPrefix?: string;
-  /** Resolves the ids on this decision to names. Without it the context columns
-   *  still render — they just say "Workflow" where they could say which one. */
   names?: NameIndex;
-  /** Whether this person may open a run. The permission is evaluated per
-   *  object, so a link for someone without it leads to a refusal. */
   canReadRuns?: boolean;
   priority: "urgent" | "normal";
 }
@@ -471,13 +438,11 @@ export function DecisionCard({
   });
   const blockedReason = approveBlockedReason({
     canDecide,
-    // A card with nothing to expand has nothing to look at first.
     expanded: expanded || !hasDetail,
     kind: item.kind,
     reviewDigest: item.reviewDigest,
     preview: item.kind === "patch" ? preview.data : undefined,
   });
-  // Replaying needs a recorded response; without one the call only 409s.
   const dryRun = useQuery({
     queryKey: ["patch-candidate", "dry-run", item.id],
     enabled: showDiff && preview.data?.fixture_available === true,
@@ -486,10 +451,6 @@ export function DecisionCard({
   });
 
   return (
-    // The collapsed row follows the family anatomy: context, decision,
-    // consequence, then disclosure and actions. The detailed evidence remains
-    // one click away, but every product now gives the same amount of space to
-    // the decision a person has to scan.
     <article
       className={cn(
         "@container flex min-h-[162px] flex-col gap-1.5 rounded-2xl border border-l-2 p-3",
@@ -662,8 +623,6 @@ export function DecisionCard({
                 )}
             </>
           ) : null}
-          {/* Why "Freigeben" cannot be pressed, said beside it — or, for a
-              role that may not decide, instead of buttons that do nothing. */}
           {blockedReason && !busy && !rejecting ? (
             <span
               className="basis-full text-right text-xs text-muted-foreground"
@@ -690,17 +649,12 @@ export function DecisionCard({
 
       {expanded && (
         <div className="border-t pt-3">
-          {/* Where this came from, before what it is: a position nobody can
-              explain is a demand without a reason. */}
           <p className="text-xs text-muted-foreground" data-testid={`${testId}-origin`}>
             {t(ORIGIN_LABEL[item.origin])}
           </p>
           <p className="mt-1 max-w-prose text-sm font-medium break-words">
             {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
           </p>
-          {/* What this position concretely is — the proposed change, the
-              opening of the skill text. `title` is a name; this is the thing a
-              person needs in order to choose. */}
           {item.summary && item.summary !== item.title && (
             <p
               className="mt-1 max-w-prose text-sm text-muted-foreground break-words"
@@ -720,9 +674,6 @@ export function DecisionCard({
             </p>
           )}
           {item.confidence && (
-            // A model's confidence is a claim, not a measurement: a word with
-            // its scale named and the count it rests on, never a bar and never
-            // the success colour.
             <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-confidence`}>
               {t("decisions.confidence", {
                 level: t(CONFIDENCE_LABEL[item.confidence]),

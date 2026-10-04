@@ -1,9 +1,3 @@
-// Draft document CRUD + snapshot history.
-//
-// Every mutation (`propose_step`, `update_param`, `connect_steps`)
-// writes a new row into `conversation_drafts` with an incrementing
-// ordinal. The newest ordinal is the live draft; :undo pops the top.
-
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import {
@@ -35,32 +29,13 @@ function padOrdinal(n: number): string {
   return n.toString().padStart(6, "0");
 }
 
-/**
- * Hydrate a `WorkflowDraftDocument` from a persisted `workflow_versions.dag`.
- * Returns null when the dag is not a workflow definition we can hydrate
- * (no name) — a persisted workflow always has one. The field projection
- * is delegated to the canonical `normalizeWorkflowDraft` so a hydrated
- * draft and a freshly-authored draft share one shape contract.
- */
 function workflowDraftFromDag(dag: unknown): WorkflowDraftDocument | null {
   if (typeof dag !== "object" || dag === null || Array.isArray(dag)) return null;
   const name = (dag as Record<string, unknown>).name;
   if (typeof name !== "string" || name.length === 0) return null;
-  // `normalizeWorkflowDraft` reads the workflow doc from `raw.workflow`,
-  // so the dag (which IS the workflow def) must be wrapped.
   return normalizeWorkflowDraft({ workflow: dag });
 }
 
-/**
- * Build a `latest_preview`-shaped object from the most recent SUCCEEDED
- * execution of a saved workflow. The shape matches what
- * `dry_run_workflow` produces (`step_traces` carrying each step's
- * recorded `output_preview` + a derived `scope_at_step`), so the
- * transform / loop authoring gates see real upstream shape evidence on
- * a freshly-bound workflow that has executed before. Returns null when
- * the workflow has never succeeded — the gate then correctly still
- * requires a fresh dry-run.
- */
 async function buildPreviewFromLastExecution(
   tenant_id: string,
   workflow_id: string,
@@ -95,8 +70,6 @@ async function buildPreviewFromLastExecution(
     .where(
       and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, execution.id)),
     )
-    // `step_index` is nullable — add a stable tiebreaker so the trace
-    // order (and the `last step` pick below) is deterministic.
     .orderBy(executionSteps.step_index, executionSteps.started_at);
   if (stepRows.length === 0) return null;
   const step_traces: WorkflowDraftStepPreview[] = stepRows.map((row) => {
@@ -137,26 +110,15 @@ async function hydrateBoundWorkflow(
 ): Promise<DraftDocument> {
   const normalized = normalizeDraftDocument(draft);
   if (!target_workflow_id) return normalized;
-  // Skip hydration once the draft is already bound to this workflow.
-  // `persisted_resources` carries a `workflow` ref only after a prior
-  // hydrate/bind, so it is the precise "already hydrated" signal —
-  // re-hydrating would clobber legitimate in-progress edits (including
-  // an edit that intentionally emptied the step list).
   const alreadyBound = normalized.summary?.persisted_resources.some(
     (resource) => resource.kind === "workflow" && resource.id === target_workflow_id,
   );
   if (alreadyBound) {
-    // Old editor snapshots failed to advance the mutation revision. Reconcile
-    // against their exact immutable saved version, never against today's head.
     const state = normalized.state;
     const saved = normalized.summary?.checkpoints.find((item) => item.key === "workflow_persisted");
     const ref = normalized.summary?.persisted_resources.find(
       (item) => item.kind === "workflow" && item.id === target_workflow_id,
     );
-    // Legacy chats predate draft-base observations. Observe only an empty
-    // draft slot while their exact active base is still current. This never
-    // adopts another author's draft or resets local changes/checkpoints.
-    // Saving still compares expected_draft_version_id=null atomically.
     if (state && ref?.version_id && ref.draft_version_id === undefined) {
       const [head] = await exec
         .select({
@@ -201,11 +163,7 @@ async function hydrateBoundWorkflow(
         .limit(1);
       const current = WorkflowDefSchema.safeParse(normalized.workflow);
       const persisted = WorkflowDefSchema.safeParse(version?.dag);
-      // A saved JavaScript draft receives a server-owned runtime stamp. Older
-      // chat snapshots may still carry the previously active stamp. Reconcile
-      // only that proven inherited value; explicit different runtime edits remain edits.
       if (current.success && persisted.success && workflowUsesSandboxedJs(current.data)) {
-        // Keep the saved base stable even after the reviewed draft is activated.
         const [active] = await exec
           .select({ dag: workflowVersions.dag })
           .from(workflowVersions)
@@ -226,8 +184,6 @@ async function hydrateBoundWorkflow(
           current.data.runtime = persisted.data.runtime;
         }
       }
-      // Legacy definitions can predate today's validation schema. Identical
-      // stored content is still saved; schema validity is a separate check.
       const sameDefinition =
         current.success && persisted.success
           ? canonicalJson(current.data) === canonicalJson(persisted.data)
@@ -283,29 +239,16 @@ async function hydrateBoundWorkflow(
     version = versionRows[0]?.version ?? null;
     hydratedWorkflow = versionRows[0]?.dag ? workflowDraftFromDag(versionRows[0].dag) : null;
   }
-  // Load the current version's steps into the draft so update_param /
-  // propose_step see a populated workflow, and align the draft's
-  // slug/name with the saved workflow so subsequent edits and the
-  // commit target the same row. Without this the draft is empty and
-  // every step-mutation tool reports "unknown_step".
   const draftToBind: DraftDocument =
     hydratedWorkflow && hydratedWorkflow.steps.length > 0
       ? { ...normalized, workflow: hydratedWorkflow }
       : normalized;
-  // Seed latest_preview from the most recent succeeded run so the
-  // transform / loop authoring gates have real upstream shape evidence
-  // on a workflow that has executed before.
   const seededPreview = selectedVersionId
     ? await buildPreviewFromLastExecution(tenant_id, workflow.id, selectedVersionId, exec)
     : null;
   const withPreview: DraftDocument = seededPreview
     ? { ...draftToBind, latest_preview: seededPreview }
     : draftToBind;
-  // bindPersistedWorkflow records the `workflow_persisted` checkpoint
-  // at the current `workflow_mutation_seq` without advancing it — so
-  // the hydrated draft equals the persisted version (checkpoint fresh,
-  // lifecycle "persisted", stage "workflow_persisted"); it does not
-  // look dirty immediately after load.
   return bindPersistedWorkflow(withPreview, {
     kind: "workflow",
     id: workflow.id,
@@ -321,10 +264,6 @@ async function hydrateBoundWorkflow(
   });
 }
 
-/**
- * Load the live draft for a conversation. Returns a fresh empty
- * document if none exists yet.
- */
 export async function loadDraft(
   tenant_id: string,
   conversation_id: string,
@@ -352,8 +291,6 @@ export async function loadDraft(
     .limit(1);
   const row = rows[0];
   if (!row) {
-    // Fall back to the `conversations.draft` column in case a caller
-    // seeded it via the service.
     const draft = conversation?.draft;
     if (draft && typeof draft === "object") {
       return hydrateBoundWorkflow(
@@ -378,18 +315,12 @@ export async function loadDraft(
   );
 }
 
-/**
- * Append a new snapshot. `mutate` receives the current draft and
- * returns the new one — mutating in place is fine because we clone
- * the argument first.
- */
 export async function appendSnapshot(
   tenant_id: string,
   conversation_id: string,
   draft: DraftDocument,
   exec: Executor,
 ): Promise<void> {
-  // Ordinal is monotonic — compute as count + 1 over the live set.
   const [row] = (await exec
     .select({ n: sql<number>`count(*)::int` })
     .from(conversationDrafts)
@@ -407,17 +338,12 @@ export async function appendSnapshot(
     ordinal: padOrdinal(next),
     snapshot: normalized as unknown as Record<string, unknown>,
   });
-  // Mirror to conversations.draft for easy reads.
   await exec
     .update(conversations)
     .set({ draft: normalized as unknown as Record<string, unknown>, updated_at: new Date() })
     .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
 }
 
-/**
- * Pop the most recent snapshot, restoring the previous one. Returns
- * the now-current draft (or the empty draft if the history is empty).
- */
 export async function undoLastSnapshot(
   tenant_id: string,
   conversation_id: string,

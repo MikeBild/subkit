@@ -1,17 +1,3 @@
-// Integration: `/metrics` requires the `metrics:read` scope — from an API key,
-// from an RFC 8693 exchanged token and from a Cockpit connection token alike.
-//
-// Production measured on 2026-09-04 that a connection token whose grant said
-// only `mcp:read` read `/metrics`, because the person who approved the
-// connection held the `admin` role and the role bypassed the scope gate. The
-// flow tests below mint real connection tokens through register → consent →
-// code → token and assert both halves of the rule: `metrics:read` reads,
-// `mcp:read` does not.
-//
-// The regression half matters just as much: an unrestricted (`*` wildcard)
-// admin key still scrapes, which is what the production monitoring principal
-// and the deploy verify rely on.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   CODE_CHALLENGE,
@@ -44,7 +30,6 @@ afterAll(async () => {
   await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, 30_000);
 
-/** GET /metrics with a bearer credential — status plus the parsed body. */
 async function scrape(token: string): Promise<{ status: number; body: string }> {
   const res = await fetch(`${ctx.baseUrl}/metrics`, {
     headers: { authorization: `Bearer ${token}` },
@@ -52,7 +37,6 @@ async function scrape(token: string): Promise<{ status: number; body: string }> 
   return { status: res.status, body: await res.text() };
 }
 
-/** A live key owned by the seeded ADMIN user, carrying exactly `scopes`. */
 async function mintUserKey(scopes: string[]): Promise<string> {
   const key = generateKey();
   await ctx.db.insert(apiKeys).values({
@@ -65,7 +49,6 @@ async function mintUserKey(scopes: string[]): Promise<string> {
   return key.plaintext;
 }
 
-/** A live key owned by a fresh, role-less system account. */
 async function mintScraperKey(name: string, scopes: string[]): Promise<string> {
   const [account] = await ctx.db
     .insert(systemAccounts)
@@ -99,12 +82,6 @@ async function exchange(key: string, scope?: string): Promise<string> {
   return body.access_token;
 }
 
-/**
- * Mint a connection token the way the Cockpit connect flow does: dynamic
- * client registration, a browser session, the rendered consent screen, the
- * operator's tick, the authorization code, the token. Returns the consent
- * HTML too, so a test can assert what the person was actually offered.
- */
 async function connect(
   clientName: string,
   scope: string,
@@ -209,20 +186,12 @@ describe("the metrics scope is offerable", () => {
     expect(grantedScope).toBe("metrics:read");
     expect(consentHtml).toContain('value="metrics:read"');
     expect(consentHtml).toContain("Betriebszähler lesen");
-    // Ticking it and nothing else is a complete consent screen: the flow
-    // above returned a token, so the mcp:read entitlement gate did not fire.
     expect(consentHtml).not.toContain('value="mcp:read"');
   });
 });
 
 describe("the entitlement gate still gates", () => {
   test("an enduser-role account is offered nothing and the consent flow denies", async () => {
-    // The gate was relaxed from "must offer mcp:read" to "must offer
-    // something", so that a client asking for `scope=metrics:read` alone gets a
-    // usable consent screen. It must not thereby become no gate: `enduser`
-    // holds neither `mcp:*` nor `metrics:read`, and is still refused.
-    // (`member` DOES hold `metrics:read` — a day-to-day operator may connect a
-    // monitoring system; the scope follows the RBAC catalog, not a new rule.)
     const roleIds = await seedBuiltinRolesAndPermissions(ctx.db);
     const [enduser] = await ctx.db
       .insert(users)
@@ -291,9 +260,6 @@ describe("GET /metrics — exchanged tokens (RFC 8693)", () => {
   });
 
   test("a token narrowed away from the scope is refused", async () => {
-    // `connector:read`, not `workflow:read`: a `workflow:<id>` entry in the
-    // exchange request narrows the WORKFLOW allowlist, not the scope set
-    // (`auth/oauth/token-exchange.ts`), so it would leave the scopes intact.
     const key = await mintScraperKey("exchange-narrow-scraper", ["metrics:read", "connector:read"]);
     const narrowed = await exchange(key, "connector:read");
     const res = await scrape(narrowed);
@@ -312,8 +278,6 @@ describe("GET /metrics — connection tokens", () => {
   });
 
   test("a connection carrying only mcp:read is refused", async () => {
-    // The approving account is the seeded ADMIN user — exactly the production
-    // shape. The grant, not the role, is the answer.
     const { accessToken, grantedScope } = await connect("MCP Read Connection", "mcp:read");
     expect(grantedScope).toBe("mcp:read");
     const res = await scrape(accessToken);

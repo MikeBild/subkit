@@ -1,10 +1,3 @@
-// Renderable-message parsing: turns a persisted message `content`
-// payload (string, part-array, or nested engine shapes) into the
-// structured render model — plain text plus code-block / table parts —
-// consumed by the richer Ink transcript surfaces. Extracted from
-// `turn-event.ts` (which re-exports this surface) so the TurnEvent
-// reducer and the markdown-ish content parser stay separable concerns.
-
 export type RenderableMessagePart =
   | { type: "text"; text: string }
   | { type: "code_block"; code: string; language?: string | undefined }
@@ -25,12 +18,6 @@ export function parseRenderableMessageContent(content: unknown): {
   return { text, parts: splitRenderableParts(text) };
 }
 
-// Engine assistant rows for tool-only steps carry `content: {}` (empty
-// object) — they exist as a parent-id anchor for child tool calls but
-// have no displayable text. Without this guard, `safeStringify({})`
-// would emit the literal "{}" string into the transcript and the
-// downstream empty-stub suppression in ink-app would miss because
-// `parts` is non-empty.
 function isEffectivelyEmpty(content: unknown): boolean {
   if (content === null || content === undefined) return true;
   if (typeof content === "string") return content.length === 0;

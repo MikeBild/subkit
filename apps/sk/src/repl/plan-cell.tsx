@@ -1,19 +1,3 @@
-// Inline checkbox plan renderer.
-//
-// Triggered when a tool result payload has a recognisable step-list
-// shape: `{ steps: [{ id, name|step_id, status }], … }` — typically
-// from `dry_run_workflow` and `run_workflow` responses where each
-// step's outcome is meaningful. Renders one line per step with the
-// glyph set:
-//   ✔  succeeded   (green, dim)
-//   ⬢  in-progress / partial (cyan, bold)
-//   ☐  pending / unknown   (gray, dim)
-//   ✗  failed     (red)
-//
-// Heuristic detector lives here so any tool that returns the shape
-// gets the inline visualisation for free — no engine schema change
-// required.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
@@ -30,12 +14,9 @@ export type PlanStepStatus =
   | "unknown";
 
 export interface PlanStep {
-  /** Canonical id (step_id, name, or fallback index). */
   id: string;
-  /** One-line label for the row. */
   label: string;
   status: PlanStepStatus;
-  /** Optional short detail (duration, error code). */
   detail?: string;
 }
 
@@ -111,9 +92,6 @@ const PlanCardImpl: React.FC<PlanCardProps> = ({ title, steps }) => {
 export const PlanCard = memo(PlanCardImpl);
 PlanCard.displayName = "PlanCard";
 
-/** Best-effort detector — picks up engine `dry_run_workflow` /
- *  `run_workflow` step payloads without engine cooperation. Returns
- *  null when the payload doesn't look like a plan. */
 export function detectPlanSteps(output: unknown): PlanStep[] | null {
   if (!output || typeof output !== "object") return null;
   const obj = output as Record<string, unknown>;

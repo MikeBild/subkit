@@ -1,15 +1,3 @@
-// User story: As a platform operator, I want my subscribers to receive
-// signed webhooks and for flaky subscribers to be circuit-broken, so
-// that downstream outages never stall the outbox.
-// Acceptance criteria:
-//   - AC1: Creating a subscription and emitting a matching event drives
-//          a signed POST to the subscriber.
-//   - AC2: A failing receiver accumulates `consecutive_failures` and
-//          opens the breaker after 10 failures.
-//   - AC3: While the breaker is open, a subsequent delivery job writes a
-//          `circuit_open` dead_letter row and skips the HTTP hit.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -91,7 +79,6 @@ describe("journey: outbound webhook delivery", () => {
     expect(subRes.status).toBe(201);
     const sub = (await subRes.json()) as { id: string };
 
-    // Drive the delivery handler inline for determinism.
     const { handle } = await registerDeliveryWorker({
       boss: ctx.boss,
       db: ctx.db,
@@ -189,7 +176,6 @@ describe("journey: outbound webhook delivery", () => {
       }),
     });
     const sub = (await subRes.json()) as { id: string };
-    // Force the breaker open for THIS subscription.
     for (let i = 0; i < 10; i += 1) await breaker.recordFailure(ctx.db, sub.id);
     expect(breaker.isOpen(sub.id)).toBe(true);
 

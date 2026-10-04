@@ -1,11 +1,3 @@
-// Integration tests for MCP file://<fid> resource exposure.
-//
-// Covers:
-//   - read_resource returns content for a ready file
-//   - list_resources includes the file UUID
-//   - soft-deleted files NOT in list_resources
-//   - unknown fid → read_resource throws (no cross-tenant leak)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type {
   ListResourcesRequest,
@@ -23,7 +15,6 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { registerResourcesCapability } from "../capabilities/resources.ts";
 
-// Deterministic uuid source: seeded so the test replays identically.
 const uuid = createDeterministicUuidFactory(0x3c9f11);
 
 type RequestHandlerEntry = {
@@ -111,7 +102,6 @@ describe("MCP file:// resource", () => {
     const readHandler = handlerFor(stub, "resources/read");
     const req: ReadResourceRequest = {
       method: "resources/read",
-      // MCP resources URI uses raw UUID (not fid_ prefix)
       params: { uri: `file://${att.file_uuid}` },
     };
     const result = (await readHandler(req)) as ReadResourceResult;
@@ -157,7 +147,6 @@ describe("MCP file:// resource", () => {
       slug: `mcp-deleted-${uuid().slice(0, 8)}`,
     });
 
-    // Soft-delete the file (FROZEN_NOW keeps the timestamp replayable).
     await srv.db
       .update(files)
       .set({ deleted_at: new Date(FROZEN_NOW) })

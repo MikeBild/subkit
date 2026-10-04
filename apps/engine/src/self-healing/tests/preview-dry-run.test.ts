@@ -1,16 +1,3 @@
-// previewPatchCandidate / dryRunPatchCandidate / diffStepPaths — the
-// operator-facing pre-approval surface (GET .../preview, POST .../dry-run).
-//
-// Pins:
-//   - preview renders before/after step shapes + changed_paths + the
-//     drift summary from the candidate's diff envelope
-//   - dry-run replays the recorded fixture without mutating status and
-//     writes a patch_candidate.dry_run_requested audit row
-//   - dry-run falls back to a synthesized fixture (from the failing
-//     step's persisted material) when the candidate has no fixture_id
-//   - tenant isolation: wrong tenant sees not_found
-//   - diffStepPaths is a deterministic flat diff
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -31,7 +18,6 @@ let candidateId: string;
 
 beforeAll(async () => {
   ctx = await createSelfHealingCtx("preview_dry_run");
-  // Park a proposal (never-auto policy) so we get a `proposed` row.
   await ctx.testDb.db
     .insert(workflowAutohealPolicies)
     .values({
@@ -89,20 +75,12 @@ describe("previewPatchCandidate", () => {
     expect(preview!.status).toBe("proposed");
     expect(preview!.proposal).not.toBeNull();
     expect(typeof preview!.drift_summary).toBe("string");
-    // `before_step` is the step as it stands in the workflow's CURRENT
-    // version — not the failing execution-step row, which carries no
-    // projection at all. Reading the definition is what makes the preview
-    // the same diff the apply path writes.
     expect(preview!.before_step?.data_selector).toBe("data.id");
     expect(preview!.after_step?.data_selector).toBe("data.result.id");
     expect(preview!.changed_paths).toEqual(["data_selector"]);
   });
 
   test("a candidate found by a scan previews from its definition anchor", async () => {
-    // A proactive signal has no failing execution row: it carries
-    // `workflow_step_id` and nothing else. The apply path has always resolved
-    // that anchor; the preview must resolve the same one, or the operator
-    // reviews an empty diff for a patch that would in fact change something.
     const [row] = await ctx.testDb.db
       .insert(patchCandidates)
       .values({

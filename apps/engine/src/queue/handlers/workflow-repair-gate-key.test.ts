@@ -3,7 +3,6 @@ import type { PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { enqueueGateDiagnosis, WORKFLOW_REPAIR_QUEUE } from "./workflow-repair.ts";
 
-/** A queue that records what was sent; the version is given, so no read. */
 function recordingBoss() {
   const sent: Array<{ queue: string; payload: unknown; options: { singletonKey?: string } }> = [];
   const boss = {
@@ -29,8 +28,6 @@ test("a gate diagnosis in one environment never suppresses the other's", async (
   const [dev, prod] = sent.map((entry) => entry.options.singletonKey);
   expect(dev).toBeDefined();
   expect(prod).toBeDefined();
-  // Each environment diagnoses its own held runs and connectors: a shared key
-  // would let a dev refusal swallow the prod diagnosis for the whole window.
   expect(dev).not.toBe(prod);
   expect(dev).toContain(base.version_id);
   expect(prod).toContain(base.version_id);

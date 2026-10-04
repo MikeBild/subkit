@@ -1,23 +1,3 @@
-// Shared runtime telemetry: timing + memory + success/failure, emitted in
-// the canonical structured-log shape (module/action/duration_ms) and mirrored
-// to Prometheus gauges/histograms. The goal is that the NDJSON log stream
-// alone is a complete analysis surface for *what ran, how long it took, and
-// what it cost in memory* — both on the happy path and on failure.
-//
-// Three primitives, all no-throw (telemetry must never take down a caller):
-//   - `instrument()`  — wrap any operation; logs `<action>.completed` /
-//                       `<action>.failed` with duration_ms (+ optional rss delta).
-//   - boot phases     — `bootPhase()` brackets each startup step with a
-//                       start + end marker so a stalled boot points at the
-//                       phase it is stuck in instead of a silent gap;
-//                       `startBootHeartbeat()` ticks elapsed+rss until ready.
-//   - process samplers — `startMemorySampler()` emits the rss/heap series;
-//                       `startEventLoopLagMonitor()` flags loop blockage.
-//
-// Background: production had a 2h22m boot freeze and post-restart event-loop
-// stalls that were invisible because nothing emitted timing/memory between the
-// one log line before and after the gap. See project_engine_slow_boot_stall.
-
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
@@ -29,14 +9,10 @@ function toMb(bytes: number): number {
   return Math.round((bytes / BYTES_PER_MB) * 10) / 10;
 }
 
-/** Telemetry must never throw into a caller's path. */
 function safe(fn: () => void): void {
   try {
     fn();
-  } catch {
-    // Deliberately swallowed — a metrics/log write failure is not worth
-    // failing (or even logging again from) the operation being measured.
-  }
+  } catch {}
 }
 
 export interface MemorySnapshot {
@@ -47,20 +23,6 @@ export interface MemorySnapshot {
   array_buffers_mb: number;
 }
 
-/**
- * `readMemoryUsage()`, but it cannot take down what it measures.
- *
- * The raw call is a syscall and it can fail: a CI runner returned
- * `SystemError: Failed to get memory usage, errno: 4` (EINTR) from inside
- * `instrument()`, which propagated out of a transform step and failed the
- * workflow that step belonged to. A memory reading is diagnostic. Losing one
- * costs a number in a log line; letting it throw costs the operation.
- *
- * Zeroes on failure rather than throwing. A zero is visibly wrong in a
- * dashboard, which is the right way for a missing measurement to look — and
- * every consumer here is subtracting two samples, where a zero shows up as a
- * nonsense delta rather than as plausible data.
- */
 export function readMemoryUsage(): NodeJS.MemoryUsage {
   try {
     return process.memoryUsage();
@@ -69,7 +31,6 @@ export function readMemoryUsage(): NodeJS.MemoryUsage {
   }
 }
 
-/** Point-in-time process memory, rounded to MB for log readability. */
 export function sampleMemory(): MemorySnapshot {
   const m = readMemoryUsage();
   return {
@@ -81,24 +42,12 @@ export function sampleMemory(): MemorySnapshot {
   };
 }
 
-// ---------------------------------------------------------------------------
-// instrument() — generic operation wrapper
-// ---------------------------------------------------------------------------
-
 export interface InstrumentOptions {
-  /** Log `module` and the metric `module` label, e.g. "db", "connector". */
   module: string;
-  /** Base action; success logs as `<action>.completed`, failure `<action>.failed`. */
   action: string;
-  /** Extra structured fields merged into both the success and failure log. */
   fields?: Record<string, unknown>;
-  /** Capture an rss-delta around the operation (for heavy ops). Default false. */
   memory?: boolean;
-  /** Success log level. Default "info"; use "debug" for hot, low-signal ops. */
   level?: "info" | "debug";
-  /** Only emit the success log when duration_ms >= this (failures always log).
-   *  Keeps high-frequency fast ops out of the stream while still recording the
-   *  metric. Default 0 (always log). */
   thresholdMs?: number;
 }
 
@@ -159,10 +108,6 @@ function finishErr(
   });
 }
 
-/**
- * Run `opts.fn`, recording its duration (+ optional memory delta) and outcome.
- * Re-throws on failure after logging, so it is transparent to control flow.
- */
 export async function instrument<T>(
   opts: InstrumentOptions & { fn: () => Promise<T> | T },
 ): Promise<T> {
@@ -178,17 +123,6 @@ export async function instrument<T>(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Boot-phase instrumentation
-// ---------------------------------------------------------------------------
-
-/**
- * Bracket one named boot phase with a `start` marker (emitted BEFORE the work)
- * and an `ok`/`error` marker (emitted after, with duration + rss). The start
- * marker is the key signal: if boot freezes, the last `boot.phase status=start`
- * line names the phase it is stuck in — converting the old silent multi-minute
- * gap into an attributable stall.
- */
 export async function bootPhase<T>(phase: string, fn: () => Promise<T> | T): Promise<T> {
   const started = Date.now();
   log.boot.phase({ phase, status: "start", rss_mb: sampleMemory().rss_mb });
@@ -216,22 +150,11 @@ export async function bootPhase<T>(phase: string, fn: () => Promise<T> | T): Pro
   }
 }
 
-/**
- * Start a heartbeat that logs elapsed + rss every `intervalMs` until the
- * returned stop fn is called (at `engine.ready`). Catches boot stalls that
- * yield to the event loop; a fully-synchronous stall still surfaces via the
- * unmatched `bootPhase` start marker. The timer is `unref`'d so it never keeps
- * the process alive.
- */
 export function startBootHeartbeat(opts?: {
   intervalMs?: number;
   slowBootMs?: number;
 }): () => void {
   const intervalMs = opts?.intervalMs ?? 5_000;
-  // A healthy boot completes in a few seconds, so the first one or two
-  // ticks are routine and log at INFO. Past this threshold the boot is
-  // genuinely dragging (the slow-boot stall class) and escalates to WARN
-  // so a real stall stands out instead of every boot emitting a warning.
   const slowBootMs = opts?.slowBootMs ?? 20_000;
   const started = Date.now();
   const timer = setInterval(() => {
@@ -244,21 +167,6 @@ export function startBootHeartbeat(opts?: {
   return () => clearInterval(timer);
 }
 
-// ---------------------------------------------------------------------------
-// Process samplers
-// ---------------------------------------------------------------------------
-
-/**
- * Emit a periodic `process.memory.sample` log + refresh the rss/heap gauges.
- * This is the missing in-process memory time-series: before it, a multi-GB
- * transient was only visible post-mortem via systemd's `memory peak`, with no
- * way to attribute it to a tenant/turn. Fires once immediately, then every
- * `intervalMs`. Returns a stop fn. Timer is `unref`'d.
- */
-/** Current Postgres-pool counts, supplied by the caller so this module
- *  doesn't import db/client.ts (which imports `instrument` from here — a
- *  cycle). `startMemorySampler` calls it once per tick and feeds the
- *  predictive pool gauges. */
 export type PoolStatsProvider = () => { total: number; idle: number; waiting: number };
 
 export function startMemorySampler(opts?: {
@@ -274,8 +182,6 @@ export function startMemorySampler(opts?: {
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_USED_BYTES, m.heapUsed, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_TOTAL_BYTES, m.heapTotal, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_EXTERNAL_BYTES, m.external, {});
-      // Phase 2: max-ever RSS (climb-only), windowed transient-retry rate, and
-      // Postgres-pool saturation gauges, all riding this existing 60s ticker.
       recordProcessRssHighWater(m.rss);
       sampleTransientRetryRate();
       if (opts?.poolStats) {
@@ -297,24 +203,6 @@ export function startMemorySampler(opts?: {
   return () => clearInterval(timer);
 }
 
-/**
- * Detect event-loop blockage by measuring how late a fixed-interval timer
- * fires. Refreshes the `event_loop_lag_ms` gauge every tick and emits a
- * `process.event_loop.lag` warn only when lag crosses `thresholdMs` (so the
- * steady state is quiet). Returns a stop fn. Timer is `unref`'d.
- */
-/**
- * Synchronous-phase profiler for the event-loop-lag hunt. Wraps a hot-path
- * phase and logs a structured warn when it exceeds `thresholdMs` — the
- * production lag warnings (median ~1.6s) name the SYMPTOM but not the
- * blocking phase; these markers name the phase. Near-zero overhead on the
- * fast path (two Date.now() calls), so they stay in permanently.
- */
-// Allocation attribution: memory.sample showed ~700MB of EXTERNAL (native
-// string) allocation per conversation turn with no slow phase — GC over that
-// churn is the residual event_loop.lag. Each marker therefore also reports
-// the phase's external-memory delta when it crosses this floor, so the log
-// stream names the ALLOCATOR, not just slow code.
 const ALLOC_DELTA_FLOOR_BYTES = 64 * 1024 * 1024;
 
 function reportPhase(
@@ -354,10 +242,6 @@ export function timePhase<T>(phase: string, fn: () => T, thresholdMs = 250): T {
   }
 }
 
-/** Async variant — measures wall time of the awaited phase. A slow result
- *  here means "this phase took long", not necessarily "blocked the loop";
- *  correlate with event_loop.lag timestamps to tell I/O waits from sync
- *  stalls. */
 export async function timePhaseAsync<T>(
   phase: string,
   fn: () => Promise<T>,
@@ -372,12 +256,8 @@ export async function timePhaseAsync<T>(
   }
 }
 
-// Last observed event-loop lag in ms, refreshed each monitor tick. Read by
-// GET /v1/diagnostics/runtime so the live diagnostic surface reports the same
-// value the gauge carries without re-scraping the metric registry.
 let lastEventLoopLagMs = 0;
 
-/** Most recent event-loop lag sample in ms (0 before the monitor starts). */
 export function getLastEventLoopLagMs(): number {
   return lastEventLoopLagMs;
 }

@@ -1,18 +1,3 @@
-// Regression: the engine HTTP server must bind 127.0.0.1 BY DEFAULT in
-// production, not 0.0.0.0.
-//
-// A deployment proxy forwards the public TLS endpoint
-// to 127.0.0.1:3000. Defense-in-depth: a misconfigured firewall must
-// not be able to leak the engine upstream. A future refactor that flips
-// the default `hostname: "127.0.0.1"` back to `"0.0.0.0"` (or omits it,
-// since the platform default is 0.0.0.0) would be invisible to CI
-// without this test.
-//
-// The `ENGINE_LISTEN_HOST` env override is the ONLY sanctioned way to
-// widen the bind (containers set it to 0.0.0.0). The override cases
-// below pin that contract: an explicit value wins, blank/unset falls
-// back to the loopback default.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -57,9 +42,6 @@ function bootHttp(hostname: string): Promise<{ address: string; port: number; cl
 }
 
 describe("engine bind hostname — defense-in-depth", () => {
-  // Empty env: the production/systemd contract (no ENGINE_LISTEN_HOST).
-  // Passed explicitly so a developer with the var exported in their
-  // shell can't flip these default-assertion tests green-on-a-lie.
   const NO_OVERRIDE: NodeJS.ProcessEnv = {};
 
   test("ENGINE_LISTEN_HOSTNAME is 127.0.0.1 (the runtime constant)", () => {
@@ -68,8 +50,6 @@ describe("engine bind hostname — defense-in-depth", () => {
   });
 
   test("engineServeOptions(port) carries hostname=127.0.0.1 across arbitrary ports", () => {
-    // Two distinct ports keep the helper honest — the signature must
-    // echo the input through, not silently substitute a constant.
     for (const port of [3000, 8080]) {
       const opts = engineServeOptions(port, NO_OVERRIDE);
       expect(opts.hostname, `hostname for port=${port}`).toBe(ENGINE_LISTEN_HOSTNAME);
@@ -122,8 +102,6 @@ describe("engine bind hostname — defense-in-depth", () => {
     });
 
     test("a non-empty but malformed value fails fast instead of binding the wrong interface", () => {
-      // Empty labels (`0.0.0..1`) and illegal characters (spaces, `;`)
-      // are operator typos — surface them at boot, don't silently bind.
       for (const bad of ["0.0.0..1", "not a host", "10.0.0.1;rm"]) {
         expect(() => resolveListenHostname({ ENGINE_LISTEN_HOST: bad })).toThrow(
           /not a valid bind host/,

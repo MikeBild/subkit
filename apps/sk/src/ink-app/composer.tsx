@@ -1,17 +1,3 @@
-// ---------- Composer ----------
-//
-// Bordered-input layout:
-//
-//   ─────────────────────────────────────────
-//   ❯ <typed text><blinking cursor>
-//   ─────────────────────────────────────────
-//
-// The horizontal rules render `─` repeated to the terminal width so the
-// composer frame follows window resizes. When the app is waiting on a
-// turn, the `❯` glyph rotates through SPINNER_FRAMES instead of
-// blinking — same spinner verbs the ToolCard uses, so the REPL feels
-// cohesive.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useStdout } from "ink";
 import type React from "react";
@@ -55,9 +41,6 @@ export const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholde
   const cursorColor = cursorOn ? theme.role.assistant : theme.severity.dim;
   const prefixColor = busy ? theme.severity.warning : theme.role.assistant;
 
-  // Ghost text rides the LAST line only, and only when the cursor sits
-  // at the end of input. Anywhere else (mid-edit, multi-line authoring)
-  // we don't want a dimmed sibling stealing visual attention.
   const ghost = input.ghost;
   const showGhost = Boolean(
     ghost &&
@@ -106,8 +89,6 @@ export const Composer: React.FC<ComposerProps> = memo(({ input, busy, placeholde
   );
 });
 Composer.displayName = "Composer";
-
-// ---------- Slash-command suggestions footer ----------
 
 interface SuggestionListProps {
   query: string;

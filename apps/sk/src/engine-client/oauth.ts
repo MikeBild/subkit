@@ -1,8 +1,3 @@
-// OAuth bootstrap methods used by `sk login`. Sensitive request and response
-// bodies deliberately bypass the normal verbose transport debug payloads: an
-// authorization code, OAuth token, or newly issued API key must never enter the
-// CLI debug log.
-
 import { EngineError, TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { parseResponseBody } from "./http.ts";

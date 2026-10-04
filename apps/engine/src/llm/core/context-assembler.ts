@@ -1,37 +1,3 @@
-// Context assembler — single entry point for LLM-bound prompt construction.
-//
-// Responsibilities:
-//   1) Load applicable skills (global → connector → workflow scope)
-//   2) Load connector docs + knowledge-source chunks via semantic search
-//   3) Format sections (skills, docs, knowledge, failures, user memory)
-//   4) Enforce a per-model token budget via js-tiktoken, gracefully
-//      dropping lowest-priority sections until it fits (never the user
-//      turn). The trimmed list is surfaced on the return value.
-//   5) Split the resulting system prompt into stable + volatile cache
-//      blocks so the provider can cache the head and recompute only the
-//      tail each turn.
-//
-// The assembler is split across `context-assembler/`:
-//
-//   - `context-assembler/loaders.ts`      — DB-side loaders
-//                                            (interaction log, latest
-//                                            preview, doc / knowledge
-//                                            chunks)
-//   - `context-assembler/formatters.ts`   — pure markdown rendering
-//                                            (skills, quirks, recipes,
-//                                            chunks, failures, memory,
-//                                            preview, log)
-//   - `context-assembler/skill-picker.ts` — `detectIntentSkills`
-//                                            keyword → auto-load
-//                                            dispatch
-//
-// External callers continue to import `assembleEnhancedPrompt`,
-// `assembleContext`, `basePromptFor`, `applyRuntimeTemplate`,
-// `formatSkillIndex`, `countSkillTokens`, `formatOperatorQuirks`,
-// `formatConnectorRecipes`, `selectOperatorQuirkCategories`,
-// `detectIntentSkills`, and the `AssembledContext` / `BudgetReport`
-// types from this barrel.
-
 import { getConnector } from "../../connectors/service.ts";
 import { type Executor, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
@@ -107,10 +73,6 @@ export {
 } from "./context-assembler/formatters.ts";
 export { detectIntentSkills } from "./context-assembler/skill-picker.ts";
 
-// One-shot base prompts + `basePromptFor` live in
-// `context-assembler/base-prompts.ts` (extracted verbatim; re-exported
-// above so external callers keep importing from this barrel).
-
 function buildQuery(turns: UserTurn[]): string {
   const tail = turns.slice(-3).map((t) => t.content);
   return tail.join(" ").slice(0, 512);
@@ -127,15 +89,10 @@ export interface BudgetReport {
     knowledge: number;
     docs: number;
     failures: number;
-    /** Count of recipe-body items rendered into the prompt. */
     recipe_bodies: number;
-    /** Count of proposed Skill Candidates rendered into the prompt. */
     candidates: number;
-    /** Count of Prior Workflow reference cases rendered into the
-     *  prompt. Always 0 in the converse flow. */
     prior_workflows: number;
   };
-  /** Sections dropped by the trimmer, in order. Empty = fit comfortably. */
   dropped_sections: string[];
 }
 
@@ -145,13 +102,6 @@ export interface AssembledContext {
   budget_report: BudgetReport;
 }
 
-/**
- * Assemble an EnhancedPrompt for the given tenant + flow. Enforces a
- * token budget against the effective model's context cap and drops
- * lowest-priority sections first when the prompt overflows. Throws
- * LlmContextTooLarge only when *even* the base system prompt does not fit
- * — i.e. all optional context has been dropped.
- */
 export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 
 export async function assembleEnhancedPrompt(
@@ -160,34 +110,19 @@ export async function assembleEnhancedPrompt(
 ): Promise<
   EnhancedPrompt & {
     dropped_sections: string[];
-    /** Recipe slugs whose rich body survived BOTH the intra-section
-     *  trim AND the global trimmer — fed verbatim to the observability
-     *  hash list in `assembleContext`. */
     included_recipe_slugs: string[];
-    /** Candidate ids likewise. Empty when the section was dropped. */
     included_candidate_ids: string[];
-    /** Prior-workflow slugs whose ref survived BOTH the intra-section
-     *  trim AND the global trimmer. Empty in converse flow (section is
-     *  not loaded) or when the section was dropped to fit the cap. */
     included_prior_workflow_slugs: string[];
   }
 > {
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
-  // Substitute runtime tokens (`${engine_url}` in the install-grounding block)
-  // into the base prompt via the SAME mechanism as skill bodies, so the install
-  // command is pre-filled. No-op when the base carries no `${…}` token.
   const basePrompt = await basePromptFor(p.flow, p.surface, p.authoring_hint);
   const baseSystem = applyRuntimeTemplate(basePrompt.content, p.runtime_context);
-  // Per-turn slice of the base prompt (authoring focus). Rendered at the tail,
-  // with the other volatile sections, instead of inside the cached prefix.
   const baseVolatile = basePrompt.volatile
     ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
     : null;
-  // Skills enter the prompt only where they apply: the one-shot drafting
-  // flows and a converse turn working on a workflow draft are "authoring",
-  // every other turn is "chat".
   const audience = promptSkillAudience(p.flow, p.authoring_hint?.mode);
   const skillsApplicable = await retrieveApplicableSkills(
     {
@@ -203,13 +138,6 @@ export async function assembleEnhancedPrompt(
   const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
   const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
 
-  // On-demand skills (load_skill) + index-safety. `loaded_skill_slugs`
-  // (the recency window) renders FULL bodies; `loaded_skill_membership`
-  // (everything still loaded but aged out of the window) renders through
-  // the "Loaded" index so no skill disappears. Resolution and the
-  // slug↔id↔scope de-duplication live in the recency-aware loader; the
-  // returned arrays stay mutable here because the token-budget trimmer
-  // below shrinks/pops them when the prompt overflows.
   const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
   const membershipSlugs = p.loaded_skill_membership ?? [];
   const resolvedLoaded = await resolveLoadedSkills(
@@ -225,15 +153,6 @@ export async function assembleEnhancedPrompt(
 
   const query = buildQuery(p.user_turns);
 
-  // Knowledge + connector-docs embedding is now on-demand for the
-  // `converse` flow. The model fetches them via the `search_knowledge`
-  // and `fetch_connector_docs` tools only when the turn actually needs
-  // them. The one-shot flows (generate / repair / extract / discover /
-  // summarize) still pre-embed because they do not have a tool loop to
-  // pull context at runtime. Without this split, every trivial read in
-  // a conversation paid the full 15 % knowledge + 30 % docs tax
-  // regardless of relevance (observed in session 4e6696e3: 1.1 M tokens
-  // for a four-row list_workflows).
   const preEmbedCorpus = p.flow !== "converse";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
@@ -260,56 +179,20 @@ export async function assembleEnhancedPrompt(
   let failures = p.prior_failures ?? [];
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
-  // User @-mentions for this turn. Volatile (changes every turn) and
-  // rendered last so it sits closest to the user message it annotates.
   let referencedEntitiesBlock: string | null = p.referenced_entities?.block ?? null;
 
-  // Interaction log — last N resolved elicitations for this
-  // conversation. Only loaded for the converse flow (one-shot flows
-  // don't have an interactive history to reference) and only when the
-  // caller threaded a conversation_id through. The trimmer treats
-  // this section the same as prior_failures: dropped early under
-  // pressure, but cheap when the budget allows.
   let interactionLogEntries: InteractionLogEntry[] = [];
   if (p.flow === "converse" && p.conversation_id) {
     interactionLogEntries = await loadInteractionLog(p.tenant_id, p.conversation_id, db);
   }
 
-  // Latest preview — compact per-step shape from the most recent
-  // dry_run / run on this conversation. Reads
-  // `conversations.draft.latest_preview.step_traces`; if no preview
-  // has been recorded the section is empty and trim is a no-op. Only
-  // for the converse flow, same as interaction_log.
   let latestPreviewEntries: LatestPreviewEntry[] = [];
   if (p.flow === "converse" && p.conversation_id) {
     latestPreviewEntries = await loadLatestPreview(p.tenant_id, p.conversation_id, db);
   }
 
-  // Recorded endpoint samples — payload-first generation context. The
-  // latest observed response shapes (`schema_versions`, recorded by
-  // probe_connector / call_connector / request-step executions) for the
-  // connectors bound to the conversation's draft. Rendered ONLY in
-  // workflow-authoring mode: that is the moment the model writes
-  // request paths and transforms, and the shapes must reach it BEFORE
-  // it authors — not as an after-the-fact validation finding.
-  // Workflow-authoring connector aids: OPT-E's known-operations block + recorded
-  // endpoint samples. Both `let` so the budget ladder can shed them under
-  // pressure. (Loader gates + logs; see loaders.ts.)
   let { probeShapeExamplesBlock, connectorSchemaBlock } = await loadConnectorAuthoringAids(p, db);
 
-  // Operator quirks for the in-scope connector. Loaded once per
-  // assembly; the picker `selectOperatorQuirkCategories` reads the
-  // structured authoring hint to render only the categories relevant
-  // to the current turn shape. Per-category cap is 2 KB so even all
-  // six rendered together is bounded; per-turn selection typically
-  // drops 40-90% of the volume vs the legacy `operator_notes` blob.
-  //
-  // Recipe surfacing: when the connector was created from a template
-  // that ships executable recipes, the template snapshot carries a
-  // `recipes` array. We surface a slim summary (slug + title +
-  // intent_keywords — never the workflow body) so the LLM can offer
-  // `start_workflow_from_recipe(slug)` instead of authoring from
-  // scratch on the next turn.
   let connectorOperatorQuirksBlock: string | null = null;
   let connectorRecipesBlock: string | null = null;
   let connectorRecipeBodiesBlock: string | null = null;
@@ -335,12 +218,6 @@ export async function assembleEnhancedPrompt(
       if (connector?.template_snapshot) {
         const snapshot = connector.template_snapshot as Record<string, unknown>;
         connectorRecipesBlock = formatConnectorRecipes(connector.slug, snapshot);
-        // Recipe bodies — rich payload for the top-K ranked recipes so
-        // the LLM can clone via start_workflow_from_recipe in one turn
-        // (no inspect_recipe round-trip). Pure ranking over the already-
-        // loaded snapshot — no second getConnector. Section is bounded
-        // by `trimRecipeBodiesToBudget` to 2 KB; rendered string already
-        // carries the elision notice when something was dropped.
         const recipeBodies = loadTopRecipeBodies(snapshot, p.authoring_hint, query);
         if (recipeBodies.length > 0) {
           const trimmed = trimRecipeBodiesToBudget(connector.slug, recipeBodies);
@@ -362,10 +239,6 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  // Hybrid-fallback log — one warning per surviving recipe that rendered
-  // without its workflow JSON (per-body soft-cap exceeded). Emitted
-  // exactly once per assembly, after the trim loop decided the final
-  // set, so the render-and-count loop never produces duplicate warnings.
   if (connectorRecipeBodiesTemplateSlug && connectorRecipeBodiesFallbackSlugs.length > 0) {
     logRecipeBodyFallbacks(
       connectorRecipeBodiesTemplateSlug,
@@ -375,19 +248,6 @@ export async function assembleEnhancedPrompt(
     );
   }
 
-  // Prior workflows — 5th authoring context source. Compressed
-  // reference cases from this tenant's most similar active workflows,
-  // surfaced so the LLM grounds new drafts in patterns the team has
-  // already used. Gated by `preEmbedCorpus`: the converse flow
-  // deliberately omits this section (workflows are discoverable via
-  // the always-on tenant snapshot + the `find_workflow` tool); only
-  // the structured authoring flows (`generate`, `repair`, `extract`,
-  // `discover`, `summarize`) pre-embed.
-  // Naming grounding — the catalog families this tenant already has. Same
-  // `preEmbedCorpus` gate as prior workflows (converse/chat bases stay
-  // byte-identical), because this is only useful while a draft is being
-  // generated: that is the one moment where choosing a family-prefixed slug
-  // costs nothing, since no `wf_<slug>` tool exists yet to rename.
   let namingGroundingBlock: string | null = null;
   if (preEmbedCorpus) {
     namingGroundingBlock = await buildNamingGroundingBlock(p.tenant_id, db);
@@ -413,21 +273,6 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  // Skill candidates — proposed (status=proposed) candidates the LLM
-  // should see this turn so detected patterns reach the prompt without
-  // waiting for operator promotion. Sibling block to the connector
-  // load above: lives OUTSIDE the `if (p.connector_id)` so global
-  // candidates render even when no connector is in scope; workflow-
-  // scoped candidates render whenever `p.workflow_id` is set.
-  //
-  // Gate: converse flow only. Non-converse flows (`generate`, `repair`,
-  // `extract`, `summarize`, `discover`) skip this load entirely — they
-  // do not steer the authoring loop, so injecting candidate hints
-  // would burn tokens for no behavioural payoff. Effective contract:
-  // "converse flow AND (global OR scope-hint matches)".
-  // `listProposedForAuthoring` makes 1-3 indexed queries; best-effort
-  // try/catch matches the existing pattern — a DB blip never blocks
-  // assembly.
   let skillCandidatesBlock: string | null = null;
   let skillCandidatesOversizedItemId: string | null = null;
   let skillCandidateSurvivorIds: string[] = [];
@@ -448,10 +293,6 @@ export async function assembleEnhancedPrompt(
     }
   }
 
-  // Oversized-survivor warning — emitted exactly once when the trim
-  // loop ended with a single survivor still over cap (body was
-  // token-truncated to ceil(cap * 0.9)). Operators grep this to find
-  // self-healing detectors emitting oversized candidate bodies.
   if (skillCandidatesOversizedItemId !== null) {
     logger.warn({
       module: "llm",
@@ -474,99 +315,40 @@ export async function assembleEnhancedPrompt(
       })
     : null;
 
-  // Tenant snapshot block — concise list of workflows + connectors so
-  // the model can answer "what do I have?" without round-tripping via
-  // list_* tools. Only for the converse flow; one-shot flows do not
-  // need it.
   const tenantSummaryBlock =
     p.flow === "converse"
       ? renderTenantSummaryBlock(await loadTenantSummary(p.tenant_id, db))
       : null;
 
-  // Captured on every render so the drop ladder's final pass is the one that
-  // reaches the splitter.
   let lastSections: Array<{ text: string; volatile: boolean }> = [];
   const render = () => {
     const sections: string[] = [];
-    // Which sections must NOT sit in the cached prefix.
-    //
-    // The classification lives HERE, where each section is pushed and its
-    // volatility is known, instead of being guessed downstream from a string
-    // prefix. cache-blocks.ts used a two-marker allow-list and treated
-    // everything unrecognised as stable, which quietly put the live tenant
-    // snapshot, the runtime block, the authoring context and the interaction
-    // log inside the cached prefix — each of them changing every turn.
     const volatileTexts = new Set<string>();
     const vol = (text: string) => {
       volatileTexts.add(text);
       sections.push(text);
     };
-    // Tenant snapshot appears at BOTH ends of the stable head:
-    //   1) immediately before the base prompt so the model reads it
-    //      first on the initial pass, and
-    //   2) again at the tail (just before the volatile segment) so it
-    //      is the most recent context before the user turn.
-    // The duplication costs a few hundred tokens but reliably beats
-    // the 85k-of-skills wall where a mid-prompt snapshot gets ignored.
     if (tenantSummaryBlock) vol(tenantSummaryBlock);
     sections.push(baseSystem);
     if (runtimeBlock) vol(runtimeBlock);
-    // Ambient skills render as a single per-scope INDEX block — one
-    // line per skill (slug + title + first-line description). The
-    // LLM uses `load_skill(<slug>)` to pull the full body when it
-    // actually needs the rules (which moves the skill into
-    // `loadedSkills` for subsequent turns). The index is bounded by
-    // skill count and stays cache-friendly across turns; per-skill
-    // summary blocks were ~58 tokens each, scaling unboundedly with
-    // skill body first-line size.
     const globalIndexBlock = formatSkillIndex("Global", globalSkills, p.runtime_context);
     const connectorIndexBlock = formatSkillIndex("Connector", connectorSkills, p.runtime_context);
     const workflowIndexBlock = formatSkillIndex("Workflow", workflowSkills, p.runtime_context);
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
-    // Rich recipe bodies sit next to the slim recipe roster so the LLM
-    // reads "here's the slug list" → "here's the workflow JSON for the
-    // top picks" together. Drops before the index above when the global
-    // trimmer needs room (the slim roster keeps the LLM able to call
-    // inspect_recipe for anything that fell off).
     if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
-    // Prior workflows — reference cases from this tenant's own active
-    // workflows, surfaced next to connector recipes so the LLM reads
-    // "templates to clone" → "patterns this team already uses"
-    // together. Marked `[reference, not template]` per its own header
-    // so the model never confuses the two surfaces.
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
-    // Sits next to the prior-workflow reference cases: both answer "what has
-    // this team already built" — one for structure, one for naming.
     if (namingGroundingBlock) sections.push(namingGroundingBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
-    // Loaded skills carry the full body — they are loaded AND within the
-    // K-turn recency window, so the cost is justified.
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));
-    // Index-safety "Loaded" block: ever-loaded skills that aged out of
-    // the full-body window (or are out-of-scope / experimental) stay
-    // referenceable as a one-line index entry. `load_skill('<slug>')`
-    // re-promotes any of them to a full body for the next K turns.
     const loadedIndexBlock = formatSkillIndex("Loaded", loadedIndexSkills, p.runtime_context);
     if (loadedIndexBlock) sections.push(loadedIndexBlock);
-    // Proposed skill candidates render next to loaded skills — same
-    // shape (full prose body, scope, best practices, pitfalls), lower
-    // confidence. Marked `[pending approval]` so the LLM treats them as
-    // hints, not authoritative rules. Drops BEFORE recipe bodies in the
-    // ladder (promoted skills are the durable surface; candidates are
-    // the cheapest section to lose without breaking authoring).
     if (skillCandidatesBlock) vol(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
     if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
-    // Recorded endpoint samples render right above the latest preview:
-    // the model reads "what the endpoints return" → "what the last
-    // dry-run actually produced" together, in the same `$scope.<id>.data…`
-    // addressing vocabulary.
-    // OPT-E: known operations (what CAN be called) just above the recorded
-    // samples (what calls already returned) — same authoring vocabulary.
     if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
     if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
@@ -577,9 +359,6 @@ export async function assembleEnhancedPrompt(
     }
     for (const f of failures) vol(formatFailure(f));
     if (tenantSummaryBlock) vol(tenantSummaryBlock);
-    // Authoring context lives at the very tail so it stays in the
-    // volatile cache segment — it changes every turn and must not
-    // invalidate the stable prefix above.
     if (baseVolatile) vol(baseVolatile);
     if (authoringContext) vol(authoringContext);
     if (p.automation_context) vol(p.automation_context);
@@ -593,11 +372,6 @@ export async function assembleEnhancedPrompt(
   const messagesTokens = countMessagesTokens(p.user_turns);
   let total = systemTokens + messagesTokens;
 
-  // Drop order (lowest priority dropped first):
-  //   interaction log → failures → recorded endpoint samples →
-  //   connector docs → latest preview → knowledge chunks → user memory →
-  //   authoring context → explicitly loaded skills → workflow skills →
-  //   connector skills → global skills.
   const recount = () => {
     system = render();
     systemTokens = countTokens(system);
@@ -605,24 +379,10 @@ export async function assembleEnhancedPrompt(
   };
 
   const trimmed: string[] = [];
-  // Reference lines left behind when authoring-evidence blocks are trimmed
-  // (see the branches below). Kept tiny — a handful of tokens each — and
-  // themselves droppable as the very last resort before the overflow throw.
   const CONNECTOR_SCHEMA_TRIM_REF =
     "# Connector operations (from the connector's schema)\n[trimmed to fit the context budget — call discover_connector_endpoints to reload the real operation index; do not guess operation or argument names]";
   const PROBE_SAMPLES_TRIM_REF =
     "# Recorded endpoint samples\n[trimmed to fit the context budget — probe_connector / call_connector re-record real response shapes; suggest_jsonata_paths serves the field vocabulary. Do not guess field names]";
-  // Skill-body summary used as a fallback when we'd otherwise pop a
-  // whole skill. Keeps the skill name + scope visible to the model
-  // (so it can call `load_skill` to re-fetch the full body) while
-  // shedding the bulk of the markdown body. Saves ~70-90% per skill
-  // vs. dropping it entirely. Pre-fix the trim path popped the whole
-  // skill record, removing the title + scope hint from the model's
-  // context — losing the SIGNAL that the skill exists at all.
-  // 100-char summary keeps the title + first sentence visible (enough
-  // for the model to decide whether to call `load_skill`) without
-  // bloating the trimmed prompt. Lower than the original 200 so a
-  // 5-skill global bundle costs ~250 tokens after trim instead of ~500.
   const SKILL_BODY_SUMMARY_LIMIT = 100;
   const trimSkill = (s: Skill): typeof s => {
     if (s.body.length <= SKILL_BODY_SUMMARY_LIMIT) return s;
@@ -631,48 +391,24 @@ export async function assembleEnhancedPrompt(
       body: `${s.body.slice(0, SKILL_BODY_SUMMARY_LIMIT).trim()}… [load_skill('${s.title ?? s.id}') for full body]`,
     };
   };
-  // Loaded skills go through a progressive body-trim before being
-  // popped. Ambient (index-form) skills can't be partially trimmed —
-  // their block is dropped wholesale once the budget runs out.
   let trimmedLoadedCursor = 0;
   while (total > cap) {
     if (interactionLogEntries.length > 0) {
-      // Drop interaction log first — same priority as failures (both
-      // are "recent conversation context" rather than load-bearing
-      // domain knowledge). The model can still see the recent tool
-      // calls in the message history; the log is a convenience.
       interactionLogEntries = [];
       trimmed.push("interaction_log");
     } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
     } else if (connectorSchemaBlock && connectorSchemaBlock !== CONNECTOR_SCHEMA_TRIM_REF) {
-      // OPT-E connector-operations summary drops FIRST among the authoring
-      // aids: it is the most cheaply re-derivable (one
-      // discover_connector_endpoints call re-warms the exact same index), so
-      // it is the first thing to shed under budget pressure. A one-line
-      // reference survives (trimSkill pattern): the model keeps the SIGNAL
-      // that a real operation index exists and which tool reloads it,
-      // instead of extrapolating endpoint shapes from memory.
       connectorSchemaBlock = CONNECTOR_SCHEMA_TRIM_REF;
       trimmed.push("connector_schema_summary");
     } else if (probeShapeExamplesBlock && probeShapeExamplesBlock !== PROBE_SAMPLES_TRIM_REF) {
-      // Recorded endpoint samples drop EARLY — well before any skill
-      // section. They are a grounding aid the model can re-derive on
-      // demand (call_connector / probe_connector re-record on the next
-      // call; suggest_jsonata_paths serves the same vocabulary), so
-      // they are the cheapest authoring section to shed under pressure.
-      // Same reference-line treatment as the operation index above.
       probeShapeExamplesBlock = PROBE_SAMPLES_TRIM_REF;
       trimmed.push("recorded_endpoint_samples");
     } else if (chunks.length > 0) {
       chunks.pop();
       trimmed.push("docs");
     } else if (latestPreviewEntries.length > 0) {
-      // Drop latest_preview before knowledge chunks: when the budget
-      // is this tight the model needs domain knowledge to recover,
-      // and the preview is recoverable on the next turn via
-      // dry_run_workflow / suggest_jsonata_paths.
       latestPreviewEntries = [];
       trimmed.push("latest_preview");
     } else if (knowledgeChunks.length > 0) {
@@ -686,9 +422,6 @@ export async function assembleEnhancedPrompt(
       p.referenced_entities &&
       referencedEntitiesBlock !== p.referenced_entities.trim_ref
     ) {
-      // The user pointed at these objects on purpose, so the section is
-      // never dropped outright: it shrinks to one line per object (id +
-      // the tool that reloads it), the same treatment as a trimmed skill.
       referencedEntitiesBlock = p.referenced_entities.trim_ref;
       trimmed.push("referenced_entities");
     } else if (authoringContext) {
@@ -705,74 +438,38 @@ export async function assembleEnhancedPrompt(
       loadedSkills.pop();
       trimmed.push("loaded_skill");
     } else if (loadedIndexSkills.length > 0) {
-      // The "Loaded" index (aged-out / out-of-scope loaded skills) is a
-      // one-line-per-skill navigational aid — drop it wholesale once the
-      // full-body loaded skills are gone. The slug stays recoverable via
-      // load_skill regardless.
       loadedIndexSkills.length = 0;
       trimmed.push("loaded_skill_index");
     } else if (workflowSkills.length > 0) {
-      // Index blocks render as one section per scope. Dropping them
-      // entirely is the right granularity — we can't pop one entry
-      // without re-rendering the block. Workflow scope drops first
-      // because the model can re-discover workflow-bound skills via
-      // load_skill once the conversation has a target_workflow_id.
       workflowSkills.length = 0;
       trimmed.push("workflow_skill_index");
     } else if (connectorSkills.length > 0) {
       connectorSkills.length = 0;
       trimmed.push("connector_skill_index");
     } else if (skillCandidatesBlock) {
-      // Skill candidates drop BEFORE recipe bodies: promoted skills
-      // (those that survived approval and now live in the global /
-      // connector / workflow skill scope) are the durable surface; a
-      // candidate is by construction speculative. Losing it just means
-      // the LLM can't see a pattern the self-healer detected but the
-      // operator hasn't yet promoted — recoverable on the next turn.
       skillCandidatesBlock = null;
       trimmed.push("skill_candidates");
     } else if (priorWorkflowsBlock) {
-      // Prior workflows drop between skill_candidates and
-      // connector_recipe_bodies: a reference case is informational
-      // (the LLM can still call `find_workflow` / `get_workflow` to
-      // re-discover it), whereas connector recipes are first-turn-
-      // clone payloads with a much higher per-turn payoff. When the
-      // budget gets tight, drop the references first.
       priorWorkflowsBlock = null;
       priorWorkflowsSurvivors = [];
       trimmed.push("prior_workflows");
     } else if (connectorRecipeBodiesBlock) {
-      // Rich recipe bodies drop BEFORE the slim recipe roster: the
-      // index is the navigational signal (the LLM can still call
-      // inspect_recipe to recover any body), the bodies are the
-      // first-turn-clone payload. When the global budget is tight,
-      // surrender the heavy section first.
       connectorRecipeBodiesBlock = null;
       trimmed.push("connector_recipe_bodies");
     } else if (connectorRecipesBlock) {
-      // Recipes are a navigation aid — dropping them just means the
-      // LLM falls back to authoring from scratch. Trim before quirks
-      // (which are operator-authored, more authoritative).
       connectorRecipesBlock = null;
       trimmed.push("connector_recipes");
     } else if (connectorOperatorQuirksBlock) {
-      // operator_quirks is the operator's direct, imperative instruction
-      // for this connector — drop it only when nothing else remains
-      // except global skills and the base prompt.
       connectorOperatorQuirksBlock = null;
       trimmed.push("connector_operator_quirks");
     } else if (globalSkills.length > 0) {
       globalSkills.length = 0;
       trimmed.push("global_skill_index");
     } else if (connectorSchemaBlock || probeShapeExamplesBlock) {
-      // Beyond-tight budget: even the evidence reference lines go —
-      // they must never be the reason the base prompt cannot fit.
       connectorSchemaBlock = null;
       probeShapeExamplesBlock = null;
       trimmed.push("authoring_evidence_refs");
     } else if (referencedEntitiesBlock) {
-      // Last resort, same rule as the evidence refs: the one-line reference
-      // must never be the reason the base prompt cannot fit.
       referencedEntitiesBlock = null;
       trimmed.push("referenced_entities_ref");
     } else {
@@ -810,10 +507,6 @@ export async function assembleEnhancedPrompt(
   }
 
   const includedSkills = [...globalSkills, ...connectorSkills, ...workflowSkills, ...loadedSkills];
-  // Post-trim per-section token accounting. Each bucket reads the
-  // rendered (already trimmed) block when it survived the global
-  // trimmer; reads 0 when dropped. The producer (this function)
-  // populates every key — consumers never default with `?? 0`.
   const recipeBodiesTokens =
     connectorRecipeBodiesBlock !== null ? countTokens(connectorRecipeBodiesBlock) : 0;
   const skillCandidatesTokens =
@@ -827,9 +520,6 @@ export async function assembleEnhancedPrompt(
     (t, s) => t + countTokens(formatSkill(s, p.runtime_context)),
     0,
   );
-  // Survivor lists: only items in blocks the global trimmer kept count.
-  // When the section was dropped above, the ids zero out — so the
-  // observability hashes report exactly what the LLM actually saw.
   const includedRecipeSlugs =
     connectorRecipeBodiesBlock !== null
       ? connectorRecipeBodiesSurvivors.map((r) => r.recipe_slug)
@@ -867,11 +557,6 @@ export async function assembleEnhancedPrompt(
   };
 }
 
-/**
- * High-level entry point — wraps `assembleEnhancedPrompt` with the
- * stable/volatile cache-block split and a structured `BudgetReport`.
- * `core/invoke.ts` uses this before dispatching to the AiSdkModel.
- */
 export async function assembleContext(
   params: AssembleContextParams,
   exec?: Executor,
@@ -902,8 +587,6 @@ export async function assembleContext(
       knowledge: prompt.included_knowledge_chunk_ids.length,
       docs: prompt.included_chunk_ids.length,
       failures: includedFailureCount,
-      // Counts that survived BOTH the per-section pre-trim AND the
-      // global trimmer — what the LLM actually saw on this turn.
       recipe_bodies: included_recipe_slugs.length,
       candidates: included_candidate_ids.length,
       prior_workflows: included_prior_workflow_slugs.length,
@@ -911,17 +594,8 @@ export async function assembleContext(
     dropped_sections,
   };
 
-  // Per-id 8-char SHA-256 hashes — capped at 12 entries per category
-  // (top-N selection cap plus headroom). Operators can grep "did this
-  // turn see X?" by hashing X locally and looking for the 8-char prefix.
-  // No metric labels carry hashes — keeps cardinality bounded.
-  // Correlation-grade obfuscation only, NOT a security boundary.
   const idHashes = (ids: string[]): string[] => idHashesCapped(ids);
 
-  // Surface every assembly as a structured event. The metric and the
-  // log line let operators see at a glance which flows are running
-  // hot, which sections are getting trimmed, and how much of the
-  // available cap is being spent.
   recordLlmContextAssembled({
     tenant_id: params.tenant_id,
     flow: params.flow,
@@ -934,28 +608,12 @@ export async function assembleContext(
     included: budget_report.included,
     included_skill_id_hashes: idHashes(prompt.included_skill_ids),
     included_candidate_id_hashes: idHashes(included_candidate_ids),
-    // Recipe slugs are low-cardinality + already operator-visible in
-    // connector templates; hashing them would force operators to
-    // round-trip through sha256sum to read the log line. Emit the raw
-    // slugs (still capped at 12 — the same headroom as the hash lists).
-    //
-    // Cardinality assumption: `template_snapshot.recipes[].slug` stays
-    // operator-curated and bounded. If recipes ever become user-authorable
-    // (each tenant defines its own), this becomes a log-line cardinality
-    // problem and the slugs should switch to hashed via `idHashes` like
-    // the other id arrays.
     included_recipe_slugs: included_recipe_slugs.slice(0, 12),
-    // Prior-workflow slugs are tenant-internal and bounded — at most
-    // `PRIOR_WORKFLOWS_TOP_K` per turn. Emitted raw (capped at 12 for
-    // log-line bounds, same headroom as recipes).
     included_prior_workflow_slugs: included_prior_workflow_slugs.slice(0, 12),
     dropped_sections: budget_report.dropped_sections,
     section_tokens: prompt.token_counts,
   });
 
-  // Remember the report per conversation so the `/context` snapshot can
-  // show the operator what the LAST turn dropped (in-process cache — see
-  // conversation-budget-report.ts for the honesty/restart contract).
   if (params.conversation_id) {
     recordConversationBudgetReport(params.tenant_id, params.conversation_id, {
       cap_tokens: budget_report.cap_tokens,
@@ -965,13 +623,6 @@ export async function assembleContext(
     });
   }
 
-  // Closing edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
-  // record which loop-originated skills actually influenced this authoring
-  // turn. `catalog` counts ONLY Skills promoted from a Skill Candidate
-  // (source === "candidate") — not engine-shipped seed/template/manual skills,
-  // which are always-on and would otherwise drown the loop-closure signal.
-  // `candidate` counts proposed Skill Candidates surfaced for review. Both
-  // counts come from data already in hand — pure in-memory increments.
   const promotedSkillCount = prompt.included_skills.filter((s) => s.source === "candidate").length;
   recordAuthoringContextSkillsUsed({
     tenant_id: params.tenant_id,

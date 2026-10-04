@@ -1,68 +1,12 @@
-// Which MCP-reachable conversation tools reach `execute()` without a `can()`.
-//
-// The dispatcher's RBAC step is `if (descriptor.rbac)`. No descriptor means no
-// permission check at all — not a denial, not a fallback: the step is skipped.
-// So a tool that nobody remembered to enter in `RBAC_OVERRIDES` is ungated on
-// MCP, silently, and looks exactly like a tool that was deliberately left
-// open.
-//
-// LOCAL-SK-AUDIT-TRAIL-UNGATED — that is how the audit trail shipped open.
-// `list_audit` / `get_audit_entry` are the same trail `GET /v1/audit-log`
-// serves behind `audit:read`; on MCP they asked nobody. Their neighbours
-// (`list_users`, `list_api_keys`, `read_knowledge`) all had entries. It was
-// an omission, and nothing in the repo could tell an omission from a choice.
-//
-// CATALOG DEFINITION — stated so the next measurement lands on the same
-// number, because the last one did not. A "tool" here is one descriptor
-// returned by `conversationToolProvider.list({ surface: "mcp", mcpMode })`,
-// and "ungated" is that descriptor having no `rbac` field. Nothing else is
-// counted: not the chat-only surface, not tools filtered out of the mode,
-// not the RBAC_OVERRIDES table itself. `ungatedIn()` below IS the predicate,
-// so the documented number and the enforced number cannot drift apart.
-//
-// Measured that way when this was found, against the ADMIN catalog (the
-// widest): 73 of 107 had no permission descriptor — 44 of 65 in product
-// mode. "Forgotten" was the default, not the exception, so a single added
-// entry would have been a fix for one tool and no answer at all.
-//
-// After the `descriptorFor` fallback to the tool's own `permission`
-// declaration: admin 73 -> 61, product 44 -> 41.
-//
-// CORRECTION (LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH). The commit that added this
-// file reported the before-state as "82 of 116" and "46 of 67", and the
-// paragraph above said 116/82 too. Those denominators match no catalog this
-// provider can produce; re-measured with the definition above, both the
-// before-state and the delta are as written here. The END state — 61 and 41
-// — was correct as published and is unchanged, and the direction the commit
-// argued from holds. Only the starting figure was too high.
-//
-// This test is the answer: every ungated tool is listed below WITH a reason,
-// and a tool that becomes reachable without a permission fails the suite until
-// someone either gates it or writes down why it is open. It is also the
-// inventory a future flip of the dispatcher default (no descriptor => deny)
-// needs — that flip is a one-line change guarded by this list, and it cannot
-// be made safely while the list is unexamined.
-
 import { describe, expect, test } from "bun:test";
 import { conversationToolProvider } from "../index.ts";
 import type { ToolListFilter } from "../registry.ts";
 
-/** Reachable on MCP in admin mode (the widest catalog) and deliberately
- *  ungated. Each entry needs a reason; grouping is the reason. */
 const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
-  // Self-introspection and conversational plumbing — no tenant data.
-  // `whoami` must stay open so a principal can discover its own rights
-  // before being denied (mirrors rbac/self-introspection.ts).
   "no tenant data": ["whoami", "cannot_help"],
 
-  // Designated low-sensitivity self-status surface: the `enduser` role
-  // deliberately lacks `stats:read`, and the sensitive operator health digest
-  // is a separate, already gated tool.
   "self-status by design": ["get_engine_status"],
 
-  // Authoring helpers that read the OUTSIDE world (a vendor's docs, a public
-  // URL, a spec) or compute over arguments the caller already supplied. They
-  // return nothing from the tenant that the caller did not bring.
   "operates on caller-supplied or public input": [
     "analyze_scrape_target",
     "discover_connector_endpoints",
@@ -82,13 +26,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "load_skill",
   ],
 
-  // KNOWN GAP — tenant reads and writes with no permission on the MCP path.
-  // Not a decision. Each of these returns or changes tenant state and should
-  // carry an entry; they are listed so the number is visible rather than
-  // implied, and so a NEW one cannot join them unnoticed.
-  //
-  // Do not add to this group. Add an RBAC_OVERRIDES entry instead, or declare
-  // `permission` on the tool (the provider derives a descriptor from it).
   "known gap — needs a permission": [
     "approve_discovery_artifact",
     "approve_patch_candidate",
@@ -127,7 +64,7 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "preview_attachment",
     "preview_patch_candidate",
     "rerun_execution",
-    "run_workflow", // gated by gateWorkflowRunRbac, not by a descriptor
+    "run_workflow",
     "search_knowledge",
     "update_schedule",
   ],
@@ -174,13 +111,6 @@ describe("MCP RBAC descriptor coverage", () => {
     }
   });
 
-  // LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH — the published count was prose, and
-  // prose drifts. This makes it arithmetic instead: the list above IS the
-  // inventory, so its size must equal what the provider actually reports as
-  // ungated (19 deliberate, 40 known gaps = 59 after gating persisted probes).
-  // Adding a properly gated tool leaves all three numbers
-  // alone; adding an ungated one moves them together with the list, so the
-  // header can never again quote a figure the code does not produce.
   test("the documented ungated count is the one the provider reports", () => {
     const byDesign = Object.entries(UNGATED_BY_DESIGN)
       .filter(([reason]) => !reason.startsWith("known gap"))

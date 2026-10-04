@@ -75,10 +75,6 @@ describe("request step", () => {
   });
 
   test("failed step records non-empty request_meta (url, method, header_keys, body_kind)", async () => {
-    // Force a 4xx so the step fails. The diagnostic envelope MUST
-    // surface what was attempted — without this, diagnose_run returns
-    // `request: {}` and the operator (and the LLM) cannot see the
-    // outbound URL. Regression for session bc745e38.
     mock.setHandler((_, res) => jsonResponse(res, 404, { error: "not found" }));
 
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -107,10 +103,6 @@ describe("request step", () => {
       .where(eq(executionSteps.execution_id, result.execution_id));
     expect(stepRows).toHaveLength(1);
     const meta = stepRows[0]?.output_preview as Record<string, unknown> | null;
-    // The diagnostic envelope is recorded under different keys
-    // depending on how the runtime persists it. Prefer the explicit
-    // `request_meta` field on the step row when present, else fall
-    // back to `output_preview.request`.
     const rm =
       (stepRows[0] as unknown as { request_meta?: Record<string, unknown> }).request_meta ??
       (meta && typeof meta === "object" && "request" in meta
@@ -121,8 +113,6 @@ describe("request step", () => {
     expect(typeof (rm as Record<string, unknown>).url).toBe("string");
     expect(String((rm as Record<string, unknown>).url)).toContain(`${mock.baseUrl}/missing`);
     expect((rm as Record<string, unknown>).method).toBe("GET");
-    // header_keys lives under request_meta.digest (typed first-class
-    // field on http / connectorless / error variants).
     const digest = (rm as Record<string, unknown>).digest as Record<string, unknown> | undefined;
     expect(Array.isArray(digest?.header_keys)).toBe(true);
   });
@@ -158,10 +148,6 @@ describe("request step", () => {
   });
 
   test("setup failure (placeholder_unresolved) records request_meta.unresolved_placeholders", async () => {
-    // The other failure mode: the step never reached the wire because
-    // a placeholder couldn't be resolved. Even though no HTTP call was
-    // attempted, the diagnostic envelope must record what tokens were
-    // unresolved so the operator can fix the workflow without guessing.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "one-shot-bad-placeholder",
       steps: [
@@ -193,13 +179,6 @@ describe("request step", () => {
 
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
   test("request body preserves native JSON types — whole-value ${ref} leaves stay number/array/object on the wire", async () => {
-    // Mirrors the resolvePlaceholdersTypePreserving suite
-    // (llm/substitution/tests/resolver.test.ts) at the dispatch level:
-    // a whole-value `"${ref}"` body leaf must reach the wire carrying its
-    // native type (so a typed-body API like Notion sees an array, not a
-    // JSON-stringified `"[…]"` that it rejects with `should be an array`).
-    // A mixed-string leaf still stringifies. Regression for the
-    // notion-append session where every nested body double-encoded.
     let captured: Record<string, unknown> | null = null;
     mock.setHandler(async (req, res) => {
       const chunks: Buffer[] = [];
@@ -243,15 +222,11 @@ describe("request step", () => {
     expect(result.status).toBe("succeeded");
     const body = captured as Record<string, unknown> | null;
     expect(body).toBeTruthy();
-    // numeric leaf → native number, not "7"
     expect(typeof body?.limit).toBe("number");
     expect(body?.limit).toBe(7);
-    // array leaf → native array, not a JSON-stringified string
     expect(Array.isArray(body?.children)).toBe(true);
     expect(body?.children).toEqual([{ a: 1 }, { b: 2 }]);
-    // object leaf → native object
     expect(body?.filter).toEqual({ id: { eq: "x" } });
-    // mixed string still stringifies (interpolation, not whole-value)
     expect(body?.note).toBe("count=7");
   });
 });

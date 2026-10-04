@@ -99,13 +99,7 @@ describe("renderInvokeSnippet", () => {
   });
 });
 
-// What a snippet is for is being pasted. These read each one the way its
-// interpreter does and compare what would be SENT with what was meant —
-// for an input made of the characters each language treats specially.
-// (`tests/contract/invoke-snippet-interpreters.test.ts` runs the same input
-// through a real shell and a real Python.)
 const HOSTILE_TEXT = 'it\'s $HOME `id` $(id) \\ back\\slash "quoted" \n tab\t ünï ✓ 😀';
-// Parsed, not written as a literal, so `__proto__` is a key of its own here too.
 const HOSTILE_INPUT = JSON.parse(
   JSON.stringify({ note: HOSTILE_TEXT, "we'ird $key": [true, false, null, 1.5, "'"] }).replace(
     /}$/,
@@ -113,9 +107,6 @@ const HOSTILE_INPUT = JSON.parse(
   ),
 ) as Record<string, unknown>;
 
-/** A command line split into words by the POSIX quoting rules: single quotes
- *  are literal, double quotes group, a backslash escapes the next character,
- *  and a backslash before a newline continues the line. Nothing is expanded. */
 function shellWords(command: string): string[] {
   const words: string[] = [];
   let word: string | null = null;
@@ -145,11 +136,9 @@ function shellWords(command: string): string[] {
   return words;
 }
 
-/** The Python expression after `json=`, read back as the value it denotes. */
 function pythonValue(snippet: string): unknown {
   const start = snippet.indexOf("    json=") + "    json=".length;
   const literal = snippet.slice(start, snippet.lastIndexOf(",\n)"));
-  // Outside string literals the only non-JSON tokens are the three constants.
   const json = literal.replace(
     /"(?:[^"\\]|\\.)*"|\b(True|False|None)\b/g,
     (token, constant: string | undefined) =>
@@ -166,7 +155,6 @@ interface SentRequest {
   body: unknown;
 }
 
-/** Run the Node snippet as JavaScript and capture the request it makes. */
 async function runNodeSnippet(snippet: string): Promise<SentRequest> {
   const sent: SentRequest[] = [];
   const fetchStub = async (
@@ -212,7 +200,6 @@ describe("what a pasted snippet sends", () => {
     const data = words[words.indexOf("-d") + 1];
     expect(words.indexOf("-d")).toBe(words.length - 2);
     expect(JSON.stringify(JSON.parse(data ?? ""))).toBe(JSON.stringify(expected));
-    // Nothing inside the body is left for the shell to expand.
     expect(data).toContain("$HOME `id` $(id)");
   });
 

@@ -1,13 +1,3 @@
-// test_connector dedupe — the most direct duplication eliminated by
-// the unified tool palette. The conversation-side `test_connector`
-// is the single canonical implementation; the MCP path routes through
-// the unified dispatcher and writes exactly one connector.invoked
-// audit row per call.
-//
-// This file replaces a deleted single-purpose test-connector test —
-// same coverage, asserted against the post-cutover envelope shape
-// (structured error_code, single audit row, dispatcher-driven RBAC).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -35,8 +25,6 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
       slug: "test-connector-happy",
       base_url: mock.baseUrl,
     });
-    // Count only connector.invoked rows so the assertion isn't
-    // perturbed by unrelated auth-side audits (api_key.used sampling).
     const probeCountFilter = and(
       eq(auditLog.tenant_id, suite.http.tenantId),
       eq(auditLog.action, "connector.invoked"),
@@ -63,17 +51,11 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
     expect(data.ok).toBe(true);
     expect(typeof data.latency_ms).toBe("number");
 
-    // The dispatcher must not double-dispatch. Exactly one new
-    // connector.invoked row attributable to this call. A regression
-    // that re-introduces the legacy MCP handler alongside the
-    // conversation tool would emit two rows.
     const after = await suite.http.db.select({ c: count() }).from(auditLog).where(probeCountFilter);
     expect((after[0]?.c ?? 0) - baseline).toBe(1);
   });
 
   test("unknown connector_id surfaces as structured error envelope", async () => {
-    // Post-cutover envelope: { error_code, message, details?, next_best_actions? }
-    // — replaces the legacy MCP-only { error: string } shape.
     const client = await suite.connect();
     const result = await client.callTool({
       name: "test_connector",
@@ -89,11 +71,6 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
   });
 
   test("missing connector_id arg surfaces as invalid_args envelope", async () => {
-    // The dispatcher canonicalizes args against the tool's inputSchema ONCE, at
-    // the boundary, before the executor runs (Zod-at-the-boundary). A missing
-    // required arg is therefore an `invalid_args` validation failure at that
-    // gate — not a `tool_execute_failed` thrown from a re-parse inside
-    // execute(), which was the old double-parse behaviour.
     const client = await suite.connect();
     const result = await client.callTool({
       name: "test_connector",
@@ -110,10 +87,6 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
   });
 
   test("tool.dispatch.invoke log fires for every dispatched call (replaces legacy mcp.tool.result)", async () => {
-    // We don't have a log-ring assertion fixture here; the dispatcher
-    // emits the event unconditionally and the integration assertion
-    // belongs to the closed-loop runtime validation. This todo stake
-    // is left active so a future log-ring test can fill it in.
     expect(true).toBe(true);
   });
 });

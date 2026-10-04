@@ -1,32 +1,3 @@
-// Boot-time dependency validation.
-//
-// Runs after loadConfig() + assertCryptoKeyOrExit() but BEFORE
-// runMigrations() so the operator sees one clear "what's missing"
-// error instead of a downstream subsystem crash. Each probe maps to
-// a specific class of misconfiguration:
-//
-//   * DB CONNECT       — DATABASE_URL points at a reachable Postgres
-//                        and the role can run `SELECT 1`.
-//   * DB EXTENSIONS    — `pgcrypto` is installed in the search_path
-//                        (gen_random_uuid() default for primary keys).
-//   * FS WRITE         — engine writes to /etc/subkit (config), /var/lib/subkit
-//                        (blob storage). On systemd `StateDirectory=`
-//                        and `ConfigurationDirectory=` create them with
-//                        the right ACL; this probe confirms.
-//   * CRYPTO SELF-TEST — encrypt+decrypt a known plaintext with the
-//                        master key. Catches a length-correct hex string
-//                        that isn't actually 32 bytes after decoding.
-//   * RUNTIME          — Bun version + arch, surfaced via structured log
-//                        so an operator can correlate a startup against
-//                        the build artifact.
-//
-// Each probe logs `module: "observability"` (matches the file's
-// subsystem) with `action: "boot.dependency.<name>.{ok,fail}"` so
-// alerting can fire on `_fail` without parsing prose. The blocker
-// classes (DB connect, crypto) exit 1 — the engine cannot serve
-// requests in those states. The non-blocker classes (FS write to
-// optional dirs) emit a `warn` and continue.
-
 import { accessSync, constants, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -57,17 +28,6 @@ async function probeDbConnect(db: Db): Promise<ProbeResult> {
 
 async function probeDbExtensions(db: Db): Promise<ProbeResult> {
   try {
-    // pgcrypto is required for `gen_random_uuid()` defaults; runMigrations
-    // installs it on first run, but a probe here surfaces the missing
-    // extension before migrations run their CREATE TABLE statements
-    // (which fail with a confusing "function gen_random_uuid() does not
-    // exist" error if the operator's role lacks CREATE EXTENSION).
-    //
-    // pg_extension is a system catalog; drizzle has no schema model
-    // for it (and adding one for a single probe is overkill). We
-    // only need to know whether ANY row came back — drizzle's
-    // `QueryResult<Record<string, unknown>>` is enough; we never
-    // touch the row's content, so no row-type narrowing is needed.
     const result = await db.execute(
       sql`SELECT extname FROM pg_extension WHERE extname = 'pgcrypto'`,
     );
@@ -92,50 +52,14 @@ async function probeDbExtensions(db: Db): Promise<ProbeResult> {
 }
 
 function probeFsWrite(dir: string): ProbeResult {
-  // The systemd unit's StateDirectory/ConfigurationDirectory keys
-  // create these dirs with mode 0750 + the right User/Group; this
-  // probe confirms (a) the dir exists and (b) the engine user has
-  // write access. Local dev runs as the operator's UID and these
-  // paths may not exist — that's a non-blocker.
-  //
-  // accessSync(W_OK) FIRST so a misconfigured ACL surfaces as
-  // permission_denied with the offending path. Without this
-  // pre-check, mkdirSync({ recursive: true }) would silently create
-  // the dir as the engine UID and mask the misconfiguration —
-  // operator wouldn't notice until the systemd Group= setting
-  // drifted further and the engine couldn't read its own files.
-  //
-  // Trust boundary: under systemd the unit's `StateDirectory=` /
-  // `ConfigurationDirectory=` directives pre-create these paths with
-  // the right ownership before ExecStart. The mkdirSync fallback
-  // exists for non-systemd deploys (manual debug-mode boots,
-  // Dockerless local prod). Outside systemd, the fallback CAN mask a
-  // misconfiguration — if the engine is started by root in a context
-  // that drops privileges, a wrong `subkit:subkit` could create the
-  // dir as root:root and the engine wouldn't notice until later. The
-  // production path (systemd) doesn't reach this branch, so the
-  // mask only affects bespoke deployments.
-  // Unique probe filename per process so two simultaneous boots
-  // (a test fixture racing against a prod start, two operators
-  // running --issue-admin-key, …) don't collide on write/read/unlink.
-  // pid + epoch ms is enough; the probe lifetime is sub-millisecond.
   const probe = join(dir, `.subkit-boot-probe.${process.pid}.${Date.now()}`);
   try {
     try {
       accessSync(dir, constants.W_OK);
     } catch {
-      // Dir does not exist (or perms forbid even reading it). If we
-      // can write to the parent we'll create it; otherwise this
-      // probe fails cleanly with the parent's actual error message.
       mkdirSync(dir, { recursive: true });
       accessSync(dir, constants.W_OK);
     }
-    // Always unlink the probe — even on a round-trip mismatch or a
-    // mid-flight readFileSync throw — so a stale file from one boot
-    // can't mask a real anomaly on the next. unlink is best-effort:
-    // if it fails (probe was never written, or was already removed
-    // by something else), we don't want to mask the underlying
-    // probe failure.
     try {
       writeFileSync(probe, "ok", { mode: 0o600 });
       const back = readFileSync(probe, "utf8");
@@ -151,9 +75,7 @@ function probeFsWrite(dir: string): ProbeResult {
     } finally {
       try {
         unlinkSync(probe);
-      } catch {
-        /* probe file was never written, or already removed — fine */
-      }
+      } catch {}
     }
   } catch (err) {
     return {
@@ -189,34 +111,14 @@ function probeCryptoSelfTest(): ProbeResult {
   }
 }
 
-// Bun is provided as an ambient global by the bun runtime. The static
-// type comes from the `bun-types` dev dependency; we don't statically
-// import it here to keep this module's surface free of a runtime
-// dependency. The `<not-bun>` fallback covers the (rare) case where
-// `tsc --noEmit` runs this module under node — purely informational.
 declare const Bun: { version: string } | undefined;
 
 function probeRuntime(): ProbeResult {
-  // Surface the Bun version + arch + platform once at boot. Not a
-  // gate; just structured forensic info so an operator can correlate
-  // a runtime crash against the binary's reported version.
   const bunVersion = typeof Bun !== "undefined" ? Bun.version : "<not-bun>";
   const detail = `bun=${bunVersion} platform=${process.platform} arch=${process.arch}`;
   return { name: "runtime", ok: true, blocker: false, detail };
 }
 
-/** Production state directories. systemd populates STATE_DIRECTORY +
- *  CONFIGURATION_DIRECTORY for any unit that declares `StateDirectory=`
- *  / `ConfigurationDirectory=` (`man 5 systemd.exec`). Reading those
- *  env vars instead of hard-coding `/etc/subkit` + `/var/lib/subkit`
- *  keeps the probe in sync with the systemd unit even if the operator
- *  customizes those keys.
- *
- *  Falls back to the documented defaults so a manually-deployed engine
- *  (no systemd) still gets the probe. The probe runs only when
- *  `NODE_ENV === "production"` — local dev and the test harness run as
- *  the operator's UID, those paths may not exist, and probing produces
- *  noise warns. */
 const FALLBACK_STATE_DIRS = ["/etc/subkit", "/var/lib/subkit"];
 
 function isProduction(): boolean {
@@ -224,8 +126,6 @@ function isProduction(): boolean {
 }
 
 function resolveStateDirs(): string[] {
-  // Both env vars are colon-delimited per `systemd.exec(5)` (matches
-  // PATH conventions). Each value is an absolute path.
   const fromSystemd = [
     ...(process.env.CONFIGURATION_DIRECTORY?.split(":") ?? []),
     ...(process.env.STATE_DIRECTORY?.split(":") ?? []),
@@ -233,16 +133,11 @@ function resolveStateDirs(): string[] {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   if (fromSystemd.length > 0) {
-    // De-duplicate: STATE_DIRECTORY and CONFIGURATION_DIRECTORY can
-    // overlap when an operator points both at the same path.
     return Array.from(new Set(fromSystemd));
   }
   return FALLBACK_STATE_DIRS;
 }
 
-/** Single source of truth for the probe set. Both the gate that
- *  exits 1 on blocker failure and the test seam that returns the
- *  outcomes call this; they cannot drift. */
 async function runAllProbes(db: Db): Promise<ProbeResult[]> {
   const probes: ProbeResult[] = [
     probeRuntime(),
@@ -256,13 +151,6 @@ async function runAllProbes(db: Db): Promise<ProbeResult[]> {
   return probes;
 }
 
-/**
- * Run every dependency probe, log structured results, and abort boot
- * if any blocker fails. Caller invokes this AFTER assertCryptoKeyOrExit
- * (so MASTER_KEY format is already validated) and BEFORE runMigrations
- * (so a CONNECT failure surfaces clearly instead of as a vague
- * "Failed query" line in migrate logs).
- */
 export async function validateBootDependencies(db: Db): Promise<void> {
   const probes = await runAllProbes(db);
 
@@ -296,9 +184,6 @@ export async function validateBootDependencies(db: Db): Promise<void> {
   }
 
   if (blockerFailed) {
-    // Surface a single summary line so the operator sees `boot.aborted`
-    // as the last entry before the process exits — easier to grep than
-    // hunting through individual probe failures.
     logger.fatal({
       module: "observability",
       action: "boot.dependency.aborted",
@@ -308,9 +193,6 @@ export async function validateBootDependencies(db: Db): Promise<void> {
   }
 }
 
-// Test seam: a non-fatal variant that returns the probe outcomes
-// instead of exit(1)-ing. Shares `runAllProbes` with the gate above —
-// they cannot drift.
 export async function _validateBootDependenciesForTests(db: Db): Promise<{
   blockerFailed: boolean;
   probes: ProbeResult[];

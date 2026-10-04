@@ -1,21 +1,3 @@
-// Diagnostic re-issue path coverage for save_connector_draft.
-//
-// PR13 promotes save_connector_draft from "the normal commit" to a
-// re-issue tool sitting alongside the harness auto-persist. These
-// tests pin the contract:
-//   - re-issue against an already-persisted connector with the same
-//     credential returns `already_persisted: true` and never writes.
-//   - re-issue with a rotated credential updates the credential row
-//     and emits a `manual_re_issue` audit row.
-//   - re-issue after a failed probe with `force_save: true` persists
-//     and surfaces a warning.
-//   - re-issue after a failed probe without `force_save` returns the
-//     `probe_failed` envelope.
-//
-// Bypassing these guards re-opens the "two writes per save" audit
-// triage problem and the silent-no-op-when-rotating bug we caught
-// during the elicitation extraction.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
@@ -36,12 +18,6 @@ import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 let ctx: ConversationTestCtx;
 const FIXTURE_MARKER = "save-connector-reissue-fixture-9k83aB";
 
-// Keep discovery and probe traffic in the async-context-scoped driver seam.
-// A real Bun.serve fixture made this otherwise-pure contract test depend on
-// loopback socket lifetime while the discovery fallback launched Playwright;
-// under the full suite the first probe could observe ECONNREFUSED even after
-// its pre-flight succeeded. The in-memory transport preserves the exact HTTP
-// response contract without sharing ports, global fetch, or browser state.
 const fixtureFetch = Object.assign(
   async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const rawUrl =
@@ -138,11 +114,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       });
       await inspectConnectorDraftTool.execute(toolCtx.base, {});
       await validateConnectorDraftTool.execute(toolCtx.base, {});
-      // The post-fix probe path refuses to go out unauthenticated for an
-      // auth-required draft (see probe-connector-draft.ts credential
-      // guard). Populate the cache directly to mirror the real flow
-      // where `ask_user_form` would have cached the credential before
-      // the LLM invokes probe.
       setDraftCredential(toolCtx.conversation_id, { mode: "bearer", token: "tkn-original" });
       await probeConnectorDraftTool.execute(toolCtx.base, { method: "GET", path: "/health" });
 
@@ -154,8 +125,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       expect(firstData.connector.id).toBeTruthy();
       const connectorId = firstData.connector.id;
 
-      // Snapshot connector and credential state, then re-issue with the
-      // SAME credential value. Expect the second call to short-circuit.
       const connectorRowsBefore = await ctx.testDb.db
         .select()
         .from(connectors)
@@ -178,7 +147,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       expect(data.connector_id).toBe(connectorId);
       expect(data.next_best_actions).toEqual(["inspect_connector", "list_connectors"]);
 
-      // Connector row + credential row didn't change (no double-write).
       const connectorRowsAfter = await ctx.testDb.db
         .select()
         .from(connectors)
@@ -213,9 +181,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       expect(first.ok).toBe(true);
       const connectorId = (first.data as { connector: { id: string } }).connector.id;
 
-      // Operator corrects the base_url after the first save — exactly the
-      // AppSync `/graphql` scenario. The re-issue path must patch the
-      // persisted row, not short-circuit on the matching credential.
       const editedUrl = "http://127.0.0.1:59999/edited";
       const upd = await updateConnectorDraftTool.execute(toolCtx.base, { base_url: editedUrl });
       expect(upd.ok).toBe(true);
@@ -229,19 +194,16 @@ describe("save_connector_draft — diagnostic re-issue", () => {
         re_issued?: boolean;
         fields_updated?: string[];
       };
-      // NOT a no-op: the base_url change is recognised and persisted.
       expect(data.already_persisted).toBeUndefined();
       expect(data.re_issued).toBe(true);
       expect(data.fields_updated).toEqual(["base_url"]);
 
-      // The persisted connector row carries the corrected base_url.
       const rows = await ctx.testDb.db
         .select()
         .from(connectors)
         .where(eq(connectors.id, connectorId));
       expect(rows[0]?.base_url).toBe(editedUrl);
 
-      // And the field edit is auditable as a connector.updated row.
       const audit = await listAuditRows(connectorId);
       expect(audit.some((r) => r.action === "connector.updated")).toBe(true);
     },
@@ -281,9 +243,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       expect(data.re_issued).toBe(true);
       expect(data.audit_reason).toBe("manual_re_issue");
 
-      // Audit log must include at least one manual_re_issue row tagged
-      // with our tool name. The exact action varies (CONNECTOR_UPDATED vs
-      // CONNECTOR_CREATED) but the reason must be the discriminator.
       const rows = await listAuditRows(connectorId);
       const manualReIssue = rows.filter((r) => r.reason === "manual_re_issue");
       expect(manualReIssue.length).toBeGreaterThan(0);
@@ -296,18 +255,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     },
   );
 
-  // The two probe-failure cases below previously called the live probe
-  // tool against a Bun.serve fixture's /broken endpoint, expecting a
-  // deterministic 500. Under the full-suite run that fetch flaked: the
-  // audit log showed `url_host:127.0.0.1:<our-port>` returning HTTP 200
-  // even though our handler returns 500 — a Bun fetch / port-reuse
-  // interaction we could not reliably contain via marker checks or
-  // sequence-retry port allocation. The save_connector_draft contract
-  // these tests pin reads from `draft.connector.latest_probe.ok` (see
-  // saveConnectorAtomic — the probe gate is a pure draft-state check).
-  // We inject a failed probe state directly via `withConnectorProbe`,
-  // which is exactly what `probe_connector_draft` does on a 500 — but
-  // without the network round-trip that flaked.
   fixtureTest(
     "re-issue with force_save: true after a failed probe persists and surfaces a warning",
     async () => {
@@ -321,8 +268,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       });
       await inspectConnectorDraftTool.execute(toolCtx.base, {});
       await validateConnectorDraftTool.execute(toolCtx.base, {});
-      // Inject a failed probe directly — equivalent to what
-      // probe_connector_draft writes into the draft on a 500.
       const draftBefore = toolCtx.base.getDraft();
       const connectorBefore = draftBefore.connector;
       if (!connectorBefore) throw new Error("connector draft missing");
@@ -339,10 +284,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
             duration_ms: 1,
             summary: "Probe reached the system but returned HTTP 500.",
             response_preview: "boom",
-            // Probe ran 2 minutes ago — outside the 60s cooldown
-            // window, so force_save is allowed. The cooldown gate
-            // (Pass D4) rejects fresh failed probes; this test
-            // covers the stale-probe override path.
             probed_at: new Date(getTestNow() - 120_000).toISOString(),
           },
         },
@@ -377,10 +318,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
     },
   );
 
-  // Regression: conversation 730c568a. The LLM force-saved a credential
-  // the probe had failed seconds earlier. Subsequent executions
-  // 401-ed against that very credential. The cooldown guard now
-  // refuses force_save while the failed probe is still fresh.
   fixtureTest(
     "force_save is refused inside the cooldown window after a fresh failed probe",
     async () => {
@@ -397,7 +334,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       const draftBefore = toolCtx.base.getDraft();
       const connectorBefore = draftBefore.connector;
       if (!connectorBefore) throw new Error("connector draft missing");
-      // Probe just failed — `probed_at = now` so the cooldown is in effect.
       const failedProbeDraft = withConnectorProbe(
         draftBefore,
         {
@@ -446,7 +382,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       const draftBefore = toolCtx.base.getDraft();
       const connectorBefore = draftBefore.connector;
       if (!connectorBefore) throw new Error("connector draft missing");
-      // Probe failed two minutes ago — outside the 60s cooldown.
       const olderThanCooldown = new Date(getTestNow() - 120_000).toISOString();
       const failedProbeDraft = withConnectorProbe(
         draftBefore,
@@ -490,8 +425,6 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       });
       await inspectConnectorDraftTool.execute(toolCtx.base, {});
       await validateConnectorDraftTool.execute(toolCtx.base, {});
-      // Inject a failed probe directly (see comment above on why we no
-      // longer route this through the live probe tool + Bun.serve).
       const draftBefore = toolCtx.base.getDraft();
       const connectorBefore = draftBefore.connector;
       if (!connectorBefore) throw new Error("connector draft missing");

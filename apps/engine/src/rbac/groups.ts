@@ -1,6 +1,3 @@
-// Group service — create, update, delete, member add/remove, and
-// role assign/revoke.
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { groupMembers, groupRoleAssignments, groups } from "../db/schema/index.ts";

@@ -1,14 +1,3 @@
-// The six bootstrap-preflight checks, graded where they decide things.
-//
-// Three questions live here. The first is whether a refusal is a refusal:
-// the contract promises exit 3 and ONE structured line, and a check that
-// merely logged loudly and carried on would look identical in a passing
-// suite. The second is whether the checks stop: once the release cannot run
-// on this bootstrap, a later probe's failure is noise, and a probe that ran
-// anyway would have touched something. The third is the contract's one
-// deliberate non-refusal — a retired settings key is reported and ignored,
-// and a release that refused on it would refuse to boot on its own history.
-
 import { describe, expect, test } from "bun:test";
 import { ConfigSchema } from "../../config/schema.ts";
 import {
@@ -24,7 +13,6 @@ import { firstRefusal, refusalLine } from "../contracts.ts";
 const KEY = "a".repeat(64);
 const DSN = "postgres://localhost/subkit";
 
-/** The schema defaults plus the one required leaf. Every document test starts here. */
 const base = () => ConfigSchema.parse({ database: { url: DSN } });
 
 const BINDING: ObjectStoreBinding = {
@@ -36,7 +24,6 @@ const BINDING: ObjectStoreBinding = {
   force_path_style: true,
 };
 
-/** A bootstrap on which every check passes. Each test breaks exactly one thing. */
 function healthyEnvironment(overrides: Partial<PreflightEnvironment> = {}): {
   env: PreflightEnvironment;
   touched: string[];
@@ -82,8 +69,6 @@ describe("the refusal itself", () => {
     expect(line).toBe(
       '{"event":"preflight.refused","code":"object_store_missing","detail":"no binding"}',
     );
-    // One line, and parseable on its own — a deploy script reads it with
-    // JSON.parse, not with a regex over prose.
     expect(line).not.toContain("\n");
     expect(Object.keys(JSON.parse(line))).toEqual(["event", "code", "detail"]);
   });
@@ -95,8 +80,6 @@ describe("check 1 — MASTER_KEY", () => {
     const outcome = await runPreflightChecks(env);
     expect(outcome.refused).toBe(true);
     expect(firstRefusal(outcome)?.code).toBe("master_key_missing");
-    // The contract's whole promise: a refusal has changed nothing. The
-    // cheapest proof is that nothing downstream was even asked.
     expect(touched).toEqual([]);
   });
 
@@ -149,10 +132,6 @@ describe("check 3 — the object store", () => {
   });
 
   test("credentials that do not decrypt refuse as secret_unreadable, not as a bucket problem", async () => {
-    // The stored block's credential leaves are secret:// references, so
-    // resolving the binding is itself a decrypt. When that fails the cause
-    // an operator must act on is the key — reporting object_store_missing
-    // would send them to the wrong file.
     const { env, touched } = healthyEnvironment({
       objectStoreBinding: async () => {
         throw new Error("decrypt failed: unable to authenticate data");
@@ -181,7 +160,7 @@ describe("check 4 — the current settings revision", () => {
   test("a retired key is reported and ignored, never a refusal", async () => {
     const document = {
       ...base(),
-      llm_provider: "anthropic", // a key an older release persisted
+      llm_provider: "anthropic",
       log: { level: "info", format: "json", retired_leaf: true },
     };
     const { env } = healthyEnvironment({ activeSettingsDocument: async () => document });
@@ -206,8 +185,6 @@ describe("check 4 — the current settings revision", () => {
       s3: { endpoint: "x", access_key: "y", secret_key: "z" },
       log: { level: "info" },
     });
-    // Naming the section is the fact an operator acts on; listing its three
-    // children would bury it.
     expect(dropped).toEqual(["s3"]);
   });
 
@@ -244,8 +221,6 @@ describe("check 5 — the secret versions the settings bind to", () => {
     const refusal = firstRefusal(outcome);
     expect(refusal?.code).toBe("secret_unreadable");
     expect(refusal?.detail).toContain("settings.llm.providers.anthropic.api_key/3");
-    // The BINDING path, so an operator knows what stops working, not just
-    // which row is broken.
     expect(refusal?.detail).toContain("llm.providers.anthropic.api_key");
   });
 
@@ -275,9 +250,6 @@ describe("check 6 — the identity provider", () => {
   });
 
   test("an http issuer outside localhost is malformed", () => {
-    // Reached through the parsed config, because that is what the check
-    // reads. The schema refines issuer_url too — this asserts the preflight
-    // does not simply trust that a document reached it already refined.
     const finding = identityFinding({
       auth: {
         providers: [
@@ -344,10 +316,6 @@ describe("T2 does not apply to SubKit — and this is the proof, not the claim",
     const { hashKey } = await import("../../identity/api-key.ts");
     const token = "wf_live_0123456789abcdefghijklmnopqrstuv";
     const plain = createHash("sha256").update(token).digest("hex");
-    // If a pepper — MASTER_KEY-derived or otherwise — were ever mixed into
-    // the API-key hash, this equality breaks. Introducing one would then
-    // invalidate every existing key, which is exactly the failure the
-    // contract's "It never derives one secret from another" clause names.
     expect(hashKey(token)).toBe(plain);
   });
 
@@ -367,13 +335,6 @@ describe("T2 does not apply to SubKit — and this is the proof, not the claim",
 });
 
 describe("check 3 reads the credentials the engine will actually use", () => {
-  // The regression this guards: every credential leaf of storage.object_store
-  // is `meta.secret`, so a stored revision holds `secret://…` there, never a
-  // usable value. A preflight that took those strings verbatim would probe
-  // with the literal reference as an access key; one that treated them as
-  // "incomplete" would fall through to OBJECT_STORAGE_*, which a stateless
-  // deployment no longer sets — refusing a healthy engine, or passing on a
-  // credential the engine does not use.
   const DOC = {
     storage: {
       object_store: {

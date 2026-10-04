@@ -1,5 +1,3 @@
-// Unit tests for classifyFailure — pure function, no DB.
-
 import { describe, expect, test } from "bun:test";
 import { classifyFailure, isPermanentFailure } from "../failure-classifier.ts";
 

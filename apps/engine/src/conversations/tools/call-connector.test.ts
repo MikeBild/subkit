@@ -1,18 +1,3 @@
-// call_connector tool tests.
-//
-// Spins up a Bun HTTP server (and a tiny GraphQL responder) on an
-// ephemeral port, seeds real connectors against it via the existing
-// conversation test ctx, and asserts:
-//   - HTTP GET round-trip including auth header injection.
-//   - HTTP POST passes the body through.
-//   - GraphQL `body: {query, variables}` reaches the same path.
-//   - Postgres SELECT happy path; mutation rejected without allow_writes;
-//     mutation accepted WITH allow_writes:true.
-//   - S3 GET happy path.
-//   - RBAC denial when a member user lacks `connector:read`.
-//   - connector_not_found surfaces as a structured error.
-//   - Large response bodies are truncated and surface a raw_ref.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as pgDriver from "../../connectors/drivers/postgres.ts";
@@ -41,11 +26,6 @@ let unprivilegedUserId: string;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("call_connector");
-  // Seed an unprivileged user for the RBAC denial path. The default
-  // ctx.user_id is admin (full access) and built-in `member` carries
-  // connector:read, so neither would exercise the deny path. We
-  // create a bare custom role with no permissions and bind a fresh
-  // user to it — same trick journey AC4 uses for connector:read.
   const [bareRole] = await ctx.testDb.db
     .insert(roles)
     .values({
@@ -66,7 +46,6 @@ beforeAll(async () => {
 
   server = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
@@ -83,7 +62,6 @@ beforeAll(async () => {
       });
 
       if (url.pathname === "/graphql") {
-        // Echo back something resembling a GraphQL response.
         const parsed = bodyText.length > 0 ? JSON.parse(bodyText) : {};
         return Response.json({
           data: {
@@ -96,7 +74,6 @@ beforeAll(async () => {
         return Response.json({ droplets: [{ id: 1, name: "alpha" }] });
       }
       if (url.pathname === "/v2/large") {
-        // > 8 KB JSON to exercise truncateForLlm.
         const big = Array.from({ length: 200 }, (_, i) => ({
           id: i,
           payload: "x".repeat(80),
@@ -137,9 +114,6 @@ async function seedHttpConnector(opts: {
       : driver === "s3"
         ? { region: "us-east-1", bucket: "test-bucket" }
         : {};
-  // The GraphQL driver treats `base_url` as the full endpoint URL — there
-  // is no base_url/path split — so a GraphQL connector's base_url carries
-  // the `/graphql` path itself.
   const baseUrlField =
     driver === "postgres"
       ? null
@@ -222,7 +196,6 @@ describe("call_connector — HTTP", () => {
     expect(data.body.droplets[0]!.id).toBe(1);
     expect(typeof data.latency_ms).toBe("number");
 
-    // Server received the resolved URL, query string, and bearer token.
     expect(captured.length).toBe(1);
     const req = captured[0]!;
     expect(req.method).toBe("GET");
@@ -231,12 +204,6 @@ describe("call_connector — HTTP", () => {
     expect(req.headers.authorization).toBe("Bearer TKN-GET");
   });
 
-  // The non-2xx / Seraph auth_failed envelope on the call_connector path is
-  // covered by the stable, gated tests: connectors/health.test.ts (the
-  // classifier + connectorHealthHint) and http/routes/connectors/connector-call
-  // .test.ts (the service path returns health:auth_failed on a 401, via the
-  // node:http mock). Those non-2xx cases are NOT re-tested here against this
-  // file's Bun.serve mock, which bleeds across servers under the full-suite run.
   test("healthy 200 → health:ok, no suggestion attached", async () => {
     captured = [];
     const { connector_id } = await seedHttpConnector({ slug: "call_healthy" });
@@ -358,9 +325,6 @@ describe("call_connector — error envelopes", () => {
 
   test("RBAC: bare-role user without connector:read is denied", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_rbac" });
-    // RBAC is enforced centrally by the permission gate (wrapOne), not inside
-    // execute() — drive the same path the wrapper does: checkToolPermission
-    // then the tool's own denyResult envelope.
     const permission = callConnectorTool.permission!;
     const check = await checkToolPermission(makeToolContext(unprivilegedUserId), permission, {
       connector_id,
@@ -377,9 +341,6 @@ describe("call_connector — error envelopes", () => {
   });
 
   test("auth-required connector with no credential row → credential_required", async () => {
-    // Seed bearer connector but DO NOT upsert a credential — emulates an
-    // operator who saved the connector skeleton via update_connector but
-    // hasn't filled in the secret yet.
     const [conn] = await ctx.testDb.db
       .insert(connectors)
       .values({
@@ -408,10 +369,6 @@ describe("call_connector — error envelopes", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Schema shape recording (probe_connector parity)
-// ---------------------------------------------------------------------------
-
 describe("call_connector — schema shape recording", () => {
   async function shapeRowsFor(connector_id: string) {
     return ctx.testDb.db
@@ -428,13 +385,6 @@ describe("call_connector — schema shape recording", () => {
       );
   }
 
-  // Deterministic egress via the driver-fetch seam. The shape-recording
-  // assertions hinge on an EXACT upstream status (200 vs 404), and the
-  // file's shared Bun.serve mock bleeds across servers under the
-  // full-suite run (see the note on the HTTP describe) — a sibling's
-  // always-200 handler answered this file's 404 probe on CI. `execute`
-  // runs in THIS test's async context, so a seam override reaches the
-  // http driver and pins the status with zero live network.
   const routedFetch = ((input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/v2/missing")) {
@@ -459,8 +409,6 @@ describe("call_connector — schema shape recording", () => {
 
     const rows = await shapeRowsFor(connector_id);
     expect(rows.length).toBe(1);
-    // Query string must be stripped so pagination params don't fan one
-    // logical endpoint into many schema rows.
     expect(rows[0]!.endpoint_key).toBe("GET /v2/droplets");
     const shape = rows[0]!.schema as {
       type: string;
@@ -479,9 +427,6 @@ describe("call_connector — schema shape recording", () => {
         path: "/v2/missing",
       }),
     );
-    // 4xx still returns ok:true at the tool boundary — the LLM inspects
-    // the status — but the observed body is a failure payload, not the
-    // endpoint's shape, so nothing is recorded.
     expect(result.ok).toBe(true);
     expect((result.data as { status: number }).status).toBe(404);
 
@@ -489,10 +434,6 @@ describe("call_connector — schema shape recording", () => {
     expect(rows.length).toBe(0);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Postgres
-// ---------------------------------------------------------------------------
 
 describe("call_connector — Postgres", () => {
   test("SELECT happy path returns rows", async () => {
@@ -519,7 +460,6 @@ describe("call_connector — Postgres", () => {
       expect(data.driver_kind).toBe("postgres");
       expect(data.body.rows).toEqual(sampleRows);
       expect(data.body.row_count).toBe(1);
-      // row_limit auto-injected when query has no LIMIT.
       expect(spy).toHaveBeenCalledTimes(1);
       const call = spy.mock.calls[0]![0] as { sql: string };
       expect(call.sql).toMatch(/LIMIT 100$/);
@@ -550,7 +490,6 @@ describe("call_connector — Postgres", () => {
       };
       expect(data.error.code).toBe("writes_not_allowed");
       expect(data.next_best_actions).toContain("call_connector_with_allow_writes");
-      // Driver MUST NOT have been called.
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
@@ -577,7 +516,6 @@ describe("call_connector — Postgres", () => {
       expect(result.ok).toBe(true);
       expect(spy).toHaveBeenCalledTimes(1);
       const call = spy.mock.calls[0]![0] as { sql: string; params: unknown[] };
-      // No LIMIT injection when allow_writes is true.
       expect(call.sql).not.toMatch(/LIMIT 100/);
       expect(call.params).toEqual([42]);
     } finally {
@@ -585,10 +523,6 @@ describe("call_connector — Postgres", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// S3
-// ---------------------------------------------------------------------------
 
 describe("call_connector — S3", () => {
   test("GET happy path returns object body", async () => {

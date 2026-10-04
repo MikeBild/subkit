@@ -1,15 +1,3 @@
-// Which declared boundaries did a preview never get to check?
-//
-// A step is held to the boundary it declares before anything is sent, so a
-// green preview vouches for every bounded step it REACHED. A held preview also
-// skips every step behind a held write, and a boundary on one of those was
-// compared with nothing: a guessed folder there passes every preview and fails
-// the first scheduled run after a human approved it. The author has to be told
-// which steps those are, and where the real key or URL can be read instead.
-//
-// Envelope-only, like the inherited-reference notice: it is for this call's
-// reader, not a failure to replay next turn.
-
 import type { StepDef } from "../../workflows/types.ts";
 
 export const UNVERIFIED_BOUNDARY_CODE = "boundary_unverified_in_preview";
@@ -29,7 +17,6 @@ export function unverifiedBoundaries(
     .filter((step) => {
       if (step.kind !== "request") return false;
       if (!step.boundary && !step.s3?.scope) return false;
-      // Absent from the run altogether counts too: it was not checked either.
       const outcome = status.get(step.id);
       return outcome === undefined || outcome === "skipped";
     })

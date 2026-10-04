@@ -1,8 +1,3 @@
-// The return address of a Cockpit-started sign-in is built by the engine from
-// two things it wrote itself — the connector id on the state row and its own
-// origin — and from nothing a browser can supply. These tests feed it what an
-// attacker would.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +8,6 @@ import { cockpitConnectorUrl, oauthFlowOrigin } from "./oauth-origin.ts";
 const ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
 const STORED = "https://engine.example.org/v1/oauth/callback";
 
-// The configured address is process-wide; hand it back as it was found.
 let configuredBefore = "";
 
 beforeAll(async () => {

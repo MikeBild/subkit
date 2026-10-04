@@ -1,8 +1,3 @@
-// emitGroupedList renders a catalog as titled blocks. The block ORDER is the
-// server's (`categories` on the list response) — these tests pin that the
-// renderer follows it rather than sorting on its own, and that no row can be
-// dropped by a block list that does not mention it.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { emitGroupedList } from "./format.ts";
 

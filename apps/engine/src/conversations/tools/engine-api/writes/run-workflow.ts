@@ -1,7 +1,3 @@
-// run_workflow tool — executes a workflow synchronously in the tenant's
-// dev environment (unless the caller opts into prod). Writes an audit
-// entry on each attempt.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
@@ -34,11 +30,6 @@ import { detectRepairLoop } from "./repair-loop-history.ts";
 
 const Input = z
   .object({
-    // Accepts a slug (kebab-case identifier from the tenant snapshot) or
-    // a uuid. `.min(1)` rejects empty / whitespace-only strings that an
-    // LLM might emit instead of failing later at `resolveWorkflowByIdOrSlug`;
-    // `.max(256)` is a defensive cap (slugs are short, uuids are 36
-    // chars, anything beyond is a hallucination).
     workflow: z.string().min(1).max(256).optional(),
     input: workflowInputSlot.optional(),
     environment: z
@@ -47,68 +38,21 @@ const Input = z
       .describe(
         "Use the workflow schedule environment when omitted; specify only for an explicit environment change.",
       ),
-    /** Makes this run safe to repeat: a second call with the same key in this
-     *  tenant starts nothing and returns the first run with
-     *  `idempotent_replay: true`. Same contract as POST /v1/executions. */
     idempotency_key: z.string().min(1).max(200).optional(),
-    /**
-     * When true, the result envelope always includes a `step_trace`
-     * array (one entry per step: status, kind, duration_ms,
-     * request_meta, output_preview, error_code). Default behaviour still
-     * attaches the trace on failure / partial / warnings, so leaving
-     * this off costs nothing on the happy path.
-     */
     include_step_trace: z.boolean().optional(),
-    /**
-     * When true, attach a `step_results` array carrying the RAW per-step
-     * input (the resolved request each step issued, or the held request for
-     * a write) side-by-side with its output. Default false keeps the
-     * envelope compact. The model uses this to self-diagnose whether a bad
-     * output is a step-config bug (the request went out wrong) or an
-     * output_transform bug (the step was fine, the projection dropped it).
-     * Reuses the same offload/raw-ref machinery as `step_trace` — no new
-     * store.
-     */
     include_step_results: z.boolean().optional(),
-    /**
-     * An omitted flag discovers an existing local execution authority,
-     * otherwise writes stay held. Explicit false always prepares without
-     * spending a live run. Held steps resolve URL/headers/body but do not
-     * dispatch external writes.
-     * True requests a live run but still requires matching local authority.
-     * Without one, writes remain held. For a one-shot human decision use the
-     * prepared wf_<slug> tool; this flag is never proof of that decision.
-     */
     execute_writes: z.boolean().optional(),
   })
   .openapi("RunWorkflowToolInput");
 
-/**
- * The canonical args, post-parse. The dispatcher (and, on the chat loop, the
- * AI SDK's tool boundary) parses `Input` before `execute` is reached, so this
- * executor takes the parsed value as-is. `workflowInputSlot` is the transform
- * whose OUTPUT `requestApproval` persists; `schema-idempotence.test.ts` pins it
- * idempotent so replaying that value through `Input` cannot rewrite it.
- */
 type RunWorkflowArgs = z.infer<typeof Input>;
 
-/**
- * Terminal status the CLI must always see for a `run_workflow` result.
- * Missing this field is what produced the "Execution status missing
- * from engine — bug, not a state" UI in session 79bf2cca; the gate
- * error returns went through `buildGateError` which has no status
- * field. We close the contract here at the tool boundary instead of
- * trusting every callsite.
- */
 type RunWorkflowStatus = "succeeded" | "failed" | "partial_success";
 
 function withStatus(
   data: Record<string, unknown>,
   status: RunWorkflowStatus,
 ): Record<string, unknown> {
-  // If a caller already set a more specific status (e.g. the lifecycle
-  // path passes "succeeded"/"partial_success" via buildLifecyclePayload's
-  // extra), keep it. Otherwise stamp the supplied default.
   if (typeof data.status === "string") return data;
   return { ...data, status };
 }
@@ -119,8 +63,6 @@ export const runWorkflowTool: ConversationTool = {
     "Prepare or inspect an ALREADY-SAVED workflow with execute_writes: false. Use this tool for repair verification, previews, and preparation for recurring operation, even when a wf_<slug> tool exists. Do not use wf_<slug> for preparation: it can request a one-shot live execution decision. Use wf_<slug> only when the user asks to perform the actual workflow now. Accepts `workflow` as a slug or UUID. Every start requires matching local execution authority; otherwise writes are HELD and the envelope reports writes_held + held_step_ids. Use execute_writes: false for preparation without spending a live run. When input is omitted for this held preparation, the engine uses the single enabled schedule in the selected environment. Explicit input, including {}, is never replaced. Setting execute_writes: true does not grant authority or bypass limits. For an exact one-shot human decision, use the prepared `wf_<slug>` tool. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
-  // A workflow *run*, not a config mutation — consistent with the `wf_`
-  // palette, which surfaces regardless of readOnly (RBAC still gates it).
   visible_when_readonly: true,
   requires_persisted_workflow: true,
   async execute(ctx, args: RunWorkflowArgs) {
@@ -147,15 +89,6 @@ export const runWorkflowTool: ConversationTool = {
       workflowId = activeTarget.id;
     }
     if (!workflowId) {
-      // Disambiguate the two ways we can land here:
-      //   (a) there IS a draft in progress → the author just needs to
-      //       commit it (save_workflow_draft / dry_run_workflow auto-commit).
-      //   (b) there is NO draft yet → the user asked to BUILD a workflow and
-      //       the model wrongly reached for run_workflow. Without a redirect
-      //       to build_workflow the model retries run_workflow with variant
-      //       args until the loop-detector aborts the turn (observed in prod:
-      //       run_workflow → workflow_not_persisted ×3 → tool.loop_detected,
-      //       ~150k tokens/turn). Route it to the authoring tools instead.
       const draftSteps = getWorkflowDraft(currentDraft).steps;
       const hasDraftSteps = Array.isArray(draftSteps) && draftSteps.length > 0;
       const message = hasDraftSteps
@@ -201,32 +134,7 @@ export const runWorkflowTool: ConversationTool = {
         ),
       };
     }
-    // G1 (runtime-logs review plan): surface the workflow's input_schema
-    // contract to the LLM in the SAME turn. Pre-fix the user asked
-    // "run it for tomorrow" and the workflow returned byte-identical
-    // output because the date was hardcoded in the request URL — no
-    // input parameter existed but the model never told the user that.
-    // Two arms:
-    //   (a) workflow declares input_schema but the run is missing
-    //       inputs — pause with an auto-generated ask_user_form built
-    //       from the schema (already-supplied values pre-filled as
-    //       defaults), instead of an `input_required` error the LLM
-    //       had to hand-translate into a form. On resume the LLM
-    //       re-issues run_workflow with the submitted answers.
-    //   (b) workflow has NO input contract at all but caller passed
-    //       non-empty input — execute, but include `input_ignored:
-    //       true` in the success envelope so the LLM knows to tell
-    //       the user the value was discarded.
-    // The contract is the DECLARED `input_schema` when present, else
-    // the schema SYNTHESIZED from `${input.*}` placeholders — the same
-    // source the `wf_<slug>` tool schema and the usage block read, so
-    // the gate can never disagree with the published input contract.
-    // (Pre-fix a placeholder-driven workflow without a declared schema
-    // skipped the gate and failed at runtime with
-    // "$input: required field '<k>' is missing".)
     const inputContract = resolveWorkflowInputContract(wf.definition as WorkflowDef);
-    // `workflowInputSlot` normalized the slot to a record (or left it absent)
-    // at the dispatch boundary — a stringified payload can no longer reach here.
     const suppliedInput = await workflowPreparationInput(
       ctx.db,
       ctx.tenant_id,
@@ -297,11 +205,6 @@ export const runWorkflowTool: ConversationTool = {
           input: {
             question: `Workflow "${wf.slug}" needs the following input${fields.length === 1 ? "" : "s"} to run:`,
             fields,
-            // The harness executes the run with the submitted values on
-            // form submit (see auto-persist's run_workflow case) — the
-            // LLM is NOT trusted to re-issue run_workflow with the
-            // answers; observed live it re-called with empty input and
-            // looped back into the same form.
             commit_intent: {
               kind: "run_workflow",
               payload: {
@@ -309,9 +212,6 @@ export const runWorkflowTool: ConversationTool = {
                 workflow_slug: wf.slug,
                 environment,
                 input_partial: suppliedMap,
-                // Asking for missing values must not widen an explicit
-                // preparation request. A true flag is deliberately not
-                // forwarded: supplying inputs never grants live authority.
                 ...(args.execute_writes === false ? { execute_writes: false } : {}),
               },
               description: `Run workflow "${wf.slug}" with the submitted input`,
@@ -340,13 +240,6 @@ export const runWorkflowTool: ConversationTool = {
       };
     }
 
-    // Circuit-breaker: refuse to run when the same trip signal has fired
-    // three times in this conversation — either a repeating authoring-bug
-    // warning code (unresolved_identifier, loop_over_unresolved,
-    // transform_empty_extraction) OR the same runtime execution failure
-    // (exec_failed:<step>:<error_code>). The LLM is chasing a fix that
-    // isn't working; another run won't tell it anything new and burns the
-    // rest of the step budget.
     const breaker = await detectRepairLoop(ctx.db, ctx.tenant_id, ctx.conversation_id);
     if (breaker.tripped) {
       logger.warn({
@@ -387,13 +280,6 @@ export const runWorkflowTool: ConversationTool = {
     }
 
     try {
-      // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`,
-      // the fast-path "run <slug>" branch, and the synthetic palette.
-      // POLICY_DENIED audit row is committed inside the helper. Principal
-      // is REQUIRED — production callers always thread it; in-process
-      // workers and test fixtures must seed a system principal. A null
-      // here refuses (instead of silently bypassing RBAC) so a future
-      // caller that forgets to wire principal fails loudly.
       if (!ctx.principal) {
         logger.warn({
           module: "conversation_tool",
@@ -402,9 +288,6 @@ export const runWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           workflow_id: workflowId,
         });
-        // Surface the refusal as a counter so SRE can alert on a future
-        // regression that silently drops `ctx.principal`. `logger.warn`
-        // alone is invisible to the existing dashboards.
         recordAuthoringGateBlock({ code: "principal_required", tool: "run_workflow" });
         return {
           ok: false,
@@ -446,9 +329,6 @@ export const runWorkflowTool: ConversationTool = {
         "info",
         `running workflow ${wf.slug} (v${wf.current_version}) in env=${environment}`,
       );
-      // A live-run flag (even in confirmed tool arguments) is not a version-
-      // bound authority. Every generic start uses the same durable admission.
-      // Exact one-shot execution remains the prepared wf_<slug> approval path.
       const admitted = await admitWorkflowRun(
         {
           tenant_id: ctx.tenant_id,
@@ -492,8 +372,6 @@ export const runWorkflowTool: ConversationTool = {
       const result = await runExecution({
         db: ctx.db,
         tenant_id: ctx.tenant_id,
-        // Use the exact version whose contract and authoring binding we just
-        // checked. A concurrent activation must not silently swap the DAG.
         source: {
           kind: "saved",
           workflow_id: workflowId,
@@ -510,9 +388,6 @@ export const runWorkflowTool: ConversationTool = {
           ...(holdWrites ? { hold_writes: true } : {}),
         },
       });
-      // A held write step carries `held: true` (it resolved but did not
-      // dispatch); a downstream step blocked by the hold is `skipped` with
-      // code `skipped_dependency_held`. Both count as "not actually run".
       const heldStepIds = holdWrites
         ? result.steps
             .filter(
@@ -524,10 +399,6 @@ export const runWorkflowTool: ConversationTool = {
             )
             .map((s) => s.step_key)
         : [];
-      // Emit per-step progress logs so the user sees what each step
-      // did during the run (status, kind, duration). Without this the
-      // chat shows a single "Execution complete" badge and the loop's
-      // empty body is invisible.
       for (const step of result.steps) {
         const errMsg =
           step.error && typeof step.error === "object" && step.error !== null
@@ -562,9 +433,6 @@ export const runWorkflowTool: ConversationTool = {
           workflow_id: workflowId,
           environment,
           final_status: result.status,
-          // a held run vs a live (writes-dispatched) run must be
-          // distinguishable in the audit log so "did this run actually
-          // send?" is answerable.
           execute_writes: !holdWrites,
           execution_authority_id: admitted?.execution_authority_id ?? null,
           ...(heldStepIds.length > 0 ? { held_step_ids: heldStepIds } : {}),
@@ -582,17 +450,6 @@ export const runWorkflowTool: ConversationTool = {
             eq(conversations.id, ctx.conversation_id),
           ),
         );
-      // Surface non-fatal warnings (unresolved identifiers in transform
-      // expressions, schema drift signals) so the LLM / operator sees
-      // them next to the output. The execution may be technically
-      // "succeeded" (no driver errors) but produced suspicious output:
-      // - unresolved_identifier warnings → JSONata referenced names not
-      //   in scope; output likely partial/null
-      // - the workflow returned an empty array as top-level output
-      //   from a step that fanned out (loop) → loop body never iterated
-      // Both cases get tagged `partial_success` on the payload so the
-      // CLI surfaces the warning treatment and the LLM is forced to
-      // either repair or explicitly acknowledge the warning.
       const hasWarnings = (result.warnings?.length ?? 0) > 0;
       const hasUnresolvedIdentifierWarning = (result.warnings ?? []).some(
         (w) => w.code === "unresolved_identifier",
@@ -606,12 +463,6 @@ export const runWorkflowTool: ConversationTool = {
       const hasLoopOverUnresolvedWarning = (result.warnings ?? []).some(
         (w) => w.code === "loop_over_unresolved",
       );
-      // The engine emits `loop_body_empty` from inside the loop driver
-      // when iterations > 0 produced no productive body output (P2).
-      // Trust that warning over the legacy "top-level output is []"
-      // heuristic — the user's transcript had a populated top-level
-      // output assembled by a transform AFTER the empty loop body, so
-      // the legacy heuristic missed it.
       const hasLoopBodyEmptyWarning = (result.warnings ?? []).some(
         (w) => w.code === "loop_body_empty",
       );
@@ -620,13 +471,6 @@ export const runWorkflowTool: ConversationTool = {
         (result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
           Array.isArray(result.output) &&
           (result.output as unknown[]).length === 0);
-      // Partial-success: the run finished but signals that the LLM
-      // should look at the warnings before treating the output as
-      // final. `transform_dropped_fields` is informational (intentional
-      // projections legitimately narrow fields) and therefore does NOT
-      // tip the run into partial_success on its own — surfacing the
-      // warning is enough; blocking the commit gate would force the
-      // LLM into the patch loop the skill explicitly forbids.
       const isPartialSuccess =
         result.status === "succeeded" &&
         (hasUnresolvedIdentifierWarning ||
@@ -634,23 +478,12 @@ export const runWorkflowTool: ConversationTool = {
           hasTransformEmptyExtractionWarning ||
           hasLoopOverUnresolvedWarning);
       const payloadStatus = isPartialSuccess ? "partial_success" : result.status;
-      // requires_repair gates the auto-persist commit. Mirrors the
-      // skill: only the warnings that ALWAYS indicate a real bug
-      // (unresolved identifier, empty extraction, loop body never ran)
-      // tip the flag. transform_dropped_fields is omitted on purpose —
-      // the warning still fires, but commit is not blocked.
       const requiresRepair =
         hasUnresolvedIdentifierWarning ||
         hasTransformEmptyExtractionWarning ||
         hasLoopOverUnresolvedWarning ||
         isPartialSuccess;
       const diagnosisAvailable = hasWarnings || result.status !== "succeeded" || isPartialSuccess;
-      // Per-step trace — same envelope shape dry_run_workflow returns
-      // so the LLM can pinpoint the failing step + see its driver
-      // metadata (status code, byte counts, connector resolution) in
-      // one read. Always populated when the run
-      // didn't succeed cleanly; omitted on success to save tokens
-      // (the user can still inspect_workflow if they want details).
       const stepTraceEntries = result.steps.map((s) => {
         const errorCode =
           s.error && typeof s.error === "object" && s.error !== null
@@ -660,13 +493,6 @@ export const runWorkflowTool: ConversationTool = {
           s.output_preview !== undefined && s.output_preview !== null
             ? buildScopeAtStep(s.output_preview)
             : null;
-        // Per-step LLM-context cap. The persisted step row (consumed
-        // by inspect_execution_step / diagnose_latest_execution) keeps
-        // the full preview; only the LLM-facing envelope is clipped,
-        // because the offload threshold (10 KB) is bigger than the
-        // outer LLM cap (8 KB) and a single inline preview can otherwise
-        // dominate the envelope and force the outer truncate pass to
-        // replace the workflow's `output` field with a marker.
         const previewForLlm =
           s.output_preview !== undefined && s.output_preview !== null
             ? truncateStepPreviewForLlm(s.output_preview)
@@ -705,12 +531,6 @@ export const runWorkflowTool: ConversationTool = {
         result.status !== "succeeded" ||
         isPartialSuccess ||
         hasWarnings;
-      // Persist a compact per-step preview slot so subsequent
-      // inspect_workflow / suggest_jsonata_paths / context-assembler
-      // calls see the most recent shape per step. Mirrors what
-      // dry_run_workflow does — the LLM reads from a single canonical
-      // location regardless of whether the last walk was a dry-run
-      // or a full run.
       const persistedStepTracesUnstamped = result.steps.map((s) => {
         const errorCode =
           s.error && typeof s.error === "object" && s.error !== null
@@ -735,9 +555,6 @@ export const runWorkflowTool: ConversationTool = {
           ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
         };
       });
-      // Fingerprint stamping: bind each trace to the step
-      // definition it was recorded against so draft mutations drop
-      // evidence per changed step, not wholesale.
       const persistedStepTraces = stampStepTraceFingerprints(
         persistedStepTracesUnstamped,
         (((wf.definition as WorkflowDef | null)?.steps ?? []) as unknown[]).filter(
@@ -761,14 +578,6 @@ export const runWorkflowTool: ConversationTool = {
         "run_workflow",
         "workflow_executed",
       );
-      // Propagate the per-step scope vocabulary to the persisted
-      // workflow_versions row. The commit path writes scope_index at
-      // commit time, but a successful production run reveals new
-      // shapes (especially after schema drift) — refreshing the
-      // persisted vocabulary on every successful run keeps
-      // suggest_jsonata_paths and inspect_workflow accurate without
-      // requiring a re-commit. Only writes on full success to avoid
-      // poisoning the persisted shape with partial / aborted runs.
       if (result.status === "succeeded" && !isPartialSuccess && wf.current_version_id) {
         const persistedScopeIndex: Record<
           string,
@@ -828,13 +637,6 @@ export const runWorkflowTool: ConversationTool = {
         ...(requiresRepair ? { requires_repair: true } : {}),
       });
       await ctx.setDraft(nextDraft);
-      // G9: surface the first failing step's key + message at the
-      // envelope top level so the LLM can react in the same turn
-      // instead of issuing a follow-up inspect_execution. Pre-fix the
-      // failed envelope carried only `error` (engine-level) + `output`;
-      // the LLM had to scan `result.steps[]` to identify WHICH step
-      // failed, and the transcript showed it just shrugging and
-      // retrying with a different workflow_id (session ed20f48d).
       const firstFailedStep =
         payloadStatus === "failed"
           ? result.steps.find((s) => s.status === "failed" || s.status === "timed_out")
@@ -848,12 +650,6 @@ export const runWorkflowTool: ConversationTool = {
             ? ((firstFailedStep.error as { message: string }).message ?? null)
             : null
           : null;
-      // Sample a large output BEFORE the outer LLM-budget truncate sees the
-      // envelope. Pre-fix the outer pass nulled the heaviest branch — which
-      // was always `output` — so a 95-row success surfaced to the user as
-      // "no output". A sample keeps REAL leading rows in front of the model
-      // (it can answer "show the top 5" directly) with the full payload one
-      // get_raw_result call away.
       const sampledOutput = sampleWorkflowOutputForLlm(result.output);
       return {
         ok: result.status === "succeeded" && !isPartialSuccess,
@@ -865,12 +661,6 @@ export const runWorkflowTool: ConversationTool = {
             workflow_version: wf.current_version,
             execution_authority_id: admitted?.execution_authority_id ?? null,
             hold_writes: holdWrites,
-            // make the held writes unmistakable to the agent so it
-            // never reads a verification run as a real send (a live session
-            // once mailed stale snapshots this way). State, then affordance —
-            // never an instruction to approve. See held-preview.ts for the
-            // same contract on the MCP `wf_<slug>` envelope: an operator
-            // approves; the model at most relays a decision it was given.
             ...(heldStepIds.length > 0
               ? {
                   writes_held: true,
@@ -880,8 +670,6 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),
             ...(failureReason ? { failure_reason: failureReason } : {}),
-            // G1: tell the LLM the run accepted no inputs so the next
-            // assistant turn does not pretend the parameter was honoured.
             ...(inputIgnored
               ? {
                   input_ignored: true,
@@ -901,12 +689,6 @@ export const runWorkflowTool: ConversationTool = {
             diagnosis_available: diagnosisAvailable,
             requires_repair: requiresRepair,
             recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,
-            // Plain-language summary + structured next-action hint.
-            // The transcript captured the symptom: "Execution needs
-            // diagnosis · 1 warning" with no inline explanation, so
-            // the user had to drop out of chat to dig in. Surface a
-            // single sentence the chat renderer (and the never-silent
-            // guard) can read directly.
             ...(diagnosisAvailable && result.warnings && result.warnings.length > 0
               ? {
                   warning_summary: `${result.warnings.length} warning(s): ${Array.from(
@@ -926,9 +708,6 @@ export const runWorkflowTool: ConversationTool = {
               : result.status === "succeeded"
                 ? "Inspect step output or run again"
                 : "Diagnose the failure",
-            // Banner-style warnings summary so the LLM can't miss
-            // signals on first read of the result envelope. Mirrors
-            // the dry_run_workflow surface.
             ...(hasWarnings && result.warnings
               ? {
                   warnings_banner: {
@@ -945,19 +724,11 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
             ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
-            // D6 — optional RAW per-step inputs/outputs for self-diagnosis.
-            // Compact by default; attached only when the caller opts in.
             ...(args.include_step_results
               ? { step_results: buildRawStepResults(result.steps) }
               : {}),
-            // Teach the keystroke route: every successful chat run carries
-            // the slash-equivalent the REPL chip strip will offer the user.
             suggested_command: `/workflows run ${wf.slug}`,
           }),
-          // payloadStatus is one of the three terminal values (already
-          // narrowed above), but withStatus is a no-op when the inner
-          // payload already carries status — keep the default just in
-          // case a future refactor drops the inline status.
           "failed",
         ),
       };
@@ -971,8 +742,6 @@ export const runWorkflowTool: ConversationTool = {
         reason: msg,
         metadata: { conversation_id: ctx.conversation_id },
       });
-      // A version stored in an earlier format is refused by name, as on the
-      // HTTP run: the reader then sees why, not a run that "failed".
       const invalid = (err as { code?: unknown }).code === "workflow_version_invalid";
       return {
         ok: false,

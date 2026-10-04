@@ -1,10 +1,3 @@
-// Files-resource metrics helpers — invocation contract tests.
-//
-// Verifies that each helper from `instrumentation.ts` is callable with
-// valid labels, produces no throws, and that the underlying registry
-// records a sample. Invalid label values are coerced / dropped per the
-// allow-list pattern (unknown → collapsed, not rejected).
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   observeFileUploadDuration,

@@ -1,14 +1,3 @@
-// Read-time aggregation for GET /v1/stats/llm over `llm_usage`. NO new
-// persistence — `date_trunc()` + token sums + latency percentiles at
-// read time. Three rollups in one round-trip.
-//
-// `llm_usage.result` is a free-text column; the canonical values today
-// are "success" / "failure" but we surface whatever the column holds in
-// `by_result` so a future result value is not silently dropped.
-//
-// TENANT ISOLATION: `tenant_id = $tenantId` is the FIRST predicate.
-// model/flow filters can only narrow within the tenant.
-
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
@@ -23,7 +12,6 @@ export interface LlmStatsParams {
   tz: string;
   model?: string[] | undefined;
   flow?: string[] | undefined;
-  /** Narrow to a single user's rows. Applied AFTER the tenant predicate. */
   userId?: string | null | undefined;
   groupBy: LlmGroupDim[];
 }
@@ -73,9 +61,6 @@ const LATENCY = sql`llm_usage.latency_ms::float8`;
 export function dimColumn(dim: LlmGroupDim): SQL {
   if (dim === "model") return sql`llm_usage.model`;
   if (dim === "user") return sql`llm_usage.user_id`;
-  // The id, not the name: a workflow can be renamed, and a report that
-  // silently splits one workflow into two because somebody edited its title is
-  // worse than one that makes the caller resolve an id.
   if (dim === "workflow") return sql`executions.workflow_id`;
   return sql`llm_usage.flow`;
 }
@@ -127,11 +112,6 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
 export function buildWhere(
   p: Pick<LlmStatsParams, "tenantId" | "from" | "to" | "model" | "flow" | "userId">,
 ): SQL {
-  // Every column is qualified because `workflow` grouping joins `executions`,
-  // which carries its own `tenant_id` and `created_at`. An unqualified name
-  // becomes ambiguous the moment that join appears, and Postgres reports it as
-  // a syntax error rather than picking one — which is the good outcome, but
-  // only if the qualification is here rather than remembered later.
   const conds: SQL[] = [
     sql`llm_usage.tenant_id = ${p.tenantId}`,
     sql`llm_usage.created_at >= ${p.from}`,
@@ -139,36 +119,20 @@ export function buildWhere(
   ];
   if (p.model && p.model.length > 0) conds.push(sql`llm_usage.model in ${p.model}`);
   if (p.flow && p.flow.length > 0) conds.push(sql`llm_usage.flow in ${p.flow}`);
-  // Narrowing predicate ONLY — always within the tenant scope above.
   if (p.userId) conds.push(sql`llm_usage.user_id = ${p.userId}`);
   return sql.join(conds, sql` and `);
 }
 
-/**
- * The FROM clause, with `executions` joined in only when a workflow dimension
- * asks for it.
- *
- * WHY conditional: every other grouping answers from `llm_usage` alone, and
- * making them all pay for a join so one of them can work would be the wrong
- * trade on the hot path.
- *
- * WHY LEFT: a row without an execution is not an error — the conversational
- * flows have no workflow at all, and they must still be counted, under an
- * empty key rather than dropped.
- */
 function fromClause(p: LlmStatsParams): SQL {
   return llmFromClause(p.groupBy);
 }
 
-/** The FROM clause a grouping needs (see `fromClause`). */
 export function llmFromClause(groupBy: readonly LlmGroupDim[]): SQL {
   return groupBy.includes("workflow")
     ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id`
     : sql`llm_usage`;
 }
 
-/** See aggregate-executions.ts: bucket + tz are bound params; the SELECT
- *  alias `bucket_ts` is what GROUP BY references. */
 function bucketExpr(p: LlmStatsParams): SQL {
   return sql`date_trunc(${p.bucket}, llm_usage.created_at at time zone ${p.tz})`;
 }
@@ -206,9 +170,6 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
     `)
   ).rows as Record<string, unknown>[];
 
-  // by_result is its own grouped query (result is high-cardinality-safe:
-  // canonical values are success/failure). Uses the same raw-literal bucket
-  // expression as bucketExpr() so GROUP BY matches SELECT.
   const resultRows = (
     await db.execute(sql`
       select
@@ -270,7 +231,6 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
     `)
   ).rows as Record<string, unknown>[];
 
-  // Index by_result per (group, bucket_ts).
   const resultByBucket = new Map<string, Record<string, number>>();
   for (const row of resultRows) {
     const ts = new Date(row.bucket_ts as string).toISOString();

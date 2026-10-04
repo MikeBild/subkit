@@ -1,12 +1,3 @@
-// The public connector projection and its way back in.
-//
-// Two claims, and each fails in a different direction. The projection must
-// hide every secret a connector carries WITHOUT rewriting the config around
-// it — an endpoint, a scope or a header name that came back masked would be a
-// config the author can no longer read. And the mask must be a safe thing to
-// send back: a read-modify-write that stored the mask in place of the secret
-// would break the connector the moment its token expired.
-
 import { describe, expect, test } from "bun:test";
 import { UnprocessableEntityError } from "../../http/errors.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
@@ -20,7 +11,6 @@ import {
 } from "../public-view.ts";
 import type { ConnectorView } from "../types.ts";
 
-// Fixture markers, not credentials. Each is unique so a leak names its source.
 const CLIENT_SECRET = "fixture-client-secret-not-real";
 const HEADER_SECRET = "fixture-header-secret-not-real";
 const QUERY_SECRET = "fixture-query-secret-not-real";
@@ -161,7 +151,6 @@ describe("toPublicConnector — what is hidden", () => {
 });
 
 describe("toPublicConnector — a credential under a name nobody listed", () => {
-  // None of these names matched the name pattern the projection once used.
   test.each([
     ["static_headers", "X-Auth"],
     ["static_headers", "X-Session-Id"],
@@ -322,9 +311,6 @@ describe("toPublicConnector — what must stay readable", () => {
   });
 
   test("the execution-authority digest is taken over the stored view, and projecting does not move it", () => {
-    // Grants are bound to this digest. It must keep hashing the real config
-    // and dsn — a digest over the projection would be equal for two different
-    // secrets, and switching to it would invalidate every grant issued so far.
     const original = view({
       config: secretBearingConfig(),
       dsn: `postgres://app_user:${DSN_SECRET}@db.acme.test/app`,

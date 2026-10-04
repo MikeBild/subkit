@@ -1,23 +1,4 @@
 #!/usr/bin/env bun
-//
-// check:deps-phantom — gate that every imported package is declared.
-//
-// Walks bare-specifier imports across all workspaces (via Bun's transpiler, so
-// `.from()` method calls, strings, and comments are not mistaken for imports)
-// and flags any package imported in source but NOT declared by a workspace
-// manifest (deps/devDeps/peer/optional), provided as a workspace package, or
-// resolved through a workspace tsconfig path alias. These "phantom" deps resolve only
-// transitively today, so an upstream bump can break them silently — declaring
-// them with a pinned range is the fix.
-//
-// Deterministic and offline (no install), so it is safe to gate in CI.
-// Unused-dependency detection is the inverse problem and stays advisory (it is
-// heuristic and false-positive-prone) — see the housekeeping workflow.
-//
-// Wired into `package.json` (`bun run check:deps-phantom`), `verify`, and
-// `.github/workflows/ci.yml`. Output:
-//   WARN  <pkg>  (imported in <file>[, +N more])
-// Exits non-zero on any phantom dep.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -27,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Runtime modules the bun/node platform provides without a package.json entry.
 const PLATFORM = new Set(["bun"]);
 
 function tracked(...globs: string[]): string[] {
@@ -35,16 +15,12 @@ function tracked(...globs: string[]): string[] {
   return out.split("\n").filter(Boolean);
 }
 
-// tsconfig `paths` alias prefixes (e.g. "@engine" from "@engine/*") map to
-// internal source, not npm packages.
 export function aliasPrefixes(tsconfigText: string): string[] {
   const prefixes = new Set<string>();
   for (const m of tsconfigText.matchAll(/"([^"*]+)\/\*"\s*:/g)) prefixes.add(m[1]);
   return [...prefixes];
 }
 
-// Reduce an import specifier to its package name, or null if it is not an
-// external package (relative, absolute, builtin, platform, or alias-internal).
 export function pkgNameOf(spec: string, aliases: readonly string[]): string | null {
   if (spec.startsWith(".") || spec.startsWith("/")) return null;
   if (spec.startsWith("node:") || spec.startsWith("bun:")) return null;
@@ -56,14 +32,10 @@ export function pkgNameOf(spec: string, aliases: readonly string[]): string | nu
   return name;
 }
 
-// Convert fully type-only imports/exports into value form so Bun's transpiler
-// (which elides type-only statements) still reports their specifiers. The
-// `\s+type\s` guard never matches inline `import { type X }` or identifiers.
 export function detype(code: string): string {
   return code.replace(/\bimport\s+type\s/g, "import ").replace(/\bexport\s+type\s/g, "export ");
 }
 
-// Extract bare external-package specifiers from one source file's text.
 export function importedPackages(
   code: string,
   ext: "ts" | "tsx",
@@ -74,7 +46,7 @@ export function importedPackages(
   try {
     imports = transpiler.scanImports(detype(code));
   } catch {
-    return []; // unparseable file — skip rather than fail the gate spuriously
+    return [];
   }
   const out: string[] = [];
   for (const imp of imports) {
@@ -98,9 +70,7 @@ function declaredPackages(): Set<string> {
       ]) {
         for (const name of Object.keys(manifest[field] ?? {})) names.add(name);
       }
-    } catch {
-      // unreadable workspace manifest — skip
-    }
+    } catch {}
   }
   return names;
 }
@@ -113,9 +83,7 @@ function findPhantom(): Map<string, string[]> {
       for (const prefix of aliasPrefixes(readFileSync(join(REPO, rel), "utf8"))) {
         aliases.add(prefix);
       }
-    } catch {
-      // unreadable tsconfig — skip
-    }
+    } catch {}
   }
   const phantom = new Map<string, string[]>();
   for (const rel of tracked(

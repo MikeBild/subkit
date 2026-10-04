@@ -1,13 +1,3 @@
-// Build-time embedded skill-seed bundle.
-//
-// Each Markdown skill is imported as text via the
-// `with { type: "text" }` import attribute, so `bun build --compile`
-// inlines the file contents into the binary. There is no runtime
-// `fs.readdir` and no fallback search path; the seeds ship with the
-// binary, period.
-//
-// README.md intentionally has no entry — the loader filters it out.
-
 import authFlows from "../conversations/seed/skills/auth-flows.md" with { type: "text" };
 import browserPageScrapeQuirks from "../conversations/seed/skills/browser-page-scrape-quirks.md" with {
   type: "text",
@@ -73,17 +63,10 @@ import workflowAuthoring from "../conversations/seed/skills/workflow-authoring.m
 };
 
 export interface EmbeddedSeedFile {
-  /** Source filename (e.g. "auth-flows.md"). Used for typed parse-error
-   *  reporting that points an operator back to the on-disk source. */
   file: string;
-  /** Full file contents — raw frontmatter + markdown body. */
   content: string;
 }
 
-/**
- * Sorted alphabetically so embedded order is deterministic across
- * builds. Tests rely on a stable iteration order without re-sorting.
- */
 export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "auth-flows.md", content: authFlows },
   { file: "browser-page-scrape-quirks.md", content: browserPageScrapeQuirks },

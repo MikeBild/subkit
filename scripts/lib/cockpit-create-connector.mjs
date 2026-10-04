@@ -1,32 +1,3 @@
-// "Konnektor hinzufügen" by hand asks two separate questions in short labels,
-// and every answer leads somewhere a sign-in can actually start.
-//
-// The defects this stands on:
-//
-//   - The form offered "Art: [OAuth] [MCP] [API-Schlüssel]" — one control
-//     mixing WHAT is connected with HOW SubKit signs in there, in protocol
-//     words. A reader could not tell an API key from MCP.
-//   - "Web-Dienst" + "Mit Konto" asked for no OAuth app, so the sign-in could
-//     not start and the reader was dropped on a tab with nothing that worked.
-//   - Signing in was chosen by driver in the browser; an MCP server was sent
-//     to the web-service route, which cannot sign it in.
-//
-// Now:
-//
-// 1. "Was verbinden?" offers [Web-Dienst] [MCP-Server]; "Anmeldung" offers
-//    [Mit Konto] [Mit Schlüssel] [Ohne]. Explanations live behind (?), never
-//    inline.
-// 2. Only the fields the answer needs: the access key for "Mit Schlüssel";
-//    for a web service "Mit Konto" the redirect address to allow (the
-//    engine's own, copyable) and the OAuth app — sign-in service, client ID,
-//    client secret, scopes. An MCP server asks for none of them.
-// 3. Both choices fit the dialog at every width the sweep runs.
-// 4. Once created, the sign-in starts on the route the connector itself
-//    states (`sign_in.start`). The fixture answers only that route — the other
-//    one is a 404 — so a client that picks by driver fails here.
-// 5. A sign-in that cannot start says why in one line; with no public engine
-//    address the form refuses before making a connector no one can sign in.
-
 const WORDS = {
   de: {
     target: ["Web-Dienst", "MCP-Server"],
@@ -92,7 +63,6 @@ async function oauthFieldsShown(page) {
   return shown;
 }
 
-/** The connector as the engine answers a create: with the sign-in it states. */
 function created(id, body) {
   const mcp = body.driver === "mcp";
   return {
@@ -105,7 +75,6 @@ function created(id, body) {
     auth_type: body.auth_type,
     base_url: body.base_url,
     dsn: null,
-    // What the engine hands back: the client secret masked, never the value.
     config: body.config?.oauth
       ? { oauth: { ...body.config.oauth, client_secret: "***redacted***" } }
       : {},
@@ -137,11 +106,6 @@ function created(id, body) {
   };
 }
 
-/**
- * The engine's side of a create and its sign-in. The web service's sign-in
- * service fails its discovery (a named 502); the MCP server signs in on its
- * own route only. Each wrong route is a 404, as an engine would answer it.
- */
 function createApi(state) {
   return async (route) => {
     const request = route.request();
@@ -178,7 +142,6 @@ function createApi(state) {
     }
     const id = [WEB_ID, MCP_ID].find((each) => path === `/v1/connectors/${each}`);
     if (id && state.byId[id]) return json(route, created(id, state.byId[id]));
-    // Made a moment ago: no credential stored yet.
     if (
       path === `/v1/connectors/${WEB_ID}/credential` ||
       path === `/v1/connectors/${MCP_ID}/credential`
@@ -216,8 +179,6 @@ async function verifyForm(page, stand, words, where, capture) {
   if (await page.locator("#create-connector-secret").count())
     throw new Error(`${where}: an account sign-in asks for a key`);
 
-  // A web service with an account: the OAuth app it signs in through, and the
-  // engine's own redirect address to allow there.
   if ((await oauthFieldsShown(page)) !== OAUTH_FIELDS.length)
     throw new Error(`${where}: a web service with an account does not ask for its OAuth app`);
   const labels = [];
@@ -234,7 +195,6 @@ async function verifyForm(page, stand, words, where, capture) {
   for (const id of OAUTH_FIELDS) await assertInside(page, id, where);
   await capture("create-connector-account");
 
-  // An MCP server finds its own sign-in service: nothing of the OAuth app.
   await page.getByTestId("create-connector-target-mcp").click();
   if ((await oauthFieldsShown(page)) !== 0)
     throw new Error(`${where}: an MCP server is asked for an OAuth app`);
@@ -255,7 +215,6 @@ async function verifyForm(page, stand, words, where, capture) {
   await dialog.waitFor({ state: "hidden", timeout: 5_000 });
 }
 
-/** A web service with an account: its OAuth app is sent, and a failed start says why. */
 async function verifyWebAccount(page, stand, words, where, state) {
   const dialog = await openForm(page, stand);
   await fill(page, "create-connector-name", "Fixture Mail");
@@ -291,7 +250,6 @@ async function verifyWebAccount(page, stand, words, where, state) {
     throw new Error(`${where}: the client secret is shown again`);
 }
 
-/** An MCP server with an account signs in on the route it states — never the web one. */
 async function verifyMcpAccount(page, stand, where, state) {
   await openForm(page, stand);
   await page.getByTestId("create-connector-target-mcp").click();
@@ -307,11 +265,6 @@ async function verifyMcpAccount(page, stand, where, state) {
     throw new Error(`${where}: the MCP sign-in started at ${state.started.at(-1)}`);
 }
 
-/**
- * The MCP server's own page: "Anmelden" there starts the same route the
- * connector states. It used to post every connector to the web-service route,
- * which the fixture — like the engine — answers with a 404.
- */
 async function verifyMcpPageSignIn(page, stand, where, state) {
   await stand.visit(page, `connectors/${MCP_ID}?tab=verbindung`);
   const signIn = page.getByTestId("connector-renew-signin");
@@ -327,9 +280,7 @@ async function verifyMcpPageSignIn(page, stand, where, state) {
     throw new Error(`${where}: the page's sign-in posted ${JSON.stringify(started)}`);
 }
 
-/** No public engine address: the form says so and makes nothing. */
 async function verifyNoPublicAddress(page, stand, words, where, state) {
-  // The reader's own session, as the stand answers it, minus the address.
   const original = await page.evaluate(async () =>
     (await fetch("/v1/cockpit/bootstrap", { credentials: "include" })).json(),
   );
@@ -337,7 +288,6 @@ async function verifyNoPublicAddress(page, stand, words, where, state) {
   const handler = (route) => json(route, { ...original, oauth_callback_url: null });
   await page.route(matcher, handler);
   try {
-    // A fresh load, so the session read carries the missing address.
     const dialog = await openForm(page, stand);
     if (await page.getByTestId("create-connector-callback").count())
       throw new Error(`${where}: a redirect address is shown that the engine does not have`);

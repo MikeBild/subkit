@@ -1,5 +1,3 @@
-// Pure-render tests for renderAuthoringContextBlock — no DB.
-
 import { describe, expect, it } from "bun:test";
 import { renderAuthoringContextBlock } from "../authoring-context-block.ts";
 
@@ -125,10 +123,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     });
     expect(out).not.toBeNull();
     expect(out!).toContain("### Scope manifest");
-    // Plain step paths
     expect(out!).toContain("$scope.fetch_projects.data");
     expect(out!).toContain("$scope.extract_projects.data");
-    // Loop-specific shape with iteration variable + flat-access form
     expect(out!).toContain("$scope.fetch_resources.data");
     expect(out!).toContain("$item");
     expect(out!).toContain("flat access across all iterations");
@@ -243,10 +239,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
       user_message: "hi",
     });
     expect(out).not.toBeNull();
-    // The real container path is offered for copy-paste …
     expect(out!).toContain("$scope.fetch_chargers.data.chargers.edges");
     expect(out!).toContain("real paths from last preview");
-    // … but concrete array indices are dropped — fanout, not `[0]`.
     expect(out!).not.toContain("chargers.edges[0]");
   });
 
@@ -273,7 +267,6 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
             },
           ],
         },
-        // no latest_preview at all
       } as unknown as Parameters<typeof renderAuthoringContextBlock>[0]["draft"],
       user_message: "hi",
     });

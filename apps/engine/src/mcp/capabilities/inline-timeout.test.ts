@@ -1,8 +1,3 @@
-// Unit tests for the inline-run timeout race that bounds how long a wf_<slug>
-// run blocks a tools/call response. Deterministic by construction: the "run"
-// promises are driven by manual resolvers (never wall-clock sleeps), and the
-// timeout is forced to win with timeoutMs=0 against a never-settling run.
-
 import { describe, expect, test } from "bun:test";
 import { raceInlineRun } from "./inline-timeout.ts";
 
@@ -19,12 +14,9 @@ describe("raceInlineRun", () => {
       resolveRun = resolve;
     });
 
-    // timeoutMs=0 → the timer wins on the next macrotask while `run` is still
-    // pending. No wall-clock sleep in the test.
     const outcome = await raceInlineRun(run, 0);
     expect(outcome.timedOut).toBe(true);
 
-    // The run was not cancelled — it still settles when its source completes.
     resolveRun("done");
     await expect(run).resolves.toBe("done");
   });

@@ -1,6 +1,3 @@
-// The closed pattern set (spec §6). Pages compose these; only this directory
-// imports `@/components/ui/*`.
-
 export {
   ActionButton,
   type ActionSpec,

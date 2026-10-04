@@ -1,8 +1,3 @@
-// Unit tests for buildResultEnvelope — the pure MCP result-envelope
-// shaper.
-//
-// Held preparation must not masquerade as successful live execution.
-
 import { describe, expect, test } from "bun:test";
 import type { RunResult } from "../../execution/types.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
@@ -52,7 +47,6 @@ describe("buildResultEnvelope", () => {
   });
 
   test("takes exactly one argument — no preview/confirm envelope is threaded through", () => {
-    // Signature pin: the old two-arg shape (result, previewEnvelope) is gone.
     expect(buildResultEnvelope.length).toBe(1);
   });
 });

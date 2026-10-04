@@ -16,9 +16,6 @@ const SAVED: Record<string, string | undefined> = {};
 function snapshot(): void {
   for (const k of KEYS) SAVED[k] = process.env[k];
   for (const k of KEYS) delete process.env[k];
-  // v3.5: drop any leaked loader state — readEnv reads getConfig
-  // first and the schema "mock" default would override these
-  // env-driven assertions.
   _resetConfigForTests();
 }
 function restore(): void {

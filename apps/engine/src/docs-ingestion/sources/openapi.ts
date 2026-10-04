@@ -1,17 +1,3 @@
-// OpenAPI source normalizer.
-//
-// P6 supports JSON specs only. The Petstore smoke uses a JSON URL, which
-// is all we need for the retrieval API. YAML support will land in a
-// later pass once we add a tiny YAML dep or vend one in — the chunker
-// and service are unchanged by that switch.
-//
-// Emitted shape:
-//   - 1 "index" chunk summarising the spec (title, description, server).
-//   - 1 chunk per `paths.<path>.<method>` operation, with a dotted path
-//     and a compact body that includes summary, description, params,
-//     request body, and responses.
-//   - 1 chunk per `components.schemas.<name>` top-level schema.
-
 import {
   assertPageSize,
   canFetchSpec,
@@ -52,7 +38,6 @@ export async function fetchOpenAPI(
   return { body, bytes, parsed };
 }
 
-/** Convert an OpenAPI doc JSON into a flat list of normalized chunks. */
 export function chunkOpenAPI(spec: Json): RawChunk[] {
   const out: RawChunk[] = [];
   const info = (spec.info as Json | undefined) ?? {};
@@ -116,7 +101,6 @@ export function chunkOpenAPI(spec: Json): RawChunk[] {
     }
   }
 
-  // components.schemas (OpenAPI 3) or definitions (Swagger 2).
   const components = (spec.components as Json | undefined) ?? {};
   const schemas =
     (components.schemas as Json | undefined) ?? (spec.definitions as Json | undefined) ?? {};
@@ -133,15 +117,6 @@ export function chunkOpenAPI(spec: Json): RawChunk[] {
   return out;
 }
 
-/**
- * Walk a parsed OpenAPI document and collect every external file-level
- * `$ref` it points at. "External" = the ref value contains a URL or
- * bare-file path rather than a pure in-document `#/...` fragment.
- *
- * The returned URLs preserve first-seen order so the 20-link cap is
- * deterministic across runs. Fragment-only refs (`#/components/...`)
- * are ignored — they resolve in-spec and don't cost a fetch.
- */
 export function collectExternalRefs(spec: unknown, baseUrl: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -153,10 +128,7 @@ export function collectExternalRefs(spec: unknown, baseUrl: string): string[] {
     }
     for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
       if (k === "$ref" && typeof v === "string") {
-        // In-document fragment — no fetch required.
         if (v.startsWith("#")) continue;
-        // Strip any trailing fragment so siblings of the same file
-        // collapse to one fetchable URL.
         const fileRef = v.split("#")[0]!;
         if (!fileRef) continue;
         let resolved: string;
@@ -188,10 +160,6 @@ export async function ingestOpenAPIUrl(
   recordSpecFetched(state);
   const chunks = chunkOpenAPI(fetched.parsed);
 
-  // GC6: cap external `$ref` file follows at MAX_LINKS (20). Every ref
-  // that resolves to a distinct URL counts as one link against the
-  // shared BudgetState so a mix of llms.txt + openapi refs still stays
-  // under the global crawl cap.
   const refs = collectExternalRefs(fetched.parsed, url);
   let followed = 0;
   for (const refUrl of refs) {
@@ -212,10 +180,7 @@ export async function ingestOpenAPIUrl(
           content: c.content,
         });
       }
-    } catch (_err) {
-      // Non-fatal — a single broken ref should not fail the whole ingest.
-      // The service logs the individual failure at warn level.
-    }
+    } catch (_err) {}
   }
 
   return { uri: url, raw_bytes: fetched.bytes, chunks };

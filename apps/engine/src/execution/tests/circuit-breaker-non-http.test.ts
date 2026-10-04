@@ -1,27 +1,3 @@
-// The circuit breaker applies to every driver, not just http.
-//
-// Why this suite exists: the enforcement block and the `activeConnector`
-// assignment both sat BELOW the `driver !== "http"` guard in the request
-// dispatcher, so graphql, s3 and postgres steps returned before either one
-// ran. The breaker was therefore documented as a connector feature and
-// implemented as an HTTP feature — and `execution/engine.ts`'s for_each
-// preflight applied the same predicate to ANY driver, so a fan-out could
-// be blocked at the container by a breaker the per-step path ignored. One
-// predicate, two scopes, no test.
-//
-// Coverage:
-//   1. An open breaker blocks a graphql step (the enforcement hoist).
-//   2. A caller's own mistake — a SQL syntax error — does NOT count toward
-//      the breaker (the availability predicate). Counting it would take a
-//      healthy connector offline for the whole reset window because an
-//      author typed a query wrong.
-//   3. The two directions of the shared outcome recorder, wired end to end on
-//      the driver whose branch had them wrong: an exhausted retry loop against
-//      a 5xx COUNTS, and an `errors` array on a 200 CLEARS a partial count
-//      because the endpoint demonstrably answered. The per-driver
-//      classification itself is pinned in
-//      execution/steps/request/circuit-evidence.test.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
@@ -33,9 +9,6 @@ import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.
 let ctx: EngineTestCtx;
 let graphqlConnectorId: string;
 let pgConnectorId: string;
-// Endpoints that answer, so the breaker's two directions can be observed
-// without a network: one always 500s, one always returns a GraphQL `errors`
-// array over HTTP 200.
 let gql500: MockServer;
 let gqlErrors: MockServer;
 let failingGqlConnectorId: string;
@@ -53,13 +26,9 @@ beforeAll(async () => {
       driver: "graphql",
       environment: "dev",
       auth_type: "none",
-      // Never reached: the breaker returns before the driver is invoked.
       base_url: "https://graphql.circuit-non-http.invalid/graphql",
       config: {},
       circuit_state: "open",
-      // The breaker compares this against circuit_reset_ms, so the instant has
-      // to be recent — but it must not be a wall-clock read. Derive it from the
-      // test clock so the window is deterministic.
       circuit_opened_at: new Date(now()),
       circuit_failure_count: 5,
       circuit_threshold: 5,
@@ -77,8 +46,6 @@ beforeAll(async () => {
       driver: "postgres",
       environment: "dev",
       auth_type: "none",
-      // Points at the test database itself, so the connection succeeds and
-      // the only thing that can fail is the statement.
       dsn: ctx.testDb.url,
       config: {},
       circuit_threshold: 5,
@@ -120,7 +87,6 @@ beforeAll(async () => {
       auth_type: "none",
       base_url: gqlErrors.baseUrl,
       config: { endpoint: gqlErrors.baseUrl },
-      // Mid-flight: three prior failures recorded, breaker not yet open.
       circuit_failure_count: 3,
       circuit_threshold: 5,
     })
@@ -190,8 +156,6 @@ describe("only availability failures reach the breaker", () => {
     const after = (
       await ctx.testDb.db.select().from(connectors).where(eq(connectors.id, pgConnectorId))
     )[0]!;
-    // The statement was wrong; the database was fine. Punishing the
-    // connector for the author's typo is the failure this asserts against.
     expect(after.circuit_failure_count).toBe(0);
     expect(after.circuit_state).toBe("closed");
   });
@@ -222,9 +186,6 @@ describe("one outcome recorder decides for every driver", () => {
     const after = (
       await ctx.testDb.db.select().from(connectors).where(eq(connectors.id, failingGqlConnectorId))
     )[0]!;
-    // The endpoint said it could not serve the request. Before the shared
-    // recorder, only the error detail was classified and the 500 that lived
-    // on request_meta was thrown away — so this count stayed at 0.
     expect(after.circuit_failure_count).toBe(1);
   });
 
@@ -255,7 +216,6 @@ describe("one outcome recorder decides for every driver", () => {
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    // The step still fails — the author's field does not exist.
     expect(result.status).toBe("failed");
     expect((result.steps[0]?.error as { code?: string } | undefined)?.code).toBe("graphql_error");
 
@@ -265,9 +225,6 @@ describe("one outcome recorder decides for every driver", () => {
         .from(connectors)
         .where(eq(connectors.id, answeringGqlConnectorId))
     )[0]!;
-    // …but the endpoint demonstrably answered, which is what the s3 branch has
-    // always credited ("a missing key is not evidence of an unavailable
-    // store") and the graphql branch credited for nothing.
     expect(after.circuit_failure_count).toBe(0);
     expect(after.circuit_state).toBe("closed");
   });

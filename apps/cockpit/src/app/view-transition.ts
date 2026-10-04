@@ -1,10 +1,3 @@
-// Which navigations crossfade the content area (View Transitions).
-//
-// Only a change of page does. A run sheet (`?run=`), a tab (`?tab=`) or a
-// filter changes the query alone; fading the whole page for it would make
-// the sheet's own slide and the list underneath flicker. A reader who asked
-// for reduced motion gets no transition at all.
-
 export const ROUTE_TRANSITION = "route";
 
 function prefersReducedMotion(): boolean {
@@ -45,15 +38,6 @@ function supportsTransitionTypes(): boolean {
   );
 }
 
-/**
- * Run one navigation's DOM update, crossfaded when `types` asks for it.
- *
- * A transition the browser skips — a second navigation while one still runs,
- * a hidden tab, a reader who switched it off — rejects its `ready` and
- * `finished` promises with "Transition was skipped". That is no fault: both
- * are caught here, and a navigation that arrives while a transition still
- * runs updates the page directly instead of starting a second one.
- */
 export function runViewTransition(
   update: () => Promise<void>,
   types: string[] | false,
@@ -79,7 +63,6 @@ export function runViewTransition(
   return transition.updateCallbackDone;
 }
 
-/** The slice of the router the transition policy reads. */
 export interface TransitionRouter {
   shouldViewTransition?: unknown;
   latestLocation: { pathname: string };
@@ -87,10 +70,6 @@ export interface TransitionRouter {
   startViewTransition: (fn: () => Promise<void>) => unknown;
 }
 
-/**
- * The router starts its own view transitions but never catches a skipped
- * one; route them through `runViewTransition` instead.
- */
 export function guardRouteTransitions(router: TransitionRouter): void {
   router.startViewTransition = (fn) => {
     const wanted = router.shouldViewTransition;

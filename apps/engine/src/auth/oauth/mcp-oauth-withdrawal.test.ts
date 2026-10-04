@@ -1,20 +1,3 @@
-// Tranche E — a connection belongs to the installation, and a withdrawn
-// person loses it.
-//
-// Every test here drives the REAL consent funnel over HTTP: register a
-// client, render the consent page, submit the decision, exchange the code.
-// What follows is the part that used to be untested:
-//
-//   rule 1  signing out of the Cockpit must NOT end the connection
-//   rule 2  withdrawing the person MUST end it, on its next use
-//   rule 3  refresh is checked exactly like access — asserted as pairs
-//   rule 5  a rotation and a fresh resolver ("restart") change nothing
-//
-// SubKit keeps no in-process authentication state across a restart except
-// the `last_used_at` flush throttle, so the honest restart proxy is a fresh
-// `createMcpOAuthAuthProvider({ resetThrottle: true })` resolving the same
-// token — noted here so the assertion is not read as more than it is.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -61,14 +44,10 @@ interface Connection extends TokenPair {
   userId: string;
 }
 
-// The resource server the tokens must name (RFC 8707). The suite pins
-// `server.public_base_url` to this host, so a token minted without it is
-// rejected as `audience_missing` before any liveness check is reached.
 const RESOURCE = "https://test.example.com/mcp";
 
 let seq = 0;
 
-/** A person the tests may withdraw without disturbing the shared fixture user. */
 async function seedPerson(): Promise<string> {
   const [row] = await db
     .insert(users)
@@ -82,7 +61,6 @@ async function seedPerson(): Promise<string> {
   return row.id;
 }
 
-/** Register a client and walk the whole consent funnel as `userId`. */
 async function approveConnection(userId?: string): Promise<Connection> {
   const person = userId ?? (await seedPerson());
   const redirectUri = `https://client.example.com/withdrawal-${++seq}`;
@@ -157,7 +135,6 @@ async function approveConnection(userId?: string): Promise<Connection> {
   return { ...tokens, clientId, jwt, sessionId, userId: person };
 }
 
-/** Use the connection: a protected call on the resource server. */
 function callMcp(accessToken: string): Promise<Response> {
   return fetch(`${ctx.baseUrl}/mcp`, {
     method: "POST",
@@ -186,14 +163,10 @@ function withdraw(userId: string): Promise<unknown> {
   return deactivateUser({ tenant_id: ctx.tenantId, user_id: userId, actor_id: null }, db);
 }
 
-// ── rule 1 ───────────────────────────────────────────────────────────────────
-
 describe("rule 1 — a connection outlives a browser session", () => {
   test("signing out of the Cockpit leaves the access token and the refresh grant working", async () => {
     const conn = await approveConnection();
 
-    // The Cockpit's own sign-out: session cookie plus the CSRF header the
-    // browser sends with every mutating call.
     const csrf = await signBrowserCsrf({
       session_id: conn.sessionId,
       user_id: conn.userId,
@@ -213,8 +186,6 @@ describe("rule 1 — a connection outlives a browser session", () => {
     expect((await callMcp(next.access_token)).status).not.toBe(401);
   });
 });
-
-// ── rule 2 ───────────────────────────────────────────────────────────────────
 
 describe("rule 2 — withdrawing the person ends their connections at once", () => {
   test("the access token is refused on its next use", async () => {
@@ -240,8 +211,6 @@ describe("rule 2 — withdrawing the person ends their connections at once", () 
     expect(description).not.toContain("api key");
   });
 });
-
-// ── rule 3 ───────────────────────────────────────────────────────────────────
 
 describe("rule 3 — refresh is checked exactly like access", () => {
   test("a withdrawn person is refused on both paths (pair)", async () => {
@@ -280,8 +249,6 @@ describe("rule 3 — refresh is checked exactly like access", () => {
   });
 });
 
-// ── rule 5 ───────────────────────────────────────────────────────────────────
-
 describe("rule 5 — a restart, a rotation and a closed browser change nothing", () => {
   test("a fresh resolver — the product restarted — still accepts the token", async () => {
     const conn = await approveConnection();
@@ -311,12 +278,9 @@ describe("rule 5 — a restart, a rotation and a closed browser change nothing",
   });
 });
 
-// ── rule 4 ───────────────────────────────────────────────────────────────────
-
 describe("rule 4 — the number the Cockpit shows before it asks is the true one", () => {
   test("two approvals by one person count as two connections, and withdrawal leaves none", async () => {
     const first = await approveConnection();
-    // A second client, approved by the same person.
     await approveConnection(first.userId);
 
     const before = await countLiveConnectionsByUser(db, ctx.tenantId, new Date()); // allow-wall-clock

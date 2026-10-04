@@ -1,6 +1,5 @@
 import { errorFields, logger } from "../logging/logger.ts";
 
-/** A refused admission remains retryable after human review; it is not a queue failure. */
 export function logScheduleFireFailure(
   error: unknown,
   context: {

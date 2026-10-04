@@ -1,14 +1,3 @@
-// ask_user_* ←→ MCP elicitation form-mode mapping — unit tests.
-//
-// Covers `mapAskUserToPrimitiveSchema` and `mapElicitResultToAskUserOutput`
-// for all five form-bridge `ask_user_*` tools, including:
-//   - the `ask_user_multi` `opt_<value>` boolean round-trip → string[]
-//   - `ask_user_form` json/multi field degradation to DB-pause
-//   - `ask_user_choice` returning null (decline-equivalent) on an
-//     out-of-options value
-//
-// Pure functions — no DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import {
   type FormBridgeToolName,
@@ -104,7 +93,6 @@ describe("mapAskUserToPrimitiveSchema — ask_user_multi", () => {
     });
     expect(Object.keys(r.requestedSchema.properties).sort()).toEqual(["opt_a", "opt_b"]);
     expect(r.requestedSchema.properties.opt_a).toMatchObject({ type: "boolean", title: "Skill A" });
-    // No `required` — a multi-select can legitimately be empty.
     expect(r.requestedSchema.required).toBeUndefined();
   });
 });
@@ -139,9 +127,6 @@ describe("mapAskUserToPrimitiveSchema — ask_user_form", () => {
   });
 
   test("password fields route to the sensitive arm — never a form property (A3)", () => {
-    // MCP 2025-11-25 MUST: form-mode elicitation must not request secrets.
-    // A password field no longer becomes a `{type:"string"}` form property;
-    // the mapper returns the sensitive arm so the caller uses URL/portal mode.
     const r = mapAskUserToPrimitiveSchema("ask_user_form", {
       question: "Secret",
       fields: [{ name: "token", label: "Token", type: "password" }],
@@ -213,9 +198,6 @@ describe("mapElicitResultToAskUserOutput — ask_user_choice", () => {
   });
 
   test("an out-of-options value returns null (decline-equivalent non-answer)", () => {
-    // The requestedSchema pinned `enum` to exactly these values, so a
-    // client returning anything else broke the contract — the mapper
-    // returns null rather than silently persisting a phantom option.
     expect(
       mapElicitResultToAskUserOutput("ask_user_choice", input, { value: "staging" }),
     ).toBeNull();
@@ -283,9 +265,6 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
   });
 
   test("a nested-object field value is a contract violation → null (decline-equivalent)", () => {
-    // The form `requestedSchema` only ever declares primitives; a client
-    // returning a nested object broke the contract. The mapper collapses
-    // to null rather than persisting the non-primitive onto `output`.
     expect(
       mapElicitResultToAskUserOutput("ask_user_form", {}, { field: { nested: true } }),
     ).toBeNull();
@@ -296,10 +275,6 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
   });
 
   test("a MIXED payload — one valid primitive + one nested object — is rejected whole", () => {
-    // A partial-primitive payload must NOT be partially stripped: a single
-    // non-primitive field poisons the entire output. The mapper returns
-    // `null`, never `{ ok: "yes" }` — the valid primitive is dropped along
-    // with the contract-violating one.
     expect(
       mapElicitResultToAskUserOutput("ask_user_form", {}, { ok: "yes", broken: { nested: true } }),
     ).toBeNull();
@@ -311,8 +286,6 @@ describe("mapElicitResultToAskUserOutput — ask_user_form", () => {
     });
   });
 });
-
-// ── default forwarding — D1 bridge tests ────────────────────────────────────
 
 describe("mapAskUserToPrimitiveSchema — default forwarding", () => {
   test("ask_user_text emits default on the requestedSchema value property", () => {
@@ -414,8 +387,6 @@ describe("mapAskUserToPrimitiveSchema — default forwarding", () => {
   });
 
   test("a field flagged sensitive:true (non-password) also routes to the sensitive arm (A3)", () => {
-    // The sensitivity predicate is `type === "password" || sensitive === true`,
-    // so a plain text field marked sensitive must not become a form property.
     const r = mapAskUserToPrimitiveSchema("ask_user_form", {
       question: "Credentials",
       fields: [{ name: "token", label: "Token", type: "text", sensitive: true }],

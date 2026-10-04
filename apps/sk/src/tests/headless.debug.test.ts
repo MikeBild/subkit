@@ -22,9 +22,7 @@ afterEach(() => {
   delete require.cache[require.resolve("../debug.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function readDebugKinds(): string[] {

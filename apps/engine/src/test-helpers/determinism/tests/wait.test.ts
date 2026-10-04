@@ -47,7 +47,6 @@ describe("wait", () => {
       },
       { tries: 10, sleepMs: 10, label: "paced" },
     );
-    // 2 sleeps of 10ms between the 3 polls → at least 15ms elapsed.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     expect(Date.now() - t0).toBeGreaterThanOrEqual(15);
   });

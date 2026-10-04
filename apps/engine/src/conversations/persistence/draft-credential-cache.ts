@@ -1,34 +1,3 @@
-// Process-local cache of draft-time credentials.
-//
-// `probe_connector_draft` runs before the connector exists in the
-// `connectors` table — its synthetic id (`draft-<conversation_id>`)
-// does not match the UUID-typed `connector_credentials.connector_id`,
-// so the standard `getCredentialForConnector` lookup short-circuits to
-// null and the probe goes out unauthenticated. That is what produces
-// the "401 / Last used: Never" symptom users see when authoring a
-// connector with bearer/basic/header/query auth.
-//
-// We keep the credential in memory only — never persisted, never
-// echoed in `draft.session`/`draft.connector` (those are written to
-// the conversation row), never serialized to SSE replay, never
-// returned from any tool result. The cache is keyed by
-// `conversation_id` and survives across turns within the same engine
-// process (a 30-min TTL covers a reasonable authoring session).
-//
-// Lifecycle:
-//   - populated by a local masked form or the MCP draft-credential URL route.
-//   - read by `probe_connector_draft` and converted to a
-//     `DecryptedCredential` override fed straight into the HTTP driver.
-//   - cleared by `saveConnectorAtomic` after the credential has been
-//     written to the encrypted `connector_credentials` table, by the
-//     conversation-deletion path, and on TTL expiry.
-//
-// Trade-off: the cache lives in process memory only. A multi-instance
-// engine deployment serving turns of the same conversation across
-// pods would lose the credential between turns. subkit is not yet
-// multi-instance, and the user explicitly chose this shape over a
-// schema migration.
-
 import {
   runClientCredentialsJsonGrant,
   runCognitoUserPasswordGrant,
@@ -82,16 +51,6 @@ export function _resetDraftCredentialCacheForTests(): void {
   cache.clear();
 }
 
-/** Translate the persistence-shape credential into the HTTP driver's
- *  decrypted shape so it can be passed as a `credential_override` to
- *  `buildRequestPlan` without round-tripping through the credentials
- *  service. The two shapes diverge for `header`/`query` modes — those
- *  unwrap a single name/value pair into a record.
- *
- *  Pure for the four classic modes (`bearer`/`basic`/`header`/`query`)
- *  + `aws_sigv4` — caller can use the sync overload below.
- *  `cognito_user_password` requires a network exchange; use
- *  `toDecryptedCredentialAsync` for that case. */
 export function toDecryptedCredential(input: AtomicCredentialInput): DecryptedCredential {
   switch (input.mode) {
     case "bearer":
@@ -117,21 +76,12 @@ export function toDecryptedCredential(input: AtomicCredentialInput): DecryptedCr
         "cognito_user_password requires a network token exchange — use toDecryptedCredentialAsync(input, ctx) instead",
       );
     case "oauth2":
-      // OAuth2 seed updates `connector.config.oauth` so a subsequent
-      // `authenticate_oauth` call can run the dance — it never produces
-      // a credential row directly. There is no decrypted-credential
-      // shape to return here.
       throw new Error(
         "oauth2 seed updates config.oauth only — no DecryptedCredential is available until authenticate_oauth completes the dance",
       );
   }
 }
 
-/** Async variant — handles `cognito_user_password` by minting an
- *  IdToken via Cognito InitiateAuth before returning the oauth2
- *  decrypted credential. The caller passes a connector context (region
- *  + client_id) which can be overridden by the credential itself.
- *  Other modes round-trip through the sync `toDecryptedCredential`. */
 export async function toDecryptedCredentialAsync(
   input: AtomicCredentialInput,
   ctx: { aws_region?: string | null; client_id?: string | null },
@@ -140,10 +90,6 @@ export async function toDecryptedCredentialAsync(
   const region = input.aws_region ?? ctx.aws_region ?? null;
   const client_id = input.client_id ?? ctx.client_id ?? null;
   if (!region || !client_id) {
-    // Surface which input slot is missing so the operator-facing
-    // error envelope can suggest the right next action: missing
-    // region → `update_connector_draft({config: {aws_region}})`,
-    // missing client_id → set `oauth.client_id` on the draft.
     const missing: string[] = [];
     if (!region) missing.push("aws_region (set config.aws_region or config.oauth.aws_region)");
     if (!client_id) missing.push("client_id (set config.oauth.client_id)");
@@ -164,20 +110,13 @@ export async function toDecryptedCredentialAsync(
   return {
     mode: "oauth2",
     access_token: bundle.access_token,
-    token_type: bundle.token_type, // "none" — applyAuthMaterial emits raw JWT
+    token_type: bundle.token_type,
     refresh_token: bundle.refresh_token,
     expires_at: bundle.expires_at,
     ...(bundle.scope ? { scope: bundle.scope } : {}),
   };
 }
 
-/** Mint a bearer for a machine-to-machine OAuth2 draft (grant_type
- *  `client_credentials_json`) from the cached client_id/client_secret
- *  pair + the draft's `config.oauth` block. No browser dance — the
- *  exchange POSTs JSON to the configured token endpoint (the Xray
- *  Cloud pattern). Throws on a missing endpoint or a failed exchange;
- *  the probe maps that to a structured `token_exchange_failed`
- *  envelope. */
 export async function mintM2mDraftCredential(
   input: Extract<AtomicCredentialInput, { mode: "oauth2" }>,
   oauth: Record<string, unknown>,

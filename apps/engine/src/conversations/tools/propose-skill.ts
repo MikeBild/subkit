@@ -1,7 +1,3 @@
-// propose_skill — draft a Skill from file evidence or detected patterns.
-// Pauses on an `ask_user_confirm` elicitation so the operator can review
-// before creation.
-
 import { z } from "@hono/zod-openapi";
 import { createElicitation } from "../elicitations.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -26,7 +22,6 @@ export const proposeSkillTool: ConversationTool = {
     "Use this when you identify operational rules, best practices, or conventions.",
   inputSchema,
   category: "draft_write" as const,
-  // Strict mode safe here: schema is all concrete types.
   strict: true,
   example_input: {
     scope: "global",

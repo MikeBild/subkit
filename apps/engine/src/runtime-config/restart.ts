@@ -1,14 +1,3 @@
-// "Restart now" for one supervised engine process.
-//
-// The request is refused unless a supervisor will bring the engine back
-// (`server.restart_supervised`), a restart-required revision waits, and this
-// is the only live replica. An accepted request is written into
-// `engine_restart_requests` together with its `engine.restart.requested`
-// audit row, under the runtime_config_state row lock; the process then drains exactly as on
-// SIGTERM and ends with exit code 75. The process that boots next reads the
-// request and records `engine.restart.completed` or `.failed`, depending on
-// whether the waiting revision became active.
-
 import { randomUUID } from "node:crypto";
 import { eq, gte } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
@@ -23,21 +12,12 @@ import { logger } from "../logging/logger.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS, type RevisionStatus } from "./contracts.ts";
 import { getRuntimeRevision } from "./service.ts";
 
-/** EX_TEMPFAIL: "try again". systemd `Restart=on-failure` and a compose restart
- * policy both start the engine again; it is deliberately not a success code. */
 export const ENGINE_RESTART_EXIT_CODE = 75;
-/** A second request inside this window is refused — no restart loop against
- * the supervisor's start limit, whatever the outcome of the first. */
 export const RESTART_MIN_INTERVAL_MS = 60_000;
-/** An unanswered request younger than this is still in progress. The drain
- * takes up to two minutes, boot a little more. */
 export const RESTART_IN_PROGRESS_MS = 5 * 60_000;
 
 export type ShutdownReason = "signal" | "restart" | "timeout";
 
-/** The exit code a shutdown ends with: 0 for a signal (the supervisor asked),
- * 75 for a requested restart (the supervisor must start us again), 1 when the
- * graceful drain timed out. */
 export function shutdownExitCode(reason: ShutdownReason): number {
   switch (reason) {
     case "restart":
@@ -51,15 +31,12 @@ export function shutdownExitCode(reason: ShutdownReason): number {
 
 const BOOT = { id: randomUUID(), started_at: new Date() };
 
-/** Random per process: a changed boot id is how a caller sees the restart happened. */
 export function bootIdentity(): { id: string; started_at: Date } {
   return BOOT;
 }
 
 let restartTrigger: (() => void) | null = null;
 
-/** The server entrypoint registers its graceful restart here. Tests never do,
- * so an accepted request in a test can never end the test runner. */
 export function registerRestartTrigger(trigger: () => void): () => void {
   restartTrigger = trigger;
   return () => {
@@ -67,15 +44,10 @@ export function registerRestartTrigger(trigger: () => void): () => void {
   };
 }
 
-/** Whether this process can perform a restart right now (its entrypoint has
- * registered one). Checked before a request is written: a request accepted
- * while nothing could carry it out would sit open and refuse every later one. */
 export function restartArmed(): boolean {
   return restartTrigger !== null;
 }
 
-/** Start the registered restart shortly after the current response is sent.
- * Returns false when no process restart is registered. */
 export function scheduleProcessRestart(delayMs = 250): boolean {
   const trigger = restartTrigger;
   if (!trigger) return false;
@@ -116,9 +88,6 @@ export interface RestartStatus {
   pending_restart_fields: string[];
 }
 
-/** The supervisor flag is read from the SAVED revision: whether a supervisor
- * exists is a fact about the installation, and switching it on while another
- * setting waits for its restart must enable that very restart. */
 function supervisedIn(document: Record<string, unknown>): boolean {
   const server = document.server;
   return (
@@ -190,11 +159,6 @@ export interface RestartRequester {
   actor_id: string;
 }
 
-/**
- * Accept or refuse a restart. Checks and the write happen under the state row
- * lock, so two concurrent requests cannot both be accepted. Does NOT end the
- * process — the caller schedules that once its response is on the wire.
- */
 export async function requestEngineRestart(
   db: Db,
   requester: RestartRequester,
@@ -266,12 +230,6 @@ export async function requestEngineRestart(
   });
 }
 
-/**
- * At boot, after the runtime configuration has loaded: answer the restart the
- * previous process accepted. Completed when the revision it waited for (or a
- * later one) is active, failed otherwise. Exactly once — the outcome is
- * written into the request under the state row lock.
- */
 export async function recordRestartOutcomeAtBoot(
   db: Db,
 ): Promise<{ outcome: "completed" | "failed"; request_id: string } | null> {
@@ -329,7 +287,6 @@ export async function recordRestartOutcomeAtBoot(
   return result;
 }
 
-/** Boot wrapper: answering the request must never keep the engine from starting. */
 export async function answerRestartRequestAtBoot(db: Db): Promise<void> {
   try {
     await recordRestartOutcomeAtBoot(db);

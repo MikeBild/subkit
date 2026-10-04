@@ -1,18 +1,3 @@
-// Unit coverage for `readRequestSource` — the single helper every
-// route uses to project the trace-middleware-set `request_source`
-// onto audit metadata.
-//
-// Contract:
-//   - Allowed canonical values pass through verbatim.
-//   - Unknown / unexpected values (including future trace-middleware
-//     additions wired before the canonical enum widens) return
-//     `undefined` rather than throwing.
-//   - Missing context variable returns `undefined`.
-//
-// The audit-metadata `.parse(...)` paths declare `request_source` as
-// optional; the helper's `undefined` return therefore lets the parse
-// succeed instead of aborting the request.
-
 import { describe, expect, test } from "bun:test";
 import type { Context } from "hono";
 import type { RequestSource } from "../../observability/service-metadata.ts";
@@ -54,15 +39,10 @@ describe("readRequestSource", () => {
   });
 });
 
-// Drift guard: execution/types.ts must re-export the SAME RequestSource the
-// canonical RequestSourceSchema defines. A hand-maintained copy there once
-// lagged by two members ("ui", "queue"); this locks the two in lockstep.
 describe("RequestSource ⇄ RequestSourceSchema lockstep", () => {
   test("execution/types RequestSource equals the canonical schema members", async () => {
     const { RequestSourceSchema } = await import("../../observability/service-metadata.ts");
     type FromExecution = import("../../execution/types.ts").RequestSource;
-    // Compile-time exhaustiveness: every schema member must be a valid
-    // RequestSource and vice versa, or this table fails to type-check.
     const table = {
       api: true,
       cli: true,

@@ -1,7 +1,3 @@
-// Cross-persona E2E tests — verifies workflows created by an admin
-// persona are accessible from other personas, and that data flows
-// correctly between different sk CLI invocations using distinct API keys.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   boot,
@@ -22,21 +18,8 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// Scenario 1: Admin creates workflow via sk, user queries via sk
-// ---------------------------------------------------------------------------
 describe("admin create → member query", () => {
   test("workflow created by admin is visible to member via sk", async () => {
-    // Step 1: Admin creates a workflow via sk CLI.
-    //
-    // `--skip-checks` bypasses the validate+preview pre-flight that
-    // `workflows create` runs by default. Without it the CLI would
-    // actually execute the workflow's `request` step against an
-    // external host at create time — a third-party 503 then makes
-    // create exit 1 without persisting, and the visibility assertion
-    // below would fail with an unhelpful "workflow not found" rather
-    // than a clear "external dependency flaked". This suite tests
-    // cross-persona visibility, not external reachability.
     const wfDef = JSON.stringify({
       name: "cross-cli-test",
       slug: "cross-cli-test",
@@ -58,7 +41,6 @@ describe("admin create → member query", () => {
     });
     expectSuccess(createResult, "sk workflows create (admin)");
 
-    // Step 2: Verify it exists via sk list as admin.
     const wfs = await runJson<Array<{ id: string; name: string }>>(["workflows", "list"], {
       env,
       persona: "admin",
@@ -67,22 +49,13 @@ describe("admin create → member query", () => {
     const wf = list.find((w) => w.name === "cross-cli-test");
     expect(wf).toBeTruthy();
 
-    // Step 3: Member can also see it via sk.
     const memberList = await run(["workflows", "list"], { env, persona: "member" });
     expect(memberList).toContain("cross-cli-test");
-    // Three sk-CLI spawns against a live engine — well past bun's 5s
-    // default test timeout on a saturated CI runner (failures landed at
-    // ~5003ms = the bun timeout SIGTERM-ing the CLI). Sized like the
-    // sibling e2e tests in this file.
   }, 90_000);
 });
 
-// ---------------------------------------------------------------------------
-// Scenario 2: sk conversation creates data, admin audit shows it
-// ---------------------------------------------------------------------------
 describe("sk converse → sk audit", () => {
   test("sk conversation appears in audit log", async () => {
-    // Step 1: User starts a conversation via sk.
     const skResult = await cli(["--p", "list all available workflows", "--output", "json"], {
       env,
       persona: "member",
@@ -92,7 +65,6 @@ describe("sk converse → sk audit", () => {
     const data = JSON.parse(skResult.stdout) as { session_id: string };
     expect(data.session_id).toBeTruthy();
 
-    // Step 2: Admin sees the conversation creation in the audit log.
     const auditOut = await run(["audit", "query", "--limit", "20"], {
       env,
       persona: "admin",
@@ -101,9 +73,6 @@ describe("sk converse → sk audit", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Scenario 3: Multiple personas interact, engine logs stay clean
-// ---------------------------------------------------------------------------
 describe("concurrent persona usage", () => {
   test("all three personas can use the system simultaneously", async () => {
     const results = await Promise.all([

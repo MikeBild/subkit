@@ -1,11 +1,3 @@
-// Every prompt-cache breakpoint the engine sets asks for the one-hour TTL.
-//
-// The price catalog charges Anthropic cache writes at the one-hour rate (2x
-// input). If a breakpoint were set with the five-minute TTL, the bill would be
-// lower than the figure SubKit reports — and nothing else would notice. This
-// test ties the two together: shorten a TTL anywhere in the engine and it
-// fails, pointing at the catalog that has to change with it.
-
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -27,7 +19,6 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-/** Source without comment lines, so a comment quoting a hint is not counted as one. */
 function code(file: string): string {
   return readFileSync(file, "utf8")
     .split("\n")
@@ -59,7 +50,6 @@ describe("prompt cache TTL", () => {
         found.push(`${relative(ENGINE_SRC, file)}: ${m[1]}`);
       }
     }
-    // The scan has to see the known breakpoints, or it proves nothing.
     expect(found.length).toBeGreaterThanOrEqual(2);
     const notOneHour = found.filter((f) => !/: (1h|opts\.ttl)$/.test(f));
     expect(notOneHour).toEqual([]);

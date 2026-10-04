@@ -1,6 +1,3 @@
-// Preview-before-commit gate — save_workflow_draft refuses without a successful
-// dry-run on record. Legacy force-like fields must not bypass the gate.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
@@ -50,8 +47,6 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    // The commit gate authorizes on `commit_intent.kind` — the
-    // authoritative field — not the cosmetic top-level `kind`.
     input: {
       kind: "save_workflow_draft",
       summary: "commit",
@@ -92,7 +87,6 @@ describe("save_workflow_draft preview-before-commit gate", () => {
           },
         ],
       },
-      // No latest_preview — gate must refuse.
     });
     const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),

@@ -1,8 +1,3 @@
-// Skill Candidates service — CRUD, pattern analysis, approval, and rejection.
-//
-// Candidates are NEVER auto-promoted. Every mutation goes through an
-// explicit human gate (conversation approval or REST API).
-
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -39,11 +34,6 @@ import type {
 
 const MAX_EVIDENCE_PER_CANDIDATE = 50;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Batch-fetch evidence counts for a set of candidate IDs. */
 async function getEvidenceCounts(
   candidateIds: string[],
   exec: Executor,
@@ -69,10 +59,6 @@ async function getEvidenceCounts(
   for (const r of rows) m.set(r.candidate_id, Number(r.cnt));
   return m;
 }
-
-// ---------------------------------------------------------------------------
-// Read
-// ---------------------------------------------------------------------------
 
 function listFilterConds(p: ListSkillCandidatesParams) {
   const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
@@ -106,8 +92,6 @@ export async function listSkillCandidates(
     .select()
     .from(skillCandidates)
     .where(and(...listFilterConds(p)))
-    // id tiebreaker: created_at alone is not unique (batch captures), and
-    // an unstable order across offset pages duplicates/skips boundary rows.
     .orderBy(desc(skillCandidates.created_at), desc(skillCandidates.id))
     .limit(limit)
     .offset(offset);
@@ -119,8 +103,6 @@ export async function listSkillCandidates(
   return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
 }
 
-/** True matching-row count for the same filters, independent of limit/offset —
- *  list consumers that render a count must not derive it from a capped page. */
 export async function countSkillCandidates(
   p: ListSkillCandidatesParams,
   exec?: Executor,
@@ -133,25 +115,10 @@ export async function countSkillCandidates(
   return Number(row?.cnt ?? 0);
 }
 
-/**
- * Hard cap on the number of proposed candidates the assembler ever sees
- * in a single authoring turn. Section-level pre-trim (1200 tokens, in
- * the assembler) is the second bound; this is the first.
- */
 export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
 
-/** Candidate kinds that never render into a prompt while still proposed. */
 const UNREVIEWED_PROMPT_EXCLUDED_KINDS: ReadonlySet<string> = new Set(["connector_capability"]);
 
-/**
- * Return up to LIST_PROPOSED_FOR_AUTHORING_CAP proposed candidates for an authoring turn, merged from
- * (global ∪ optional-connector ∪ optional-workflow) and ordered by
- * (scope-specificity, confidence, evidence-count, created_at) descending.
- * On id collision, the more specific scope wins (workflow > connector >
- * global). Each per-scope page overfetches to the service ceiling so
- * older high-confidence candidates aren't dropped by the underlying
- * `created_at DESC` paging before ranking.
- */
 export async function listProposedForAuthoring(
   tenant_id: string,
   scope_hints: { connector_id?: string; workflow_id?: string },
@@ -193,12 +160,6 @@ export async function listProposedForAuthoring(
       : Promise.resolve<SkillCandidateView[]>([]),
   ]);
 
-  // The three queries are AND-exact-match on disjoint `scope` values
-  // (global / connector / workflow), so a single row cannot appear in
-  // more than one result set — no dedup needed.
-  // A connector_capability candidate quotes the remote server's own
-  // instructions — third-party text that reaches a prompt only once a
-  // person approved it into a Skill, never as an unreviewed hint.
   const merged: SkillCandidateView[] = [...globalRows, ...connectorRows, ...workflowRows].filter(
     (c) => !UNREVIEWED_PROMPT_EXCLUDED_KINDS.has(c.pattern_kind),
   );
@@ -215,8 +176,6 @@ export async function listProposedForAuthoring(
     if (dc !== 0) return dc;
     const de = b.evidence_count - a.evidence_count;
     if (de !== 0) return de;
-    // created_at is an ISO-8601 string — lexicographic compare matches
-    // chronological order. Descending: newest first.
     if (a.created_at < b.created_at) return 1;
     if (a.created_at > b.created_at) return -1;
     return 0;
@@ -229,9 +188,7 @@ export async function listProposedForAuthoring(
       Date.now() - start,
       { scope_hint: scopeHint },
     );
-  } catch {
-    // Metrics emission is best-effort — never fail the authoring path.
-  }
+  } catch {}
   return out;
 }
 
@@ -257,7 +214,6 @@ export async function getSkillCandidateEvidence(
   exec?: Executor,
 ): Promise<SkillCandidateEvidenceView[]> {
   const db = exec ?? getDb();
-  // Verify candidate belongs to tenant
   const candidate = await getSkillCandidate(tenant_id, candidate_id, db);
   if (!candidate) return [];
 
@@ -279,10 +235,6 @@ export async function getSkillCandidateEvidence(
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Operator-initiated proposal (conversational `create_skill`)
-// ---------------------------------------------------------------------------
-
 export interface CreateCandidateFromAuthoringParams {
   tenant_id: string;
   title: string;
@@ -295,38 +247,14 @@ export interface CreateCandidateFromAuthoringParams {
   pitfalls?: string[];
   doc_refs?: string[];
   tags?: string[];
-  /** Where the proposal came from — recorded as candidate evidence. */
   evidence_summary: string;
   db: Db;
 }
 
-/**
- * Skill proposal from conversational authoring (the `create_skill` chat
- * tool). NEVER creates an active skill — the file-header invariant holds:
- * promotion happens only through the explicit human gate
- * (`approveSkillCandidate` / `sk learnings review`). `pattern_kind`
- * "session_learning" is deliberate: that is the kind the review queue and
- * the REPL welcome-row count select on, so operator proposals land in the
- * queue the operator already works.
- *
- * Identity = scope entity + normalized title + CONTENT hash. Content is
- * part of the identity on purpose: `upsertFromSignal`'s update branch
- * persists only confidence/version/evidence (detector semantics), so a
- * title-only identity would report "updated" while silently keeping the
- * OLD body — and a rejected title would block every future revision.
- * With content in the fingerprint, an identical re-proposal dedups
- * (evidence accrues) while a revised proposal files a FRESH candidate the
- * reviewer sees next to the stale one.
- */
 export async function createCandidateFromAuthoring(
   p: CreateCandidateFromAuthoringParams,
 ): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
   const normalizedTitle = p.title.toLowerCase().replace(/\s+/g, " ").trim();
-  // Entity follows the DECLARED scope (a bare fallback chain would let a
-  // workflow-scoped proposal collide across workflows via a stray
-  // connector_id). The tool schema pins scope↔id consistency; these
-  // throws keep the invariant for any future caller — a violation at
-  // proposal time fails the AUTHOR, never the reviewer's approve step.
   if (p.connector_id && p.workflow_id) {
     throw new Error("proposal cannot set both connector_id and workflow_id");
   }
@@ -343,8 +271,6 @@ export async function createCandidateFromAuthoring(
     }
     entity = "global";
   }
-  // Literal key order is fixed here, values are strings/arrays — plain
-  // JSON.stringify is deterministic for this shape.
   const contentHash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -375,8 +301,6 @@ export async function createCandidateFromAuthoring(
       pitfalls: p.pitfalls ?? [],
       doc_refs: p.doc_refs ?? [],
       fingerprint,
-      // Human-sanctioned by definition — the model calls create_skill in
-      // direct response to an explicit user ask, not from inference.
       confidence: "high",
       ...(p.tags && p.tags.length > 0 ? { tags: p.tags } : {}),
       evidence: [{ evidence_type: "conversation", summary: p.evidence_summary.slice(0, 2_000) }],
@@ -384,30 +308,13 @@ export async function createCandidateFromAuthoring(
     p.db,
   );
 
-  // Retire stale revisions: content-hash identity means every revision is
-  // a FRESH candidate — without this, five iterations on one skill body
-  // leave five near-duplicate `proposed` rows inflating the review queue
-  // and the authoring-context candidate slots. The winning proposal
-  // (fresh OR an identical re-proposal/revival) supersedes older PROPOSED
-  // candidates with the same normalized title in the same scope entity;
-  // rejected/approved rows are history and stay. `updated_at` older-than
-  // ordering plus the status guard on the UPDATE keep a concurrent
-  // approve (or a racing newer proposal) from being flipped.
   if (result.action !== "skipped" && result.candidate_id) {
     const staleConds = [
       eq(skillCandidates.pattern_kind, "session_learning"),
       eq(skillCandidates.status, "proposed"),
       eq(skillCandidates.scope, p.scope),
-      // SQL mirror of the JS normalization above (lowercase, collapse
-      // whitespace, trim). NOTE the double backslash: a single `\s` in a
-      // tagged template cooks to a bare `s` and would replace the letter
-      // "s", not whitespace.
       sql`btrim(lower(regexp_replace(${skillCandidates.title}, '\\s+', ' ', 'g'))) = ${normalizedTitle}`,
       sql`${skillCandidates.id} <> ${result.candidate_id}`,
-      // Strictly-older-than-the-winner ordering, computed entirely on the
-      // Postgres side (microsecond precision, one clock): a JS round-trip
-      // of the winner's timestamp would truncate to milliseconds and mix
-      // app/DB clocks, letting NTP skew break the ordering.
       sql`(${skillCandidates.updated_at}, ${skillCandidates.id}) < (SELECT sc.updated_at, sc.id FROM skill_candidates sc WHERE sc.id = ${result.candidate_id})`,
     ];
     if (p.connector_id) staleConds.push(eq(skillCandidates.connector_id, p.connector_id));
@@ -424,8 +331,6 @@ export async function createCandidateFromAuthoring(
           and(
             eq(skillCandidates.tenant_id, p.tenant_id),
             eq(skillCandidates.id, s.id),
-            // Re-checked at write time: a reviewer may have approved the
-            // row between our SELECT and this UPDATE.
             eq(skillCandidates.status, "proposed"),
           ),
         )
@@ -453,10 +358,6 @@ export async function createCandidateFromAuthoring(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Upsert (internal — called by detectors)
-// ---------------------------------------------------------------------------
-
 export async function upsertFromSignal(
   tenant_id: string,
   signal: PatternSignal,
@@ -466,7 +367,6 @@ export async function upsertFromSignal(
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${tenant_id}`}, 0))`,
     );
-    // Check for existing candidate with same fingerprint
     const existing = await tx
       .select()
       .from(skillCandidates)
@@ -480,20 +380,8 @@ export async function upsertFromSignal(
 
     if (existing[0]) {
       const row = existing[0];
-      // Superseded session-learnings are retired REVISIONS, not human
-      // decisions: only the authoring retirement pass supersedes this
-      // kind (cross-fingerprint supersede skips it below). A same-
-      // fingerprint re-proposal revives the row into the queue instead of
-      // the dead-end skip, whose "already reviewed" framing would be a
-      // lie (no human ever reviewed it). The revival writes the SIGNAL's
-      // content: for content-hashed authoring fingerprints that is a
-      // no-op, but the title-only learning fingerprints (proposeLearning)
-      // can carry a re-taught body — resurrecting the stale one while
-      // reporting "updated" would silently drop what the user just said.
       const reviveSessionLearning =
         row.status === "superseded" && signal.pattern_kind === "session_learning";
-      // If rejected (a human decision) — or superseded for detector
-      // kinds (the pattern genuinely evolved) — don't re-propose.
       if (!reviveSessionLearning && (row.status === "rejected" || row.status === "superseded")) {
         log.skill.candidate.dedup({
           candidate_id: row.id,
@@ -503,7 +391,6 @@ export async function upsertFromSignal(
         });
         return { action: "skipped" as const, candidate_id: row.id };
       }
-      // If already approved, skip
       if (row.status === "approved") {
         log.skill.candidate.dedup({
           candidate_id: row.id,
@@ -513,7 +400,6 @@ export async function upsertFromSignal(
         });
         return { action: "skipped" as const, candidate_id: row.id };
       }
-      // Refresh the snapshot without reopening a concurrent human decision.
       const updatedRows = await tx
         .update(skillCandidates)
         .set({
@@ -544,11 +430,6 @@ export async function upsertFromSignal(
               }
             : {}),
         })
-        // CAS on the status we READ: a reviewer may approve/reject between
-        // our unlocked SELECT and this UPDATE — the human decision must
-        // win, never be silently reverted to 'proposed' (the
-        // approval-zombie class). Same write-time re-check pattern as the
-        // retirement pass's supersede flip.
         .where(and(eq(skillCandidates.id, row.id), eq(skillCandidates.status, row.status)))
         .returning({ id: skillCandidates.id });
       if (updatedRows.length === 0) {
@@ -561,7 +442,6 @@ export async function upsertFromSignal(
         return { action: "skipped" as const, candidate_id: row.id };
       }
 
-      // Add new evidence entries (cap at MAX_EVIDENCE_PER_CANDIDATE)
       // tenant-filter:exempt — skill_candidate_evidence has no tenant_id column (FK-cascade to skill_candidates.id); `row` was loaded above with eq(skillCandidates.tenant_id, tenant_id)
       const existingEvidence = await tx
         .select()
@@ -610,7 +490,6 @@ export async function upsertFromSignal(
       return { action: "updated" as const, candidate_id: row.id };
     }
 
-    // Endpoint patterns and independent session learnings must coexist.
     let supersededCount = 0;
     if (!signal.endpoint_key && signal.pattern_kind !== "session_learning") {
       const tenantSupersedeScope = [
@@ -620,7 +499,6 @@ export async function upsertFromSignal(
         eq(skillCandidates.pattern_kind, signal.pattern_kind),
         isNull(skillCandidates.endpoint_key),
       ];
-      // Workflow-keyed: the connector changes with the steps, never the identity.
       if (signal.workflow_id)
         tenantSupersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
       else if (signal.connector_id)
@@ -662,7 +540,6 @@ export async function upsertFromSignal(
       }
     }
 
-    // Create new candidate
     const [row] = await tx
       .insert(skillCandidates)
       .values({
@@ -689,7 +566,6 @@ export async function upsertFromSignal(
 
     assertInsertRow(row, "skill_candidates");
 
-    // Insert evidence
     if (signal.evidence.length > 0) {
       await tx.insert(skillCandidateEvidence).values(
         uniqueEvidence(signal.evidence)
@@ -735,17 +611,12 @@ export async function upsertFromSignal(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Pattern analysis entry point
-// ---------------------------------------------------------------------------
-
 export async function runPatternAnalysis(
   params: { tenant_id: string },
   exec?: Db,
 ): Promise<AnalysisResult> {
   const db = exec ?? (getDb() as Db);
 
-  // Run all detectors
   const [repairSignals, failureSignals, successSignals] = await Promise.all([
     detectRepairPatterns(params.tenant_id, db),
     detectFailurePatterns(params.tenant_id, db),
@@ -760,10 +631,6 @@ export async function runPatternAnalysis(
     const result = await upsertFromSignal(params.tenant_id, signal, db);
     if (result.action === "proposed") proposed++;
     if (result.action === "updated") updated++;
-    // Middle edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
-    // a freshly-proposed candidate whose evidence carries a patch_candidate_id
-    // is a Patch Candidate that became a Skill Candidate (the repair-pattern
-    // detector path). The auto-aggregator feeds the same counter.
     if (result.action === "proposed" && signal.evidence.some((e) => e.patch_candidate_id)) {
       recordLoopPatchToSkillCandidate({ tenant_id: params.tenant_id });
     }
@@ -788,10 +655,6 @@ export async function runPatternAnalysis(
     patterns_checked: allSignals.length,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Human gate: Approve
-// ---------------------------------------------------------------------------
 
 export async function approveSkillCandidate(
   p: ApproveSkillCandidateParams,
@@ -822,7 +685,6 @@ export async function approveSkillCandidate(
       return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
-    // Create a skill from the candidate
     const skill = await createSkill(
       {
         tenant_id: p.tenant_id,
@@ -845,7 +707,6 @@ export async function approveSkillCandidate(
       tx,
     );
 
-    // Update candidate status
     const [updated] = await tx
       .update(skillCandidates)
       .set({
@@ -856,8 +717,6 @@ export async function approveSkillCandidate(
       .where(eq(skillCandidates.id, p.candidate_id))
       .returning();
 
-    // An active connector-capability skill replaces the one an earlier
-    // catalog produced; a draft waits for its own activation to do so.
     const retired_skill_ids =
       skill.status === "active"
         ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill.id, p.actor_id ?? null)
@@ -888,11 +747,6 @@ export async function approveSkillCandidate(
       actor_id: p.actor_id,
     });
 
-    // Promotion edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md).
-    // §6). Lag is anchored to the EARLIEST linked Patch Candidate's created_at
-    // (drift-detection time) — not the evidence-capture time — so the
-    // histogram measures the true drift→skill journey. Candidates with no
-    // patch evidence (failure/success patterns) leave lag_seconds undefined.
     // tenant-filter:exempt — evidence rows are FK children of the candidate
     // already tenant-verified above (skillCandidates filtered by p.tenant_id),
     // joined by skill_candidate_id; the parent scope constrains the tenant.
@@ -922,8 +776,6 @@ export async function approveSkillCandidate(
     return {
       candidate: updated ? toView(updated) : toView(row),
       skill_id: skill.id,
-      // All candidates are detector-born today; `manual` is reserved for a
-      // future hand-authored proposal path (see metrics.ts).
       promotion_source: "auto-suggested" as const,
       lag_seconds,
     };
@@ -940,10 +792,6 @@ export async function approveSkillCandidate(
 
   return { candidate: out.candidate, skill_id: out.skill_id };
 }
-
-// ---------------------------------------------------------------------------
-// Human gate: Reject
-// ---------------------------------------------------------------------------
 
 export async function rejectSkillCandidate(
   p: RejectSkillCandidateParams,
@@ -993,7 +841,6 @@ export async function rejectSkillCandidate(
 
     return true;
   });
-  // After the commit: a read in between would re-cache the undecided state.
   if (rejected) invalidateTenantState(p.tenant_id);
   return rejected;
 }

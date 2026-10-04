@@ -1,6 +1,3 @@
-// URL → template matching:
-//   GET /v1/connector-templates/match-url
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import {
   listResolvedConnectorTemplates,
@@ -33,9 +30,6 @@ export function registerMatchUrlRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { url, limit } = c.req.valid("query");
     const resolvedTemplates = await listResolvedConnectorTemplates(db, principal.tenant_id);
-    // invariant: matchTemplatesByUrl only returns slugs from the same input
-    // list, so every match has a corresponding resolved template — but we
-    // skip silently if the cross-reference ever drifts instead of crashing.
     const matches: Array<TemplateUrlMatch & { resolved: ResolvedConnectorTemplate }> =
       matchTemplatesByUrl(
         url,

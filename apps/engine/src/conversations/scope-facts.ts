@@ -1,24 +1,3 @@
-// Resolve `ScopeFacts` (connector drivers + template slugs in scope)
-// for a given conversation turn. Consumed by `skill-autoload.ts` to
-// decide which `connector_driver` / `connector_template` activation
-// rules fire.
-//
-// Sources, in priority order:
-//   1. Tool input — `connector_id` references that resolve to a row.
-//      `propose_step` / `dry_run_step` / `call_connector` carry one;
-//      `build_workflow` carries an array of steps each with their own.
-//   2. Conversation draft — the connector currently being authored
-//      (`draft.connector.driver` / `draft.connector.template_slug`)
-//      and any connectors persisted as part of the workflow draft.
-//   3. Conversation snapshot — `loaded_skills` already record the
-//      tenant view of which connectors are in chat scope; we reach
-//      through the draft for the canonical answer rather than parsing
-//      that snapshot here.
-//
-// The function is best-effort. A DB blip or a half-shaped draft must
-// not break tool dispatch — callers fall back to empty scope facts and
-// the matcher just returns fewer activations.
-
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
@@ -43,7 +22,6 @@ export async function resolveScopeFactsForConversation(
     const drivers = new Set<string>();
     const templates = new Set<string>();
 
-    // 1. Connector being authored in the draft.
     if (draft.connector) {
       if (draft.connector.driver) drivers.add(draft.connector.driver.toLowerCase());
       if (draft.connector.template_slug) {
@@ -51,18 +29,6 @@ export async function resolveScopeFactsForConversation(
       }
     }
 
-    // 2. Connector IDs referenced from the tool input. Single-step
-    //    tools point at one (`connector_id` on the input or its `step`
-    //    sub-object); `build_workflow` carries an array of steps.
-    //
-    //    …and from the workflow draft itself. A repair turn has no
-    //    connector draft and is called with no tool input, so without
-    //    this the driver set is empty for the whole conversation and a
-    //    driver-scoped skill never activates — which is how a chat
-    //    repairing an S3 workflow ran without the storage skill loaded,
-    //    holding only generic guidance, and invented a boundary field.
-    //    The header above has always described this source; it is the
-    //    code that was missing.
     const referencedIds = collectConnectorIds(toolInput);
     for (const id of collectConnectorIds(draft.workflow)) referencedIds.add(id);
     if (referencedIds.size > 0) {
@@ -106,9 +72,6 @@ function collectConnectorIds(input: unknown): Set<string> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function walk(value: unknown, out: Set<string>, depth: number): void {
-  // Bounded depth so a pathological tool input can't iterate forever.
-  // Real tool inputs are shallow (≤6 nesting levels for build_workflow
-  // with branch+loop bodies); 16 is safe headroom.
   if (depth > 16) return;
   if (Array.isArray(value)) {
     for (const v of value) walk(v, out, depth + 1);

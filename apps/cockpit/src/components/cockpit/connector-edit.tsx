@@ -13,11 +13,6 @@ type RecordValue = Record<string, unknown>;
 const text = (record: RecordValue, key: string): string =>
   typeof record[key] === "string" ? (record[key] as string) : "";
 
-/**
- * "Bearbeiten" (D17): the name, the address and — for a connector that signs
- * in with a key — a new key. A stored secret is never shown; an empty field
- * keeps it.
- */
 export function ConnectorEditDialog({
   open,
   onOpenChange,
@@ -122,7 +117,6 @@ export function ConnectorEditDialog({
   );
 }
 
-/** "Löschen" (D17): the consequence names the workflows that break. */
 export function ConnectorDeleteDialog({
   open,
   onOpenChange,
@@ -134,7 +128,6 @@ export function ConnectorDeleteDialog({
   onOpenChange(open: boolean): void;
   id: string;
   name: string;
-  /** The names of the workflows that use it. */
   users: readonly string[];
 }) {
   const { t } = useI18n();

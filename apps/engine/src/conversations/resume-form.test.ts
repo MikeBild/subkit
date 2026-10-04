@@ -32,7 +32,6 @@ test("resume projects a nested runner form without its executable payload", () =
 });
 
 test("a credential form projects its masked field as a definition, never a value", () => {
-  // The PROD shape: the engine's own credential path asks for `token`.
   const prompt = pendingPrompt({
     question: "Enter the Metabase API key",
     fields: [{ name: "token", label: "API key", type: "password", sensitive: true }],
@@ -64,9 +63,6 @@ test("secret fields never carry a default; malformed forms stay unprojected", ()
   ).toBeUndefined();
 });
 
-// Contract: every field shape ask_user_form accepts is a field the reader's
-// form card can show. A new tool field type fails here until the projection
-// (and the cockpit's exhaustive `formInputKind`) learn it.
 const sample: Record<FormFieldType, Record<string, unknown>> = {
   text: {},
   number: {},

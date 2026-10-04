@@ -4,8 +4,6 @@ import * as auditModule from "../audit.ts";
 describe("audit module surface", () => {
   test("exports only writeAudit — no update or delete helpers", () => {
     const names = Object.keys(auditModule);
-    // writeAudit is the only exported writer. `sql` is re-exported for
-    // ergonomic reasons but is not an audit-mutation surface.
     expect(names).toContain("writeAudit");
     expect(names).not.toContain("updateAudit");
     expect(names).not.toContain("deleteAudit");

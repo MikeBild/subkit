@@ -84,9 +84,7 @@ describe("errorFields", () => {
   });
 
   test("stamps error_class on every result", () => {
-    // A plain Error with no recognised signal is "unknown".
     expect(errorFields(new Error("boom")).error_class).toBe("unknown");
-    // A libpq connection drop is "transient" (via isTransientDbError).
     const transient = Object.assign(new Error("down"), { code: "ECONNREFUSED" });
     expect(errorFields(transient).error_class).toBe("transient");
   });
@@ -137,17 +135,12 @@ describe("ndjson field-length cap", () => {
     const huge = "x".repeat(5000);
     const rec = captureNdjson(() => logger.info({ module: "t", action: "a", blob: huge }));
     const blob = rec.blob as string;
-    // 2048 kept chars + the truncation marker; original tail dropped.
     expect(blob.startsWith("x".repeat(2048))).toBe(true);
     expect(blob).toContain("…[truncated 2952 chars]");
     expect(blob.length).toBeLessThan(huge.length);
   });
 
   test("caps by character count, not bytes (multibyte field)", () => {
-    // "한" is 1 UTF-16 code unit (String.length 1) but 3 UTF-8 bytes. The cap
-    // is documented as characters, not bytes, so 5000 of them truncate at the
-    // same 2048-char boundary as the ASCII case — dropping 2952 chars — even
-    // though the byte length (~15 KB) is far larger.
     const huge = "한".repeat(5000);
     const rec = captureNdjson(() => logger.info({ module: "t", action: "a", blob: huge }));
     const blob = rec.blob as string;
@@ -192,9 +185,6 @@ describe("ndjson field-length cap", () => {
 });
 
 describe("sd-daemon priority prefix", () => {
-  // Raw-line capture (unlike captureNdjson, which JSON.parses and would
-  // choke on the `<N>` marker). Env mutations are applied BEFORE
-  // _resetLoggerForTests() so defaultSdDaemonPrefix() re-reads them.
   function captureRawLine(env: Record<string, string | undefined>, fn: () => void): string {
     const savedEnv: Record<string, string | undefined> = {
       SK_LOG_SD_DAEMON: process.env.SK_LOG_SD_DAEMON,

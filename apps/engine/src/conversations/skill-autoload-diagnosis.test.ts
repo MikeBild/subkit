@@ -1,8 +1,3 @@
-// Diagnosis-driven autoload: a tool RESULT that names a gate diagnosis loads
-// the skill that explains it. Read from the shipped seed, not a hand-built
-// catalog, so the rule and the matcher cannot agree on a code the seed never
-// declares.
-
 import { describe, expect, test } from "bun:test";
 import { loadEmbeddedSkillSeeds } from "../skills/seed.ts";
 import { REPORT_MESSAGE_REFUSALS } from "../workflows/report-delivery-boundary.ts";
@@ -39,8 +34,6 @@ describe("autoloadForDiagnoses", () => {
   });
 
   test("every reason the report profile refuses a message loads governed-delivery", () => {
-    // A new refusal reason the skill does not list would leave that refusal
-    // unexplained; this fails the moment the two drift apart.
     for (const reason of [
       ...REPORT_MESSAGE_REFUSALS,
       "recipient_differs",

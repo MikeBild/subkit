@@ -1,11 +1,3 @@
-// Shared PTY harness for e2e tests.
-//
-// Extracted from tests/e2e/sk-interactive-smoke.e2e.test.ts so every
-// scripted PTY scenario uses the same TCL `expect` builder, ANSI
-// stripper, and process spawn settings. Tests pass an array of
-// {wait, send, sleep} steps; the harness drives the binary, captures
-// stdout, and returns the stripped text.
-
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { E2EEnv } from "../setup.ts";
@@ -14,36 +6,10 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 export const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 export const EXPECT_BIN = Bun.which("expect");
 
-/** True when the compiled `dist/sk` binary exists — PTY scenarios spawn it. */
 export const HAS_SK_BIN = existsSync(SK_BIN);
 
-/**
- * Expect-only skip predicate — single source of truth.
- *
- * Skip a PTY scenario ONLY when `expect` is absent AND we're NOT in CI.
- * Locally this keeps the suite developer-friendly (no hard dependency on the
- * TCL `expect` tool). In CI (`CI` is set on every runner) a missing `expect`
- * must NOT silently drop coverage: the test runs and `runPtyScenario` throws
- * a clear "missing expect" error, so a runner-image or toolchain change that
- * removes `expect` becomes a LOUD failure instead of an invisible skip.
- *
- * Evaluated at module-init (env is set before `bun test` spawns) — do not
- * toggle `CI` mid-run. Use for PTY-only suites where a missing binary should
- * itself be loud (the throw covers it).
- */
 export const SKIP_PTY_WHEN_NO_EXPECT = !EXPECT_BIN && !process.env.CI;
 
-/**
- * Combined predicate for PTY suites that ALSO gate on the compiled binary
- * (sk-overhaul-matrix / sk-overhaul-cold-start, which run without booting the
- * engine in some tests). Skips when the binary is absent — a developer
- * convenience for runs that skipped `build:sk` (a missing binary in CI is
- * caught loudly by the non-PTY e2e tests that spawn it) — OR when the
- * expect-only predicate above fires (CI-loud).
- *
- * Import this; NEVER re-derive `!HAS_BINARY || !HAS_EXPECT` inline. Drift
- * across files is exactly the gap these exports close.
- */
 export const SKIP_PTY = !HAS_SK_BIN || SKIP_PTY_WHEN_NO_EXPECT;
 
 const ESC = String.fromCharCode(27);
@@ -92,12 +58,6 @@ export function buildExpectScript(
     "set timeout 20",
     "match_max 100000",
     "log_user 1",
-    // expect's `spawn` does not accept `--` as an end-of-flags
-    // sentinel — it errors with "bad flag --". The error is
-    // non-fatal so the script silently continues, the spawn never
-    // happens, and any later assertions pass vacuously on empty
-    // captured output. Quoting the path is sufficient for paths
-    // with whitespace.
     `spawn -noecho ${tclQuote(bin)}`,
   ];
   for (const step of steps) {
@@ -120,16 +80,6 @@ export function buildExpectScript(
     }
     lines.push(`after ${step.ms}`);
   }
-  // Bounded teardown. Once every wait/send step has run the scenario's
-  // assertions are already satisfied. The Ink REPL under a PTY frequently
-  // keeps stdin open and never emits EOF, so a bare `expect eof` hangs the
-  // full 20s `set timeout` — wasting ~20s on EVERY scenario AND colliding
-  // with tests whose bun-test timeout is 20s (they get SIGKILL'd mid-
-  // teardown and fail at ~20001ms, which is exactly how the sk-overhaul PTY
-  // suites broke once CI gained `expect`). Give the process a short grace to
-  // exit, then let the script end (exit 0) regardless: expect reaps the
-  // spawned process on exit, so the eof vs timeout race never changes the
-  // exit code the assertions check.
   lines.push("set timeout 5");
   lines.push("expect { eof {} timeout {} }");
   return lines.join("\n");
@@ -144,16 +94,10 @@ export function stripTerminal(text: string): string {
 }
 
 export interface RunPtyOptions {
-  /** Per-test overrides forwarded to the spawned process env. */
   env?: Record<string, string>;
-  /** Override the binary path (defaults to dist/sk). */
   binary?: string;
-  /** Persona used to derive the env (HOME + SUBKIT_*). Required when
-   *  invoking the running engine. */
   persona?: E2EEnv["personas"]["admin"];
-  /** Engine baseUrl override. Falls back to env.baseUrl when persona is set. */
   engineUrl?: string;
-  /** Working directory. Defaults to the repo root. */
   cwd?: string;
 }
 
@@ -163,10 +107,6 @@ export interface RunPtyResult {
   exitCode: number;
 }
 
-/**
- * Drive the binary with a TCL expect script and return the captured
- * (ANSI-stripped) stdout.
- */
 export async function runPtyScenario(
   steps: readonly ExpectStep[],
   opts: RunPtyOptions = {},
@@ -188,7 +128,6 @@ export async function runPtyScenario(
   }
   if (opts.engineUrl) baseEnv.SUBKIT_ENGINE_URL = opts.engineUrl;
   if (opts.env) Object.assign(baseEnv, opts.env);
-  // Filter out undefined keys to satisfy Bun.spawn's env type.
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(baseEnv)) if (v !== undefined) env[k] = v;
 

@@ -1,10 +1,3 @@
-// knowledge.ingest failure surfacing (DB-backed).
-//
-// Pins the contract added with the `last_error` column: a terminal
-// ingest failure flips the source row to status='error' with the
-// failure message in last_error (and writes an audit row); the next
-// successful ingest clears both fields again.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import { and, eq } from "drizzle-orm";
@@ -16,7 +9,6 @@ import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "../../knowledge/t
 import { createKnowledgeSourceFromUrl } from "../../knowledge/url-source.ts";
 import { type IngestKnowledgeJob, processIngestKnowledgeJob } from "./ingest-knowledge.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
@@ -47,8 +39,6 @@ afterAll(async () => {
 
 describe.skipIf(skip)("queue/handlers/ingest-knowledge — failure surfacing", () => {
   test("terminal failure flips the row to status='error' with last_error + audit", async () => {
-    // Oversized content trips the knowledge budget guard inside
-    // ingestKnowledgeSource — a deterministic terminal failure.
     const oversized = "x".repeat(51 * 1024 * 1024);
     await expect(
       processIngestKnowledgeJob(

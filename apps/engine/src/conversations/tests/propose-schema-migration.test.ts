@@ -1,9 +1,3 @@
-// propose_schema_migration tool — surfaces the schema-evolution
-// machinery to operators via the conversation-tool channel. Verifies
-// the tool returns a structured plan for an evolved endpoint, the
-// shape-stable case, the no-history case, and the sample-migration
-// preview.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -20,8 +14,6 @@ let connId: string;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("propose-schema-migration");
-  // Seed a separate connector for these tests so we don't collide
-  // with whatever the shared scaffold pre-seeds.
   const [c] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -141,10 +133,6 @@ describe("propose_schema_migration tool", () => {
 
   test("history_count + first/latest seen_at surface chronological context", async () => {
     const ek = "GET /v1/migration-history";
-    // The two recordings must differ in SHAPE (number -> string), not just
-    // value: identical shapes dedup into one row now (a workflow on a
-    // minute schedule must not grow schema_versions by one row per run),
-    // so history_count counts shape CHANGES.
     await recordSuccessShape(
       {
         tenant_id: ctx.tenant_id,

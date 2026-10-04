@@ -1,28 +1,7 @@
-// Adaptive loop-detected breaker. A single global step cap that trusts
-// the model is too coarse; a plain per-tool
-// total-call cap fired even on legitimate incremental authoring
-// (session a128deba 15:13:16: propose_step capped mid-build).
-// Post-fix, subkit:
-//   - drops the per-tool TOTAL-call cap entirely
-//   - keeps a per-tool consecutive-IDENTICAL-args cap (REPEAT_THRESHOLD)
-//   - exempts tenant_read tools from the per-tool breaker
-//   - relies on the outer `stopWhen: stepCountIs(budget)` for the
-//     turn-level ceiling
-//
-// We assert source-level wiring of the adaptive shape; the integration
-// tests in tool-loop-envelope.test.ts cover the runtime dispatch.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// The loop-breaker code lives in `tools/sdk-wrap/invoke.ts`; the
-// top-level `sdk-wrap.ts` is a thin barrel re-exporting `wrapTools`
-// and the public types.
-//
-// The per-turn step ceiling
-// (DEFAULT_BUDGET) moved from `loop.ts` into the extracted
-// `loop/model-resolver.ts`; the constant is read from there now.
 const SDK_WRAP = join(import.meta.dir, "..", "sdk-wrap", "invoke.ts");
 const LOOP = join(import.meta.dir, "..", "..", "loop.ts");
 const LOOP_MODEL_RESOLVER = join(import.meta.dir, "..", "..", "loop", "model-resolver.ts");

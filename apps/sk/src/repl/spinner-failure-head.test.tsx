@@ -1,9 +1,3 @@
-// Failure-aware spinner head. Pre-fix (session 975a64b0) a stuck
-// recovery flow showed "processing 5 tool results… 3m09s · 70520t"
-// (then labelled "summarising" — a step that never existed) — opaque
-// to the user. Post-fix the spinner surfaces the failure count +
-// last error_code so the user sees a concrete signal.
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import { Spinner } from "./spinner.tsx";
@@ -23,7 +17,6 @@ describe("Spinner · failure-aware head", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("5 tools failed");
     expect(frame).toContain("(slug_already_in_use)");
-    // The processing line should NOT appear when failure head wins.
     expect(frame).not.toContain("processing 5 tool results");
   });
 

@@ -1,13 +1,3 @@
-// Generic create form for admin resources.
-// The operator types a JSON body, presses Enter to submit. The form
-// captures one or more field-by-field text inputs OR a single JSON
-// blob (selected via shape="json"). Validation is server-side: an
-// engine 400 (e.g. zod schema error) renders inline below the form.
-//
-// Multi-field shape produces a small key→value editor with arrow
-// navigation between fields. Single-line text fields only — for
-// richer editors (multi-line, secrets), wire FieldEditor instead.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
@@ -22,7 +12,6 @@ export interface AdminFormField {
 interface Props {
   title: string;
   fields: readonly AdminFormField[];
-  /** Called with `{ [key]: value }` when the operator hits Enter on the last field. */
   onSubmit: (values: Record<string, string>) => Promise<void>;
   onCancel: () => void;
 }
@@ -52,7 +41,6 @@ export const AdminCreateForm: React.FC<Props> = ({ title, fields, onSubmit, onCa
       return;
     }
     if (key.return) {
-      // Required-field check.
       const missing = fields.find((f) => f.required && !values[f.key]?.trim());
       if (missing) {
         setError(`${missing.label} is required`);

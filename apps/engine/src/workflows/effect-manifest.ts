@@ -1,6 +1,3 @@
-// Product-local compilation only. This module grants no authority and performs
-// no discovery, credential refresh, or network request. Its resolved bindings
-// must come from the server's version/connector snapshot, never a client claim.
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/index.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
@@ -28,10 +25,6 @@ import { JsonValueSchema, type RequestStep, WorkflowDefSchema } from "./types.ts
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const environment = z.enum(["dev", "prod"]);
 
-/** Which call step an effect or issue came through. Exactly one element: a
- *  called workflow that itself calls one is refused, so nothing nests deeper.
- *  An array, not a joined string — step ids have no grammar, so any separator
- *  would be ambiguous in a workflow whose step id contains it. */
 export const CallPathSchema = z.array(z.string().min(1)).length(1);
 export type CallPath = z.infer<typeof CallPathSchema>;
 
@@ -42,11 +35,8 @@ export const ResolvedEffectBindingSchema = z
     connector_id: z.string().uuid().nullable(),
     driver: z.enum(["http", "graphql", "postgres", "s3", "mcp"]),
     environment,
-    // Exact source binds the resolution to the request whose targets were read.
     request_digest: digest,
     target: z.string().min(1).nullable(),
-    // Hash resolved configuration and stable credential identity/scopes, not
-    // access-token bytes: ordinary OAuth refresh is not a new permission grant.
     configuration_digest: digest,
     credential_binding_digest: digest.nullable(),
     rewrites_target: z.boolean(),
@@ -59,10 +49,6 @@ export const ResolvedEffectBindingSchema = z
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
 
-/** One `call` step's target, resolved by the caller: which workflow version it
- *  starts and how that version's own requests are bound. The compiler compiles
- *  it here rather than trusting a summary, so a child's effects are reviewed on
- *  the same terms as the parent's. */
 export const ResolvedCallSchema = z
   .object({
     step_id: z.string().min(1),
@@ -76,9 +62,6 @@ export const ResolvedCallSchema = z
   .strict();
 export type ResolvedCall = z.infer<typeof ResolvedCallSchema>;
 
-/** What the approval pins about a called workflow. Slug and name are display
- *  only and stay out: renaming a workflow must not invalidate a grant, while
- *  changing what it DOES must. */
 const CallPinSchema = z
   .object({
     step_id: z.string().min(1),
@@ -95,16 +78,10 @@ const inputSchema = z
     workflow_id: z.string().uuid(),
     workflow_version_id: z.string().uuid(),
     execution_environment: environment,
-    // Contains all resolved execution options, including finite runtime/iteration
-    // limits. Changing operator defaults must not silently widen an old grant.
     execution_options_digest: digest,
     definition: JsonValueSchema,
     bindings: z.array(ResolvedEffectBindingSchema).max(200),
     calls: z.array(ResolvedCallSchema).max(50).optional(),
-    // What steps of this workflow have really written, newest per step. Never
-    // part of the manifest — evidence for a check, not a permission — and
-    // absent unless the resolver found any, so a workflow with no history
-    // compiles to the byte-identical manifest it always did.
     observed_keys: z
       .array(z.object({ step_id: z.string().min(1), key: z.string().min(1) }).strict())
       .max(200)
@@ -112,17 +89,7 @@ const inputSchema = z
   })
   .strict();
 
-/** Why a `call` step was left unbound. Travels beside the manifest, never in
- *  it: a refusal is a reason for the author, not part of what was approved. */
-export type CallRefusalReason =
-  /** No resolvable target: archived, deleted, or another tenant's. */
-  | "child_unavailable"
-  /** The step does not name exactly one fixed workflow, so which workflow runs
-   *  could change between the approval and the run. */
-  | "target_not_static"
-  /** The called workflow calls one itself. Approving it would mean approving a
-   *  chain whose far end nobody reviewed. */
-  | "child_calls_workflow";
+export type CallRefusalReason = "child_unavailable" | "target_not_static" | "child_calls_workflow";
 export interface CallRefusal {
   step_id: string;
   reason: CallRefusalReason;
@@ -136,8 +103,6 @@ const ManifestIssueCodeSchema = z.enum([
   "unknown_effect",
   "destructive_effect",
   "unbound_workflow_call",
-  // A folder this workflow's own history contradicts. Not a guess: a key this
-  // very step wrote, which the declared folder does not contain.
   "boundary_contradicted_by_history",
 ]);
 export type ManifestIssueCode = z.infer<typeof ManifestIssueCodeSchema>;
@@ -166,8 +131,6 @@ export const WorkflowEffectManifestSchema = z
         call_path: CallPathSchema.optional(),
       }),
     ),
-    // Absent when this workflow calls none. Present-but-empty would be a second
-    // way to say the same thing, and the digest would tell the two apart.
     calls: z.array(CallPinSchema).min(1).optional(),
   })
   .strict()
@@ -188,8 +151,6 @@ function effectOf(
   step: RequestStep,
   binding: ResolvedEffectBinding,
 ): "read" | "write" | "unknown" | "destructive" {
-  // Arbitrary SQL can call externally writing functions even through SELECT;
-  // MCP tool hints likewise cannot prove their effects. Keep exact-run review.
   if (
     binding.driver === "postgres" ||
     (binding.driver === "mcp" && step.mcp?.operation === "call_tool")
@@ -200,7 +161,6 @@ function effectOf(
   if ((binding.driver === "http" || binding.driver === "s3") && step.method === "DELETE")
     return "destructive";
   return classifyHttpSideEffect({
-    // An author may escalate, never self-authorize a POST as harmless.
     override: step.side_effects === "write" ? "write" : null,
     method: step.method,
     graphql: step.graphql
@@ -211,11 +171,6 @@ function effectOf(
   });
 }
 
-/** Compile a deterministic summary of a server-resolved version.
- * Resolvers must supply display-safe target identifiers, never credentials.
- * A digest is evidence binding, not approval. The caller may grant repeated
- * runs only if eligible_for_repeated_runs is true AND a human approves this
- * exact digest and the separate finite authority bounds. */
 export function compileWorkflowEffectManifest(raw: unknown): {
   manifest: WorkflowEffectManifest;
   digest: string;
@@ -270,11 +225,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
         continue;
       }
       if (!call) continue;
-      // The child is compiled here, by the same code that compiles this
-      // workflow — never summarised by its resolver. It is compiled WITHOUT
-      // `calls`, so a child that calls a workflow fails closed a second time:
-      // it would raise `unbound_workflow_call` even if the refusal above were
-      // ever weakened.
       const child = compileWorkflowEffectManifest({
         tenant_id: input.tenant_id,
         workflow_id: call.workflow_id,
@@ -286,9 +236,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       });
       const call_path: CallPath = [step.id];
       for (const effect of child.manifest.effects) {
-        // A child never receives the proposal-derived profiles, so carrying one
-        // means the resolver handed it something it was not offered. Report it
-        // rather than fold a permission nobody reviewed for this context.
         if (effect.report_delivery || effect.content_publication) {
           manifest.issues.push({ step_id: effect.step_id, code: "binding_mismatch", call_path });
         }
@@ -339,18 +286,9 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(storage) === workflowJsonDigest(binding.storage) &&
       binding.target === storageTarget(storage);
     if (binding.storage && !supportedStorage) issue("binding_mismatch");
-    // A folder this step's own history contradicts. Only a key it really
-    // wrote counts; a step that never ran, or ran without recording one, says
-    // nothing and is left alone. The declared folder is otherwise unmeasurable
-    // at review: a write is held in every preview, so the first proof it is
-    // wrong would be the first scheduled run after a human approved it.
     const seenKey = binding.storage ? observed.get(step.id) : undefined;
     if (seenKey !== undefined && !seenKey.startsWith(binding.storage?.key_prefix ?? ""))
       issue("boundary_contradicted_by_history");
-    // An authored boundary takes precedence over the derived read profiles. The
-    // same `!step.boundary` guard sits at every place a read profile is
-    // consulted, so a step's target and its dispatch assert come from exactly
-    // one source. A step WITHOUT `boundary` takes the path it always took.
     const readPath =
       binding.driver === "http" && !step.boundary && binding.read_path
         ? readPathBoundary(step, binding.read_path.origin)
@@ -360,10 +298,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       workflowJsonDigest(readPath) === workflowJsonDigest(binding.read_path) &&
       binding.target === readPathTarget(readPath);
     if (binding.read_path && !supportedReadPath) issue("binding_mismatch");
-    // One definition, used for BOTH the `dynamic_request` exemption and the
-    // `read_query` assert spread below. Deciding them separately left a gap: a
-    // step whose authored boundary was refused stayed exempt as a read query
-    // while its assert was suppressed — exempt, and checked by nothing.
     const readQuery = binding.driver === "http" && !step.boundary && supportsReadQuery(step);
     const recompiledBoundary =
       binding.driver === "http" && binding.boundary
@@ -393,16 +327,11 @@ export function compileWorkflowEffectManifest(raw: unknown): {
           issue("binding_mismatch");
       }
     }
-    // Conservative first version: runtime substitutions anywhere in a request
-    // may change a recipient in its body, not just a hostname in its URL.
     if (
       !binding.target ||
       (hasRuntimeValue(step) &&
         !(
           supportedStorage ||
-          // `supportedBoundary` belongs INSIDE the http guard. `supportedStorage`
-          // sits outside it; copying that position would let an author clear an
-          // S3 step's `dynamic_request` without ever declaring a folder.
           (binding.driver === "http" &&
             (supportedBoundary ||
               supportedReadPath ||
@@ -418,11 +347,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       issue("binding_mismatch");
     const effect = effectOf(step, binding);
     if (effect === "unknown") issue("unknown_effect");
-    // A removal stays classified `destructive` so the review card keeps showing
-    // it as one. What a reviewed storage boundary removes is the BLOCKING issue
-    // — and only when that boundary reproduces from the step and names a
-    // ceiling, which is the same predicate that exempts it from
-    // `dynamic_request` above.
     if (
       effect === "destructive" &&
       !(
@@ -430,8 +354,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
         binding.storage?.operation === "DELETE" &&
         binding.storage.max_deletes !== undefined
       ) &&
-      // An HTTP DELETE is grantable only when its author declared it
-      // destructive and the boundary reproduces from the step.
       !(supportedBoundary && binding.boundary?.destructive === true)
     )
       issue("destructive_effect");
@@ -455,10 +377,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   manifest.issues.sort(
     (a, b) =>
       comparePath(a.call_path, b.call_path) ||
-      // The step/code key stays a concatenation for byte-identical ordering
-      // with every manifest compiled before call paths existed. A step id may
-      // contain `:`, so this is not a safe key in general — only an unchanged
-      // one.
       (`${a.step_id}:${a.code}` < `${b.step_id}:${b.code}`
         ? -1
         : `${a.step_id}:${a.code}` > `${b.step_id}:${b.code}`
@@ -475,9 +393,6 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   };
 }
 
-/** Own effects before called ones, and within a call, by its step id. Element
- *  by element with the shorter path first, so the order never depends on how a
- *  path might have been flattened into a string. */
 function comparePath(a: CallPath | undefined, b: CallPath | undefined): number {
   const left = a ?? [];
   const right = b ?? [];
@@ -489,11 +404,6 @@ function comparePath(a: CallPath | undefined, b: CallPath | undefined): number {
   return left.length - right.length;
 }
 
-/** Why this call step cannot be folded into the approval, or null when it can.
- *  The static-target rule lives here rather than in `CallStepSchema`: adding a
- *  refinement or a default there would change every workflow's normalized
- *  definition, and with it every execution-options digest — invalidating live
- *  approvals that have nothing to do with calls. */
 function callRefusalFor(
   step: { workflow_id?: string | undefined; workflow_slug?: string | undefined },
   call: ResolvedCall | undefined,
@@ -503,8 +413,6 @@ function callRefusalFor(
   if (byId === bySlug) return "target_not_static";
   if (hasRuntimeValue(step.workflow_id ?? step.workflow_slug ?? "")) return "target_not_static";
   if (!call) return "child_unavailable";
-  // The resolver looked the target up; this re-checks that what it returned is
-  // what the step names, so a resolver bug cannot substitute another workflow.
   if (byId && call.workflow_id !== step.workflow_id) return "target_not_static";
   if (bySlug && call.workflow_slug !== step.workflow_slug) return "target_not_static";
   const childDefinition = WorkflowDefSchema.safeParse(call.definition);

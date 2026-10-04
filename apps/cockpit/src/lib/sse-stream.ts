@@ -1,22 +1,9 @@
-// A small server-sent-events reader over `fetch`.
-//
-// Not `EventSource`: a fresh EventSource cannot be told where to resume — it
-// sends `Last-Event-ID` only on its own automatic retry — and the live client
-// closes the stream while the tab is hidden and reopens it on return. Reading
-// the stream through `fetch` keeps that resume point in our hands and lets the
-// request carry the Cockpit's own headers.
-
 export interface SseFrame {
   id: string | null;
   event: string;
   data: string;
 }
 
-/**
- * Splits a text stream into SSE frames. Feed it chunks as they arrive; it
- * returns the frames that are complete and keeps the rest buffered. Comment
- * lines (`:`) are heartbeats and produce nothing.
- */
 export function createSseParser(): (chunk: string) => SseFrame[] {
   let buffer = "";
   return (chunk) => {
@@ -57,11 +44,6 @@ export class SseHttpError extends Error {
   }
 }
 
-/**
- * Opens the stream and calls `onFrame` for each frame until the server ends it
- * or `signal` aborts. Resolves when the stream ends; rejects on a refused
- * request or a broken connection.
- */
 export async function readSseStream(
   url: string,
   options: {

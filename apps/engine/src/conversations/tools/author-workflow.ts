@@ -1,14 +1,3 @@
-// `author_workflow` — the canonical entry for authoring a NEW (or
-// fully-replaced) workflow. One call runs the engine-side one-shot
-// pipeline (`conversations/authoring-pipeline.ts`): ground in the named
-// connectors' recorded samples + docs → ONE schema-constrained
-// generation (JS-first transforms) → validate + recorded-eval (bounded
-// repair armed) → stash the complete evaluated draft with the goal.
-//
-// The conversation model receives a ready-to-preview draft from ONE
-// tool call. The next move is always `dry_run_workflow`; targeted
-// follow-up edits go through `edit_workflow_patch`.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
@@ -85,16 +74,6 @@ export const authorWorkflowTool: ConversationTool = {
     const connectorRefs = [...new Set([...args.connector_ids, ...args.connector_slugs])];
     const currentSlug = ctx.getDraft().workflow?.slug ?? null;
 
-    // Regenerating is not editing. This tool rebuilds the WHOLE definition from
-    // the goal, so anything the goal does not restate is gone — and a
-    // goal-satisfaction judge cannot notice what is missing. On a conversation
-    // bound to a saved workflow that cost a real safety check: a rewrite of a
-    // retention workflow dropped the guard that stopped a listing from escaping
-    // its partition, passed validation and preview, and was saved. A saved
-    // workflow is changed with edit_workflow_patch. There is deliberately no
-    // flag to get past this: the first version had one, and the model set it on
-    // its very next call — an escape hatch the caller can open by itself is not
-    // a gate. Patches can replace every step, so nothing is made impossible.
     const draftState = ctx.getDraft().state;
     const bound = draftState ? persistedWorkflowResource(draftState) : null;
     const targetsBound =
@@ -142,7 +121,6 @@ export const authorWorkflowTool: ConversationTool = {
       };
     }
 
-    // User-specified identity is authoritative, not a suggestion to the generation model.
     if (args.name !== undefined) result.definition.name = args.name;
     if (args.slug !== undefined) result.definition.slug = args.slug;
 
@@ -152,10 +130,6 @@ export const authorWorkflowTool: ConversationTool = {
       report: result.recorded_eval,
     });
 
-    // Detach from any previously-saved workflow target when this call
-    // replaces the draft with a different slug — same discipline as
-    // start_workflow_from_recipe, so a later commit never keys its
-    // upsert on a stale workflow id.
     if (currentSlug !== result.definition.slug) {
       await ctx.db
         .update(conversations)
@@ -168,15 +142,6 @@ export const authorWorkflowTool: ConversationTool = {
         );
     }
 
-    // Payload-first authoring (D4): persist the author-supplied sample as the
-    // draft's `input_schema_sample`. The pipeline consumed it only to GROUND
-    // generation; persisting it here elevates the sample to the primary input
-    // idiom — `resolveWorkflowInputContract` derives a real required-list from
-    // it (tier 2, behind any explicitly declared `input_schema`), and
-    // `commit-workflow` projects it into the SAVED WorkflowDef so the derived
-    // contract survives into `run_workflow` / the `wf_<slug>` tool schema. This
-    // is the author's canonical example; a run/dry-run TEST payload is separate
-    // and is never written into the definition. `null` is treated as "unset".
     if (
       args.name !== undefined ||
       args.slug !== undefined ||
@@ -215,11 +180,6 @@ export const authorWorkflowTool: ConversationTool = {
           ...(result.unresolved_connectors.length > 0
             ? { unresolved_connectors: result.unresolved_connectors }
             : {}),
-          // Advisory: the gated semantic critic rejected this draft and
-          // its repairs already drove a regenerate. This rides the
-          // SUCCESSFUL result (not an error_code — the draft is stashed)
-          // so the next turn's expandPriorFailuresFromToolCalls escalates
-          // via prior_failures. Keyed to CriticRejectedDetailsSchema.
           ...(result.critic_rejection ? { critic_rejection: result.critic_rejection } : {}),
           persistence: "draft_only" as const,
           next_step: result.next,

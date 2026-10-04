@@ -1,6 +1,3 @@
-// Integration tests for MCP OAuth HTTP routes — mcp-oauth-flow group.
-// Shared setup + helpers live in ./mcp-oauth-test-helpers.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
@@ -152,7 +149,6 @@ describe("GET /v1/oauth/authorize", () => {
       }),
       { redirect: "manual" },
     );
-    // Must redirect — not return the consent page
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
     expect(location).toContain("login");
@@ -222,7 +218,6 @@ describe("GET /v1/oauth/authorize", () => {
   });
 
   test("authorize without scope param offers the client's registered scopes on the consent page (RFC 6749 §3.3)", async () => {
-    // ChatGPT-shaped client: DCR without scope, authorize without scope.
     const clientId = await registerClient();
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
     const jwt = await mintSessionCookie({
@@ -238,7 +233,6 @@ describe("GET /v1/oauth/authorize", () => {
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        // no scope param on purpose
       }),
       {
         headers: { cookie: `subkit_session=${jwt}` },
@@ -247,18 +241,14 @@ describe("GET /v1/oauth/authorize", () => {
     );
     expect(res.status).toBe(200);
     const html = await res.text();
-    // Admin test user + full registered set → all three scopes must be OFFERED.
     expect(html).toContain("mcp:read");
     expect(html).toContain("mcp:authoring");
     expect(html).toContain("mcp:admin");
   });
 });
 
-// ─── Full flow: register → authorize → consent → token → /mcp ─────────────
-
 describe("full OAuth flow", () => {
   test("register → authorize (consent) → code → access token", async () => {
-    // 1. Register a client
     const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -270,7 +260,6 @@ describe("full OAuth flow", () => {
     expect(regRes.status).toBe(201);
     const { client_id: clientId } = (await regRes.json()) as { client_id: string };
 
-    // 2. Seed a session and get the consent page
     const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
     const jwt = await mintSessionCookie({
       session_id: sessionId,
@@ -296,12 +285,10 @@ describe("full OAuth flow", () => {
     expect(authRes.status).toBe(200);
     const html = await authRes.text();
 
-    // Extract csrf_token from the form
     const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
     expect(csrfMatch).not.toBeNull();
     const csrfToken = csrfMatch![1] as string;
 
-    // 3. Submit the consent decision
     const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
       method: "POST",
       headers: {
@@ -324,12 +311,10 @@ describe("full OAuth flow", () => {
     expect(redirectLocation).toContain("code=");
     expect(redirectLocation).toContain("state=test-state-123");
 
-    // 4. Extract the code
     const redirectUrl = new URL(redirectLocation);
     const code = redirectUrl.searchParams.get("code");
     expect(code).not.toBeNull();
 
-    // 5. Exchange the code for tokens
     const tokenRes = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -356,7 +341,6 @@ describe("full OAuth flow", () => {
   });
 
   test("refresh token grant produces new tokens via POST /v1/oauth/token", async () => {
-    // Register + get initial tokens
     const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -422,7 +406,6 @@ describe("full OAuth flow", () => {
     });
     const { refresh_token } = (await tokenRes.json()) as { refresh_token: string };
 
-    // Now use the refresh token
     const refreshRes = await fetch(`${ctx.baseUrl}/v1/oauth/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -442,8 +425,6 @@ describe("full OAuth flow", () => {
     expect(refreshed.access_token).not.toBe(refresh_token);
   });
 });
-
-// ─── POST /v1/oauth/token — edge cases ────────────────────────────────────
 
 describe("POST /v1/oauth/token — edge cases", () => {
   test("missing required params returns 400", async () => {
@@ -493,8 +474,6 @@ describe("POST /v1/oauth/token — edge cases", () => {
   });
 });
 
-// ─── POST /v1/oauth/revoke ─────────────────────────────────────────────────
-
 describe("POST /v1/oauth/revoke", () => {
   test("always returns 200 for unknown token (RFC 7009)", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/revoke`, {
@@ -515,8 +494,6 @@ describe("POST /v1/oauth/revoke", () => {
   });
 });
 
-// ─── Unauthenticated /mcp returns 401 + WWW-Authenticate ──────────────────
-
 describe("POST /v1/oauth/token — body size limit", () => {
   test("form body over 64KB returns 413", async () => {
     const padding = "x".repeat(65 * 1024);
@@ -530,11 +507,8 @@ describe("POST /v1/oauth/token — body size limit", () => {
   });
 });
 
-// ── /token: JSON body with bad code returns invalid_grant ─────────────────────
-
 describe("POST /v1/oauth/token — JSON body", () => {
   test("valid-shape JSON body with bad code returns 400 invalid_grant", async () => {
-    // Register a client so client_id exists
     const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -559,12 +533,8 @@ describe("POST /v1/oauth/token — JSON body", () => {
   });
 });
 
-// ── /mcp: wf_mcr_* refresh token as Bearer → 401 ─────────────────────────────
-
 describe("POST /mcp — refresh token as Bearer", () => {
   test("wf_mcr_* refresh token sent as Authorization: Bearer returns 401", async () => {
-    // A refresh token prefix should be rejected by the mcp-oauth auth provider
-    // (extractMcpToken only accepts wf_mcp_ prefix) → 401
     const fakeRefreshToken = "wf_mcr_abcdefghijklmnopqrstuvwxyz01234567";
     const res = await fetch(`${ctx.baseUrl}/mcp`, {
       method: "POST",
@@ -577,5 +547,3 @@ describe("POST /mcp — refresh token as Bearer", () => {
     expect(res.status).toBe(401);
   });
 });
-
-// ── Scope intersection: member-only mcp:admin → access_denied ─────────────────

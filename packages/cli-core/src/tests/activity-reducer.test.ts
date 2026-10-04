@@ -1,7 +1,3 @@
-// Reducer behaviour for the new `activity` TurnEvent — sets
-// `session.activity`, never appends to `messages` / `cells`, clears
-// on `completed`.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 

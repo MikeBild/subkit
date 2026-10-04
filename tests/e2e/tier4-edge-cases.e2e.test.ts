@@ -1,13 +1,3 @@
-// Tier 4 — Edge-case matrix.
-//
-// Pins the failure modes that previously shipped to prod undetected:
-//   - 401 / 403 / 404 / 405 surface shapes
-//   - empty / missing input
-//   - tenant header override
-//   - validation envelope shape (no 500 leakage)
-//
-// Pure HTTP — no LLM. Auth probes use admin + member personas.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
@@ -59,7 +49,6 @@ describe("Tier 4 — auth / RBAC matrix", () => {
     expect(r.status).toBeGreaterThanOrEqual(400);
     expect(r.status).toBeLessThan(500);
     const body = (await r.json()) as Record<string, unknown>;
-    // Envelope must carry SOMETHING actionable — code, error, or message.
     expect(Boolean(body.code) || Boolean(body.error) || Boolean(body.message)).toBe(true);
   });
 });
@@ -117,7 +106,6 @@ describe("Tier 4 — validation envelope (no 500 leakage)", () => {
 
 describe("Tier 4 — tenant header + cross-tenant isolation", () => {
   test("conversation created by admin is NOT visible to a token with foreign tenant claim", async () => {
-    // No initial_message → no LLM call, fast.
     const create = await fetch(`${env.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: {
@@ -130,9 +118,6 @@ describe("Tier 4 — tenant header + cross-tenant isolation", () => {
     const conv = (await create.json()) as { conversation: { id: string } };
     const id = conv.conversation.id;
 
-    // The api-key provider re-resolves tenant from the key — a foreign
-    // header MUST NOT broaden access. Either 200 (header ignored, real
-    // tenant returned) or 403/404 — never the foreign tenant's data.
     const spoof = await fetch(`${env.baseUrl}/v1/conversations/${id}`, {
       headers: {
         Authorization: `Bearer ${env.personas.admin.apiKey}`,
@@ -174,13 +159,10 @@ describe("Tier 4 — concurrent conversations don't bleed state", () => {
 describe("Tier 4 — error envelope shape across error classes", () => {
   test("error responses always return JSON, never plain text", async () => {
     const probes = [
-      // 401
       fetch(`${env.baseUrl}/v1/conversations`),
-      // 403
       fetch(`${env.baseUrl}/v1/audit-log`, {
         headers: { Authorization: `Bearer ${env.personas.member.apiKey}` },
       }),
-      // 4xx — admin asking for a missing conversation
       fetch(`${env.baseUrl}/v1/conversations/00000000-0000-0000-0000-000000000999`, {
         headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },
       }),

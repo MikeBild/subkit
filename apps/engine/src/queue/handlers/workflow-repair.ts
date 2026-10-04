@@ -1,15 +1,3 @@
-// Worker for the `workflow.repair` queue.
-//
-// The job payload carries the tenant + workflow + failing step +
-// optionally a connector / endpoint key. The handler calls into the
-// self-healing service, which runs the full loop (drift → LLM →
-// classify → fixture → auto-apply or park) end-to-end.
-//
-// A job raised by the execution-authority gate (`trigger: "gate_block"`)
-// takes the other branch: the version is diagnosed and every fixable
-// diagnosis becomes at most one reviewable candidate. No model is asked and
-// nothing applies itself.
-
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
@@ -79,8 +67,6 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
   });
   const started = Date.now();
   if (data.trigger === "gate_block") return await handleGateBlock(job, db, started);
-  // rss baseline around the LLM-heavy self-healing loop, so the success
-  // log attributes the transient to THIS tenant's repair run.
   const rssBefore = readMemoryUsage().rss;
   try {
     const result = await runSelfHealingLoop(data, db);
@@ -130,23 +116,12 @@ export async function registerWorkflowRepairHandler(
   return workerId;
 }
 
-/**
- * Window (seconds) inside which repeated failures of the same
- * (tenant, workflow, endpoint) collapse into ONE repair job. A
- * scheduled workflow failing every 20 minutes against a broken
- * endpoint is one drift, not one LLM repair loop per run — without
- * this cap a sustained outage multiplies into dozens of repair jobs
- * and burns the tenant's token budget on identical proposals.
- */
 export const REPAIR_SINGLETON_SECONDS = 3600;
 
 export async function enqueueRepair(
   boss: PgBoss,
   payload: WorkflowRepairJob,
 ): Promise<string | null> {
-  // singletonKey dedups at the queue layer; the endpoint-candidate
-  // dedup inside processDriftSignal is the second, fingerprint-aware
-  // guard for jobs that do run.
   const singletonKey = `${payload.tenant_id}:${payload.workflow_id}:${payload.endpoint_key ?? payload.step_id ?? "unknown"}`;
   return await boss.send(WORKFLOW_REPAIR_QUEUE, payload, {
     singletonKey,
@@ -154,19 +129,6 @@ export async function enqueueRepair(
   });
 }
 
-/**
- * Ask for a gate diagnosis of a workflow the execution-authority gate refused:
- * a held hook, a held schedule, or an authorized run refused at dispatch.
- *
- * Every one of those refusals repeats — a hook on each delivery, a schedule on
- * each tick — and the diagnosis is a property of the version, not of the
- * attempt. One job per (tenant, workflow, version) per window; the candidate
- * dedup inside the diagnosis is the second guard. The version defaults to the
- * workflow's active one, which is the version a hook or schedule would start.
- *
- * Best-effort: the refusal has already been answered and audited, and a queue
- * failure here must not change that answer.
- */
 export async function enqueueGateDiagnosis(
   boss: PgBoss,
   db: Db,
@@ -200,8 +162,6 @@ export async function enqueueGateDiagnosis(
       environment: p.environment,
     };
     const jobId = await boss.send(WORKFLOW_REPAIR_QUEUE, payload, {
-      // Per environment: each one diagnoses its own held runs and connectors,
-      // so a refusal in one must not suppress the other's diagnosis.
       singletonKey: `${p.tenant_id}:${p.workflow_id}:gate:${p.environment}:${version_id}`,
       singletonSeconds: REPAIR_SINGLETON_SECONDS,
     });

@@ -28,7 +28,6 @@ function visible(value: string): string {
   return escapeHtml(scrubString(value));
 }
 
-/** No credential-bearing URL component is needed to identify a display target. */
 export function approvalDisplayTarget(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -114,8 +113,6 @@ export function buildApprovalDecisionHtml(
     .join("");
   const reviews = binding?.request_reviews ?? [];
   const direct = view.preview?.direct_connector;
-  // Persisted request projections take precedence over a caller's summary.
-  // Keep unmatched legacy entries visible, without inventing a proof/limit.
   const writes = [
     ...reviews,
     ...(direct ? [direct.review] : []),
@@ -136,8 +133,6 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
         })
         .join("")}</ul>`
     : `<p class="muted">${copy.missing}</p>`;
-  // POSTing a language choice is a read-only render action. Keep the grant out
-  // of visible links, avoid JavaScript, and never attach a decision to it.
   const hidden = `<input type="hidden" name="grant" value="${escapeHtml(grant)}"><input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}">`;
   const language = `<form class="approval-language" method="POST" action="${APPROVAL_PORTAL_PATH}" aria-label="${copy.language}">${hidden}
 <button type="submit" name="language" value="de" lang="de" aria-pressed="${locale === "de"}">Deutsch</button>

@@ -10,15 +10,6 @@ import {
 } from "@/app/route-table";
 import { peopleSectionFromUrl } from "./links";
 
-/**
- * The router cannot be imported here — it reaches `window` while it loads — so
- * its registered paths are read out of its source instead.
- *
- * That is the point of the test rather than a workaround for it: what has to be
- * proven is that no path is registered ANYWHERE but the table. A route created
- * with a literal path, in a file nobody thinks about again, is exactly the route
- * the conformity sweep can never find.
- */
 function registeredPaths(): string[] {
   const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
   const found = (pattern: RegExp) => [...source.matchAll(pattern)].map((match) => match[1] ?? "");
@@ -33,11 +24,8 @@ describe("cockpit route table", () => {
   test("registers no path the table does not know about", () => {
     const fromTable = new Set<string>([
       ...ALL_ROUTE_PATHS,
-      // The two catalogue templates, once each: the router writes them with a
-      // loop variable, and the table spells them out per resource.
       "/*",
       "/*/$resourceId",
-      // Paths the router reads off the table by name keep the name in source.
       "CHAT_PATH",
       "NEW_CHAT_PATH",
       "CONVERSATION_PATH",
@@ -68,8 +56,6 @@ describe("cockpit route table", () => {
   });
 
   test("names the routes no menu links to, which is why they are here", () => {
-    // Each of these is reachable by typing, bookmarking or being sent a link,
-    // and none of them appears in NAVIGATION.
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
     for (const path of ["/chat/new", "/chat/$conversationId"]) {
       expect(ALL_ROUTE_PATHS).toContain(path);
@@ -78,10 +64,6 @@ describe("cockpit route table", () => {
   });
 
   test("sends the old Zugriff address to the roles of Personen & Rechte", () => {
-    // `/access` became three sections of `/people`. A bookmark lands on the
-    // roles — what the old page opened with — and its own `section` wins over
-    // one the old address carried (its tabs included a permissions list that
-    // is no section any more).
     expect(REDIRECT_ROUTES).toContain("/access");
     expect(PAGE_ROUTES as readonly string[]).not.toContain("/access");
     expect(ALL_ROUTE_PATHS).toContain("/access");
@@ -93,10 +75,6 @@ describe("cockpit route table", () => {
   });
 
   test("old run, connection and notification addresses are gone, not redirected", () => {
-    // Every producer links the new address — a run is `?run=<id>` on the view
-    // that opened it, all runs are `?runs=all`, a sign-in comes back to the
-    // connectors, notifications are a tab of Einstellungen — so the old
-    // addresses have no route and no redirect of their own.
     for (const gone of [
       "/runs",
       "/runs/$resourceId",
@@ -112,8 +90,6 @@ describe("cockpit route table", () => {
   test("builds every redirect as a browser navigation on the raw query", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toContain("REDIRECT_ROUTES.map(");
-    // The raw query, and a browser navigation: the router's own search
-    // serialiser JSON-parses values (`1e5` → `100000`) on both of its paths.
     expect(source).toContain("movedTarget(window.location.search)");
     expect(source).toContain("window.location.replace(");
     const code = source.replace(/^\s*\/\/.*$/gm, "");
@@ -127,12 +103,6 @@ describe("cockpit route table", () => {
   });
 
   test("keeps every parameterised path out of the mapped page list", () => {
-    // PAGE_ROUTES is mapped over in the router, and a mapped tuple collapses
-    // to the union of its members. One parameterised member therefore makes
-    // `params` a REQUIRED prop on every `<Link>` aimed at any member — the
-    // typecheck broke on `to="/runs"` and `to="/audit"` when `/runs/$resourceId`
-    // was first put here. Paths that take a record belong in their own group,
-    // read off by position so they keep their literal type.
     const parameterised = PAGE_ROUTES.filter((path) => path.includes("$"));
     expect(parameterised, "a parameterised path in PAGE_ROUTES breaks every Link").toEqual([]);
   });

@@ -1,24 +1,3 @@
-// When a schedule will really fire next — derived from the same decisions the
-// reconciler makes, not from the cron expression alone.
-//
-//   * Cron schedules: the reconciler fires once `now` passes the first cron
-//     occurrence after the last enqueue (or after creation, for a schedule that
-//     never fired) — `nextCronOccurrence`, shared with `isCronDue`. An
-//     occurrence already passed fires on the next reconcile tick, i.e. now.
-//   * Calendar gates: a gated tick does NOT advance `last_enqueued_at`, so the
-//     schedule stays due and fires on the first tick whose local day the gates
-//     allow (`calendarGateSkipReason`, shared with the reconciler). A Friday
-//     evening business-days schedule therefore next fires at local midnight
-//     Monday, not on Saturday.
-//   * `every:N` schedules run on a local interval timer that fires once the
-//     last enqueue is N seconds old; the next fire is that moment, or — when it
-//     has already passed — no later than one interval from now (the timer's
-//     phase is per-process and not observable). The timer applies no gates.
-//
-// Null when the gates keep every day closed within GATE_SEARCH_DAYS (e.g. a
-// long skip_dates freeze): the next fire exists but is too far to name
-// honestly, and an unbounded search would run on every workflow list read.
-
 import { calendarGateSkipReason, readCalendarGates } from "./calendar-gates.ts";
 import { nextCronOccurrence, parseCronExpression } from "./cron.ts";
 
@@ -34,15 +13,12 @@ export interface NextFireSchedule {
   created_at: Date;
 }
 
-/** First instant at or after `from` whose local day the gates allow, or null. */
 function firstOpenInstant(
   from: Date,
   tz: string,
   gates: ReturnType<typeof readCalendarGates>,
 ): Date | null {
   if (calendarGateSkipReason(from, tz, gates) === null) return from;
-  // Days change on local midnight, which is not on a UTC hour everywhere:
-  // step by the hour to the first open hour, then by the minute inside it.
   const limit = from.getTime() + GATE_SEARCH_DAYS * 24 * HOUR_MS;
   let closed = from.getTime();
   let t = closed + HOUR_MS;

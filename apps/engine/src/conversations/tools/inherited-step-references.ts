@@ -1,18 +1,3 @@
-// Which dangling step references did this authoring call introduce, and which
-// did the running workflow already have?
-//
-// The baseline is the ACTIVE version of the workflow the conversation targets —
-// the one that executes in production — and nothing else. A saved draft is
-// inert and model-writable (a forced save needs no green preview), so
-// inheriting from it, or from the pre-patch draft, would let an author launder
-// its own typo into "already there" after one save. The target comes from the
-// conversation row, as the save path does: the tool context's workflow id is
-// null on some paths, and merely running a workflow can retarget a
-// conversation, hence the slug check.
-//
-// Every failure resolves to an EMPTY baseline, which is exactly the behaviour
-// before this existed: nothing is inherited and every dangling reference blocks.
-
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -26,12 +11,6 @@ import type { ToolContext } from "./index.ts";
 
 export const INHERITED_STEP_REFERENCE_CODE = "inherited_step_reference";
 
-/**
- * Rides in the tool result only. It must never enter a preview's warnings:
- * those are replayed to the author next turn as failures to repair, and this
- * notice exists precisely so that nothing gets repaired. Hence no suggestions
- * and no expression text either.
- */
 export interface InheritedStepReferenceNotice {
   code: typeof INHERITED_STEP_REFERENCE_CODE;
   message: string;
@@ -94,7 +73,6 @@ export async function classifyStepReferences(
   notice: InheritedStepReferenceNotice | null;
 }> {
   const dangling = validateStepReferences(candidate);
-  // The common case touches no database.
   if (dangling.length === 0) return { introduced: [], notice: null };
   const { introduced, inherited } = partitionStepReferences(
     dangling,

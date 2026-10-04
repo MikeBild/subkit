@@ -1,6 +1,3 @@
-// Schema barrel — import every table from a single entry point so drizzle-kit
-// can discover them. Grouped by domain file.
-
 export * from "./_common.ts";
 export * from "./audit.ts";
 export * from "./chat.ts";
@@ -35,8 +32,6 @@ export * from "./skills.ts";
 export * from "./tool_approvals.ts";
 export * from "./usage.ts";
 export * from "./webhooks.ts";
-// webhooks-extras is a re-export barrel (same tables); omitted to avoid
-// duplicate symbol exports.
 export * from "./workflow_run_state.ts";
 export * from "./workflow_signals.ts";
 export * from "./workflow_waits.ts";

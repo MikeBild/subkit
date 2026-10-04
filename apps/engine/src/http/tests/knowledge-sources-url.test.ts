@@ -1,8 +1,3 @@
-// Integration tests for reading a knowledge source from an address:
-// POST /v1/knowledge-sources/url creates it, POST /v1/knowledge-sources/{id}/refresh
-// reads it again. A loopback page server stands in for the web; the egress
-// guard is permissive outside production, so the engine may reach it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 

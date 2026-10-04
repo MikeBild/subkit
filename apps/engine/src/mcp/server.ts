@@ -1,10 +1,3 @@
-// MCP server factory.
-//
-// Builds a fresh `Server` instance per transport session. Each connection
-// owns its own server because the request handlers close over the caller's
-// principal — this keeps tenant isolation local and avoids a shared
-// principal cache.
-
 import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -30,10 +23,6 @@ export interface CreateMcpServerParams {
   transport: "http" | "stdio";
 }
 
-// Compile-time `VERSION` is the real serverInfo.version unless the build
-// never stamped one (`0.0.0-dev` placeholder), in which case fall back to the
-// runtime `ENGINE_VERSION` so a client's version-skew banner reads the engine
-// the operator actually deployed. Mirrors the HTTP OpenAPI resolver.
 function resolveEngineVersion(): string {
   if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
   const env = process.env.ENGINE_VERSION;
@@ -41,17 +30,6 @@ function resolveEngineVersion(): string {
   return VERSION ?? "0.0.0-dev";
 }
 
-// Connect introduction handed to every principal via the SDK `initialize`
-// `instructions` field. The tenant-specific operator health digest is appended
-// only when the caller holds `stats:read` (see the gated assembly below).
-//
-// TIER-DEPENDENT, because authoring is opt-in per credential. It used to open
-// with "Start with `conversation_start`" for everyone — including credentials
-// that do not carry `mcp:authoring` and therefore cannot call it. Naming a tool
-// the caller does not have is worse than saying nothing: the model tries it,
-// gets refused, and spends the turn recovering from advice the server gave it.
-//
-// So the first move named here is one the reader can actually make.
 const SHARED_INTRO = [
   "sk runs your business workflows as governed, audited, versioned executions —",
   "every run is permission-checked, recorded, and replayable.",
@@ -67,7 +45,6 @@ const CATALOG_AND_GROUNDING = [
   "answer from prior knowledge. If the search returns nothing, say so instead of guessing.",
 ];
 
-/** The intro for a credential that may author over MCP. */
 const AUTHORING_INTRO = [
   ...SHARED_INTRO,
   "",
@@ -80,11 +57,6 @@ const AUTHORING_INTRO = [
   ...CATALOG_AND_GROUNDING,
 ].join("\n");
 
-/** The intro for a read-and-execute credential — the default.
- *
- *  It names the CLI rather than apologising for a missing tool, because that is
- *  where the work actually happens: a definition edit should arrive as a file
- *  someone can read, not as a sentence a second model paraphrased into a patch. */
 const READ_EXECUTE_INTRO = [
   ...SHARED_INTRO,
   "",
@@ -102,32 +74,9 @@ const READ_EXECUTE_INTRO = [
 export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
   const { db, principal, transport } = p;
 
-  // Per-session, tenant-bound TaskStore backing the MCP async-Tasks
-  // surface (SEP-1686). Every conversation tool can be invoked as a
-  // task so the `tools/call` returns immediately and the long turn
-  // runs in the `conversation.run-turn` pg-boss worker.
   const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
 
-  // Compact attention summary handed to the client at connect via the SDK
-  // `instructions` field — rendered from `buildAttention` for THIS principal,
-  // the same list `GET /v1/attention` and `get_attention` return. Computed
-  // fresh for every session (no server-side cache beyond attention's 10 s
-  // tenant facts); a client that stores the instructions it received at
-  // connect keeps showing that snapshot until it reconnects. Best-effort: a
-  // failure must NEVER fail initialize — a broken read should not deny the
-  // client its tools.
-  // The summary exposes cross-workflow operational posture, so it is gated on
-  // `stats:read` — the same permission the HTTP route and the MCP resource
-  // enforce. A principal without it (e.g. a portal token scoped to one
-  // workflow) gets the server's tools but no operator digest in `instructions`.
-  // Bounded on the connect hot path: a SLOW Postgres (the exact degradation
-  // these signals predict) must not hang `initialize`, so the digest races a
-  // short timeout and falls through to no-instructions. Best-effort end to end
-  // — a throw, a denied gate, or a timeout never fails initialize.
   const INSTRUCTIONS_TIMEOUT_MS = 400;
-  // The intro matches what this credential can actually do; the operator
-  // digest is appended on top only when the gate allows and the digest
-  // resolves in time.
   const baseIntro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;
   let instructions: string = baseIntro;
   try {
@@ -135,18 +84,9 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       tenant_id: principal.tenant_id,
       principal,
       permission: "stats:read",
-      // this is a capability PROBE run on every MCP connect to decide
-      // whether to attach the operator digest to `initialize`; a user without
-      // stats:read is normal, not an incident. Mark it quiet so it logs at
-      // DEBUG instead of emitting an `rbac.denied` WARN on every connection
-      // (52×/day in prod), which drowned out real denials.
       quiet: true,
     });
     if (decision.allow) {
-      // If the timeout wins the race the digest query keeps running; map its
-      // eventual result/error through a single handler so it neither leaks an
-      // unhandled rejection nor silently drops (it held a DB connection on the
-      // hot path — worth a log under the very saturation this predicts).
       const digestText = buildOperatorHealthSummary(db, principal).then(
         (s) => s.text,
         (err) => {
@@ -190,10 +130,6 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
     });
   }
 
-  // TODO(mcp-spec): add `icons` (SEP-973) to serverInfo — and to the core
-  // tools/prompts — once the engine serves a real sk brand asset (SVG/PNG).
-  // The SDK 1.29 Implementation shape supports it; not adding a fabricated
-  // data-URI. Improves client catalog UX in claude.ai / ChatGPT.
   const server = new Server(
     {
       name: "subkit-engine",
@@ -209,10 +145,6 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
         tools: {},
         resources: { subscribe: true },
         prompts: {},
-        // Tasks: list + cancel + task-augmented `tools/call`. The SDK
-        // installs the tasks/get|result|list|cancel handlers when a
-        // `taskStore` is supplied; this capability advertises them to
-        // the client during initialize.
         tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
       },
       taskStore,

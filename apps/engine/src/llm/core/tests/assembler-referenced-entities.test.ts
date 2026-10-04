@@ -1,14 +1,3 @@
-// The `[REFERENCED ENTITIES]` section (user @-mentions) in the assembler:
-//  - rendered in the VOLATILE tail (never inside the cached prefix), as the
-//    last section before the user turn;
-//  - under budget pressure it shrinks to the one-line trim reference instead
-//    of being dropped — the user pointed at these objects on purpose; only as
-//    the very last resort before the base prompt cannot fit does the line go;
-//  - its cost is reported in `token_counts.references`.
-//
-// Uses a real Postgres database via createTestDb (the assembler reads skills
-// and the tenant snapshot); the block itself is passed in already rendered.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -95,9 +84,6 @@ describe.skipIf(skip)("assembler — referenced entities", () => {
   });
 
   test("under budget pressure the block shrinks to the trim reference instead of vanishing", async () => {
-    // A cap that fits the prompt with the one-line reference but not with
-    // the full block: measure the trimmed shape first, then allow a hair
-    // more than that.
     const trimmedShape = await assembleEnhancedPrompt(
       {
         tenant_id,
@@ -124,7 +110,6 @@ describe.skipIf(skip)("assembler — referenced entities", () => {
     expect(prompt.dropped_sections).toContain("referenced_entities");
     expect(prompt.system).toContain(TRIM_REF);
     expect(prompt.system).not.toContain(BLOCK);
-    // The id survives the trim — that is the whole point of not dropping.
     expect(prompt.system).toContain("11111111-1111-4111-8111-111111111111");
     expect(prompt.token_counts.references).toBeGreaterThan(0);
     expect(prompt.token_counts.total).toBeLessThanOrEqual(cap);

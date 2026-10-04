@@ -1,11 +1,3 @@
-// Hardening checks for the A5 loop:
-//   1. Tool execution is serialized within a turn (TurnSignals.toolChain)
-//      so concurrent tool calls from one SDK step do not race on draft
-//      mutations or the step counter.
-//   2. On a fallback-eligible provider error, the loop retries with the
-//      configured fallback model and writes distinct llm_usage rows for
-//      both attempts (primary=error, fallback=success).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -34,8 +26,6 @@ afterAll(async () => {
 
 describe("conversations/hardening", () => {
   test("wrapTools serializes concurrent tool invocations via toolChain", async () => {
-    // A tool whose execute resolves after a caller-controlled delay.
-    // Two concurrent invocations prove they are gated by the mutex.
     const started: string[] = [];
     const finished: string[] = [];
     const markerTool: ConversationTool = {
@@ -70,7 +60,6 @@ describe("conversations/hardening", () => {
       setDraft: async () => {},
     };
 
-    // Need a real conversation to satisfy the FK in conversation_tool_calls.
     const convo = await createConversationWithTurn(
       { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, initial_message: "hello" },
       ctx.testDb.db,
@@ -93,17 +82,8 @@ describe("conversations/hardening", () => {
       lastExecutionSuccess: null,
     };
     const events: TurnEvent[] = [];
-    // Register a fake tool via wrapOne-like closure by reusing wrapTools
-    // over an ad-hoc registry. We monkey-pick one tool from wrapTools
-    // output and replace the inner body via a custom wrap.
     const tools = await wrapTools(toolCtx, signals, events, ctx.testDb.db);
-    // The real palette doesn't include "marker"; patch by creating a
-    // fresh wrapper that mirrors wrapOne using the public helper shape.
-    // Instead of re-importing wrapOne, we exercise one existing tool
-    // (list_skills) concurrently — it has a real DB impl but returns
-    // quickly and is safe to call twice. The ordering of insertToolCall
-    // rows verifies serialization.
-    void markerTool; // marker kept for docs; see assertion below.
+    void markerTool;
 
     const listSkills = tools.list_skills;
     expect(listSkills).toBeDefined();
@@ -117,16 +97,8 @@ describe("conversations/hardening", () => {
     const p3 = call(3).then(() => resolved.push(3));
     await Promise.all([p1, p2, p3]);
 
-    // Resolution order must match arrival order because the mutex
-    // runs them in the order they awaited `prevChain`.
     expect(resolved).toEqual([1, 2, 3]);
-    // The step counter must have incremented monotonically, once per call.
     expect(signals.step).toBe(3);
-    // Event order must be strictly: call, result, call, result, call, result.
-    // Filter out `activity` frames — those are progress signals (e.g.
-    // "composing reply", "tool: <name>") that the loop interleaves
-    // around tool execution and are unrelated to the serialization
-    // contract being tested here.
     const kinds = events.map((e) => e.type).filter((k) => k !== "activity");
     expect(kinds).toEqual([
       "tool_call_start",
@@ -142,7 +114,6 @@ describe("conversations/hardening", () => {
   });
 
   test("turn-level fallback retries with the fallback model on overloaded", async () => {
-    // Pin primary/fallback model ids so we can prime a failure.
     resetMockProvider();
     const [settings] = await ctx.testDb.db
       .select()
@@ -166,7 +137,6 @@ describe("conversations/hardening", () => {
       });
     }
 
-    // Prime a one-shot overloaded error on the primary.
     getMockProvider().setFailure("hardening-primary", "overloaded");
 
     const outcome = await createConversationWithTurn(
@@ -181,7 +151,6 @@ describe("conversations/hardening", () => {
     );
     expect(outcome.result.status).toBe("awaiting_input");
 
-    // Usage rows split: 1 error on primary, at least 1 success on fallback.
     const primaryErr = await ctx.testDb.db
       .select()
       .from(llmUsage)
@@ -204,8 +173,6 @@ describe("conversations/hardening", () => {
           eq(llmUsage.result, "success"),
         ),
       );
-    // After fallback takes over, the full list-users plan completes
-    // through ask_user_confirm = 6 steps.
     expect(fallbackSuccess.length).toBeGreaterThanOrEqual(1);
   });
 

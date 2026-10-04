@@ -1,15 +1,3 @@
-// E2E persona tests — verifies RBAC boundaries across admin, member,
-// and enduser personas.
-//
-// Each persona is a separate system account with a distinct role. The
-// tests assert that:
-//   - admin can do everything
-//   - member can read + run but not delete or manage keys
-//   - enduser can only run approved workflows and view own executions
-//
-// The test creates workflows and other resources as admin, then asserts
-// that other personas get the expected 200/403 responses.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   boot,
@@ -30,22 +18,9 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// Shared: admin creates a workflow for other personas to interact with
-// ---------------------------------------------------------------------------
 let _workflowId: string;
 
 beforeAll(async () => {
-  // Admin creates a workflow.
-  //
-  // `--skip-checks` bypasses the validate+preview pre-flight that
-  // `workflows create` runs by default. Without it the CLI would
-  // actually execute the workflow's `request` step against the wider
-  // internet — and a 503 from any external target makes the create
-  // exit 1 without ever persisting the workflow row, which then
-  // collapses the `[0].id` lookup below with an unhelpful nullish
-  // crash. This suite tests RBAC, not external reachability; the
-  // workflow only needs to *exist*.
   const wfDef = JSON.stringify({
     name: "persona-test-wf",
     slug: "persona-test-wf",
@@ -70,9 +45,6 @@ beforeAll(async () => {
   _workflowId = list[0]!.id;
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// Admin — full access
-// ---------------------------------------------------------------------------
 describe("admin persona", () => {
   test("can list workflows", async () => {
     const result = await cli(["workflows", "list"], { env, persona: "admin" });
@@ -113,9 +85,6 @@ describe("admin persona", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Member — read + run, no destructive ops
-// ---------------------------------------------------------------------------
 describe("member persona", () => {
   test("can list workflows", async () => {
     const result = await cli(["workflows", "list"], { env, persona: "member" });
@@ -144,16 +113,12 @@ describe("member persona", () => {
       env,
       persona: "member",
     });
-    // Member role doesn't have rbac:read — expect 403 or non-zero exit.
     expect(result.exitCode !== 0 || result.stderr.length > 0 || result.stdout.includes("403")).toBe(
       true,
     );
   });
 });
 
-// ---------------------------------------------------------------------------
-// Enduser — most restricted
-// ---------------------------------------------------------------------------
 describe("enduser persona", () => {
   test("can read health (unauthenticated endpoint)", async () => {
     const result = await cli(["health"], { env, persona: "enduser" });
@@ -173,9 +138,6 @@ describe("enduser persona", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Cross-persona isolation
-// ---------------------------------------------------------------------------
 describe("cross-persona isolation", () => {
   test("all personas see the same tenant health", async () => {
     const [a, m, e] = await Promise.all([

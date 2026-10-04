@@ -34,33 +34,15 @@ describe("classifySlash", () => {
     expect(snap).toContain("clear");
   });
 
-  // R1-S2 / R2-W4 regression: the dispatcher must classify by the
-  // command's `routing` field, not by raw name. If a future writer
-  // adds a slash named e.g. `/audit` with `routing: "local"` the
-  // engine-side audit row goes missing — this test pins that the
-  // *registry* is the source, so any such mistake shows up here as
-  // well as in code review.
   test("derives local routing from each command's `routing` field, not a name list", () => {
     const snap = _localOnlySnapshot();
-    // Engine-routed commands must NOT appear in the local snapshot.
     for (const eng of ["audit", "connectors", "workflows", "approve", "reject"]) {
       expect(snap).not.toContain(eng);
     }
   });
 
-  // R6-W2 review fix: every `routing: "local"` slash MUST either have
-  // a `case "<name>":` branch in `apps/sk/src/repl/slash/handler.ts`
-  // OR be on the `INK_INTERCEPTED_LOCAL_SLASHES` allow-list (because
-  // the Ink host intercepts it before dispatch). Without this contract,
-  // a future `routing: "local"` slash with no handler case falls
-  // through to the generic "not wired" banner in the readline REPL.
   test("every routing:'local' command has a handler case OR sub-dispatcher entry OR is Ink-intercepted", () => {
     const handlerSrc = readFileSync("apps/sk/src/repl/slash/handler.ts", "utf8");
-    // /permissions and /admin are routing:'local' but dispatched via
-    // the inspect sub-dispatcher (they open a SinglePane after the
-    // 5-tab refactor). Include sub-dispatcher sources in the lookup so
-    // the contract permits routing through a per-category dispatcher,
-    // just like the routing:'engine' counterpart below.
     const subDispatcherSrcs: string[] = [
       readFileSync("apps/sk/src/repl/slash/handlers/admin-lists.ts", "utf8"),
       readFileSync("apps/sk/src/repl/slash/handlers/inspect.ts", "utf8"),
@@ -82,17 +64,6 @@ describe("classifySlash", () => {
     expect(violations).toEqual([]);
   });
 
-  // R11-S1 review fix: mirror of the routing:"local" contract for
-  // routing:"engine". Every engine-routed slash MUST be reachable
-  // via one of:
-  //   1. a `case "<name>":` branch in `handler.ts`
-  //   2. a per-category sub-dispatcher (admin-lists / inspect /
-  //      install-wizards / auth-redirects)
-  //   3. the `INK_INTERCEPTED_ENGINE_SLASHES` allow-list (the Ink
-  //      host short-circuits before dispatch — /approve, /yolo, etc.)
-  // Without this contract a future engine-routed slash would
-  // silently fall through to the "not wired — try /help" banner
-  // when the readline REPL receives it.
   test("every routing:'engine' command is reachable via handler / sub-dispatcher / Ink intercept", async () => {
     const { SLASH_COMMANDS, INK_INTERCEPTED_ENGINE_SLASHES } = await import("../slash.ts");
     const handlerSrc = readFileSync("apps/sk/src/repl/slash/handler.ts", "utf8");
@@ -108,11 +79,6 @@ describe("classifySlash", () => {
       if (routing !== "engine") continue;
       if (inkIntercepted.has(cmd.name)) continue;
       const caseRe = new RegExp(`case\\s+"${cmd.name}"\\s*:`);
-      // Sub-dispatchers using a `Record<string, string>` lookup
-      // (install-wizards, auth-redirects) declare the name as a
-      // property key (`login: "..."`) — match any word-boundary
-      // occurrence of the bare identifier. False-positive risk is
-      // low because slash names are 4-20 chars of letters/dashes.
       const wordRe = new RegExp(`\\b${cmd.name.replace(/-/g, "\\-")}\\b`);
       const inHandler = caseRe.test(handlerSrc);
       const inSubDispatcher = subDispatcherSrcs.some((src) => caseRe.test(src) || wordRe.test(src));

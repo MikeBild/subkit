@@ -1,11 +1,3 @@
-// Authoring-critic — schema + gating unit tests.
-//
-// Pure: no DB, no LLM. Schema round-trips and the gating truth table.
-// Gating reads from the runtime config loader; tests bootstrap a fresh
-// disposable config file per suite and use `setConfigKey` to flip the
-// per-tenant-shaped leaves at runtime (matching the
-// `sk settings configure` operator path). NO env-var feature flags.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,9 +15,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* fall through */
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-critic-unit-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/critic-unit", NODE_ENV: "test" },
@@ -117,8 +107,6 @@ describe("shouldRunCritic — gating truth table (runtime config)", () => {
   });
 
   afterAll(async () => {
-    // Restore disabled default so neighbouring suites in the same Bun
-    // process don't inherit a hot critic.
     await setConfigKey(["llm", "critic", "enabled"], false);
     await setConfigKey(["llm", "critic", "min_steps"], 3);
     await setConfigKey(["llm", "critic", "max_consecutive_rejections"], 3);
@@ -176,7 +164,6 @@ describe("shouldRunCritic — gating truth table (runtime config)", () => {
   });
 
   test("per-tenant overlay flips the gate for one tenant only", async () => {
-    // Global stays disabled; tenant A gets an explicit overlay = true.
     await setConfigKey(["llm", "critic", "enabled"], false);
     const tenantA = "11111111-1111-4111-8111-111111111111";
     const tenantB = "22222222-2222-4222-8222-222222222222";
@@ -194,17 +181,11 @@ describe("shouldRunCritic — gating truth table (runtime config)", () => {
     expect(decisionGlobal.run).toBe(false);
     expect(decisionGlobal.reason).toBe("disabled");
 
-    // Reset the overlay so adjacent tests don't inherit it.
     await setConfigKey(["llm", "critic", "enabled"], false, { tenantId: tenantA });
   });
 });
 
 describe("critic advisory ↔ prior_failures — post-pipeline contract", () => {
-  // The pipeline wires the critic back in: a rejection rides the
-  // SUCCESSFUL author_workflow result as a `critic_rejection` advisory
-  // (NOT an ok:false error_code — the draft was stashed + repaired). The
-  // conversation loop's expandPriorFailuresFromToolCalls turns that into
-  // prior_failures + flips the escalation signal.
   test("a critic_rejection advisory on a successful author_workflow output feeds prior_failures + flips the signal", () => {
     const row = {
       tool: "author_workflow",
@@ -226,11 +207,6 @@ describe("critic advisory ↔ prior_failures — post-pipeline contract", () => 
   });
 
   test("the retired ok:false error_code:critic_rejected shape no longer feeds the critic signal", () => {
-    // Migration guard: `build_workflow` (the only producer of the old
-    // ok:false {error_code:"critic_rejected"} envelope) is deleted, and
-    // the consumer branch was migrated to the advisory field. An old-shape
-    // row must NOT double-fire the signal — it now falls through to the
-    // generic ok:false handler (one row keyed by the tool name).
     const row = {
       tool: "author_workflow",
       output: {
@@ -251,9 +227,6 @@ describe("Critic system prompt — invariant snapshot", () => {
   test("BASE_SYSTEM_PROMPTS.critic_authoring carries the no-patch / structured-verdict invariants", async () => {
     const mod = await import("../../llm/core/context-assembler.ts");
     const text = (await mod.basePromptFor("critic_authoring")).content;
-    // Author intent must persist across edits — if these fail, the
-    // prompt was changed without updating the invariants doc-tested
-    // here. Discuss before relaxing.
     expect(text).toMatch(/SEMANTIC drift/i);
     expect(text).toMatch(/passed:true/i);
     expect(text).toMatch(/empty repairs array/i);

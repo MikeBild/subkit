@@ -121,10 +121,6 @@ describe("answering pending conversation questions", () => {
   });
 
   test("a text question the reader never saw does not take their message as its answer", async () => {
-    // The production failure: the question appeared after the page read its
-    // snapshot, the reader wrote "ich sehe hier keinen dialog", and that
-    // complaint was silently posted as the answer. The append fails instead,
-    // and the page shows the question.
     const fetchMock = mock(async () => blocked());
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     await expect(

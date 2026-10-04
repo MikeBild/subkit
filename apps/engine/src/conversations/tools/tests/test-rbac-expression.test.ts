@@ -1,11 +1,3 @@
-// test_rbac_expression — covers BOTH input modes the wave-3 rewrite
-// introduced. The actor_probe path goes through the live RBAC
-// evaluator (DB-backed); the expression_preview path is stateless
-// JSONata. Pre-fix the wave-3 union schema serialised to anyOf at
-// the JSON-Schema root, which the Anthropic API rejected — the
-// tool-anthropic-conformance lint now catches that, and this test
-// pins the per-mode happy + sad paths.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -132,7 +124,6 @@ describe("test_rbac_expression · actor_probe", () => {
     expect(result.ok).toBe(true);
     const data = (result as { data: { actor_id: string; allow: boolean } }).data;
     expect(data.actor_id).toBe(actor_id);
-    // admin has workflow:read by default seed.
     expect(typeof data.allow).toBe("boolean");
   });
 

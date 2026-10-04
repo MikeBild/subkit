@@ -1,16 +1,3 @@
-// Outbound fan-out.
-//
-// Listens on the outbox `event.emitted` channel. For each event:
-//   1. load all active subscriptions for the tenant
-//   2. filter down to subscriptions whose event_pattern matches the
-//      event type (simple glob: `*`, `execution.*`, exact)
-//   3. for each match, enqueue a single `webhook.deliver` job with
-//      attempt_number = 1 and a fresh webhook-id / timestamp.
-//
-// The fan-out itself does NOT perform HTTP delivery — it only
-// translates outbox events into delivery jobs. The delivery worker is
-// where signing + retries + circuit breaking happen.
-
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -28,9 +15,6 @@ import {
 import { matchEventPattern } from "../events/catalog.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
 
-// RFC-4122 v5 UUID namespace for outbox-derived delivery ids (arbitrary,
-// fixed). Deriving the delivery event_id from the stable outbox row id makes
-// fanout retries idempotent: a re-run emits the same event_id.
 const OUTBOX_EVENT_NS = "9f1c2e4a-6b3d-5c7e-8a9b-0c1d2e3f4a5b";
 
 export function deterministicEventId(eventRowId: number): string {
@@ -40,26 +24,12 @@ export function deterministicEventId(eventRowId: number): string {
     .update(`outbox:${eventRowId}`)
     .digest()
     .subarray(0, 16);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50; // version 5
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // RFC-4122 variant
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const h = bytes.toString("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
-/**
- * Build a notification AdapterResolver backed by a ChatAdapterRegistry.
- * Resolves on (tenant_id, platform, workspace_id). The registry lookup
- * is keyed by the channel row's `tenant_id` + `platform` + `workspace_id`
- * triple — exact match only for real chat platforms; returning `null`
- * forces `dispatchEvent` to record a `skipped` delivery with reason
- * `no_adapter`.
- *
- * The `sk_cli` pseudo-platform is the exception: it is never installed
- * per workspace (there is no `chat_workspaces` row for `_cli`), so an
- * exact lookup always misses. It is registered once at boot as a
- * process-global fallback and scopes per tenant via `delivery.tenant_id`,
- * so we fall back to the per-platform fallback adapter for it.
- */
 export function makeRegistryAdapterResolver(chatRegistry: ChatAdapterRegistry): AdapterResolver {
   return (channel) => {
     const platform = channel.platform as ChatPlatform;
@@ -83,9 +53,6 @@ export interface FanoutInput {
   event_type: string;
   payload: unknown;
   event_uuid?: string;
-  /** Optional notification adapter resolver. When provided the
-   * outbound fanout will also run the notification dispatch path for
-   * this event. Leave unset in pure webhook-only contexts. */
   notificationAdapterResolver?: AdapterResolver;
 }
 
@@ -103,8 +70,6 @@ const DEFAULT_SEVERITY: Record<string, NotificationSeverity> = {
   "execution.aborted": "warn",
   "workflow.updated": "info",
   "patch.proposed": "warn",
-  // A workflow changed without anyone asking — the operator learns about it
-  // here or not at all: the pending-review list only shows what is still open.
   "patch.applied": "warn",
   "api_key.rotated": "info",
 };
@@ -162,11 +127,6 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
     timestamp: now,
     data: payload,
   });
-  // Idempotency key for downstream delivery. Derive it DETERMINISTICALLY
-  // from the stable outbox row id (not randomUUID) so that if the
-  // event.fanout job is retried, every re-emitted webhook delivery carries
-  // the SAME event_id — the receiver (and our deliveries table) can then
-  // dedup, making fanout retries safe instead of duplicate-delivering.
   const eventUuid = input.event_uuid ?? deterministicEventId(event_row_id);
 
   for (const sub of rows) {
@@ -187,7 +147,6 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
     enqueued += 1;
   }
 
-  // --- notification dispatch path (independent of webhook fanout) ---
   let notifications_matched = 0;
   let notifications_delivered = 0;
   try {
@@ -235,13 +194,6 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
   return { matched, enqueued, notifications_matched, notifications_delivered };
 }
 
-/**
- * Convenience wrapper — read a single outbox row and fan it out.
- * Used by the `event.fanout` queue handler that reacts to outbox
- * NOTIFY pulses. Accepts an optional notification adapter resolver so
- * the worker can hand the outbox event to the notifications dispatch
- * path in addition to the webhook fanout path.
- */
 export async function fanoutEventRow(
   db: Db,
   boss: PgBoss,

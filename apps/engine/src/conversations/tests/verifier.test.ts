@@ -1,5 +1,3 @@
-// verifyWorkflow static-check tests.
-
 import { describe, expect, test } from "bun:test";
 import { isAcceptable, verifyWorkflow } from "../verifier.ts";
 
@@ -68,8 +66,6 @@ describe("verifyWorkflow — JavaScript transforms (language-aware)", () => {
   });
 
   test("unset language defaults to JavaScript (mirrors the runtime executor)", () => {
-    // A JSONata object-constructor `{ 'a': 1 }` is a SyntaxError when parsed
-    // as a JS function body (string label), proving the default parser is JS.
     const r = verifyWorkflow({
       steps: [{ id: "t", kind: "transform", expression: "{ 'a': $scope.x.data }" }],
     });
@@ -78,8 +74,6 @@ describe("verifyWorkflow — JavaScript transforms (language-aware)", () => {
   });
 
   test("a correct JS body that LOOKS like the authoring session does not loop", () => {
-    // The exact failure mode from the session: a JS transform reported as a
-    // JSONata parse error. With language honored, this is clean.
     const r = verifyWorkflow({
       steps: [
         { id: "fetch_message", kind: "request", method: "GET", path: "/m" },
@@ -145,7 +139,6 @@ describe("verifyWorkflow — scope reference integrity", () => {
           id: "a",
           kind: "transform",
           language: "javascript",
-          // tries to read from step `b` which comes after
           expression: "$scope.b.data.x",
         },
         { id: "b", kind: "request", method: "GET", path: "/x" },

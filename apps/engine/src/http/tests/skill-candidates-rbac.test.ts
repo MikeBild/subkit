@@ -1,23 +1,3 @@
-// RBAC gate on /v1/skill-candidates/* — the permission checks on approve/reject.
-//
-// Both were missing. `app.use` with a non-wildcard path matches that path only,
-// so registering `/v1/skill-candidates/:id` never covered `/:id/approve` and
-// `/:id/reject`: they ran on authentication alone, and a credential that could
-// only READ skills could promote a candidate into one. Passing
-// `status: "active"` additionally activated the promoted Skill, routing around
-// `skill:activate`, which `POST /v1/skills/{id}/activate` does enforce.
-//
-// Pinned here:
-//   - approve and reject require `skill:write`
-//   - approve with `status: "active"` additionally requires `skill:activate`
-//   - the controls: reading is gated, and the dedicated activate route rejects
-//     the same write-only credential — so a green suite cannot come from a
-//     broken harness
-//
-// Credential scopes are the mechanism: they are a ceiling that narrows even an
-// admin key (`rbac/evaluator.ts` step 0), so they isolate one permission
-// without needing custom roles.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -26,11 +6,8 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 
-/** Key holding only `skill:read` — may list and read candidates, nothing else. */
 let readOnlyKey = "";
-/** Key holding `skill:read` + `skill:write`, but NOT `skill:activate`. */
 let writeKey = "";
-/** Key holding neither — the control that proves the ceiling bites here. */
 let unrelatedKey = "";
 
 function sha256Hex(v: string): string {
@@ -50,7 +27,6 @@ async function mintKey(scopes: string[]): Promise<string> {
   return plaintext;
 }
 
-/** A fresh `proposed` candidate. Approve is one-shot, so every test needs its own. */
 async function seedCandidate(label: string): Promise<string> {
   const [row] = await srv.db
     .insert(skillCandidates)
@@ -111,10 +87,8 @@ describe("the finding — approve/reject on a read-only credential", () => {
       body: "{}",
     });
 
-    // A credential that may only READ skills must not be able to promote one.
     expect(res.status).toBe(403);
 
-    // …and nothing may have been promoted.
     const [after] = await srv.db.select().from(skillCandidates).where(eq(skillCandidates.id, id));
     expect(after?.status).toBe("proposed");
     expect(after?.promoted_skill_id).toBeNull();
@@ -136,8 +110,6 @@ describe("the finding — approve/reject on a read-only credential", () => {
 
 describe("the escalation — approve with status:active vs. the skill:activate gate", () => {
   test("the dedicated activate route DOES require skill:activate", async () => {
-    // Establishes the baseline the other test is measured against: a write
-    // credential cannot activate a skill through the route built for it.
     const [skill] = await srv.db
       .insert(skills)
       .values({
@@ -166,11 +138,8 @@ describe("the escalation — approve with status:active vs. the skill:activate g
       body: JSON.stringify({ status: "active" }),
     });
 
-    // Refused: the same credential is rejected by the dedicated activate route
-    // above, so it must be rejected here too.
     expect(res.status).toBe(403);
 
-    // The candidate stays untouched — no half-applied promotion.
     const [after] = await srv.db.select().from(skillCandidates).where(eq(skillCandidates.id, id));
     expect(after?.status).toBe("proposed");
     expect(after?.promoted_skill_id).toBeNull();

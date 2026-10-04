@@ -1,23 +1,6 @@
-// Tiny in-memory cache with TTL and LRU eviction. Used by docs and
-// knowledge search to amortise repeated FTS lookups within a
-// conversation turn. Not exported beyond the engine — there is no
-// distributed coherence story (one process per replica).
-//
-// LRU is approximated by re-inserting on touch: a Map preserves
-// insertion order, so the oldest key is always the first iteration
-// target when we need to evict.
-//
-// Time source is `Date.now()`; tests can override via the optional
-// `now` constructor argument. Each cached value carries an `expires_at`
-// computed at set-time, so a clock bump inside Date.now() during reads
-// is harmless — entries either remain valid or are dropped lazily.
-
 export interface TtlCacheOptions {
-  /** Hard size cap; oldest entry is evicted when exceeded. */
   maxEntries: number;
-  /** Time-to-live in milliseconds. */
   ttlMs: number;
-  /** Optional injectable clock — defaults to `Date.now`. */
   now?: () => number;
 }
 
@@ -51,7 +34,6 @@ export class TtlCache<V> {
       this.missCount += 1;
       return undefined;
     }
-    // Refresh recency by reinserting.
     this.store.delete(key);
     this.store.set(key, entry);
     this.hitCount += 1;
@@ -67,11 +49,6 @@ export class TtlCache<V> {
     }
   }
 
-  /**
-   * Remove every entry whose key starts with the given prefix. Used by
-   * ingest pipelines to drop stale cache entries for a connector or
-   * tenant after writing new chunks.
-   */
   invalidatePrefix(prefix: string): number {
     let removed = 0;
     for (const key of this.store.keys()) {
@@ -87,7 +64,6 @@ export class TtlCache<V> {
     this.store.clear();
   }
 
-  /** Snapshot counters; useful for observability and tests. */
   stats(): { hits: number; misses: number; size: number } {
     return { hits: this.hitCount, misses: this.missCount, size: this.store.size };
   }

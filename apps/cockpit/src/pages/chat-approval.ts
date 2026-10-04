@@ -11,8 +11,6 @@ export interface ChatApproval {
   singleRun?: boolean;
   workflowName?: string;
   authorizationUrl?: string;
-  /** An external MCP tool approval: phrased from these names, not the
-   *  engine's English question. */
   externalTool?: { connector: string; tool: string; server_claim?: string };
 }
 
@@ -22,7 +20,6 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-/** Bind the human decision to the exact pending elicitation and its originating call. */
 export function chatApproval(detail: ConversationDetail | undefined): ChatApproval | null {
   const pending = detail?.resume_summary?.pending_approval;
   if (pending?.tool_name !== "ask_user_confirm" || !pending.tool_call_id) return null;
@@ -40,8 +37,6 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
     id: pending.id,
     toolCallId: call.id,
     question: input.question,
-    // The server's claim is shown attributed, never as the decision's own
-    // details; the intent's description is only the engine's English line.
     description:
       !externalTool && typeof intent.description === "string" ? intent.description : null,
     ...(externalTool ? { externalTool } : {}),

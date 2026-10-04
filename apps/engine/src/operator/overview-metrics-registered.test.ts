@@ -1,16 +1,3 @@
-// Every figure the overview can export is a metric the registry knows.
-//
-// The repair tile changed identity — from repairs waiting for review to the
-// share of decided repairs that were applied — and its Prometheus name changed
-// with it. The registry kept the old name. From then on every overview write
-// logged "attempt to write to an unregistered metric" and the figure never
-// reached a scrape: 121 warnings in the first hour on production, for weeks.
-// Two lists had to agree and nothing held them together.
-//
-// This builds a real overview and checks every name in it — core tiles and
-// every section metric, with or without a value today — against what the
-// registry renders.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";

@@ -1,16 +1,3 @@
-// A successful `call_connector` closes the re-auth state machine's clearing edge.
-//
-// `connectors/reauth.ts` documents the machine as
-//   healthy ──auth failure──▶ needs_reauth=true
-//   needs_reauth=true ──successful authed call──▶ healthy
-// A request step and a probe each walk the second edge. A direct call reaches
-// the remote through neither, so an operator who called a flagged connector,
-// got a 200 with the stored credential and saw real data still read "must be
-// reconnected" on it — the call had proved the opposite and nothing said so.
-//
-// These tests pin the edge and its guards: a rejected call proves nothing, and
-// neither does a call on a connector that sends no credential.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
@@ -30,7 +17,6 @@ import { type CallConnectorRequest, callConnector } from "./call-connector.ts";
 let ctx: TestDb;
 let tenantId: string;
 let mock: MockServer;
-/** Flipped per test so one fixture can answer healthy or reject the credential. */
 let upstreamStatus = 200;
 
 beforeAll(async () => {
@@ -51,7 +37,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A flagged bearer connector with a real stored credential. */
 async function seedFlaggedConnector(name: string): Promise<string> {
   const created = await createConnector(
     {
@@ -123,7 +108,6 @@ describe("callConnector — re-auth clearing edge", () => {
     upstreamStatus = 401;
     const connector_id = await seedFlaggedConnector("call-keeps-on-401");
     const result = await call(connector_id);
-    // The call completed at the transport layer; the envelope carries the 401.
     expect(result.kind).toBe("ok");
     expect(await readFlag(connector_id)).toBe(true);
   });
@@ -191,15 +175,12 @@ describe("callProvedCredentialLive", () => {
   test("a 2xx on a flagged, authenticating connector is proof", () => {
     expect(callProvedCredentialLive(flagged, outcome())).toBe(true);
     expect(callProvedCredentialLive(flagged, outcome({ status: 204 }))).toBe(true);
-    // A deprecation notice rides on a response that did succeed.
     expect(callProvedCredentialLive(flagged, outcome({ health: "deprecated" }))).toBe(true);
     expect(callProvedCredentialLive(flagged, outcome({ body: { data: { ok: true } } }))).toBe(true);
   });
 
   test("a 200 that only looks like success is not", () => {
-    // An anonymous 200 is the remote serving a caller it did not recognise.
     expect(callProvedCredentialLive(flagged, outcome({ health: "auth_failed" }))).toBe(false);
-    // A GraphQL endpoint says "unauthenticated" in a 200.
     expect(
       callProvedCredentialLive(
         flagged,

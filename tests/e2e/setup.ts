@@ -1,42 +1,3 @@
-// E2E test harness for the sk CLI binary.
-//
-// Boots a real engine (Hono + pg-boss) against a disposable Postgres
-// database, seeds three personas (admin, member, enduser), and provides
-// a `cli()` helper that invokes the compiled sk binary as a subprocess
-// with per-persona config directories.
-//
-// HOW TO RUN THESE TESTS
-//
-//   bun run test:e2e          # the ONLY supported command
-//
-// It builds `sk` and then runs `scripts/test-e2e-isolated.ts`, which
-// spawns ONE `bun test` process PER FILE. CI runs that same script.
-//
-//   bun test tests/e2e/       # NOT supported — do not use
-//
-// That form loads every e2e file into a SINGLE process. Each suite boots
-// a real engine and mutates process-global state (config leaves, env
-// vars, the LLM provider, pg-boss workers, listening servers); the
-// harness gives back what it can, but suites still contend for one
-// process, and roughly half of those runs fail on interference that has
-// nothing to do with the code under test. To run a single file, name it:
-// `bun test tests/e2e/<file>.e2e.test.ts` — one file is one process, so
-// that is fine.
-//
-// Usage:
-//   import { boot, shutdown, cli, Persona } from "./setup.ts";
-//
-//   let env: Awaited<ReturnType<typeof boot>>;
-//   beforeAll(async () => { env = await boot("my-suite"); }, 60_000);
-//   afterAll(() => shutdown(env));
-//
-// Best practices applied:
-//   - Full isolation: disposable Postgres DB per suite, temp config dirs
-//   - No shared mutable state between tests (personas are read-only)
-//   - Subprocess CLI invocation (tests the compiled binary, not imports)
-//   - Deterministic teardown: server, boss, DB, temp dirs all cleaned up
-//   - Extensible: add a persona by pushing to PERSONA_DEFS
-
 import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -65,28 +26,17 @@ import {
   setObjectStoreForTesting,
 } from "../../apps/engine/src/storage/object-store.ts";
 
-// v3.5: route handlers and conversation services read getConfig() at
-// request time, which throws if loadConfig() never ran. The e2e
-// harness boots a real Hono app via createApp(), so we must
-// bootstrap the loader before any route can be hit. Idempotent
-// across suites.
 async function ensureEngineConfigLoaded(): Promise<void> {
   try {
     getEngineConfig();
     return;
-  } catch {
-    // not yet loaded — fall through.
-  }
+  } catch {}
   const dir = mkdtempSync(path.join(tmpdir(), "sk-cfg-e2e-"));
   await loadEngineConfig({
     env: { DATABASE_URL: "postgres://placeholder/e2e", NODE_ENV: "test" },
     configPathOverride: path.join(dir, "subkit.config.json"),
   });
 }
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export type PersonaName = "admin" | "member" | "enduser";
 
@@ -96,7 +46,6 @@ export interface Persona {
   userId: string;
   systemAccountId: string;
   tenantId: string;
-  /** Temp dir used as $HOME for this persona's CLI config. */
   homeDir: string;
 }
 
@@ -112,32 +61,11 @@ export interface E2EEnv {
   cleanup: () => Promise<void>;
 }
 
-/** Two tracks: real (default, gateway or direct provider) or mock. */
 export interface BootOpts {
-  /** Pin the in-process mock LLM. Default: real provider from .env. */
   llm?: "mock";
-  /**
-   * Let connector discovery launch a real Chromium and navigate to the
-   * live target. The mock track disables it by default (see
-   * `disableBrowserDiscovery`); set this when the browser crawl is the
-   * behaviour under test.
-   */
   browser_discovery?: true;
 }
 
-/**
- * Make the mock track hermetic by declaring playwright unloadable.
- *
- * `llm: "mock"` reads as a promise that the suite reaches nothing, but
- * the `playwright-crawl` discovery strategy is the tail of the strategy
- * chain and claims any URL — so any mock suite that discovered a
- * connector launched Chromium and navigated to the live target, at
- * roughly four seconds a call. A provider that rejects makes `canHandle`
- * resolve false, so the dispatcher records a clean `strategy_skipped` —
- * the same path a host without playwright installed already takes —
- * instead of launching a browser and fetching a third party.
- * Authority: `tests/e2e/harness-isolation.e2e.test.ts`.
- */
 function disableBrowserDiscovery(): void {
   setChromiumProviderForTesting(() =>
     Promise.reject(new Error("browser discovery is disabled on the hermetic e2e mock track")),
@@ -172,28 +100,14 @@ async function bestEffortTeardown(
 ): Promise<void> {
   try {
     await withTeardownTimeout(label, action(), timeoutMs);
-  } catch {
-    /* cleanup must not mask the suite result; orphan DB sweep handles leftovers */
-  }
+  } catch {}
 }
 
-/** Minimal shape of the sockets we have to be able to destroy. */
 interface TrackedSocket {
   destroy: () => void;
   on: (event: "close", listener: () => void) => void;
 }
 
-/**
- * Remember every accepted connection so teardown can destroy it.
- *
- * `Server.close()` stops accepting and calls back only once every open
- * connection has ended, and `closeAllConnections()` does not end a
- * connection whose response is still streaming — so a suite that leaves an
- * SSE stream open (`sk --p`, `/v1/events`) burned the whole teardown budget
- * and left a live server registered for the rest of the test process.
- * Authority for both halves of that claim:
- * `tests/e2e/harness-isolation.e2e.test.ts`.
- */
 export function trackConnections(server: ServerType): Set<TrackedSocket> {
   const sockets = new Set<TrackedSocket>();
   (server as unknown as { on: (e: "connection", l: (s: TrackedSocket) => void) => void }).on(
@@ -232,9 +146,7 @@ export async function closeHttpServer(
           for (const socket of [...sockets]) {
             try {
               socket.destroy();
-            } catch {
-              /* already gone */
-            }
+            } catch {}
           }
         } catch (err) {
           reject(err);
@@ -245,33 +157,14 @@ export async function closeHttpServer(
   );
   try {
     s.closeAllConnections?.();
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
-/**
- * The provider this run asked for, read straight from the environment.
- *
- * The engine does not read `LLM_PROVIDER` from the environment any more: the
- * config loader imports `SK_OVERRIDE_LLM_PROVIDER` into the canonical config,
- * and `readEnv` answers from there. A gate that consults only the bare name
- * therefore sees nothing under CI — which is exactly what happened. The
- * nightly set `SK_OVERRIDE_LLM_PROVIDER=anthropic`, the tier-1 suite asked
- * `process.env.LLM_PROVIDER`, found it empty, and skipped all six real-LLM
- * tests. `bun test` exits 0 on an all-skipped file, so the job printed
- * "passed on attempt 1" and the whole real-LLM tier measured nothing for as
- * long as nobody counted the tests.
- *
- * Both names live here, once, so the next rename has one place to change
- * instead of two that drift apart silently.
- */
 export function providerFromEnv(): string | undefined {
   const raw = process.env.SK_OVERRIDE_LLM_PROVIDER ?? process.env.LLM_PROVIDER;
   return raw?.toLowerCase();
 }
 
-/** Whether this run has credentials for a real (non-mock) provider. */
 export function realProviderConfigured(): boolean {
   const explicit = providerFromEnv();
   if (explicit === "mock") return false;
@@ -281,12 +174,6 @@ export function realProviderConfigured(): boolean {
 
 const DIRECT_E2E_PROVIDERS = ["anthropic", "openai", "gemini", "azure", "bedrock", "vertex"];
 
-/**
- * Real-LLM detection. Mirrors the precedence in
- * `apps/engine/src/llm/core/model-init.ts`: gateway first when both
- * gateway vars are present, otherwise the direct provider named by the
- * environment.
- */
 function detectRealProvider(): { provider: string; reason: string } {
   const explicit = providerFromEnv();
   if (explicit === "mock") {
@@ -305,10 +192,6 @@ function detectRealProvider(): { provider: string; reason: string } {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const SK_BIN = path.join(REPO_ROOT, "dist/sk");
 
@@ -321,10 +204,6 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
   const plaintext = `wf_live_${rand}`;
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
-
-// ---------------------------------------------------------------------------
-// Persona definitions
-// ---------------------------------------------------------------------------
 
 interface PersonaDef {
   name: PersonaName;
@@ -358,19 +237,12 @@ const PERSONA_DEFS: PersonaDef[] = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Boot / Shutdown
-// ---------------------------------------------------------------------------
-
 export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> {
   await ensureEngineConfigLoaded();
   const priorObjectStoreBucket = getEngineConfig().storage.object_store.bucket;
   if (!priorObjectStoreBucket) {
     await setConfigKey("storage.object_store.bucket", "test", { force: true });
   }
-  // The CLI E2E tier validates the complete file lifecycle through REST while
-  // the dedicated S3 conformance tier validates the real S3 driver. Keep this
-  // harness hermetic with the canonical in-memory ObjectStore test double.
   setObjectStoreForTesting(new MemoryObjectStore());
   if (opts.llm === "mock") {
     process.env.LLM_PROVIDER = "mock";
@@ -379,14 +251,6 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     resetMockProvider();
   } else {
     const detected = detectRealProvider();
-    // The engine resolves LLM_PROVIDER config-first (model-init readEnv)
-    // and the schema DEFAULTS `llm.provider` to "mock" — a non-empty leaf
-    // that shadows process.env. Without this write the "real LLM" track
-    // silently ran the mock provider (root cause of the nightly real-llm
-    // tier failing every night since 2026-05-05: 127ms "turns", no
-    // provider call). Gateway needs no write — its config leaves default
-    // empty (env fallback applies) and gateway resolution precedes the
-    // provider leaf.
     if (detected.provider !== "gateway") {
       await setConfigKey("llm.provider", detected.provider, { force: true });
     }
@@ -399,7 +263,6 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const testDb = await createTestDb(`e2e-${safeLabel}`);
   const rbacRoleIds = await seedBuiltinRolesAndPermissions(testDb.db);
 
-  // Tenant shared by all personas.
   const [tenant] = await testDb.db
     .insert(tenants)
     .values({ slug: `e2e-${safeLabel}`.slice(0, 32), display_name: `E2E ${label}` })
@@ -408,7 +271,6 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
 
   await backfillSystemAccountRoleIds(testDb.db, rbacRoleIds);
 
-  // Seed each persona.
   const personas = {} as Record<PersonaName, Persona>;
   for (const def of PERSONA_DEFS) {
     const homeDir = mkdtempSync(path.join(tmpdir(), `sk-e2e-${def.name}-`));
@@ -454,14 +316,9 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     };
   }
 
-  // pg-boss.
-  // Every suite owns its queue runtime. Using the module-scoped startBoss()
-  // singleton routes jobs from later suites into the first suite's disposable
-  // database, including when a developer runs selected files concurrently.
   const boss = await createBoss({ connectionString: testDb.url });
   await registerAllHandlers({ boss, db: testDb.db });
 
-  // HTTP server on random port.
   const registry = buildDefaultRegistry(testDb.db);
   const app = createApp({ db: testDb.db, registry, boss });
   const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
@@ -469,18 +326,8 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
   const baseUrl = `http://127.0.0.1:${addr.port}`;
-  // Both mutations are PROCESS-GLOBAL and `bun test` runs every file in
-  // one process: a suite that runs after an e2e boot would otherwise
-  // inherit this suite's public origin (e.g. `buildReauthUrl`'s
-  // no-public-origin branch became unreachable and its test failed
-  // full-suite-only). Capture the prior values and restore in cleanup.
   const priorPublicBaseUrlEnv = process.env.SUBKIT_PUBLIC_BASE_URL;
   process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
-  // v3.5: routes/services read public_base_url via getConfig().
-  // Capture the leaf's pre-boot value, not a constant: restoring a
-  // process-global to a guessed default is a leak of its own, and any
-  // suite in the same process that had configured an origin would find it
-  // silently blanked. Authority: `tests/e2e/harness-isolation.e2e.test.ts`.
   const priorPublicBaseUrlConfig = getEngineConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", baseUrl, { force: true });
 
@@ -494,23 +341,15 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     boss,
     testDb,
     cleanup: async () => {
-      // 0. Undo the process-global public-origin mutations so suites
-      // that run after this one see the pre-boot state.
       if (priorPublicBaseUrlEnv === undefined) delete process.env.SUBKIT_PUBLIC_BASE_URL;
       else process.env.SUBKIT_PUBLIC_BASE_URL = priorPublicBaseUrlEnv;
-      // Same reasoning for the chromium provider, which is process-global
-      // too. `null` is the production default, and no e2e suite installs a
-      // provider of its own — the discovery unit tests that do never share
-      // a process with this harness.
       if (hermeticBrowser) setChromiumProviderForTesting(null);
       await bestEffortTeardown(
         "public_base_url config restore",
         () => setConfigKey("server.public_base_url", priorPublicBaseUrlConfig, { force: true }),
         3_000,
       );
-      // 1. Close HTTP server, destroying its live connections.
       await closeHttpServer(server, sockets);
-      // 2. Stop this suite's pg-boss and close all its Postgres connections.
       await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss), 8_000);
       setObjectStoreForTesting(null);
       if (!priorObjectStoreBucket) {
@@ -521,47 +360,27 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
           3_000,
         );
       }
-      // 3. Give pg-boss connections time to fully close before dropping DB.
       // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));
-      // 4. Drop the test database.
       await bestEffortTeardown("test database cleanup", testDb.cleanup, 10_000);
-      // 5. Clean up temp directories.
       for (const p of Object.values(personas)) {
         try {
           rmSync(p.homeDir, { recursive: true, force: true });
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       }
     },
   };
 }
 
-// Tolerate an undefined env: when boot() throws in beforeAll the suite's
-// afterAll still runs with the variable unassigned — crashing here buried
-// the REAL boot error under a TypeError in the CI log.
 export const shutdown = (env: E2EEnv | undefined) => env?.cleanup() ?? Promise.resolve();
-
-// ---------------------------------------------------------------------------
-// CLI runner
-// ---------------------------------------------------------------------------
 
 export interface CliResult {
   stdout: string;
   stderr: string;
   exitCode: number;
-  /** True when the harness killed the CLI at the test timeout — the
-   *  non-zero exit is a hang, not a CLI-reported failure. */
   timed_out: boolean;
 }
 
-/**
- * Invoke the sk CLI binary as a subprocess.
- *
- * @param args   - CLI arguments (e.g. ["health", "--json"])
- * @param opts   - persona for auth + optional env overrides
- */
 export async function cli(
   args: string[],
   opts: {
@@ -577,24 +396,14 @@ export async function cli(
     cwd: REPO_ROOT,
     env: {
       ...process.env,
-      // Point CLI at the test engine.
       SUBKIT_ENGINE_URL: opts.env.baseUrl,
       SUBKIT_API_KEY: persona.apiKey,
       SUBKIT_TENANT: persona.tenantId,
-      // Override config paths so we don't pollute real config.
       HOME: persona.homeDir,
       XDG_CONFIG_HOME: persona.homeDir,
-      // Force non-interactive.
       CI: "1",
       NO_COLOR: "1",
-      // The update check hits api.github.com; the fetch has no timeout
-      // and keeps the CLI process alive past the test's 5s budget in
-      // sandboxed CI. Disable it for every e2e CLI invocation.
       NO_UPDATE_CHECK: "1",
-      // Propagate determinism knobs to the subprocess so parent and
-      // child share the same seeded RNG / clock source. Parent tests
-      // can pin these via extraEnv; otherwise we default to seed=1 for
-      // reproducible e2e runs.
       SUBKIT_DETERMINISTIC_SEED: process.env.SUBKIT_DETERMINISTIC_SEED ?? "1",
       ...opts.extraEnv,
     },
@@ -618,17 +427,14 @@ export async function cli(
   return { stdout, stderr, exitCode, timed_out: timedOut };
 }
 
-/** Write content to a temp file and return the path. Uses the persona's homeDir. */
 export function writeTempFile(persona: Persona, filename: string, content: string): string {
   const filePath = path.join(persona.homeDir, filename);
   writeFileSync(filePath, content, "utf-8");
   return filePath;
 }
 
-/** Parse JSON from CLI stdout, stripping any leading non-JSON lines. */
 export function parseJson<T = unknown>(result: CliResult): T {
   const text = result.stdout.trim();
-  // Some commands emit a status line before JSON; find the first { or [.
   const start = Math.min(
     text.indexOf("{") >= 0 ? text.indexOf("{") : Infinity,
     text.indexOf("[") >= 0 ? text.indexOf("[") : Infinity,
@@ -637,10 +443,6 @@ export function parseJson<T = unknown>(result: CliResult): T {
   return JSON.parse(text.slice(start)) as T;
 }
 
-/** Assert the CLI exited with code 0 (or throws a descriptive error).
- *  Prints the TAIL of stdout/stderr — on a hang-then-kill the evidence
- *  (last SSE frame, last debug line) is at the end, not the start —
- *  and flags a timeout kill explicitly so a flaky run self-diagnoses. */
 export function expectSuccess(result: CliResult, context?: string): void {
   if (result.exitCode !== 0) {
     const label = context ? ` (${context})` : "";
@@ -653,14 +455,12 @@ export function expectSuccess(result: CliResult, context?: string): void {
   }
 }
 
-/** Shorthand: run sk CLI, assert success, return stdout. */
 export async function run(args: string[], opts: Parameters<typeof cli>[1]): Promise<string> {
   const result = await cli(args, opts);
   expectSuccess(result, `sk ${args.join(" ")}`);
   return result.stdout;
 }
 
-/** Shorthand: run sk CLI with --json, assert success, parse JSON. */
 export async function runJson<T = unknown>(
   args: string[],
   opts: Parameters<typeof cli>[1],

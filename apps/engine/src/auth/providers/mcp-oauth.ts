@@ -1,16 +1,3 @@
-// MCP OAuth auth provider — validates Bearer wf_mcp_* tokens.
-//
-// - Parses `Authorization: Bearer wf_mcp_<rand>` headers
-// - Rejects non-wf_mcp_ prefixes fast (return null — other providers handle them)
-// - Looks up mcp_oauth_access_tokens row by prefix
-// - Constant-time sha256 comparison
-// - Validates revoked_at / expires_at
-// - Applies the shared liveness rule: a withdrawn person and a revoked
-//   client registration both stop authenticating on the next use
-// - Throttled last_used_at flush (once per 60s per token)
-// - Sampled audit on flush window
-// - Builds a ResolvedPrincipal with tenant + roles + scopes from the token
-
 import { and, eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -33,21 +20,12 @@ import {
 } from "../oauth/tokens.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
-/**
- * RFC 8707 canonical form of a resource indicator URI.
- * Lowercases scheme+authority (the URL spec already does this on parse)
- * and normalises the path to exactly one trailing slash.
- * Pure function — no I/O — safe to target directly from unit tests.
- */
 export function canonicalizeResourceUri(raw: string): string {
   try {
     const u = new URL(raw);
-    // URL spec normalises scheme+host to lowercase on parse.
-    // Pin exactly one trailing slash on the path component.
     const path = `${u.pathname.replace(/\/+$/, "")}/`;
     return `${u.protocol}//${u.host}${path}${u.search}${u.hash}`;
   } catch {
-    // Not a parseable absolute URL — lowercase and trim as best-effort.
     return raw.trim().toLowerCase();
   }
 }
@@ -61,7 +39,6 @@ function extractMcpToken(req: Request): string | null {
   if (auth.length <= 7) return null;
   if (auth.slice(0, 7).toLowerCase() !== "bearer ") return null;
   const token = auth.slice(7).trim();
-  // Fast prefix reject — let other providers handle their own prefixes
   if (!token.startsWith(ACCESS_TOKEN_PREFIX_LITERAL)) return null;
   return token;
 }
@@ -78,9 +55,6 @@ async function maybeFlushLastUsed(
   if (now - last < FLUSH_INTERVAL_MS) return;
   lastFlush.set(tokenId, now);
 
-  // Awaited (not fire-and-forget): the throttle caps this to once per
-  // 60s per token, so blocking resolve() on one indexed UPDATE costs
-  // effectively nothing and keeps the flush deterministically testable.
   await db
     .update(mcpOauthAccessTokens)
     .set({ last_used_at: new Date(now) })
@@ -104,7 +78,6 @@ async function maybeFlushLastUsed(
       resource_type: "mcp_oauth_token",
       resource_id: tokenId,
       result: "success",
-      // The flush fires from the /mcp resource-server request path.
       metadata: {
         request_source: "mcp",
         prefix,
@@ -192,21 +165,10 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         return null;
       }
 
-      // ── RFC 8707 resource (audience) validation ────────────────────────
-      // Every accepted token must name this protected resource. A missing or
-      // different value means the token cannot be proven to have been issued
-      // for this server and is rejected; there is no compatibility path for
-      // audience-less tokens.
-      //
-      // Skip the check entirely when `server.public_base_url` is empty or
-      // when config has not yet been initialised (test environment, startup
-      // timing) — a non-fatal config gap must never hard-block all tokens.
       let baseUrl: string | undefined;
       try {
         baseUrl = getConfig().server.public_base_url || undefined;
-      } catch {
-        // ConfigLoaderError: loadConfig() not yet called — skip check.
-      }
+      } catch {}
       if (baseUrl) {
         const expected = canonicalizeResourceUri(`${baseUrl}/mcp`);
         if (row.resource === null) {
@@ -220,10 +182,6 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         }
       }
 
-      // Resolve user roles. The token row's tenant_id is the trusted
-      // binding — require the user record to still belong to that tenant
-      // (defence in depth: denies a token whose user was moved or
-      // recreated under a different tenant since the token was issued).
       const userRows = await db
         .select({
           email: users.email,
@@ -237,10 +195,6 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         .where(and(eq(users.id, row.user_id), eq(users.tenant_id, row.tenant_id)))
         .limit(1);
       const u = userRows[0];
-      // The same rule the api-key and OIDC resolvers apply: a soft-deleted
-      // or disabled person authenticates nowhere, an OAuth connection
-      // included. Until tranche E this join filtered on id + tenant alone,
-      // so a deactivated user's token kept working until it expired.
       const userRefusal = userLivenessRefusal(u);
       if (!u || userRefusal) {
         if (userRefusal && userRefusal !== "user_missing") recordAuthFailure(ip);
@@ -252,10 +206,6 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         return null;
       }
 
-      // A revoked client registration ends its connections too. Disabling a
-      // client through the admin route revokes the outstanding tokens, but
-      // the check belongs here as well so the access path and the refresh
-      // path refuse for the same set of reasons (tranche E, rule 3).
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const clientRows = await db
         .select({

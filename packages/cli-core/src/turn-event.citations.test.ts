@@ -1,7 +1,3 @@
-// Reducer coverage for the terminal `citations` frame — it attaches source
-// refs to the anchored assistant message (or the last one), and never
-// fabricates a row when there is nothing to anchor to.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, type Citation, initialSessionState } from "./turn-event.ts";
 

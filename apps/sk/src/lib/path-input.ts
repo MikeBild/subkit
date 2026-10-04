@@ -1,28 +1,3 @@
-// Path-input sanitizer for sk surfaces that take a filesystem path
-// (`/knowledge`, file-paste auto-upload, and file-oriented CLI commands).
-//
-// Copy-paste from browsers, Markdown renderers, terminal autocomplete,
-// or chat clients regularly drags along invisible Unicode that turns a
-// visually-correct path into one `fs.existsSync` rejects. The most
-// common offenders:
-//
-//   U+00A0   NBSP            — pasted from Slack/Markdown rendering
-//   U+200B   ZWSP            — pasted from Notion/Confluence
-//   U+200C   ZWNJ
-//   U+200D   ZWJ
-//   U+200E   LRM
-//   U+200F   RLM
-//   U+FEFF   BOM / ZWNBSP    — Excel/CSV exports
-//
-// `sanitizePathInput` strips the zero-width set and normalises NBSP to
-// a regular space so paths with embedded spaces still work. Anything
-// left after that is the user's intent.
-//
-// `renderSuspiciousCodepoints` returns a diagnostic suffix listing
-// remaining invisible codepoints, so when sanitization isn't enough the
-// "not found" error can tell the user exactly what's lurking in their
-// path instead of looking identical to a clean one.
-
 const INVISIBLE_STRIP = /[\u200B-\u200F\uFEFF]/g;
 const NBSP = /\u00A0/g;
 const SUSPICIOUS = /[\u00A0\u200B-\u200F\uFEFF]/;

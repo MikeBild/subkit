@@ -1,10 +1,3 @@
-// Integration test for /v1/diagnostics/drift.
-//
-// Drives a real engine, plants synthetic rows in
-// `subkit.__drizzle_migrations`, and confirms the route surfaces them
-// to operator clients. Without this surface, drift is invisible until
-// a downstream subsystem fails.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
@@ -77,8 +70,6 @@ describe("/v1/diagnostics/drift", () => {
     expect(body.historical_in_db).toEqual([]);
     expect(body.missing_in_db).toEqual([]);
 
-    // R2-W3: assert the audit row landed in audit_log. With auditAwait
-    // on the route, this is durable before the response was returned.
     const rows = await srv.db
       .select()
       .from(auditLog)

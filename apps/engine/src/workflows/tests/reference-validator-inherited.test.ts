@@ -55,10 +55,6 @@ test("renaming the step, or editing its expression while keeping the read, stays
 
 test("removing a step others still name is introduced by the removal", () => {
   const baseline = dangling(base());
-  // An UNGUARDED reader is what makes a removal an error. The reader that
-  // tests for the step first has already said the step may be absent, so its
-  // removal takes the branch that reader wrote for exactly this case — see
-  // reference-validator-guarded.test.ts.
   const withReader = [
     ...base(),
     { id: "reader", kind: "transform", expression: "return input.scope.rollup_window.data;" },
@@ -67,7 +63,6 @@ test("removing a step others still name is introduced by the removal", () => {
   const split = partitionStepReferences(dangling(removed), dangling(withReader));
   expect(split.introduced.map((e) => e.bad_reference)).toContain("rollup_window");
   expect(split.introduced.map((e) => e.step_id)).toEqual(["reader"]);
-  // With only the guarded reader left, the removal blocks nothing new.
   const guardedOnly = base().filter((s) => s.id !== "rollup_window");
   expect(partitionStepReferences(dangling(guardedOnly), baseline).introduced).toEqual([]);
 });
@@ -78,10 +73,6 @@ test("with nothing to inherit from, every dangling reference is introduced", () 
   expect(split.introduced.map((e) => e.bad_reference)).toEqual(["window"]);
 });
 
-// A JavaScript selector is not a placeholder site. The linter already holds out
-// `transform.expression` for this reason; the generic per-step walk put the bug
-// back for `for_each`, and its suggestion (`${scope.sourceData…}`) would have
-// broken a selector that runs in production.
 test("a template literal in a for_each or data_selector is not an unsupported placeholder", () => {
   const withSelectors = def([
     {
@@ -95,7 +86,6 @@ test("a template literal in a for_each or data_selector is not an unsupported pl
     },
   ]);
   expect(validateUnsupportedPlaceholders(withSelectors)).toEqual([]);
-  // A placeholder in a field the runtime DOES substitute is still reported.
   const withBadBody = def([
     {
       id: "ingest",

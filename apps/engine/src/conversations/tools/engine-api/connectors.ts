@@ -1,5 +1,3 @@
-// Connector read tools.
-
 import { z } from "@hono/zod-openapi";
 import { categoryOfConnector } from "../../../connectors/categorize.ts";
 import { toPublicConnector } from "../../../connectors/public-view.ts";
@@ -31,15 +29,8 @@ export const listConnectorsTool: ConversationTool = {
   ],
   inputSchema: ListInput,
   category: "tenant_read",
-  // Symmetric with the typed fast-path (`connector:read`) and the HTTP
-  // route: the engineClient query is tenant-scoped only, so without this
-  // a principal lacking connector:read would see the connector inventory
-  // on the LLM-mediated chat/MCP path.
   permission: { action: "connector:read", resourceType: "connector" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    // Connectors are a bounded catalog: the call returns the COMPLETE
-    // tenant set, and the envelope is self-describing so the model can
-    // never mistake a page for the universe.
     const { rows, total } = await ctx.engineClient.connectors.list(
       args.category !== undefined ? { category: args.category } : {},
     );
@@ -53,8 +44,6 @@ export const listConnectorsTool: ConversationTool = {
           driver: c.driver,
           category: categoryOfConnector(c),
           environment: c.environment,
-          // Re-auth health so the LLM can spot broken connectors at a glance
-          // and reach for request_connector_reauth.
           needs_reauth: c.needs_reauth,
           auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
         })),
@@ -85,10 +74,6 @@ export const getConnectorTool: ConversationTool = {
   async execute(ctx, args: z.infer<typeof GetInput>) {
     const c = await ctx.engineClient.connectors.get(args.id);
     if (!c) return { ok: false, data: { error: "connector_not_found" } };
-    // Tell the LLM exactly which `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`,
-    // and `${connector.<slug>.config.<path>}` tokens are available. Without this, the LLM
-    // would have to guess credential field names from context, which is the #1 source of
-    // broken workflows and inlined secrets.
     const placeholders = await ctx.engineClient.connectors.describePlaceholders(
       c.slug,
       c.environment as "dev" | "prod",
@@ -97,13 +82,7 @@ export const getConnectorTool: ConversationTool = {
       ok: true,
       data: {
         connector: {
-          // The public projection, never the view: the view carries the OAuth
-          // client secret and the connection-string password for the server's
-          // own use, and a tool result is read by the model and its client.
           ...toPublicConnector(c),
-          // Re-auth health surfaced explicitly with an ISO timestamp so the
-          // LLM can flag a dead credential and reach for
-          // request_connector_reauth instead of reporting empty results.
           needs_reauth: c.needs_reauth,
           auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
         },

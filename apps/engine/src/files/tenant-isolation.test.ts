@@ -1,9 +1,3 @@
-// Tenant isolation integration tests for the files resource.
-//
-// Verifies that tenant A's files are invisible to tenant B across
-// three access paths: HTTP GET metadata, HTTP POST /links, and
-// MCP read_resource. Real Postgres + config loaded.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import type {
@@ -23,9 +17,6 @@ import {
 } from "../test-helpers/determinism/ids.ts";
 import { attachInlineForTest } from "./test-helpers.ts";
 
-// Deterministic id sources: seeded per-test so plays back identically.
-// createHttpTestServer / createTestDb provision a fresh DB per run, so
-// per-call uniqueness within the test is sufficient.
 const uuid = createDeterministicUuidFactory(0x1501a7);
 const nextHex = createDeterministicHexFactory(0x150bbb);
 
@@ -63,13 +54,12 @@ function handlerFor(stub: StubServer, method: string) {
 let srv: HttpTestServer;
 let tenantBId: string;
 let tenantBKey: string;
-let fidA: string; // wire fid_<uuid>
-let fidAUuid: string; // raw UUID
+let fidA: string;
+let fidAUuid: string;
 
 beforeAll(async () => {
   srv = await createHttpTestServer("files-tenant-iso");
 
-  // Seed tenant B
   const [tB] = await srv.db
     .insert(tenants)
     .values({ slug: "iso-b", display_name: "Iso B" })
@@ -86,8 +76,6 @@ beforeAll(async () => {
     })
     .returning();
   if (!uB) throw new Error("seed user B");
-  // Deterministic 24 bytes encoded base64url, then sliced like the
-  // original randomBytes(24).toString("base64url").slice(0, 32) call.
   const rand = Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32);
   const pt = `wf_live_${rand}`;
   await srv.db.insert(apiKeys).values({
@@ -99,7 +87,6 @@ beforeAll(async () => {
   });
   tenantBKey = pt;
 
-  // Seed a conversation + file for tenant A
   const [conv] = await srv.db
     .insert(conversations)
     .values({ tenant_id: srv.tenantId, status: "active" })

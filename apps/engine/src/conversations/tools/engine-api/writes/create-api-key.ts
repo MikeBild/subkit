@@ -1,23 +1,6 @@
-// create_api_key — mints a new API key for the calling actor (or
-// another principal when the caller is admin) and returns the
-// plaintext token exactly once together with a paste-ready MCP JSON
-// config block.
-//
-// Closes the "how do I connect an MCP client to sk?" path: instead of
-// suggesting a CLI command and a half-key placeholder, the assistant
-// calls this tool, gets a real key, and embeds it inside a config that
-// uses the runtime engine_url.
-//
-// Permission: api_key:write. When the caller is a non-admin user the
-// owner is forced to themselves; admins may target any tenant member
-// or system account.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
-/** Exported so the ONE direct caller outside the dispatcher — the
- *  `create_api_key` commit-intent in `persistence/auto-persist.ts` — parses the
- *  LLM-authored payload at its own boundary. `execute` never parses. */
 export const CreateApiKeyInput = z
   .object({
     name: z
@@ -81,9 +64,6 @@ export const createApiKeyTool: ConversationTool = {
     scopes: ["workflow:read", "workflow:invoke"],
   },
   async execute(ctx, args: z.infer<typeof CreateApiKeyInput>): Promise<ToolResult> {
-    // Resolve the owner: explicit override only when the caller is admin.
-    // EngineClient.context carries actor_id + actor_type; when the
-    // calling actor is missing (system-driven flows) the tool refuses.
     const callerId = ctx.engineClient.context.actor_id;
     const callerKind = ctx.engineClient.context.actor_type;
     if (!callerId) {
@@ -137,10 +117,6 @@ export const createApiKeyTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        // Surface the full plaintext key EXACTLY ONCE under a stable
-        // field name the assistant can quote verbatim. The caller's
-        // chat surface should render it inside a CopyableBlock so the
-        // operator can copy it without it landing in transcript history.
         plaintext_key: issued.plaintext,
         api_key: {
           id: issued.view.id,

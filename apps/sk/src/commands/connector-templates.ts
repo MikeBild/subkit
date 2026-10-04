@@ -31,12 +31,6 @@ const listCommand = defineCommand({
   },
 });
 
-/**
- * Pure ranking helper — fuzzy-match a query against the template
- * catalog. Client-side on purpose: the catalog is ~90 rows, one fetch,
- * and fuse gives "hub" → hubspot/github-style matching the exact
- * `?slug=` filter on the list route can't.
- */
 export function rankTemplates(
   items: Record<string, unknown>[],
   query: string,
@@ -197,12 +191,6 @@ const deleteCommand = defineCommand({
   },
 });
 
-// Recipe browse subcommands. Mirror the conversation
-// tools (`start_workflow_from_recipe`, `inspect_recipe`) and the MCP
-// tools (`list_recipes`, `inspect_recipe`) so the CLI is the third
-// equivalent surface per the chat-CLI parity rule in
-// `apps/sk/AGENTS.md`.
-
 const recipesListCommand = defineCommand({
   meta: { name: "recipes", description: "List recipes shipped with a connector template" },
   args: {
@@ -250,7 +238,6 @@ const recipeShowCommand = defineCommand({
         printJson(data);
         return;
       }
-      // Pretty: header + key fields + step summary line count.
       const r = data as Record<string, unknown>;
       const wf =
         (r.workflow as {
@@ -276,12 +263,6 @@ const recipeShowCommand = defineCommand({
         for (const p of prereqs) process.stdout.write(`    - ${p}\n`);
       }
       process.stdout.write(`  step_count:   ${stepCount}\n`);
-      // Trigger block — surfaces the workflow's `trigger:` discriminator
-      // so the operator sees how an execution gets initiated for the
-      // cloned workflow without having to read the raw DAG. Recipes
-      // without a trigger block (or with the implicit
-      // `kind: "request"`) print "request (on-demand)" so the line is
-      // never silently absent.
       const trigger = wf.trigger ?? null;
       if (trigger && typeof trigger === "object") {
         const kind = String((trigger as Record<string, unknown>).kind ?? "request");

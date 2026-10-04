@@ -1,15 +1,3 @@
-// Post-execution optimisation analyzer for the web-scraper connector.
-//
-// Pure functions that classify recent runs of a web-scraper workflow
-// and emit optimization-candidate proposals. The pg-boss scheduler
-// invocation lives in `queue/handlers/optimization-scan.ts` (follow-up);
-// the analyzer itself is pure so it can be unit-tested and called
-// from the chat surface ("show me optimisations for my scrapers")
-// without booting a worker.
-//
-// Tunables (`config.connectors.web_scraper.optimization.*` — tenant-
-// scoped where it makes sense): see `config/schema.ts`.
-
 export type OptimizationKind =
   | "narrow_path_prefix"
   | "raise_max_chars"
@@ -24,32 +12,20 @@ export interface OptimizationCandidate {
   classification: "safe" | "unsafe";
 }
 
-/** Compact view of a single recent run the analyzer needs. */
 export interface AnalyzerRunSample {
-  /** Number of pages the run produced (loop iterations). */
   pages_total: number;
-  /** Pages whose MarkdownOutput.bytes < trivial_markdown_bytes. */
   pages_trivial: number;
-  /** Pages that failed with error_code === "extract_too_large". */
   pages_extract_too_large: number;
-  /** Mean wait between pages, milliseconds. */
   mean_wait_ms: number;
-  /** Number of HTTP 429 (rate-limited) responses on this run. */
   rate_limit_hits: number;
 }
 
 export interface AnalyzerConfig {
   trivial_markdown_bytes: number;
   min_runs_before_proposing: number;
-  /** Mostly relevant when the recipe is `crawl-sitemap-to-markdown`;
-   *  governs `prefer_llms_txt` proposals. */
   llms_txt_available: boolean;
 }
 
-/**
- * Score the last N runs of one workflow → recipe pair and return a list
- * of optimisation candidates (zero or more). Pure: no DB, no clock.
- */
 export function analyzeRuns(
   runs: readonly AnalyzerRunSample[],
   config: AnalyzerConfig,

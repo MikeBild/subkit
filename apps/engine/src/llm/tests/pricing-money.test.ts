@@ -1,16 +1,3 @@
-// Money from tokens, and an honest account of what could not be priced.
-//
-// The engine measures tokens and has never known a price: `llm_usage` has no
-// monetary column and `pricing.ts` held cache weights, not money. So "what
-// does this automation cost" had no answer anywhere in the product.
-//
-// Rates are applied when a figure is read rather than stored on the ledger, so
-// a corrected price corrects every past answer instead of leaving history
-// quoted at a rate nobody uses any more.
-//
-// Every assertion below is about the same failure: an amount that quietly
-// leaves calls out looks complete, and a model nobody priced is not free.
-
 import { describe, expect, test } from "bun:test";
 import { type PricedTokens, priceCalls, type SourcedModelPrice } from "../pricing.ts";
 
@@ -39,13 +26,10 @@ describe("pricing a set of calls", () => {
       [SONNET],
       "USD",
     );
-    expect(result.amount).toBeCloseTo(18, 6); // 3 in + 15 out
+    expect(result.amount).toBeCloseTo(18, 6);
   });
 
   test("does not charge cached tokens at the input rate", () => {
-    // The provider's `prompt_tokens` INCLUDES cache reads and writes. Charging
-    // the whole prompt at the input rate would bill a cached turn as if it had
-    // never been cached — the single most expensive misreading in this data.
     const result = priceCalls(
       [call({ prompt_tokens: 1_000_000, cache_read_tokens: 1_000_000 })],
       [SONNET],
@@ -64,8 +48,6 @@ describe("pricing a set of calls", () => {
   });
 
   test("an unpriced model is named, not counted as free", () => {
-    // The whole point. A model absent from the table contributes to
-    // `unpriced_*` and nothing to `amount`.
     const result = priceCalls(
       [call(), call({ model: "some-new-model" }), call({ model: "some-new-model" })],
       [SONNET],
@@ -77,9 +59,6 @@ describe("pricing a set of calls", () => {
   });
 
   test("with no rates at all the amount is zero AND every call is declared unpriced", () => {
-    // Zero here is only safe because `unpriced_calls` says the zero covers
-    // nothing. A surface that shows the amount without that number would be
-    // telling an operator their month was free.
     const result = priceCalls([call(), call()], [], "USD");
     expect(result.amount).toBe(0);
     expect(result.unpriced_calls).toBe(2);
@@ -87,15 +66,11 @@ describe("pricing a set of calls", () => {
   });
 
   test("names the basis it computed on", () => {
-    // Rates are read-time, so a figure is not a historical invoice and must
-    // never be read as one.
     expect(priceCalls([], [], "EUR").rates_basis).toBe("current");
     expect(priceCalls([], [], "EUR").currency).toBe("EUR");
   });
 
   test("keeps small real amounts instead of rounding them to nothing", () => {
-    // Prices run to four decimals per million tokens. Rounding to cents would
-    // report a real cost as zero.
     const result = priceCalls([call({ prompt_tokens: 1_000 })], [SONNET], "USD");
     expect(result.amount).toBeGreaterThan(0);
     expect(result.amount).toBeCloseTo(0.003, 6);
@@ -113,9 +88,6 @@ describe("pricing a set of calls", () => {
 
 describe("aggregated rows", () => {
   test("an unpriced row stands for every call it covers, not for one", () => {
-    // Callers group in SQL and hand this one row per model. Counting that row
-    // as a single call would tell an operator two models were unpriced when
-    // it was two thousand calls.
     const result = priceCalls([call({ model: "unknown-model", calls: 2_000 })], [SONNET], "USD");
     expect(result.unpriced_calls).toBe(2_000);
   });

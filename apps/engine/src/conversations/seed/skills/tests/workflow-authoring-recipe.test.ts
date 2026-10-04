@@ -1,9 +1,3 @@
-// Skill discipline — the workflow-authoring skill
-// must encode the root-cause-only patterns
-// (mandatory preflight Build Recipe, 5-failure cap, requires_repair
-// gating, inspect-before-patching). Drift on any of these brings back
-// the trial-and-error patch loops the contract is designed to prevent.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,13 +18,6 @@ describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
   });
 
   test("orders steps as: load_skill → list_connectors → probe → call_connector → search → author", () => {
-    // The mandatory preflight before authoring.
-    // `probe_connector` and
-    // `call_connector` capture the REAL response shape before the model
-    // reads docs (`search_docs`) or authors — grounding generation in
-    // evidence, not guesses. We anchor on canonical numbered-step markers
-    // ("1. **Load skills.**" etc.) so unrelated mentions of these tool
-    // names elsewhere in the doc do not confuse the order check.
     const start = workflowAuthoring.indexOf("## Authoring recipe (mandatory order before");
     expect(start).toBeGreaterThan(-1);
     const recipeBlock = workflowAuthoring.slice(start);
@@ -66,7 +53,6 @@ describe("workflow-authoring.md · 5-failure cap", () => {
   });
 
   test("documents that the counter resets on the first successful tool call", () => {
-    // Trimmed phrasing to fit the converse pipeline's prompt budget.
     expect(workflowAuthoring).toMatch(/counter resets on the first\s+successful tool call/);
   });
 });
@@ -83,7 +69,6 @@ describe("workflow-authoring.md · requires_repair gating (not warning count)", 
   });
 
   test("explicitly forbids fix loops triggered by warnings alone", () => {
-    // The doc wraps the line: `never propose a "fix" or\na "simpler version" because of warnings alone.`
     expect(workflowAuthoring).toMatch(
       /never propose a "fix" or\s+a "simpler version" because of warnings alone/i,
     );
@@ -93,14 +78,10 @@ describe("workflow-authoring.md · requires_repair gating (not warning count)", 
 describe("workflow-authoring.md · inspect-before-patching", () => {
   test("recommends inspect_workflow before edit_workflow_patch's third call on the same field", () => {
     expect(workflowAuthoring).toMatch(/inspect_workflow/);
-    // Trimmed phrasing — same intent.
     expect(workflowAuthoring).toMatch(/before the third `edit_workflow_patch` on the same field/i);
   });
 
   test("documents the inspect_workflow API shape (sections + per-step include)", () => {
-    // Trimmed to the canonical signature so the doc fits the converse
-    // pipeline's prompt budget — full example lives in the tool's
-    // `important_notes`, not the skill body.
     expect(workflowAuthoring).toMatch(/sections:\s*\[/);
     expect(workflowAuthoring).toMatch(/steps:\s*\[\{\s*stepId,\s*include\s*\}\]/);
   });
@@ -112,18 +93,12 @@ describe("workflow-authoring.md · uniform envelope (no transform-vs-request spl
   });
 
   test("does not contradict data-handling.md by claiming transforms emit raw output", () => {
-    // Pre-fix the doc said transforms' "raw return value IS the scope value".
-    // The runtime wraps every step in {data, status_code, ...} via
-    // engine.ts:envelopeFor. Authoring guidance has to match the runtime.
     expect(workflowAuthoring).not.toMatch(/transforms don't envelope/i);
     expect(workflowAuthoring).not.toMatch(/raw return value IS the scope value/i);
-    // data-handling.md is the canonical authority for the rule.
     expect(dataHandling).toMatch(/Always.*\$scope.<step_id>\.data/);
   });
 
   test("loop example references $scope.extract_projects.data, not $scope.extract_projects", () => {
-    // The DigitalOcean canonical example must use the enveloped path —
-    // pre-fix it used the raw form, contradicting the runtime.
     expect(workflowAuthoring).toMatch(/over": "\$scope\.extract_projects\.data/);
   });
 });

@@ -1,12 +1,3 @@
-// Unit tests for the rolled-up connector/workflow health state machine.
-//
-// Covers: setConnectorHealth (transition edge + dedup guard + notification
-// event + audit row), flagConnectorContractFailure (sunset/successor
-// propagation, storm dedup), clearConnectorHealthOnSuccess (recovers
-// degraded, does NOT clear needs_update), setWorkflowHealth (edge guard),
-// effectiveConnectorHealth (read-side precedence across the three
-// overlapping state machines).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, events, tenants, workflows } from "../db/schema/index.ts";
@@ -97,7 +88,6 @@ describe("setConnectorHealth", () => {
       .where(and(eq(auditLog.resource_id, c.id), eq(auditLog.action, "connector.health_changed")));
     expect(audits.length).toBe(1);
 
-    // Same state again — dedup guard: no transition, no second event.
     const r2 = await setConnectorHealth(db.db, c, {
       state: "degraded",
       reason: "vendor 5xx streak",
@@ -115,7 +105,6 @@ describe("setConnectorHealth", () => {
     const r = await setConnectorHealth(db.db, c, { state: "ok", reason: "recovered" });
     expect(r.transitioned).toBe(true);
     expect((await connectorRow(c.id)).health_state).toBe("ok");
-    // No notification on the recovery edge — log + audit only.
     expect((await healthChangedEvents()).length).toBe(before);
   });
 });
@@ -149,7 +138,6 @@ describe("flagConnectorContractFailure", () => {
     expect(payload.severity).toBe("error");
     expect(payload.successor_uri).toBe("https://example.test/rest/api/3/search/jql");
 
-    // Second identical flag — storm dedup.
     const r2 = await flagConnectorContractFailure(db.db, c, {
       error_code: "endpoint_removed",
       reason: "GET /rest/api/3/search returned 410 Gone",
@@ -227,11 +215,9 @@ describe("effectiveConnectorHealth", () => {
         circuit_state: "closed",
       }),
     ).toBe("needs_reauth");
-    // An open circuit rolls up as degraded even when health_state lags.
     expect(
       effectiveConnectorHealth({ health_state: "ok", needs_reauth: false, circuit_state: "open" }),
     ).toBe("degraded");
-    // ...but never demotes a stronger fault.
     expect(
       effectiveConnectorHealth({
         health_state: "needs_update",

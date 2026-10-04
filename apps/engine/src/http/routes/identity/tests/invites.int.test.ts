@@ -1,13 +1,3 @@
-// Integration coverage for the local invite-provisioning surface.
-//
-//   - admin creates a user + an invite (201, plaintext token returned once)
-//   - a member principal (no admin role) is refused user + invite creation
-//   - the invite is redeemed UNAUTHENTICATED, returns a wf_live_* key that
-//     then authenticates a follow-up request
-//   - deactivating the user revokes that key (it no longer resolves)
-//
-// Real Hono app + real Postgres via createHttpTestServer. No LLM.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { users } from "../../../../db/schema/index.ts";
@@ -22,9 +12,6 @@ let memberKey = "";
 beforeAll(async () => {
   ctx = await createHttpTestServer("invites");
 
-  // A member principal: role enum `member`, no role_id. The RBAC
-  // evaluator falls back to the built-in member role — which lacks the
-  // admin short-circuit, so admin-gated handlers refuse it.
   const [member] = await ctx.db
     .insert(users)
     .values({
@@ -55,7 +42,6 @@ function adminHeaders() {
 
 describe("admin happy path", () => {
   test("create user → create invite → redeem (no auth) → key authenticates → deactivate revokes", async () => {
-    // 1. Admin creates a fresh user.
     const createRes = await fetch(`${ctx.baseUrl}/v1/identity/users`, {
       method: "POST",
       headers: adminHeaders(),
@@ -65,7 +51,6 @@ describe("admin happy path", () => {
     const user = (await createRes.json()) as { id: string; status: string };
     expect(user.status).toBe("active");
 
-    // 2. Admin issues an invite for that user.
     const inviteRes = await fetch(`${ctx.baseUrl}/v1/identity/users/${user.id}/invites`, {
       method: "POST",
       headers: adminHeaders(),
@@ -75,7 +60,6 @@ describe("admin happy path", () => {
     const invite = (await inviteRes.json()) as { id: string; plaintext_token: string };
     expect(invite.plaintext_token).toMatch(/^wf_invite_/);
 
-    // The list endpoint never leaks the plaintext token.
     const listRes = await fetch(`${ctx.baseUrl}/v1/identity/invites`, { headers: adminHeaders() });
     expect(listRes.status).toBe(200);
     const list = (await listRes.json()) as { items: Array<Record<string, unknown>> };
@@ -83,7 +67,6 @@ describe("admin happy path", () => {
     expect(row).toBeDefined();
     expect(row?.plaintext_token).toBeUndefined();
 
-    // 3. Redeem UNAUTHENTICATED — no Authorization header.
     const redeemRes = await fetch(`${ctx.baseUrl}/v1/identity/invites/redeem`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -94,13 +77,9 @@ describe("admin happy path", () => {
     expect(redeemed.api_key).toMatch(/^wf_live_/);
     expect(redeemed.user_id).toBe(user.id);
 
-    // User flipped to active (it was created active here; redemption keeps
-    // it active and would activate an `invited` user).
     const [refreshed] = await ctx.db.select().from(users).where(eq(users.id, user.id));
     expect(refreshed?.status).toBe("active");
 
-    // 4. The minted key authenticates a follow-up request (resolves via the
-    //    api_key provider) and identifies the invited user.
     const whoamiRes = await fetch(`${ctx.baseUrl}/v1/identity/whoami`, {
       headers: { authorization: `Bearer ${redeemed.api_key}` },
     });
@@ -108,7 +87,6 @@ describe("admin happy path", () => {
     const whoami = (await whoamiRes.json()) as { id: string };
     expect(whoami.id).toBe(user.id);
 
-    // 5. Second redeem of the same token is rejected.
     const replay = await fetch(`${ctx.baseUrl}/v1/identity/invites/redeem`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -118,7 +96,6 @@ describe("admin happy path", () => {
     const replayBody = (await replay.json()) as { code: string };
     expect(replayBody.code).toBe("invite_already_redeemed");
 
-    // 6. Deactivate the user — their key must stop resolving.
     const deactivateRes = await fetch(`${ctx.baseUrl}/v1/identity/users/${user.id}`, {
       method: "DELETE",
       headers: adminHeaders(),

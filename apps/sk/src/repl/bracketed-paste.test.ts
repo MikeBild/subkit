@@ -1,6 +1,3 @@
-// Unit tests for the bracketed-paste state machine. We test the pure
-// function so test runs don't need a real stdin.
-
 import { describe, expect, it } from "bun:test";
 import { applyBracketedPaste, PASTE_END, PASTE_START } from "./bracketed-paste.ts";
 
@@ -43,7 +40,6 @@ describe("applyBracketedPaste", () => {
   });
 
   it("retains a suspicious ESC prefix that may be the start of a marker", () => {
-    // Raw ESC byte but no `[`, could start PASTE_START / PASTE_END.
     const r = applyBracketedPaste("tail\x1b", empty);
     expect(r.keep.forward).toBe("tail");
     expect(r.keep.pending).toBe("\x1b");

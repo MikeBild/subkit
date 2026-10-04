@@ -1,22 +1,3 @@
-// Notification task inbox — REST surface.
-//
-//   GET  /v1/notifications/inbox?since=&limit=&unread_only=&actionable_only=
-//   POST /v1/notifications/inbox/ack     (mark read up to a cursor)
-//   POST /v1/notifications/inbox/read    (mark specific ids read)
-//   POST /v1/notifications/inbox/unread  (undo a read mark)
-//
-// A row is a task, not a log line. Consumption is a per-user read mark
-// in `cli_notification_inbox_reads`; no route here deletes an inbox row
-// (the scheduler's retention sweep is the only DELETE). `/ack` keeps its
-// path, body and `{acked}` response so an already-released `sk` binary
-// works unchanged.
-//
-// All four routes stay on `notification:read`. A personal read marker is
-// view state about the caller's own eyes, not tenant configuration —
-// `notification:write` is scoped to notification *rules*, and requiring
-// it would lock ordinary members out of dismissing their own items.
-// Every query is scoped to the principal's tenant.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -174,12 +155,6 @@ const unreadRoute = createRoute({
   },
 });
 
-/**
- * The read-state owner for this request, or null when the principal has
- * no `users.id`. An API key bound to a system account resolves to
- * `kind: "system_account"` with an id from `system_accounts` — that id
- * must never enter the `user_id` FK column.
- */
 function readerId(principal: { kind: string; id: string }): string | null {
   return principal.kind === "user" ? principal.id : null;
 }
@@ -196,7 +171,6 @@ function requireReader(principal: { kind: string; id: string }): string {
   return uid;
 }
 
-/** Join predicate for this caller's read marks; `false` when there is no caller user. */
 function readJoin(userId: string | null) {
   return userId
     ? and(
@@ -206,7 +180,6 @@ function readJoin(userId: string | null) {
     : sql`false`;
 }
 
-/** Unread totals over the caller's whole tenant inbox — independent of `since`/`limit`/filters. */
 async function unreadCounts(
   db: Db,
   tenantId: string,
@@ -295,9 +268,6 @@ export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
     const { up_to_cursor } = c.req.valid("json");
     const userId = requireReader(principal);
 
-    // One statement: `ON CONFLICT DO NOTHING` makes the rowcount exactly
-    // the rows that were still unread for this caller, with no read-then-
-    // write race against a concurrent ack.
     const result = await db.execute(sql`
       INSERT INTO ${cliNotificationInboxReads} (tenant_id, inbox_id, user_id)
       SELECT ${cliNotificationInbox.tenant_id}, ${cliNotificationInbox.id}, ${userId}::uuid
@@ -325,10 +295,6 @@ export function registerInboxRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ acked }, 200);
   });
 
-  // `/read` and `/unread` write no audit row on purpose: they fire once
-  // per rendered notification, so auditing them would put one `audit_log`
-  // row behind every item a client paints. `/ack` still records the
-  // watermark, which is the operator-meaningful event.
   app.openapi(readRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");

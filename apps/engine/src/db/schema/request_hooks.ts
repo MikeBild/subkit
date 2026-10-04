@@ -13,10 +13,6 @@ export const requestHooks = pgTable(
     updated_by: uuid("updated_by"),
     version: integer("version").notNull().default(1),
     enabled: boolean("enabled").default(true).notNull(),
-    // sk-stdlib version at the time the hook was persisted. Read by the
-    // self-healing drift detector to decide whether a major-bump
-    // migration is needed. Null for rows created before stdlib tracking
-    // was wired.
     stdlib_version: text("stdlib_version"),
     ...timestamps,
   },

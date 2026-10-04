@@ -1,11 +1,3 @@
-// Materialize sk skills as Agent-Skills-standard SKILL.md directories for
-// Claude Code (`.claude/skills/`) and Codex (`.agents/skills/`). Pure
-// planning logic — the `sk skills sync` command does the I/O around it.
-//
-// Managed-marker contract: sync only ever creates, updates, or prunes
-// directories whose SKILL.md carries the MANAGED_MARKER comment. A
-// hand-authored project skill without the marker is never touched.
-
 export const SKILL_TARGET_DIRS = [".claude/skills", ".agents/skills"] as const;
 export const MANAGED_MARKER = "<!-- managed-by: sk — do not edit; run `sk skills sync` -->";
 
@@ -20,7 +12,6 @@ export interface SyncSkill {
   best_practices?: string[];
 }
 
-/** Stable directory name: seed slug when present, else kebab-cased title. */
 export function skillDirName(skill: Pick<SyncSkill, "slug" | "title">): string {
   if (skill.slug) return skill.slug;
   const kebab = skill.title
@@ -42,8 +33,6 @@ export function renderSkillMd(skill: SyncSkill): string {
     domains.length > 0
       ? ` Applies when working in the ${domains.map((d) => d.slice("domain:".length)).join(", ")} domain(s).`
       : "";
-  // The description drives the agent's implicit skill activation — it must
-  // say WHEN to reach for the skill, not just what it is.
   const description = `${skill.title}.${domainNote} Curated convention from the sk engine.`;
   const lines = [
     "---",
@@ -65,18 +54,11 @@ export function renderSkillMd(skill: SyncSkill): string {
 }
 
 export interface SyncPlan {
-  /** dir name → SKILL.md content to write (created or changed). */
   writes: Map<string, string>;
-  /** dir names unchanged on disk. */
   unchanged: string[];
-  /** managed dir names to remove (skill archived/untagged since last sync). */
   prunes: string[];
 }
 
-/**
- * Plan one target directory's sync. `existing` maps dir name → current
- * SKILL.md content (only entries that exist on disk).
- */
 export function planSync(skills: SyncSkill[], existing: Map<string, string>): SyncPlan {
   const desired = new Map<string, string>();
   for (const skill of skills) {

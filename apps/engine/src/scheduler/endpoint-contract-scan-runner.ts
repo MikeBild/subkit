@@ -1,32 +1,3 @@
-// Per-tenant runner for the scheduler's proactive endpoint-contract scan.
-//
-// The reactive half of "find out early" flags a removed endpoint when a RUN
-// hits the 410; this runner is the PROACTIVE half: on a cadence, probe the
-// actual operations committed workflows reference and classify the response
-// with the same `classifyConnectorHealth` + deprecation parsing the runtime
-// uses — so a vendor's endpoint removal (or a 2xx that announces its own
-// Sunset) surfaces in `sk doctor` / notifications BEFORE an unattended run
-// returns "0 results". This is the scan that would have caught the Atlassian
-// `/rest/api/3/search` removal weeks earlier.
-//
-// Peer of `connector-reauth-scan-runner.ts` (same reconciler CAS-stamp
-// cadence pattern, own `tenants.last_endpoint_contract_scan_at` column).
-// Deliberately NOT inside `self-healing/proactive-scanner.ts` — that module's
-// contract is DB-only/no-network; this one talks to vendors.
-//
-// Probe safety rules:
-//   - GET operations only (HEAD support is inconsistent across vendors;
-//     non-idempotent methods must never be fired speculatively).
-//   - STATIC paths only — a path containing `${...}` placeholders cannot be
-//     probed meaningfully without inputs.
-//   - Connectors already flagged (needs_reauth / needs_update / open
-//     circuit) are skipped: re-probing a known-broken integration is noise.
-//   - Hard per-tenant operation cap so a workflow-heavy tenant cannot turn
-//     the scan into a vendor hammer.
-//   - Probes route through `callConnector`, so every probe is audited as a
-//     normal `connector.invoked` row and credentials/auth injection follow
-//     the exact runtime path.
-
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import {
   callConnector,
@@ -40,20 +11,15 @@ import type { Db } from "../db/client.ts";
 import { connectors, workflows, workflowVersions } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
-/** Upper bound on probed operations per tenant per sweep. */
 const MAX_OPERATIONS_PER_TENANT = 25;
-/** Per-probe timeout — a contract probe is a liveness check, not a fetch. */
 const PROBE_TIMEOUT_MS = 10_000;
 
 interface CommittedOperation {
   connector_id: string;
   path: string;
-  /** Workflows (id+slug) whose current version references this operation. */
   workflows: Array<{ id: string; slug: string }>;
 }
 
-/** Minimal step shape we read out of persisted DAGs — tolerant of legacy
- *  variants; anything that doesn't match is skipped, never thrown on. */
 function extractGetOperations(dag: unknown): Array<{ connector_id: string; path: string }> {
   const out: Array<{ connector_id: string; path: string }> = [];
   const steps = (dag as { steps?: unknown })?.steps;
@@ -65,27 +31,17 @@ function extractGetOperations(dag: unknown): Array<{ connector_id: string; path:
     const method = typeof s.method === "string" ? s.method.toUpperCase() : "GET";
     if (method !== "GET") continue;
     if (typeof s.connector_id !== "string" || typeof s.path !== "string") continue;
-    // Placeholdered paths need inputs; probing them literally would 404
-    // against `${...}` text and poison the verdict.
     if (s.path.includes("${")) continue;
     out.push({ connector_id: s.connector_id, path: s.path });
   }
   return out;
 }
 
-/**
- * Execute one proactive endpoint-contract scan for a single tenant: collect
- * the distinct (connector, GET path) operations referenced by committed
- * workflows, probe each through the normal authed call path, and roll
- * 410/deprecation verdicts into connector + workflow health (edge-guarded —
- * one notification per transition, however often the scan re-confirms it).
- */
 export async function runEndpointContractScanForTenant(
   tenant_id: string,
   now: Date,
   db: Db,
 ): Promise<void> {
-  // tenant-filter:bound — every query below is scoped to this tenant_id
   const committed = await db
     .select({
       workflow_id: workflows.id,
@@ -102,8 +58,6 @@ export async function runEndpointContractScanForTenant(
       ),
     );
 
-  // Dedupe operations across workflows, remembering which workflows
-  // reference each so a bad verdict can flip THEIR health too.
   const ops = new Map<string, CommittedOperation>();
   for (const row of committed) {
     for (const op of extractGetOperations(row.dag)) {
@@ -120,8 +74,6 @@ export async function runEndpointContractScanForTenant(
     }
   }
 
-  // Probe only operations on connectors that are currently believed
-  // healthy — re-probing a flagged/open-circuit connector is noise.
   const healthyConnectors = await db
     .select({
       id: connectors.id,
@@ -186,8 +138,6 @@ export async function runEndpointContractScanForTenant(
       });
       probed += 1;
     } catch (err) {
-      // Network/driver throw — infrastructure noise, never a contract
-      // verdict. Log and keep sweeping.
       logger.warn({
         module: "scheduler",
         action: "endpoint_contract_scan.probe_error",
@@ -228,9 +178,6 @@ export async function runEndpointContractScanForTenant(
           }
         }
       } else if (result.health === "auth_failed") {
-        // The reauth scan owns credentials, but a definitive rejection
-        // observed here is the same evidence — flag it (dedup guard makes
-        // a double-flag from both scans a no-op).
         flagged += 1;
         await flagConnectorAuthFailure(
           db,
@@ -246,8 +193,6 @@ export async function runEndpointContractScanForTenant(
           { reason: `proactive contract probe: GET ${op.path} rejected authentication` },
         );
       }
-      // not_found / rate_limited / degraded: request-level or transient —
-      // never a contract verdict from a single probe.
     } catch (err) {
       logger.error({
         module: "scheduler",

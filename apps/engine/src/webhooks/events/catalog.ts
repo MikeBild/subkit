@@ -1,14 +1,3 @@
-// P11: central events catalog.
-//
-// Every event type that can be emitted onto the outbox + webhook fanout
-// has a stable name, a zod payload schema, and a worked example. The
-// outbox writer can reuse the schema to reject malformed payloads
-// before insert; the fanout handler uses the name list to understand
-// which events to consider for subscription matching.
-//
-// Each entry also states what the event POINTS AT (`resource`) and
-// whether a person has to act on it (`actionable`) — see `classifyEvent`.
-
 import { z } from "@hono/zod-openapi";
 import {
   ConnectorAuthFailedPayloadSchema,
@@ -31,9 +20,6 @@ const ExecutionFailed = z.object({
   error_code: z.string().optional(),
 });
 
-// A run refused before its first step — a connector it needs cannot serve it
-// in the run's environment. The row closes `failed`, but nothing ran and the
-// caller was answered at once, so this is not `execution.failed`.
 const ExecutionRefused = z.object({
   execution_id: z.string().uuid(),
   workflow_id: z.string().uuid().nullable(),
@@ -64,19 +50,11 @@ const PatchProposed = z.object({
   classification: z.enum(["safe", "unsafe"]),
 });
 
-// A repair that actually rewrote a step and rotated the workflow version.
-// Distinct from `patch.proposed` on purpose: a proposal asks for a decision,
-// this one reports a workflow that already changed. Without it the only signal
-// an operator ever got was "proposed" — including for patches applied in the
-// same breath — and the pending-review list, which by definition never shows
-// an applied one.
 const PatchApplied = z.object({
   patch_candidate_id: z.string().uuid(),
   workflow_id: z.string().uuid(),
   workflow_version_id: z.string().uuid(),
-  /** Which fields of the step the repair rewrote. */
   changed_paths: z.array(z.string()),
-  /** True when policy applied it without waiting for a human decision. */
   auto_applied: z.boolean(),
 });
 
@@ -90,26 +68,8 @@ const ConversationCommitted = z.object({
   workflow_id: z.string().uuid(),
 });
 
-// ---------------------------------------------------------------------------
-// Actionability + resource pointer
-// ---------------------------------------------------------------------------
-//
-// The inbox (`cli_notification_inbox`) has three consumers — the cockpit SPA,
-// the `sk` CLI, and any `notification:read` API client. Each row has to answer
-// "does a person have to do something about this, and what does it concern".
-// The rule lives here, next to the payload schemas, so those three consumers
-// read one answer instead of three copies that drift.
-//
-// The pointer is `{ type, id }` in the `audit_log.resource_type` /
-// `rbac/permissions.json` vocabulary — deliberately NOT a cockpit URL:
-// `/runs/<id>` means nothing to the CLI, and a route rename would turn into a
-// data migration over persisted inbox rows.
-
-/** Whether a person has to act on this event. Payload-dependent for events
- *  whose severity lives in the payload rather than in the type name. */
 type ActionablePredicate = (payload: unknown) => boolean;
 
-/** What the event concerns, in the audit-log resource ontology. */
 type ResourceExtractor = (payload: unknown) => { type: string; id: string } | null;
 
 export interface EventCatalogEntry {
@@ -128,11 +88,6 @@ function readField(payload: unknown, key: string): unknown {
   return (payload as Record<string, unknown>)[key];
 }
 
-/**
- * Build a resource extractor that reads one id key off the payload. Total by
- * construction: a malformed / absent / non-string id yields `null` rather
- * than throwing, because `writeEvent` is not gated on this catalog.
- */
 function pointsAt(resource_type: string, id_key: string): ResourceExtractor {
   return (payload) => {
     const id = readField(payload, id_key);
@@ -176,8 +131,6 @@ export const EVENT_CATALOG = {
         connector: { connector_id: "00000000-0000-4000-8000-000000000003", reason: "needs_reauth" },
       },
     },
-    // The person who asked was told at once; the connector's own events
-    // (`connector.auth_failed`, `connector.health_changed`) carry the fix.
     actionable: NOT_ACTIONABLE,
     resource: pointsAt("execution", "execution_id"),
   },
@@ -257,9 +210,6 @@ export const EVENT_CATALOG = {
       sunset_at: null,
       successor_uri: null,
     },
-    // A removed endpoint blocks workflows until someone rewrites them.
-    // `endpoint_deprecated` / `degraded` still work today, so they inform
-    // rather than demand — same split the emitter makes for `severity`.
     actionable: (payload) => readField(payload, "error_code") === "endpoint_removed",
     resource: pointsAt("connector", "connector_id"),
   },
@@ -340,15 +290,6 @@ export interface EventClassification {
   resource_id: string | null;
 }
 
-/**
- * Classify an event for the task inbox: does a person have to act, and what
- * does the row concern.
- *
- * Total on `type` AND on `payload`. `writeEvent` is not gated on this catalog,
- * so unknown types genuinely reach the fanout — an unknown type is not
- * actionable and points at nothing, rather than an exception that would take
- * the fanout down with it.
- */
 export function classifyEvent(type: string, payload: unknown): EventClassification {
   if (!isKnownEventType(type)) {
     return { actionable: false, resource_type: null, resource_id: null };
@@ -362,13 +303,6 @@ export function classifyEvent(type: string, payload: unknown): EventClassificati
   };
 }
 
-/**
- * Simple glob match used by the fanout pass.
- *   "*"                → matches anything
- *   "execution.*"      → matches execution.succeeded / execution.failed
- *   "execution.succeeded" → exact match
- * Multiple comma-separated patterns are supported: "a.*,b.c".
- */
 export function matchEventPattern(pattern: string, type: string): boolean {
   const parts = pattern
     .split(",")
@@ -377,7 +311,7 @@ export function matchEventPattern(pattern: string, type: string): boolean {
   for (const p of parts) {
     if (p === "*" || p === type) return true;
     if (p.endsWith(".*")) {
-      const prefix = p.slice(0, -1); // "execution."
+      const prefix = p.slice(0, -1);
       if (type.startsWith(prefix)) return true;
     }
   }

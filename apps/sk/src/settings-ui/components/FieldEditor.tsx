@@ -47,7 +47,6 @@ function parseValue(
       .filter(Boolean);
     return { ok: true, value: items };
   }
-  // json
   try {
     return { ok: true, value: JSON.parse(raw) };
   } catch (err) {
@@ -86,10 +85,6 @@ export const FieldEditor: React.FC<Props> = ({ field, onCommit, onCancel }) => {
       }
       return;
     }
-    // Backspace + printable characters are not bound to a registry
-    // action — they are buffer ops on the in-flight edit. Keeping
-    // them inline preserves the operator's typing experience without
-    // expanding the registry surface to per-key string handlers.
     if (key.backspace || key.delete) {
       setBuffer((b) => b.slice(0, -1));
       setError(null);

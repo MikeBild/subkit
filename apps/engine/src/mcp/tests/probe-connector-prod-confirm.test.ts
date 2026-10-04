@@ -1,5 +1,3 @@
-// The MCP client is not an approval authority. Real transport + Postgres prove
-// that a write waits for a human grant and its stored call executes once.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, count, eq } from "drizzle-orm";
@@ -65,8 +63,6 @@ describe("probe_connector — local approval for a production write", () => {
     expect(denied.error_code).toBe("approval_not_granted");
     expect(hits).toBe(initialHits);
 
-    // Fixture substitutes only the upstream human decision. This is the real
-    // portal's transactional grant function, not a model-controlled tool.
     const granted = await grantApproval({
       db: suite.http.db,
       approval_id: trigger.confirm_id,
@@ -75,7 +71,6 @@ describe("probe_connector — local approval for a production write", () => {
       via: "portal",
     });
     expect(granted.ok).toBe(true);
-    // Replacement arguments cannot expand a granted call or consume its handle.
     const replacement = body(
       await client.callTool({
         name: "confirm_tool_call",

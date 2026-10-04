@@ -1,15 +1,3 @@
-// Tenant-isolation guarantee for inbound webhook triggers.
-//
-// The slug → workflow lookup runs on a single shared `webhooks_inbound`
-// table; the contract is that a slug owned by tenant A cannot route an
-// execution against a workflow owned by tenant B even if the two
-// workflow rows share an id (they don't, but the test doesn't lean on
-// that). Concretely: tenant B's slug is bound to tenant B's workflow,
-// and an inbound POST arriving at that slug must only ever enqueue
-// against tenant B's workflow + tenant. The cross-tenant attack
-// surface is "tenant A guesses tenant B's slug and signs a payload
-// with an unrelated secret".
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -41,9 +29,6 @@ beforeAll(async () => {
   testDb = await createTestDb("wh-tenant-isolation");
   boss = await createBoss({ connectionString: testDb.url });
 
-  // Two independent tenants, each with their own workflow + trigger
-  // binding. Slug names are deliberately distinct so we can also
-  // simulate "tenant A guesses tenant B's slug".
   for (const label of ["a", "b"] as const) {
     const [tenant] = await testDb.db
       .insert(tenants)
@@ -130,7 +115,6 @@ describe("inbound tenant isolation", () => {
     });
     // allow-wall-clock: stripe signature window is real-time
     const ts = Math.floor(Date.now() / 1000);
-    // Sign with tenant A's secret but POST against tenant B's slug.
     const badSig = signStripe(SECRET_A, ts, body);
     const outcome = await handleInbound(
       { db: testDb.db, boss },
@@ -145,7 +129,6 @@ describe("inbound tenant isolation", () => {
     expect(outcome.reason).toBe("bad_signature");
     expect(outcome.inbound_id).toBe(inboundB);
 
-    // No execution row was created for either tenant.
     const execRowsB = await testDb.db
       .select()
       .from(executions)
@@ -189,7 +172,6 @@ describe("inbound tenant isolation", () => {
     expect(row?.tenant_id).toBe(tenantB);
     expect(row?.workflow_id).toBe(workflowB);
 
-    // Tenant A still has zero executions.
     const execRowsA = await testDb.db
       .select()
       .from(executions)

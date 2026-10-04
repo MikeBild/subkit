@@ -4,10 +4,6 @@ import { parseHar } from "./har.ts";
 import { parseOpenApi, parseOpenApiWithMetadata } from "./openapi.ts";
 import { parsePostman } from "./postman.ts";
 
-// ---------------------------------------------------------------------------
-// OpenAPI parser
-// ---------------------------------------------------------------------------
-
 const MINIMAL_OPENAPI = JSON.stringify({
   openapi: "3.0.0",
   paths: {
@@ -229,10 +225,6 @@ paths:
   });
 });
 
-// ---------------------------------------------------------------------------
-// Postman parser
-// ---------------------------------------------------------------------------
-
 const MINIMAL_POSTMAN = JSON.stringify({
   item: [
     {
@@ -319,10 +311,6 @@ describe("parsePostman", () => {
     expect((ep!.request_schema as { type: string }).type).toBe("object");
   });
 });
-
-// ---------------------------------------------------------------------------
-// HAR parser
-// ---------------------------------------------------------------------------
 
 const MINIMAL_HAR = JSON.stringify({
   log: {
@@ -443,10 +431,6 @@ describe("parseHar", () => {
     expect(count).toBe(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// GraphQL SDL parser
-// ---------------------------------------------------------------------------
 
 const SDL = `type Query {
   getUser(id: ID): User

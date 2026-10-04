@@ -1,8 +1,3 @@
-// Verifies /admin opens a SinglePane (sk admin) and not the
-// SettingsModal — see AdminCommand.tsx and ink-app.tsx wiring.
-// Also covers the admin-gate UX: non-admins see an in-pane message,
-// admins see the AdminTab body.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
@@ -29,7 +24,6 @@ function makeClient(opts: { permissions?: string[] } = {}): EngineClient {
       flags: {},
       server_time: "2024-11-14T22:13:20.000Z",
     })),
-    // Admin sub-tab list endpoints — return empty when admin gate passes.
     listApiKeys: mock(async () => ({ items: [] })),
     listPortalTokens: mock(async () => ({ items: [] })),
     listRoles: mock(async () => ({ items: [] })),
@@ -84,7 +78,6 @@ describe("AdminCommand — /admin SinglePane", () => {
       await ui.waitFor((t) => t.includes("no admin permissions"));
       const txt = ui.text();
       expect(txt).toContain("no admin permissions");
-      // The admin sub-tabs MUST NOT render in this state.
       expect(txt).not.toContain("API Keys");
       expect(txt).not.toContain("Portal Tokens");
     } finally {

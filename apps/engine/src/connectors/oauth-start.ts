@@ -1,16 +1,3 @@
-// Shared OAuth2 authorization-code start logic.
-//
-// `beginConnectorOAuthDance` is the single entry point that both
-// authenticated routes and the grant-token browser path call.  It handles:
-//   - Dynamic client registration (if needed).
-//   - `client_credentials_json` machine path (no browser redirect).
-//   - `authorization_code` / PKCE path — inserts a connector_oauth_states
-//     row (with `requested_scopes` carried through) and returns the URL.
-//
-// Extracted from apps/engine/src/http/routes/connectors/oauth.ts so the
-// unauthenticated GET /v1/connectors/{id}/oauth/start?grant=… route can
-// reuse the exact same dance without duplicating the logic.
-
 import { and, eq } from "drizzle-orm";
 import {
   AuditAction,
@@ -48,26 +35,11 @@ export interface BeginConnectorOAuthDanceOptions {
   db: Db;
   tenant_id: string;
   connector_id: string;
-  /** null for the unauthenticated browser-grant path */
   actor_id: string | null;
   redirect_uri: string;
-  /** Where the person started the flow; the callback sends them back there. */
   origin: OAuthFlowOrigin;
 }
 
-/**
- * Execute the OAuth2 start logic for a connector.
- *
- * For `client_credentials_json` connectors: performs the M2M token exchange
- * synchronously and returns `{kind:"done"}`.
- *
- * For authorization-code connectors: inserts a connector_oauth_states row
- * (with `requested_scopes` from the template config) and returns
- * `{kind:"browser", authorization_url, state}`.
- *
- * Throws `NotFoundError` or `BadRequestError` for structural
- * misconfigurations. Propagates OAuth-provider errors as-is.
- */
 export async function beginConnectorOAuthDance(
   opts: BeginConnectorOAuthDanceOptions,
 ): Promise<OAuthDanceResult> {
@@ -76,12 +48,6 @@ export async function beginConnectorOAuthDance(
   let connector = await getConnector(tenant_id, connector_id, db);
   if (!connector) throw new NotFoundError("connector");
 
-  // The one predicate the connector's `sign_in` field is computed from. It
-  // runs before anything is written (dynamic registration stores a client),
-  // so a connector this route does not sign in leaves no trace. A password
-  // grant such as Cognito USER_PASSWORD_AUTH has no authorization endpoint to
-  // redirect to — attempting the dance would burn a single-use grant on an
-  // opaque provider error — and an MCP server signs in on its own route.
   const signIn = connectorSignIn(connector);
   if (signIn?.kind !== "oauth") {
     throw signIn
@@ -122,8 +88,6 @@ export async function beginConnectorOAuthDance(
       const resolvedRegistrationHost = new URL(result.registrationEndpoint).host;
       registrationEndpointHost = resolvedRegistrationHost;
 
-      // Single transaction: credential insert + connector config update +
-      // audit row must all land or all roll back.
       const updatedOauthBlock = { ...oauthBlock, client_id: result.clientId };
       const updatedConfig = { ...connectorForReg.config, oauth: updatedOauthBlock };
       await db.transaction(async (tx) => {
@@ -184,10 +148,6 @@ export async function beginConnectorOAuthDance(
 
   const resolution = await resolveConnectorOAuthConfigDetailed(db, tenant_id, connector);
   if (!resolution.ok) {
-    // Each incomplete-config reason gets its own message — pre-fix every
-    // reason collapsed into one generic line, and the most common case
-    // (template OAuth credentials never stored) was undiagnosable from
-    // the CLI.
     if (resolution.missing === "template_oauth_credentials") {
       throw new HttpError(
         400,
@@ -206,7 +166,6 @@ export async function beginConnectorOAuthDance(
   }
   const cfg = resolution.config;
 
-  // client_credentials_json: M2M exchange — no browser redirect.
   if (cfg.grant_type === "client_credentials_json") {
     const bodyMapping = cfg.token_request_body_mapping;
     if (!bodyMapping || Object.keys(bodyMapping).length === 0) {
@@ -271,8 +230,6 @@ export async function beginConnectorOAuthDance(
     return { kind: "done" };
   }
 
-  // Browser authorization-code is the only remaining flow: a grant a browser
-  // cannot complete was refused by `connectorSignIn` above.
   const cfgWithRedirect = { ...cfg, redirect_uri };
   const started = await startAuthorizationCode(cfgWithRedirect);
   await db.insert(connectorOauthStates).values({
@@ -282,7 +239,6 @@ export async function beginConnectorOAuthDance(
     code_verifier: started.code_verifier,
     redirect_uri,
     expires_at: new Date(now() + 10 * 60_000),
-    // Carry requested_scopes so the callback can diff against granted.
     requested_scopes: cfg.scope ?? null,
     origin,
   });

@@ -1,11 +1,3 @@
-// Mentions HTTP-path regression test.
-//
-// Covers the audit finding that `@api-key`, `@user`, `@audit` entity
-// mentions hit the wrong engine paths (`/v1/api-keys`, `/v1/users`,
-// `/v1/audit-log/:id` — none of which exist). After Gap #P0 the paths
-// are mapped through the real identity routes and the audit query
-// endpoint.
-
 import { describe, expect, it } from "bun:test";
 import { resolveMentions } from "../mentions.ts";
 

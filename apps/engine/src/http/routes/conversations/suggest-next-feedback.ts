@@ -1,19 +1,3 @@
-// POST /v1/conversations/:id/suggest-next/feedback
-//
-// Lightweight, fire-and-forget endpoint sk-cli posts after the user
-// accepts, dismisses, or types over a next-message suggestion. The
-// engine increments a `sk_suggest_next_total{outcome}` counter and
-// emits a structured log line — no audit row, no DB mutation. The
-// suggestion text is NEVER persisted, so accepted suggestions cannot
-// leak through this surface.
-//
-// Tenant isolation: the standard `:id` middleware in
-// `http/routes/conversations/index.ts` already gates this path on
-// `conversation:read` (the route is read-only ideation); we add the
-// per-path binding there. The route itself only re-asserts that the
-// caller's tenant matches the conversation row, like the other
-// per-conversation surfaces.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { getConversation } from "../../../conversations/index.ts";

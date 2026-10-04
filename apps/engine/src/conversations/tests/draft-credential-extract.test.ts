@@ -1,10 +1,3 @@
-// Unit + integration coverage for draft-time credential extraction and
-// caching. Split out from draft-probe-credential.test.ts: this file owns the
-// pure shape helpers (`extractCredentialFromFormOutput`, the in-memory cache)
-// and the `maybeCacheDraftCredentialFromElicitation` persistence path; the
-// `probe_connector_draft` end-to-end flow that consumes the cached credential
-// lives in draft-probe-credential.test.ts.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { conversations as conversationsTable, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -148,11 +141,6 @@ describe("extractCredentialFromFormOutput", () => {
     expect(extractCredentialFromFormOutput("bearer", {}, { token: "" })).toBeNull();
   });
 
-  // Regression: conversation 730c568a. The LLM's commit_intent carried
-  // `payload.credential.token = "{{token}}"` (a Mustache placeholder
-  // for the form value). Pre-fix the extractor saw a non-empty string
-  // in the seed and used it verbatim, persisting `Bearer {{token}}`
-  // and 401-ing every subsequent execution.
   test("rejects mustache placeholders in seed overrides so the form value wins", () => {
     expect(
       extractCredentialFromFormOutput("bearer", { token: "{{token}}" }, { token: "real-pat-123" }),
@@ -180,10 +168,6 @@ describe("extractCredentialFromFormOutput", () => {
     ).toEqual({ mode: "query", param: "api_key", value: "real-q" });
   });
 
-  // Audit gap: cognito_user_password and aws_sigv4 modes were not
-  // covered by the earlier placeholder regression. Same risk class —
-  // an LLM commit_intent like `{aws_region: "{{aws_region}}", …}`
-  // would leak the literal placeholder into the persisted credential.
   test("cognito_user_password rejects mustache placeholders in optional metadata", () => {
     const result = extractCredentialFromFormOutput(
       "cognito_user_password",
@@ -295,12 +279,6 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
   });
 
   test("populates cache from oauth2 + cognito_user_password draft (AppSync flow)", async () => {
-    // Reproduces the bug from session f244b896. Draft is the
-    // appsync-cognito template shape: oauth2 + cognito_user_password.
-    // Form delivers username + password. Pre-fix the gate only let
-    // bearer/basic/header/query through; this asserts the new
-    // translation that maps oauth2 → cognito_user_password seed when
-    // the connector config carries `oauth.grant_type` accordingly.
     const conversation_id = await seedConversation();
     const cognitoDraft: DraftDocument = {
       mode: "connector_authoring",
@@ -333,20 +311,12 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
       mode: "cognito_user_password",
       username: "user@example.com",
       password: "hunter2",
-      // Connector config seeds these so the bootstrap mint has them.
       aws_region: "eu-central-1",
       client_id: "client-abc",
     });
   });
 
   test("falls back to template snapshot when draft.config.oauth is empty (real AppSync flow)", async () => {
-    // Reproduces the actual session a2292e7a bug: the draft is bound
-    // to the appsync-cognito builtin template but config.oauth is null
-    // because template-enrichment only runs at save time. Pre-fix the
-    // extractor read draft.config.oauth.grant_type → null → seedMode
-    // null → cache_skipped → probe ran unauthenticated → connector
-    // never persisted. The fallback now consults the template's
-    // oauth.grant_type.
     const conversation_id = await seedConversation();
     const draftBeforeEnrichment: DraftDocument = {
       mode: "connector_authoring",
@@ -358,8 +328,6 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
         auth_type: "oauth2",
         base_url: "https://x.appsync-api.eu-central-1.amazonaws.com/graphql",
         template_slug: "appsync-cognito",
-        // config.oauth deliberately absent — template-enrichment runs
-        // only at saveConnectorAtomic time.
         config: {},
       },
       workflow: { name: "", steps: [] },
@@ -421,10 +389,6 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
   });
 
   test("populates cache from oauth2 + authorization_code draft (gmail BYO flow)", async () => {
-    // Reproduces the gmail/google-*/msgraph BYO flow that pre-fix hit
-    // `cache_skipped` for every form submission. The operator supplies
-    // client_id + client_secret via ask_user_form; the seed lands in
-    // the cache so a credential-less re-save reads it back.
     const conversation_id = await seedConversation();
     const gmailDraft: DraftDocument = {
       mode: "connector_authoring",
@@ -459,10 +423,6 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
   });
 
   test("falls back to template snapshot for oauth2 + authorization_code when draft.config.oauth absent", async () => {
-    // First-save case: the draft is bound to the google-gmail template
-    // but config.oauth.grant_type isn't enriched yet (that runs at
-    // saveConnectorAtomic time). The cache function must look up
-    // grant_type from the resolved template metadata.
     const conversation_id = await seedConversation();
     const draftBeforeEnrichment: DraftDocument = {
       mode: "connector_authoring",
@@ -553,8 +513,6 @@ describe("maybeCacheDraftCredentialFromElicitation", () => {
       db: ctx.db,
     });
 
-    // The cache stays empty; the engine log line `cache_skipped` is the
-    // forensic signal for the next person adding a grant type.
     expect(getDraftCredential(conversation_id)).toBeNull();
   });
 });

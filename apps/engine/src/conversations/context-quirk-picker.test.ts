@@ -1,9 +1,3 @@
-// Per-turn operator-quirk category picker + render contract.
-//
-// Pinned in unit tests so the token-budget win on `propose_step
-// kind=transform` (and the "no auth quirks while transforming"
-// invariant) cannot silently regress.
-
 import { describe, expect, test } from "bun:test";
 import {
   formatConnectorRecipes,
@@ -137,12 +131,8 @@ describe("formatConnectorRecipes", () => {
     expect(block).toContain("tags: read");
     expect(block).toContain("list customers, recent customers");
     expect(block).toContain("`create-customer`");
-    // `intermediate` is the default — drop from output to save tokens.
     expect(block).not.toContain("difficulty: intermediate");
-    // Non-default difficulty surfaces.
     expect(block).toContain("difficulty: advanced");
-    // The on-demand inspect_recipe path is mentioned so the LLM knows
-    // how to fetch the heavier description / sample_input.
     expect(block).toContain("inspect_recipe");
   });
 

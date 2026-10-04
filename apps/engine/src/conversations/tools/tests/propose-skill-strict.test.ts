@@ -1,13 +1,3 @@
-// Property tests for the strict / inputExamples opt-in.
-//
-// `proposeSkillTool` opts into provider-native strict mode because its
-// input schema is all concrete types. The authoring tools
-// (author_workflow, edit_workflow_patch) keep strict OFF because their
-// schemas carry `z.unknown()` slots (a free-form input example, JSON
-// Patch values) which strict mode does not accept — asserted here so a
-// future refactor that flips strict on those tools without also
-// tightening the schema fails fast.
-
 import { describe, expect, it } from "bun:test";
 import { authorWorkflowTool } from "../author-workflow.ts";
 import { editWorkflowPatchTool } from "../edit-workflow-patch.ts";
@@ -38,19 +28,6 @@ describe("strict + inputExamples opt-in", () => {
     expect(editWorkflowPatchTool.strict).toBeUndefined();
   });
 
-  // Regression in v4.6.0: AI SDK 6 strict-validates `inputExamples`
-  // against the JSON-Schema projection of `inputSchema`. The projection
-  // unconditionally seals every object with `additionalProperties:
-  // false` — including `z.record(...)` values, which legitimately
-  // accept any string key. The mismatch made Anthropic reject every
-  // conversation turn with `tools.N.custom: Example at index 0 is
-  // invalid: False schema does not allow <value>`. The fix is to stop
-  // emitting the `inputExamples` channel; the model still sees the
-  // example via the `<example>` block compileDescription appends to
-  // the tool description. The tests below pin the current contract:
-  // `toInputExamples` is a no-op until upstream record projection is
-  // fixed AND every tool's example survives the strict JSON-Schema
-  // validation.
   it("toInputExamples is a no-op for any input (regression suppressor)", () => {
     expect(toInputExamples({ scope: "global", title: "x" })).toEqual({});
     expect(toInputExamples(undefined)).toEqual({});

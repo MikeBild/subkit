@@ -1,28 +1,3 @@
-// User story: As an operator whose approved finding e-mail is refused at the
-// wire because its transform encodes the message one byte per character, I am
-// told the cause and offered the one mechanical repair, review its exact
-// change like any other fix, and after approving it the next approved run
-// sends.
-// Acceptance criteria:
-//   - AC1: GET /v1/workflows/{id}/diagnosis names the refused report step with
-//     reason `not_utf8`, remedy `patch` and fixer `use_utf8_encoder`.
-//   - AC2: POST /v1/workflows/{id}/repairs files one reviewable candidate; a
-//     second request returns the same candidate, and the diagnosis carries
-//     its id.
-//   - AC3: The candidate's preview shows the transform switching to
-//     `sk.base64UrlEncodeUtf8(`; approving it creates a new version whose
-//     approved run passes dispatch and sends exactly once.
-//   - AC4: The same diagnosis and proposal are reachable over MCP through
-//     `diagnose_workflow` and `propose_workflow_repair`.
-//   - AC5: A refusal recorded before refusals named their rule (no reason on
-//     the step) asks for a preparation, the preparation is NOT refused as
-//     "already bindable" although the review reads eligible, and afterwards
-//     the diagnosis names `not_utf8` with its fixer — no loop.
-//   - AC6: Without a supplied input, the preparation replays the refused
-//     run's own delivery — not a call that branches away before the send —
-//     so the refused step is actually inspected.
-// Spec refs: docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -57,8 +32,6 @@ let ctx: JourneyCtx;
 let principal: ResolvedPrincipal;
 let grantRequest: Request;
 
-// A real finding mailer's shape: "—" in the subject, "·" in the body, and the
-// whole message through the byte-per-character encoder.
 const ENCODER = [
   "const subject = '[watchkit page] api.example.com — certificate expires';",
   "const html = '<p>watchkit.finding · api.example.com · ' + input.input.at + '</p>';",
@@ -107,8 +80,6 @@ async function currentVersion(workflow_id: string): Promise<string> {
   return row.id;
 }
 
-/** Grant the current version, run it once as the scheduler would, and count
- *  what actually reached the mail endpoint. */
 async function grantAndRun(
   workflow_id: string,
   input: Record<string, unknown> = { at: "2026-01-01T00:00:00Z" },
@@ -245,7 +216,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     expect(refused.result.status).toBe("failed");
     expect(refused.sends).toBe(0);
 
-    // AC1
     const before = await diagnosis(wf.id);
     const block = before.find((entry) => entry.subject.step_id === "send_email");
     expect(block).toMatchObject({
@@ -256,7 +226,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     expect(block?.evidence.execution_id).toBe(refused.result.execution_id);
     expect(block?.candidate_id).toBeUndefined();
 
-    // AC2
     const propose = () =>
       journeyFetch(ctx, `/v1/workflows/${wf.id}/repairs`, {
         method: "POST",
@@ -277,7 +246,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     );
     expect(attached?.candidate_id).toBe(candidate_id);
 
-    // AC3
     const previewRes = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/preview`);
     expect(previewRes.status).toBe(200);
     const preview = (await previewRes.json()) as {
@@ -290,8 +258,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     expect(preview.before_step.id).toBe("compose");
     expect(preview.before_step.expression).toContain("sk.base64UrlEncode(msg)");
     expect(preview.after_step.expression).toContain("sk.base64UrlEncodeUtf8(msg)");
-    // A fixture replay cannot prove a gate repair; the route says so instead
-    // of passing a check that exercised nothing.
     const dryRun = await journeyFetch(ctx, `/v1/patch-candidates/${candidate_id}/dry-run`, {
       method: "POST",
     });
@@ -309,7 +275,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     const repaired = await grantAndRun(wf.id);
     expect(repaired.result.status).toBe("succeeded");
     expect(repaired.sends).toBe(1);
-    // The new version carries no gate block for the step any more.
     expect((await diagnosis(wf.id)).filter((entry) => entry.fixer)).toEqual([]);
   });
 
@@ -360,7 +325,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     });
     const refused = await grantAndRun(wf.id);
     expect(refused.result.status).toBe("failed");
-    // The refusal as an older engine stored it: the code, no reason.
     await ctx.db
       .update(executionSteps)
       .set({ error: sql`${executionSteps.error} - 'reason'` })
@@ -398,7 +362,6 @@ describe("journey 70: a refused report is repaired by a reviewed deterministic f
     });
   });
   test("AC6: the preparation replays the refused run's delivery", async () => {
-    // Only a finding reaches the mail; a heartbeat branches away before it.
     const wf = await seedWorkflow(ctx, {
       slug: "finding-mail-branching",
       name: "Finding mail branching",

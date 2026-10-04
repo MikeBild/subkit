@@ -1,7 +1,3 @@
-// The credential form as the reader sees it: a masked input the browser does
-// not autofill, a sentence saying what happens to the value — and never the
-// value itself.
-
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate } from "@/lib/i18n";

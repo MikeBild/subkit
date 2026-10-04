@@ -1,5 +1,3 @@
-// Circuit-breaker state machine tests.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { notificationChannels } from "../../db/schema/notifications.ts";
@@ -77,13 +75,11 @@ describe("notifications: circuit-breaker", () => {
       await onFailure(ctx.db, current, t0);
       current = await reload(channel.id);
     }
-    // After the cool-down window the next `canPass` flips to half_open.
     const afterCooldown = t0 + OPEN_DURATION_MS + 1;
     const gate = canPass(current, afterCooldown);
     expect(gate.allowed).toBe(true);
     expect(gate.phase).toBe("half_open");
 
-    // A success closes the breaker and wipes the DB state.
     await onSuccess(ctx.db, channel.id);
     current = await reload(channel.id);
     expect(current.circuit_state).toBe("closed");
@@ -99,7 +95,6 @@ describe("notifications: circuit-breaker", () => {
       await onFailure(ctx.db, current, t0);
       current = await reload(channel.id);
     }
-    // Force the half_open phase.
     const afterCooldown = t0 + OPEN_DURATION_MS + 1;
     canPass(current, afterCooldown);
     await onFailure(ctx.db, current, afterCooldown);

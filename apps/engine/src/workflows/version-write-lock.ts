@@ -2,9 +2,6 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 
-/** Use inside the version writer's transaction, before reading either pointer
- * or MAX(version). Locking only at pointer update cannot prevent duplicate
- * version allocation or a patch based on an already superseded definition. */
 export async function lockWorkflowForVersionWrite(
   tx: Executor,
   tenant_id: string,

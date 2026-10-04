@@ -1,11 +1,3 @@
-// Integration tests for the MCP OAuth retention cron.
-//
-// Seeds expired + fresh rows in all four mcp_oauth_* tables, runs
-// runMcpOAuthCleanup, and asserts:
-//   - expired/stale rows are deleted
-//   - fresh rows survive
-//   - the summary MCP_OAUTH_EXPIRED_PRUNED audit row is written
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -22,19 +14,14 @@ import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
 
-// Expired timestamps — all well past their respective grace windows.
 const expiredCodeAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // 2 days ago allow-wall-clock
 const expiredTokenAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000); // 8 days ago allow-wall-clock
 const revokedTokenAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000); // 8 days ago allow-wall-clock
 const staleClientAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000); // 31 days ago allow-wall-clock
 
-// Fresh timestamps — should survive the sweep.
 const freshExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now allow-wall-clock
 const _freshCreatedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago allow-wall-clock
 
-// Deterministic monotonic counter for unique `state` strings — the
-// uniqueness must not ride the wall clock (two inserts in the same ms would
-// also collide). Mirrors the config-seed test's `configFileSeq`.
 let stateSeq = 0;
 function nextState(prefix: string): string {
   stateSeq += 1;
@@ -228,11 +215,6 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
   });
 
   test("deletes an expired refresh token still referenced by a live access token, nulling the link (prod FK regression)", async () => {
-    // Reproduces the intermittent prod incident (mcp_oauth_cleanup.refresh_tokens_failed):
-    // sweep 2 deletes a refresh token that is >7d expired while a child access
-    // token (future expiry) still points at it via refresh_token_id. With the FK
-    // at ON DELETE NO ACTION the delete threw an FK violation; ON DELETE SET NULL
-    // lets the sweep proceed and nulls the surviving access token's link.
     const [rt] = await srv.db
       .insert(mcpOauthRefreshTokens)
       .values({
@@ -256,13 +238,12 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
         prefix: "fk_at_prefix1",
         token_sha256: "fk_access_token_sha256_nnn444",
         scope: "mcp:read",
-        expires_at: freshExpiry, // live — NOT removed by sweep 1
+        expires_at: freshExpiry,
         refresh_token_id: rt.id,
       })
       .returning();
     if (!at) throw new Error("seed access token failed");
 
-    // Must not throw (was: FK violation -> refresh_tokens_failed).
     await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
 
     const rtRemaining = await srv.db
@@ -280,14 +261,6 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
   });
 
   test("sweeps a chain-revoked rotation pair with chained access tokens in one pass", async () => {
-    // Chain-revocation shape (audit K3 fixture): reuse detection revokes every
-    // member of a rotation chain at once, so 7 days later rt1 AND rt2 become
-    // eligible in the SAME delete statement — rt1 still points at rt2 via the
-    // NO ACTION self-FK rotated_to_id (legal only because NO ACTION is checked
-    // at statement end), and each refresh token has a child access token
-    // hanging off refresh_token_id. The sweep must clear the whole chain in
-    // one pass: both refresh tokens gone, the expired access token gone, the
-    // live access token surviving with its link nulled by ON DELETE SET NULL.
     const [rt2] = await srv.db
       .insert(mcpOauthRefreshTokens)
       .values({
@@ -297,7 +270,7 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
         prefix: "chain_rt2_prefx1",
         token_sha256: "chain_refresh_token_sha256_ppp222",
         scope: "mcp:read",
-        expires_at: freshExpiry, // not yet expired — eligible via revoked_at only
+        expires_at: freshExpiry,
         revoked_at: revokedTokenAt,
       })
       .returning();
@@ -328,7 +301,7 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
         prefix: "chain_at1_prefx1",
         token_sha256: "chain_access_token_sha256_ppp111",
         scope: "mcp:read",
-        expires_at: expiredTokenAt, // dead — removed by sweep 1
+        expires_at: expiredTokenAt,
         refresh_token_id: rt1.id,
       })
       .returning();
@@ -343,13 +316,12 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
         prefix: "chain_at2_prefx1",
         token_sha256: "chain_access_token_sha256_ppp222",
         scope: "mcp:read",
-        expires_at: freshExpiry, // live — survives sweep 1
+        expires_at: freshExpiry,
         refresh_token_id: rt2.id,
       })
       .returning();
     if (!at2) throw new Error("seed at2 failed");
 
-    // Must not throw on either FK (self-FK rotated_to_id or child access tokens).
     await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
 
     const rtRemaining = await srv.db
@@ -383,13 +355,10 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
         redirect_uris: ["https://example.com/cb"],
         grant_types: ["authorization_code", "refresh_token"],
         scope: "mcp:read",
-        // Override created_at by seeding at a past timestamp via raw SQL if needed.
-        // Since Drizzle uses defaultNow(), we set it via update after insert.
       })
       .returning();
     if (!row) throw new Error("seed failed");
 
-    // Manually backdate created_at to simulate a stale client.
     await srv.db.execute(
       `UPDATE mcp_oauth_clients SET created_at = '${staleClientAt.toISOString()}' WHERE id = '${row.id}'`,
     );
@@ -416,12 +385,10 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
       .returning();
     if (!clientRow) throw new Error("seed client failed");
 
-    // Backdate created_at
     await srv.db.execute(
       `UPDATE mcp_oauth_clients SET created_at = '${staleClientAt.toISOString()}' WHERE id = '${clientRow.id}'`,
     );
 
-    // Seed a code for this client so NOT EXISTS guard fires
     await srv.db.insert(mcpOauthAuthorizationCodes).values({
       tenant_id: srv.tenantId,
       client_id: clientId,
@@ -431,7 +398,6 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
       code_challenge_method: "S256",
       redirect_uri: "https://example.com/cb",
       scope: "mcp:read",
-      // Fresh expiry so the code sweep doesn't remove it first
       expires_at: freshExpiry,
     });
 
@@ -445,11 +411,6 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
   });
 
   test("keeps old client with a live refresh token but no codes (prod regression)", async () => {
-    // Reproduces the prod incident: a DCR client connected >30 days ago whose
-    // short-lived authorization codes were long since purged by sweep 3, but
-    // which still holds live refresh tokens (actively used). A codes-only guard
-    // deleted it, breaking the connector with "unknown client_id". The durable
-    // refresh-token footprint must keep it alive.
     const clientId = "stale-active-dcr-client-lll222";
     const [clientRow] = await srv.db
       .insert(mcpOauthClients)
@@ -466,8 +427,6 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
       `UPDATE mcp_oauth_clients SET created_at = '${staleClientAt.toISOString()}' WHERE id = '${clientRow.id}'`,
     );
 
-    // A live (future-expiry, un-revoked) refresh token — the durable proof of
-    // use. No authorization codes exist for this client (sweep 3 purged them).
     await srv.db.insert(mcpOauthRefreshTokens).values({
       tenant_id: srv.tenantId,
       client_id: clientId,
@@ -532,7 +491,6 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
         redirect_uris: ["https://example.com/cb"],
         grant_types: ["authorization_code", "refresh_token"],
         scope: "mcp:read",
-        // created_at defaults to now() — within the 30-day window
       })
       .returning();
     if (!row) throw new Error("seed failed");
@@ -548,7 +506,6 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
 });
 
 describe("runMcpOAuthCleanup — expired client-direction in-flight states", () => {
-  /** Seed an mcp connector so mcp_oauth_states' FK is satisfied. */
   async function seedServer(slug: string): Promise<string> {
     const row = await seedMcpConnector(srv.db, {
       tenant_id: srv.tenantId,

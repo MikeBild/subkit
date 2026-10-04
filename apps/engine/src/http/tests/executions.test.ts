@@ -98,17 +98,10 @@ describe("http executions route", () => {
 });
 
 describe("idempotency key on the saved-workflow trigger", () => {
-  // seedWorkflow() carries a fixed slug and the active-slug index is unique
-  // per tenant, so seed once for this block and share the id.
   let workflowId = "";
   beforeAll(async () => {
     workflowId = await seedWorkflow("http-run-idempotency");
   });
-  // The capability matrix said "partial" here for as long as the generic
-  // trigger path accepted no key; two builders in Track 0.1 quoted that row
-  // as their reason to keep a hand-rolled ledger. This pins the row's new
-  // answer: the same key in one tenant yields one run, and the second call
-  // says so instead of starting anything.
   async function post(body: Record<string, unknown>, headers: Record<string, string> = {}) {
     const response = await fetch(`${ctx.baseUrl}/v1/executions`, {
       method: "POST",
@@ -152,7 +145,6 @@ describe("idempotency key on the saved-workflow trigger", () => {
     expect(second.body.execution_id).toBe(first.body.execution_id);
     expect(second.body.status).toBe("succeeded");
     expect(second.body.idempotent_replay).toBe(true);
-    // Nothing ran the second time: the replay carries no output of its own.
     expect(second.body.output).toBeUndefined();
     const changed = await post({
       source: "saved",
@@ -171,9 +163,6 @@ describe("idempotency key on the saved-workflow trigger", () => {
   });
 
   test("a refused start is written down, not only answered", async () => {
-    // Drives the route, not the admission helper: the audit row is written by
-    // the caller that knows who asked and through which surface, so a test that
-    // called `admitWorkflowRun` directly would pass with the row still missing.
     const key = "audited:2026-09-25T09";
     const first = await post({
       source: "saved",
@@ -206,12 +195,7 @@ describe("idempotency key on the saved-workflow trigger", () => {
     expect(row).toBeDefined();
     expect(row?.result).toBe("denied");
     expect(row?.reason).toBe("execution_boundary_mismatch");
-    // Which layer refused is the whole point of one action for both: a reader
-    // filtering this action must be able to tell "never started" from
-    // "stopped mid-flight" without knowing two action names.
     expect((row?.metadata as Record<string, unknown> | undefined)?.request_source).toBe("api");
-    // The caller is named — a refusal nobody can attribute is a refusal nobody
-    // can act on.
     expect(row?.actor_id).toBeTruthy();
   });
 
@@ -255,8 +239,6 @@ describe("idempotency key on the saved-workflow trigger", () => {
   });
 
   test("two concurrent calls with the same key still yield one run", async () => {
-    // The check-then-insert window is closed by the partial unique index;
-    // whichever call loses the insert is answered with the winner's run.
     const key = "race:2026-09-03T09";
     const body = {
       source: "saved",
@@ -289,9 +271,6 @@ describe("idempotency key on the saved-workflow trigger", () => {
 });
 
 describe("a run's source is who started it, not what the body claims", () => {
-  // "scheduler" feeds the production-incident count and the health digest's
-  // scheduled grouping. While the body decided the recorded source, any key
-  // could file its runs there — and the cockpit's own runs read "API".
   let workflowId = "";
   let cockpitHeaders: Record<string, string> = {};
   beforeAll(async () => {
@@ -389,8 +368,6 @@ describe("a run's source is who started it, not what the body claims", () => {
   });
 
   test("an API key records api, even when it claims to be the cockpit", async () => {
-    // The header alone is not a session: without the verified cookie the
-    // request stays an API call.
     const r = await start(
       { source: "saved", workflow_id: workflowId, input: { date: "k" } },
       { Authorization: `Bearer ${ctx.apiKey}`, "x-subkit-client": "cockpit" },
@@ -409,8 +386,6 @@ describe("a run's source is who started it, not what the body claims", () => {
   });
 
   test("only an API key may say cli — another credential cannot borrow the label", async () => {
-    // A browser session without the cockpit header also reads as "api" in the
-    // context. It holds no key, so nothing behind it is the CLI.
     const { "x-subkit-client": _client, ...sessionWithoutCockpit } = cockpitHeaders;
     const r = await start(
       { source: "saved", workflow_id: workflowId, input: { date: "b" }, request_source: "cli" },

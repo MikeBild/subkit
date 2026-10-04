@@ -1,7 +1,3 @@
-// End-to-end dispatch test. Seeds a channel + rule, publishes an
-// `execution.failed` event, confirms the fake adapter was hit, then
-// exhausts the rate limit and trips the circuit breaker.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
@@ -133,15 +129,9 @@ describe("notifications: dispatchEvent", () => {
       adapter,
     );
 
-    // Resolver built from the registry — same shape the fanout worker
-    // uses at runtime.
     const { makeRegistryAdapterResolver } = await import("../../webhooks/outbound/fanout.ts");
     const resolver = makeRegistryAdapterResolver(registry);
 
-    // Fake pg-boss — fanoutEvent calls boss.send for each matching
-    // webhook subscription. There are no subscriptions in this test,
-    // so the stub is never invoked, but fanoutEvent's signature still
-    // requires one.
     const fakeBoss = {
       send: async () => null,
     } as unknown as Parameters<typeof fanoutEvent>[0]["boss"];
@@ -174,7 +164,6 @@ describe("notifications: dispatchEvent", () => {
     const adapter = new FakeAdapter();
     adapter.alwaysFail = true;
 
-    // Drive failures up to the threshold.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const t0 = Date.now();
     for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
@@ -192,9 +181,6 @@ describe("notifications: dispatchEvent", () => {
     expect(chan?.circuit_state).toBe("open");
     expect(chan?.consecutive_failures).toBe(FAILURE_THRESHOLD);
 
-    // Next dispatch should be blocked by the breaker without calling
-    // the adapter at all. Stop forcing failures so we can be sure the
-    // skip comes from the breaker, not a throw.
     adapter.alwaysFail = false;
     const before = adapter.sends.length;
     const blocked = await dispatchEvent(
@@ -209,8 +195,6 @@ describe("notifications: dispatchEvent", () => {
     expect(blocked.outcomes[0]?.status).toBe("breaker_open");
     expect(adapter.sends.length).toBe(before);
 
-    // After the cool-down a probe should go through (half-open) and
-    // close the breaker on success.
     const afterCool = t0 + OPEN_DURATION_MS + 1_000;
     const probe = await dispatchEvent(
       {

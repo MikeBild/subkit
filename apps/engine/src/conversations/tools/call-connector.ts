@@ -1,49 +1,3 @@
-// `call_connector` — invoke an arbitrary HTTP/GraphQL/Postgres/S3
-// endpoint against a *persisted* connector with its real credential applied.
-//
-// Why this exists:
-//   `probe_connector` is a narrow health check (one shot at the configured
-//   probe path), and `dry_run_step` requires committing to a workflow draft.
-//   Neither covers the agent's iteration loop of "let me try GET
-//   /v2/droplets?per_page=10 and look at the response shape" before
-//   proposing a step. `call_connector` is exactly that surface: a real,
-//   audited, authenticated request against a saved connector, returning
-//   `{ status, headers, body, latency_ms }` so the LLM can ground its
-//   schema decisions in the actual vendor response.
-//
-// Schema decision: a single FLAT input shape with `connector.driver` used
-// for dispatch. The flat shape is friendlier to the LLM than a
-// discriminated union (no `driver_kind` discriminator to remember; the
-// connector itself dictates which fields are read). Driver-specific fields
-// (`sql`, `parameters`, `allow_writes`, `row_limit`) are optional and
-// only consulted on the matching branch. Mismatches (e.g. `sql` on
-// an HTTP connector) surface as `invalid_input`.
-//
-// Policy:
-//   - RBAC: `connector:read` on the target connector. (No `connector:invoke`
-//     permission exists in the catalog; this is the closest read-style
-//     gate, parity with `probe_connector` which also reads + dispatches.)
-//   - Audit: emits `connector.invoked` with actor, connector_id, method,
-//     URL host, path, status. Body, headers, full SQL, and full request
-//     bodies are NEVER recorded — those belong in telemetry, not the
-//     audit log (PII risk + cardinality). For Postgres we surface only a
-//     100-char SQL summary.
-//   - Persistence: the connector MUST be saved (`auth_type !== "none"` ⇒
-//     credential row required). Drafts use `probe_connector_draft`.
-//   - Body truncation: response bodies > ~8KB are truncated for the LLM
-//     and stashed under `raw_ref` for follow-up `get_raw_result` retrieval.
-//   - Confirmation: tool-policies.ts owns the policy table; this tool's
-//     execution mode is confirm_before_execution by default. Postgres
-//     `allow_writes` and S3 `PUT`/`DELETE` ALL flow through the same gate
-//     (no auto path).
-//   - Postgres safety: writes are rejected BEFORE the SQL hits the
-//     database via a regex check on the leading keyword. `row_limit` is
-//     enforced by appending `LIMIT $N` when the query has no LIMIT
-//     clause; queries with an existing LIMIT are passed through as-is
-//     (the operator is presumed to know what they want).
-//
-// EXECUTION_MODE: confirm_before_execution
-
 import { z } from "@hono/zod-openapi";
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
@@ -77,9 +31,6 @@ const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
 const CallConnectorInput = z
   .object({
     connector_id: z.string().uuid("connector_id must be a UUID"),
-    // HTTP / S3 fields. `method` and `path` are optional at the schema
-    // level because Postgres has no notion of either — driver-level
-    // validation flags missing-required-field cases.
     method: Method.optional(),
     path: z
       .string()
@@ -95,16 +46,9 @@ const CallConnectorInput = z
       .describe(
         "Additional headers; the connector's auth header is auto-injected from the saved credential.",
       ),
-    // A concrete (non-empty) JSON Schema. `z.unknown()` serialized to `{}`,
-    // which makes some MCP clients stringify the object — the GraphQL body
-    // `{query, variables}` then arrived as a JSON STRING and the guard below
-    // rejected it. A `union(object, string)` emits `anyOf[object, string]`, so
-    // clients send a real object; a still-stringified body is accepted here
-    // and JSON-parsed at the dispatch guard.
     body: z.union([z.object({}).passthrough(), z.string()]).optional(),
     timeout_ms: z.number().int().min(1000).max(60_000).default(30_000),
 
-    // Postgres fields.
     sql: z.string().min(1).optional().describe("SQL statement (postgres connectors only)."),
     parameters: z
       .array(z.unknown())
@@ -128,23 +72,16 @@ const CallConnectorInput = z
   })
   .openapi("CallConnectorToolInput");
 
-// ---- helpers ---------------------------------------------------------------
-
 const RESPONSE_BODY_BUDGET_BYTES = 8 * 1024;
 const DEFAULT_ROW_LIMIT = 100;
 const SQL_SUMMARY_MAX = 100;
 
-// Postgres mutation guard: leading-keyword check after stripping comments
-// and whitespace. We lean on the side of "if it isn't obviously a
-// SELECT/WITH, reject".
 const FORBIDDEN_SQL_LEADING_RE =
   /^\s*(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|VACUUM|REINDEX|CLUSTER|EXECUTE|CALL)\b/i;
 const ALLOWED_SQL_LEADING_RE = /^\s*(SELECT|WITH|EXPLAIN|SHOW)\b/i;
 const SQL_HAS_LIMIT_RE = /\blimit\s+\d+\b/i;
 
 function stripSqlComments(sql: string): string {
-  // Remove /* ... */ block comments and -- line comments so the leading
-  // keyword check isn't fooled by `-- harmless\nDROP TABLE x;`.
   return sql
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/--[^\n]*/g, " ")
@@ -180,20 +117,11 @@ function hostOf(rawUrl: string): string {
   }
 }
 
-/**
- * Normalize a call path into the path half of the `<METHOD> <path>`
- * endpoint key `schema_versions` rows are keyed by. Full URLs reduce to
- * their pathname and query strings are stripped (well-formed calls carry
- * them in `args.query` anyway) so pagination params don't fan one
- * logical endpoint into many schema rows.
- */
 function endpointKeyPath(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     try {
       return new URL(path).pathname;
-    } catch {
-      // fall through to the relative-path handling below
-    }
+    } catch {}
   }
   const queryStart = path.indexOf("?");
   return queryStart === -1 ? path : path.slice(0, queryStart);
@@ -212,8 +140,6 @@ function structuredError(
     },
   };
 }
-
-// ---- the tool --------------------------------------------------------------
 
 export const callConnectorTool: ConversationTool = {
   name: "call_connector",
@@ -259,10 +185,6 @@ export const callConnectorTool: ConversationTool = {
       method: args.method,
     });
 
-    // RBAC (`connector:read`) is enforced centrally via the `permission`
-    // descriptor before execute runs — see permission-gate.ts.
-
-    // Connector lookup (tenant-scoped).
     const connector = await getConnector(ctx.tenant_id, args.connector_id, ctx.db);
     if (!connector) {
       logger.warn({
@@ -280,8 +202,6 @@ export const callConnectorTool: ConversationTool = {
       );
     }
 
-    // A switch that still sends the request switches nothing off — the same
-    // refusal a workflow step and a probe of this connector get.
     if (!connector.enabled) {
       logger.warn({
         module: "conversation_tool",
@@ -311,7 +231,6 @@ export const callConnectorTool: ConversationTool = {
       credential_revision: null,
       connection_authority: null,
     };
-    // Credential check — required for all auth_type !== "none" connectors.
     if (connector.auth_type !== "none") {
       const cred = await getCredentialForConnector(
         ctx.tenant_id,
@@ -341,7 +260,6 @@ export const callConnectorTool: ConversationTool = {
       };
     }
 
-    // Driver routing.
     const driver = connector.driver;
     if (driver !== "http" && driver !== "graphql" && driver !== "postgres" && driver !== "s3") {
       logger.warn({
@@ -359,8 +277,6 @@ export const callConnectorTool: ConversationTool = {
       });
     }
 
-    // Cross-driver input validation: reject obvious shape mismatches BEFORE
-    // we touch the network or audit log.
     if (driver === "http" || driver === "graphql") {
       if (args.sql !== undefined) {
         return structuredError(
@@ -396,7 +312,6 @@ export const callConnectorTool: ConversationTool = {
       }
     }
 
-    // Postgres write guard — REJECT BEFORE the database sees the SQL.
     if (driver === "postgres") {
       const allowWrites = args.allow_writes === true;
       if (!allowWrites && !isReadOnlySql(args.sql ?? "")) {
@@ -421,21 +336,14 @@ export const callConnectorTool: ConversationTool = {
     let responseBody: unknown = null;
     let responseHeaders: Record<string, string> = {};
     let usedHost = "";
-    // The driver's verdict that the persisted credential authenticated the call.
     let storedCredentialUsed = false;
     let errorDetail: string | null = null;
     let authorityChanged = false;
-    // What we record in audit metadata. NEVER the full SQL or full body.
     let auditMethod = args.method ?? "";
     let auditPathSummary = args.path ?? "";
 
     try {
       if (driver === "graphql") {
-        // GraphQL connectors: callers pass the operation as
-        // `body: { query, variables }`. An MCP client that stringified the
-        // object sends a JSON string — parse it back before the shape check
-        // so the call still dispatches (defensive; the schema above already
-        // steers clients to a real object).
         const rawBody =
           typeof args.body === "string"
             ? (() => {
@@ -503,9 +411,6 @@ export const callConnectorTool: ConversationTool = {
         const sql = args.sql ?? "";
         const rowLimit = args.row_limit ?? DEFAULT_ROW_LIMIT;
         const allowWrites = args.allow_writes === true;
-        // Apply row_limit only to read-only queries with no existing
-        // LIMIT clause. Mutations (allow_writes:true) and queries that
-        // already declare a LIMIT pass through verbatim.
         let finalSql = sql.trim().replace(/;+\s*$/, "");
         if (!allowWrites && !SQL_HAS_LIMIT_RE.test(finalSql)) {
           finalSql = `${finalSql} LIMIT ${rowLimit}`;
@@ -520,7 +425,6 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = {};
         responseBody = { rows: res.rows, row_count: res.row_count ?? res.rows.length };
         usedHost = hostOf(connector.dsn ?? "") || "postgres";
-        // The connection string is the connector's own; the caller sends SQL.
         storedCredentialUsed = true;
         auditMethod = allowWrites ? "WRITE" : "READ";
         auditPathSummary = summarizeSql(sql);
@@ -549,7 +453,6 @@ export const callConnectorTool: ConversationTool = {
         responseHeaders = res.headers;
         responseBody = res.body;
         usedHost = hostOf(connector.base_url ?? "") || "s3";
-        // The store signs every request with the connector's credential.
         storedCredentialUsed = true;
       }
     } catch (err) {
@@ -559,18 +462,8 @@ export const callConnectorTool: ConversationTool = {
 
     const latency_ms = Date.now() - started;
 
-    // A transport-level success can still prove the connector unusable —
-    // a rejected credential (401/403), a removed endpoint (410), or the
-    // Atlassian Seraph anonymous-200. Classify on the raw response so an
-    // empty body is not mistaken for "no data". HTTP/GraphQL carry real
-    // upstream statuses + headers; postgres/s3 synthesize status 200
-    // and classify as "ok".
     const health = errorDetail ? "ok" : classifyConnectorHealth(status, responseHeaders);
 
-    // The re-auth clearing edge is "a successful authenticated call proves the
-    // credential is live" (see connectors/reauth.ts). It proves the STORED
-    // credential only: a call that carried its own `Authorization`, went to
-    // another host, or came back with GraphQL `errors` lifts nothing.
     if (!errorDetail) {
       await clearReauthIfProved(ctx.db, connector, {
         status,
@@ -580,8 +473,6 @@ export const callConnectorTool: ConversationTool = {
       });
     }
 
-    // Audit ALWAYS — including when the upstream failed. The audit row
-    // never carries the body, headers, or full SQL (PII risk + cardinality).
     await recordConnectorInvoked({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
@@ -595,8 +486,6 @@ export const callConnectorTool: ConversationTool = {
       url_host: usedHost,
       status_code: status,
       latency_ms,
-      // `deprecated` is a successful response that merely announces a future
-      // removal — it must audit as success, not error.
       outcome: errorDetail || (health !== "ok" && health !== "deprecated") ? "error" : "success",
       conversation_id: ctx.conversation_id,
     });
@@ -621,15 +510,6 @@ export const callConnectorTool: ConversationTool = {
       );
     }
 
-    // Successful calls record the observed top-level shape against
-    // `schema_versions` — same-layer parity with `probe_connector`
-    // (probe-connector.ts): both surfaces are the LLM's primary "what
-    // does this endpoint actually return" evidence, and the authoring
-    // context's "Recorded endpoint samples" section + the drift
-    // detector read these rows back. Endpoint key is `<METHOD> <path>`
-    // so repeat calls against the same endpoint reuse a row.
-    // postgres inputs reject `method` at validation time, so this
-    // branch only fires for the method+path drivers (http/graphql/s3).
     if (status >= 200 && status < 300 && responseBody !== null && args.method && args.path) {
       try {
         await recordSuccessShape(
@@ -642,9 +522,6 @@ export const callConnectorTool: ConversationTool = {
           ctx.db,
         );
       } catch (err) {
-        // Never let shape recording fail the call — the LLM still
-        // needs the response. Log and move on (probe_connector
-        // contract).
         logger.warn({
           module: "conversation_tool",
           action: "call_connector.shape_record_failed",
@@ -699,8 +576,6 @@ export const callConnectorTool: ConversationTool = {
     if (body_byte_count > RESPONSE_BODY_BUDGET_BYTES) {
       data.body_byte_count_exceeded_budget = true;
     }
-    // When the connector is unusable, tell the LLM explicitly so it reports
-    // "auth failed / endpoint gone", not "no results".
     const hint = connectorHealthHint(health, connector.slug, {
       path: args.path ?? null,
       deprecation: parseDeprecation(responseHeaders),

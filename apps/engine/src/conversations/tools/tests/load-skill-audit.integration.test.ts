@@ -1,13 +1,3 @@
-// Integration: load_skill must land an audit row for its tenant-visible
-// mutation of conversations.loaded_skills (the audit-chokepoint non-negotiable;
-// prod ran load_skill repeatedly with zero skill-load audit rows).
-//
-// Asserts:
-//   - first load writes exactly one conversation.skill_loaded row (already_loaded=false)
-//   - re-load (re-promote) writes a second row (already_loaded=true)
-//   - rows are tenant-scoped and carry the skill slug/id
-//   - the recorder is bound to ctx.db (no global-pool race)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
@@ -35,8 +25,6 @@ function makeCtx(conversation_id: string): ToolContext {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    // load_skill resolves the palette via the tenant skill list. Stub it to
-    // the global skill the harness seeds.
     engineClient: {
       skills: {
         list: async () => [

@@ -1,12 +1,3 @@
-// What a person reads when a connector sign-in that left the product comes
-// back: the OAuth callback, the MCP authorization callback, the one-time
-// sign-in link and the credential-setup page all end here.
-//
-// The page says what is the case and nothing else: "signed in" only once the
-// credential is stored, "switched off" when the connector still is, the
-// permissions the provider withheld by name — and it sends the person back to
-// the surface they started from, never to one they did not use.
-
 import type { Context } from "hono";
 import { cockpitConnectorUrl, type OAuthFlowOrigin } from "../../../connectors/index.ts";
 import type { Db } from "../../../db/client.ts";
@@ -19,8 +10,6 @@ import {
   resolveAuthLocale,
 } from "../oauth/ui.ts";
 
-/** Why a sign-in did not complete. A closed set: the page never repeats a
- *  provider's or an exception's own text. */
 export type SignInFailure =
   | "link_expired"
   | "provider_declined"
@@ -183,7 +172,6 @@ const COPY: Record<AuthLocale, Copy> = {
   },
 };
 
-/** Failures after which starting over is the way on. */
 const RESTARTABLE: ReadonlySet<SignInFailure> = new Set([
   "link_expired",
   "provider_declined",
@@ -195,8 +183,6 @@ const RESTARTABLE: ReadonlySet<SignInFailure> = new Set([
   "not_saved",
 ]);
 
-/** An OAuth error code as RFC 6749 spells one. Anything else is not shown: the
- *  query string of an unauthenticated callback is not text for a page. */
 const PROVIDER_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
 function connectorLink(
@@ -209,14 +195,9 @@ function connectorLink(
 }
 
 export interface SignedInFacts {
-  /** What the flow stored: a provider sign-in, a credential for a saved
-   *  connector, or one for a draft that is still to be tested. */
   stored: "signed_in" | "credential_saved" | "credential_received";
-  /** The connector as the person knows it. */
   name: string;
-  /** Whether the connector is switched on. Signing in does not change it. */
   enabled: boolean;
-  /** Permissions asked for and not granted; empty when all were. */
   missing_scopes: readonly string[];
 }
 
@@ -242,7 +223,6 @@ export function signedInPage(
     kind: "success",
     title,
     lines,
-    // The terminal is where a CLI flow's person switches it on.
     command: !facts.enabled && origin === "cli" ? copy.switchOnCommand : null,
     link: connectorLink(copy, origin, backlink),
     context: copy.context,
@@ -251,7 +231,6 @@ export function signedInPage(
 
 export function signInFailedPage(
   locale: AuthLocale,
-  /** null when the flow could not be identified — no state row was claimed. */
   origin: OAuthFlowOrigin | null,
   failure: SignInFailure,
   opts: { provider_code?: string | null; field?: string | null; backlink?: string | null } = {},
@@ -284,14 +263,6 @@ export function resultResponse(c: RouteContext, page: ResultPage): Response {
   );
 }
 
-/**
- * The connector's Cockpit page, as a link this browser can use — or null.
- *
- * A flow started in the Cockpit goes back there. Any other flow gets the link
- * only when the browser that came back carries a live Cockpit session of the
- * connector's own tenant: without one the link would lead to a sign-in wall
- * for a surface the person did not use.
- */
 export async function connectorBacklink(
   c: RouteContext,
   db: Db,
@@ -308,12 +279,6 @@ export async function connectorBacklink(
   return (await sessionIsLive(db, session.session_id, session.tenant_id)) ? url : null;
 }
 
-/**
- * Send a Cockpit-started sign-in straight back to the connector's page, or
- * null when no address can be built (the caller renders the page instead).
- * 303: the provider's redirect was a GET, and what follows is a different
- * resource, not a repeat of the callback.
- */
 export function cockpitReturn(flow: {
   connector_id: string;
   redirect_uri: string;

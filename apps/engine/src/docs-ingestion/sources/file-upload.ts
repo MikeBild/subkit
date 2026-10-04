@@ -1,20 +1,3 @@
-// File-upload source normalizer.
-//
-// Accepts a buffer + a hint (filename or MIME type) and returns one or
-// more chunks. Supported formats:
-//   - structured: JSON, YAML, CSV, XML (parsed in this module).
-//   - text:       Markdown, HTML, plaintext (delegated to
-//                 `knowledge/parsers.ts` so the connector-docs path and
-//                 the knowledge path stay aligned).
-//   - binary:     PDF, DOCX, XLSX/XLS, PPTX (delegated to the binary
-//                 parser registry in `../parsers/` — see that module
-//                 for the strategy ladder and timeout protection).
-//
-// The structured parsers are deliberately library-free: we ship a small
-// YAML parser (good enough for flat key/value docs) and an XML walker
-// that handles the doc-style nesting needed for retrieval. CSV uses a
-// streaming line splitter that respects quoted fields.
-
 import {
   detectFormat as detectKnowledgeFormat,
   parseFileToChunks,
@@ -76,8 +59,6 @@ function detectBinaryFromMime(mime: string): BinaryFormat | null {
   if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
     return "pptx";
   }
-  // Archives — checked after the office MIMEs so the specific-first
-  // ordering stays explicit.
   if (mime.includes("gzip")) return "gzip";
   if (mime.includes("zip")) return "zip";
   return null;
@@ -122,7 +103,6 @@ function toBuffer(b: Buffer | Uint8Array | string): Buffer {
   return Buffer.from(b.buffer, b.byteOffset, b.byteLength);
 }
 
-/** Tiny line-oriented CSV parser that respects quoted fields. */
 export function parseCsv(text: string): { headers: string[]; rows: string[][] } {
   const rows: string[][] = [];
   let cur: string[] = [];
@@ -170,7 +150,6 @@ export function parseCsv(text: string): { headers: string[]; rows: string[][] } 
   };
 }
 
-/** Minimal flat YAML parser: top-level `key: value` and `- item` lists. */
 export function parseSimpleYaml(text: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   let currentKey: string | null = null;
@@ -216,14 +195,12 @@ interface XmlNode {
   text: string;
 }
 
-/** Tiny non-validating XML tokenizer good enough to walk doc-style trees. */
 export function parseSimpleXml(text: string): XmlNode {
   const root: XmlNode = { name: "_root", attrs: {}, children: [], text: "" };
   const stack: XmlNode[] = [root];
   let i = 0;
   while (i < text.length) {
     if (text[i] === "<") {
-      // Skip declarations / comments.
       if (text.startsWith("<?", i)) {
         const end = text.indexOf("?>", i);
         i = end === -1 ? text.length : end + 2;
@@ -256,8 +233,6 @@ export function parseSimpleXml(text: string): XmlNode {
         }
       }
       const node: XmlNode = { name, attrs, children: [], text: "" };
-      // invariant: `stack` is seeded with `root` and only ever pops on </close>
-      // tags AFTER pushing — so length >= 1 here.
       const parent = stack[stack.length - 1];
       if (parent) parent.children.push(node);
       if (!selfClose) stack.push(node);
@@ -286,7 +261,6 @@ function renderXmlNode(node: XmlNode, depth = 0): string {
   return [head, text, ...kids].filter(Boolean).join("\n");
 }
 
-/** Parse + chunk one uploaded file. Returns `RawChunk[]`. */
 export async function ingestFileUpload(input: FileUploadInput): Promise<FileUploadResult> {
   const format = detectFormat(input);
   const uri = input.filename ?? `inline://${format}`;
@@ -337,7 +311,6 @@ export async function ingestFileUpload(input: FileUploadInput): Promise<FileUplo
         path: "csv.header",
         content: `# ${uri}\n\ncolumns: ${headers.join(", ")}\nrows: ${rows.length}`,
       });
-      // One chunk per row, capped at 200 rows for safety.
       const cap = Math.min(rows.length, 200);
       for (let i = 0; i < cap; i += 1) {
         const row = rows[i]!;
@@ -362,9 +335,6 @@ export async function ingestFileUpload(input: FileUploadInput): Promise<FileUplo
     case "markdown":
     case "html":
     case "plaintext": {
-      // Delegate to the knowledge parser so a Markdown / HTML / plaintext
-      // file uploaded against a connector chunks the same way it would
-      // against a tenant Knowledge Source. Keeps the two surfaces aligned.
       const knowledgeFormat = detectKnowledgeFormat(uri, input.mime);
       const fname = input.filename ?? uri;
       const parsed = parseFileToChunks(text, fname, knowledgeFormat);
@@ -399,8 +369,6 @@ function chunkBinaryParseResult(
       return;
     }
     case "docx": {
-      // Reuse the markdown chunker so DOCX uploads and Markdown
-      // knowledge sources slice on the same heading boundaries.
       const md = parsed.markdown;
       const mdChunks = parseMarkdownChunks(md, uri);
       for (const c of mdChunks) chunks.push(c);
@@ -432,9 +400,6 @@ function chunkBinaryParseResult(
     }
     case "zip":
     case "gzip": {
-      // The archive renderer emits one `## <entry path>` section per
-      // extracted member; the markdown chunker slices on those headings
-      // so each member lands as its own chunk.
       const mdChunks = parseMarkdownChunks(parsed.text, uri);
       for (const c of mdChunks) {
         if (c.content.trim().length > 0) chunks.push(c);

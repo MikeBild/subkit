@@ -17,10 +17,6 @@ beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }

@@ -1,11 +1,3 @@
-// Failure Pattern Detector — identifies recurring step failures with
-// consistent error conditions.
-//
-// Input: Failed execution steps for a tenant (last 30 days)
-// Grouping key: (workflow_id, step_key, error kind)
-// Threshold: >= 3 failures in group
-// Output: Workflow-scoped PatternSignal
-
 import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -28,7 +20,6 @@ interface FailureGroup {
 export async function detectFailurePatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
   const cutoff = new Date(now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
-  // Query failed steps joined with their executions
   const rows = await exec
     .select({
       execution_id: executionSteps.execution_id,
@@ -57,13 +48,9 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
     return [];
   }
 
-  // Group by (workflow_id, step_key, error_kind)
   const groups = new Map<string, FailureGroup>();
 
   for (const row of rows) {
-    // Draft and step runs have no persisted workflow_id — they are
-    // throwaway runs that never recur, so failure-pattern detection skips
-    // them. Only saved workflows produce candidates.
     if (!row.workflow_id) continue;
     const err = row.error as Record<string, unknown> | null;
     const errorKind = (err?.kind as string) ?? (err?.code as string) ?? "unknown";
@@ -91,7 +78,6 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
   for (const [, group] of groups) {
     if (group.count < MIN_FAILURE_COUNT) continue;
 
-    // Count total failures on this step_key for consistency ratio
     const totalForStep = rows.filter(
       (r) => r.workflow_id === group.workflow_id && r.step_key === group.step_key,
     ).length;

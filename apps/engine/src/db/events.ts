@@ -1,6 +1,3 @@
-// Outbox writer. Inserts into `events` inside the caller's transaction and
-// issues a NOTIFY with the new event id. The listener lives in P4.
-
 import { sql } from "drizzle-orm";
 import { logger } from "../logging/logger.ts";
 import type { Executor } from "./client.ts";
@@ -17,13 +14,6 @@ export type OutboxChannel =
   | "notification.emitted"
   | "resource.lifecycle";
 
-/**
- * Insert a row into `events` and issue `pg_notify` with the new id.
- *
- * Must be called inside a caller-managed transaction so the domain write
- * and the outbox insert commit atomically. The NOTIFY payload is the
- * smallest possible envelope: just the event id as text.
- */
 export async function writeEvent(
   tx: Executor,
   params: {
@@ -47,8 +37,6 @@ export async function writeEvent(
     throw new Error("writeEvent: insert returned no row");
   }
 
-  // NOTIFY carries only the id — the listener catches up via
-  // SELECT ... WHERE id > last_seen_id.
   await tx.execute(sql`SELECT pg_notify(${params.channel}, ${String(row.id)})`);
 
   logger.debug({

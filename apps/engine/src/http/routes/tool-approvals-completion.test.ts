@@ -1,22 +1,3 @@
-// The approval portal must make a human's decision OWN ITS EFFECT.
-//
-// Granting used to be the end of the story: the `tool_approvals` row flipped and
-// the paused conversation was left `pending`/`awaiting_input`, waiting for an MCP
-// client to poll and replay the settled decision. The clients that need the
-// portal — the hosted ones that cannot render an in-band form — never poll like
-// that. Production recorded the consequence exactly once and then buried it:
-// a grant at 03:23:10 (`granted_via: "portal"`), and at 03:32:05 the same
-// conversation resolved `timeout` / `approval_expired` with "the operator did not
-// answer the confirmation; nothing ran". Across the whole history of the feature,
-// 0 of 5 approval-backed confirms ever resolved.
-//
-// So the POST now stages the answer and enqueues the resume inside the human's
-// own request. These tests pin both halves of that contract:
-//   - the effect is durable (answer staged, task minted, job enqueued), and
-//   - the page still comes back immediately — the turn runs in the worker,
-//     because `respondElicitation` executes a whole LLM turn in-process and
-//     driving it inline would hand the approver a timeout instead of a receipt.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
@@ -39,8 +20,6 @@ let server: HttpTestServer;
 let requester: ResolvedPrincipal;
 let browserCookie: string;
 
-/** Jobs the route handed to pg-boss. A stub, so the test needs no queue runtime
- *  and can assert the envelope the worker will actually receive. */
 const sent: Array<{
   queue: string;
   job: ConversationRunTurnJob;
@@ -82,10 +61,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/** A policy-gated call parked mid-conversation: the approval holding the args,
- *  and the confirm elicitation holding the paused turn, joined by the handle in
- *  `commit_intent`. Deliberately WITHOUT an `approval_url` in the input — the
- *  shape that used to match nothing. */
 async function seedParkedCall(): Promise<{
   approval_id: string;
   grant: string;
@@ -98,8 +73,6 @@ async function seedParkedCall(): Promise<{
     principal: requester,
     approval_id,
     tool: "dry_run_workflow",
-    // The gate pins `chat` on every conversation surface so the harness' claim
-    // CAS matches on resume; mirror that here.
     surface: "chat",
     via: "chat",
     reason: "computed_from_input",
@@ -144,9 +117,6 @@ async function seedParkedCall(): Promise<{
   };
 }
 
-/** The real flow: open the page as the signed-in approver, take the CSRF token
- *  it minted, then submit. Grant possession scopes WHICH approval; a signed-in
- *  account supplies WHO decides. */
 async function decide(grant: string, decision: "approve" | "decline"): Promise<Response> {
   const headers = { cookie: browserCookie };
   const page = await fetch(
@@ -185,15 +155,11 @@ describe("approval portal — the decision owns its effect", () => {
     const elapsed_ms = Date.now() - started; // allow-wall-clock
 
     expect(res.status).toBe(200);
-    // The approver gets a receipt, not a held connection. The LLM turn runs in
-    // the worker; inline it would have blocked this response for minutes.
     expect(elapsed_ms).toBeLessThan(5_000);
     const receipt = await res.text();
     expect(receipt).toContain("continuation was queued");
     expect(receipt).not.toContain("being carried out");
 
-    // 1. The grant is durable, and a grant OPENS a claim window rather than
-    //    inheriting whatever was left of the human's deliberation time.
     const [approval] = await server.db
       .select()
       .from(toolApprovals)
@@ -203,15 +169,11 @@ describe("approval portal — the decision owns its effect", () => {
     expect(approval?.consumed_at).toBeNull();
     expect(approval?.expires_at.getTime()).toBeGreaterThan(Date.now()); // allow-wall-clock
 
-    // 2. The human's answer is staged onto the paused row. Still `pending` —
-    //    `respondElicitation` performs the real resolve, under its own CAS.
     const elicitation = await readElicitation(parked.elicitation_id);
     expect(elicitation.status).toBe("pending");
     expect(elicitation.output).toEqual({ confirmed: true });
     expect(elicitation.delivery_last_error).toBe("url_completed");
 
-    // 3. A task row exists so the worker is idempotent and the client can see
-    //    the turn, attributed to the portal.
     const tasks = await server.db
       .select()
       .from(mcpTasks)
@@ -228,8 +190,6 @@ describe("approval portal — the decision owns its effect", () => {
     expect(tasks[0]?.job_id).toBe(sent[0]?.job.attempt_id);
     expect(tasks[0]?.failure_reason).toBeNull();
 
-    // 4. The job carries the provenance the worker needs to treat this as a
-    //    person's decision rather than a model relay.
     expect(sent).toHaveLength(1);
     expect(sent[0]?.queue).toBe("conversation.run-turn");
     expect(sent[0]?.job).toMatchObject({
@@ -241,21 +201,11 @@ describe("approval portal — the decision owns its effect", () => {
       mcp_task_id: tasks[0]?.id,
     });
 
-    // 5. The turn runs as the principal that OWNS the approval, never as the
-    //    browser approver. `resolveConversationPrincipal` derives the principal
-    //    from `actor_id`, and `consumeApproval`'s CAS binds `principal_id`: an
-    //    unidentified approver (the normal case on an unauthenticated portal)
-    //    would yield no principal, so the harness could not claim and the held
-    //    call would be re-issued by the model instead of replayed byte-exactly.
-    //    Observed on production before this was wired.
     expect(sent[0]?.job.principal).toMatchObject({
       kind: "system_account",
       id: server.systemAccountId,
       tenant_id: server.tenantId,
     });
-    // `mcp_tasks.actor_id` references `users`, so a system-account OWNER cannot
-    // land there; the identified approver does, and the owning principal rides
-    // the job envelope where the claim actually reads it.
     expect(tasks[0]?.actor_id).toBe(server.userId);
   });
 
@@ -282,8 +232,6 @@ describe("approval portal — the decision owns its effect", () => {
   });
 
   test("a lost enqueue marks the task failed instead of leaving a turn that reads as working", async () => {
-    // pg-boss dedup or a rejected send. The human's decision still stands — it is
-    // already recorded on the approval — and the expiry sweep is the backstop.
     sent.length = 0;
     acceptSend = false;
     try {
@@ -291,7 +239,6 @@ describe("approval portal — the decision owns its effect", () => {
 
       const res = await decide(parked.grant, "approve");
       expect(res.status).toBe(200);
-      // Honest copy: nothing is being carried out, so the page must not say so.
       expect(await res.text()).not.toContain("being carried out");
 
       const [approval] = await server.db
@@ -317,9 +264,6 @@ describe("approval portal — the decision owns its effect", () => {
   });
 
   test("an approval with no paused conversation still grants, and promises nothing", async () => {
-    // A direct tool dispatch or a chat fast-path run mints an approval with no
-    // elicitation to advance. Granting it makes the call CLAIMABLE; nothing
-    // carries it out on its own, so the page must not imply otherwise.
     sent.length = 0;
     const approval_id = nextApprovalId();
     const { approval_url } = await requestApproval({

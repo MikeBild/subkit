@@ -1,10 +1,3 @@
-// Tests for the playwright-crawl discovery strategy.
-//
-// We never launch a real Chromium here. The strategy supports a
-// test-only chromium-provider hook (`setChromiumProviderForTesting`)
-// that swaps in a stub browser whose `goto`/`content`/`evaluate`
-// behaviour is driven by a per-URL fixture map.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { setTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -19,19 +12,12 @@ import { DiscoveryError } from "./types.ts";
 interface PageFixture {
   status?: number;
   body?: string;
-  /** Anchor hrefs returned by `page.evaluate` (BFS path). */
   links?: string[];
-  /** If set, page.goto throws with this message. */
   throwOnGoto?: string;
 }
 
 type FixtureMap = Map<string, PageFixture>;
 
-/**
- * Build a stub chromium that drives `page.goto` / `page.content` /
- * `page.evaluate` from a fixture map. Records every URL visited so
- * tests can assert traversal order.
- */
 function makeStubChromium(fixtures: FixtureMap, visited: string[]) {
   return {
     chromium: {
@@ -131,22 +117,18 @@ describe("scoreCandidate", () => {
   });
 
   test("penalises localized paths (de/zh/pt-br) but keeps en + plain api", () => {
-    // Translated docs paths get the locale penalty.
     expect(scoreCandidate("https://docs.x.com/de/api/widgets")).toBeLessThan(
       scoreCandidate("https://docs.x.com/api/widgets"),
     );
     expect(scoreCandidate("https://docs.x.com/zh/reference")).toBeLessThan(
       scoreCandidate("https://docs.x.com/reference"),
     );
-    // BCP-47-shaped locale (pt-br, zh-cn) also penalised.
     expect(scoreCandidate("https://docs.x.com/pt-br/api/widgets")).toBeLessThan(
       scoreCandidate("https://docs.x.com/api/widgets"),
     );
-    // English and the api allowlist must not be penalised.
     expect(scoreCandidate("https://docs.x.com/en/api/widgets")).toBeGreaterThanOrEqual(
       scoreCandidate("https://docs.x.com/api/widgets"),
     );
-    // A bare `/api/...` (no leading 2-letter segment) stays positive.
     expect(scoreCandidate("https://docs.x.com/api/widgets")).toBeGreaterThan(0);
   });
 });
@@ -203,7 +185,6 @@ describe("playwrightCrawlStrategy — sitemap path", () => {
     expect(result.text_corpus ?? "").toContain("Widgets API");
     expect(result.text_corpus ?? "").toContain("Gadgets API");
     expect(result.text_corpus ?? "").toContain("Auth Reference");
-    // Pricing / login / blog should NOT be visited.
     expect(visited).not.toContain("https://docs.acme.example.com/pricing");
     expect(visited).not.toContain("https://docs.acme.example.com/login");
     expect(visited).not.toContain("https://docs.acme.example.com/blog/launch");
@@ -211,7 +192,6 @@ describe("playwrightCrawlStrategy — sitemap path", () => {
 
   test("Jaccard dedupe drops near-duplicate pages", async () => {
     const baseHtml = PAGE_HTML_WIDGETS;
-    // Add a single token so dedupe sees > 0.7 without identical match.
     const dupeHtml = baseHtml.replace("widgets endpoint", "widgets endpoint family");
     const sitemap = `<?xml version="1.0"?><urlset>
       <url><loc>https://docs.acme.example.com/api/widgets</loc></url>
@@ -231,7 +211,6 @@ describe("playwrightCrawlStrategy — sitemap path", () => {
     const result = await playwrightCrawlStrategy.fetch("https://docs.acme.example.com/api", {});
 
     expect(result.warnings.some((w) => w.code === "page_filtered")).toBe(true);
-    // Corpus contains widgets (kept) and auth (kept) but only once for widgets text.
     const widgetMatches = (result.text_corpus ?? "").match(/Widgets API/g) ?? [];
     expect(widgetMatches.length).toBe(1);
   });
@@ -249,8 +228,8 @@ describe("playwrightCrawlStrategy — BFS fallback", () => {
           links: [
             "https://docs.acme.example.com/api/widgets",
             "https://docs.acme.example.com/reference/auth",
-            "https://other.example.com/api/should-skip", // cross-origin
-            "https://docs.acme.example.com/pricing", // negative score
+            "https://other.example.com/api/should-skip",
+            "https://docs.acme.example.com/pricing",
           ],
         },
       ],
@@ -266,7 +245,6 @@ describe("playwrightCrawlStrategy — BFS fallback", () => {
     expect(result.strategy).toBe("playwright-crawl");
     expect(result.text_corpus ?? "").toContain("Widgets API");
     expect(result.text_corpus ?? "").toContain("Auth Reference");
-    // Cross-origin must be filtered.
     expect(visited).not.toContain("https://other.example.com/api/should-skip");
   });
 });
@@ -301,7 +279,6 @@ describe("playwrightCrawlStrategy — total failure", () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(Error);
-    // Either DiscoveryError(playwright_failed) directly or wrapped by loadChromium.
     if (caught instanceof DiscoveryError) {
       expect(caught.code).toBe("playwright_failed");
     }
@@ -349,19 +326,15 @@ describe("playwrightCrawlStrategy — caller signal honoured", () => {
     setChromiumProviderForTesting(() => Promise.resolve(stub.chromium));
 
     const ctrl = new AbortController();
-    // Fire the abort almost immediately so the harvest loop sees it.
     queueMicrotask(() => ctrl.abort());
 
     const result = await playwrightCrawlStrategy
       .fetch("https://docs.acme.example.com/api", { signal: ctrl.signal })
       .catch((err) => err);
 
-    // Either we returned with a budget_exceeded warning, or we threw
-    // playwright_failed because the abort hit before any page kept.
     if (result instanceof DiscoveryError) {
       expect(result.code).toBe("playwright_failed");
     } else {
-      // succeeded — but a budget_exceeded warning may be present.
       expect(result.strategy).toBe("playwright-crawl");
     }
   });

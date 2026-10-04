@@ -1,12 +1,3 @@
-// Skill-content contract tests.
-//
-// These tests ensure the 10 bundled Markdown skills are not placeholder
-// stubs — they must contain the concrete concepts the LLM is supposed to
-// learn from them. If someone reduces a skill to a generic description,
-// these tests fail with a pointed, fixable message.
-//
-// This is deliberately stricter than "file exists". The content matters.
-
 import { describe, expect, test } from "bun:test";
 import { loadEmbeddedSkillSeeds, type SeededSkill } from "../seed.ts";
 
@@ -44,7 +35,6 @@ describe("seeded skill catalogue — coverage", () => {
       expect(s.body.length).toBeGreaterThan(1000);
       expect(s.title.length).toBeGreaterThan(3);
       expect(s.description.length).toBeGreaterThan(10);
-      // Keep the error message actionable:
       if (s.body.length < 1000) throw new Error(`skill ${slug} body too short`);
     }
   });
@@ -67,8 +57,6 @@ describe("subkit-concepts — mental model coverage", () => {
     expect(body).toContain("${cred.");
     expect(body).toContain("${connector.");
     expect(body).toContain("${input.");
-    // Both `${scope.*}` and `$scope.*` are used in the codebase; either
-    // form being documented is enough to teach the concept.
     const hasScope = body.includes("${scope.") || body.includes("$scope.");
     expect(hasScope).toBe(true);
   });
@@ -83,9 +71,6 @@ describe("subkit-concepts — mental model coverage", () => {
 
   test("documents onError mode vocabulary across the catalogue", async () => {
     const skills = loadAll();
-    // The primary modes may be split across subkit-concepts.md and
-    // error-recovery.md. We require the catalogue, taken as a whole, to
-    // teach at least three of the four modes.
     const combined = [
       skills.get("subkit-concepts")!.body,
       skills.get("error-recovery")!.body,
@@ -110,7 +95,6 @@ describe("workflow-authoring — recipe coverage", () => {
     const skills = loadAll();
     const body = skills.get("workflow-authoring")!.body;
     expect(body).toContain("save_workflow_draft");
-    // The authoring triad and/or a probe should appear:
     const hasProbe = body.includes("probe_connector");
     const hasAuthor = body.includes("author_workflow");
     const hasEdit = body.includes("edit_workflow_patch");
@@ -129,7 +113,6 @@ describe("data-handling — envelope rule enforced", () => {
   test("explicitly shows $scope.<id>.data (not bare $scope.<id>)", async () => {
     const skills = loadAll();
     const body = skills.get("data-handling")!.body;
-    // positive evidence:
     expect(/\$scope\.[A-Za-z0-9_-]+\.data\b/.test(body)).toBe(true);
   });
 
@@ -144,7 +127,6 @@ describe("rbac-and-scopes — permission vocabulary", () => {
   test("lists the real subkit permissions", async () => {
     const skills = loadAll();
     const body = skills.get("rbac-and-scopes")!.body;
-    // A representative subset — all of these must appear:
     const perms = [
       "workflow:run",
       "workflow:read",
@@ -169,8 +151,6 @@ describe("error-recovery — numbered recovery routine", () => {
   test("has at least 4 numbered steps", async () => {
     const skills = loadAll();
     const body = skills.get("error-recovery")!.body;
-    // Accept three common shapes: ordered Markdown list ('1. ... 2. ...'),
-    // H3 headings with numbers ('### 1. Read'), or '**Step 1**' style.
     const orderedList = body.match(/^\s*\d+\.\s/gm) ?? [];
     const numberedHeading = body.match(/^#{1,6}\s+\d+\.\s/gm) ?? [];
     const stepForm = body.match(/\*\*\s*Step\s+\d+/gi) ?? [];
@@ -208,8 +188,6 @@ describe("connector-specific skills — driver vocabulary", () => {
   test("http-connectors covers the core mutation verbs + GET", async () => {
     const skills = loadAll();
     const body = skills.get("http-connectors")!.body;
-    // At least GET + POST + 2 of {PUT, PATCH, DELETE}. Any combination
-    // covers the conceptual spread of safe/unsafe methods.
     expect(body).toContain("GET");
     expect(body).toContain("POST");
     const mutations = ["PUT", "PATCH", "DELETE"].filter((v) => body.includes(v));

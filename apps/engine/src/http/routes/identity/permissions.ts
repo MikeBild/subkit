@@ -1,15 +1,3 @@
-// GET /v1/identity/permissions — effective permissions of the caller on a
-// resource, computed from the SAME `can()` the engine enforces (so the
-// displayed picture equals the enforced one). Self-introspection: gated by
-// auth only, never by a permission (a caller must be able to discover its
-// own rights without already holding one).
-//
-// Connector authorization is reported as a single LEVEL — none / read-only
-// / read-write — the framing shared by the denial message and the
-// build-time warning. For OAuth2 connectors the level is paired with the
-// credential scope diff so a builder also sees whether the connector's
-// credential actually granted the scopes it needs.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { computeConnectorScopeDiff, getConnector } from "../../../connectors/index.ts";
 import { connectorAccessLevel } from "../../../rbac/index.ts";
@@ -30,12 +18,7 @@ const PermissionsSchema = z
   .object({
     resource_type: z.literal("connector"),
     resource_id: z.string(),
-    /** Effective access level — role ⊕ groups ⊕ grants, intersected with
-     *  the calling credential's ceiling. */
     level: z.enum(["none", "read-only", "read-write"]),
-    /** OAuth2 credential scope diff (what the connector needs vs. what its
-     *  credential granted). `null` for non-OAuth connectors or when there is
-     *  no signal. */
     credential_scopes: ConnectorScopeDiffSchema,
   })
   .openapi("EffectivePermissions");
@@ -68,9 +51,6 @@ export function registerEffectivePermissionsRoute(app: OpenAPIHono<AppEnv>): voi
 
     const level = await connectorAccessLevel(db, principal, resource_id, principal.tenant_id);
 
-    // Credential scope diff is best-effort and only meaningful for an
-    // existing OAuth2 connector; `computeConnectorScopeDiff` returns null
-    // otherwise.
     const connector = await getConnector(principal.tenant_id, resource_id, db);
     const credentialScopes = connector
       ? await computeConnectorScopeDiff(db, principal.tenant_id, connector)

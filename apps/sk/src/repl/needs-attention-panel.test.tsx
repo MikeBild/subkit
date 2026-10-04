@@ -1,16 +1,3 @@
-// Unit tests for NeedsAttentionPanel.
-//
-// The panel renders digest failures as structured Ink chrome — not as a
-// conversational turn. Its contract:
-//   - every failure group's workflow name and "failed N×" count are visible
-//   - the root-cause string is visible
-//   - it never contains "Reply yes" or "I noticed" (those are prose turn
-//     patterns that the old stdout banner approach used)
-//   - open patch-candidates render with their summary
-//   - risk signals render with headline and detail
-//   - an all-clear digest (no groups, no candidates, no risk) renders nothing
-//     meaningful beyond the header
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type { OperatorHealthDigest } from "../engine-client.ts";
@@ -249,10 +236,6 @@ describe("NeedsAttentionPanel — failure groups", () => {
 
 describe("NeedsAttentionPanel — recovered causes", () => {
   test("a cause the schedule has recovered from says so, and a live one does not", () => {
-    // The panel keeps both rows — what broke is worth reading — but only one of
-    // them is still an incident. The frame carries no color, so the sentence is
-    // what a reader actually gets; asserting it both ways also pins that an
-    // engine which omits the field leaves the cause standing.
     const ui = render(
       <NeedsAttentionPanel
         digest={makeDigest({
@@ -281,8 +264,6 @@ describe("NeedsAttentionPanel — recovered causes", () => {
     const frame = snapshot(ui);
     expect(frame).toContain("Monthly report");
     expect(frame).toContain("last ran clean on its schedule");
-    // Exactly one of the two rows carries it — a line on both would say the
-    // live failure had recovered too.
     expect(frame.split("last ran clean on its schedule")).toHaveLength(2);
     expect(frame).toContain("The address answered 404.");
     ui.unmount();
@@ -567,8 +548,6 @@ describe("NeedsAttentionPanel — the attention list", () => {
 });
 
 describe("NeedsAttentionPanel — count matches the starter-action label", () => {
-  // The header count and the injected "Fix N failures" label both come from
-  // totalFailureCount(digest). Lock in that they never drift.
   test("panel header N equals buildStarterActions label N for the same digest", () => {
     const allowAll: PersonaProbe = { allows: () => true };
     const digest = makeDigest({

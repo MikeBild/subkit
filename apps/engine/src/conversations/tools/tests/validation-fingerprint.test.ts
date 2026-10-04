@@ -74,9 +74,6 @@ describe("computeValidationFingerprint", () => {
   });
 
   test("message-prefix truncation prevents long-message divergence", () => {
-    // Two identical errors except for trailing tail past 60 chars
-    // should hash identically — the tail is usually a stack /
-    // serialised payload that varies between runs.
     const baseMsg = "X".repeat(60);
     const a = computeValidationFingerprint([{ path: "p", message: `${baseMsg}AAAAAAAAA` }]);
     const b = computeValidationFingerprint([{ path: "p", message: `${baseMsg}ZZZZZZZZZ` }]);

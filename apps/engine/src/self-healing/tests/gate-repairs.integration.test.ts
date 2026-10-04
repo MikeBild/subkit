@@ -1,8 +1,3 @@
-// One block, one repair: a held preparation and a refused granted run name the
-// same encoder cause under two gate codes, and the repair is filed once; a
-// person's rejection keeps holding for that version; a draft is diagnosed but
-// never repaired.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -248,13 +243,11 @@ test("a draft is diagnosed but never repaired", async () => {
   const diagnosis = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev");
   expect(diagnosis).toMatchObject({ workflow_version_id: draft.id, is_current: false });
   expect(await proposeGateRepairs(db, target(wf.workflow_id, draft.id))).toEqual([]);
-  // The running version a refused start is about can still be asked for by id.
   const running = await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev", {
     version_id: wf.version_id,
   });
   expect(running).toMatchObject({ workflow_version_id: wf.version_id, is_current: true });
   expect(running?.diagnoses.map((entry) => entry.subject.step_id)).toContain("send_email");
-  // A version that is not this workflow's is not found — never a clean bill.
   expect(
     await diagnoseWorkflow(db, ctx.tenantId, wf.workflow_id, "dev", {
       version_id: "00000000-0000-4000-8000-0000000000aa",
@@ -321,7 +314,6 @@ test("a contradicted declaration on a connector-backed send is declared from wha
   expect(preview?.reviewable).toBe(true);
   expect(preview?.after_step?.report_delivery).toMatchObject({ to: "ops@example.com" });
   expect(preview?.before_step?.report_delivery).toMatchObject({ to: "other@example.com" });
-  // The reviewer sees which run the declaration was copied from.
   expect(preview?.proposal?.patch).toMatchObject({
     source_execution_id: send?.evidence.execution_id,
   });
@@ -352,7 +344,6 @@ test("another governance refusal is not relabelled as a changed approval", async
   const wf = await seed();
   await refusedGrantedRun(wf.workflow_id, wf.version_id);
   const db = ctx.testDb.db;
-  // The same refused row, as if a declared request boundary had refused it.
   await db
     .update(executionSteps)
     .set({ error: { code: "request_outside_declared_boundary", message: "outside" } })
@@ -365,11 +356,6 @@ test("another governance refusal is not relabelled as a changed approval", async
   ).toEqual([]);
 });
 
-/**
- * A later run of the same version, as its rows record it: admitted under the
- * refused run's approval (or none), a minute after it, with `step_key`
- * completed.
- */
 async function laterRun(
   workflow_id: string,
   step_key: string,
@@ -389,7 +375,6 @@ async function laterRun(
     .limit(1);
   if (!refused) throw new Error("no refused run to follow");
   const later = new Date((await databaseNow(db)).getTime() + 60_000);
-  // An approved run is admitted queued — the database reserves its run then.
   const [run] = await db
     .insert(executions)
     .values({
@@ -428,25 +413,20 @@ const changedApproval = async (workflow_id: string) =>
 
 test("a refusal is history once a later granted run of the version got past that step", async () => {
   const wf = await seed();
-  // Room on the approval for the granted runs that follow the refusal.
   await refusedGrantedRun(wf.workflow_id, wf.version_id, 5);
   expect(await changedApproval(wf.workflow_id)).toHaveLength(1);
 
-  // Success elsewhere, a preparation (held, and never under an approval), and
-  // an ungranted run prove nothing about whether the approval fits this step.
   await laterRun(wf.workflow_id, "compose");
   await laterRun(wf.workflow_id, "send_email", { held: true, granted: false });
   await laterRun(wf.workflow_id, "send_email", { granted: false });
   expect(await changedApproval(wf.workflow_id)).toHaveLength(1);
 
-  // A loop iteration of the step is the step.
   await laterRun(wf.workflow_id, "send_email[0]");
   expect(await changedApproval(wf.workflow_id)).toEqual([]);
 });
 
 test("a declaration is never copied from what another version observed", async () => {
   const db = ctx.testDb.db;
-  // Version 1 sends correctly encoded mail; a preparation observes it.
   const wf = await createWorkflowRow(ctx, {
     name: "Finding mail across versions",
     slug: `finding-mail-${++sequence}`,
@@ -475,9 +455,6 @@ test("a declaration is never copied from what another version observed", async (
     ],
   });
   await preparation(wf.workflow_id);
-  // Version 2 is a different message to a different declared recipient, and
-  // has never been prepared. Its granted run is refused as addressed
-  // differently from its declaration.
   const [v1] = await db
     .select({ dag: workflowVersions.dag })
     .from(workflowVersions)

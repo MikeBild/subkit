@@ -1,16 +1,3 @@
-// llms.txt source normalizer.
-//
-// `llms.txt` is a curated index file documented at
-// https://llmstxt.org/ — it lists URLs the author wants LLMs to read,
-// optionally grouped under markdown headings. The parser here:
-//
-//   1. Fetches the index file.
-//   2. Extracts markdown links (`[title](url)`).
-//   3. For each link, follows up to `MAX_LINKS` URLs — each fetched
-//      content is normalized as markdown (or openapi if the URL ends in
-//      `.json` / `.yaml`, falling through to openapi parsing).
-//   4. Every followed URL counts as one "spec" against the spec cap.
-
 import {
   canConsumeBytes,
   canFetchSpec,
@@ -29,7 +16,6 @@ export interface LlmsTxtIngestResult {
   followed: number;
 }
 
-/** Extract markdown links `[label](url)` from the file body. */
 export function parseLlmsTxt(body: string): Array<{ title: string; url: string }> {
   const out: Array<{ title: string; url: string }> = [];
   const re = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
@@ -70,7 +56,6 @@ export async function ingestLlmsTxt(
     try {
       if (/\.(json|yaml|yml)(\?|$)/i.test(link.url)) {
         const got = await ingestOpenAPIUrl(link.url, state, fetchImpl);
-        // Tag each chunk with the link title for retrieval friendliness.
         for (const c of got.chunks) {
           chunks.push({
             title: `${link.title}: ${c.title ?? ""}`.trim(),
@@ -90,10 +75,7 @@ export async function ingestLlmsTxt(
       }
       recordLinkFollowed(state);
       followed += 1;
-    } catch (_err) {
-      // A single broken link doesn't fail the whole ingest — keep going.
-      // The main service writes a warning-level log with the URL.
-    }
+    } catch (_err) {}
   }
 
   return { uri: url, raw_bytes: bytes, chunks, followed };

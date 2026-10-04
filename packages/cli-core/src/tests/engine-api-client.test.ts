@@ -1,6 +1,3 @@
-// Smoke test for the generated engine API client: ensures the types
-// round-trip and the auth middleware is applied.
-
 import { describe, expect, test } from "bun:test";
 import { createEngineClient } from "../engine-api/client.ts";
 

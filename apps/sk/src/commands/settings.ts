@@ -1,19 +1,3 @@
-// `sk settings` — list, read, write, and interactively configure engine
-// settings.
-//
-// Subcommands map onto /v1/settings, /v1/settings/{path} GET/PUT.
-// Secrets come back masked from the engine; the CLI never prints raw
-// values.
-//
-//   sk settings list                       — show every leaf with its
-//                                            resolved value
-//   sk settings get <path>                 — read one leaf
-//   sk settings set <path> <json>          — write one leaf
-//   sk settings configure                  — interactive Ink form
-//
-// Every subcommand accepts `--tenant <id>` to operate on a tenant
-// overlay (only `scope: "tenant"` leaves may be written).
-
 import { isEngineError, reportCommandError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -118,11 +102,6 @@ const getCommand = defineCommand({
   },
 });
 
-/**
- * A save the engine answered with 409 `restart_required` IS saved — the value
- * waits for the next process start. Returns the engine's message then, null for
- * every real failure. It used to print "Error:" and exit 1 for a success.
- */
 export function savedAwaitingRestart(err: unknown): string | null {
   return isEngineError(err) && err.code === "restart_required" ? err.message : null;
 }
@@ -162,9 +141,6 @@ const setCommand = defineCommand({
           `  ${pc.yellow("takes effect after a restart — `sk system restart --wait`")}\n`,
         );
     } catch (err) {
-      // Saved, waiting for a restart: that is the setting's normal path, not
-      // a failure. The engine answers 409 restart_required with the saved
-      // revision in its message.
       const waiting = savedAwaitingRestart(err);
       if (waiting) {
         if (args.json) return printJson({ saved: true, restart_required: true, message: waiting });
@@ -202,10 +178,6 @@ const configureCommand = defineCommand({
       const tenant = (args.tenant as string | undefined) ?? undefined;
       const tab = (args.tab as string | undefined) ?? undefined;
 
-      // Auto-detect headless: any caller without a TTY (CI, pipe,
-      // redirect) gets the structured payload instead of a render that
-      // would crash or produce garbage. The explicit flag forces the
-      // same path even when a TTY is attached.
       const headless =
         Boolean(args["non-interactive"]) || !process.stdout.isTTY || !process.stdin.isTTY;
       if (headless) {

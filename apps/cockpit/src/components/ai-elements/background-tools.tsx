@@ -6,17 +6,8 @@ import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { Shimmer } from "./shimmer";
 
-// Reads that changed nothing, on one line each.
-//
-// An agent answering "which workflows fail most" may list workflows, read four
-// of them and search the knowledge base before it says a word. Rendering six
-// collapsible cards for that buries the one call that mattered under five that
-// did not. These get a line; a run, a write or a question still gets a card.
-
 export interface BackgroundToolLine {
-  /** Already-translated label — present tense while running, past when done. */
   label: string;
-  /** How many consecutive identical calls this line stands for. */
   count: number;
   running: boolean;
 }
@@ -34,9 +25,6 @@ export function BackgroundTools({ lines, testId, className }: BackgroundToolsPro
   const anyRunning = lines.some((line) => line.running);
   const total = lines.reduce((sum, line) => sum + line.count, 0);
 
-  // A single line says what it is. Several only collapse once they are all
-  // finished — collapsing work still in flight would hide the thing a person
-  // is currently waiting on.
   if (lines.length === 1 || anyRunning) {
     return (
       <div className={cn("mb-2 flex flex-col gap-1", className)} data-testid={testId}>

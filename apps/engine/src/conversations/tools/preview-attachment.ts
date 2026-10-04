@@ -1,10 +1,3 @@
-// preview_attachment — read-only fetch of the full stored content of
-// a single attachment, up to a cap that keeps the LLM context budget
-// sane. For anything beyond the cap the caller should use
-// `{"$file":"fid_..."}` (or the equivalent `@attachment:<slug>` token
-// in chat-text) in a downstream tool, which expands to the
-// untruncated content right before dispatch.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { fileLinks } from "../../db/schema/index.ts";

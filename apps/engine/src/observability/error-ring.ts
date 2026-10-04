@@ -1,22 +1,3 @@
-// In-memory ring buffer for unhandled HTTP errors.
-//
-// The errorMiddleware writes here on every catch — both the truly
-// unhandled `internal_error` path and the LLM-mapped 502/504 paths.
-// `GET /v1/diagnostics/errors` reads from here, RBAC-gated by
-// `audit:read`, so operators can correlate a `trace_id` from the CLI
-// banner to the underlying server-side cause without SSH-ing into the
-// engine container.
-//
-// Trade-offs:
-//   * In-memory only (process-local). Sufficient for a single-host
-//     deploy and avoids touching Postgres. If you scale horizontally,
-//     swap the implementation for a tenant-scoped table or shared
-//     log sink — the public API surface stays the same.
-//   * Bounded; defaults to 200 entries (override via SK_ERROR_RING_SIZE).
-//     Eviction is FIFO.
-//   * Stack frames truncated to 8 KiB so a runaway recursion does not
-//     blow process memory.
-
 const DEFAULT_CAPACITY = 200;
 const MAX_STACK_BYTES = 8 * 1024;
 
@@ -30,7 +11,6 @@ export interface CapturedError {
   code: string;
   message: string;
   stack: string | null;
-  /** `unhandled` (catchall) vs the LLM-mapped buckets. */
   bucket: "unhandled" | "llm_provider" | "llm_no_object" | "llm_timeout" | "llm_quota" | "http";
 }
 
@@ -45,9 +25,6 @@ export interface ErrorRing {
   size(): number;
   clear(): void;
 }
-
-// errors.ring_size lives in the active runtime revision but the process-wide ring is a
-// singleton, so settings writes require restart before the capacity changes.
 
 function truncateStack(stack: string | null | undefined): string | null {
   if (!stack) return null;
@@ -72,7 +49,6 @@ export function createErrorRing(capacity = DEFAULT_CAPACITY): ErrorRing {
         const cutoff = opts.since.getTime();
         view = view.filter((e) => Date.parse(e.ts) >= cutoff);
       }
-      // Newest first — operators want to see the most recent failures.
       return view.slice(-limit).reverse();
     },
     size(): number {
@@ -84,7 +60,4 @@ export function createErrorRing(capacity = DEFAULT_CAPACITY): ErrorRing {
   };
 }
 
-// Process-wide singleton — a single ring per engine process is the
-// right granularity. Tests can `clear()` between cases via the
-// exported helper.
 export const errorRing: ErrorRing = createErrorRing();

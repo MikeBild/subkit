@@ -1,14 +1,3 @@
-// User story: As a platform operator, I want cron-scheduled workflows
-// to fire automatically without an operator pressing "run".
-// Acceptance criteria:
-//   - AC1: Inserting a `workflows_schedules` row with `every:1` drives
-//          the reconciler to schedule a local timer.
-//   - AC2: Within five seconds a real execution row with
-//          `request_source=scheduler` exists for the workflow.
-//   - AC3: That execution reaches a terminal status via the queue
-//          handler (worker registered by the journey setup).
-// Spec refs: docs/concepts/workflows.md, docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";

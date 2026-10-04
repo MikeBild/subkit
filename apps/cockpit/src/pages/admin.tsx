@@ -66,7 +66,6 @@ import {
 
 type Envelope<T> = { items: T[] };
 type Translate = ReturnType<typeof useI18n>["t"];
-/** How long an invite issued from the people page stays redeemable. */
 const INVITE_TTL_HOURS = 24;
 
 interface UserItem {
@@ -74,7 +73,6 @@ interface UserItem {
   email: string;
   role: string;
   status: string;
-  /** Live connections this person approved — what a withdrawal would end. */
   oauth_connections?: number;
 }
 
@@ -118,10 +116,6 @@ interface PermissionItem {
   resource_type: string;
 }
 
-// ── Reads ─────────────────────────────────────────────────────────────────
-// One query per collection, keyed once: the page header asks whether a list
-// has rows (an empty list carries its action itself), the tab renders them.
-
 const fetchPeople = () => apiRequest<Envelope<UserItem>>("/v1/identity/users?limit=200");
 const fetchRoles = () => apiRequest<Envelope<RoleItem>>("/v1/rbac/roles");
 const fetchGroups = () => apiRequest<Envelope<GroupItem>>("/v1/rbac/groups");
@@ -162,18 +156,10 @@ function builtinRoleDescription(role: string, fallback: string | null, t: Transl
   return key[role] ? t(key[role]) : fallback;
 }
 
-/** A mutation's refusal, in words. The confirmation has closed; the toast says it. */
 function refusalToast(error: unknown, t: Translate) {
   toast.error(personRefusal(error instanceof ApiError ? error : null, t));
 }
 
-// ── Shared shapes ─────────────────────────────────────────────────────────
-
-/**
- * A section's list in its four states. A failed read is said as a failure and
- * never falls through to "nothing here"; an empty list carries the section's
- * action, so the header does not repeat it.
- */
 function SectionList<T>({
   name,
   resource,
@@ -183,13 +169,11 @@ function SectionList<T>({
   summary,
   children,
 }: {
-  /** `people` → `people-loading`, `people-load-failed`, `people-empty`. */
   name: string;
   resource: string;
   query: Parameters<typeof queryView<Envelope<T>>>[0] & { refetch(): unknown };
   emptyLine: string;
   emptyAction?: ReactNode;
-  /** The count the list opens with; an empty list has none (it says so instead). */
   summary?: ReactNode;
   children: ReactNode;
 }) {
@@ -218,7 +202,6 @@ function SectionList<T>({
   );
 }
 
-/** The section's table: every row opens its record in a sheet. */
 function AdminTable<T extends RowData>({
   collectionId,
   columns,
@@ -233,10 +216,8 @@ function AdminTable<T extends RowData>({
   columns: CockpitColumn<T>[];
   data: T[];
   onOpen(row: T): void;
-  /** What the row's open button says to a screen reader: its cell text alone names no record. */
   rowLabel(row: T): string;
   toolbar?: ReactNode;
-  /** True while the toolbar narrows the rows. */
   filtered?: boolean;
   onReset?(): void;
 }) {
@@ -269,7 +250,6 @@ function AdminTable<T extends RowData>({
   );
 }
 
-/** A select field of a dialog or a sheet. */
 function ChoiceField({
   label,
   help,
@@ -289,7 +269,6 @@ function ChoiceField({
   options: readonly { value: string; label: ReactNode }[];
   testId: string;
   description?: string;
-  /** Options are records: their test ids count, rather than carry an id. */
   byIndex?: boolean;
 }) {
   return (
@@ -325,7 +304,6 @@ function ChoiceField({
   );
 }
 
-/** A value shown once — a new key, an invitation — to copy now. */
 export function SecretDialog({
   secret,
   onClose,
@@ -351,9 +329,6 @@ export function SecretDialog({
   );
 }
 
-// ── Personen ──────────────────────────────────────────────────────────────
-
-/** Up to this many permissions are listed by name in a role-change consequence. */
 const CONSEQUENCE_LIMIT = 6;
 
 function PermissionList({
@@ -384,11 +359,6 @@ function PermissionList({
   );
 }
 
-/**
- * What a role change does, before it is saved: the difference itself where
- * both roles can be read, the new role's purpose where they cannot. Either way
- * the sentence names the person.
- */
 function RoleChangeConsequence({
   user,
   to,
@@ -450,11 +420,6 @@ function RoleChangeConsequence({
   );
 }
 
-/**
- * One person: their role, what it lets them do, and the acts on them — a new
- * role (picked, its consequence read, then saved), an invitation, a repair of
- * a drifted role, and deactivation.
- */
 function PersonSheet({
   user,
   roles,
@@ -469,8 +434,6 @@ function PersonSheet({
   const client = useQueryClient();
   const canWrite = session.permissions.includes("identity:write");
   const canReadGrants = session.permissions.includes("rbac:read");
-  // A custom role is assigned through RBAC and needs its own right; without
-  // it the picker offers the person roles only — the ones this sheet can save.
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"deactivate" | "invite" | null>(null);
@@ -525,8 +488,6 @@ function PersonSheet({
     mutationFn: (id: string) =>
       apiRequest<{ plaintext_token: string; expires_at: string }>(
         `/v1/identity/users/${encodeURIComponent(id)}/invites`,
-        // The validity is set here, not left to the engine's default, so the
-        // line that promises it before the click is the one that holds.
         { method: "POST", body: JSON.stringify({ ttl_minutes: INVITE_TTL_HOURS * 60 }) },
       ),
     onSuccess: (result) => {
@@ -539,7 +500,6 @@ function PersonSheet({
   const label = user ? roleName(user.role, roles, t) : null;
   const purpose = user ? builtinRoleDescription(user.role, role?.description ?? null, t) : null;
   const changed = user && picked && picked !== user.role ? picked : null;
-  // An unsaved role choice is kept from a reload the new-version notice offers.
   useDirtyGuard(Boolean(changed));
   const menu = canWrite
     ? [
@@ -647,7 +607,6 @@ function PersonSheet({
           </p>
         </Section>
         {user && changed ? (
-          // The save bar stands only while there is something to save (R13).
           <SaveBar
             count={1}
             testId="people-save-bar"
@@ -833,8 +792,6 @@ function InvitePersonDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<PersonRole>("member");
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
-  // Inviting is both acts: the person is added, and the one-time code they
-  // sign in with is issued and shown — "eingeladen" is then what happened.
   const create = useMutation({
     mutationFn: async () => {
       const user = await apiRequest<UserItem>("/v1/identity/users", {
@@ -881,8 +838,6 @@ function InvitePersonDialog({
         </Field>
         <ChoiceField
           label={t("people.role")}
-          // A new person starts on a person role; a custom one is given
-          // afterwards, on the person, through RBAC.
           help={t("people.createRoleHint")}
           value={role}
           onChange={(value) => isPersonRole(value) && setRole(value)}
@@ -905,8 +860,6 @@ function InvitePersonDialog({
     </>
   );
 }
-
-// ── Rollen ────────────────────────────────────────────────────────────────
 
 function RoleSheet({ role, onClose }: { role: RoleItem | null; onClose(): void }) {
   const { t } = useI18n();
@@ -1055,8 +1008,6 @@ function RolesTab({ action }: { action: ReactNode }) {
   );
 }
 
-// ── Gruppen ───────────────────────────────────────────────────────────────
-
 function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): void }) {
   const { t } = useI18n();
   const session = useSession();
@@ -1128,8 +1079,6 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
             { label: t("common.description"), value: group?.description || "—" },
             {
               label: t("access.members"),
-              // The engine adds members but cannot list them; said once, so a
-              // group is not read as a group without members.
               value: (
                 <span className="text-muted-foreground" data-testid="groups-members-note">
                   {t("access.membersNotListed")}
@@ -1239,14 +1188,6 @@ function GroupsTab({ action }: { action: ReactNode }) {
   );
 }
 
-// ── Zugriffe ──────────────────────────────────────────────────────────────
-
-/**
- * Names for a grant's two ends. Every read is behind its own permission: a
- * reader who may see the grants but not the directory reads no people, and
- * the name falls back to its kind — never the id, which says nothing a reader
- * can act on.
- */
 function useGrantNames() {
   const { t } = useI18n();
   const session = useSession();
@@ -1542,8 +1483,6 @@ function GrantAccessDialog({
         value={resourceType}
         onChange={(value) => {
           if (!isGrantResourceType(value)) return;
-          // A permission belongs to one kind of record; carrying a workflow's
-          // choice over to a connector would send a grant the engine cannot check.
           setResourceType(value);
           setResourceId("");
           setPermission("");
@@ -1644,8 +1583,6 @@ function CreateRecordDialog({
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────
-
 const SECTION_LABEL: Record<PeopleSection, TranslationKey> = {
   people: "people.section.people",
   roles: "access.roles",
@@ -1653,7 +1590,6 @@ const SECTION_LABEL: Record<PeopleSection, TranslationKey> = {
   grants: "access.grants",
 };
 
-/** Each section's one act, and the right it needs. */
 const SECTION_ACTION: Record<
   PeopleSection,
   { label: TranslationKey; permission: string; testId: string }
@@ -1664,16 +1600,6 @@ const SECTION_ACTION: Record<
   grants: { label: "access.createGrant", permission: "rbac:write", testId: "grant-create" },
 };
 
-/**
- * Personen & Rechte — who is here, and what each of them may do.
- *
- * The section lives in the address (`?section=roles`), so a link, a reload
- * and the old `/access` address land where they meant to; the people list is
- * the default. Each section's act ("Person einladen", "Rolle anlegen",
- * "Gruppe anlegen", "Zugriff erteilen") heads the page while its list has
- * rows, and stands in the empty list otherwise. A row opens its record in a
- * sheet, where the acts on that one record are.
- */
 export function PeopleAndAccessPage() {
   const { t } = useI18n();
   const session = useSession();

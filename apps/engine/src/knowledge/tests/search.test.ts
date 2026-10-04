@@ -8,7 +8,6 @@ import {
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
@@ -19,7 +18,6 @@ beforeAll(async () => {
   if (skip) return;
   ctx = await createKnowledgeTestCtx("search");
 
-  // Seed a global knowledge source
   const global = await createKnowledgeSource(
     {
       tenant_id: ctx.tenantId,
@@ -37,7 +35,6 @@ beforeAll(async () => {
   );
   globalSourceId = global.id;
 
-  // Seed a workflow-scoped knowledge source
   const wf = await createKnowledgeSource(
     {
       tenant_id: ctx.tenantId,
@@ -102,7 +99,6 @@ describe.skipIf(skip)("knowledge/search", () => {
       },
       ctx.testDb.db,
     );
-    // Should find hits from workflow-scoped source
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.some((h) => h.knowledge_source_id === workflowSourceId)).toBe(true);
   });
@@ -148,27 +144,22 @@ describe.skipIf(skip)("knowledge/search", () => {
     }
   });
 
-  // --- source_name and source_tags provenance --------------------------------
-
   test("search hits carry source_name matching the owning knowledge source", async () => {
     const hits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "pagination cursor" },
       ctx.testDb.db,
     );
     expect(hits.length).toBeGreaterThan(0);
-    // Every hit must expose the owning source's name — not an empty string
     for (const hit of hits) {
       expect(typeof hit.source_name).toBe("string");
       expect(hit.source_name.length).toBeGreaterThan(0);
     }
-    // Hits from the global source must carry its name
     const globalHits = hits.filter((h) => h.knowledge_source_id === globalSourceId);
     expect(globalHits.length).toBeGreaterThan(0);
     expect(globalHits[0]!.source_name).toBe("API Guidelines");
   });
 
   test("search hits carry source_tags from the owning knowledge source", async () => {
-    // Tag the global source
     await updateKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -191,10 +182,7 @@ describe.skipIf(skip)("knowledge/search", () => {
     expect(globalHits[0]!.source_tags).toContain("guidelines");
   });
 
-  // --- tags filter -----------------------------------------------------------
-
   test("tags filter narrows results to sources carrying any of the specified tags", async () => {
-    // Tag the workflow source with "runbook" and ensure the global source has a different tag
     await updateKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -215,7 +203,6 @@ describe.skipIf(skip)("knowledge/search", () => {
     );
     invalidateKnowledgeCache(ctx.tenantId);
 
-    // Searching with tag "runbook" should only find chunks from the workflow source
     const runbookHits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "payment", tags: ["runbook"] },
       ctx.testDb.db,
@@ -223,7 +210,6 @@ describe.skipIf(skip)("knowledge/search", () => {
     expect(runbookHits.length).toBeGreaterThan(0);
     expect(runbookHits.every((h) => h.knowledge_source_id === workflowSourceId)).toBe(true);
 
-    // Searching with tag "api" should only find chunks from the global source
     const apiHits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "authentication bearer", tags: ["api"] },
       ctx.testDb.db,
@@ -233,7 +219,6 @@ describe.skipIf(skip)("knowledge/search", () => {
   });
 
   test("tags filter is tenant-isolated: a tag from another tenant does not narrow cross-tenant", async () => {
-    // Seed a second tenant with its own source tagged "payments"
     const [otherTenant] = await ctx.testDb.db
       .insert(tenants)
       .values({ slug: "other-tenant-tags", display_name: "Other Tenant Tags" })
@@ -253,12 +238,10 @@ describe.skipIf(skip)("knowledge/search", () => {
       ctx.testDb.db,
     );
 
-    // Other tenant's "payments" tag must not bleed into ctx.tenantId search
     const hits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "payment", tags: ["payments"] },
       ctx.testDb.db,
     );
-    // All hits (if any) must belong to ctx.tenantId sources, not otherTenant
     for (const hit of hits) {
       expect(hit.knowledge_source_id).not.toBe(otherTenant!.id);
     }
@@ -267,38 +250,30 @@ describe.skipIf(skip)("knowledge/search", () => {
   test("cache key distinguishes different tag filters (no cross-contamination)", async () => {
     invalidateKnowledgeCache(ctx.tenantId);
 
-    // Warm the cache with a "runbook" tag filter
     const runbookHits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "payment", tags: ["runbook"] },
       ctx.testDb.db,
     );
 
-    // A different tag filter must not return the cached "runbook" result
     const apiHits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "authentication bearer", tags: ["api"] },
       ctx.testDb.db,
     );
 
-    // The two result sets must differ (or at minimum not be identical when
-    // sources are tagged differently)
     const runbookIds = new Set(runbookHits.map((h) => h.knowledge_source_id));
     const apiIds = new Set(apiHits.map((h) => h.knowledge_source_id));
 
-    // The api-filtered hits must NOT include the workflow source (runbook-tagged)
     expect(apiIds.has(workflowSourceId)).toBe(false);
-    // The runbook-filtered hits must NOT include the global source (api-tagged)
     expect(runbookIds.has(globalSourceId)).toBe(false);
   });
 
   test("search respects tenant isolation", async () => {
-    // Create a second tenant and verify it can't see tenant 1's knowledge
     const [otherTenant] = await ctx.testDb.db
       .insert(tenants)
       .values({ slug: "other-tenant-search", display_name: "Other Tenant" })
       .returning();
     expect(otherTenant).toBeDefined();
 
-    // Seed knowledge in the other tenant
     await createKnowledgeSource(
       {
         tenant_id: otherTenant!.id,
@@ -312,21 +287,18 @@ describe.skipIf(skip)("knowledge/search", () => {
       ctx.testDb.db,
     );
 
-    // Tenant 1 searching for other tenant's content should find nothing
     const crossTenantHits = await searchKnowledge(
       { tenant_id: ctx.tenantId, query: "zeppelins airships" },
       ctx.testDb.db,
     );
     expect(crossTenantHits.length).toBe(0);
 
-    // Other tenant searching for tenant 1's content should find nothing
     const reverseCrossHits = await searchKnowledge(
       { tenant_id: otherTenant!.id, query: "pagination cursor bearer" },
       ctx.testDb.db,
     );
     expect(reverseCrossHits.length).toBe(0);
 
-    // Other tenant searching for its own content should work
     const ownHits = await searchKnowledge(
       { tenant_id: otherTenant!.id, query: "zeppelins" },
       ctx.testDb.db,

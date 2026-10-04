@@ -17,8 +17,6 @@ export const inspectAuthoringContextTool: ConversationTool = {
     "Inspect the authoring context currently in scope for the conversation: draft mode, message/tool counts, attachments, and pending approvals.",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx): Promise<ToolResult> {
     const [row] = await ctx.db

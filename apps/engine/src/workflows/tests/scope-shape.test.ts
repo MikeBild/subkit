@@ -1,8 +1,3 @@
-// scope-shape — pure unit tests for the path-enumeration / shape-
-// summary helpers used by step_trace.scope_at_step,
-// suggest_jsonata_paths, and the context-assembler latest_preview
-// section. No DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import {
   buildScopeAtStep,
@@ -92,9 +87,6 @@ describe("pickPrimaryDataPath", () => {
   });
 
   test("walks single-key wrappers but stops at the depth budget", () => {
-    // single-key recursion is intentional — APIs commonly wrap the
-    // payload in `envelope.body.data`. The depth budget keeps us
-    // from chasing pathological structures forever.
     expect(pickPrimaryDataPath({ a: { b: { c: { d: { e: { data: [] } } } } } })).toBe("a.b.c.d");
   });
 });

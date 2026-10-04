@@ -1,5 +1,3 @@
-// Tests for the plan-step detector heuristic.
-
 import { describe, expect, test } from "bun:test";
 import { detectPlanSteps } from "./plan-cell.tsx";
 

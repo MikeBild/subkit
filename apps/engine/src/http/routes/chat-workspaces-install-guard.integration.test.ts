@@ -1,19 +1,3 @@
-// HTTP integration tests for the install-time hardening guards on
-// `POST /v1/chat/workspaces` (apps/engine/src/http/routes/chat-workspaces.ts):
-//
-//   - `teams` is rejected outright — no adapter is hydrated for it, so
-//     an install row would squat the global (platform, workspace_id)
-//     slot against a real future install.
-//   - `google_chat` (a tenant-GLOBAL-id platform) requires the caller
-//     to already own the claimed `installer_platform_user_id` via an
-//     existing verified `chat_identities` row — otherwise a caller
-//     could bind a victim's People-id to their own subkit user and
-//     hijack the victim's future DMs.
-//
-// Slack is skipped (per the task): a live install additionally needs
-// `platform.slack.signing_secret` configured, which is orthogonal to
-// the guard under test here.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";
@@ -120,9 +104,6 @@ describe("POST /v1/chat/workspaces — install hardening", () => {
   });
 
   test("201 — google_chat installer_platform_user_id owned by caller installs", async () => {
-    // Proof of ownership: an existing verified chat_identities row for
-    // THIS caller, bootstrapped (in production) by the JWT-verified
-    // DM auto-register path.
     await ctx.db.insert(chatIdentities).values({
       tenant_id: ctx.tenantId,
       user_id: ctx.userId,

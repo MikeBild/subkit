@@ -1,46 +1,10 @@
-// Binary file parser strategy + priority registry.
-//
-// Covers binary office formats (PDF, DOCX, XLSX, PPTX) plus the archive
-// wrappers (ZIP, GZIP) that recursively re-feed their entries through
-// the same registry. Text formats stay in
-// `docs-ingestion/sources/file-upload.ts` and the `knowledge/parsers.ts`
-// dispatcher; this module is invoked from those surfaces and the LLM
-// `text_extract` path when the format hint matches a binary id.
-//
-// Priority semantics: lower runs first. The bands:
-//
-//   - COMPRESSED_WRAPPER (1): GZIP. Magic bytes `0x1f 0x8b` collide with
-//     nothing else in the registry.
-//   - ZIP_BASED_SPECIFIC (2): DOCX / XLSX / PPTX. Detected by walking
-//     the ZIP central directory and matching `word/`, `xl/`, `ppt/`
-//     entry prefixes. Must run before the generic ZIP detector
-//     classifies the file as "just a ZIP".
-//   - BINARY_SIGNATURE (10): PDF. Magic bytes `%PDF` (0x25 0x50 0x44 0x46).
-//   - GENERIC_CONTAINER (20): plain ZIP. Runs LAST so every ZIP-based
-//     specific format above wins first; whatever reaches this band is a
-//     genuine document archive.
-//
-// Registry is module-local; subsystem code calls `parseBinaryFile()` /
-// `detectBinaryFormat()` from `./index.ts` and never imports this file
-// directly.
-
 export type BinaryFormat = "pdf" | "docx" | "xlsx" | "xls" | "pptx" | "zip" | "gzip";
 
 export enum DetectionPriority {
-  // Compression wrappers (GZIP) — unambiguous magic, no collisions.
   COMPRESSED_WRAPPER = 1,
-  // Office Open XML packages (DOCX/XLSX/PPTX) — internal structure
-  // check on the ZIP central directory; must run before the generic
-  // ZIP handler classifies them as "just a ZIP".
   ZIP_BASED_SPECIFIC = 2,
-  // Legacy office compound files (e.g. `.xls` OLE2). Sniffed by magic
-  // bytes, not ZIP structure. Sits between the ZIP and PDF bands so
-  // the name accurately reflects the strategy's discriminator.
   BINARY_SIGNATURE_LEGACY = 5,
-  // Modern single-file binary formats with a leading magic prefix
-  // (PDF `%PDF`). The magic check is O(1).
   BINARY_SIGNATURE = 10,
-  // Generic containers (plain ZIP) — last band by design.
   GENERIC_CONTAINER = 20,
 }
 
@@ -60,11 +24,6 @@ export class BinaryParseError extends Error {
   }
 }
 
-/** Wrap a parser promise in a hard timeout. Used by every binary
- *  strategy so a pathological document (deep PDF graph, huge PPTX text
- *  run set, O(n²) XLSX layouts) can't starve the event loop. The
- *  underlying `setTimeout` is `unref()`d so the timer never keeps the
- *  process alive when the parser races to a result. */
 export function withParserTimeout<T>(
   format: BinaryFormat,
   workMs: number,
@@ -88,19 +47,12 @@ export function withParserTimeout<T>(
   });
 }
 
-/** Per-format hard timeouts. Empirical defaults: PDF text extraction is
- *  CPU-bound on the size of the page graph; DOCX → HTML → markdown is
- *  bounded by mammoth's tree walk; PPTX is a per-slide read. XLSX gets
- *  the longest budget because SheetJS can hit O(n²) row layouts. */
 export const PARSER_TIMEOUT_MS: Record<BinaryFormat, number> = {
   pdf: 30_000,
   docx: 30_000,
   xlsx: 60_000,
   xls: 60_000,
   pptx: 30_000,
-  // Archives recursively re-parse every entry, so their budget must
-  // cover the slowest member parse; per-entry parses inside inherit
-  // their own format budgets, this is the outer envelope.
   zip: 120_000,
   gzip: 60_000,
 };
@@ -125,9 +77,7 @@ export class FileStrategyRegistry {
     for (const s of this.strategies) {
       try {
         if (await s.canHandle(buffer)) return s.format;
-      } catch {
-        // canHandle failures are non-fatal — try the next strategy.
-      }
+      } catch {}
     }
     return null;
   }

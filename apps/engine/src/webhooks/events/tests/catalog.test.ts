@@ -1,5 +1,3 @@
-// Events catalog unit tests — pure zod, no DB.
-
 import { describe, expect, test } from "bun:test";
 import type {
   ConnectorAuthFailedPayload,
@@ -44,10 +42,6 @@ describe("events catalog", () => {
   });
 
   test("validateEventPayload accepts a connector.oauth.callback_failed payload", () => {
-    // `reason` is constrained to a sanitized-token allowlist — raw
-    // provider error strings must never reach the wire. `connector_slug`
-    // is carried for symmetry with the success event so a webhook consumer
-    // can correlate success/failure pairs.
     const res = validateEventPayload("connector.oauth.callback_failed", {
       connector_id: "33333333-3333-4333-8333-333333333333",
       connector_slug: "google-gmail",
@@ -94,18 +88,10 @@ describe("events catalog", () => {
     expect(matchEventPattern("execution.*", "workflow.updated")).toBe(false);
     expect(matchEventPattern("execution.succeeded", "execution.succeeded")).toBe(true);
     expect(matchEventPattern("execution.succeeded", "execution.failed")).toBe(false);
-    // comma separated list
     expect(matchEventPattern("execution.*,workflow.updated", "workflow.updated")).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Inbox classification: "does a person have to act, and what does it concern"
-// ---------------------------------------------------------------------------
-
-/** Types whose example deliberately carries NO resource pointer. Empty today:
- *  every catalog entry names something a person can open. An entry added here
- *  is a decision, not an omission — which is the point of the loop below. */
 const EXAMPLES_WITHOUT_POINTER: ReadonlySet<string> = new Set();
 
 describe("event classification", () => {
@@ -134,9 +120,6 @@ describe("event classification", () => {
   });
 
   test("pointers use the audit/RBAC resource ontology, not cockpit routes", () => {
-    // `patch_candidate` is an `audit_log.resource_type` but not an RBAC
-    // resource (those candidates are governed by `self_healing:*`), so it is
-    // the one string this check cannot source from permissions.json.
     const ontology = new Set([
       "api_key",
       "connector",
@@ -157,8 +140,6 @@ describe("event classification", () => {
   });
 
   test("connector.auth_failed validates the payload its emitter writes", () => {
-    // Typed as the emitter's own payload type (pubsub/types.ts), so a shape
-    // change in connectors/reauth.ts fails this file at typecheck.
     const emitted: ConnectorAuthFailedPayload = {
       severity: "error",
       workflow_id: null,
@@ -236,7 +217,6 @@ describe("event classification", () => {
       sunset_at: "2026-12-01T00:00:00.000Z",
     };
     expect(classifyEvent("connector.health_changed", deprecated).actionable).toBe(false);
-    // …but it still points at the connector, so the inbox can file it.
     expect(classifyEvent("connector.health_changed", deprecated).resource_type).toBe("connector");
 
     const degraded: ConnectorHealthChangedPayload = {
@@ -258,8 +238,6 @@ describe("event classification", () => {
   });
 
   test("classifyEvent survives a malformed payload on a known type", () => {
-    // `writeEvent` is not gated on the catalog, so the classifier must be
-    // total on the payload too — no parse, no throw.
     for (const payload of [null, undefined, 42, "text", [], { execution_id: 7 }]) {
       expect(classifyEvent("execution.failed", payload)).toEqual({
         actionable: true,

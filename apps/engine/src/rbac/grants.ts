@@ -1,10 +1,3 @@
-// Resource grant service.
-//
-// Resource grants let an operator hand a specific (permission,
-// resource) tuple to a user, system account, or group without
-// promoting them to a higher role. The evaluator resolves grants
-// before falling back to role-based checks.
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { permissions as permissionsTable, resourceGrants } from "../db/schema/index.ts";

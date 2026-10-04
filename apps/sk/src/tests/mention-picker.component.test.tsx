@@ -1,8 +1,3 @@
-// Ink-component coverage for MentionPicker. The pure helpers
-// (extractMention, applyMention, scanFiles) are covered in
-// mention-picker.test.ts; this file exercises the interactive rendering
-// and keyboard handling.
-
 import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

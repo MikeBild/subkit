@@ -1,6 +1,3 @@
-// "Freigaben statt Eingaben": a version written with --pending waits; a person
-// approves or rejects it in the Cockpit; nothing else can bind it meanwhile.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
@@ -62,8 +59,6 @@ describe("prepared secret versions", () => {
     });
     expect(prepared.version).toBe(1);
 
-    // Not current: the vault check sees no version, the registry lists none,
-    // and no revision can bind it.
     expect(await probeCurrentVersion(server.db, secretName)).toEqual({
       version: null,
       readable: false,

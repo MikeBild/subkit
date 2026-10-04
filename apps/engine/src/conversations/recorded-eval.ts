@@ -1,39 +1,3 @@
-// Recorded-evaluation pass for authoring mutations (Fix 9, session
-// 784c1b02 post-mortem).
-//
-// `build_workflow` / `edit_workflow_patch` / `propose_step` run this
-// pass server-side as part of the tool call and return its findings in
-// the same result envelope — the loop/transform authoring gates become
-// OUTCOMES the model reads, not preconditions that bounce the mutation.
-// The model gets generate → evaluate → repair in one round trip instead
-// of build → blocked → inspect → dry-run → rebuild (the 102-dry-run /
-// 16× `loop_authoring_requires_inspect` thrash).
-//
-// What the pass does — all of it against RECORDED evidence, never a
-// live call (`dry_run_workflow` stays the only explicit live step):
-//
-//   1. Compile every authored expression: JSONata with the engine's
-//      caret-pointed errors (`jsonata-engine.ts#formatError`);
-//      `language: "javascript"` bodies via a parse-only QuickJS check
-//      (`js-transform-eval.ts` — same sandbox, zero egress, zero host
-//      globals).
-//   2. Scope-reference resolution against fingerprint-valid recorded
-//      previews: every `$scope.<X>` cite is classified
-//      recorded / stale / missing.
-//   3. Transform / loop-over evaluation against the recorded
-//      `scope_at_step` where evidence exists, with the same
-//      empty-extraction path-candidate machinery the execution layer
-//      uses (`enumerateScopePaths`).
-//   4. The loop/transform authoring-gate verdicts.
-//
-// The repair stage (Fix 10) is wired into this seam: when the caller
-// passes a repair context (tenant for budget accounting), findings of
-// status `compile_error` / `empty_result` get a bounded (≤2 attempts)
-// LLM repair pass and the outcome rides the finding as
-// `repair: { repaired, expression, before, after, attempts }`.
-// PROPOSE, don't apply — the draft is never mutated here; the model
-// applies an accepted repair via a normal edit.
-
 import { z } from "@hono/zod-openapi";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
@@ -68,72 +32,23 @@ import {
 import { repairTransformExpression, type TransformRepairOutcome } from "./transform-repair.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "./types.ts";
 
-/** Per-evaluation wall-clock cap. Recorded evaluation must never make a
- *  tool call feel like a dry-run; a pathological expression times out
- *  as an `eval_error` finding instead of stalling the envelope. */
 const EVAL_TIMEOUT_MS = 500;
-/** Inline `value_preview` budget — larger results collapse to a shape
- *  summary so the envelope stays cheap. */
 const VALUE_PREVIEW_MAX_CHARS = 500;
 const PATH_CANDIDATES_PER_REF = 8;
 const PATH_CANDIDATES_MAX = 12;
 
-/**
- * Total number of per-site repair `invoke()` fan-outs allowed across a
- * SINGLE recorded-eval pass, regardless of how many findings the draft
- * carries. The bound is a property of the repair option, so every
- * caller that arms repair (the authoring pipeline, build_workflow,
- * propose_step, edit_workflow_patch) inherits it.
- *
- * Rationale (STALL root cause S2): a freshly-generated draft evaluated
- * against thin recorded evidence produces compile_error / empty_result
- * on most transform/loop sites. The old code ran a sequential `for`
- * loop over EVERY such finding, each firing up to MAX_REPAIR_ATTEMPTS
- * (2) untimed slow-model `invoke()`s — 6-10 findings × 2 = 12-20 serial
- * calls inside one tool execution, minutes of wall-clock even without a
- * hang. A draft that broken should be regenerated/edited by the
- * conversation model in ONE shot from the full findings list, not
- * auto-repaired site-by-site. So:
- *   - findings ≤ MAX_REPAIR_FINDINGS  → repair them (≤ this many sites).
- *   - findings >  MAX_REPAIR_FINDINGS → SKIP per-site repair entirely;
- *     ALL findings ride the result envelope for the model to fix.
- */
 export const MAX_PIPELINE_REPAIRS = 3;
-/** When the count of repairable findings exceeds this threshold the
- *  draft is "too broken to patch site-by-site" — skip repair and return
- *  every finding to the model. Kept equal to {@link MAX_PIPELINE_REPAIRS}
- *  so the only two regimes are "repair all (few)" or "repair none
- *  (many)" — never a confusing partial-repair-of-a-broken-draft. */
 export const MAX_REPAIR_FINDINGS = MAX_PIPELINE_REPAIRS;
 
 export interface RecordedEvalExpressionFinding {
-  /** Dotted site, e.g. `steps.shape.expression`, `steps.iter.over`,
-   *  `output_transform`. */
   site: string;
   step_id: string | null;
   status: "ok" | "compile_error" | "eval_error" | "empty_result" | "not_evaluated";
-  /** Caret-pointed engine error for compile_error / eval_error; a
-   *  human hint for empty_result / not_evaluated. */
   message?: string;
   position?: number;
-  /** Small inline result (or a shape summary string for big ones) when
-   *  the expression evaluated against recorded scope. */
   value_preview?: unknown;
-  /** Copy-paste `$scope.<id>.data.<path>` candidates when an evaluated
-   *  expression produced an empty result over non-empty evidence. */
   path_candidates?: string[];
-  /** Set when an `empty_result` was produced while the recorded evidence
-   *  for a referenced step was TRUNCATED (offloaded payload / `[omitted: …]`
-   *  stub / sampling marker). An empty result over truncated evidence is
-   *  NOT a confirmed problem — the path may be correct but the data was
-   *  stubbed out — so it does NOT block the commit gate or the judge. This
-   *  is the dry-run-vs-runtime divergence behind the Gmail session: the
-   *  preview showed `[]` while the live run returned 174. */
   against_truncated_evidence?: boolean;
-  /** Bounded auto-repair outcome (Fix 10), present when the caller
-   *  enabled repair and this finding was `compile_error` /
-   *  `empty_result`. PROPOSE-only: the draft is NOT mutated — apply
-   *  the `expression` via update_param / edit_workflow_patch. */
   repair?: TransformRepairOutcome;
 }
 
@@ -141,17 +56,9 @@ export interface RecordedEvalScopeRef {
   site: string;
   step_id: string | null;
   referenced_step_id: string;
-  /** Evidence state for the referenced step, fingerprint-checked. */
   evidence: "recorded" | "stale" | "missing";
 }
 
-// Wire contract for `missing_evidence[].next_action`, read by downstream
-// tools/clients. Backed by a Zod enum so the value is runtime-validated at the
-// boundary (the union was previously a bare TS `as const`, so a widening — e.g.
-// adding "rewrite_with_sk_base64" — shipped with no runtime guard). The const
-// map and the type both derive from the schema, so they cannot drift.
-// PREVIEW_GAP = upstream step has no recorded preview (re-run to record it);
-// CODEC_REWRITE = transform hand-rolls a codec alphabet (swap for `sk.*`).
 export const MissingEvidenceNextActionSchema = z.enum([
   "dry_run_workflow",
   "rewrite_with_sk_base64",
@@ -173,7 +80,6 @@ export const RecordedEvalMissingEvidenceSchema = z.object({
 export type RecordedEvalMissingEvidence = z.infer<typeof RecordedEvalMissingEvidenceSchema>;
 
 export interface RecordedEvalReport {
-  /** True when no compile/eval/empty findings and both gates pass. */
   ok: boolean;
   summary: string;
   expressions: RecordedEvalExpressionFinding[];
@@ -182,43 +88,21 @@ export interface RecordedEvalReport {
     loop: { ok: boolean; blocks: LoopGateBlock[] };
     transform: { ok: boolean; blocks: TransformGateBlock[] };
   };
-  /** Exactly which steps need a recorded preview before the draft can
-   *  preview/commit cleanly — the evidence the old gate refusals only
-   *  implied. */
   missing_evidence: RecordedEvalMissingEvidence[];
-  /** Ordered, deduplicated tool names the model should reach for. */
   next_actions: string[];
-  /** Set when repair was armed but the draft carried more repairable
-   *  findings than `MAX_REPAIR_FINDINGS`, so per-site auto-repair was
-   *  skipped and ALL findings are returned for the model to fix in one
-   *  shot (regenerate / edit) rather than serial site-by-site repair.
-   *  Carries the finding count so the envelope explains the skip. */
   repair_skipped?: { reason: "too_many_findings"; finding_count: number; threshold: number };
 }
 
 export interface RecordedEvalEvidence {
-  /** The draft's persisted preview slot — fingerprint-keyed traces. */
   latest_preview: DraftDocument["latest_preview"] | null;
-  /** Optional richer scope from the per-conversation last-preview
-   *  store (untruncated, envelope-shaped). Entries are only consulted
-   *  for steps whose trace is fingerprint-valid. */
   scope?: Record<string, unknown> | null;
-  /** Workflow input recorded with the preview, bound as `$input`. */
   input?: unknown;
-  /** Probe-evidence exemption set, same contract as the gates. */
   probedConnectorSlugs?: ReadonlySet<string>;
 }
 
-/** Caller-supplied context enabling the bounded repair stage (Fix 10).
- *  Without it the pass stays pure compute — no LLM call is ever made. */
 export interface RecordedEvalRepairContext {
   tenant_id: string;
-  /** DB executor passed through to `invoke()` for route resolution +
-   *  token-budget accounting. */
   db?: Parameters<typeof repairTransformExpression>[0]["db"];
-  /** Optional pipeline/turn deadline signal, threaded into every repair
-   *  `invoke()` so the fan-out is bounded by one shared clock and a
-   *  deadline hit aborts the remaining repairs (P2). */
   signal?: AbortSignal;
 }
 
@@ -234,13 +118,8 @@ interface WorkflowLike {
 export interface ExpressionSite {
   site: string;
   step_id: string | null;
-  /** Authored expression language at this site. `when` / `over` /
-   *  `output_transform` are always JSONata; transform steps carry
-   *  whichever the author chose. */
   language: "jsonata" | "javascript";
   expression: string;
-  /** Whether the recorded-eval pass may EVALUATE (not just compile)
-   *  this site against recorded scope. */
   evaluable: boolean;
 }
 
@@ -269,14 +148,8 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
     const id = typeof step.id === "string" ? step.id : null;
     if (!id) continue;
     const kind = typeof step.kind === "string" ? step.kind : "";
-    // A step inside a loop body / branch arm runs with `$item` /
-    // `item_var` context the recorded scope cannot supply — compile
-    // only, never evaluate.
     const inControlFlowBody = controlFlowChildren.has(id);
     if (kind === "transform") {
-      // Transforms are JavaScript-only; an unset language means JS (mirrors
-      // the runtime executor). The web-scraper languages carry no expression
-      // and are excluded by the `expression` guard below.
       const language = typeof step.language === "string" ? step.language : "javascript";
       if (
         (language === "jsonata" || language === "javascript") &&
@@ -323,8 +196,6 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
   return sites;
 }
 
-/** Classify evidence for one step id against the fingerprint-checked
- *  trace map. */
 function evidenceStateFor(
   ref: string,
   traceById: Map<string, WorkflowDraftStepPreview>,
@@ -387,17 +258,13 @@ function previewValue(value: unknown): unknown {
   try {
     const json = JSON.stringify(value);
     if (json !== undefined && json.length <= VALUE_PREVIEW_MAX_CHARS) return value;
-  } catch {
-    // fall through to the shape summary
-  }
+  } catch {}
   return summarizeScopeShape(value);
 }
 
 function pathCandidatesFor(
   refs: ReadonlyArray<string>,
   recordedScope: Record<string, unknown>,
-  /** Addressing root in the site's language: `$scope` (JSONata) or
-   *  `input.scope` (JS function body). */
   prefix: "$scope" | "input.scope" = "$scope",
 ): string[] {
   const out: string[] = [];
@@ -416,7 +283,6 @@ function pathCandidatesFor(
   return out.slice(0, PATH_CANDIDATES_MAX);
 }
 
-/** Step ids a site references, in the site's own language. */
 function referencedStepIds(site: ExpressionSite, stepIds: ReadonlySet<string>): string[] {
   const raw =
     site.language === "javascript"
@@ -425,12 +291,6 @@ function referencedStepIds(site: ExpressionSite, stepIds: ReadonlySet<string>): 
   return raw.filter((ref) => stepIds.has(ref) && ref !== site.step_id);
 }
 
-/**
- * JSONata site evaluation — compile with caret errors, then (when
- * evaluable) evaluate against the recorded scope with the execution
- * bindings. Exported so the JSONata-specific authoring checks stay one
- * cohesive, testable branch.
- */
 export async function evaluateJsonataSite(
   site: ExpressionSite,
   refs: ReadonlyArray<string>,
@@ -439,7 +299,6 @@ export async function evaluateJsonataSite(
   input: unknown,
   bareIterationLint: ReadonlyArray<ReferenceValidationError> = [],
 ): Promise<RecordedEvalExpressionFinding> {
-  // (1) compile with caret errors.
   try {
     compileJsonata(site.expression);
   } catch (err) {
@@ -453,18 +312,6 @@ export async function evaluateJsonataSite(
     };
   }
 
-  // (1b) bare-iteration-identifier lint (item_var retirement). The
-  // expression COMPILES — bare `item` is a valid JSONata path — but
-  // the runtime binds the current loop item as `$item` only, so the
-  // reference resolves to nothing at execution time. Reported with the
-  // same status the genuine runtime failure would surface as
-  // (`eval_error`: ok=false, next_actions → update_param /
-  // edit_workflow_patch, no LLM repair pass — the proven `$item`
-  // rewrite from the AST rewriter IS the fix, carried in the message
-  // and as a copy-paste `path_candidates` entry). The lint hits are
-  // resolved by the caller against the full steps array (the enclosing
-  // loop's declared/undeclared item_var state lives there); loop-body
-  // sites only.
   if (bareIterationLint.length > 0) {
     const names = [...new Set(bareIterationLint.map((l) => l.bad_reference))]
       .map((n) => `\`${n}\``)
@@ -487,10 +334,6 @@ export async function evaluateJsonataSite(
     };
   }
 
-  // (3) evaluation against recorded scope — only when every sibling
-  // reference has recorded (fingerprint-valid) evidence. Sites with
-  // no sibling refs (pure `$input` shapes) and sites inside loop
-  // bodies are compile-only.
   if (!evaluable) {
     return {
       site: site.site,
@@ -535,14 +378,6 @@ export async function evaluateJsonataSite(
   };
 }
 
-/**
- * JS site evaluation — same finding contract, QuickJS sandbox instead
- * of the JSONata engine. Non-evaluable sites get a parse-only syntax
- * check (the body is never executed); evaluable sites run for real
- * against the production context shape `{ scope, input }` under a
- * tight wall clock. Zero egress either way — QuickJS has no host
- * globals.
- */
 async function evaluateJavascriptSite(
   site: ExpressionSite,
   refs: ReadonlyArray<string>,
@@ -605,11 +440,6 @@ function isEmptyEvalResult(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0);
 }
 
-// Deep-scan a recorded value for any marker that means "this is not the
-// full payload": an in-memory OffloadRef, a truncate omission stub
-// (`[omitted: … get_raw_result(…)]`), or a sampling/clip marker
-// (`_truncated`, `_truncation_note`, `… sampled N of M items`, `+N more
-// items`). Bounded depth so a pathological value can't stall the pass.
 const OMISSION_STRING_RE = /^\[omitted: |… sampled \d+ of \d+|^\+\d+ more items/;
 function valueContainsOmission(value: unknown, depth = 0): boolean {
   if (depth > 6 || value === null || value === undefined) return false;
@@ -626,9 +456,6 @@ function valueContainsOmission(value: unknown, depth = 0): boolean {
   return false;
 }
 
-// True when the recorded evidence for ANY referenced step is truncated —
-// so an empty evaluation result against it is unreliable (the path may be
-// correct, the data just isn't all there).
 function refsHaveTruncatedEvidence(
   refs: ReadonlyArray<string>,
   recordedScope: Record<string, unknown>,
@@ -642,19 +469,6 @@ const EMPTY_AGAINST_TRUNCATED_MESSAGE =
   "problem — the path may be correct and the data simply wasn't all present. Re-run dry_run_workflow " +
   "for a faithful check, or call get_raw_result on the referenced step to inspect the full shape.";
 
-/**
- * Run the recorded-evaluation pass over a candidate workflow draft.
- *
- * Compile + evaluation against recorded evidence only — JSONata via
- * the engine's compiler, `language: "javascript"` bodies via the
- * QuickJS sandbox (no host globals). No live HTTP, ever — side-effect
- * safety is the whole point (`dry_run_workflow` stays the explicit
- * live step). Without
- * `options.repair` the pass is pure compute; with it, findings of
- * status `compile_error` / `empty_result` additionally get a bounded
- * (≤2 attempts) LLM repair whose outcome rides the finding as
- * `repair` — propose-only, the draft is never mutated.
- */
 export async function runRecordedEval(
   workflow: WorkflowLike,
   evidence: RecordedEvalEvidence,
@@ -670,11 +484,6 @@ export async function runRecordedEval(
   const traceById = new Map<string, WorkflowDraftStepPreview>();
   for (const t of traces) traceById.set(t.step_id, t);
 
-  // Recorded scope: envelope-shaped (`{ data: … }`) entries for every
-  // step with fingerprint-valid evidence — identical addressing to the
-  // execution scope (`$scope.<id>.data`). The richer last-preview-store
-  // scope wins when present (untruncated), still gated on the trace's
-  // fingerprint validity.
   const recordedScope: Record<string, unknown> = {};
   for (const [id, trace] of traceById) {
     if (!stepIds.has(id)) continue;
@@ -688,13 +497,6 @@ export async function runRecordedEval(
   const expressions: RecordedEvalExpressionFinding[] = [];
   const scope_refs: RecordedEvalScopeRef[] = [];
 
-  // Bare-iteration-identifier lint (item_var retirement), resolved
-  // once against the full steps array — the lint needs each site's
-  // enclosing loop (declared/undeclared item_var) which a single
-  // ExpressionSite cannot carry. Same pass the workflow validator and
-  // the conversations verifier run; keyed by the site naming this
-  // report already uses (`steps.<id>.<field>`). Loop-body JSONata
-  // sites only by construction.
   const bareIterationBySite = new Map<string, ReferenceValidationError[]>();
   for (const lint of validateBareIterationIdentifiers(steps)) {
     const key = `steps.${lint.step_id}.${lint.field}`;
@@ -704,10 +506,6 @@ export async function runRecordedEval(
   }
 
   for (const site of sites) {
-    // (2) scope-reference resolution against fingerprint-valid
-    // recorded previews — reported per cite regardless of whether the
-    // expression compiles. References are extracted in the site's own
-    // language (`$scope.<id>` vs `input.scope.<id>`).
     const refs = referencedStepIds(site, stepIds);
     for (const ref of refs) {
       scope_refs.push({
@@ -718,12 +516,6 @@ export async function runRecordedEval(
       });
     }
 
-    // (1)+(3) compile, then evaluate against recorded scope — only
-    // when every sibling reference has recorded (fingerprint-valid)
-    // evidence. Sites with no sibling refs (pure `$input` shapes) and
-    // sites inside loop bodies are compile-only. The language switch:
-    // each branch owns its engine, its error formatting, and its
-    // addressing vocabulary; the finding contract is shared.
     const evaluable =
       site.evaluable && refs.length > 0 && refs.every((ref) => ref in recordedScope);
     expressions.push(
@@ -740,29 +532,12 @@ export async function runRecordedEval(
     );
   }
 
-  // Bounded auto-repair (Fix 10, fan-out bound P2). For compile errors
-  // and empty results over recorded evidence, run ≤MAX_REPAIR_ATTEMPTS
-  // focused LLM attempts per finding and attach the verified outcome.
-  // The draft is NOT touched — the model sees `repair.expression` in the
-  // envelope and applies it via a normal edit.
-  //
-  // Fan-out bound (STALL S2): the total number of per-site repair
-  // invokes is capped at MAX_PIPELINE_REPAIRS. If the draft carries MORE
-  // than MAX_REPAIR_FINDINGS repairable findings it is too broken to
-  // patch site-by-site — auto-repair is SKIPPED entirely and every
-  // finding rides the envelope for the model to fix in one shot
-  // (regenerate / edit), instead of serializing 12-20 untimed slow-model
-  // calls inside a single tool execution. Each repair is also threaded
-  // the optional deadline signal so the whole fan-out is bounded by one
-  // shared clock; an aborted repair degrades to `{ repaired: false }`.
   const siteByName = new Map(sites.map((s) => [s.site, s] as const));
   let repair_skipped: RecordedEvalReport["repair_skipped"];
   if (options.repair) {
     const repairable = expressions.filter(
       (f): f is RecordedEvalExpressionFinding & { status: "compile_error" | "empty_result" } =>
         f.status === "compile_error" ||
-        // Skip empties produced against truncated evidence — there is nothing
-        // to repair (the path may be correct; the data was just offloaded).
         (f.status === "empty_result" && f.against_truncated_evidence !== true),
     );
     if (repairable.length > MAX_REPAIR_FINDINGS) {
@@ -780,11 +555,6 @@ export async function runRecordedEval(
         threshold: MAX_REPAIR_FINDINGS,
       });
     } else {
-      // The ≤ MAX_PIPELINE_REPAIRS resolvable sites repair concurrently.
-      // Each `invoke()` is independent and mutates only its own finding;
-      // every call threads the shared deadline `signal`, so a deadline
-      // hit still aborts the whole fan-out — but the wall-clock is one
-      // slow-model call, not the serial sum of three.
       const repairCtx = options.repair;
       const targets = repairable
         .map((finding) => ({ finding, site: siteByName.get(finding.site) }))
@@ -794,9 +564,6 @@ export async function runRecordedEval(
         targets.map(async ({ finding, site }) => {
           const resolved = site!;
           const refs = referencedStepIds(resolved, stepIds);
-          // `empty_result` findings only exist for sites that were
-          // evaluated, so their refs are recorded by construction;
-          // compile-error sites get the scope when it happens to exist.
           const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
           finding.repair = await repairTransformExpression({
             expression: resolved.expression,
@@ -819,8 +586,6 @@ export async function runRecordedEval(
     }
   }
 
-  // (4) gate verdicts — same evaluators, now reported instead of
-  // enforced.
   const gateOptions = { probedConnectorSlugs: evidence.probedConnectorSlugs ?? new Set<string>() };
   const loopGate = evaluateLoopAuthoringGate(
     { steps },
@@ -842,8 +607,6 @@ export async function runRecordedEval(
     });
   }
   for (const b of transformGate.blocks) {
-    // A hand-rolled-codec block is about the transform's own source, not an
-    // upstream reference: key it on the transform step id, steer to a rewrite.
     const isCodec = isHandRolledCodecBlock(b);
     const key = isCodec ? b.transform_step_id : b.referenced_step_id;
     missingByStep.set(key, {
@@ -854,8 +617,6 @@ export async function runRecordedEval(
         : MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
     });
   }
-  // Validate the wire shape at the boundary: every entry (incl. its
-  // next_action enum) must parse before the report crosses to a tool result.
   const missing_evidence = z
     .array(RecordedEvalMissingEvidenceSchema)
     .parse([...missingByStep.values()]);
@@ -864,11 +625,6 @@ export async function runRecordedEval(
     siteByName.get(f.site)?.language ?? "javascript";
   const hasCompileErrors = expressions.some((f) => f.status === "compile_error");
   const hasEvalErrors = expressions.some((f) => f.status === "eval_error");
-  // An empty result over TRUNCATED evidence is not a confirmed problem — the
-  // payload was offloaded/omitted in the preview, so emptiness proves nothing.
-  // It must not block the commit gate (the dry-run-vs-runtime divergence behind
-  // the Gmail session). It still surfaces as a finding and points the author at
-  // a faithful re-run, but only NON-truncated empties make `ok` false.
   const blockingEmptyResults = expressions.filter(
     (f) => f.status === "empty_result" && f.against_truncated_evidence !== true,
   );
@@ -882,8 +638,6 @@ export async function runRecordedEval(
   const repairedCount = expressions.filter((f) => f.repair?.repaired === true).length;
 
   const next_actions: string[] = [];
-  // A verified repair proposal makes the targeted edit the obvious
-  // first move regardless of which failure class produced it.
   if (repairedCount > 0) {
     next_actions.push("edit_workflow_patch");
   }
@@ -891,21 +645,15 @@ export async function runRecordedEval(
     next_actions.push("edit_workflow_patch");
   }
   if (hasEmptyResults) {
-    // `suggest_jsonata_paths` is a JSONata-path tool — JS empty results
-    // already carry `input.scope.<id>.data` candidates on the finding.
     if (hasJsonataEmptyResults) next_actions.push("suggest_jsonata_paths");
     next_actions.push("dry_run_transform");
   }
-  // Codec blocks resolve by an `sk.*` rewrite (steer to `update_param`); only
-  // preview-evidence gaps want dry_run_workflow.
   const hasCodecBlock = transformGate.blocks.some(isHandRolledCodecBlock);
   const hasPreviewGap =
     !loopGate.ok || transformGate.blocks.some((b) => !isHandRolledCodecBlock(b));
   if (hasCodecBlock) {
     next_actions.push("edit_workflow_patch");
   }
-  // Truncated-evidence empties resolve with a faithful full-data run, not a
-  // transform rewrite. A preview-gap missing_evidence entry also wants a run.
   const hasDryRunMissingEvidence = missing_evidence.some(
     (m) => m.next_action === MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
   );
@@ -974,14 +722,6 @@ export async function runRecordedEval(
   };
 }
 
-/**
- * Observability for non-blocking gate verdicts. The
- * `authoring_gate_blocks_total` counter historically measured "the
- * gate fired"; it keeps doing so now that the firing is reported in
- * the envelope instead of refusing the call — operators tracking the
- * thrash class keep their signal. One warn log per failing pass
- * carries the per-finding detail for forensics.
- */
 export function emitRecordedEvalSignals(args: {
   tool: string;
   conversation_id: string;
@@ -992,8 +732,6 @@ export function emitRecordedEvalSignals(args: {
     recordAuthoringGateBlock({ code: "loop_authoring_requires_inspect", tool: args.tool });
   }
   if (!report.gates.transform.ok) {
-    // Split the metric by failure class: a hand-rolled-codec block is a
-    // distinct authoring mistake from a missing-preview inspect gap.
     const hasCodec = report.gates.transform.blocks.some(isHandRolledCodecBlock);
     const hasInspect = report.gates.transform.blocks.some((b) => !isHandRolledCodecBlock(b));
     if (hasInspect) {

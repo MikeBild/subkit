@@ -1,7 +1,3 @@
-// Pure-function tests for the HTTP driver's URL resolution, header
-// validation, applied-auth-method derivation, and probe-status
-// classification. No DB, no network, no Docker.
-
 import { describe, expect, test } from "bun:test";
 import type { ConnectorView } from "../types.ts";
 import {
@@ -239,9 +235,6 @@ describe("classifyHttpProbeStatus — Google accessNotConfigured body upgrade", 
   });
 
   test("403 + accessNotConfigured body with no extractable api_name and a non-googleapis base_url has no deep link", () => {
-    // Message has no "<Name> API" phrase to extract api_name from, and the
-    // base_url isn't a googleapis.com host either — neither deep-link source
-    // resolves, so provider_action_url stays unset.
     const connector = makeConnector({ base_url: "https://api.internal-service.test" });
     const result = classifyHttpProbeStatus(403, connector, {
       error: {

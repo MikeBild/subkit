@@ -1,8 +1,3 @@
-// Unit tests for the state-gate helpers — each helper covers happy +
-// sad cases. The helpers are pure: they take a draft / summary and
-// return either `null` (caller proceeds) or a structured
-// `tool_unavailable_in_state` envelope.
-
 import { describe, expect, test } from "bun:test";
 import type { AuthoringSummary, DraftDocument } from "../types.ts";
 import {

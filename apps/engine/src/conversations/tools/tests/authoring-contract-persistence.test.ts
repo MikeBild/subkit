@@ -1,9 +1,3 @@
-// Unit tests for the `persistence` field on authoring payload builders.
-//
-// buildPersistencePayload must always emit persistence: "saved".
-// buildGateError must always emit persistence: "draft_only".
-// buildGateError accepts an `extra` override that wins over the default.
-
 import { describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import {
@@ -12,17 +6,9 @@ import {
   buildPersistencePayload,
 } from "../authoring-contract.ts";
 
-// ---------------------------------------------------------------------------
-// Minimal DraftDocument fixture — mirrors the pattern used in authoring-state.test.ts
-// ---------------------------------------------------------------------------
-
 function makeDraft() {
   return createEmptyDraftDocument();
 }
-
-// ---------------------------------------------------------------------------
-// buildPersistencePayload
-// ---------------------------------------------------------------------------
 
 describe("buildPersistencePayload", () => {
   test("returns persistence: 'saved' for a workflow resource", () => {
@@ -66,10 +52,6 @@ describe("buildPersistencePayload", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// buildGateError
-// ---------------------------------------------------------------------------
-
 describe("buildGateError", () => {
   test("returns persistence: 'draft_only' by default", () => {
     const draft = makeDraft();
@@ -87,9 +69,6 @@ describe("buildGateError", () => {
       message: "override test",
       extra: { persistence: "saved" },
     });
-    // The static return type pins `persistence` to the literal "draft_only";
-    // the runtime `extra` spread overrides it. Read through a widened view so
-    // the override assertion isn't blocked by the literal type.
     expect((result as Record<string, unknown>).persistence).toBe("saved");
   });
 
@@ -101,7 +80,6 @@ describe("buildGateError", () => {
       extra: { custom_hint: "do this instead" },
     });
     expect((result as Record<string, unknown>).custom_hint).toBe("do this instead");
-    // persistence still defaults to draft_only
     expect(result.persistence).toBe("draft_only");
   });
 

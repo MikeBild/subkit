@@ -1,10 +1,3 @@
-// Permissions tab — radio Default / Auto-review / Full Access.
-// Maps onto the sk REPL's permission_mode (`ask` / `auto` / `yolo`)
-// and persists via the engine setting `repl.permissionMode`. Loads
-// the current value from the engine on mount; Enter writes via
-// `setSetting`. Inline error reported on failure; success flash on
-// commit.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -64,7 +57,6 @@ export const PermissionsTab: React.FC<Props> = ({ initial, client, tenant, onSel
   const [flash, setFlash] = useState<{ kind: "ok" | "error"; msg: string } | null>(null);
   const [loadedFromEngine, setLoadedFromEngine] = useState(false);
 
-  // Hydrate from engine on mount when no `initial` was supplied.
   useEffect(() => {
     if (!client || initial !== undefined) return;
     let cancelled = false;
@@ -88,9 +80,7 @@ export const PermissionsTab: React.FC<Props> = ({ initial, client, tenant, onSel
           );
           setLoadedFromEngine(true);
         }
-      } catch {
-        // non-fatal; the radio still works as a session-only toggle.
-      }
+      } catch {}
     })();
     return () => {
       cancelled = true;

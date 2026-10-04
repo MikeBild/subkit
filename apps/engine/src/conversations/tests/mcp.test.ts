@@ -1,14 +1,3 @@
-// MCP conversation cluster smoke test — async Tasks (SEP-1686).
-//
-// Drives a full list-users conversation via MCP tools/call. Each
-// turn-driving tool now returns immediately with a `working` status;
-// the `conversation.run-turn` worker runs the model loop and the test
-// polls `conversation_get` until the turn reaches a terminal state.
-//
-//   conversation_start            → working → poll → input_required
-//   browser approval                → working → poll → completed
-//   conversation_commit           → returns the committed workflow id
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import { setConfigKey } from "../../config/loader.ts";
@@ -23,12 +12,8 @@ let connectorId: string;
 beforeAll(async () => {
   process.env.MASTER_KEY = "c".repeat(64);
   process.env.LLM_PROVIDER = "mock";
-  // The mode-split MCP catalog hides conversation.* by default; this
-  // suite tests the authoring cluster specifically, so opt into
-  // authoring mode explicitly for the duration of the run.
   process.env.SK_MCP_MODE = "authoring";
   resetMockProvider();
-  // withQueue — the conversation tools enqueue a background turn.
   suite = await startMcpTestSuite("conversations", { withQueue: true });
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
   const [row] = await suite.http.db
@@ -62,7 +47,6 @@ interface GetResult {
   input?: { approval_url?: string };
 }
 
-/** Poll `conversation_get` until the turn leaves `working`. */
 async function pollUntilSettled(
   client: Awaited<ReturnType<McpTestSuite["connect"]>>,
   conversation_id: string,
@@ -100,7 +84,6 @@ describe("mcp conversation tools", () => {
     expect(names).toContain("conversation_get");
     expect(names).toContain("conversation_commit");
 
-    // Start — returns fast `working` with the conversation id to poll.
     const start = await client.callTool({
       name: "conversation_start",
       _meta: { sk_permission_mode: "ask" },
@@ -122,14 +105,11 @@ describe("mcp conversation tools", () => {
     expect(startParsed.poll_with).toBe("conversation_get");
     expect(startParsed.mcp_task_id.length).toBeGreaterThan(0);
 
-    // Poll — the turn pauses at the ask_user_confirm elicitation.
     const settled = await pollUntilSettled(client, startParsed.conversation_id);
     expect(settled.status).toBe("input_required");
     expect(settled.pending_elicitation_id).toBeDefined();
     expect(settled.input?.approval_url).toContain("/v1/tool-approvals/decide");
 
-    // A model-facing tool must not relay the human decision. The browser
-    // portal owns approval and enqueues the background resume turn.
     const approvalUrl = settled.input?.approval_url ?? "";
     const login = await issueBrowserSession({
       db: suite.http.db,
@@ -156,9 +136,6 @@ describe("mcp conversation tools", () => {
     });
     expect(approval.status).toBe(200);
 
-    // Poll — the portal-created resume turn commits the workflow. Waiting
-    // specifically for `completed` avoids treating the previous pause as a
-    // fresh terminal result before the queue worker has claimed the task.
     let committedPoll: GetResult | null = null;
     await waitFor(
       async () => {
@@ -178,7 +155,6 @@ describe("mcp conversation tools", () => {
     );
     if (!committedPoll) throw new Error("conversation_get never completed");
 
-    // conversation_commit reports the committed workflow id.
     const commit = await client.callTool({
       name: "conversation_commit",
       arguments: { conversation_id: startParsed.conversation_id },
@@ -202,7 +178,6 @@ describe("mcp conversation tools", () => {
     expect(commitParsed.activation_required).toBe(true);
     expect(commitParsed.current_version_id).toBeNull();
     expect(commitParsed.usage).toBeUndefined();
-    // The reply carries persisted facts, not a draft echo.
     expect(commitParsed.committed?.version).toBeGreaterThanOrEqual(1);
     expect(commitParsed.committed?.steps_present).toBeGreaterThanOrEqual(1);
     expect(commitParsed.draft_state).toBeDefined();

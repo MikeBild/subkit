@@ -1,28 +1,3 @@
-// Idempotent seed.
-//
-// Split into two phases, each safe to run on every deploy:
-//
-//   1. seedEssentials — RBAC permission catalog + 6 builtin roles.
-//      Always runs. Engine auth breaks without this.
-//
-//   2. seedDevFixtures — the legacy local-dev fixtures: `default` tenant,
-//      admin@local user, default-bot system account, and a starter
-//      global skill. No demo connectors or workflows — fresh tenants
-//      start empty. Runs only when NODE_ENV !== "production".
-//
-// `seedTenantBootstrap` is also exported. It is the call-driven primitive
-// used by the first-run `/v1/setup` flow (see
-// `apps/engine/src/onboarding/bootstrap.ts`) — `BOOTSTRAP_*` env-var
-// startup is not supported; `POST /v1/setup` + `sk init --token` is
-// the onboarding surface.
-//
-// `seedAtBoot(db)` is the engine-boot orchestrator: idempotent, called
-// from `runServer()` after migrations have applied. Migrate + seed
-// live in the single engine binary; no separate `db:seed` CLI step.
-//
-// Every created row writes an audit entry. Issued API keys are printed
-// to stdout exactly once with a bright warning — they cannot be recovered.
-
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import pc from "picocolors";
@@ -67,39 +42,15 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
   return { plaintext, prefix, hash };
 }
 
-// --------------------------------------------------------------------------
-// Phase 1: RBAC essentials
-// --------------------------------------------------------------------------
-
 async function seedEssentials(db: Db): Promise<SeededRoleIds> {
   const rbacIds = await seedBuiltinRolesAndPermissions(db);
   await backfillSystemAccountRoleIds(db, rbacIds);
   return rbacIds;
 }
 
-/**
- * Events the default sk CLI inbox rule routes: exactly the catalog events a
- * person may have to act on (`classifyEvent` in `webhooks/events/catalog.ts`).
- * Step-level and routine events are not in it, so a running workflow does not
- * produce a notification delivery and a sent-message audit row per step. A
- * test keeps this list equal to the catalog's actionable entries, and the
- * data migration that narrowed existing default rules writes the same value.
- */
 export const DEFAULT_CLI_INBOX_EVENT_PATTERN =
   "execution.failed,connector.oauth.callback_failed,connector.auth_failed,connector.health_changed,patch.proposed";
 
-/**
- * Seed the default sk CLI inbox notification rule for a tenant. The rule
- * routes the actionable events (`DEFAULT_CLI_INBOX_EVENT_PATTERN`, any
- * workflow, severity floor `info`) into the `cli_notification_inbox` via the
- * reserved `_cli` / `_inbox` target. The `SkCliAdapter` is the
- * process-global fallback that materialises each delivery as a local row.
- *
- * Idempotent: guarded by the same `(_cli, _inbox)` NOT EXISTS check as the
- * 0042 backfill migration, so it is safe to re-run on every bootstrap /
- * dev-fixtures pass (the bootstrap path is an upsert-by-slug and may run on
- * every deploy).
- */
 export async function seedDefaultCliNotificationRule(
   tx: Executor,
   tenant_id: string,
@@ -130,18 +81,6 @@ export async function seedDefaultCliNotificationRule(
   });
 }
 
-// --------------------------------------------------------------------------
-// Phase 2: production tenant bootstrap
-// --------------------------------------------------------------------------
-
-/**
- * Explicit payload accepted by `seedTenantBootstrap`. The caller (the
- * `/v1/setup` route handler via `onboarding/bootstrap.ts`, or the `sk
- * init` headless flow that posts the same payload) holds the four
- * operator-supplied values and passes them directly. `/v1/setup` is
- * the only supported onboarding surface; `BOOTSTRAP_*` env-vars are
- * not honored.
- */
 export interface TenantBootstrapPayload {
   admin_email: string;
   tenant_name: string;
@@ -149,9 +88,6 @@ export interface TenantBootstrapPayload {
   create_metrics_key?: boolean;
 }
 
-/** Structured result from `seedTenantBootstrap` so the bootstrap
- *  orchestrator can resolve the materialised tenant + admin user + new
- *  API key without re-querying. */
 export interface TenantBootstrapResult {
   tenant_id: string;
   user_id: string;
@@ -182,7 +118,6 @@ export async function seedTenantBootstrap(
     const issued: IssuedKey[] = [];
     let adminApiKey: { plaintext: string; prefix: string } | null = null;
 
-    // --- tenant (upsert by slug) ---
     let [tenant] = await tx.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     if (!tenant) {
       [tenant] = await tx.insert(tenants).values({ slug, display_name: displayName }).returning();
@@ -201,7 +136,6 @@ export async function seedTenantBootstrap(
       );
     }
 
-    // --- admin user (upsert by tenant_id + email) ---
     let [user] = await tx
       .select()
       .from(users)
@@ -231,10 +165,8 @@ export async function seedTenantBootstrap(
       );
     }
 
-    // --- default sk CLI inbox notification rule (idempotent) ---
     await seedDefaultCliNotificationRule(tx, tenant.id);
 
-    // --- bootstrap-admin system account (upsert by tenant_id + name) ---
     let [sysAcct] = await tx
       .select()
       .from(systemAccounts)
@@ -270,7 +202,6 @@ export async function seedTenantBootstrap(
       );
     }
 
-    // --- admin API key: mint only if no un-revoked key exists ---
     // tenant-filter:exempt — bootstrap path; system_account_id FK is tenant-scoped and uniqueness is anchored by it
     const existingAdminKey = await tx
       .select({ id: apiKeys.id })
@@ -315,7 +246,6 @@ export async function seedTenantBootstrap(
       adminApiKey = { plaintext: key.plaintext, prefix: key.prefix };
     }
 
-    // --- optional: metrics scraper system account + scoped key ---
     if (createMetricsKey) {
       let [metricsAcct] = await tx
         .select()
@@ -416,10 +346,6 @@ export async function seedTenantBootstrap(
   });
 }
 
-// --------------------------------------------------------------------------
-// Phase 3: dev fixtures (non-production only)
-// --------------------------------------------------------------------------
-
 async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKey[]> {
   const existing = await db
     .select({ id: tenants.id })
@@ -444,7 +370,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
   });
 
   return await db.transaction(async (tx) => {
-    // --- tenant ---
     const [tenant] = await tx
       .insert(tenants)
       .values({
@@ -466,7 +391,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- admin user ---
     const [user] = await tx
       .insert(users)
       .values({
@@ -489,10 +413,8 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- default sk CLI inbox notification rule (idempotent) ---
     await seedDefaultCliNotificationRule(tx, tenant.id);
 
-    // --- system account ---
     const [sysAcct] = await tx
       .insert(systemAccounts)
       .values({
@@ -516,7 +438,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- machine API key ---
     const key = generateApiKey();
     const [apiKey] = await tx
       .insert(apiKeys)
@@ -542,7 +463,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- metrics-scraper system account + scoped API key ---
     const [metricsAcct] = await tx
       .insert(systemAccounts)
       .values({
@@ -594,7 +514,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       tx,
     );
 
-    // --- global skill ---
     const [skill] = await tx
       .insert(skills)
       .values({
@@ -619,12 +538,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       },
       tx,
     );
-
-    // No demo workflows or connectors — fresh tenants start empty.
-    // Operators consistently asked "why always 'demo-' prefix? I never
-    // used something like that"; the prior `dummy-http` connector and
-    // three `demo-*` workflows seeded surprise data the operator never
-    // authored. The greenfield convenience wasn't worth the confusion.
 
     logger.info({
       module: "db",
@@ -654,23 +567,6 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
   });
 }
 
-// --------------------------------------------------------------------------
-// Top-level orchestration
-// --------------------------------------------------------------------------
-
-/**
- * Engine-boot seed. Run after migrations have applied. Idempotent on
- * every call — safe to invoke unconditionally on every boot.
- *
- *   1. RBAC essentials: permission catalog + 6 builtin roles.
- *   2. (NODE_ENV !== "production") dev fixtures: default tenant +
- *      admin@local + default-bot system account + starter skill.
- *
- * Production tenant bootstrap is **not** part of this path — operators
- * mint the first tenant via `POST /v1/setup` (or `sk init --token`),
- * which calls `seedTenantBootstrap` directly with operator-supplied
- * credentials. See `apps/engine/src/onboarding/bootstrap.ts`.
- */
 export async function seedAtBoot(db: Db): Promise<SeedResult> {
   const rbacIds = await seedEssentials(db);
   const isProd = process.env.NODE_ENV === "production";
@@ -681,17 +577,6 @@ export async function seedAtBoot(db: Db): Promise<SeedResult> {
   };
 }
 
-/**
- * Print an issued API key to stdout exactly once with a bright banner.
- * Caller (boot path or `engine --seed`) is responsible for the
- * iteration; the key is unrecoverable after this prints.
- *
- * @param key  The newly-minted key payload.
- * @param opts.source  Provenance tag rendered in the banner so an
- *   operator running `engine --seed | tee` (or grepping container
- *   logs) can distinguish a CLI-driven mint from a regular boot
- *   Omit / leave empty to keep the historical banner.
- */
 export function printIssuedKey(
   { label, plaintext, tenant, usage }: IssuedKey,
   opts: { source?: "boot" | "cli" } = {},

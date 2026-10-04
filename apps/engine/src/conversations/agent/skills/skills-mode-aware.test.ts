@@ -1,12 +1,3 @@
-// Mode-aware agent skill loading helper. Three behaviour bodies are
-// mode-specific: `conversational-authoring` (the ideal-flow narrative),
-// `workflow-step-kinds` (the no-invented-dotted-namespace step kind floor),
-// `placeholder-rules` (the `${cred|connector|input|scope.*}` grammar).
-// Execution-mode turns ("run <slug>") reach for `wf_<slug>` /
-// `run_workflow` and never propose steps, so trimming the latter two
-// saves ~750 tokens per turn. Authoring (workflow / connector) and
-// diagnosis modes re-add them.
-
 import { describe, expect, test } from "bun:test";
 import {
   ALL_AGENT_SKILLS,
@@ -88,11 +79,6 @@ describe("resolveAgentSkillsForMode", () => {
 });
 
 describe("skill content pinning — turn-one-discipline phrases (6.2.12 regression guard)", () => {
-  // Pins the SAVED-WORKFLOW-BEFORE-AD-HOC-CALL rule introduced in 6.2.12.
-  // The agent was guessing REST/GraphQL endpoints before checking the
-  // tenant's saved workflows, wasting two turns in the May 2026 OCPP
-  // review session. The turn-one-discipline skill now carries an explicit
-  // rule; these tests ensure the content is never accidentally trimmed.
   const bundle = loadAgentSkills(ALWAYS_LOADED_AGENT_SKILLS);
 
   test('bundle contains the literal phrase "SAVED WORKFLOW BEFORE AD-HOC CALL"', () => {
@@ -109,11 +95,6 @@ describe("skill content pinning — turn-one-discipline phrases (6.2.12 regressi
 });
 
 describe("attachment-handling skill content", () => {
-  // Pins the regression fix for the "create a knowledge source using
-  // /Users/...md" flow: the agent was hallucinating an upload UI and
-  // bouncing users to slash commands. sk now handles pasted/dropped
-  // paths directly; knowledge-source intents arrive as {"$file":"fid_…"},
-  // while workflow-input text files may arrive as Local file contents blocks.
   const bundle = loadAgentSkills(ALWAYS_LOADED_AGENT_SKILLS);
 
   test("loaded bundle forbids recommending removed REPL upload slashes", () => {

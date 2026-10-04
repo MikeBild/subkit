@@ -1,17 +1,8 @@
-// Google Chat outbound auth.
-//
-// Signs a service-account JWT with `jose.SignJWT` (RS256) and POSTs
-// it to the token endpoint. Tests override `tokenEndpoint`, `signer`
-// and `fetchImpl` so no real Google infra is touched. The access
-// token is cached until `expires_in - 60s` has elapsed.
-
 import { importPKCS8, SignJWT } from "jose";
 
 export interface GoogleAuthOptions {
   clientEmail: string;
   privateKeyPem?: string;
-  /** Explicit pre-signed assertion, used when tests don't want to
-   * generate a real RSA key. */
   staticAssertion?: string;
   tokenEndpoint: string;
   scope?: string;

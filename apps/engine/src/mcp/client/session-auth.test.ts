@@ -3,8 +3,6 @@ import { McpPreflightError } from "./registry.ts";
 import { resolveStaticAuthHeaders } from "./session-auth.ts";
 
 describe("resolveStaticAuthHeaders", () => {
-  // A pasted key with a trailing newline used to reach the transport, whose
-  // error quoted the raw value into the pool log and the model's context.
   test("refuses a line break or NUL in any static credential without quoting it", () => {
     const secret = "sk_live_pasted_secret_value";
     const cases = [

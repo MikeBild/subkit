@@ -1,12 +1,3 @@
-// Regression: `sk -p` text mode must never exit silently on a tool-only
-// turn — `lastExecutionResult` selects the payload the user actually asked
-// for, `renderExecutionOutput` renders it with in-band sampling markers.
-//
-// Why the suite missed it: the headless journey contract explicitly allowed
-// "text output may be empty when the mock returns no assistant text", so the
-// production symptom (`run_workflow: succeeded … no output`) was pinned as
-// acceptable instead of as the bug.
-
 import { describe, expect, test } from "bun:test";
 import {
   initialSessionState,
@@ -77,7 +68,6 @@ describe("renderExecutionOutput", () => {
     const output = { items: Array.from({ length: 50 }, (_, i) => i) };
     const text = renderExecutionOutput({ tool: "wf_x", output }, { maxArrayItems: 5 });
     expect(text).toContain("sampled 5 of 50 items");
-    // Items beyond the sample must not be rendered.
     expect(text).not.toContain("49");
   });
 

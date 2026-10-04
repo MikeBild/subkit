@@ -1,5 +1,3 @@
-// Unit tests for the URL grounding scanner.
-
 import { describe, expect, it } from "bun:test";
 import { urlScanner } from "../scanners/url.ts";
 
@@ -71,7 +69,6 @@ describe("urlScanner", () => {
       engine_url: "http://subkit-api.example.com",
     });
     expect(vs).toHaveLength(1);
-    // Scheme and host are coerced; path is preserved.
     expect(vs[0]?.repair).toBe("http://subkit-api.example.com/mcp");
     expect(vs[0]?.details?.repaired_to).toBe("http://subkit-api.example.com/mcp");
   });

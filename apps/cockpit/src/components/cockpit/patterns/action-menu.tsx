@@ -15,22 +15,12 @@ export interface ActionMenuItem {
   onSelect?(): void;
   href?: string;
   disabled?: boolean;
-  /** Why it is disabled — the tooltip, instead of a sentence on the page. */
   disabledReason?: string;
   destructive?: boolean;
   testId?: string;
-  /**
-   * Further `data-*` attributes for the entry — e.g. `data-opens` naming the
-   * dialog it opens, so the single-trigger check counts a menu entry like a
-   * button.
-   */
   data?: Readonly<Record<`data-${string}`, string>>;
 }
 
-/**
- * The only ⋯ (P16). One item is not a menu: it stands as a named outline
- * button, so nobody opens a menu to find a single entry.
- */
 export function ActionMenu({
   items,
   size = "default",
@@ -40,7 +30,6 @@ export function ActionMenu({
   items: readonly ActionMenuItem[];
   label?: string;
   testId?: string;
-  /** `sm` for a row action inside a table or a card. */
   size?: "default" | "sm";
 }) {
   const { t } = useI18n();

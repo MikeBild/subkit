@@ -57,10 +57,6 @@ const CAPABILITY_PATTERNS = [
   /what can you do/,
   /your (capabilities|capability)/,
 ] as const;
-// Self-inventory enumeration: "which skills do you have", "what knowledge
-// sources are built-in". Deliberately narrow phrasing so a CONCEPT question
-// ("what is a skill") is NOT hijacked into an enumeration (that stays
-// product_help + SK_CONCEPT_GROUNDING).
 const SELF_INVENTORY_PATTERNS = [
   /which skills/,
   /what skills/,
@@ -72,7 +68,6 @@ const SELF_INVENTORY_PATTERNS = [
   /list .*knowledge sources/,
   /built[- ]?in (skills|knowledge)/,
 ] as const;
-// Diagnosis: a specific failing run the user wants explained.
 const DIAGNOSIS_PATTERNS = [
   /\bdiagnose\b/,
   /why did .*(fail|break|error)/,
@@ -269,10 +264,6 @@ export function planTurnRouting(args: {
     };
   }
 
-  // Self-inventory: "which skills do you have", "what knowledge sources exist".
-  // Ground the enumeration in the real catalog so the self-assistant never
-  // invents skill / knowledge-source names or counts. Honours RBAC: a
-  // permission_denied from the read tool is answered honestly, not guessed.
   if (matchesAny(text, SELF_INVENTORY_PATTERNS)) {
     return {
       intent: "tenant_read",
@@ -280,9 +271,6 @@ export function planTurnRouting(args: {
       action:
         "Enumerate the tenant's actual skills and knowledge sources from the catalog before answering; report counts and names ONLY from the tool result. If a read tool returns permission_denied, say the current role cannot see that inventory and stop.",
       question: null,
-      // list_skills is the chat-surface enumerator; list_all_skills is the
-      // broader mcp/web one. list the chat-callable tool first so every
-      // answer surface has a reachable grounding tool.
       required_grounding: ["list_skills", "list_all_skills", "list_knowledge_sources"],
       notes: [
         "Never invent, guess, or pad a skill / knowledge-source name or count.",
@@ -292,7 +280,6 @@ export function planTurnRouting(args: {
     };
   }
 
-  // Diagnosis: ground a failing-run explanation in the real execution record.
   if (matchesAny(text, DIAGNOSIS_PATTERNS)) {
     return {
       intent: "tenant_read",

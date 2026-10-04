@@ -1,19 +1,8 @@
-// Integration: `sk executions get` output-files rendering.
-//
-// Covers:
-//   - Text output: when the execution result contains $file refs,
-//     `maybePrintOutputFiles` prints "Output files: fid_... (filename, size)" line.
-//   - JSON output (`--json`): the raw execution payload is printed as-is
-//     with no "Output files" key injected.
-//   - Missing file:read permission on getFile → fid still printed as hint.
-
 import { describe, expect, test } from "bun:test";
 import { collectFileRefs, isFileRef } from "../../utils/file-ref.ts";
 
 const FID_A = "fid_00000000-0000-0000-0000-000000000040";
 const FID_B = "fid_00000000-0000-0000-0000-000000000041";
-
-// ---------- unit-level helpers from file-ref.ts ----------
 
 describe("collectFileRefs", () => {
   test("collects fids from flat result", () => {
@@ -53,13 +42,9 @@ describe("isFileRef", () => {
   });
 
   test("extra keys still valid ($file leaf is terminal)", () => {
-    // The walker only visits leaves; extra keys on the containing object
-    // don't affect validation.
     expect(isFileRef({ $file: FID_A })).toBe(true);
   });
 });
-
-// ---------- text rendering simulation ----------
 
 describe("output-files text rendering", () => {
   test("non-JSON output includes Output files line for each fid", async () => {
@@ -95,7 +80,6 @@ describe("output-files text rendering", () => {
       },
     });
 
-    // Simulate maybePrintOutputFiles logic inline:
     const execution: Record<string, unknown> = { result: { $file: FID_A } };
     const fids = new Set<string>();
     for (const ref of collectFileRefs(execution)) fids.add(ref);
@@ -117,9 +101,6 @@ describe("output-files text rendering", () => {
   });
 
   test("JSON output shape is unchanged — no Output files key injected", () => {
-    // When --json is set, the raw execution object is printed with
-    // printJson. The $file ref must be present in the raw shape and
-    // no additional key must be added at the JSON surface.
     const execution: Record<string, unknown> = {
       execution_id: "exec-json",
       status: "completed",
@@ -129,10 +110,8 @@ describe("output-files text rendering", () => {
     const serialized = JSON.stringify(execution);
     const parsed = JSON.parse(serialized) as Record<string, unknown>;
 
-    // The key set must be exactly what the engine returns.
     expect(Object.keys(parsed)).toEqual(["execution_id", "status", "output"]);
     expect((parsed.output as Record<string, unknown>).$file).toBe(FID_A);
-    // "Output files" must NOT be injected into the JSON surface.
     expect("output_files" in parsed).toBe(false);
   });
 

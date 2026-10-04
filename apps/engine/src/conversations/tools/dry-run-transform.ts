@@ -1,35 +1,3 @@
-// `dry_run_transform` — evaluate a JSONata / JavaScript / JSONPath /
-// template expression against a supplied sample payload, without
-// touching the workflow executor or the draft.
-//
-// The LLM uses this to debug transform expressions on the fly. Without
-// it, the only way to validate an expression shape is to commit a
-// draft, trigger a run, and read the execution row — five extra round
-// trips per iteration. A direct probe is an order of magnitude cheaper.
-//
-// Four dialects are supported:
-//
-//   - `jsonata`    — real `jsonata` evaluator (matches transform steps).
-//   - `javascript` — QuickJS sandbox, identical to transform steps with
-//                    `language: "javascript"`: the expression is a
-//                    FUNCTION BODY receiving exactly one value, the
-//                    `input` argument, shaped `{ scope, input }` —
-//                    upstream data at `input.scope.<step_id>.data…`,
-//                    workflow input at `input.input`; the body must
-//                    `return` its result. Failures classify exactly
-//                    like the recorded-eval JS pass: compile_error /
-//                    eval_error.
-//   - `jsonpath`   — subkit's JSONPath-lite (matches data_selector).
-//   - `template`   — placeholder substitution via resolver (no DB
-//                    lookups; only ${input.*}/${scope.*} are resolved
-//                    against the sample; ${cred.*}/${connector.*}
-//                    yield diagnostic errors).
-//
-// Outputs the evaluated value, duration, and — on error — a structured
-// error with an approximate source position where the evaluator
-// reported a failure. Audit metadata records an expression hash (never
-// the raw expression, since it might contain PII) plus the dialect.
-
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import type { Expression } from "jsonata";
@@ -71,25 +39,8 @@ const DryRunInput = z
           "To pull REAL recorded upstream data instead of hand-shaping it, pass the string `$scope`, `$scope.<step_id>`, or `$input` (resolved from the latest dry_run_workflow preview).",
         ].join(" "),
       ),
-    // Transforms are JavaScript — default the probe to the same language so
-    // an author testing a transform body gets execution-parity by default.
-    // jsonata/jsonpath/template remain available for the one-line slots
-    // (data_selector, branch.when, output_transform, ${…} interpolation).
     dialect: Dialect.default("javascript"),
-    /**
-     * Optional draft step id to emulate. When the step sits inside a
-     * loop body, the evaluation reproduces the engine's per-iteration
-     * childScope: `$item` and `$loop_index` are bound from the first
-     * item of the loop's `over` collection resolved against the
-     * recorded scope — identical surface to execution. For
-     * `dialect: "javascript"` the same childScope rides `input.scope`,
-     * so the body reads `input.scope.$item` / `input.scope.$loop_index`
-     * exactly as execution builds them per iteration. Defaults
-     * `sample_data` to `$scope` (the cached dry-run preview) when
-     * omitted.
-     */
     step_id: z.string().min(1).optional(),
-    /** Optional timeout — capped at 2s to keep authoring UX snappy. */
     timeout_ms: z.number().int().min(50).max(2_000).default(1_000),
   })
   .openapi("DryRunTransformToolInput");
@@ -102,7 +53,6 @@ interface EvalError {
   code:
     | "syntax_error"
     | "runtime_error"
-    /** JS-only — the recorded-eval sandbox vocabulary. */
     | "compile_error"
     | "eval_error"
     | "timeout"
@@ -217,8 +167,6 @@ export const dryRunTransformTool: ConversationTool = {
   },
   inputSchema: DryRunInput,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -238,17 +186,6 @@ export const dryRunTransformTool: ConversationTool = {
     }
     const args = parsed.data;
 
-    // Scope-reference resolution. When the caller passes a reference
-    // string like `$scope`, `$scope.<step_id>`, or `$input` (typical
-    // mistake: they're testing a JSONata transform against the last
-    // dry-run's data), look up the cached scope for this conversation
-    // and substitute. This is the path the "iterate on a transform
-    // without re-hitting the upstream" workflow takes — without it,
-    // sessions burn live API calls iterating JSONata.
-    //
-    // When `step_id` is given without sample_data, default to the
-    // cached `$scope` — emulating a draft step implies the recorded
-    // upstream data.
     const sampleInput: unknown =
       args.step_id !== undefined && (args.sample_data === null || args.sample_data === undefined)
         ? "$scope"
@@ -256,7 +193,6 @@ export const dryRunTransformTool: ConversationTool = {
     let resolvedSampleData: unknown = sampleInput;
     let resolvedFromPreview: string | null = null;
     let evalBindings: Record<string, unknown> | undefined;
-    /** Scope record + input the execution-parity bindings derive from. */
     let scopeRecord: Record<string, unknown> | null = null;
     let inputValue: unknown = null;
     if (typeof sampleInput === "string") {
@@ -305,9 +241,6 @@ export const dryRunTransformTool: ConversationTool = {
                 },
               };
             }
-            // Build a single-step sub-scope so the expression can use
-            // either bare paths (`<step_id>.data`) or scoped paths
-            // (`$scope.<step_id>.data`) against the same root.
             const singleScope: Record<string, unknown> = {
               [stepId]: preview.scope[stepId],
             };
@@ -323,7 +256,6 @@ export const dryRunTransformTool: ConversationTool = {
           }
         }
       } else if (/^\s*(\$\.|\$\{)/.test(sampleInput)) {
-        // Other placeholder shapes — refuse with the original guidance.
         return {
           ok: false,
           data: {
@@ -344,25 +276,10 @@ export const dryRunTransformTool: ConversationTool = {
       typeof sampleInput === "object" &&
       !Array.isArray(sampleInput)
     ) {
-      // Literal object sample — treat it as the scope record so the
-      // execution-parity bindings below expose `$scope` / `$steps`
-      // exactly like the transform driver does. A caller-supplied
-      // `{ $scope: {…} }` wrapper also works: `buildJsonataBindings`
-      // unpacks `$`-prefixed keys into the binding namespace.
       scopeRecord = sampleInput as Record<string, unknown>;
       inputValue = (sampleInput as Record<string, unknown>).input ?? null;
     }
 
-    // Loop-body emulation: when the target draft step lives in
-    // a loop body, execution binds `$item` and `$loop_index` into a
-    // per-iteration childScope (see execution/loop-scope.ts).
-    // Reproduce that surface here so the expression that works in this
-    // sandbox is byte-identical to the one that works at runtime —
-    // pre-fix the sandbox returned `{}` for those references and the
-    // model concluded "scope doesn't work in loops" (session 784c1b02).
-    // The `javascript` dialect rides the same childScope: it becomes
-    // `input.scope`, so authored JS reads `input.scope.$item` /
-    // `input.scope.$loop_index` exactly as execution builds them.
     let loopContext: { loop_id: string; loop_index: number } | null = null;
     const parityDialect = args.dialect === "jsonata" || args.dialect === "javascript";
     if (parityDialect && args.step_id !== undefined) {
@@ -413,8 +330,6 @@ export const dryRunTransformTool: ConversationTool = {
             },
           };
         }
-        // Identical shape to the engine's per-iteration childScope
-        // (mirrors execution/loop-scope.ts buildLoopChildScope).
         const childScope: Record<string, unknown> = {
           ...scopeRecord,
           $item: items[0],
@@ -429,9 +344,6 @@ export const dryRunTransformTool: ConversationTool = {
       }
     }
 
-    // Execution-parity bindings: the exact surface the engine's
-    // transform driver builds — `$input`, `$scope`, `$steps`, plus every
-    // `$`-prefixed scope key (`$item`, `$loop_index`, …) unpacked.
     if (args.dialect === "jsonata" && scopeRecord) {
       evalBindings = buildJsonataBindings(scopeRecord, inputValue);
     }
@@ -447,14 +359,6 @@ export const dryRunTransformTool: ConversationTool = {
         evalBindings,
       );
     } else if (args.dialect === "javascript") {
-      // Exact production contract (execution/steps/transform.ts via
-      // js-transform-eval.ts): QuickJS sandbox, one `input` value
-      // shaped `{ scope, input }`. The scope record is the same one
-      // the JSONata branch binds as `$scope` — including the loop
-      // childScope built above, so `input.scope.$item` resolves
-      // identically to execution. With no scope record (literal
-      // scalar/array sample, or a `$input` reference), the sample
-      // rides `input.input` and `input.scope` is empty.
       const jsEval = await evaluateJsBody({
         code: args.expression,
         scope: scopeRecord ?? {},
@@ -466,11 +370,6 @@ export const dryRunTransformTool: ConversationTool = {
     } else if (args.dialect === "jsonpath") {
       outcome = evalJsonPath(args.expression, resolvedSampleData);
     } else {
-      // template: resolve ${input.*}/${scope.*} placeholders against the
-      // sample. A ${cred.*} or ${connector.*} token is refused BEFORE the
-      // resolver runs: the resolver would look it up, and the resolved
-      // value — a decrypted credential field, a connector config leaf —
-      // would come back in this tool's result, which the model reads.
       const sample = (resolvedSampleData ?? {}) as Record<string, unknown>;
       const lookups = parsePlaceholders(args.expression).tokens.filter(
         (t) => t.kind === "cred" || t.kind === "connector_url" || t.kind === "connector_config",
@@ -486,8 +385,6 @@ export const dryRunTransformTool: ConversationTool = {
               ...(sample.scope ? { scope: sample.scope as Record<string, unknown> } : {}),
             });
       if (r.unresolved.length > 0) {
-        // Classified as unsupported here to steer the LLM back to the
-        // connector-aware tools.
         outcome = {
           ok: false,
           error: {
@@ -502,15 +399,6 @@ export const dryRunTransformTool: ConversationTool = {
 
     const duration_ms = Date.now() - started;
 
-    // Bounded auto-repair (Fix 10) — propose-only, nothing is mutated.
-    // A failing or empty jsonata evaluation gets ≤2 verified LLM repair
-    // attempts; the outcome rides the result as `repair` so the model
-    // applies the corrected expression on its next edit instead of
-    // guessing syntax blind. Empty results only qualify when a real
-    // scope record was resolved (literal scalar samples carry no
-    // evidence to verify a non-empty repair against). Timeouts are
-    // excluded: a repair can't prove anything about a runaway
-    // expression.
     let repair: TransformRepairOutcome | null = null;
     if (args.dialect === "jsonata" || args.dialect === "javascript") {
       const isEmptyValue =
@@ -551,7 +439,6 @@ export const dryRunTransformTool: ConversationTool = {
 
     recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "transform" });
 
-    // Audit — expression hash only; dialect; duration; ok flag.
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,

@@ -1,17 +1,3 @@
-// The in-band tool-call repair pays a provider. It has to say so.
-//
-// `repairToolCall` reaches the model through `generateObject` directly rather
-// than through `invoke()`, so none of the accounting wrapped around the latter
-// applied to it. From the day it was written until 2026-08-19 the tokens were
-// spent, billed by the provider, and absent from `llm_usage` — findable only by
-// reconciling an invoice against the ledger, which is to say not findable.
-//
-// Small in volume: the loop caps it at two per turn. That is an argument for
-// why it stayed unnoticed, not for leaving it out.
-//
-// Tested at the entry shape rather than through the DB, the same way
-// `accountant.attribution.test.ts` does, so this stays a fast unit test.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { LanguageModel } from "ai";
 import { _resetConfigForTests } from "../../config/loader.ts";
@@ -82,8 +68,6 @@ describe("recordRepairUsage", () => {
     );
 
     expect(rows).toHaveLength(1);
-    // `repair` is the self-healing patch proposal — a different mechanism with
-    // a different cost profile. One name over both makes either unreadable.
     expect(rows[0]?.flow).toBe("tool_repair");
     expect(rows[0]?.tenant_id).toBe(TENANT);
     expect(rows[0]?.model).toBe("claude-haiku-4-5");
@@ -113,9 +97,6 @@ describe("recordRepairUsage", () => {
   });
 
   it("never throws — a bookkeeping failure must not lose a recovered tool call", async () => {
-    // The corrected arguments are already in hand at this point. Refusing to
-    // return them because a row would not insert turns a recovered turn into a
-    // failed one, which is a strictly worse trade than a missing row.
     const exploding = {
       insert: () => ({
         values: () => Promise.reject(new Error("connection reset")),

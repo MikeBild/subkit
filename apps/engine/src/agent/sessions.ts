@@ -1,9 +1,3 @@
-// Coding-agent session capture: distill a session transcript into
-// learning candidates, and propose explicit learnings from the
-// `save_learning` tool. Every path lands as a `session_learning`
-// Skill Candidate with `status: "proposed"` — activation stays behind
-// the human approve gate (`sk learnings review` / approve routes).
-
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import type { Db } from "../db/client.ts";
@@ -12,21 +6,15 @@ import { upsertFromSignal } from "../skill-candidates/service.ts";
 import type { PatternSignal, SkillCandidateConfidence } from "../skill-candidates/types.ts";
 import { DOMAIN_TAG_PREFIX } from "./briefing.ts";
 
-// Transcript sample handed to the extract flow: corrections and taught
-// rules skew late in a session, so keep the head for context and spend
-// most of the budget on the tail (~7k tokens total at 4 chars/token).
 const SAMPLE_HEAD_CHARS = 4_000;
 const SAMPLE_TAIL_CHARS = 24_000;
-/** Hard cap a caller may submit; the route enforces it too. */
 export const TRANSCRIPT_MAX_CHARS = 1_000_000;
 export const MAX_LEARNINGS_PER_SESSION = 8;
 
 export interface AgentSessionMeta {
-  /** Which agent produced the session, e.g. "claude-code", "codex". */
   agent: string;
   session_id?: string;
   repo?: string;
-  /** Domain slugs (without `domain:` prefix) the session grounded on. */
   domains: string[];
 }
 
@@ -41,9 +29,6 @@ export interface ProposeLearningParams {
   db: Db;
 }
 
-/** Deterministic dedup identity: the same rule re-taught in a later
- *  session must hit the same candidate (evidence accrues, no duplicate
- *  queue entries). Title is normalized so cosmetic rewording still dedups. */
 export function learningFingerprint(domains: string[], title: string): string {
   const normalizedTitle = title.toLowerCase().replace(/\s+/g, " ").trim();
   const domainKey = [...domains].sort().join(",");
@@ -56,8 +41,6 @@ function domainTags(domains: string[]): string[] {
   return domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`);
 }
 
-/** Single chokepoint that turns a learning into a proposed candidate —
- *  used by the `save_learning` tool and the transcript distillation. */
 export async function proposeLearning(
   p: ProposeLearningParams,
 ): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
@@ -78,10 +61,6 @@ export async function proposeLearning(
   return await upsertFromSignal(p.tenant_id, signal, p.db);
 }
 
-// ---------------------------------------------------------------------------
-// Transcript distillation
-// ---------------------------------------------------------------------------
-
 const LearningSchema = z.object({
   title: z.string().min(1).max(120),
   body: z.string().min(1).max(4_000),
@@ -93,10 +72,6 @@ const DistillationSchema = z.object({
   learnings: z.array(LearningSchema).max(MAX_LEARNINGS_PER_SESSION),
 });
 
-/** Pull human-readable text out of one transcript line. Claude Code
- *  session transcripts are JSONL with nested message shapes; Codex
- *  rollouts differ; plain text passes through. Best-effort: a line we
- *  cannot parse is used verbatim. */
 export function transcriptLineText(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -128,7 +103,6 @@ export function transcriptLineText(line: string): string | null {
   }
 }
 
-/** Head + tail sample of the readable transcript text, budget-capped. */
 export function sampleTranscript(transcript: string): string {
   const lines = transcript.split("\n");
   const readable: string[] = [];
@@ -157,12 +131,6 @@ export interface AnalyzeAgentSessionResult {
   skipped: number;
 }
 
-/**
- * Distill a coding-agent session transcript into learning candidates.
- * The prompt asks only for DURABLE, human-taught rules — task-specific
- * details and things already known must yield an empty list, so a routine
- * session produces no queue noise.
- */
 export async function analyzeAgentSession(
   p: AnalyzeAgentSessionParams,
 ): Promise<AnalyzeAgentSessionResult> {

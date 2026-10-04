@@ -1,7 +1,3 @@
-// Shared setup + helpers for the MCP OAuth HTTP route tests, split across
-// mcp-oauth-{discovery,flow,scope-audit}.test.ts. Each test file owns its own
-// HttpTestServer (unique label → isolated test DB) via setupMcpOauthServer().
-
 import { createHash } from "node:crypto";
 import { SignJWT } from "jose";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
@@ -9,18 +5,11 @@ import type { Db } from "../../db/client.ts";
 import { sessions } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 
-// Mirrors oauth.ts deriveSessionSecret() exactly: prefer the configured
-// auth.session.secret (loadConfig auto-generates one on first boot), and
-// fall back to the MASTER_KEY-derived value only when no config secret
-// exists. A test cookie must be signed with whatever secret the handler
-// will verify with, or session resolution fails.
 export function deriveTestSessionSecret(): Uint8Array {
   try {
     const fromConfig = (getConfig().auth.session.secret ?? "").trim();
     if (fromConfig.length > 0) return new TextEncoder().encode(fromConfig);
-  } catch {
-    /* loader not initialised */
-  }
+  } catch {}
   const masterKey = process.env.MASTER_KEY ?? "";
   return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
@@ -60,10 +49,6 @@ export function makeChallenge(verifier: string): string {
 export const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 export const CODE_CHALLENGE = makeChallenge(CODE_VERIFIER);
 
-// The OAuth discovery documents, the login-redirect funnel, and the
-// /mcp WWW-Authenticate resource_metadata header all resolve against
-// server.public_base_url. Set it explicitly so each suite is
-// self-contained and does not depend on an external SK_OVERRIDE_* env.
 export async function setupMcpOauthServer(
   label: string,
 ): Promise<{ ctx: HttpTestServer; priorBaseUrl: string }> {

@@ -1,9 +1,3 @@
-// Unit tests for formatSkillIndex — the per-scope index block that
-// renders ambient (applicable-but-not-loaded) skills as one compact
-// catalog block. Mirror of the validated reference-impl pattern:
-// system prompt ships the index, the LLM calls load_skill(<slug>) to
-// retrieve full bodies on demand.
-
 import { describe, expect, test } from "bun:test";
 import type { Skill } from "../../skills/types.ts";
 import { formatSkillIndex } from "../core/context-assembler.ts";
@@ -66,7 +60,6 @@ describe("formatSkillIndex", () => {
     expect(block).toContain("How to compose a typed WorkflowDef.");
     expect(block).toContain("`data-handling`");
     expect(block).toContain("JSONata, transforms, and step-output shaping.");
-    // load_skill hint is in the header line
     expect(block).toContain("load_skill('<slug>')");
   });
 
@@ -104,13 +97,10 @@ describe("formatSkillIndex", () => {
     ]);
     expect(block).not.toBeNull();
     if (!block) return;
-    // Header + one entry. Find the entry line.
     const entryLine = block.split("\n").find((l) => l.startsWith("- "));
     expect(entryLine).toBeDefined();
     if (!entryLine) return;
-    // Title is "Long", the description portion should be truncated.
     expect(entryLine).toContain("…");
-    // Entry line shouldn't contain the full 200-char string.
     expect(entryLine.length).toBeLessThan(200);
   });
 
@@ -120,7 +110,6 @@ describe("formatSkillIndex", () => {
     ]);
     expect(block).toContain("`empty`");
     expect(block).toContain("Empty Skill");
-    // No trailing colon when there's no description.
     expect(block).not.toContain("Empty Skill: ");
   });
 
@@ -138,7 +127,6 @@ describe("formatSkillIndex", () => {
     if (!block) return;
     const entries = block.split("\n").filter((l) => l.startsWith("- "));
     expect(entries).toHaveLength(50);
-    // Each ref appears exactly once.
     for (let i = 0; i < 50; i++) {
       const matches = block.match(new RegExp(`\`skill-${i}\``, "g"));
       expect(matches).not.toBeNull();

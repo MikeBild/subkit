@@ -101,8 +101,6 @@ describe("synthesizeInputSchema", () => {
   });
 
   it("collects $input.X references inside a jsonata branch.when predicate", () => {
-    // JSONata survives in the branch.when slot; the synthesiser still walks
-    // its AST for `$input.<name>` references.
     const dag: WorkflowDef = {
       name: "branch-refs",
       steps: [
@@ -158,9 +156,6 @@ describe("synthesizeInputSchema", () => {
 });
 
 describe("resolveWorkflowInputContract — precedence", () => {
-  // A DAG whose only input signal is an `input_schema_sample`: the
-  // structural synth would otherwise miss the `filename` key because the
-  // body only interpolates `markdown` (regression this tier closes).
   const sampleOnlyDag = (): WorkflowDef =>
     ({
       name: "sample-only",
@@ -179,14 +174,9 @@ describe("resolveWorkflowInputContract — precedence", () => {
   it("uses the sample-derived schema (with required) when no input_schema is declared", () => {
     const contract = resolveWorkflowInputContract(sampleOnlyDag());
     expect(contract).not.toBeNull();
-    // The winning tier is reported so inspect_workflow can tell the model
-    // the contract is a real sampled shape, not a structural guess.
     expect(contract?.source).toBe("sample");
-    // Sample keys become properties AND required — including `filename`
-    // and `count`, which the structural placeholder scan never sees.
     expect(contract?.properties.sort()).toEqual(["count", "filename", "markdown"]);
     expect(contract?.required.sort()).toEqual(["count", "filename", "markdown"]);
-    // Scalar types come from the concrete sample values.
     const props = contract?.schema.properties as Record<string, { type: string } | undefined>;
     expect(props.markdown?.type).toBe("string");
     expect(props.filename?.type).toBe("string");
@@ -205,7 +195,6 @@ describe("resolveWorkflowInputContract — precedence", () => {
     const contract = resolveWorkflowInputContract(dag);
     expect(contract).not.toBeNull();
     expect(contract?.source).toBe("declared");
-    // Only the declared key — the sample's `filename`/`count` are ignored.
     expect(contract?.properties).toEqual(["markdown"]);
     expect(contract?.required).toEqual(["markdown"]);
   });
@@ -225,16 +214,12 @@ describe("resolveWorkflowInputContract — precedence", () => {
     const contract = resolveWorkflowInputContract(dag);
     expect(contract).not.toBeNull();
     expect(contract?.source).toBe("synth");
-    // Structural synth: placeholder-derived property, additionalProperties true,
-    // no schema-level `required` so the contract requires every property.
     expect(contract?.properties).toEqual(["city"]);
     expect(contract?.required).toEqual(["city"]);
     expect(contract?.schema.additionalProperties).toBe(true);
   });
 
   it("ignores a scalar/empty-object sample and falls back to structural synth", () => {
-    // A non-object sample carries no named keys → not a usable contract;
-    // the structural synth must still drive the result.
     const dag = {
       name: "scalar-sample",
       input_schema_sample: "just a string",
@@ -248,8 +233,6 @@ describe("resolveWorkflowInputContract — precedence", () => {
       ],
     } as unknown as WorkflowDef;
     const contract = resolveWorkflowInputContract(dag);
-    // A scalar sample cannot win the `sample` tier — the contract falls
-    // through to the structural synth.
     expect(contract?.source).toBe("synth");
     expect(contract?.properties).toEqual(["city"]);
     expect(contract?.schema.additionalProperties).toBe(true);

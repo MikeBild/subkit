@@ -1,17 +1,3 @@
-// Integration tests for the approval portal — the out-of-band channel a
-// HUMAN uses to grant or decline a tool approval:
-//   GET  /v1/tool-approvals/decide?grant=skag_…  — UNAUTHENTICATED, resolves
-//        the grant WITHOUT consuming it, and renders exactly what will be
-//        written (`would_write`) — never the decrypted args, never the
-//        ciphertext.
-//   POST /v1/tool-approvals/decide               — UNAUTHENTICATED (grant-
-//        token auth). Grants or declines through the approval's own atomic
-//        CAS — single-use, terminal on decline.
-//
-// Mirrors the precedent shape from
-// http/routes/connectors/credentials-setup.test.ts, adapted for the
-// approval-decision (not credential-write) contract.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { browserSessionFromRequest, issueBrowserSession } from "../../auth/browser-session.ts";
@@ -22,8 +8,6 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 import { requestApproval } from "../../tools/approval.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
-// Deterministic approval ids — the determinism gate forbids crypto.randomUUID()
-// in tests. A fixed past instant for the expiry-forcing updates below.
 const nextApprovalId = createDeterministicUuidFactory(0x70724c);
 const ONE_SECOND_AGO = new Date(1_699_999_999_000);
 
@@ -44,8 +28,6 @@ async function signIn(): Promise<string> {
   return cookie;
 }
 
-// A secret that lives ONLY in the domain args, never in the would_write
-// preview — proves the portal page never renders decrypted args.
 const SECRET_ARG_VALUE = "TOTALLY-SECRET-ARG-VALUE-4f9c1e";
 
 beforeAll(async () => {
@@ -65,7 +47,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/** Open an approval and return its portal `approval_url`. */
 async function seedApproval(opts?: {
   tool?: string;
   would_write?: Array<{ step: string; method: string; url: string }>;
@@ -156,8 +137,6 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
   test("renders would_write, and never the decrypted args or the ciphertext", async () => {
     const { approval_id, approval_url } = await seedApproval();
 
-    // The preview is shown to a signed-in approver: the page names who is about
-    // to release the write, so it needs to know who that is.
     const res = await fetch(approval_url, {
       headers: { cookie: browserCookie },
     });
@@ -168,16 +147,12 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     const html = await res.text();
 
-    // The write preview IS rendered.
     expect(html).toContain("post_ledger");
     expect(html).toContain("POST");
     expect(html).toContain("ledger.example.test/entries");
 
-    // The decrypted domain args are NEVER rendered — the secret lives only
-    // in `args_ciphertext`, not in the preview.
     expect(html).not.toContain(SECRET_ARG_VALUE);
 
-    // Neither is the ciphertext itself, in any encoding.
     const row = await approvalRow(approval_id);
     expect(row).not.toBeNull();
     const cipherB64 = Buffer.from(row!.args_ciphertext).toString("base64");
@@ -185,7 +160,6 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(html).not.toContain(cipherB64);
     expect(html.toLowerCase()).not.toContain(cipherHex.slice(0, 24));
 
-    // The GET does not consume — the row is still pending.
     expect(row?.granted_at).toBeNull();
     expect(row?.declined_at).toBeNull();
   });
@@ -232,16 +206,12 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
   });
 
   test("an unidentified browser is sent to sign in, and sees no write preview", async () => {
-    // Grant possession scopes WHICH approval is on the table; it is not an
-    // identity. Until this held, `granted_by_user_id` was NULL on every grant in
-    // production and anyone holding a forwarded link could release a write.
     const { approval_url } = await seedApproval();
 
     const res = await fetch(approval_url, { redirect: "manual" });
     expect([302, 200]).toContain(res.status);
     const body = res.status === 302 ? (res.headers.get("location") ?? "") : await res.text();
     expect(body).toContain("/v1/identity/login/start");
-    // Nothing about the pending write leaks to an anonymous visitor.
     expect(body).not.toContain("post_ledger");
     expect(body).not.toContain(SECRET_ARG_VALUE);
   });
@@ -252,13 +222,6 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
   });
 });
 
-/** The real decision flow: open the page as the signed-in approver, take the
- *  CSRF token that page minted, then submit it back.
- *
- *  Grant possession alone no longer decides. It scopes WHICH approval is on the
- *  table; WHO decides comes from a signed-in account, because
- *  `granted_by_user_id` used to be NULL on every grant in production and an
- *  unattributable authorization is exactly what an audited system must refuse. */
 async function decide(
   grant: string,
   decision: "approve" | "decline",
@@ -350,7 +313,6 @@ describe("POST /v1/tool-approvals/decide", () => {
 
     const row = await approvalRow(approval_id);
     expect(row?.granted_at).not.toBeNull();
-    // The requesting principal never appears as the approver.
     expect(row?.granted_by_user_id).toBe(server.userId);
     expect(row?.granted_by_user_id).not.toBe(requester.id);
     expect(row?.granted_via).toBe("portal");
@@ -363,8 +325,6 @@ describe("POST /v1/tool-approvals/decide", () => {
     expect(grantedRow).toBeDefined();
     expect(grantedRow?.actor_id).toBe(server.userId);
 
-    // The token is dead: a second POST (with the same grant token) is refused
-    // and changes nothing.
     const replay = await decide(grant, "approve");
     expect(replay.status).toBe(400);
     const replayHtml = await replay.text();
@@ -387,8 +347,6 @@ describe("POST /v1/tool-approvals/decide", () => {
     expect(row?.declined_at).not.toBeNull();
     expect(row?.granted_at).toBeNull();
 
-    // A second decision (approve, this time) against the same token cannot
-    // undo the decline.
     const secondDecision = await decide(grant, "approve");
     expect(secondDecision.status).toBe(400);
     const secondHtml = await secondDecision.text();
@@ -412,8 +370,6 @@ describe("POST /v1/tool-approvals/decide", () => {
   });
 
   test("a signed-in approver without a valid CSRF token is refused", async () => {
-    // A cross-site form post must not be able to release a write on behalf of an
-    // approver who merely happens to be signed in.
     const { approval_id, approval_url } = await seedApproval();
     const grant = grantParam(approval_url);
 

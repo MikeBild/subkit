@@ -1,36 +1,3 @@
-// Single-use credential-setup grant — browser-openable short-lived tokens
-// for non-OAuth (bearer / basic / header / query) connectors.
-//
-// Discipline mirrors oauth-start-grant.ts:
-//   - 24 random bytes → url-safe base64, `sksg_` prefix for redaction
-//     recognizability. ("sksg" = sk Setup Grant)
-//   - SHA-256 hex stored at rest; plaintext returned once at mint time.
-//   - 10-min TTL.
-//
-// CRITICAL DIFFERENCE from consumeStartGrant: a credential-setup flow is
-// TWO hits — GET renders the form, POST submits it. If the GET consumed
-// the grant, the token would be dead before the user could submit the
-// form. So this module exposes THREE functions instead of one:
-//   - mintCredentialSetupGrantUrl — insert row, return tokenized URL.
-//   - validateSetupGrant          — SELECT only, no delete. Used by the
-//                                    GET route to render the form.
-//   - consumeSetupGrant           — atomic DELETE … RETURNING, bound to
-//                                    connector_id. Used by the POST route
-//                                    immediately before writing the
-//                                    credential.
-//
-// This is also why credential-setup grants live in their OWN table
-// (connector_credential_setup_grants) rather than reusing
-// connector_oauth_start_grants: that table's contract is consume-on-
-// first-touch, and reusing it would let a leaked OAuth grant redeem at
-// the credential-setup route.
-//
-// Typed errors (never thrown — returned as discriminated union):
-//   - "engine_public_url_missing": buildOAuthRedirectUri() returned null.
-//
-// NEVER log the plaintext token — only its sha256 hash or a redacted
-// prefix belong in logs/audit metadata.
-
 import { randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -39,13 +6,6 @@ import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth
 import type { Db } from "../db/client.ts";
 import { connectorCredentialSetupGrants } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
-// Reuse the shared sha256Hex helper from the OAuth start-grant module rather
-// than redefining/re-exporting it here — both modules apply the identical
-// portal-token discipline (hash-at-rest, plaintext-once), and re-exporting a
-// second `sha256Hex` from this module would collide in the connectors barrel
-// (connectors/index.ts re-exports both modules via `export *`). Callers that
-// need to hash a plaintext grant token (e.g. tests) import `sha256Hex` from
-// `./oauth-start-grant.ts`.
 import { sha256Hex } from "./oauth-start-grant.ts";
 import type { ConnectorView } from "./types.ts";
 
@@ -56,9 +16,7 @@ export interface IssuedCredentialSetupGrant {
   hash: string;
 }
 
-/** Generate a fresh opaque credential-setup grant token. Hash is SHA-256 hex. */
 export function generateCredentialSetupGrant(): IssuedCredentialSetupGrant {
-  // 24 random bytes → 32 url-safe chars + sksg_ prefix.
   const rand = randomBytes(24).toString("base64url");
   const plaintext = `${CREDENTIAL_SETUP_GRANT_PREFIX}${rand}`;
   return { plaintext, hash: sha256Hex(plaintext) };
@@ -72,22 +30,12 @@ export interface MintedCredentialSetupGrant {
   expires_at: Date;
 }
 
-/**
- * Mint a single-use credential-setup grant URL for a non-OAuth connector.
- *
- * Returns a typed error rather than throwing for the expected failure mode
- * (missing public origin). Unexpected errors propagate.
- *
- * Audits CONNECTOR_CREDENTIAL_GRANT_ISSUED on success.
- */
 export async function mintCredentialSetupGrantUrl(
   db: Db,
   opts: {
     tenant_id: string;
     connector: Pick<ConnectorView, "id" | "slug" | "auth_type">;
     actor_id: string | null;
-    /** Audit attribution for the minting principal. A system_account
-     *  driving a conversation must not be recorded as "user". */
     actor_type?: AuditActorType;
     ttl_ms?: number;
   },
@@ -137,16 +85,6 @@ export interface ValidatedCredentialSetupGrant {
   created_by_actor_id: string | null;
 }
 
-/**
- * Validate a credential-setup grant WITHOUT consuming it — a plain SELECT.
- *
- * Used by the GET route to decide whether to render the setup form. Must
- * NOT delete the row: the form still needs to be submitted, which happens
- * via consumeSetupGrant on POST.
- *
- * Returns the matching row, or `null` when the token is invalid, expired,
- * or the connector_id doesn't match the URL path.
- */
 export async function validateSetupGrant(
   db: Db,
   opts: { token: string; connector_id: string },
@@ -182,20 +120,6 @@ export interface ConsumedCredentialSetupGrant {
   created_by_actor_id: string | null;
 }
 
-/**
- * Atomically consume a credential-setup grant.
- *
- * Uses DELETE … RETURNING so the claim is TOCTOU-safe. The path-id guard
- * (`connector_id = :pathId`) means a leaked token can only be consumed via
- * the correct connector URL — it does NOT burn the grant on a wrong-id
- * attempt.
- *
- * Returns the consumed row on success, or `null` when the token is
- * invalid, expired, already consumed (replay), or the connector_id
- * doesn't match the URL path.
- *
- * Audits CONNECTOR_CREDENTIAL_GRANT_CONSUMED on success.
- */
 export async function consumeSetupGrant(
   db: Db,
   opts: { token: string; connector_id: string },
@@ -219,11 +143,6 @@ export async function consumeSetupGrant(
   await auditAwait(
     {
       tenant_id: row.tenant_id,
-      // The consumer is an unauthenticated browser — the grant token IS the
-      // auth. Attribution to the minting principal lives in metadata (and
-      // on the paired GRANT_ISSUED row); recording it as the acting
-      // principal here would claim a user performed a request they never
-      // made.
       actor_type: "system",
       actor_id: null,
       action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_CONSUMED,

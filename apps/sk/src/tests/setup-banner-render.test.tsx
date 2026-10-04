@@ -1,9 +1,3 @@
-// Setup-banner render test — drives `<InkApp>` end-to-end with a
-// stubbed `setupSnapshot` and asserts the one-line banner renders
-// (or stays hidden) above the welcome panel based on the snapshot's
-// overall status. Mirrors the journey-test rig (`ink-app.test.tsx`)
-// for shape so the two suites stay easy to refactor together.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -90,10 +84,6 @@ function snapshot(
 }
 
 async function tick(ms = 30): Promise<void> {
-  // ink's input parser needs a real macrotask to disambiguate Esc
-  // (\x1b) from arrow-key prefixes, so the journey tests already
-  // rely on a small tick. Reuse it here so the mounted `<App>`
-  // flushes its useEffects before we read the frame.
   // allow-wall-clock: ink keypress decoding requires real ms.
   await new Promise((r) => setTimeout(r, ms));
 }
@@ -105,9 +95,7 @@ afterEach(() => {
     if (d) {
       try {
         rmSync(d, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 });
@@ -119,9 +107,6 @@ describe("setup banner — render path", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("⚠ Setup");
     expect(frame).toContain("2 warnings");
-    // Ends with the bare `/setup` slash so it
-    // can't be misread as `/setup-for-details` (operator typed
-    // `/details` and got an unknown-slash error).
     expect(frame).toContain("Type /setup");
     expect(frame).not.toContain("/setup for details");
     instance.unmount();
@@ -175,8 +160,6 @@ describe("setup banner — render path", () => {
     );
     await tick();
     const frame = instance.lastFrame() ?? "";
-    // Endusers can't read /v1/diagnostics, so a banner pointing at
-    // /setup would just confuse them. The CLI suppresses it.
     expect(frame).not.toContain("⚠ Setup");
     instance.unmount();
   });

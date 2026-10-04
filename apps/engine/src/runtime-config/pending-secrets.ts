@@ -1,20 +1,3 @@
-// Prepared secret versions — "Freigaben statt Eingaben".
-//
-// A version can be WRITTEN without becoming current: by `engine --vault-set
-// … --pending` from the host, or by anything else that holds a value a
-// person has not yet looked at. Such a version waits in the Cockpit as a
-// "Vorbereitete Änderung" with two buttons. "Freigeben" makes it the current
-// version and re-points the bindings it was prepared for; "Ablehnen" revokes
-// it. Nothing about the value is ever shown — only its name, its version,
-// who prepared it and since when.
-//
-// Approval is two steps on purpose. Clearing `pending_since` is a row update
-// inside one transaction; re-pinning goes through the same save-then-activate
-// path the settings API uses, because that path is what coordinates live
-// replicas. A binding that fails to re-pin does not un-approve the version:
-// the value is good, the pointer is what still needs a hand, and the line
-// the route returns says so.
-
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { runtimeSecretVersions } from "../db/schema/index.ts";
@@ -70,18 +53,9 @@ export async function listPendingSecretVersions(db: Db): Promise<PendingSecretVe
 export interface ApprovalOutcome {
   name: string;
   version: number;
-  /** Every binding the version was prepared for, with what happened to it. */
   bindings: Array<{ path: string; outcome: "rebound" | "failed"; detail: string | null }>;
 }
 
-/**
- * Make a prepared version current and re-point its bindings.
- *
- * Clearing the flag comes first and commits on its own: from that moment the
- * version reads like any other and `--vault-check` sees it. The re-pins then
- * run one at a time through the settings revision path. Global scope only —
- * the host CLI that prepared it has no tenant either.
- */
 export async function approvePendingSecretVersion(
   db: Db,
   args: { name: string; version: number; created_by: string | null },
@@ -103,8 +77,6 @@ export async function approvePendingSecretVersion(
       `no prepared secret version to approve: ${args.name}/${args.version}`,
     );
   }
-  // Installation-wide: a prepared version waits on every tenant's list, and it
-  // stops waiting the moment it is approved — before its bindings re-pin.
   invalidateTenantState();
   const bindings: ApprovalOutcome["bindings"] = [];
   for (const path of approved.pending_bindings ?? []) {
@@ -134,7 +106,6 @@ export async function approvePendingSecretVersion(
   return { name: args.name, version: args.version, bindings };
 }
 
-/** Revoke a prepared version. It was never current, so nothing can reference it. */
 export async function rejectPendingSecretVersion(
   db: Db,
   args: { name: string; version: number },

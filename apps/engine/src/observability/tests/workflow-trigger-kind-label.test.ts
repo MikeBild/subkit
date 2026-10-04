@@ -1,18 +1,8 @@
-// Guards the label contract on `subkit_workflow_trigger_kind_total`.
-// The label set is (tenant_id, kind); both must round-trip from the
-// recorder through the exposition. A regression where a future caller
-// passes `undefined as unknown as string` would otherwise silently
-// produce a `tenant_id=""` time series that masks tenant cohorts.
-
 import { describe, expect, it } from "bun:test";
 import { recordWorkflowScheduleNotBound, recordWorkflowTriggerKind } from "../instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
 
 describe("workflow trigger-kind metric labels", () => {
-  // The registry renders labels in sorted-alphabetical order, so a
-  // {kind="X",tenant_id="Y"} time series shows as `kind="X",tenant_id="Y"`.
-  // Tests assert both labels are present in the same line; order is
-  // not load-bearing for Prometheus consumers.
   function expectMetricLine(text: string, name: string, labels: Record<string, string>) {
     const lines = text.split("\n").filter((l) => l.startsWith(`${name}{`));
     expect(lines.length).toBeGreaterThan(0);

@@ -1,4 +1,3 @@
-/** The same canonical decision is available inline and in the working context. */
 export async function verifyChatApprovals(page, stand, conversation, locale, capture) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(
@@ -81,8 +80,6 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
   await page.route(detailPattern, detail);
   await page.route(answerPattern, answer);
   try {
-    // The card stands once, in the transcript: the working context holds no
-    // copy, so there is one place to decide and one selection.
     for (const surface of ["inline", "inline-decline"]) {
       waiting = true;
       expected = surface === "inline";

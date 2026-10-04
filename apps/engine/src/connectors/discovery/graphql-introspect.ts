@@ -1,20 +1,3 @@
-// Strategy: GraphQL `__schema` introspection.
-//
-// For the growing class of GraphQL-native APIs (GitHub GraphQL, Linear,
-// Monday, Shopify Admin) that don't ship OpenAPI specs but DO expose
-// introspection. We POST `getIntrospectionQuery()` from the canonical
-// `graphql` package, normalise each query / mutation / subscription root
-// field into a `DiscoveredEndpoint`, and return the same shape every other
-// strategy produces — so downstream consumers (`knowledge_sources` rows,
-// the LLM prompt builder, the auto-pagination heuristic) need no special
-// case for GraphQL.
-//
-// The endpoint path is the introspection target itself (a GraphQL service
-// answers every operation at one URL). `method` is always POST, `params`
-// becomes the field's `args` flattened with `in: "body"`, and the
-// `request_body_schema` is a synthesised JSON-shaped object describing
-// the expected `{ query, variables }` payload.
-
 import {
   buildClientSchema,
   getIntrospectionQuery,
@@ -89,12 +72,6 @@ function isIntrospectionDisabled(message: string): boolean {
   return INTROSPECTION_DISABLED_PATTERNS.some((re) => re.test(message));
 }
 
-/**
- * Resolve a `TypeRef` to a printable GraphQL type signature
- * (e.g. `[String!]!`). Mirrors what the GraphQL spec calls "type
- * formatting". Used for `params[].type` and as the leaf identifier for
- * downstream callers that want a stable text key.
- */
 export function formatTypeRef(t: TypeRef | null | undefined): string | null {
   if (!t) return null;
   if (t.kind === "NON_NULL" && t.ofType) {
@@ -108,17 +85,10 @@ export function formatTypeRef(t: TypeRef | null | undefined): string | null {
   return t.name ?? null;
 }
 
-/** True when the outermost wrapper is `NON_NULL`. */
 function isRequired(t: TypeRef): boolean {
   return t.kind === "NON_NULL";
 }
 
-/**
- * Build a JSON-shape representation of a GraphQL type, recursing into
- * object / input-object types. Includes a small cycle-breaker so
- * recursive schemas (e.g. GitHub `Repository -> Owner -> Repository`)
- * don't blow the stack.
- */
 function typeToJsonSchema(
   t: TypeRef | null | undefined,
   typesByName: Map<string, NamedType>,
@@ -167,13 +137,6 @@ function typeToJsonSchema(
   return { type: leaf };
 }
 
-/**
- * Normalise a single root-level field into a `DiscoveredEndpoint`.
- * `rootKind` is "query" | "mutation" | "subscription" — only used to
- * stamp a stable `operation_id` prefix when the field name collides
- * across roots (rare but possible for e.g. `note` query + `note`
- * mutation).
- */
 function fieldToEndpoint(
   field: Field,
   rootKind: "query" | "mutation" | "subscription",
@@ -186,9 +149,6 @@ function fieldToEndpoint(
     required: isRequired(arg.type),
     type: formatTypeRef(arg.type),
   }));
-  // request_body_schema models the GraphQL request envelope: the agent
-  // sends `{ query, variables: { ...args } }`. We describe `variables`
-  // explicitly so prompt assembly can show argument shapes.
   const variableProps: Record<string, unknown> = {};
   const variableRequired: string[] = [];
   for (const arg of field.args) {
@@ -208,7 +168,6 @@ function fieldToEndpoint(
     },
     required: ["query"],
   };
-  // 200 schema: GraphQL always responds with `{ data: { <fieldName>: <T> } }`.
   const responseSchema = {
     type: "object",
     properties: {
@@ -237,7 +196,6 @@ function fieldToEndpoint(
     scopes: [],
     params,
     request_body_schema: requestBodySchema,
-    // GraphQL always speaks JSON over the wire (`{ query, variables }`).
     request_content_type: "application/json",
     response_schemas: { "200": responseSchema },
     pagination_hint: null,
@@ -245,11 +203,6 @@ function fieldToEndpoint(
   };
 }
 
-/**
- * `true` when the URL pathname looks like a GraphQL endpoint
- * (`/graphql`, optional version suffix). Hostnames like
- * `api.github.com/graphql` and `api.linear.app/graphql` match.
- */
 export function looksLikeGraphQLUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -265,10 +218,6 @@ export function looksLikeGraphQLUrl(url: string): boolean {
 
 interface IntrospectionFetchResult {
   schema: IntrospectionSchema;
-  /** The full `data` envelope returned by the upstream — used to feed
-   *  `buildClientSchema` so we can emit SDL alongside the normalised
-   *  endpoints. Pre-fix only the truncated schema view (root fields)
-   *  was reachable, blocking deep-nested query authoring. */
   rawData: IntrospectionQuery;
 }
 
@@ -300,11 +249,6 @@ async function postIntrospection(
       signal: controller.signal,
     });
     if (!res.ok) {
-      // 401/403 is the authentication status class — the endpoint exists
-      // and speaks GraphQL, it just needs credentials. Surface that
-      // distinctly from a generic transport failure so the orchestrator
-      // can tell the user "needs credentials" instead of "all strategies
-      // failed". Keyed on the status class, not any specific host.
       if (res.status === 401 || res.status === 403) {
         throw new DiscoveryError(
           "auth_required",
@@ -367,10 +311,6 @@ async function postIntrospection(
   }
 }
 
-/** Render an introspection result as SDL. Returns null on failure (we
- *  emit the normalised endpoints in any case). Failures are typically
- *  caused by partial/malformed introspection responses; not worth
- *  failing the whole discovery for. */
 function tryPrintSDL(introspection: IntrospectionQuery): string | null {
   try {
     const built = buildClientSchema(introspection);
@@ -436,12 +376,6 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
         endpoints.push(fieldToEndpoint(f, "subscription", typesByName, collisions));
       }
 
-      // Render the full schema as SDL so the LLM can see deep nested
-      // types when authoring queries. The normalised `endpoints` array
-      // only describes the top-level field args — without SDL the LLM
-      // has no way to know that e.g. `Issue.comments` exists or its
-      // shape, blocking nested-query authoring against APIs like
-      // GitHub / Linear / Monday.
       const sdl = tryPrintSDL(rawData);
 
       log.info({

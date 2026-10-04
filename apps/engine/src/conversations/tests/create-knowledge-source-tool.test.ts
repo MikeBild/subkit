@@ -1,15 +1,3 @@
-// Integration tests for the `create_knowledge_source` conversation tool.
-//
-// Coverage:
-//   - mode='inline' happy path: creates KS row, produces ≥1 chunk, writes
-//     two audit rows (svc + tool)
-//   - mode='from_attachment' happy path: derives name from filename, creates
-//     KS row with correct mime_type
-//   - mode='from_attachment' unknown file_id → error envelope, no KS row
-//   - scope='workflow' without workflow_id → error envelope
-//   - identical content re-run: dedup is within-run only so both KS rows
-//     exist but both have the same chunk_count (not doubled)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
@@ -144,7 +132,6 @@ describe("create_knowledge_source tool — mode='inline'", () => {
     expect(data.knowledge_source.chunk_count).toBeGreaterThanOrEqual(1);
     expect(typeof data.audit_log_id).toBe("string");
 
-    // Confirm row exists in DB for this tenant
     const rows = await ctx.testDb.db
       .select()
       .from(knowledgeSources)
@@ -158,27 +145,18 @@ describe("create_knowledge_source tool — mode='inline'", () => {
     expect(rows.length).toBe(1);
     expect(rows[0]?.slug).toBe(data.knowledge_source.slug);
 
-    // Two audit rows: one from svc.createKnowledgeSource (knowledge_source.created)
-    // and one from the tool itself (conversation.create_knowledge_source via stub).
     const auditRows = await ctx.testDb.db
       .select({ action: auditLog.action })
       .from(auditLog)
       .where(eq(auditLog.resource_id, data.knowledge_source.id));
     const actions = auditRows.map((r) => r.action);
     expect(actions).toContain("knowledge_source.created");
-    // The tool audit_write stub maps to knowledge_source.created enum;
-    // assert that the tool-level audit row was written (audit_log_id non-null).
     expect(data.audit_log_id.length).toBeGreaterThan(0);
   });
 });
 
 describe("create_knowledge_source tool — mode='from_attachment'", () => {
   test("happy path: derives name from filename, creates KS row", async () => {
-    // Seed a real file row + object-store bytes via the production helper.
-    // Byte-unique content: files rows are content-addressed per tenant, so
-    // reusing MARKDOWN_CONTENT would dedup onto the inline test's row and
-    // this test would inherit THAT row's filename instead of exercising
-    // the ocpp-reference.md derivation.
     const attached = await attachInlineForTest({
       db: ctx.testDb.db,
       tenant_id: ctx.tenant_id,
@@ -206,11 +184,9 @@ describe("create_knowledge_source tool — mode='from_attachment'", () => {
       audit_log_id: string;
     };
     expect(data.created).toBe(true);
-    // Name should default to filename stem when name is not supplied
     expect(data.knowledge_source.name).toBe("ocpp-reference");
     expect(data.knowledge_source.chunk_count).toBeGreaterThanOrEqual(1);
 
-    // KS row persisted for tenant
     const rows = await ctx.testDb.db
       .select()
       .from(knowledgeSources)
@@ -222,7 +198,6 @@ describe("create_knowledge_source tool — mode='from_attachment'", () => {
       )
       .limit(1);
     expect(rows.length).toBe(1);
-    // source_uri should be the filename (from_attachment sets source_uri_override = filename)
     expect(rows[0]?.source_uri).toBe("ocpp-reference.md");
   });
 
@@ -243,7 +218,6 @@ describe("create_knowledge_source tool — mode='from_attachment'", () => {
     expect(data.error).toBe("file_not_found");
     expect(data.file_id).toBe("fid_00000000-dead-beef-0000-000000000000");
 
-    // No new KS row created
     const afterCount = await ctx.testDb.db
       .select({ n: count() })
       .from(knowledgeSources)
@@ -259,7 +233,6 @@ describe("create_knowledge_source tool — scope validation", () => {
       name: "Scoped KS",
       content: "Some content that would be valid otherwise.",
       scope: "workflow",
-      // workflow_id intentionally omitted
     });
 
     expect(result.ok).toBe(false);
@@ -293,15 +266,10 @@ describe("create_knowledge_source tool — dedup behaviour", () => {
     const d2 = (result2.data as { knowledge_source: { id: string; chunk_count: number } })
       .knowledge_source;
 
-    // Two distinct rows
     expect(d1.id).not.toBe(d2.id);
 
-    // Dedup is within-run only (per dedup.ts comment: "single-run check").
-    // Cross-source dedup is NOT applied, so each source gets its own chunks.
-    // Both sources therefore have the same chunk_count.
     expect(d1.chunk_count).toBe(d2.chunk_count);
 
-    // Confirm total knowledge_chunks rows equals 2 × chunk_count (no cross-source dedup)
     const totalChunks1 = await ctx.testDb.db
       .select({ n: count() })
       .from(knowledgeChunks)

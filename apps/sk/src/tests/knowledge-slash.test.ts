@@ -1,8 +1,3 @@
-// Unit tests for the `/knowledge` REPL slash handler — pins both halves
-// of the merged command: bare `/knowledge` keeps the pre-existing
-// inspect behavior (Settings pane / list), `/knowledge import <dir>`
-// walks the local directory and posts a bundle.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,8 +82,6 @@ describe("/knowledge slash handler", () => {
     const banner = await dispatchKnowledgeSlash(["import", dir], ctx);
     expect(calls.importBodies).toHaveLength(1);
     const body = calls.importBodies[0] as { name: string; files: { path: string }[] };
-    // Name derives from the root index.md H1; the walker sends index.md
-    // along (the ENGINE skips reserved files — one skip rule, one place).
     expect(body.name).toBe("Slash Wiki");
     expect(body.files.map((f) => f.path)).toEqual(["/index.md", "/runbooks/deploy.md"]);
     expect(String(banner)).toContain("created");
@@ -115,9 +108,6 @@ describe("/knowledge slash handler", () => {
   });
 
   test("handleSlash wires /knowledge import to the IMPORT handler, not the inspect pane", async () => {
-    // Pins the handler.ts `case "knowledge":` delegation target — rewiring
-    // it to the inspect sub-dispatcher would open the Settings pane instead
-    // of importing, and only this test would notice.
     const dir = makeVault();
     const { ctx, calls } = makeCtx({ withPane: true });
     const banner = await handleSlash("knowledge", ["import", dir], ctx);

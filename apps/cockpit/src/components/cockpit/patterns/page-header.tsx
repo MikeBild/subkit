@@ -7,16 +7,6 @@ import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
 import { Skeleton } from "./skeleton";
 
-/**
- * The page's header (P2) and the only place an h1 renders.
- *
- * back · eyebrow · [toggle] h1 badge … actions, then the purpose line below. The actions
- * are centred on the h1 row, not on the whole header, so a purpose that wraps
- * never pushes them down. On a phone they take their own row at full width.
- *
- * The back link is the whole breadcrumb (D3): "‹ Workflows" on a record's
- * page, never the record's own name — the h1 already says that.
- */
 export function PageHeader({
   title,
   eyebrow,
@@ -30,25 +20,13 @@ export function PageHeader({
   testId,
 }: {
   title: string;
-  /** A small muted label above the h1 naming the area the page belongs to ("Wissen"). */
   eyebrow?: string;
-  /** The list this record belongs to — detail pages only. */
   back?: { to: string; label: string };
-  /** A `StatusBadge`, on the h1 row. */
   badge?: ReactNode;
-  /** One line under the title, where the title alone does not say what the page is for. */
   purpose?: ReactNode;
-  /** The single filled page action: an element, or an `ActionSpec` (`variant: "primary"`). */
   action?: ReactNode | ActionSpec;
-  /** Visible outline actions. */
   secondary?: ReactNode;
-  /** The page's `ActionMenu`. */
   menu?: ReactNode;
-  /**
-   * The record is still loading: the title row keeps its final shape — a
-   * title bar, a badge and an action placeholder — so nothing moves when it
-   * arrives.
-   */
   loading?: boolean;
   testId?: string;
 }) {
@@ -131,7 +109,6 @@ export function PageHeader({
 const BACK_CLASS =
   "inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** "‹ {Liste}" — the way back from a record to its list. */
 export function BackLink({ to, label }: { to: string; label: string }) {
   return (
     <Link to={to} data-slot="page-back" data-testid="detail-back" className={BACK_CLASS}>

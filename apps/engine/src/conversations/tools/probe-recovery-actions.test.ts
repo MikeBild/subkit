@@ -1,8 +1,3 @@
-// pickProbeRecoveryActions — maps a probe failure to the most
-// likely recovery move. Pre-fix the LLM had to guess (search_docs?
-// re-enter creds? change the path?) which cost 1-2 turns; the typed
-// `next_best_actions` short-circuits the decision.
-
 import { describe, expect, test } from "bun:test";
 import { pickProbeRecoveryActions } from "./probe-connector-draft.ts";
 

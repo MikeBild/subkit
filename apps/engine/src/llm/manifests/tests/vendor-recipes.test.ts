@@ -1,5 +1,3 @@
-// Unit tests for VendorRecipeManifest — loader + freshness contract.
-
 import { describe, expect, it } from "bun:test";
 import { getVendorRecipe, listVendorRecipes, recipeFreshness } from "../vendor-recipes.ts";
 
@@ -43,8 +41,6 @@ describe("VendorRecipeManifest", () => {
   it("contract: every shipped recipe is currently fresh (verified within last 90 days as of today)", () => {
     for (const r of listVendorRecipes()) {
       const f = recipeFreshness(r);
-      // Allow `warn` here — failure is reserved for fully stale entries that
-      // need re-verification before the next release.
       expect(f.status).not.toBe("stale");
     }
   });

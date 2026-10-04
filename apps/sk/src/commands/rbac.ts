@@ -14,8 +14,6 @@ function makeClient() {
   });
 }
 
-// ---------- permissions ----------
-
 const permissionsListCmd = defineCommand({
   meta: { name: "list", description: "List the static permission catalog" },
   args: { json: { type: "boolean", description: "JSON output" } },
@@ -38,8 +36,6 @@ const permissionsCmd = defineCommand({
   meta: { name: "permissions", description: "Browse the permission catalog" },
   subCommands: { list: permissionsListCmd },
 });
-
-// ---------- whatcan ----------
 
 const whatcanCmd = defineCommand({
   meta: {
@@ -64,8 +60,6 @@ const whatcanCmd = defineCommand({
     }
   },
 });
-
-// ---------- roles ----------
 
 const rolesListCmd = defineCommand({
   meta: { name: "list", description: "List roles" },
@@ -182,8 +176,6 @@ const rolesCmd = defineCommand({
   },
 });
 
-// ---------- users ----------
-
 const usersAssignCmd = defineCommand({
   meta: { name: "assign", description: "Assign a role to a user" },
   args: {
@@ -204,8 +196,6 @@ const usersCmd = defineCommand({
   meta: { name: "users", description: "Manage user role bindings" },
   subCommands: { assign: usersAssignCmd },
 });
-
-// ---------- grants ----------
 
 const grantsListCmd = defineCommand({
   meta: { name: "list", description: "List resource grants" },
@@ -280,8 +270,6 @@ const grantsCmd = defineCommand({
   meta: { name: "grants", description: "Manage resource grants" },
   subCommands: { list: grantsListCmd, create: grantsCreateCmd, delete: grantsDeleteCmd },
 });
-
-// ---------- groups ----------
 
 const groupsListCmd = defineCommand({
   meta: { name: "list", description: "List groups" },
@@ -403,8 +391,6 @@ const groupsCmd = defineCommand({
   },
 });
 
-// ---------- request-hooks ----------
-
 const requestHooksListCmd = defineCommand({
   meta: { name: "list", description: "List request hooks" },
   args: { json: { type: "boolean", description: "JSON output" } },
@@ -471,8 +457,6 @@ const requestHooksCmd = defineCommand({
   },
 });
 
-// ---------- can ----------
-
 const canCmd = defineCommand({
   meta: { name: "can", description: "Check whether a principal holds a permission" },
   args: {
@@ -507,8 +491,6 @@ const canCmd = defineCommand({
     }
   },
 });
-
-// ---------- root ----------
 
 export const rbacCommand = defineCommand({
   meta: { name: "rbac", description: "Manage RBAC roles, permissions, grants, groups, and hooks" },

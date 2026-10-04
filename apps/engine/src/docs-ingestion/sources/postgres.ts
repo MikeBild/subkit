@@ -1,12 +1,3 @@
-// Postgres `information_schema` source normalizer.
-//
-// Walks `information_schema.tables`, `.columns`, and
-// `key_column_usage` to emit one chunk per user-facing table. Each
-// chunk lists the columns (name + type + nullability + default) plus
-// any inbound/outbound foreign keys. The expected use is a docs feed
-// for postgres-backed connectors so retrieval can answer
-// "how do I read from <table>?" questions.
-
 import pg from "pg";
 import { consumeBytes } from "../budgets.ts";
 import { byteLen } from "../chunker.ts";
@@ -16,7 +7,6 @@ const { Pool } = pg;
 
 export interface PostgresIngestParams {
   dsn: string;
-  /** Schemas to include. Defaults to `public`. */
   schemas?: string[];
 }
 
@@ -46,7 +36,6 @@ interface FkRow {
   foreign_column_name: string;
 }
 
-/** Convert the joined rows into one chunk per table. */
 export function chunkPostgresInformationSchema(
   columns: ColumnRow[],
   foreignKeys: FkRow[],

@@ -1,35 +1,3 @@
-// What needs a human now — asked once.
-//
-// Before this module the question had four answers. The operational overview
-// counted buckets (blocked / failing / overdue / other), the health digest
-// printed a headline over its own lists, the MCP connect instructions quoted
-// that headline, and the cockpit's decisions page stitched a fifth list
-// together from half a dozen endpoints — including every awaiting conversation
-// of every person, not the reader's own. Each surface could be right about its
-// own predicate and still disagree with the one beside it.
-//
-// `buildAttention` is the one list. Every item is one thing a person can act
-// on, carries the facts a surface words for itself (subject, machine reason,
-// counts, since, deadline) and the addresses where it is acted on. The engine
-// writes no sentence a surface is meant to show as its own; `detail` is the
-// engine's residual wording (a classifier cause, a connector's health reason)
-// and is marked as such wherever it is shown.
-//
-// Two halves:
-//   * tenant facts — the same for every reader of a tenant, cached for 10 s per
-//     process (the overview's cadence). A build in which any source failed is
-//     never cached: a failure must not outlive the read that saw it.
-//   * per-reader — the reader's own waiting conversations and the permission
-//     filter. Every item is checked with `can()` on its subject, so a resource
-//     grant on one workflow shows that workflow's item and nothing else.
-//
-// A source the reader may not read at all is `not_permitted`, a source that
-// threw is `failed`, and neither is ever reported as an empty answer: a list is
-// only "all clear" when every source the reader may read has answered.
-//
-// Read-only. Building the list writes no audit row and advances no tracker.
-// Where each item comes from lives in attention-readers.ts.
-
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { PreviewClassification } from "../execution/classify.ts";
@@ -64,7 +32,6 @@ export type AttentionSource = (typeof ATTENTION_SOURCES)[number];
 export type AttentionSourceState = "answered" | "failed" | "not_permitted";
 
 export type AttentionClass = "stopped" | "failing" | "decide";
-/** `notice`: nothing waits on it yet — an approval that is about to end. */
 export type AttentionSeverity = "critical" | "urgent" | "notice";
 export type AttentionVerb =
   | "review"
@@ -79,11 +46,7 @@ export const ATTENTION_REASONS = [
   "awaiting_answer",
   "execution_authority_required",
   "execution_authority_unavailable",
-  // Nothing was refused yet: the running version has no approval where its
-  // schedule or hook starts it, or the approval it has is about to end.
   "version_awaiting_approval",
-  // The same, but no approval may cover that version until a step changes or a
-  // trial run supplies its evidence: offering "approve" would be refused.
   "version_needs_repair",
   "approval_expiring",
   "scheduler_stale",
@@ -114,10 +77,8 @@ export const ATTENTION_SUBJECT_KINDS = [
 
 export interface AttentionAction {
   verb: AttentionVerb;
-  /** A router path under `/cockpit`. */
   href: string;
   primary: boolean;
-  /** The permission acting here needs — the surface may disable, never hide, on a miss. */
   permission: string;
 }
 
@@ -125,7 +86,6 @@ export interface AttentionItem {
   id: string;
   class: AttentionClass;
   severity: AttentionSeverity;
-  /** What kind of thing needs attention — a subject kind, or a signal kind. */
   kind: string;
   subject: {
     kind: (typeof ATTENTION_SUBJECT_KINDS)[number];
@@ -133,21 +93,12 @@ export interface AttentionItem {
     name: string | null;
   } | null;
   reason: AttentionReason;
-  /** What starts the workflow — a schedule or a named webhook — so the sentence
-   *  names the thing that waits. Null unless held or an approval item. */
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null } | null;
-  /** Which version an approval item is about, and where it runs. Only on
-   *  `version_awaiting_approval`, `version_needs_repair` and `approval_expiring`. */
   approval?: {
     version: number;
     environment: "dev" | "prod";
-    /** Awaiting only: what this version reaches beyond the approval of the
-     *  version before it — why that approval did not follow. */
     growth?: BoundaryGrowth[];
   };
-  /** What keeps that version from being approved. Only on `version_needs_repair`:
-   *  the leading blocked step, its diagnosis code, the act that removes it,
-   *  how many steps are blocked, and the filed repair or run it rests on. */
   repair?: {
     step_id: string | null;
     code: string | null;
@@ -156,12 +107,10 @@ export interface AttentionItem {
     candidate_id: string | null;
     execution_id: string | null;
   };
-  /** The run classifier's class behind a failing workflow, else null. */
   cause_class: PreviewClassification | null;
   counts: { patches?: number; failures?: number; skills?: number };
   since: string | null;
   deadline: string | null;
-  /** Residual engine wording, or null. Never a sentence a surface passes off as its own. */
   detail: string | null;
   actions: AttentionAction[];
 }
@@ -170,22 +119,16 @@ export interface AttentionV1 {
   schema_version: typeof ATTENTION_SCHEMA_VERSION;
   generated_at: string;
   sources: Record<AttentionSource, AttentionSourceState>;
-  /** Only for a reader holding `stats:read`. */
   status: { health_state: HealthState; next_run_at: string | null } | null;
   items: AttentionItem[];
 }
 
-/** Whether nothing needs this reader: no item, and every source it may read answered. */
 export function attentionAllClear(attention: AttentionV1): boolean {
   return (
     attention.items.length === 0 &&
     Object.values(attention.sources).every((state) => state !== "failed")
   );
 }
-
-// --------------------------------------------------------------------------
-// Gates: which permission reads a source, and on which resource type a grant
-// reads part of it.
 
 interface SourceGate {
   permission: string;
@@ -220,7 +163,6 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
   if (existing && existing.until > at) return existing.value;
   const value = buildTenantFacts(db, tenantId, now, {}).then(
     (facts) => {
-      // A partial build is not a snapshot worth serving to the next reader.
       if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
       return facts;
     },
@@ -235,7 +177,6 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
 
 const CLASS_RANK: Record<AttentionClass, number> = { stopped: 0, failing: 1, decide: 2 };
 
-/** Class (stopped → failing → decide), then nearest deadline, then oldest, then id. */
 export function compareAttentionItems(a: AttentionItem, b: AttentionItem): number {
   const byClass = CLASS_RANK[a.class] - CLASS_RANK[b.class];
   if (byClass !== 0) return byClass;
@@ -254,14 +195,9 @@ export function compareAttentionItems(a: AttentionItem, b: AttentionItem): numbe
 
 export interface BuildAttentionOptions {
   now?: Date;
-  /** Test seam: replace tenant readers; the build then skips the cache. */
   readers?: AttentionReaderOverrides;
 }
 
-/**
- * The one answer to "what needs this person now". Read-only: no audit row, no
- * tracker advanced.
- */
 export async function buildAttention(
   db: Db,
   principal: ResolvedPrincipal,
@@ -270,16 +206,6 @@ export async function buildAttention(
   const now = opts.now ?? new Date();
   const tenantId = principal.tenant_id;
 
-  // One permission read per distinct gate, not per source and never per item.
-  // Hiding what a reader may not see is the expected outcome, not an incident:
-  // every probe is quiet, or each filtered item would log a WARN.
-  //   * a resource-typed gate (workflows, connectors) reads the reader's
-  //     tenant-wide decision and its grants once (`resourceAccess`); the
-  //     source is readable when that reaches ANY resource, and each item is
-  //     then checked in memory. A key whose scopes exclude the permission
-  //     reaches nothing, grants or not — counting it as answered would turn
-  //     that refusal into a false "all clear".
-  //   * a tenant-level gate is one `can()`.
   const gates = new Map<string, Promise<{ any: boolean; allows: (id: string) => boolean }>>();
   const gateFor = (gate: SourceGate) => {
     const key = `${gate.permission}|${gate.resource_type ?? ""}`;
@@ -333,20 +259,15 @@ export async function buildAttention(
     else sources[source] = facts.sources[source] ?? "failed";
   }
 
-  // Conversations are the reader's own: the owner filter is the gate.
   const items: AttentionItem[] = own.map((candidate) => candidate.item);
   for (const candidate of facts.candidates) {
     const gate = access.get(candidate.source);
     if (!gate?.any) continue;
-    // A merged workflow item is read through its workflow, whichever of its
-    // facts named it — every workflow source shares the same gate.
     if (candidate.resource && SOURCE_GATES[candidate.source].resource_type) {
       if (!gate.allows(candidate.resource.id)) continue;
     }
     items.push(candidate.item);
   }
-  // A hook's name is inbound-hook data: without inbound_hook:read the item
-  // still says a webhook waits, but not which one.
   if (items.some((item) => item.trigger?.kind === "inbound_hook" && item.trigger.name)) {
     const hooks = await gateFor({ permission: "inbound_hook:read" });
     if (!hooks.any) {

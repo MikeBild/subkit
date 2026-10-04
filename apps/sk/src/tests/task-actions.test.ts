@@ -84,7 +84,6 @@ describe("triage-digest-failures TaskAction", () => {
     expect(action?.invoke.kind).toBe("prompt");
     if (action?.invoke.kind === "prompt") {
       expect(action.invoke.prompt.length).toBeGreaterThan(0);
-      // The prompt must direct the LLM toward the digest content, not invent issues
       expect(action.invoke.prompt).toContain("digest");
     }
   });
@@ -133,8 +132,6 @@ describe("review-learnings TaskAction", () => {
     const action = findTaskActionById("review-learnings");
     expect(action?.invoke.kind).toBe("prompt");
     if (action?.invoke.kind === "prompt") {
-      // The prompt must route through the skill-candidate tools and forbid
-      // unilateral approval — Skills are human-approved only.
       expect(action.invoke.prompt).toContain("list_skill_candidates");
       expect(action.invoke.prompt).toContain("approve_skill_candidate");
       expect(action.invoke.prompt).toContain("explicitly confirm");

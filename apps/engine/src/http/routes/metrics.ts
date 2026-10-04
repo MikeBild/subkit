@@ -1,17 +1,3 @@
-// GET /metrics — Prometheus text exposition.
-//
-// One scope, stated here and in `docs/operators/observability.md`:
-// `/metrics` needs `metrics:read`. That holds for every credential that
-// carries a scope list — an API key, an RFC 8693 exchanged token, a Cockpit
-// connection token — and the caller's role never widens it (see
-// `../middleware/scope.ts`). A credential with no scope list at all falls
-// back to the role check, so an unrestricted admin key still scrapes.
-//
-// A monitoring system therefore needs no pasted key: a connection whose
-// consent screen granted `metrics:read` and nothing else reads this route
-// and nothing else. `metrics:read` and the `metrics_scraper` role are seeded
-// in `../../rbac/seed.ts`.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { getMetrics, refreshProcessUptime } from "../../observability/index.ts";
 import {

@@ -1,5 +1,3 @@
-// Barrel for the `ask_user_*` tool family.
-
 export { askUserChoiceTool } from "./choice.ts";
 export { askUserConfirmTool } from "./confirm.ts";
 export { askUserFormTool } from "./form.ts";

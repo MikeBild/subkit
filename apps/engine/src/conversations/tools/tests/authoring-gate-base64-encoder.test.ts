@@ -1,18 +1,3 @@
-// Authoring gate regression tests for the Gmail send outage.
-//
-// The outage root cause: the LLM authored a transform step whose JS
-// expression contained `var B="<base64-alphabet>"`. The redactor corrupted
-// the alphabet literal; the hand-rolled encoder then emitted "undefined"
-// 43,923x. The authoring gate now rejects any transform that embeds
-// a hand-rolled codec alphabet and steers the author to `sk.base64UrlEncode`
-// (and the rest of the sk.base64* / sk.hex* family).
-//
-// These tests pin the specific variants requested in the regression spec:
-// 1. Rejects a hand-rolled base64 encoder (both standard and url-safe forms).
-// 2. Accepts the `sk.base64UrlEncode` form — no block, gate passes.
-// 3. Accepts transforms that use other sk.* encoding helpers.
-// 4. Rejects a hand-rolled hex table, steers to sk.hexEncode.
-
 import { describe, expect, test } from "bun:test";
 import {
   describeTransformGateBlock,
@@ -23,10 +8,6 @@ import {
 const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-// ---------------------------------------------------------------------------
-// 1. Gate REJECTS hand-rolled base64 encoder.
-// ---------------------------------------------------------------------------
-
 describe("evaluateTransformAuthoringGate — rejects hand-rolled base64 encoder", () => {
   test("blocks a transform that embeds the standard base64 alphabet in a var declaration", () => {
     const result = evaluateTransformAuthoringGate(
@@ -35,7 +16,6 @@ describe("evaluateTransformAuthoringGate — rejects hand-rolled base64 encoder"
           {
             id: "encode",
             kind: "transform",
-            // The exact shape the LLM authored before the outage fix.
             expression: `var B="${B64_STD}";let o="";for(let i=0;i<input.input.s.length;i+=3){const b0=input.input.s.charCodeAt(i);o+=B[b0>>2];}return o;`,
           },
         ],
@@ -87,12 +67,6 @@ describe("evaluateTransformAuthoringGate — rejects hand-rolled base64 encoder"
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. Gate ACCEPTS the sk.base64UrlEncode form.
-// This is the correct authoring pattern: use the deterministic sandbox
-// primitive instead of hand-rolling an encoder from an alphabet literal.
-// ---------------------------------------------------------------------------
-
 describe("evaluateTransformAuthoringGate — accepts sk.base64UrlEncode form (correct pattern)", () => {
   test("does NOT block a transform that calls sk.base64UrlEncode", () => {
     const result = evaluateTransformAuthoringGate(
@@ -101,8 +75,6 @@ describe("evaluateTransformAuthoringGate — accepts sk.base64UrlEncode form (co
           {
             id: "encode",
             kind: "transform",
-            // Correct pattern: sk.base64UrlEncode is a deterministic sandbox
-            // primitive; no alphabet literal involved.
             expression: "return sk.base64UrlEncode(input.input.payload);",
           },
         ],
@@ -131,8 +103,6 @@ describe("evaluateTransformAuthoringGate — accepts sk.base64UrlEncode form (co
   });
 
   test("does NOT block a Gmail-raw-style transform that calls sk.base64UrlEncode", () => {
-    // The corrected authoring pattern for the Gmail send workflow.
-    // Before the outage, the LLM hand-rolled this with an alphabet literal.
     const result = evaluateTransformAuthoringGate(
       {
         steps: [
@@ -164,10 +134,6 @@ describe("evaluateTransformAuthoringGate — accepts sk.base64UrlEncode form (co
     expect(result.blocks).toHaveLength(0);
   });
 });
-
-// ---------------------------------------------------------------------------
-// 3. Gate ACCEPTS other sk.* encoding helpers.
-// ---------------------------------------------------------------------------
 
 describe("evaluateTransformAuthoringGate — accepts sk.base64Encode and sk.hex*", () => {
   test("does NOT block a transform that calls sk.base64Encode", () => {
@@ -219,10 +185,6 @@ describe("evaluateTransformAuthoringGate — accepts sk.base64Encode and sk.hex*
   });
 });
 
-// ---------------------------------------------------------------------------
-// 4. Gate REJECTS hand-rolled hex table, steers to sk.hexEncode.
-// ---------------------------------------------------------------------------
-
 describe("evaluateTransformAuthoringGate — rejects hand-rolled hex table", () => {
   test("blocks a transform that embeds a hex encode table literal", () => {
     const result = evaluateTransformAuthoringGate(
@@ -244,10 +206,6 @@ describe("evaluateTransformAuthoringGate — rejects hand-rolled hex table", () 
     expect(msg).toContain("sk.hexEncode");
   });
 });
-
-// ---------------------------------------------------------------------------
-// detectHandRolledCodec — unit tests for the pure detector.
-// ---------------------------------------------------------------------------
 
 describe("detectHandRolledCodec — hand-rolled encoder cases", () => {
   test("detects the standard base64 alphabet inside a const declaration", () => {
@@ -272,8 +230,6 @@ describe("detectHandRolledCodec — hand-rolled encoder cases", () => {
   });
 
   test("does NOT detect a long base64 DATA literal (not the ordered alphabet)", () => {
-    // The fixture string is a real base64-encoded payload — high entropy,
-    // long, but not the sequential A-Z a-z 0-9 alphabet ordering. Must pass.
     const fixture = `const asset='SGVsbG8sIHdvcmxkISBUaGlzIGlzIGEgZml4dHVyZSBwYXlsb2FkLg==';`;
     expect(detectHandRolledCodec(fixture)).toEqual({ found: false, kind: null });
   });

@@ -1,5 +1,3 @@
-// Configurable HMAC verifier tests.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { handleInbound } from "../service.ts";
@@ -10,7 +8,6 @@ const SECRET = "hmac-secret-0123456789";
 const NOW_S = 1_800_000_000;
 const NOW_MS = NOW_S * 1000;
 
-// A sender that signs "v1:<timestamp>:<body>" and sends "v1=<hex>".
 const TIMESTAMPED = {
   signature_header: "X-Example-Signature",
   signature_prefix: "v1=",
@@ -139,7 +136,6 @@ describe("hmac verifier: verification", () => {
     const headers = timestampedHeaders(body);
     const hex = headers["x-example-signature"].slice(3);
     expect(verify({ ...headers, "x-example-signature": `v2=${hex}` }, body).ok).toBe(false);
-    // An invalid hex pair would make Buffer.from truncate silently.
     const broken = `v1=${hex.slice(0, 62)}zz`;
     expect(verify({ ...headers, "x-example-signature": broken }, body)).toEqual({
       ok: false,

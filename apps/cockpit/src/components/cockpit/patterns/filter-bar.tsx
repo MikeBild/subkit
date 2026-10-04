@@ -17,10 +17,8 @@ export interface FilterSelect {
   testId?: string;
 }
 
-/** The most selects a filter bar holds (P7). */
 export const MAX_FILTER_SELECTS = 2;
 
-/** Search and at most two selects (P7), in a DataTable's toolbar slot. */
 export function FilterBar({
   search,
   selects = [],

@@ -1,18 +1,3 @@
-// Admin-tier list slashes — each is a near-identical
-// `client.listX() → render rows → panify` pattern. Extracted from
-// the main `handler.ts` switch.
-//
-// Row shapes are typed from
-// `components["schemas"]["…"]` in the generated OpenAPI client,
-// not via ad-hoc `Record<string, unknown>` casts. A future
-// wire-shape rename now fails the build instead of rendering
-// `"undefined"` in the banner.
-//
-// Returns:
-//   - `string | null` if the command was handled
-//   - `undefined` if the name doesn't belong to this group; the
-//     main dispatcher should fall through to the next handler.
-
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { panify, type SlashHandlerContext } from "../handler.ts";
 
@@ -23,12 +8,6 @@ type PatchCandidate = components["schemas"]["PatchCandidate"];
 type ApiKey = components["schemas"]["ApiKey"];
 type SystemAccount = components["schemas"]["SystemAccount"];
 
-// Some `client.listX()` methods still return `Record<string, unknown>[]`
-// (the engine-client typing pre-dates the openapi regeneration).
-// The narrow casts below pin the consumer to the OpenAPI schema so
-// a wire rename fails the build at the cast site, not silently in
-// `String(row.x ?? "")`. Future PR: tighten engine-client return
-// types directly and drop these casts.
 function asConnectors(items: readonly unknown[]): readonly Connector[] {
   return items as readonly Connector[];
 }
@@ -60,8 +39,6 @@ export async function dispatchAdminListSlash(
       const lines = items.map(
         (c) => `${c.id.slice(0, 8)}  ${c.display_name.padEnd(20)}  ${c.slug}`,
       );
-      // Ground-truth cardinality: the engine returns the exact filtered
-      // total, so the footer never presents a page as the universe.
       const footer =
         items.length < r.total ? `showing ${items.length} of ${r.total}` : `${r.total} total`;
       return panify(ctx, "connectors", lines, footer);
@@ -98,9 +75,6 @@ export async function dispatchAdminListSlash(
       return panify(ctx, "patch candidates", lines, `${items.length} pending`);
     }
     case "notifications": {
-      // Notification channel/rule shapes aren't yet in the openapi
-      // surface; keep the existing record-string approach until
-      // engine-client tightens.
       const [channels, rules] = await Promise.all([
         ctx.client
           .listNotificationChannels()
@@ -128,7 +102,6 @@ export async function dispatchAdminListSlash(
       return panify(ctx, "notifications", lines);
     }
     case "discovery": {
-      // Discovery-run shape not yet in openapi surface.
       const r = await ctx.client.listDiscoveryRuns({ limit: 10 });
       if (r.items.length === 0) return "no discovery runs";
       const lines = r.items.map((d) => {
@@ -148,10 +121,6 @@ export async function dispatchAdminListSlash(
       return panify(ctx, "API keys", lines, `${items.length} keys`);
     }
     case "users": {
-      // listIdentityUsers returns Record<string, unknown>[] today;
-      // its openapi schema is Identity-specific and not directly
-      // referenced from the CLI surface — keep the record cast
-      // with a typed-looking field set.
       const r = await ctx.client.listIdentityUsers({ limit: 20 });
       if (r.items.length === 0) return "no users";
       const lines = r.items.map((u) => {

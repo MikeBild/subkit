@@ -1,9 +1,3 @@
-// LLM routing snapshot. Lets operators + smoke probes confirm the
-// resolved provider path without exposing any secret material — the
-// route surfaces booleans only.
-//
-//   GET /v1/diagnostics/llm
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { globalLlmStatus } from "../../../llm/index.ts";

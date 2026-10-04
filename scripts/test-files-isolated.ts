@@ -76,9 +76,6 @@ for (const target of targets) {
 const allTests = [...tests].sort();
 if (allTests.length === 0) throw new Error("no test files found");
 
-// Sorted round-robin assignment is deterministic, covers every selected file
-// exactly once, and balances large and small directory groups better than
-// contiguous chunks. Each selected file still runs in its own fresh process.
 const orderedTests = allTests.filter((_, index) => index % shardCount === shardIndex);
 if (orderedTests.length === 0) throw new Error("selected shard contains no test files");
 

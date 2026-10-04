@@ -1,9 +1,3 @@
-// Unit coverage for the schema-rejection detector that gates the
-// `normalized_schema` attachment in the `repair_tool_call.failed`
-// warn payload. Regression risk: the heuristic is purely string-based
-// and would drift silently if a future provider changed its error
-// message format. These tests pin the contract.
-
 import { describe, expect, it } from "bun:test";
 import { isSchemaRejectionError } from "../repair-tool-call.ts";
 
@@ -46,9 +40,6 @@ describe("isSchemaRejectionError", () => {
   });
 
   it("does NOT fire on a generic AI_APICallError without a schema marker (quota / 429)", () => {
-    // Pre-fix this returned true and attached ~4KB of normalised
-    // schema to every quota / connection-reset error; the warn payload
-    // is now narrow to keep structured-log volume bounded.
     expect(
       isSchemaRejectionError({
         errName: "AI_APICallError",

@@ -1,7 +1,3 @@
-// Discovery tool tests. Seeds a run + artifact(s) directly via drizzle,
-// then drives the three conversation tools and asserts their output
-// shape and status transitions.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { discoveryArtifacts, discoveryRuns, tenants } from "../../../db/schema/index.ts";
@@ -140,7 +136,6 @@ describe("approve_discovery_artifact", () => {
     const data = r.data as { persistence: string; resource_id: string };
     expect(data.persistence).toBe("saved");
     expect(data.resource_id).toBe(id);
-    // Row now in approved status
     const [row] = await ctx.db
       .select()
       .from(discoveryArtifacts)
@@ -176,13 +171,11 @@ describe("approve_discovery_artifact", () => {
         evidence: { file_ids: [], excerpts: [] },
       })
       .returning();
-    // Our tenant tries to approve their artifact
     const r = await approveDiscoveryArtifactTool.execute(makeCtx(), {
       id: otherArt!.id,
     });
     expect(r.ok).toBe(false);
     expect((r.data as { error: { code: string } }).error.code).toBe("already_materialized");
-    // Other tenant's row is untouched.
     const [preserved] = await ctx.db
       .select()
       .from(discoveryArtifacts)

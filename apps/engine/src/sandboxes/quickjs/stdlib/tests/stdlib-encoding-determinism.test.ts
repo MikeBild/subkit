@@ -1,19 +1,3 @@
-// Stdlib regression tests for the Gmail send outage (v7.5).
-//
-// The fix ships deterministic encoding primitives (sk.base64UrlEncode,
-// sk.hexEncode, sk.sha256, sk.hmacSha256, sk.uuid, sk.now) as QuickJS
-// sandbox globals. These tests pin the "same input → same output"
-// invariant for each primitive across separate sandbox invocations —
-// the core guarantee that prevents an alphabet-corruption regression from
-// occurring through the stdlib path.
-//
-// Additional coverage:
-// - hexEncode/hexDecode round-trip for the outage-relevant byte sequences
-//   (the base64 alphabet bytes specifically).
-// - sha256/hmacSha256 known-vector spot checks so a stdlib impl swap is
-//   caught immediately.
-// - uuid/now determinism under a fixed clock seed.
-
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
@@ -25,13 +9,6 @@ const run = <T>(code: string, input: unknown = {}) =>
 const runWithClock = <T>(code: string, clock: { now_ms: number; seed: string }) =>
   runJs<T>({ code, input: {}, clock }).then((r) => r.output);
 
-// ---------------------------------------------------------------------------
-// sk.hexEncode / sk.hexDecode — round-trip over the outage-relevant inputs.
-// The base64 alphabet bytes are the exact bytes the Gmail MIME body encoder
-// was processing when it received a corrupted alphabet and emitted "undefined"
-// 43,923 times. Verify the stdlib path produces a well-formed hex string.
-// ---------------------------------------------------------------------------
-
 describe("sk.hexEncode / sk.hexDecode — round-trip (stdlib)", () => {
   const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -39,7 +16,6 @@ describe("sk.hexEncode / sk.hexDecode — round-trip (stdlib)", () => {
     const encoded = await run<string>("return sk.hexEncode(input.s);", {
       s: BASE64_ALPHABET,
     });
-    // 64 chars × 2 hex digits each = 128 chars
     expect(encoded).toHaveLength(128);
     expect(/^[0-9a-f]+$/.test(encoded)).toBe(true);
     expect(encoded).toBe(Buffer.from(BASE64_ALPHABET, "binary").toString("hex"));
@@ -66,13 +42,6 @@ describe("sk.hexEncode / sk.hexDecode — round-trip (stdlib)", () => {
     expect(b).toBe("hello");
   });
 });
-
-// ---------------------------------------------------------------------------
-// sk.sha256 — round-trip + determinism across invocations + known vectors.
-// A sha256-shaped 64-char hex output from the same input must be byte-identical
-// on every invocation; this is the property that makes HMAC signatures
-// reproducible under self-healing dry-runs.
-// ---------------------------------------------------------------------------
 
 describe("sk.sha256 — determinism across separate sandbox invocations", () => {
   test("sha256('') is the FIPS-180-4 empty-string vector", async () => {
@@ -101,10 +70,6 @@ describe("sk.sha256 — determinism across separate sandbox invocations", () => 
   });
 });
 
-// ---------------------------------------------------------------------------
-// sk.hmacSha256 — determinism + RFC vector.
-// ---------------------------------------------------------------------------
-
 describe("sk.hmacSha256 — determinism across separate sandbox invocations", () => {
   test("hmacSha256 RFC 4231 test-case 2: key='Jefe', data='what do ya want for nothing?'", async () => {
     const out = await run<string>(
@@ -129,10 +94,6 @@ describe("sk.hmacSha256 — determinism across separate sandbox invocations", ()
     expect(/^[0-9a-f]{64}$/.test(out)).toBe(true);
   });
 });
-
-// ---------------------------------------------------------------------------
-// sk.uuid — determinism under a fixed seed + v4 shape invariant.
-// ---------------------------------------------------------------------------
 
 describe("sk.uuid — determinism under a fixed clock seed", () => {
   const clock = { now_ms: 1_700_000_000_000, seed: "regression-exec-001:step-encode" };
@@ -164,12 +125,6 @@ describe("sk.uuid — determinism under a fixed clock seed", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// sk.now / sk.nowIso — determinism under a fixed clock.
-// Transforms that call sk.now() instead of Date.now() are reproducible
-// under self-healing dry-runs; Date.now() is the banned form.
-// ---------------------------------------------------------------------------
-
 describe("sk.now / sk.nowIso — determinism under a fixed clock", () => {
   const clock = { now_ms: 1_700_000_000_000, seed: "regression-exec-001:step-now" };
 
@@ -195,12 +150,6 @@ describe("sk.now / sk.nowIso — determinism under a fixed clock", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// sk.base64UrlEncode — the correct Gmail raw encoding primitive.
-// Verifies that a complete round-trip using sk.base64UrlEncode produces
-// a valid url-safe base64 string with no "+" or "/" chars and no "undefined".
-// ---------------------------------------------------------------------------
-
 describe("sk.base64UrlEncode — the correct encoding primitive", () => {
   const GMAIL_MIME = "To: user@example.com\r\nSubject: Test\r\n\r\nHello, world!";
 
@@ -222,7 +171,7 @@ describe("sk.base64UrlEncode — the correct encoding primitive", () => {
   });
 
   test("sk.base64UrlEncode matches the manual +→- /→_ substitution", async () => {
-    const s = "ÿï¾"; // produces both + and / in standard base64
+    const s = "ÿï¾";
     const urlSafe = await run<string>("return sk.base64UrlEncode(input.s);", { s });
     const standard = await run<string>("return sk.base64Encode(input.s);", { s });
     expect(urlSafe).toBe(standard.replace(/\+/g, "-").replace(/\//g, "_"));

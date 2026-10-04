@@ -1,28 +1,3 @@
-// Audit subsystem contracts. These integration tests
-// pin five invariants the audit log MUST hold for SOC2/ISO27001/GDPR
-// evidence to be trustworthy:
-//
-//  1. Append-only API surface  — the audit module exports no update or
-//                                delete path. (Existing source-level
-//                                guarantee made testable.)
-//  2. Tenant scoping            — queryAuditLog, getAuditRowById, and
-//                                streamAuditLog all reject cross-tenant
-//                                reads.
-//  3. Transactional rollback    — passing a tx to auditAwait binds the
-//                                audit row to the caller's transaction.
-//                                A rollback of the domain change rolls
-//                                the audit back too. (No half-commits.)
-//  4. Redaction matrix          — every payload field that can carry
-//                                user-provided strings is scrubbed
-//                                before persist: reason, metadata
-//                                (top-level and nested), before, after.
-//  5. Request-source attribution — when callers pass `request_source` in
-//                                metadata, it round-trips through the
-//                                writer to the persisted row, so the
-//                                forensic export can answer "did this
-//                                action come from api / mcp / webhook /
-//                                chat / cli / scheduler / tool-chain?".
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -37,9 +12,6 @@ import { recordExecutionCrashRecovered } from "../recorders/execution.ts";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../recorders/knowledge.ts";
 import { AuditAction } from "../types.ts";
 
-// Deterministic uuid source for probe rows. Seeded so the test plays
-// back identically run-to-run; using crypto.randomUUID would trip the
-// `no-random-uuid-in-tests` determinism gate.
 const uuid = createDeterministicUuidFactory(0xa11d11);
 
 let testDb: TestDb;
@@ -65,8 +37,6 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
-// ---------- 1. append-only API surface ----------
-
 describe("audit append-only surface", () => {
   test("audit module exports no update / delete / mutate path", () => {
     const exported = Object.keys(auditModule);
@@ -79,16 +49,11 @@ describe("audit append-only surface", () => {
   test("the only writers are audit() and auditAwait()", () => {
     const writers = Object.keys(auditModule).filter(
       (k) =>
-        typeof (auditModule as Record<string, unknown>)[k] === "function" &&
-        // `_`-prefixed are test seams (e.g. `_drainAuditWritesForTests`), not
-        // write paths — the invariant guards against a new PUBLIC writer.
-        !k.startsWith("_"),
+        typeof (auditModule as Record<string, unknown>)[k] === "function" && !k.startsWith("_"),
     );
     expect(writers.sort()).toEqual(["audit", "auditAwait"].sort());
   });
 });
-
-// ---------- 2. tenant scoping on every read path ----------
 
 describe("tenant scoping on reads", () => {
   beforeAll(async () => {
@@ -121,14 +86,12 @@ describe("tenant scoping on reads", () => {
     const bResult = await queryAuditLog(testDb.db, { tenant_id: tenantB });
     expect(aResult.items.every((e) => e.tenant_id === tenantA)).toBe(true);
     expect(bResult.items.every((e) => e.tenant_id === tenantB)).toBe(true);
-    // Each tenant must see at least its own seed row.
     expect(aResult.items.some((e) => (e.metadata as { marker?: string }).marker === "A")).toBe(
       true,
     );
     expect(bResult.items.some((e) => (e.metadata as { marker?: string }).marker === "B")).toBe(
       true,
     );
-    // And neither tenant must ever see the other's marker.
     expect(aResult.items.some((e) => (e.metadata as { marker?: string }).marker === "B")).toBe(
       false,
     );
@@ -141,10 +104,8 @@ describe("tenant scoping on reads", () => {
     const aResult = await queryAuditLog(testDb.db, { tenant_id: tenantA });
     const sample = aResult.items[0];
     if (!sample) throw new Error("seed missing");
-    // Same row id, but the wrong tenant — must come back null.
     const wrongTenant = await getAuditRowById(testDb.db, tenantB, sample.id);
     expect(wrongTenant).toBeNull();
-    // Same row id with the right tenant comes back.
     const rightTenant = await getAuditRowById(testDb.db, tenantA, sample.id);
     expect(rightTenant?.id).toBe(sample.id);
   });
@@ -159,14 +120,11 @@ describe("tenant scoping on reads", () => {
   });
 });
 
-// ---------- 3. transactional rollback ----------
-
 describe("transactional rollback", () => {
   test("auditAwait inside a rolled-back tx leaves no row on disk", async () => {
     const probeId = uuid();
     const probeMarker = `tx-rollback-${probeId}`;
 
-    // Wrap the audit insert in a tx that throws to force rollback.
     let caught: Error | null = null;
     try {
       await testDb.db.transaction(async (tx) => {
@@ -181,8 +139,6 @@ describe("transactional rollback", () => {
           },
           tx,
         );
-        // Force the tx to roll back. Any throw inside the callback is
-        // sufficient — drizzle/node-postgres will issue the ROLLBACK.
         throw new Error("intentional rollback");
       });
     } catch (err) {
@@ -190,11 +146,9 @@ describe("transactional rollback", () => {
     }
     expect(caught?.message).toBe("intentional rollback");
 
-    // The audit row must NOT be on disk.
     const rows = await testDb.db.select().from(auditLog).where(eq(auditLog.resource_id, probeId));
     expect(rows).toEqual([]);
 
-    // Sanity: the same insert WITHOUT a rolled-back tx must persist.
     await auditAwait(
       {
         tenant_id: tenantA,
@@ -229,8 +183,6 @@ describe("transactional rollback", () => {
     expect(rows.length).toBe(1);
   });
 });
-
-// ---------- 4. redaction matrix ----------
 
 describe("redaction across every payload field", () => {
   const PAT = "dop_v1_redactionmatrixabcdefabcdefabcdefabcdef";
@@ -284,21 +236,11 @@ describe("redaction across every payload field", () => {
     expect(blob).not.toContain("should-be-replaced-before");
     expect(blob).not.toContain("should-be-replaced-after");
 
-    // A scrub marker survives so operators can spot a redaction
-    // happened (instead of a silent drop).
     expect(blob).toContain("REDACTED");
   });
 });
 
-// ---------- 5. request-source attribution ----------
-
 describe("request-source attribution", () => {
-  // Audit metadata is a free-form bag; the contract is only that when
-  // a caller passes `request_source` in metadata, the row faithfully
-  // round-trips it. The engine does not REQUIRE request_source here;
-  // route-boundary tests enforce that every state-changing route handler
-  // actually populates the field on the way in. The assertion below pins
-  // the round-trip property.
   const SOURCES = ["api", "cli", "mcp", "webhook", "tool-chain", "scheduler", "chat"] as const;
 
   for (const source of SOURCES) {
@@ -322,8 +264,6 @@ describe("request-source attribution", () => {
   }
 });
 
-// ---------- 6. query filter exhaustiveness ----------
-
 describe("query filter coverage", () => {
   let actorId: string;
   let traceId: string;
@@ -333,8 +273,6 @@ describe("query filter coverage", () => {
     actorId = uuid();
     traceId = uuid();
     resourceId = uuid();
-    // Three rows under tenantA with distinct (actor, resource, action,
-    // result, trace_id) so every filter has something to match on.
     await auditAwait(
       {
         tenant_id: tenantA,
@@ -418,11 +356,6 @@ describe("query filter coverage", () => {
   });
 
   test("ts_from / ts_to bound the result set", async () => {
-    // Insert one probe row with a deterministic ts at FROZEN_NOW so we
-    // can bound a window around it without depending on wall-clock
-    // timing. The other rows in this test use the audit writer's
-    // default `new Date()` and live in the present, which lets us
-    // verify both "inside-window matches" and "future-window empty".
     const probeTs = new Date(FROZEN_NOW);
     const probeId = uuid();
     await auditAwait(
@@ -474,7 +407,6 @@ describe("query filter coverage", () => {
   });
 
   test("limit caps at MAX_LIMIT (500) silently", async () => {
-    // Pass a number above the cap; query must clamp without throwing.
     const r = await queryAuditLog(testDb.db, { tenant_id: tenantA }, { limit: 9999 });
     expect(Array.isArray(r.items)).toBe(true);
   });
@@ -485,15 +417,12 @@ describe("query filter coverage", () => {
     if (!entry) throw new Error("expected at least one row");
     const wire = serializeAuditEntry(entry);
     expect(typeof wire.ts).toBe("string");
-    // Round-trips through JSON without throwing or losing info.
     const json = JSON.stringify(wire);
     expect(json).toContain(entry.id);
     const parsed = JSON.parse(json) as Record<string, unknown>;
     expect(parsed.tenant_id).toBe(tenantA);
   });
 });
-
-// ---------- 7. recorders not yet exercised by recorders.test.ts ----------
 
 describe("recorder catalog gap fillers", () => {
   test("recordExecutionCrashRecovered persists with system actor + workflow_id metadata", async () => {
@@ -526,7 +455,6 @@ describe("recorder catalog gap fillers", () => {
       reason: "engine_boot_reaper",
       metadata: { started_at: "2026-05-03T00:00:00Z" },
     });
-    // No workflow_id key when the input is null.
     expect((entry.metadata as { workflow_id?: string }).workflow_id).toBeUndefined();
   });
 

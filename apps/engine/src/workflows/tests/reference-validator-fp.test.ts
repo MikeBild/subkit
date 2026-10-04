@@ -24,8 +24,6 @@ describe("reference-validator · false-positive guards", () => {
           id: "shape",
           kind: "transform",
           language: "javascript",
-          // The body projects each resource carrying a `links.self` URL;
-          // `links` is a HATEOAS field name, not a step id.
           expression:
             "return input.scope.fetch.data.resources.map((r) => ({ urn: r.urn, path: r.links.self }));",
         },
@@ -43,9 +41,6 @@ describe("reference-validator · false-positive guards", () => {
           id: "shape",
           kind: "transform",
           language: "javascript",
-          // `example.com` and `example.org` are inside string
-          // literals — the validator must not extract the prefixes
-          // (`octocat`, `example`) as candidate step refs.
           expression:
             "return { primary: 'example.com', secondary: \"example.org\", from: input.scope.fetch.data };",
         },
@@ -84,8 +79,6 @@ describe("reference-validator · false-positive guards", () => {
           id: "shape",
           kind: "transform",
           language: "javascript",
-          // typo: fetcch_projects (1 char extra) → flagged as a bare-path
-          // reference close to the real step id.
           expression: "return fetcch_projects.data;",
         },
       ],
@@ -153,12 +146,6 @@ describe("validateUnsupportedPlaceholders", () => {
     expect(validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]))).toEqual([]);
   });
 
-  // Regression: a `language: "javascript"` transform body legitimately
-  // uses `${...}` TEMPLATE LITERALS. These are NOT the `${kind.X}`
-  // placeholder grammar and must not be flagged. Pre-fix every
-  // `` `${c.from}` `` / `` `${rows}` `` tripped `bad_kind` →
-  // `workflow_unsupported_placeholder`, forcing a rewrite to string
-  // concatenation (production session c3e1bd7e, the Gmail MIME build).
   test("does NOT flag JS template literals in a javascript transform", () => {
     const draft = {
       name: "draft",
@@ -184,7 +171,6 @@ describe("validateUnsupportedPlaceholders", () => {
         {
           id: "shape",
           kind: "transform",
-          // no `language` → defaults to javascript
           expression:
             "const greeting = `hello ${input.scope.fetch.data.name}`; return { greeting };",
         },
@@ -193,9 +179,6 @@ describe("validateUnsupportedPlaceholders", () => {
     expect(validateUnsupportedPlaceholders(wf(draft.steps as WorkflowDef["steps"]))).toEqual([]);
   });
 
-  // The gate is JS-BODY-scoped: a genuinely bad placeholder in a request
-  // step's interpolated string field is still caught. Proves we narrowed
-  // the scan, not disabled it.
   test("still flags ${baduser.x} in a request URL (string interpolation site)", () => {
     const draft = {
       name: "draft",

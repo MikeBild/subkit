@@ -1,15 +1,3 @@
-// The undecidable-candidate sweep: evaluated under the workflow lock, and
-// never able to fail the drift scan it runs in.
-//
-//   1. Readiness is read under `lockWorkflowForVersionWrite`. Without the lock
-//      the sweep read version 1 (where the patch changes nothing), an operator
-//      saved version 2 (where it applies), and the row was closed against a
-//      version that was no longer current.
-//   2. One row whose close fails is logged and skipped. It used to roll back
-//      the tenant's whole sweep and mark the drift scan `failed` — and since
-//      `data.freshness` reads the newest SUCCEEDED scan, a bad row turned the
-//      overview red as if the scheduler had stopped.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import {
@@ -49,7 +37,6 @@ function dag(dataSelector: string) {
   };
 }
 
-/** Make a new version current — what an operator's save does. */
 async function saveVersion(
   exec: typeof ctx.testDb.db,
   version: number,
@@ -71,7 +58,6 @@ async function saveVersion(
   return ver!.id;
 }
 
-/** A proposed move of `data.id` to `data.result.id`. */
 async function proposeMove(): Promise<string> {
   const [row] = await ctx.testDb.db
     .insert(patchCandidates)
@@ -104,7 +90,6 @@ async function statusOf(id: string) {
 }
 
 test("readiness is read under the workflow lock, against the version current when it is taken", async () => {
-  // Current version already reads `data.result.id`: the move is a no_change.
   await saveVersion(ctx.testDb.db, 2, "data.result.id");
   const candidateId = await proposeMove();
 
@@ -116,8 +101,6 @@ test("readiness is read under the workflow lock, against the version current whe
   const lockHeld = new Promise<void>((resolve) => {
     held = resolve;
   });
-  // An operator's save in flight: holds the version-write lock, then makes a
-  // version current on which the move DOES apply.
   const save = ctx.testDb.db.transaction(async (tx) => {
     await lockWorkflowForVersionWrite(tx, ctx.tenant_id, ctx.workflow_id);
     held();
@@ -130,8 +113,6 @@ test("readiness is read under the workflow lock, against the version current whe
   const sweep = sweepUndecidableCandidates(ctx.testDb.db, ctx.tenant_id).finally(() => {
     settled = true;
   });
-  // Let the sweep reach the lock (a correct sweep waits there; one that reads
-  // without the lock finishes on its own). Bounded by query round-trips.
   for (let i = 0; i < 2000 && !settled; i++) {
     const rows = await ctx.testDb.db.execute(
       sql`SELECT count(*)::int AS n FROM pg_stat_activity
@@ -146,12 +127,10 @@ test("readiness is read under the workflow lock, against the version current whe
   await save;
   await sweep;
 
-  // Version 3 is current and the move applies there: the candidate is open.
   expect(await statusOf(candidateId)).toBe("proposed");
 });
 
 test("a row whose close fails is skipped, the rest close, and the drift scan still succeeds", async () => {
-  // Make both new candidates no_change, and make ONE of them refuse closure.
   await saveVersion(ctx.testDb.db, 4, "data.result.id");
   const bad = await proposeMove();
   const good = await proposeMove();

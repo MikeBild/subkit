@@ -1,16 +1,3 @@
-// Backfill scoping — a `knowledge_source_id`-scoped call touches ONLY that
-// source's knowledge chunks; the tenant-wide docs and conversation-topic
-// backlogs belong to the capped scheduler sweep, never to a per-source kick
-// on the request path. A bare `tenant_id` (no `knowledge_source_id`) keeps
-// running all three passes exactly as before.
-//
-// Deterministic regardless of whether the local WASM model loads in this
-// process (it may load in dev; CI does not download it). Either way, each
-// pass's embed call breaks out after its FIRST batch once every vector in
-// that batch is null — but `scanned` already counted that batch's rows
-// before the break. So every assertion below is on `scanned`, never on
-// `embedded`, which the eval-only opt-in suite at the bottom covers.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectorDocumentChunks, connectorDocuments } from "../../db/schema/connector_docs.ts";
@@ -29,9 +16,6 @@ interface SeededTargets {
   knowledgeSourceId: string;
 }
 
-/** Seed one tenant with an un-embedded row in each of the three backfill
- *  targets: a knowledge chunk, a connector-doc chunk, and a conversation
- *  with a first user message (topic_embedding NULL). */
 async function seedAllThreeTargets(testDb: TestDb, label: string): Promise<SeededTargets> {
   const [tenant] = await testDb.db
     .insert(tenants)
@@ -40,7 +24,6 @@ async function seedAllThreeTargets(testDb: TestDb, label: string): Promise<Seede
   if (!tenant) throw new Error("seed tenant failed");
   const tenantId = tenant.id;
 
-  // (a) knowledge source + a chunk with NULL embedding.
   const [source] = await testDb.db
     .insert(knowledgeSources)
     .values({
@@ -63,7 +46,6 @@ async function seedAllThreeTargets(testDb: TestDb, label: string): Promise<Seede
     fingerprint: `fp-${label}-knowledge`,
   });
 
-  // (b) connector + connector_document + a doc chunk with NULL embedding.
   const [connector] = await testDb.db
     .insert(connectors)
     .values({
@@ -99,7 +81,6 @@ async function seedAllThreeTargets(testDb: TestDb, label: string): Promise<Seede
     fingerprint: `fp-${label}-doc`,
   });
 
-  // (c) conversation with a user message (topic_embedding NULL).
   const [conv] = await testDb.db
     .insert(conversations)
     .values({ tenant_id: tenantId, status: "active" })
@@ -151,18 +132,6 @@ describe.skipIf(skip)("embeddings/backfillEmbeddings scoping", () => {
     expect(result.docs.scanned).toBeGreaterThanOrEqual(1);
     expect(result.conversations.scanned).toBeGreaterThanOrEqual(1);
   });
-
-  // NOT tested: kickSourceEmbeddingBackfill's embeddingsAvailable() guard
-  // ("model unavailable → zero scans"). The guard's observable — that no
-  // SELECT ran — leaves no DB trace, and with the model unavailable the
-  // un-guarded path converges to the same end state (scan one batch, embed
-  // nothing, chunk stays NULL), so any state assertion here passes with or
-  // without the guard — a vacuous pin. Forcing the branch would need a
-  // module seam: embeddingsAvailable() memoizes the model load at module
-  // scope (local-provider.ts extractorPromise), and the repo convention
-  // (see mcp/client/pool-evict.test.ts) forbids bun `mock.module` because
-  // it leaks process-wide. The scoping contract is pinned above; the
-  // model-available path end-to-end by the opt-in suite below.
 });
 
 let e2eTestDb: TestDb;

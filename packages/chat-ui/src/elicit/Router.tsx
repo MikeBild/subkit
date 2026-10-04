@@ -1,11 +1,3 @@
-// Elicit router — dispatches on the `ask_user_*` tool family and
-// renders a kind-specific component. Mounted by the host app when a
-// `pendingElicitation` is present on the session state.
-//
-// The input payload shape is read permissively — each prompt
-// component tolerates partially-shaped data and falls back to sane
-// defaults.
-
 import type { PendingElicitation } from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -17,10 +9,6 @@ import { MultiChoicePrompt } from "./MultiChoicePrompt.tsx";
 import { PartialApprovalPrompt, type PartialDiffEntry } from "./PartialApprovalPrompt.tsx";
 import { TextPrompt } from "./TextPrompt.tsx";
 
-// `decision_reason` carries a machine-code token (e.g. `user_cancelled`)
-// and lands in the elicitation's `decision_reason` audit column. Operator
-// free text is NOT a machine code — it travels in `feedback`, inside the
-// `output` payload, so the audit column stays a stable, switchable token.
 export type ElicitationResponse =
   | { value: string }
   | { values: string[] }
@@ -28,9 +16,6 @@ export type ElicitationResponse =
   | { values: Record<string, unknown> }
   | { confirmed: boolean; decision_reason?: string; feedback?: string }
   | {
-      // Partial-diff approval response (Bug TT). When `partial` is
-      // true, the engine applies only the diffs at `approved_indices`;
-      // when false, treat as a binary confirm/reject.
       confirmed: boolean;
       partial?: boolean;
       approved_indices?: number[];
@@ -115,10 +100,6 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       );
     }
     case "ask_user_confirm": {
-      // Per-patch partial approval (Bug TT). When the gated tool
-      // emitted a list of JSON-Patch ops with kind:"partial_diff_approval",
-      // route to the per-row picker instead of the binary ConfirmPrompt
-      // so the operator can accept some patches and reject others.
       if (input.kind === "partial_diff_approval" && Array.isArray(input.diffs)) {
         return (
           <PartialApprovalPrompt
@@ -147,11 +128,6 @@ export const ElicitRouter: React.FC<ElicitRouterProps> = ({
       const reversible = typeof input.reversible === "boolean" ? input.reversible : undefined;
       const defaultChoice =
         input.default === "approve" || input.default === "reject" ? input.default : undefined;
-      // pending_output may live either on the elicitation input
-      // (when the gated tool emitted it directly) or on a sibling
-      // field of the elicit_request event (when sdk-wrap derived it
-      // from the policy). Prefer the input-level value because the
-      // tool itself owns the canonical preview shape.
       const pendingOutput =
         input.pending_output && typeof input.pending_output === "object"
           ? (input.pending_output as Record<string, unknown>)

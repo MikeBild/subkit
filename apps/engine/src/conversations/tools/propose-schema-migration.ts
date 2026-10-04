@@ -1,12 +1,3 @@
-// propose_schema_migration — surfaces the schema-evolution machinery
-// (listShapeHistory + proposeSchemaMigration + applyMigration) as a
-// conversation tool so operators can ask "how has this endpoint
-// changed?" without writing TypeScript.
-//
-// Returns the structured plan plus, when a sample is provided, the
-// migrated sample so callers can preview the data-level effect of
-// applying the plan.
-
 import { z } from "@hono/zod-openapi";
 import {
   applyMigration,
@@ -21,11 +12,7 @@ const inputSchema = z
     endpoint_key: z.string().min(1),
     workflow_id: z.string().uuid().optional(),
     step_id: z.string().min(1).optional(),
-    /** When set, applyMigration runs against the sample and the result
-     *  is returned alongside the plan so the operator sees the
-     *  data-level effect of accepting it. */
     sample: z.unknown().optional(),
-    /** Cap the chronological history attached to the response. */
     history_limit: z.number().int().positive().max(200).optional(),
   })
   .refine((value) => Boolean(value.workflow_id) === Boolean(value.step_id), {
@@ -41,8 +28,6 @@ export const proposeSchemaMigrationTool: ConversationTool = {
     "Use when an operator asks why an endpoint started returning a different shape, or to preview the data-level effect of accepting a recent rename. The plan is advisory; nothing is persisted.",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

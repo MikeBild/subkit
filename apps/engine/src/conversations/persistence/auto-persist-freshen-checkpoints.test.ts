@@ -1,18 +1,3 @@
-// Regression for session 16a8f1c7 (the "approve twice" symptom on
-// connector save). Pre-fix the LLM proposed → probed → asked the user
-// to confirm save WITHOUT calling inspect_connector_draft /
-// validate_connector_draft first. The harness auto-persist path then
-// bounced off saveConnectorAtomic's stale-checkpoint gate
-// (`connector_not_ready`, missing `connector_inspected` /
-// `connector_validated`). The LLM saw the failure, manually freshened
-// the checkpoints, and re-issued save_connector_draft as a tool call
-// — which hit the tool-policy gate (`confirm_before_execution`) and
-// emitted a SECOND ask_user_confirm. The user had to approve twice.
-//
-// Post-fix the auto-persist dispatcher freshens both checkpoints
-// before saveConnectorAtomic, so the operator's first "yes save"
-// click is enough.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -47,9 +32,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// A draft that has been probed (green) but NEVER inspected or
-// validated — exactly the shape the LLM produces when it skips the
-// discipline checkpoints and jumps from probe to ask_user_confirm.
 function probedButUnvalidatedDraft(slug: string): DraftDocument {
   const draft: DraftDocument = {
     mode: "connector_authoring",
@@ -144,12 +126,9 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
     });
 
     expect(dispatch.dispatched).toBe(true);
-    // Pre-fix this was `ok:false` with error_code `connector_not_ready`
-    // because `connector_inspected`+`connector_validated` were stale.
     expect(dispatch.synthetic_result?.ok).toBe(true);
     expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
 
-    // The connector row was actually written.
     const rows = await ctx.db
       .select()
       .from(connectors)
@@ -158,10 +137,6 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
   });
 
   test("auth=none connector with no credential still saves cleanly through one confirmation", async () => {
-    // Sanity: the auto-freshen runs before saveConnectorAtomic, so a
-    // pure no-auth connector (Open-Meteo case from session 16a8f1c7)
-    // should not need ANY second prompt — no credential cache, no
-    // probe replay, no extra elicitation.
     const slug = "freshen-no-auth";
     const { conversation_id, elicitation_id } = await seedConversation(
       probedButUnvalidatedDraft(slug),
@@ -189,7 +164,6 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
     });
 
     expect(dispatch.synthetic_result?.ok).toBe(true);
-    // No credentials should be persisted for an auth=none connector.
     const conn = (
       await ctx.db
         .select()

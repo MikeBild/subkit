@@ -1,8 +1,3 @@
-// The Cockpit addresses the engine hands out. The run list and one run are
-// overlays on Übersicht (`/cockpit?runs=all`, `/cockpit?run=<id>`); an account
-// sign-in is renewed on the connector that uses it. An old address renders
-// "page not found", so every producer has to name the new one.
-
 import { expect, test } from "bun:test";
 import { attentionHref } from "./attention-readers.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";

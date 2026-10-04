@@ -1,8 +1,3 @@
-// Worker for the `skill-candidate.analyze` queue.
-//
-// Runs pattern analysis for a single tenant. Enqueued periodically
-// (every 6 hours) by the scheduler or manually by operators.
-
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
@@ -30,8 +25,6 @@ async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<vo
     tenant_id: data.tenant_id,
   });
   const started = Date.now();
-  // rss baseline around the LLM-heavy pattern analysis, so the success
-  // log attributes the transient to THIS tenant's analysis run.
   const rssBefore = readMemoryUsage().rss;
   try {
     const result = await runPatternAnalysis({ tenant_id: data.tenant_id }, db);

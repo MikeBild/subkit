@@ -1,17 +1,3 @@
-// Audit trail + log correlation — CLI-driven e2e.
-//
-// Proves the full observability chain works from operator to
-// database:
-//   1. Operator runs `sk skills create` via CLI
-//   2. Engine writes a SKILL_CREATED audit row + emits skill.created log
-//   3. Operator runs `sk audit query --action skill.created` and
-//      sees the row with a populated trace_id
-//   4. Operator runs a write → archive → delete lifecycle and observes
-//      4 distinct audit rows, each with a unique trace_id
-//
-// Complements migrate-idempotency.test.ts by exercising the runtime
-// side of the observability story (logs + audit API, both CLI-driven).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,8 +36,6 @@ interface AuditListResponse {
 
 describe("audit trail over CLI", () => {
   test("`sk skills list --json` returns an array", async () => {
-    // The CLI unwraps the engine's `{items: [...]}` envelope and
-    // emits the rows array directly.
     const rows = await runJson<unknown[]>(["skills", "list"], {
       env,
       persona: "admin",
@@ -60,7 +44,6 @@ describe("audit trail over CLI", () => {
   });
 
   test("skill lifecycle (create → update → archive → delete) emits 4 audit rows", async () => {
-    // 1. create
     const file = path.join(tmpdir(), `rt-skill-${TEST_NOW_MS}.json`);
     writeFileSync(
       file,
@@ -76,7 +59,6 @@ describe("audit trail over CLI", () => {
     );
     expect(created.id).toBeDefined();
 
-    // 2. update
     const patchFile = path.join(tmpdir(), `rt-skill-patch-${TEST_NOW_MS}.json`);
     writeFileSync(patchFile, JSON.stringify({ body: "updated by e2e" }));
     await runJson(["skills", "edit", created.id, "--file", patchFile], {
@@ -84,36 +66,27 @@ describe("audit trail over CLI", () => {
       persona: "admin",
     });
 
-    // 3. archive
     await run(["skills", "archive", created.id], { env, persona: "admin" });
 
-    // 4. delete
     await run(["skills", "delete", created.id], { env, persona: "admin" });
 
-    // Query the audit log for this resource via the CLI.
     const audit = await runJson<AuditListResponse>(
       ["audit", "query", "--resource-id", created.id, "--since", "10m", "--limit", "10"],
       { env, persona: "admin" },
     );
 
     const actions = audit.items.map((r) => r.action).sort();
-    // Four lifecycle events expected. Exact lifecycle names may vary —
-    // require the four distinct ones.
     expect(actions.length).toBeGreaterThanOrEqual(4);
     expect(actions).toContain("skill.created");
     expect(actions.some((a) => a.startsWith("skill.updated"))).toBe(true);
     expect(actions).toContain("skill.archived");
     expect(actions).toContain("skill.deleted");
 
-    // Every audit row must carry a populated trace_id — that's what
-    // makes cross-request correlation possible.
     for (const row of audit.items) {
       expect(row.trace_id).toBeTruthy();
       expect(row.trace_id!.length).toBeGreaterThan(0);
     }
 
-    // All four lifecycle events must carry distinct trace_ids
-    // (each was a separate HTTP request).
     const lifecycleRows = audit.items.filter(
       (r) =>
         r.action === "skill.created" ||
@@ -131,15 +104,12 @@ describe("audit trail over CLI", () => {
       { env, persona: "admin" },
     );
     expect(Array.isArray(body.items)).toBe(true);
-    // next_cursor is nullable-or-omitted per the shared contract
     if ("next_cursor" in body) {
       expect(body.next_cursor === null || typeof body.next_cursor === "string").toBe(true);
     }
   });
 
   test("unauthenticated audit-log returns the unified error envelope", async () => {
-    // With a bogus API key the CLI exits non-zero; the formatted
-    // error carries code + message from the shared ErrorEnvelope.
     const result = await cli(["audit", "query"], {
       env,
       persona: "admin",
@@ -147,7 +117,6 @@ describe("audit trail over CLI", () => {
     });
     expect(result.exitCode).not.toBe(0);
     const combined = `${result.stdout}\n${result.stderr}`;
-    // Any error code from the unified envelope proves the error flowed back.
     expect(combined).toMatch(/unauthorized|missing_or_invalid_credentials|trace=/i);
   }, 30_000);
 });

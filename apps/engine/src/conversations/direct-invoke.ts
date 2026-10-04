@@ -1,28 +1,3 @@
-// Direct conversation-tool invocation — the user-driven fast path.
-//
-// The authoring loop's tools are normally dispatched by the model, so
-// every iteration costs an LLM round-trip even when the operator knows
-// exactly which deterministic tool to run next: preview the draft,
-// probe the connector draft, apply a hand-written patch, roll back a
-// snapshot. This module runs ONE conversation tool directly against
-// the conversation's draft — same tool implementation, same gates,
-// same persistence, same draft snapshots — without a model turn.
-//
-// Context coherence is the load-bearing property: the persisted
-// `conversation_tool_calls` row is the same row the loop writes, and
-// the model-message replay (persist.ts `buildModelMessages`) renders
-// every such row as an assistant `tool-call` + `tool-result` pair. A
-// directly-invoked preview is therefore fully visible to the NEXT
-// model turn — the model reads the real step shapes instead of being
-// told about them second-hand.
-//
-// The allowlist is deliberately narrow: draft-scoped, deterministic,
-// elicitation-free tools only. Tenant writes (save_workflow_draft,
-// connector saves, run_workflow) stay behind the conversation loop's
-// confirm gates — this path never weakens write safety. Previews keep
-// their hold-writes contract: `execute_writes` defaults to false in
-// the tool itself.
-
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
@@ -42,11 +17,6 @@ import { checkToolPermission, type ToolPermissionResult } from "./tools/permissi
 import { normalizeToolResultPayload, toolCallOutcome } from "./tools/result-payload.ts";
 import type { DraftDocument } from "./types.ts";
 
-/**
- * Tools invocable without a model turn. Draft-scoped and deterministic;
- * none of them elicit, none of them are `tenant_write`. Everything else
- * must go through the conversation loop where the confirm gates live.
- */
 export const DIRECT_INVOKE_TOOLS: ReadonlySet<string> = new Set([
   "dry_run_workflow",
   "dry_run_step",
@@ -83,21 +53,12 @@ export interface DirectInvokeOutcome {
   ok: boolean;
   tool: string;
   tool_call_id: string;
-  /** Full (untruncated) tool payload — the caller is a client, not the model. */
   data: unknown;
   committed_workflow_id?: string;
-  /** Live-progress lines the tool emitted while running. */
   logs: Array<{ level: "debug" | "info" | "warn" | "error"; message: string; ts: string }>;
-  /** Unified line-diff hunks for draft-mutating tools. */
   diffs: Array<{ title: string; language: "json" | "yaml" | "text"; hunks: unknown[] }>;
 }
 
-/**
- * Run one allowlisted conversation tool directly. Validates args
- * against the tool's own schema, enforces its declarative RBAC gate,
- * persists the same rows the loop would, and snapshots the draft after
- * a successful draft mutation.
- */
 export async function invokeConversationToolDirect(
   p: DirectInvokeParams,
 ): Promise<DirectInvokeOutcome> {
@@ -109,8 +70,6 @@ export async function invokeConversationToolDirect(
       400,
     );
   }
-  // Defense-in-depth alongside the allowlist: a tenant write must never
-  // ride this path even if the allowlist regresses.
   if (tool.category === "tenant_write") {
     throw new DirectInvokeError(
       "tool_not_direct_invocable",
@@ -128,8 +87,6 @@ export async function invokeConversationToolDirect(
     throw new DirectInvokeError("conversation_not_found", "conversation not found", 404);
   }
 
-  // Same guard as appendUserMessage: while an ask_user_* is pending the
-  // draft is mid-decision — resolve the dialog first.
   const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, p.db))
     .filter((elicitation) => elicitation.status === "pending")
     .at(0);
@@ -158,8 +115,6 @@ export async function invokeConversationToolDirect(
   const logs: DirectInvokeOutcome["logs"] = [];
   const diffs: DirectInvokeOutcome["diffs"] = [];
 
-  // Anchor row + tool-call row — identical shape to the loop's wrapper,
-  // so the replay assembler renders this call for the next model turn.
   const assistantMessageId = await appendMessage(
     p.db,
     p.tenant_id,
@@ -210,9 +165,7 @@ export async function invokeConversationToolDirect(
       try {
         const hunks = computeLineDiff(before, after, { context: 3 });
         if (hunks.length > 0) diffs.push({ title, language, hunks });
-      } catch {
-        // Best-effort — never block the tool on a diff failure.
-      }
+      } catch {}
     },
   };
 
@@ -273,8 +226,6 @@ export async function invokeConversationToolDirect(
   });
   await updateToolCallOutput(p.db, toolCallId, resultPayload, toolCallOutcome(result));
 
-  // Draft snapshot after every successful draft mutation — same
-  // rollback contract as the loop path.
   if (result.ok && tool.category === "draft_write") {
     try {
       await createDraftSnapshot(
@@ -298,8 +249,6 @@ export async function invokeConversationToolDirect(
     }
   }
 
-  // Tool-role audit message — keeps the turn trail self-contained in
-  // conversation_messages, exactly like the loop path.
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", {
     tool: tool.name,
     output: resultPayload,

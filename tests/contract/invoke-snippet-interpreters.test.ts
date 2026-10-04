@@ -1,12 +1,3 @@
-// The run snippets, pasted into the interpreters they are written for.
-//
-// `packages/shared` tests the renderer against a model of each language's
-// quoting rules. A model can share the renderer's mistake, so this runs the
-// same hostile input through a real `sh` and a real `python3` and compares what
-// each would send with what was meant. Nothing leaves the machine: `curl` is a
-// shell function that prints its arguments, `requests` a stub module that
-// prints its call.
-
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -18,7 +9,6 @@ const WORKFLOW = "3fb5fc90-1c2d-4e5f-8a6b-7c8d9e0f1a2b";
 const ENGINE = "https://engine.example.com";
 const URL_SENT = `${ENGINE}/v1/executions`;
 const HOSTILE_TEXT = 'it\'s $HOME `id` $(id) \\ back\\slash "quoted" \n tab\t ünï ✓ 😀';
-// Parsed, not written as a literal, so `__proto__` is a key of its own.
 const INPUT = JSON.parse(
   JSON.stringify({ note: HOSTILE_TEXT, "we'ird $key": [true, false, null, 1.5, "'"] }).replace(
     /}$/,
@@ -30,7 +20,6 @@ const EXPECTED = JSON.stringify(invokeRunBody(WORKFLOW, INPUT));
 const available = (command: string): boolean =>
   spawnSync(command, ["--version"], { encoding: "utf8" }).status === 0;
 
-/** The arguments a shell passes to `curl` when it reads `command`. */
 function curlArguments(command: string): string[] {
   const run = spawnSync("sh", ["-c", `curl() { printf '%s\\0' "$@"; }\n${command}`], {
     encoding: "utf8",
@@ -65,7 +54,6 @@ describe("the curl snippet in a real shell", () => {
       "-d",
       EXPECTED,
     ]);
-    // The shell expanded the key placeholder and nothing inside the body.
     expect(args.at(-1)).toContain("$HOME `id` $(id)");
     expect(args.at(-1)).not.toContain("/expanded-home");
   });

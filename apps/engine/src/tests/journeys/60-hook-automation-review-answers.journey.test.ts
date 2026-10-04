@@ -1,17 +1,3 @@
-// User story: As an operator asking the side chat "what needs repairing here?"
-// about a workflow that only a webhook starts, I want an answer — the hook's
-// state as a card, or a written reply — so that the turn never ends in an
-// empty panel.
-// Acceptance criteria:
-//   - AC1: review_workflow_automation reports the workflow's inbound hooks,
-//     each with its hold and the review of its environment, and ends the turn
-//     on a card only because that card has something to show.
-//   - AC2: The refusal reason is audit content: a caller without `audit:read`
-//     sees the hook, never the reason.
-//   - AC3: A workflow nothing starts gets no card; the turn continues, so the
-//     model writes the answer.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

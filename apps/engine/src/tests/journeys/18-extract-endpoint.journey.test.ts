@@ -1,14 +1,3 @@
-// User story: As an operator, I want a one-shot `/v1/extract` endpoint
-// that turns an uploaded file into structured JSON so the chat
-// authoring loop can peek inside a sample before picking a workflow.
-// Acceptance criteria:
-//   - AC1: POST /v1/extract with 1 MB CSV → 200 with parsed rows.
-//   - AC2: POST a 100-row JSON array → 200 with the parsed array.
-//   - AC3: POST YAML → 200 with parsed keys.
-//   - AC4: POST XML → 200 with the parsed tree.
-//   - AC5: POST 101 MB → 413 (payload_too_large).
-// Spec refs: docs/authors/authoring-workflows.md, docs/operators/observability.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EXTRACT_BODY_CAP_BYTES } from "../../http/routes/ai/extract.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -28,9 +17,6 @@ describe("journey 18: /v1/extract endpoint", () => {
     "AC1: 1 MB CSV → 200 with parsed rows",
     async () => {
       const header = "id,name,note\n";
-      // Build a CSV that tips over the 1 MB line. Each row is short so
-      // the body stays predictable and the parser has lots of rows to
-      // walk.
       const baseRow = (i: number) => `${i},name-${i},note-${i}\n`;
       const target = 1 * 1024 * 1024;
       let csv = header;
@@ -52,8 +38,6 @@ describe("journey 18: /v1/extract endpoint", () => {
       };
       expect(body.format).toBe("csv");
       expect(Array.isArray(body.data)).toBe(true);
-      // Parser caps CSV rows at 200 (see ingestFileUpload) only for the
-      // doc ingester path; /v1/extract returns every row.
       expect(body.data.length).toBeGreaterThanOrEqual(i - 1);
       expect(body.data[0]?.name).toBe("name-0");
     },
@@ -115,10 +99,6 @@ describe("journey 18: /v1/extract endpoint", () => {
   test(
     "AC5: body over the 100 MB cap → 413",
     async () => {
-      // Allocate a single synthetic payload that sails past the 100 MB
-      // cap by a few bytes. The middleware's `content-length` gate reads
-      // the header and rejects without touching the body — fetch sets
-      // the header automatically because we pass a real buffer.
       const overhead = '{"sample":""}'.length;
       const padding = "a".repeat(EXTRACT_BODY_CAP_BYTES + 1 - overhead);
       const body = JSON.stringify({ sample: padding });

@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-# Install sk plus the `subkit` compatibility alias from the latest
-# GitHub Release.
-# Usage: curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
-#
-# Everything is wrapped in main() so nothing executes if the download
-# is interrupted mid-stream (best practice from Deno, Bun, rustup).
 
 set -euo pipefail
 
 main() {
   local REPO="mikebild/subkit"
   local INSTALL_DIR="${SUBKIT_INSTALL_DIR:-$HOME/.subkit/bin}"
-
-  # ── Detect platform ──
 
   local OS ARCH
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -28,8 +20,6 @@ main() {
     *)             echo "error: unsupported architecture: $ARCH"; exit 1 ;;
   esac
 
-  # ── Fetch latest release tag ──
-
   echo "Fetching latest release..."
   local LATEST
   LATEST=$(curl --retry 3 --retry-delay 2 -fsSL \
@@ -39,8 +29,6 @@ main() {
     echo "error: could not determine latest release"; exit 1
   fi
   echo "Installing subkit $LATEST for ${OS}/${ARCH}..."
-
-  # ── Download binaries + checksums ──
 
   mkdir -p "$INSTALL_DIR"
   local TMP_DIR
@@ -55,7 +43,6 @@ main() {
     curl --retry 3 --retry-delay 2 -fSL --progress-bar \
       -o "$TMP_DIR/$ASSET" "$URL"
 
-    # Validate file is non-empty
     if [ ! -s "$TMP_DIR/$ASSET" ]; then
       echo "error: downloaded $ASSET is empty"; exit 1
     fi
@@ -69,8 +56,6 @@ main() {
   if [ ! -s "$TMP_DIR/SHA256SUMS" ]; then
     echo "error: SHA256SUMS is empty"; exit 1
   fi
-
-  # ── Verify checksums ──
 
   echo "Verifying checksums..."
   local EXPECTED ACTUAL
@@ -94,15 +79,11 @@ main() {
   done
   echo "Checksums verified."
 
-  # ── Install ──
-
   for BINARY in sk subkit; do
     ASSET="${BINARY}_${OS}_${ARCH}"
     chmod 755 "$TMP_DIR/$ASSET"
     mv "$TMP_DIR/$ASSET" "$INSTALL_DIR/$BINARY"
   done
-
-  # ── macOS ad-hoc codesign ──
 
   if [ "$OS" = "darwin" ]; then
     echo "Signing binaries (macOS)..."
@@ -114,8 +95,6 @@ main() {
 
   echo ""
   echo "Installed sk and compatibility alias subkit to $INSTALL_DIR"
-
-  # ── PATH guidance ──
 
   if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     local SHELL_NAME RC

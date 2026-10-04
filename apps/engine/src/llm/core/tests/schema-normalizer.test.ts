@@ -81,11 +81,6 @@ describe("normalizeSchema", () => {
       },
     });
     const v = (schema.properties as Record<string, Record<string, unknown>>).v!;
-    // Anthropic rejects `oneOf` as an unsupported schema keyword; we
-    // rename to `anyOf` because the wire-format constraint is what
-    // gets validated, and the discriminator is re-checked downstream
-    // when the LLM's repaired args parse through the original Zod
-    // schema.
     expect(v).not.toHaveProperty("oneOf");
     const anyOf = v.anyOf as Array<Record<string, unknown>>;
     expect(anyOf[0]).not.toHaveProperty("patternProperties");
@@ -101,9 +96,6 @@ describe("normalizeSchema", () => {
       },
     });
     const anything = (schema.properties as Record<string, Record<string, unknown>>).anything!;
-    // Anthropic rejects `Empty schema ({})` with `not supported`; we
-    // backfill with a typed placeholder so the structured-output call
-    // does not stall the entire repair loop.
     expect(anything.type).toBe("string");
   });
 

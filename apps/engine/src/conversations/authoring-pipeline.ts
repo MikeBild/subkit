@@ -65,55 +65,15 @@ import { getLastPreview } from "./tools/last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./tools/probed-connectors.ts";
 import type { WorkflowDraftDocument } from "./types.ts";
 
-/** Hard cap on LLM generation passes: the initial generate plus at most
- *  one regenerate with the structural findings appended. Expression
- *  repairs do NOT count against this — they ride recorded-eval's own
- *  bounded (≤2 attempts per finding) repair stage. */
 export const MAX_GENERATION_PASSES = 2;
 
-/** Single wall-clock budget for the WHOLE pipeline — both generate
- *  passes plus recorded-eval's repair fan-out — expressed as one
- *  `AbortSignal.timeout`. Threaded as `signal` into every `invoke()` the
- *  pipeline and its repairs make (each provider call has its own
- *  `LLM_CALL_TIMEOUT_MS` ceiling; this is the aggregate so a serial chain
- *  can't sum past it). On a deadline hit `invoke()` throws a typed
- *  `LlmProviderError`; the pipeline catches it and returns the best draft
- *  it has, never hangs.
- *
- *  DERIVED, not picked: `MAX_GENERATION_PASSES` calls, each entitled to
- *  `LLM_CALL_TIMEOUT_MS`, plus one call's worth of headroom for the
- *  bounded repair fan-out. The previous 120s promised two passes and
- *  funded roughly one and a third: a first pass that legitimately ran
- *  near its own 90s ceiling left the second structurally unable to
- *  finish, and production duly killed one 33s in. A retry budget that
- *  cannot pay for the retry is theatre — the pass runs, burns tokens, and
- *  is guaranteed to be cut off.
- *
- *  The turn that hosts this pipeline is bounded at 10 minutes, so the
- *  aggregate below is not the scarce resource it was treated as. */
 export const PIPELINE_DEADLINE_MS = (MAX_GENERATION_PASSES + 1) * LLM_CALL_TIMEOUT_MS;
 
-/** Per-connector char budget for the ingested-docs excerpt embedded in
- *  the generation prompt. Mirrors the context assembler's discipline of
- *  bounding every section; tuning is a source change, not a knob. */
 const DOCS_EXCERPT_CAP_CHARS = 1_500;
-/** Max doc snippets folded into the excerpt per connector. */
 const DOCS_SNIPPETS_PER_CONNECTOR = 4;
-/** Char budget for the inlined `input_example` JSON. */
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
-/** Max discovered endpoints listed per connector in the authoritative
- *  source-of-truth section. Large specs are truncated with a note; the model
- *  still has `discover_connector_endpoints` for the long tail. */
 const DISCOVERED_ENDPOINTS_PER_CONNECTOR = 40;
 
-/**
- * Render the authoritative "discovered endpoints" prompt section: for every
- * resolved connector that has a cached discovery index, the EXACT method +
- * path + declared request media type the spec documents. This is the
- * grounding the generate flow lacked — without it the model reconstructs
- * routes from its own prior and invents undocumented paths. Returns null
- * when no connector has a discovered spec (the section is then omitted).
- */
 function formatDiscoveredEndpoints(
   connectors: GroundedConnector[],
   discoveredById: Map<string, DiscoveryResult>,
@@ -142,13 +102,6 @@ function formatDiscoveredEndpoints(
   ].join("\n");
 }
 
-/**
- * The authorable subset of `WorkflowDefSchema` the generate flow is
- * constrained to. Steps stay loose records — the full discriminated
- * union is enforced by `validateWorkflowDef` in the EVALUATE stage,
- * whose errors feed the single regenerate pass; a loose generation
- * schema keeps the provider's structured-output contract satisfiable.
- */
 export const GeneratedWorkflowSchema = z.object({
   name: z.string().min(1).max(200),
   slug: z
@@ -175,24 +128,11 @@ export type GeneratedWorkflow = z.infer<typeof GeneratedWorkflowSchema>;
 
 export interface AuthoringPipelineParams {
   ctx: ToolContext;
-  /** The user's goal VERBATIM — quoted into the prompt and stashed on
-   *  the draft for the preview judge. */
   goal: string;
-  /** Connector ids OR slugs (mixed accepted) this workflow will call.
-   *  Resolved tenant-scoped; unknown entries are reported, not
-   *  silently dropped. */
   connector_ids?: string[];
-  /** Concrete example of the workflow input, when the caller has one. */
   input_example?: unknown;
 }
 
-/**
- * Advisory carried on a SUCCESSFUL pipeline result when the second-stage
- * semantic critic fired and rejected the draft. Its `repairs` were
- * already fed back into the bounded generation-repair loop (one grounded
- * regenerate); this record rides the tool result so the conversation
- * loop's `expandPriorFailuresFromToolCalls` can escalate the next turn.
- * Shape mirrors `CriticRejectedDetailsSchema`. */
 export interface CriticRejectionDetail {
   repairs: string[];
   rationale: string;
@@ -205,18 +145,9 @@ export type AuthoringPipelineResult =
       definition: GeneratedWorkflow;
       validation: { ok: boolean; errors: ValidationError[] };
       recorded_eval: RecordedEvalReport;
-      /** LLM generation passes actually spent (1 or 2). */
       attempts: number;
-      /** Connector slugs/ids the caller named that did not resolve. */
       unresolved_connectors: string[];
-      /** Set when the shared pipeline deadline (or turn abort) fired
-       *  mid-generation: the draft below is the best one produced so
-       *  far and the model should refine it from `recorded_eval`'s
-       *  findings rather than expecting a clean artifact. */
       note?: string;
-      /** Set when the gated semantic critic ran and rejected the draft.
-       *  The repairs already drove one regenerate pass; the tool
-       *  surfaces this so the next turn escalates. */
       critic_rejection?: CriticRejectionDetail;
       next: "dry_run_workflow";
     }
@@ -224,10 +155,6 @@ export type AuthoringPipelineResult =
       ok: false;
       error_code: "authoring_generation_failed" | "authoring_connectors_unresolved";
       message: string;
-      /** Set when the failure was the wall-clock budget rather than the
-       *  model. Machine-readable counterpart to `message`, so a caller can
-       *  branch on "retry / split the spec" instead of concluding the tool
-       *  is broken. Absent on a genuine generation failure. */
       deadline_exceeded?: true;
       errors: ValidationError[];
       attempts: number;
@@ -247,8 +174,6 @@ interface GroundedConnector {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Resolve the caller-named connectors (ids or slugs, mixed) to tenant
- *  rows. Tenant isolation lives in the query predicate. */
 async function resolveConnectors(
   ctx: ToolContext,
   refs: string[],
@@ -295,9 +220,6 @@ async function resolveConnectors(
   return { resolved, unresolved };
 }
 
-/** Bounded ingested-docs excerpt per connector — same loader the
- *  context assembler uses (`loadChunks`, top-ranked snippets), bounded
- *  to a fixed char budget so grounding never blows the prompt. */
 async function loadDocsExcerpt(ctx: ToolContext, goal: string, c: GroundedConnector) {
   const chunks = await loadChunks(ctx.tenant_id, c.id, goal, ctx.db);
   const lines: string[] = [];
@@ -312,21 +234,11 @@ async function loadDocsExcerpt(ctx: ToolContext, goal: string, c: GroundedConnec
   return lines;
 }
 
-/**
- * The ONE generation prompt. Quotes the goal verbatim, grounds the
- * model in the resolved connectors + recorded endpoint samples + docs,
- * and states the authoring contracts: the verified JS function-body
- * contract (JS-first transforms), the flattened step shapes with the
- * `$item`-only loop addressing, the string-placeholder grammar, the
- * bulk-endpoint design rule, and the output_schema / trigger guidance.
- */
 export function buildGenerationPrompt(args: {
   goal: string;
   connectors: GroundedConnector[];
   docsByConnector: Map<string, string[]>;
   samplesSection: string | null;
-  /** The authoritative discovered-endpoints section (method+path+media type)
-   *  — the closed set of routes the bound connectors actually expose. */
   discoveredSection?: string | null;
   input_example?: unknown;
   priorFindings?: string[] | null;
@@ -407,12 +319,6 @@ export function buildGenerationPrompt(args: {
     "- `slug` is lowercase-hyphenated and derived from the name; step ids are short snake_case nouns.",
   );
 
-  // Output-format fidelity is grounded by the one-line design rule above. A
-  // richer per-format block was trialed and rolled back: a local A/B (with vs
-  // without it, on a markdown scenario) showed no content_pass difference —
-  // the model already renders the format, and the real fix was surfacing the
-  // FINAL output to the judge + preview, not more generation prose.
-
   if (args.priorFindings && args.priorFindings.length > 0) {
     lines.push(
       "",
@@ -428,9 +334,6 @@ function renderValidationFindings(errors: ValidationError[]): string[] {
   return errors.map((e) => `${e.path}: ${e.message}`);
 }
 
-/** Project a generated definition into the draft-document shape the
- *  authoring critic renders. Mirrors the EMIT block's stash shape so the
- *  critic reviews exactly the artifact the model will preview. */
 function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument {
   return {
     name: def.name,
@@ -453,13 +356,6 @@ function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument 
   };
 }
 
-/** Count consecutive prior `author_workflow` calls whose result carried a
- *  `critic_rejection` advisory, most-recent first. Feeds the critic
- *  gate's anti-loop guard so a conversation stuck on the same semantic
- *  rejection stops paying for the critic. Tenant-scoped; the current
- *  in-flight call's row is not yet written, so this reads strictly prior
- *  rows. One small indexed read per static-clean draft — negligible
- *  beside the pipeline's generation passes. */
 async function countConsecutiveCriticRejections(ctx: ToolContext): Promise<number> {
   const rows = await ctx.db
     .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
@@ -479,36 +375,21 @@ async function countConsecutiveCriticRejections(ctx: ToolContext): Promise<numbe
     if (out && typeof out === "object" && out.critic_rejection !== undefined) {
       streak += 1;
     } else {
-      // First prior author_workflow result WITHOUT a rejection ends the
-      // consecutive streak.
       break;
     }
   }
   return streak;
 }
 
-/**
- * Run the one-shot authoring pipeline. Never fires live HTTP; LLM cost
- * is bounded to `MAX_GENERATION_PASSES` generation calls plus
- * recorded-eval's own bounded repair. On success (including a
- * findings-laden definition) the draft IS stashed; only when no
- * schema-parseable definition materialised at all does the pipeline
- * return `authoring_generation_failed` with nothing stashed.
- */
 export async function runAuthoringPipeline(
   params: AuthoringPipelineParams,
 ): Promise<AuthoringPipelineResult> {
   const { ctx, goal } = params;
 
-  // -------------------------------------------------------------- GROUND
   const { resolved: connectors, unresolved } = await resolveConnectors(
     ctx,
     params.connector_ids ?? [],
   );
-  // Fail fast when the caller named connectors and NONE resolved —
-  // generating against zero grounding when grounding was requested
-  // produces exactly the guessed-shape drafts this pipeline exists to
-  // eliminate. Partial resolution proceeds and reports the misses.
   if ((params.connector_ids?.length ?? 0) > 0 && connectors.length === 0) {
     return {
       ok: false,
@@ -519,18 +400,10 @@ export async function runAuthoringPipeline(
       unresolved_connectors: unresolved,
     };
   }
-  // Live stage progress rides the tool_log channel (ctx.onLog → SSE /
-  // MCP notifications) so the operator watches the pipeline advance
-  // instead of staring at a spinner for the whole deadline window.
   ctx.onLog?.(
     "info",
     `ground · collecting recorded samples, docs and discovered endpoints for ${connectors.length} connector(s)`,
   );
-  // GROUND fetches are independent reads — the probe-shape examples and
-  // every per-connector docs excerpt run concurrently rather than one
-  // connector at a time (a 5-connector goal paid 5× the slowest docs
-  // search serially). Order is reconstructed deterministically below, so
-  // the generation prompt is byte-identical to the sequential version.
   const [samples, docExcerpts, discoveredIndexes] = await Promise.all([
     loadProbeShapeExamples(
       ctx.tenant_id,
@@ -540,10 +413,6 @@ export async function runAuthoringPipeline(
     Promise.all(
       connectors.map(async (c) => ({ id: c.id, excerpt: await loadDocsExcerpt(ctx, goal, c) })),
     ),
-    // The discovered endpoint index per connector — the authoritative route
-    // set the generate flow previously never saw (root cause of invented
-    // paths). Resolved by connector identity, not bare base_url, so an index
-    // cached under an `…/openapi.json` ingestion URL still resolves.
     Promise.all(
       connectors.map(async (c) => ({
         id: c.id,
@@ -559,15 +428,11 @@ export async function runAuthoringPipeline(
   for (const { id, excerpt } of docExcerpts) {
     if (excerpt.length > 0) docsByConnector.set(id, excerpt);
   }
-  // Discovered routes feed BOTH the prompt (authoritative grounding) and the
-  // post-generation membership check (the gate that rejects invented paths).
   const discoveredById = new Map<string, DiscoveryResult>();
   for (const { id, index } of discoveredIndexes) {
     if (index && index.endpoints.length > 0) discoveredById.set(id, index);
   }
   const discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById);
-  // Grounding index for `evaluateEndpointGrounding`, keyed by BOTH connector_id
-  // and slug so a request step bound either way resolves.
   const discoveredEndpointCount = [...discoveredById.values()].reduce(
     (acc, index) => acc + index.endpoints.length,
     0,
@@ -578,20 +443,9 @@ export async function runAuthoringPipeline(
   );
   const groundingIndex = buildGroundingIndex(connectors, discoveredById);
 
-  // ---------------------------------------------------- GENERATE/EVALUATE
-  // One shared deadline for the whole pipeline (generate passes + the
-  // recorded-eval repair fan-out). Merged with the turn's abort signal
-  // when present so the stricter of (turn abort, pipeline deadline)
-  // wins; threaded as `signal` into every nested `invoke()`. A hit
-  // surfaces as a typed `LlmProviderError` out of `invoke()` (P1 maps
-  // abort → provider error), which the loop below catches to degrade
-  // gracefully instead of hanging.
   const deadlineSignal = ctx.abortSignal
     ? AbortSignal.any([ctx.abortSignal, AbortSignal.timeout(PIPELINE_DEADLINE_MS)])
     : AbortSignal.timeout(PIPELINE_DEADLINE_MS);
-  // Wall-clock is the thing being budgeted here, so it is the honest source —
-  // the pass gate below asks "can the next call still finish", which no
-  // injected clock can answer for a real provider call.
   const deadlineStartedAt = Date.now(); // allow-wall-clock
   const msRemaining = (): number =>
     Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
@@ -600,24 +454,10 @@ export async function runAuthoringPipeline(
   let validationErrors: ValidationError[] = [];
   let attempts = 0;
   let priorFindings: string[] | null = null;
-  /** Set when a generate pass aborted on the shared deadline / turn
-   *  signal — the pipeline returns the best draft so far with a clear
-   *  note instead of throwing or hanging. */
   let deadlineExceeded = false;
-  /** The gated semantic critic runs AT MOST once per pipeline call
-   *  (default off). This guard lets a critic-triggered regenerate consume
-   *  one of the existing bounded passes without re-running the critic on
-   *  the regenerated draft. */
   let criticRan = false;
-  /** Set when the critic rejected — surfaced on the successful result so
-   *  the next conversation turn escalates via `prior_failures`. */
   let criticRejection: CriticRejectionDetail | null = null;
 
-  /** The second-stage semantic critic, gated + fail-open. Returns the
-   *  rejection detail plus the repairs rendered as findings (the SAME
-   *  channel the validation loop uses) when the draft should be
-   *  regenerated once more; `null` when the critic is not gated on,
-   *  passed, or produced no actionable repairs. */
   const runCriticGate = async (
     candidate: GeneratedWorkflow,
   ): Promise<{ rejection: CriticRejectionDetail; priorFindings: string[] } | null> => {
@@ -630,9 +470,6 @@ export async function runAuthoringPipeline(
       tenantId: ctx.tenant_id,
     });
     if (!gate.run) return null;
-    // `runCriticAgent` records the run (passed/rejected/fail_open) and
-    // never throws — a provider error or the shared deadline degrades to
-    // a fail-open `passed:true`, so the pipeline never hangs on it.
     const verdict = await runCriticAgent({
       draft: toWorkflowDraftDocument(candidate),
       tenant_id: ctx.tenant_id,
@@ -640,8 +477,6 @@ export async function runAuthoringPipeline(
       signal: deadlineSignal,
     });
     if (verdict.passed || verdict.repairs.length === 0) {
-      // Passed, or rejected with no actionable repairs → nothing to feed
-      // back and no hint to escalate on.
       return null;
     }
     logger.info({
@@ -659,22 +494,12 @@ export async function runAuthoringPipeline(
         rationale: verdict.rationale,
         gating_reason: gate.reason,
       },
-      // Feed the critic's semantic repairs through the SAME findings
-      // channel the validation loop uses, tagged `critic` so the
-      // regenerate prompt lists them under "Findings from the previous
-      // attempt (fix ALL of these)".
       priorFindings: renderValidationFindings(
         verdict.repairs.map((r) => ({ path: "critic", message: r })),
       ),
     };
   };
 
-  // Output-format grounding signal: when the goal names a concrete output
-  // format, the design rule in `buildGenerationPrompt` carries the
-  // fidelity instruction into generation (the on-demand skill loader does
-  // NOT inject the workflow-authoring skill in this single-shot path, so the
-  // rule must live in always-present grounding). Logged once per run when a
-  // format is named — greppable, and silent on plain-data goals.
   const namedOutputFormat = detectNamedOutputFormat(goal);
   if (namedOutputFormat) {
     logger.info({
@@ -692,12 +517,6 @@ export async function runAuthoringPipeline(
       deadlineExceeded = true;
       break;
     }
-    // Refuse to start a pass the remaining budget cannot pay for. Checking
-    // only `aborted` catches a deadline that has already fired, never one
-    // that will fire mid-call — so a pass could start with seconds left,
-    // spend a full prompt, and be cut off with nothing to show. Stopping
-    // here reaches the same outcome without the wasted tokens, and reports
-    // the honest reason instead of an empty result.
     if (pass > 1 && msRemaining() < LLM_CALL_TIMEOUT_MS) {
       deadlineExceeded = true;
       logger.warn({
@@ -751,13 +570,7 @@ export async function runAuthoringPipeline(
         }));
       }
     } catch (err) {
-      // Provider/quota failure: never throw out of the pipeline — the
-      // tool surfaces a typed envelope the model can act on.
       const message = err instanceof Error ? err.message : String(err);
-      // A deadline / turn-abort hit surfaces here as a typed provider
-      // error (P1 maps abort → LlmProviderError). Stop the pipeline and
-      // return what we have — do not burn the second pass re-hitting an
-      // already-blown budget.
       if (deadlineSignal.aborted) {
         deadlineExceeded = true;
         logger.warn({
@@ -784,15 +597,7 @@ export async function runAuthoringPipeline(
     }
 
     if (candidate) {
-      // Strict validation — the one-shot artifact must be complete, so
-      // forward-ref leniency does not apply.
       const validation = validateWorkflowDef(candidate);
-      // Endpoint grounding: reject request steps whose path is not in the
-      // connector's discovered spec (fail-open when no index exists). An
-      // invented path becomes a validation-class finding that triggers the
-      // single regenerate pass with a precise, actionable message — and, if
-      // it survives, rides `validationErrors` to the model so it never reaches
-      // a live preview as a guessed route.
       const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
       const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
         path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
@@ -820,11 +625,6 @@ export async function runAuthoringPipeline(
           : `generate · draft "${candidate.name}" (${candidate.steps.length} steps) — static gates clean`,
       );
       if (validation.ok && grounding.ok) {
-        // Static gates cleared. The second-stage semantic critic (default
-        // off) runs at most once; a rejection feeds its repairs back
-        // through the existing bounded-repair loop as one more grounded
-        // regenerate pass rather than a synthetic critic_rejected tool
-        // result. The critic invoke shares the pipeline deadline.
         if (!criticRan && !deadlineSignal.aborted) {
           criticRan = true;
           const critic = await runCriticGate(candidate);
@@ -841,25 +641,12 @@ export async function runAuthoringPipeline(
         break;
       }
     } else if (!definition) {
-      // No definition materialised yet — surface this pass's errors.
       validationErrors = passErrors;
     }
-    // Structural/validation failure → exactly one regenerate pass with
-    // the findings appended; the loop bound enforces the hard cap.
     priorFindings = renderValidationFindings(passErrors);
   }
 
   if (!definition) {
-    // Name the actual reason. The success path already reports a blown time
-    // budget honestly (see the `note` below); this path used to blame the
-    // model unconditionally — "produced no schema-parseable definition" — even
-    // when `deadlineExceeded` was set and the generation had simply been cut
-    // off mid-flight. Production consequence, observed: the caller believed
-    // the tool was broken, invented tool names that do not exist, started an
-    // unrelated connector draft, and finally abstained via `cannot_help`
-    // claiming `author_workflow` was "not available in this MCP surface" —
-    // after having called it successfully in the same turn. That detour cost
-    // 858k tokens. A wrong reason is more expensive than no reason.
     return {
       ok: false,
       error_code: "authoring_generation_failed",
@@ -873,10 +660,6 @@ export async function runAuthoringPipeline(
     };
   }
 
-  // Recorded evaluation with the bounded repair stage armed — compile
-  // + evaluation against recorded evidence only, zero egress. Findings
-  // (and verified repair proposals) ride the result; the draft below is
-  // stashed regardless so the model repairs from findings.
   ctx.onLog?.(
     "info",
     `evaluate · compiling and evaluating ${definition.steps.length} step(s) against recorded evidence (bounded repair armed)`,
@@ -900,32 +683,10 @@ export async function runAuthoringPipeline(
       input: lastPreview?.input ?? currentDraft.latest_preview?.input ?? null,
       probedConnectorSlugs,
     },
-    // Repair shares the pipeline deadline: an aborted repair `invoke()`
-    // degrades to `{ repaired: false }` inside recorded-eval, so the
-    // pipeline never hangs on the fan-out. If the deadline already fired
-    // during generation, arm repair WITHOUT a signal-less budget — the
-    // already-aborted signal makes every repair invoke fail fast, which
-    // recorded-eval absorbs, leaving the findings intact for the model.
     { repair: { tenant_id: ctx.tenant_id, db: ctx.db, signal: deadlineSignal } },
   );
-  // A deadline hit DURING the repair fan-out (not only during generation)
-  // must also surface the time-budget note — else the
-  // model gets findings with no signal that time ran out mid-repair.
   if (deadlineSignal.aborted) deadlineExceeded = true;
 
-  // --- Preserve an existing trigger on EDIT (webhook-binding safety) ---
-  // `author_workflow` regenerates the WHOLE definition from the goal. When
-  // the conversation is EDITING an already-saved workflow, the draft was
-  // hydrated from the current version, so `currentDraft.workflow.trigger`
-  // carries the live trigger. A goal that doesn't restate the trigger makes
-  // the model emit a definition with NO trigger — which commits as the
-  // implicit `{ kind: "request" }` and, via `applyTriggerBindings`, DELETES
-  // the reverse-bound `webhooks_inbound` row (the public ingress hook),
-  // silently breaking a live webhook. So: when the regenerated definition
-  // OMITS a trigger but the workflow being edited HAS one, carry the existing
-  // trigger forward. An explicitly regenerated trigger (e.g. a schedule the
-  // goal phrases) is respected — this only fills the gap left by omission,
-  // and the same-slug guard is what keeps this scoped to a genuine edit.
   const existingTrigger = currentDraft.workflow?.trigger;
   const editingSameSlug =
     existingTrigger !== undefined && currentDraft.workflow?.slug === definition.slug;
@@ -942,12 +703,6 @@ export async function runAuthoringPipeline(
     definition.trigger = existingTrigger;
   }
 
-  // ----------------------------------------------------------------- EMIT
-  // Stash as the conversation draft. Goal + connector ids ride the
-  // draft as metadata (draft-only keys, same stash shape as
-  // `build_workflow({ goal })`; the validator ignores them until commit
-  // strips the draft down to its WorkflowDef shape). The goal feeds the
-  // post-preview judge.
   const workflowDraft = toWorkflowDraftDocument(definition);
   const extra: Record<string, unknown> = {
     goal,
@@ -955,16 +710,6 @@ export async function runAuthoringPipeline(
   };
   const merged = { ...workflowDraft, ...extra } as WorkflowDraftDocument;
   const nextDraft = withWorkflowDraft(currentDraft, merged, "workflow_authored_one_shot");
-  // Stamp the grounding this draft was built on (a hash of the discovered
-  // endpoint projection, not the data) so `/context` can flag it stale at
-  // resume when the connector schema has since changed. The connector set is
-  // stored alongside on AuthoringState — NOT on the workflow draft, whose
-  // normalize allowlist strips unknown fields — so the snapshot recompute can
-  // re-read the discovery index for exactly these connectors. Only the
-  // connectors that actually CONTRIBUTED endpoints to the fingerprint are
-  // stored: a connector that had no index here must not later read as `stale`
-  // simply because it GAINED one. Fail-open: a null fingerprint means no
-  // advisory.
   const groundingFp = groundingFingerprint(groundingIndex);
   if (groundingFp && nextDraft.state) {
     nextDraft.state.grounding_fingerprint = groundingFp;

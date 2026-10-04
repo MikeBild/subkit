@@ -1,12 +1,3 @@
-// Integration tests for per-user LLM token accounting:
-//   - recordUsage persists user_id + actor_type; defaults to null/'system'.
-//   - monthlyUsageForUser returns correct per-user sums; other-user rows
-//     are excluded; cross-tenant rows are excluded (tenant isolation).
-//   - resolveUserMonthlyBudget reads per-user budget; null when absent.
-//   - checkAndDecrement per-user cap: user cap trips with scope='user';
-//     tenant cap trips with scope='tenant'; user_id=null → only tenant
-//     applies; tighter-of-two wins.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,8 +64,6 @@ afterEach(async () => {
   await testDb.db.delete(llmUsage);
   await testDb.db.delete(userLlmSettings);
   await testDb.db.delete(tenantLlmSettings);
-  // The tenant cap is config now, not a row — clearing the table no longer
-  // clears it, and a leaf left set would silently cap the next test.
   await setConfigKey("tokens.monthly_budget", 0, { tenantId, force: true });
 }, 30_000);
 
@@ -229,7 +218,6 @@ describe.skipIf(skip)("monthlyUsageForUser — per-user sums and isolation", () 
 
   test("cross-tenant isolation — another tenant's rows for same user_id are not counted", async () => {
     const bucket = currentMonthBucket();
-    // Seed a row for USER_A under the other tenant.
     await testDb.db.insert(llmUsage).values({
       tenant_id: otherTenantId,
       flow: "converse",
@@ -247,7 +235,6 @@ describe.skipIf(skip)("monthlyUsageForUser — per-user sums and isolation", () 
     });
 
     const usage = await monthlyUsageForUser(tenantId, USER_A, testDb.db);
-    // tenantId has no rows for USER_A yet; cross-tenant row must not appear.
     expect(usage).toBe(0);
   });
 
@@ -275,7 +262,6 @@ describe.skipIf(skip)("resolveUserMonthlyBudget — per-user budget reads", () =
   });
 
   test("cross-tenant isolation — another tenant's user_llm_settings row is not returned", async () => {
-    // Seed a budget for USER_A under the other tenant.
     await testDb.db.insert(userLlmSettings).values({
       tenant_id: otherTenantId,
       user_id: USER_A,
@@ -302,20 +288,17 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   test("user cap trips with scope=user when user usage exceeds per-user budget", async () => {
     const bucket = currentMonthBucket();
 
-    // Seed tenant budget (large, so tenant cap does not trip first).
     await setConfigKey("tokens.monthly_budget", 100_000, {
       tenantId,
       force: true,
     });
 
-    // Per-user budget: 500.
     await testDb.db.insert(userLlmSettings).values({
       tenant_id: tenantId,
       user_id: USER_A,
       llm_monthly_token_budget: 500,
     });
 
-    // Pre-seed 490 tokens for the user.
     await testDb.db.insert(llmUsage).values({
       tenant_id: tenantId,
       flow: "converse",
@@ -332,7 +315,6 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
       month_bucket: bucket,
     });
 
-    // Projecting 20 more tokens pushes user over 500.
     const verdict = await checkAndDecrement(tenantId, 20, testDb.db, USER_A);
     expect(verdict.ok).toBe(false);
     expect(verdict.scope).toBe("user");
@@ -344,15 +326,11 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   test("tenant cap trips with scope=tenant when tenant usage exceeds tenant budget", async () => {
     const bucket = currentMonthBucket();
 
-    // Tenant budget: 1000.
     await setConfigKey("tokens.monthly_budget", 1000, {
       tenantId,
       force: true,
     });
 
-    // No per-user budget.
-
-    // Pre-seed 990 tokens for the tenant (attributed to USER_A but no user cap).
     await testDb.db.insert(llmUsage).values({
       tenant_id: tenantId,
       flow: "converse",
@@ -369,7 +347,6 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
       month_bucket: bucket,
     });
 
-    // Projecting 20 more tokens pushes tenant over 1000.
     const verdict = await checkAndDecrement(tenantId, 20, testDb.db, USER_A);
     expect(verdict.ok).toBe(false);
     expect(verdict.scope).toBe("tenant");
@@ -378,13 +355,11 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   test("user_id=null — only tenant budget applies", async () => {
     const bucket = currentMonthBucket();
 
-    // Tenant budget: 500.
     await setConfigKey("tokens.monthly_budget", 500, {
       tenantId,
       force: true,
     });
 
-    // Pre-seed 490 tokens (no user_id).
     await testDb.db.insert(llmUsage).values({
       tenant_id: tenantId,
       flow: "converse",
@@ -399,7 +374,6 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
       month_bucket: bucket,
     });
 
-    // No user_id passed → only tenant cap applies. 490 + 20 > 500.
     const verdict = await checkAndDecrement(tenantId, 20, testDb.db, null);
     expect(verdict.ok).toBe(false);
     expect(verdict.scope).toBe("tenant");
@@ -408,20 +382,17 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   test("tighter-of-two wins — user cap is lower than tenant cap → user cap trips", async () => {
     const bucket = currentMonthBucket();
 
-    // Tenant budget: 10_000 (generous).
     await setConfigKey("tokens.monthly_budget", 10_000, {
       tenantId,
       force: true,
     });
 
-    // User budget: 200 (tight).
     await testDb.db.insert(userLlmSettings).values({
       tenant_id: tenantId,
       user_id: USER_A,
       llm_monthly_token_budget: 200,
     });
 
-    // Pre-seed 195 tokens for USER_A.
     await testDb.db.insert(llmUsage).values({
       tenant_id: tenantId,
       flow: "converse",
@@ -438,7 +409,6 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
       month_bucket: bucket,
     });
 
-    // Projecting 10 more tokens pushes user over 200 but tenant is fine.
     const verdict = await checkAndDecrement(tenantId, 10, testDb.db, USER_A);
     expect(verdict.ok).toBe(false);
     expect(verdict.scope).toBe("user");
@@ -448,20 +418,17 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   test("ok=true when both tenant and user budgets have headroom", async () => {
     const bucket = currentMonthBucket();
 
-    // Tenant budget: 10_000.
     await setConfigKey("tokens.monthly_budget", 10_000, {
       tenantId,
       force: true,
     });
 
-    // User budget: 1_000.
     await testDb.db.insert(userLlmSettings).values({
       tenant_id: tenantId,
       user_id: USER_A,
       llm_monthly_token_budget: 1_000,
     });
 
-    // Only 100 tokens used so far.
     await testDb.db.insert(llmUsage).values({
       tenant_id: tenantId,
       flow: "converse",
@@ -484,7 +451,6 @@ describe.skipIf(skip)("checkAndDecrement — per-user budget enforcement", () =>
   });
 
   test("unlimited tenant (null budget) with no user budget → always ok", async () => {
-    // No tenant_llm_settings row → null budget.
     const verdict = await checkAndDecrement(tenantId, 99_999, testDb.db, USER_A);
     expect(verdict.ok).toBe(true);
     expect(verdict.budget).toBeNull();

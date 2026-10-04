@@ -1,4 +1,3 @@
-// Controlled S3 listing: every page crosses the same authority and egress gates.
 import type { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { parseXmlBody } from "../../utils/xml-parser.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";

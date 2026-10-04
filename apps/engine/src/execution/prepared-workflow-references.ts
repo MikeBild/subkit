@@ -15,10 +15,6 @@ import {
   preparedReferenceRefusalMessage,
 } from "./connector-availability.ts";
 
-/** Metadata-only, execution-wide baseline for a prepared single-run decision.
- * Include references in transforms and earlier reads, not just the eventual
- * write. The runtime proof and dispatch recheck use the same finite set.
- * No token is decrypted and no OAuth exchange is started here. */
 export async function capturePreparedWorkflowReferences(
   db: Executor,
   tenant: string,
@@ -37,8 +33,6 @@ export async function capturePreparedWorkflowReferences(
       environment,
       reason,
     });
-  // Which step first needs each reference, so a refusal can name it. The
-  // reference set itself does not depend on this.
   const ids = new Map<string, string | null>();
   const slugs = new Map<string, { credential: boolean; step_id: string | null }>();
   function walk(value: unknown, step_id: string | null): void {
@@ -64,13 +58,9 @@ export async function capturePreparedWorkflowReferences(
     }
     if (ids.size + slugs.size > 1000) refuse("too_many_references", { step_id });
   }
-  // Step by step so a refusal knows its step; then everything outside the
-  // steps (an output transform can reference a connector too).
   for (const step of definition.steps) walk(step, step.id);
   walk({ ...definition, steps: [] }, null);
   const selected = new Map<string, boolean>();
-  // Keyed by the connector resolved in this environment — the twin, not the
-  // authored id — so the refusal names the connector that has to be fixed.
   const stepFor = new Map<string, string | null>();
   for (const [id, step_id] of [...ids].sort(([a], [b]) => a.localeCompare(b))) {
     const system = await loadConnectorSystem(tenant, id, environment, db);

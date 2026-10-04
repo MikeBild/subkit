@@ -1,9 +1,3 @@
-// What the line under a conversation title is allowed to say.
-//
-// Every part of it has to earn its place: a source the reader cannot learn
-// anything from, or their own name, is noise on a line that is read once per
-// conversation and never acted on.
-
 import { describe, expect, test } from "bun:test";
 import { formatShortRelativeTime } from "@/lib/i18n";
 import { originLine } from "./chat";

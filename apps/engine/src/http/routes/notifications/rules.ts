@@ -1,11 +1,3 @@
-// Notification rules — REST surface.
-//
-//   GET    /v1/notifications/rules
-//   POST   /v1/notifications/rules
-//   PATCH  /v1/notifications/rules/{id}
-//   DELETE /v1/notifications/rules/{id}
-//   POST   /v1/notifications/rules/:id/test
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -209,10 +201,6 @@ export function registerRuleRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/notifications/rules/:id/test", async (c, next) => {
     const id = c.req.param("id");
     if (c.req.method === "POST") {
-      // `:write` rather than `:read` because dispatching a synthetic
-      // event causes a real outbound delivery (and a real audit row);
-      // operators that only have read access should not be able to
-      // trigger external messages.
       return requirePermission("notification:write", () => ({ type: "notification_rule", id }))(
         c,
         next,
@@ -365,11 +353,6 @@ export function registerRuleRoutes(app: OpenAPIHono<AppEnv>): void {
     const result = await dispatchEvent(
       {
         db,
-        // No adapter resolver: tests must not send real platform
-        // messages by default. Operators that wire a registry-backed
-        // resolver into the router can pass it through here in a
-        // follow-up. The dispatch still records the would-be delivery
-        // row and audit entry, so the test result is meaningful.
       },
       event,
     );

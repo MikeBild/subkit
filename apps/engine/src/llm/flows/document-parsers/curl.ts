@@ -1,7 +1,3 @@
-// Minimal curl-command parser. Extracts URL, method, headers, and body
-// well enough to seed a connector draft. Not a full curl emulator — edge
-// cases like --config files or multi-part form uploads are out of scope.
-
 export interface CurlExtract {
   url: string;
   method: string;

@@ -1,14 +1,3 @@
-// Verifies the settings deep-links route through openPane
-// with the right SettingsModal initialTab.
-//
-// /config → { kind: "settings", initialTab: "Config" }
-// /usage  → { kind: "settings", initialTab: "Usage" }
-// /skills → { kind: "settings", initialTab: "Skills" }   (was text-panify)
-// /knowledge → { kind: "settings", initialTab: "Knowledge" } (was text-panify)
-//
-// The legacy 4-field /config form moved to /config-form (covered in
-// `slash-config-deeplink.test.ts`).
-
 import { describe, expect, test } from "bun:test";
 import type { PaneSpec, SlashHandlerContext } from "../repl/slash/handler.ts";
 import { dispatchInspectSlash } from "../repl/slash/handlers/inspect.ts";
@@ -54,7 +43,6 @@ describe("Slash deep-links → SettingsModal", () => {
     expect(result).toBeNull();
     expect(panes.length).toBe(1);
     expect(panes[0]?.kind).toBe("permissions");
-    // Critical: NOT a settings pane.
     expect(panes[0]).not.toEqual({ kind: "settings", initialTab: "Permissions" });
   });
 
@@ -64,7 +52,6 @@ describe("Slash deep-links → SettingsModal", () => {
     expect(result).toBeNull();
     expect(panes.length).toBe(1);
     expect(panes[0]?.kind).toBe("admin");
-    // Critical: NOT a settings pane.
     expect(panes[0]).not.toEqual({ kind: "settings", initialTab: "Admin" });
   });
 

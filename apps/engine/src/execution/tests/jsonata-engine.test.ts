@@ -1,7 +1,3 @@
-// Tests for the JSONataEngine wrapper: compile cache, structured
-// errors with caret, parseDeps regex extractor, extractAst guard,
-// flattenBindings shape.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   _resetCacheForTests,
@@ -48,8 +44,6 @@ describe("structured errors", () => {
   });
 
   test("evaluation errors also wrap as JSONataError", async () => {
-    // $sum requires an array; calling it on a string raises a type
-    // error inside JSONata which the wrapper rewraps.
     let caught: unknown;
     try {
       await evaluate("$sum($)", "not-an-array");
@@ -60,12 +54,6 @@ describe("structured errors", () => {
   });
 
   test("formatError coerces an object-shaped .message instead of '[object Object]'", () => {
-    // Regression: production logs (executions ef957eab + b8ae30b2 on
-    // 2026-05-27) showed `error:"[object Object]"` from
-    // `step.transform.error`. Root cause: JSONata can throw a value whose
-    // `.message` is itself an object, and `${baseMessage}` then coerced to
-    // the literal string `"[object Object]"`. Now coerced via JSON.stringify
-    // so the LLM author sees something diagnostic.
     const wrapped = formatError({ message: { code: "T9999", detail: "boom" } }, "$.foo");
     expect(wrapped).toBeInstanceOf(JSONataError);
     expect(wrapped.message).not.toContain("[object Object]");

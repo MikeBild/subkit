@@ -1,11 +1,6 @@
-// Self-healing surfaces of the engine client: the operator health
-// digest, patch candidates, and self-healing scans. Method group merged
-// into `EngineClient` by `../engine-client.ts`.
-
 import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 
-// Operator health digest — mirrors apps/engine/src/operator/health-digest.ts.
 export type FailureOrigin = "authoring" | "manual" | "scheduled" | "mixed";
 export interface DigestFailureGroup {
   signature: string;
@@ -15,16 +10,8 @@ export interface DigestFailureGroup {
   error_code: string | null;
   origin: FailureOrigin;
   count: number;
-  /**
-   * How many of these runs the scheduler started. `origin` collapses to
-   * "mixed" once a group holds more than one kind, so it cannot answer this.
-   */
   scheduled_count: number;
   last_seen: string;
-  /**
-   * The workflow's most recent clean run on its own schedule, when that run is
-   * newer than the group's last failure; null while the cause is live.
-   */
   resolved_at: string | null;
   cause: string;
   guidance: string | null;
@@ -46,7 +33,6 @@ export interface RiskSignal {
   value: number;
   threshold: number;
 }
-/** One thing that needs the reader now — mirrors `AttentionItem` (attention.v1). */
 export interface AttentionItem {
   id: string;
   class: "stopped" | "failing" | "decide";
@@ -70,22 +56,14 @@ export interface OperatorHealthDigest {
   window_hours: number;
   headline: string;
   failure_groups: DigestFailureGroup[];
-  /** `open`: exact count of proposed AND reviewable candidates; `items` is capped. */
   patch_candidates: { open: number; items: DigestPatch[] };
   risk: RiskSignal[];
-  /** What needs the reader now; `headline` and `all_clear` are rendered from it. */
   attention: DigestAttention;
   rendered: string;
   all_clear: boolean;
 }
 
 export const selfHealingMethods = {
-  // -------------------- Operator --------------------
-  /**
-   * Deterministic operator health digest — failed runs grouped by root
-   * cause + tagged by origin, plus open self-healing fixes. The REPL
-   * renders this as a colored first assistant turn at startup.
-   */
   getOperatorHealthDigest(
     this: EngineClient,
     query: { window_hours?: number } = {},
@@ -98,7 +76,6 @@ export const selfHealingMethods = {
     ) as Promise<OperatorHealthDigest>;
   },
 
-  // -------------------- Patch Candidates --------------------
   listPatchCandidates(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -138,7 +115,6 @@ export const selfHealingMethods = {
     return this.request("POST", `/v1/patch-candidates/${encodeURIComponent(id)}/reject`, body);
   },
 
-  // -------------------- Self-Healing Scans --------------------
   triggerSelfHealingScan(
     this: EngineClient,
     body: { workflow_id?: string; connector_id?: string } = {},

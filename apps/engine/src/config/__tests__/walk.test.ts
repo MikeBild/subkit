@@ -1,7 +1,3 @@
-// Unit tests for the schema walker. Asserts every leaf in ConfigSchema
-// resolves to a non-null kind so the form driver, masker, and doc
-// generator have full coverage.
-
 import { describe, expect, test } from "bun:test";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
@@ -59,11 +55,8 @@ describe("listConfigLeaves", () => {
     );
     expect(tenantPaths.has("llm.provider")).toBe(true);
     expect(tenantPaths.has("llm.api_key")).toBe(true);
-    // Global, not tenant: it becomes a pg-boss worker option at boot, and one
-    // shared worker cannot honour a per-tenant number.
     expect(tenantPaths.has("queue.concurrency")).toBe(false);
     expect(tenantPaths.has("tokens.monthly_budget")).toBe(true);
-    // Negative: server.port is global-only.
     expect(tenantPaths.has("server.port")).toBe(false);
   });
 });

@@ -62,8 +62,6 @@ async function fixture(dynamic = false) {
     const preview = await inspect();
     expect(preview.eligible_for_repeated_runs).toBe(true);
     const now = await databaseNow(db);
-    // Exact static fixture authority; browser human-consent semantics are
-    // independently covered by grant service tests. No production mutation.
     await db.insert(workflowExecutionAuthorities).values({
       tenant_id: ctx.tenantId,
       workflow_id: wf.workflow_id,
@@ -132,7 +130,6 @@ test("held preview records fixed item evidence without publishing or creating a 
     expect(extras?.content_revision_proposal).toEqual({ origin, item_id: item, bytes: 17 });
     expect(extras?.content_revision_receipt).toBeUndefined();
     expect(writes).toBe(0);
-    // Evidence alone cannot grant repeated writes or resolve a decision.
     const review = await f.inspect();
     expect(review.eligible_for_repeated_runs).toBe(true);
     await expect(

@@ -53,7 +53,6 @@ describe("mcp tools/call", () => {
     const parsed = JSON.parse(content[0]!.text) as { hello: string };
     expect(parsed.hello).toBe("world");
 
-    // An executions row should have been materialized for the tenant.
     const rows = await suite.http.db
       .select({ c: count() })
       .from(executions)
@@ -155,7 +154,6 @@ describe("mcp tools/call", () => {
     }
   }, 10_000);
 
-  // A client annotation is not server-verifiable execution authority.
   test("a wf_* run without authority reads but holds writes and reports preparation", async () => {
     const hits: string[] = [];
     const writeMock = await createMockServer((req, res) => {
@@ -210,9 +208,6 @@ describe("mcp tools/call", () => {
         .where(eq(executions.workflow_id, wf.id));
       expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
 
-      // The refusal and the held run that replaced it are one event. A row
-      // that named only the refusal would read as "the call was stopped",
-      // while a preparation under an id nobody could join then succeeded.
       const refusals = await suite.http.db
         .select()
         .from(auditLog)
@@ -224,8 +219,6 @@ describe("mcp tools/call", () => {
         );
       expect(refusals).toHaveLength(1);
       expect(refusals[0]?.result).toBe("denied");
-      // The fixture has no grant at all, which is "unavailable" — pinned
-      // exactly, so a change in which code that case reports is visible here.
       expect(refusals[0]?.reason).toBe("execution_authority_unavailable");
       const metadata = refusals[0]?.metadata as Record<string, unknown>;
       expect(metadata.stage).toBe("admission");
@@ -236,15 +229,7 @@ describe("mcp tools/call", () => {
     }
   });
 
-  // Affordance regression guard: when a workflow tool result exceeds
-  // MCP_OFFLOAD_CHAR_CAP (20 KB), the engine MUST return a native
-  // `resource_link` content block so MCP clients can auto-fetch the
-  // body via `resources/read`. The previous text-encoded JSON envelope
-  // forced LLM agents to parse a URI out of a string field, which they
-  // rarely did — an agent would get an offloaded large page back as an
-  // unreachable pointer until this contract was fixed.
   test("offloads large results as a resource_link content block (not a text envelope)", async () => {
-    // Build a payload that will reliably exceed MCP_OFFLOAD_CHAR_CAP (20 KB).
     const big = "x".repeat(30_000);
     const bigMock = await createMockServer((_req, res) => {
       jsonResponse(res, 200, { blob: big });
@@ -270,7 +255,6 @@ describe("mcp tools/call", () => {
       expect(result.isError).toBeFalsy();
       const content = result.content as Array<Record<string, unknown>>;
 
-      // Exactly two blocks: a brief text summary, then the resource_link.
       expect(content.length).toBe(2);
       const textBlock = content[0] as { type: string; text: string };
       expect(textBlock.type).toBe("text");
@@ -286,12 +270,11 @@ describe("mcp tools/call", () => {
       };
       expect(link.type).toBe("resource_link");
       expect(link.uri).toMatch(/^(fixture|s3):\/\//);
-      expect(link.name).toContain("call-offload"); // wf_call-offload
+      expect(link.name).toContain("call-offload");
       expect(link.mimeType).toBe("application/json");
       expect(typeof link.size).toBe("number");
       expect((link.size ?? 0) > 30_000).toBe(true);
 
-      // Round-trip: read the resource and confirm the body is intact.
       if (link.uri.startsWith("fixture://")) {
         const read = await client.readResource({ uri: link.uri });
         expect(read.contents.length).toBe(1);
@@ -299,7 +282,6 @@ describe("mcp tools/call", () => {
         expect(body.blob.length).toBe(big.length);
       }
 
-      // Executions row was materialized.
       const rows = await suite.http.db
         .select({ c: count() })
         .from(executions)
@@ -310,10 +292,6 @@ describe("mcp tools/call", () => {
     }
   });
 
-  // C1 — MCP 2025-11-25 tools §Output Schema: when a workflow declares an
-  // `output_schema` AND the run is a clean (non-preview) success with an
-  // object output, tools/call MUST return `structuredContent` mirroring
-  // the output. The text content block is always present (back-compat SHOULD).
   test("C1: workflow with output_schema returns structuredContent on clean success", async () => {
     await suite.seedWorkflow({
       name: "structured output probe",
@@ -326,8 +304,6 @@ describe("mcp tools/call", () => {
         {
           kind: "transform",
           id: "shape",
-          // Transform-only workflow: no write steps → hold_writes produces no
-          // held steps → isHeldPreview = false → structuredContent is emitted.
           expression: "return { result: 'hello-structured' };",
           language: "javascript",
         },
@@ -339,11 +315,9 @@ describe("mcp tools/call", () => {
       arguments: {},
     });
     expect(result.isError).toBeFalsy();
-    // Text block is always present for back-compat.
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content.length).toBeGreaterThanOrEqual(1);
     expect(content[0]?.type).toBe("text");
-    // structuredContent mirrors the workflow output object.
     expect(result.structuredContent).toBeDefined();
     expect((result.structuredContent as { result?: string })?.result).toBe("hello-structured");
   });
@@ -352,7 +326,6 @@ describe("mcp tools/call", () => {
     await suite.seedWorkflow({
       name: "no schema probe",
       slug: "no-schema-probe",
-      // No output_schema declared → structuredContent must be absent.
       steps: [
         {
           kind: "transform",
@@ -365,14 +338,10 @@ describe("mcp tools/call", () => {
     const client = await suite.connect();
     const result = await client.callTool({ name: "wf_no-schema-probe", arguments: {} });
     expect(result.isError).toBeFalsy();
-    // No output_schema → no structuredContent at all.
     expect(result.structuredContent).toBeUndefined();
   });
 
   test("C1: offloaded result (>20KB) does not carry structuredContent even with output_schema", async () => {
-    // The offload path returns a resource_link; it intentionally omits
-    // structuredContent to avoid inlining a multi-KB object. This guards the
-    // off-ramp so the engine never emits both a resource_link AND structuredContent.
     const big = "x".repeat(30_000);
     const bigSchemaWfMock = await createMockServer((_req, res) => {
       jsonResponse(res, 200, { blob: big });
@@ -397,7 +366,6 @@ describe("mcp tools/call", () => {
       const client = await suite.connect();
       const result = await client.callTool({ name: "wf_call-schema-offload", arguments: {} });
       expect(result.isError).toBeFalsy();
-      // Offloaded path: resource_link present, structuredContent absent.
       const content = result.content as Array<Record<string, unknown>>;
       expect(content.some((c) => c.type === "resource_link")).toBe(true);
       expect(result.structuredContent).toBeUndefined();
@@ -406,15 +374,7 @@ describe("mcp tools/call", () => {
     }
   });
 
-  // B3 — Deliberate protocol deviation: subkit returns isError:true RESULTS
-  // (not -32602 protocol errors) for unknown tools. This lets the LLM agent
-  // observe the error text and self-correct without aborting the tool-call
-  // chain. Consistent with the -32000 init-params decision in
-  // streamable-http-jsonrpc.test.ts; both are intentional deviations from
-  // the spec recommendation.
   test("B3 (deviation pin): unknown tool name returns isError:true result, not a -32602 protocol error", async () => {
-    // A -32602 would throw in the SDK client; isError:true does NOT throw.
-    // That means the model receives the error as content and can self-correct.
     const client = await suite.connect();
     const result = await client.callTool({
       name: "totally_unknown_xyzzy_tool",
@@ -430,9 +390,6 @@ describe("mcp tools/call", () => {
       arguments: {},
     });
     expect(result.isError).toBe(true);
-    // W4.5 anti-spiral: the dead-end is a structured, terminal envelope
-    // naming the recovery path — not a bare "workflow not found" string a
-    // client can loop on.
     const content = result.content as Array<{ type: string; text: string }>;
     const body = JSON.parse(content[0]!.text) as {
       status: string;

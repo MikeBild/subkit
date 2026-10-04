@@ -1,10 +1,3 @@
-// Worker for the `agent-session.analyze` queue.
-//
-// The job payload carries a coding-agent session transcript sample plus
-// metadata. The handler distills learning candidates via the extract
-// flow (agent/sessions.ts); every result is a `proposed` skill
-// candidate — nothing goes live without the human gate.
-
 import type { Job, PgBoss } from "pg-boss";
 import { analyzeAgentSession } from "../../agent/sessions.ts";
 import type { Db } from "../../db/client.ts";
@@ -27,8 +20,6 @@ export interface RegisterAgentSessionAnalyzeOptions {
   db: Db;
 }
 
-/** Process one `agent-session.analyze` job. Exported as the unit seam —
- *  the worker loop below and the DB-backed tests both drive it. */
 export async function processAgentSessionAnalyzeJob(
   job: Job<AgentSessionAnalyzeJob>,
   db: Db,

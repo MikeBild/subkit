@@ -1,9 +1,3 @@
-// The four states a read can be in, decided once.
-//
-// Several pages asked only "pending?" and then rendered rows, so a failed read
-// fell through to the empty state: nobody was a member, nothing was
-// configured, a conversation that could not be opened looked like a new one.
-
 import { describe, expect, test } from "bun:test";
 import { queryView } from "./failure-state";
 
@@ -25,8 +19,6 @@ describe("queryView", () => {
   });
 
   test("the first failure already counts, while the query is still retrying", () => {
-    // React Query keeps `isPending` through its retries — about seven seconds
-    // of skeletons for a request that is already known to have failed.
     expect(
       queryView<{ items: unknown[] }>({ ...base, failureReason: new Error("500") }, empty),
     ).toBe("error");
@@ -38,7 +30,6 @@ describe("queryView", () => {
   });
 
   test("data already on screen stays while a refresh fails", () => {
-    // A failed background refresh must not blank a list the reader is using.
     expect(
       queryView(
         { ...base, isPending: false, data: { items: [1] }, error: new Error("500") },

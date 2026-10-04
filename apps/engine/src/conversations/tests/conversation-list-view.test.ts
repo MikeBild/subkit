@@ -1,8 +1,3 @@
-// The conversation list as a person reads it: who opened it, from where,
-// what it targets, when it last moved, what it has come to — and the
-// per-user hide mark that keeps a finished conversation out of the way
-// without deleting an audit artefact.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { auditLog, conversationHidden, conversations, workflows } from "../../db/schema/index.ts";
@@ -82,7 +77,6 @@ describe("conversation list view", () => {
     expect(row!.outcome).toBe("answered");
     expect(row!.hidden).toBe(false);
     expect(typeof row!.last_activity_at).toBe("string");
-    // A title set by nobody is not locked; the titler may replace it.
     expect(row!.title_locked).toBe(false);
   });
 
@@ -117,8 +111,6 @@ describe("conversation list view", () => {
     );
     expect(hidden?.id).toBe(id);
 
-    // Default list excludes it; `only` shows it flagged; `all` shows it flagged;
-    // a list without a viewer (a machine caller) still contains it.
     expect((await listMine()).some((r) => r.id === id)).toBe(false);
     expect(
       await countConversations(
@@ -135,11 +127,9 @@ describe("conversation list view", () => {
         await listConversations({ tenant_id: ctx.tenant_id, owner_id: ctx.user_id }, ctx.testDb.db)
       ).some((r) => r.id === id),
     ).toBe(true);
-    // The conversation itself is untouched: same status, still readable.
     const detail = await getConversation(ctx.tenant_id, id, ctx.testDb.db);
     expect(detail?.conversation.status).toBe("active");
 
-    // Audit rows for both directions.
     await setConversationHidden(
       { tenant_id: ctx.tenant_id, conversation_id: id, user_id: ctx.user_id, hidden: false },
       ctx.testDb.db,
@@ -265,7 +255,6 @@ describe("conversation list view", () => {
       ctx.testDb.db,
     );
     const after = (await listMine()).find((r) => r.id === created.conversation.id)!;
-    // Database clocks are monotonic at microsecond resolution; no sleep needed.
     expect(Date.parse(after.last_activity_at!)).toBeGreaterThanOrEqual(Date.parse(before));
     expect(after.message_count).toBe(2);
   });

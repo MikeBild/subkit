@@ -1,7 +1,3 @@
-// Pure-function tests for the native elicitation block-kit renderers.
-// No DB, no Slack — assert on the exact Block Kit JSON the dispatcher
-// will post and the modal-view JSON the route's sync fast path opens.
-
 import { describe, expect, test } from "bun:test";
 import type { ChatElicitation } from "../../types.ts";
 import {

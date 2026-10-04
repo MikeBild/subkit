@@ -1,14 +1,3 @@
-// User story: As a platform operator, I want to rotate an API key with
-// an overlap window so callers can swap credentials without a service
-// outage.
-// Acceptance criteria:
-//   - AC1: The original key authenticates before rotation.
-//   - AC2: After rotation, both the old and new plaintexts work while
-//          `rotating_out_at` is in the future.
-//   - AC3: Once `rotating_out_at` is in the past, the old key is
-//          rejected but the new key keeps working.
-// Spec refs: docs/admins/rbac-and-roles.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { apiKeys, systemAccounts, users } from "../../db/schema/index.ts";
@@ -25,8 +14,6 @@ let victimKeyPlain = "";
 beforeAll(async () => {
   ctx = await createJourneyCtx("key-rotation");
 
-  // Seed a second user + issue a fresh key we can safely rotate (the
-  // shared admin key is used for control-plane calls below).
   const [user] = await ctx.db
     .insert(users)
     .values({
@@ -48,7 +35,6 @@ beforeAll(async () => {
   victimKeyId = issued.id;
   victimKeyPlain = issued.plaintext_key;
 
-  // Touch unused import so biome doesn't complain.
   void systemAccounts;
 }, JOURNEY_HOOK_TIMEOUT);
 
@@ -84,12 +70,10 @@ describe("journey: api key rotation", () => {
     expect(await probeWith(victimKeyPlain)).toBe(200);
     expect(await probeWith(rotated.new.plaintext_key)).toBe(200);
 
-    // Stash the new plaintext for AC3.
     (globalThis as unknown as { __j7_new?: string }).__j7_new = rotated.new.plaintext_key;
   });
 
   test("AC3: once rotating_out_at is in the past, the old key is rejected", async () => {
-    // Force the overlap window into the past.
     await ctx.db
       .update(apiKeys)
       .set({ rotating_out_at: new Date(TEST_NOW_MS - 60_000) })

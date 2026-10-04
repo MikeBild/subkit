@@ -59,8 +59,6 @@ describe("<ResizeBoundary>", () => {
   });
 
   test("renders fallback skeleton when terminal is too small", async () => {
-    // ink-testing-library default columns is 100, rows 24. Set thresholds
-    // higher so the fallback path kicks in.
     const ui = renderInk(
       <ThemeProvider>
         <ResizeBoundary minCols={500} minRows={500}>
@@ -87,7 +85,6 @@ describe("<ResizeBoundary>", () => {
       </ThemeProvider>,
     );
     await flush();
-    // Unmount should not throw or leak handles.
     expect(() => ui.unmount()).not.toThrow();
   });
 });

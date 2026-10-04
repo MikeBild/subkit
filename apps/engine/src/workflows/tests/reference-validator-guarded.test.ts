@@ -53,11 +53,8 @@ test("the other short-circuit guards count too", () => {
 });
 
 test("an unguarded read of a step that does not exist is still refused", () => {
-  // The typo this gate is for. No guard is written around a name the author
-  // meant to spell correctly, so suppressing guards costs nothing here.
   expect(bad("return input.scope.rollup_windwo.data;")).toEqual(["rollup_windwo"]);
   expect(bad('return input.scope["rollup_windwo"].data;')).toEqual(["rollup_windwo"]);
-  // A guard on one id does not license an unguarded read of another.
   expect(
     bad(
       "const a = input.scope.maybe_here ? input.scope.maybe_here.data : 0;\nreturn a + input.scope.typo_here.data;",
@@ -70,8 +67,6 @@ test("a step that does exist is never reported, guarded or not", () => {
 });
 
 test("a placeholder cannot carry a guard, so it is never suppressed", () => {
-  // `${scope.X}` is a substitution point: there is no branch to take when X
-  // is absent, so the same text in a request template still blocks.
   const def = {
     slug: "guard-probe",
     name: "guard probe",

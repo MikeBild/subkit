@@ -1,12 +1,3 @@
-// Keybinding registry — Zod-validated, context-scoped action map.
-//
-// Every action has a stable string id;
-// every binding maps a keystroke pattern to one action id (or to null
-// to unbind a default). Each input context owns its own binding map so
-// the same keystroke can mean different things in different modes
-// (e.g. Esc closes the modal in Settings but only clears the search
-// query in Search).
-
 import { z } from "zod";
 
 export const SETTINGS_CONTEXTS = ["Settings", "Search", "Confirm", "Field"] as const;

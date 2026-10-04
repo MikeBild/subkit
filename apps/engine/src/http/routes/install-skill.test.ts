@@ -1,10 +1,3 @@
-// The build-or-adopt skill the engine hands out.
-//
-// Three promises, each of which would fail silently without a test: the
-// served file is the repository's file; the references it names are pages
-// this binary actually carries, fetched from the engine that served the
-// script; and the installer is a script that aborts rather than half-installs.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -45,8 +38,6 @@ describe("the skill file", () => {
   });
 
   test("asks the reviewer's question verbatim and refuses deferrals", () => {
-    // The wording is the one that produced the 4 % / 96 % answer in Track 0.1;
-    // softening it is the regression this pins.
     expect(SKILL_MD).toContain(
       "Which parts of what you are about to write are application logic, and which\n> are generic execution infrastructure that existing software could replace?\n> Give the proportion.",
     );
@@ -63,9 +54,6 @@ describe("the skill file", () => {
   });
 
   test("asks the second question after an adopt", () => {
-    // Measured 2026-09-03: a builder adopted Temporal at stage 4 and left its
-    // own 199-line file engine in the tree. The trigger fires before the next
-    // component; this section is what fires after an adopt.
     expect(SKILL_MD).toContain("## After an adopt decision, ask once more");
     expect(SKILL_MD).toContain("Delete those, or record why each one stays.");
   });
@@ -105,8 +93,6 @@ describe("the installer", () => {
   });
 
   test("installs to both user-level skill directories unless told otherwise", () => {
-    // One quoted word, or bash reads `SKILL_DIRS="a" "b"` as an assignment
-    // followed by a command named "b".
     expect(script).toContain(`SKILL_DIRS='"\${HOME}/.claude/skills" "\${HOME}/.agents/skills"'`);
     expect(script).toContain("SK_SKILL_DIR");
   });
@@ -130,10 +116,6 @@ describe("the installer", () => {
 });
 
 describe("in the real route table", () => {
-  // The unit tests above register the skill route by itself. In production the
-  // binary route owns `/install/{asset}` and 404s unknown assets; registered
-  // first, it swallowed `/install/skill` on 6.25.0 while every test was green.
-  // This goes through createApp() so the order server.ts uses is what is tested.
   test("/install/skill is reached before /install/{asset} can 404 it", async () => {
     const app = createApp();
     const res = await app.request("http://127.0.0.1/install/skill");

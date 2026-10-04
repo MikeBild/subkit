@@ -1,10 +1,3 @@
-// Per-kind dispatchers (delete_connector, delete_workflow,
-// rollback_after_execute) + the auto-freshen / auto-probe steps that
-// run before save_connector_draft to absorb missing checkpoints. The
-// save_connector_draft / save_workflow_draft paths run inline in the
-// orchestrator entry because they share local state with the audit
-// row.
-
 import { z } from "@hono/zod-openapi";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
@@ -20,27 +13,6 @@ import { probeConnectorDraftTool } from "../../tools/probe-connector-draft.ts";
 import { validateConnectorDraftTool } from "../../tools/validate-connector-draft.ts";
 import { readString } from "./helpers.ts";
 
-/**
- * Refresh the `connector_inspected` and `connector_validated`
- * checkpoints before save. Both are pure draft-side computations that
- * stamp readiness onto the AuthoringState; the LLM is supposed to call
- * them between proposing the connector and asking for save approval,
- * but in practice it routinely skips one or both — we saw this in
- * session 16a8f1c7 where the model went probe → ask_user_confirm and
- * the auto-persist path bounced off `connector_not_ready` because
- * `connector_validated` was still missing. The user then had to
- * approve a SECOND time after the model retried through the
- * tool-policy gate.
- *
- * The harness already auto-probes here; auto-inspect+auto-validate is
- * the same idea: the operator's "yes save" click is the authority,
- * and the engine should make sure it can act on it instead of
- * deferring to LLM-discipline checkpoints.
- *
- * No-op when there is no connector draft. Failures fall through; the
- * subsequent `saveConnectorAtomic` will surface the canonical
- * structured error.
- */
 export async function maybeAutoFreshenCheckpointsForSave(ctx: ToolContext): Promise<void> {
   try {
     const draft = ctx.getDraft();
@@ -58,21 +30,6 @@ export async function maybeAutoFreshenCheckpointsForSave(ctx: ToolContext): Prom
   }
 }
 
-/**
- * Auto-probe a draft connector before the auto-persist save runs.
- *
- * Reads the draft's resolved template; when the template declares a
- * `probe_endpoint` and the draft is in the pre-probe state, dispatches
- * the existing `probe_connector_draft` tool with the template's method
- * + path. The credential cache populated by
- * `maybeCacheDraftCredentialFromElicitation` is what authenticates the
- * probe — so this only fires for the form-submit-then-save bundle.
- *
- * No-op when the connector is missing, has no template_slug, the
- * template has no probe_endpoint, the latest probe already passed, or
- * any failure is encountered (the save will surface
- * `probe_failed`/`connector_not_ready` itself).
- */
 export async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string): Promise<void> {
   try {
     const draft = ctx.getDraft();
@@ -106,10 +63,6 @@ export async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string)
   }
 }
 
-// LLM-emitted commit-intent payloads cross the policy-gate → dispatcher seam,
-// so validate the delete shape here rather than reading fields off `any`.
-// Tolerant of extra fields; `id` (a connector uuid) is required and
-// `confirm_orphan` is the explicit opt-in to proceed past live dependents.
 const DeleteConnectorPayloadSchema = z
   .object({
     id: z.string().uuid(),
@@ -131,10 +84,6 @@ export async function dispatchDeleteConnector(
     };
   }
   const id = parsedPayload.data.id;
-  // Dependency backstop: deleting a connector that a live workflow's
-  // step binds to breaks that workflow at its next run. Refuse the
-  // delete and surface the dependents unless the operator explicitly
-  // acknowledged the orphaning via `payload.confirm_orphan === true`.
   const dependents = await listWorkflowsUsingConnector(ctx.tenant_id, id, ctx.db);
   const confirmedOrphan = parsedPayload.data.confirm_orphan === true;
   if (dependents.length > 0 && !confirmedOrphan) {
@@ -158,9 +107,6 @@ export async function dispatchDeleteConnector(
       next_best_actions: ["edit_workflow_patch", "delete_workflow"],
     };
   }
-  // An acknowledged-orphaning delete (confirm_orphan over live dependents)
-  // threads the dependent ids so the CONNECTOR_DELETED audit row records that
-  // the operator proceeded despite the warning.
   const ok =
     confirmedOrphan && dependents.length > 0
       ? await ctx.engineClient.connectors.delete(id, {
@@ -222,7 +168,6 @@ export async function dispatchRollbackSkipped(
   intent: CommitIntent,
 ): Promise<ToolResult> {
   const execution_id = readString(intent.payload, "execution_id");
-  // Audit the skipped rollback so operators can see the no-op trail.
   await auditAwait(
     {
       tenant_id: ctx.tenant_id,

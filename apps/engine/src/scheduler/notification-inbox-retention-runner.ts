@@ -1,16 +1,3 @@
-// Retention sweep for `cli_notification_inbox`.
-//
-// The inbox is a task list, not a queue: `/ack` marks a row read for one
-// user instead of deleting it, so no request path removes rows and the
-// table grows monotonically without this sweep. Read marks in
-// `cli_notification_inbox_reads` disappear with their row through the FK
-// cascade. The window comes from `notifications.inbox.retention_days`.
-//
-// Mirrors `chat-dedup-cleanup-runner.ts`: one summary audit row under
-// SYSTEM_TENANT_ID after the sweep, errors caught + logged but never
-// abort the rest of the reconciler tick. The DELETE filters by
-// `created_at < now() - interval`, so multi-instance overlap is a no-op.
-
 import { lt, sql } from "drizzle-orm";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { getConfig } from "../config/loader.ts";

@@ -1,16 +1,3 @@
-// Engine version + update / drift posture diagnostics endpoint.
-//
-//   GET /v1/diagnostics/version
-//
-// The operational fields (engine version, latest available release,
-// schema-drift posture) live here behind `audit:read` instead of on
-// the public `/health`, so an unauthenticated caller cannot
-// fingerprint the engine. Mirrors the layering of
-// `diagnostics/drift.ts`: `audit:read` permission via the path-scoped
-// middleware in `diagnostics/index.ts`, an `auditAwait`-bound row
-// before the response goes out, and a Zod response shape registered
-// as a named OpenAPI component.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
@@ -28,21 +15,10 @@ import { OPENAPI_INFO } from "../../openapi.ts";
 
 const VersionResponse = z
   .object({
-    /** Engine binary version baked in at compile time. */
     engine_version: z.string(),
-    /** Latest version the boot probe found on the configured channel.
-     *  Absent when the probe is disabled by operations.update_check_enabled
-     *  or has not
-     *  finished its first cycle yet. */
     latest_version: z.string().optional(),
-    /** Whether the boot probe observed a newer release. Defaults to
-     *  false when no probe data is available. */
     update_available: z.boolean(),
-    /** Whether tagged or missing journal identities disagree with the embedded set. */
     schema_drift: z.boolean(),
-    /** How many migrations are baked into this binary. Lets operators
-     *  cross-check that a deploy is what they expect without joining
-     *  against `/v1/diagnostics/drift`. */
     embedded_migrations_count: z.number().int().nonnegative(),
   })
   .openapi("DiagnosticsVersionResponse");
@@ -73,10 +49,6 @@ export function registerVersionRoute(app: OpenAPIHono<AppEnv>): void {
     const update_available = updateState?.update_available ?? false;
     const schema_drift = healthState.schema_drift;
 
-    // Mirror `diagnostics/drift.ts:64-86`: parse metadata through the
-    // schema, then await the audit row before returning. Drift / version
-    // reads are privilege-sensitive; the cost of a guaranteed compliance
-    // row exceeds the negligible latency add.
     const metadata = DiagnosticsVersionReadMetadataSchema.parse({
       engine_version,
       latest_version,

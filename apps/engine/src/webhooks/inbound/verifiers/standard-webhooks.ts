@@ -1,10 +1,3 @@
-// Default Standard Webhooks verifier.
-//
-//   * headers:  `webhook-id`, `webhook-timestamp`, `webhook-signature`
-//   * base:     `${webhook_id}.${timestamp}.${raw_body}`
-//   * signature must be `v1,<base64(HMAC-SHA256(secret, base))>`
-//   * reject if `|now - timestamp| > 5 minutes`
-
 import { logger } from "../../../logging/logger.ts";
 import { verifySignatureHeader } from "../../outbound/signer.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";

@@ -1,5 +1,3 @@
-// compileDescription tests.
-
 import { describe, expect, test } from "bun:test";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool } from "../index.ts";

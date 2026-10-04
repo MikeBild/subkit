@@ -1,16 +1,3 @@
-// User story: As a compliance engineer, I want to query and export the
-// audit log via the `sk audit` CLI so I can collect SOC 2 evidence
-// without writing HTTP calls by hand.
-// Acceptance criteria:
-//   - AC1: `sk audit query --action=workflow.created --json` lists
-//          the workflow.created row.
-//   - AC2: `sk audit query --json` returns all rows for the tenant.
-//   - AC3: `sk audit query --limit=5 --json` honours the limit.
-//   - AC4: `sk audit show <id>` fetches a single row.
-//   - AC5: `sk audit export` streams ndjson with one row per line.
-//   - AC6: Without `--api-key`, the CLI rejects with an auth error.
-// Spec refs: docs/concepts/governance-and-audit.md, docs/developers/input-surfaces.md (Pass-2 Stream D)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";
 import { auditCommand } from "../../../../sk/src/commands/audit.ts";
@@ -46,15 +33,6 @@ function patchStd() {
   };
 }
 
-// Extract the last balanced JSON object or array from a captured stdout
-// string. The in-process test harness runs the engine + pg-boss in the
-// same process, so async log lines (even though the logger writes to
-// stderr in dev mode) can interleave with CLI output via the pg driver
-// or hono's internal writes. Filter by walking brackets and returning
-// the last complete top-level JSON value.
-// Reject objects that look like ndjson log lines — they have
-// `{ts, level, module, action, msg}`. The CLI emits audit rows or the
-// full list response, which never have `level`.
 function isLogLine(v: unknown): boolean {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
@@ -62,8 +40,6 @@ function isLogLine(v: unknown): boolean {
 }
 
 function extractLastJson(stdout: string): string {
-  // Scan every line that parses as a JSON object or array, return the
-  // last one that is NOT a log line.
   const lines = stdout
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -75,12 +51,8 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through to multi-line scan
-    }
+    } catch {}
   }
-  // Multi-line pretty-printed JSON — walk brackets from the end looking
-  // for balanced top-level values, skipping log-line shapes.
   const text = stdout;
   let depth = 0;
   let end = -1;
@@ -96,9 +68,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue walking
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -174,12 +144,10 @@ async function runNoAuth(path: string[]): Promise<{ message: string; stderr: str
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-audit");
 
-  // Drive a few auditable operations via REST so rows exist.
   const headers = {
     authorization: `Bearer ${ctx.apiKey}`,
     "content-type": "application/json",
   };
-  // 1. workflow.created
   await fetch(`${ctx.baseUrl}/v1/workflows`, {
     method: "POST",
     headers,
@@ -189,7 +157,6 @@ beforeAll(async () => {
       steps: [{ kind: "transform", id: "t", expression: "$input" }],
     }),
   });
-  // 2. connector.created
   await fetch(`${ctx.baseUrl}/v1/connectors`, {
     method: "POST",
     headers,
@@ -202,7 +169,6 @@ beforeAll(async () => {
       base_url: "https://example.test",
     }),
   });
-  // 3. api_key.issued (via identity route)
   await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
     method: "POST",
     headers,
@@ -253,23 +219,18 @@ describe("journey 30: sk audit CLI", () => {
 
   test("AC5: export streams ndjson", async () => {
     const { stdout } = await run(["export"], {}, { json: false });
-    // Parse each line and keep only those that look like an audit row.
     const auditRows: Array<{ id: string; action: string; tenant_id: string }> = [];
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith("{")) continue;
       try {
         const parsed = JSON.parse(trimmed);
-        // Only accept shapes that look like audit rows (id + action + tenant_id).
         if (parsed.id && parsed.action && parsed.tenant_id === ctx.tenantId) {
           auditRows.push(parsed);
         }
-      } catch {
-        // ignore non-JSON lines (log noise)
-      }
+      } catch {}
     }
     expect(auditRows.length).toBeGreaterThanOrEqual(1);
-    // Count matches a direct DB count for the tenant.
     const countRows = await ctx.db.select({ count: count() }).from(auditLog);
     const dbCount = Number(countRows[0]?.count ?? 0);
     expect(auditRows.length).toBe(dbCount);

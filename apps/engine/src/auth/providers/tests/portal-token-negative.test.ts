@@ -1,12 +1,3 @@
-// portal_token auth provider — negative-path + lifecycle tests.
-//
-// The provider has five rejection paths ahead of the happy path: no
-// token present, a non-portal-prefixed token (falls through silently
-// so the registry can try the api-key provider next), prefix not
-// found, hash mismatch, revoked, and expired. This file pins each one
-// plus the allow-list normalization and enduser-email resolution the
-// happy path depends on.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
@@ -69,9 +60,6 @@ async function seedToken(overrides: {
       prefix: issued.prefix,
       token_sha256: issued.hash,
       allowed_workflows: overrides.allowed_workflows ?? ["*"],
-      // Far-future stable date (year 2223) so "not expired" holds
-      // against the real wall clock the provider reads internally —
-      // FROZEN_NOW (2023) is already in the past by real time.
       expires_at: overrides.expires_at ?? new Date(8_000_000_000_000),
       ...(overrides.revoked_at !== undefined ? { revoked_at: overrides.revoked_at } : {}),
     })
@@ -101,16 +89,12 @@ describe("portal-token provider — negative paths", () => {
 
   test("hash mismatch (right prefix, tampered tail) returns null and audits denial", async () => {
     const issued = await seedToken({});
-    const tail = "deadbeefdeadbeefdeadbeefdeadbeef"; // 32 hex-ish chars, definitely wrong
+    const tail = "deadbeefdeadbeefdeadbeefdeadbeef";
     const tampered = `${issued.plaintext.slice(0, 14)}${tail}`;
     const provider = createPortalTokenProvider({ db });
     const principal = await provider.resolve(bearerReq(tampered));
     expect(principal).toBeNull();
 
-    // Poll for THIS test's audit row instead of draining the process-global
-    // pending-writes set: under a full-suite run the drain awaits foreign
-    // writes too, and one hung neighbor (poisoned pool) stalls it for the
-    // whole test timeout.
     const denied = await waitFor(
       async () => {
         const rows = await db

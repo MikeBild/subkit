@@ -1,10 +1,3 @@
-// Regression guard for T1.5: every schema-constrained flow must go
-// through AiSdkModel.generateObject with toolChoice="required" and the
-// submit/abort tool pair. If a flow is refactored to skip generateObject
-// (e.g. drops back to generateText + best-effort JSON parsing), this
-// eval fails the /verify gate before the shipped change can silently
-// degrade structured-output guarantees.
-
 import { AiSdkModel } from "../../src/llm/core/ai-sdk-model.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

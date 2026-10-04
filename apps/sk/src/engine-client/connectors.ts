@@ -1,8 +1,3 @@
-// Connector surfaces of the engine client: connector CRUD + test +
-// OAuth, connector docs, credentials, connector templates / recipes,
-// external MCP servers, and the OAuth-callback event subscription.
-// Method group merged into `EngineClient` by `../engine-client.ts`.
-
 import { TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 
@@ -23,24 +18,6 @@ export interface ConnectorPromotionResponse {
 }
 
 export const connectorsMethods = {
-  /**
-   * Subscribe to the tenant-scoped event stream filtered to
-   * `connector.oauth.callback_succeeded` events. When the user
-   * completes an OAuth authorization in their browser, the engine
-   * persists the credential and emits an event on the `connector.oauth`
-   * channel; this helper consumes that stream and invokes
-   * `onSucceeded` the first time a payload matching `connectorId`
-   * arrives.
-   *
-   * Used by the REPL to auto-resume the conversation after
-   * `authenticate_oauth` instead of waiting for the operator to type
-   * "done" — plan/read-sk-synthetic-wirth.md Fix #1.
-   *
-   * Auto-closes the SSE connection after one match. The caller can
-   * also abort via the returned `cancel()` or by aborting the supplied
-   * `signal`. Filters are applied server-side via query params, so
-   * cross-tenant events never reach the client.
-   */
   async subscribeConnectorOAuthCallback(
     this: EngineClient,
     opts: {
@@ -55,7 +32,6 @@ export const connectorsMethods = {
   ): Promise<{ cancel: () => void }> {
     const url = `${this.base}/v1/events/stream?channel=connector.oauth&type=connector.oauth.callback_succeeded`;
     const ac = new AbortController();
-    // Compose with the caller-supplied signal so either side can abort.
     if (opts.signal) {
       if (opts.signal.aborted) ac.abort();
       else opts.signal.addEventListener("abort", () => ac.abort(), { once: true });
@@ -77,22 +53,11 @@ export const connectorsMethods = {
       cancel();
       throw new TransportError(new Error(`oauth events stream returned HTTP ${res.status}`));
     }
-    // Consume in background — caller awaits `cancel()` indirectly via
-    // `onSucceeded` or signal. The reader loop self-terminates on
-    // first match or on abort.
     void (async () => {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       try {
-        // Replay guard: `/v1/events/stream` replays the last 50 rows
-        // on open (without Last-Event-ID). If the connector has been
-        // OAuth'd before, a prior `connector.oauth.callback_succeeded`
-        // for the same connector_id is in that replay — and would
-        // auto-confirm the CURRENT elicitation before the operator
-        // even finishes the new browser dance. The server announces
-        // the live cutover with a `hello` event after the replay; we
-        // ignore every payload-frame until that marker arrives.
         let live = false;
         while (!ac.signal.aborted) {
           const chunk = await reader.read();
@@ -102,20 +67,15 @@ export const connectorsMethods = {
           buffer = frames.pop() ?? "";
           for (const block of frames) {
             if (!block.trim()) continue;
-            if (block.startsWith(":")) continue; // heartbeat
+            if (block.startsWith(":")) continue;
             const lines = block.split("\n");
             const eventLine = lines.find((l) => l.startsWith("event: "));
             const dataLine = lines.find((l) => l.startsWith("data: "));
             if (!dataLine) continue;
-            // The `hello` frame flips us from replay-discard mode into
-            // live-event mode. Skip the frame itself but mark `live`.
             if (eventLine && eventLine.slice("event: ".length).trim() === "hello") {
               live = true;
               continue;
             }
-            // Pre-hello frames are replay. Drop them — even if they
-            // match the connector_id filter, they represent a PAST
-            // OAuth completion, not the one the operator is doing now.
             if (!live) continue;
             try {
               const payload = JSON.parse(dataLine.slice("data: ".length)) as {
@@ -137,29 +97,19 @@ export const connectorsMethods = {
                 cancel();
                 return;
               }
-            } catch {
-              // Malformed frame — skip rather than abort. The next
-              // valid frame may still match.
-            }
+            } catch {}
           }
         }
       } catch {
-        // Reader threw mid-stream (network drop, server restart, abort).
-        // Caller's `signal` or independent timeout decides whether to
-        // retry; we never retry transparently because that would mask
-        // the failure from the operator.
       } finally {
         try {
           reader.releaseLock();
-        } catch {
-          // Reader was already released by the consumer loop; safe to swallow.
-        }
+        } catch {}
       }
     })();
     return { cancel };
   },
 
-  // -------------------- Connectors --------------------
   listConnectors(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -190,29 +140,18 @@ export const connectorsMethods = {
     return this.request("DELETE", `/v1/connectors/${encodeURIComponent(id)}`);
   },
 
-  // -------------------- Authoring (nothing is persisted) --------------------
-  // The declarative counterparts to `sk workflows validate` / `preview`. Each
-  // one answers a question about a definition that does not exist yet, so an
-  // author can find a mistake before a connector is created rather than after.
-
-  /** Check a definition against its driver's config schema. A definition that
-   *  is invalid still comes back 200 — read `ok`. */
   validateConnectorDraft(
     this: EngineClient,
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; issues: { path: string; message: string }[] }> {
     return this.request("POST", "/v1/connectors/validate", body);
   },
-  /** Run the driver probe against an unsaved definition. The credential, when
-   *  supplied, signs that one request and is never stored. */
   probeConnectorDraft(
     this: EngineClient,
     body: { connector: Record<string, unknown>; credential?: Record<string, unknown> },
   ): Promise<Record<string, unknown> & { ok?: boolean }> {
     return this.request("POST", "/v1/connectors/probe", body);
   },
-  /** Parse an API specification into a connector draft. Returns the draft for
-   *  review; saving it is a separate, deliberate step. */
   importConnectorFromSpec(
     this: EngineClient,
     body: Record<string, unknown>,
@@ -237,22 +176,12 @@ export const connectorsMethods = {
       { "idempotency-key": idempotencyKey },
     );
   },
-  /**
-   * Start the connector's own browser sign-in. The engine states it on the
-   * connector record (`sign_in`): `oauth` starts at `/oauth/start` (a web
-   * service), `mcp` at `/mcp/authorize` (an MCP server) — so this client
-   * never picks one by driver. An empty `authorization_url` means the sign-in finished
-   * without a browser (a client-credentials exchange); a connector with no
-   * `sign_in` signs in with a stored credential instead.
-   */
   async startConnectorSignIn(
     this: EngineClient,
     id: string,
   ): Promise<{ authorization_url: string; state: string }> {
     const record = await this.getConnector(id);
     const signIn = record.sign_in as { kind?: unknown } | null | undefined;
-    // Dispatched on the record's `kind` onto the two literal routes, so the
-    // CLI↔OpenAPI contract test still sees every path this client can call.
     if (signIn?.kind === "mcp") return this.authorizeMcpConnector(id);
     if (signIn?.kind === "oauth") {
       return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);
@@ -315,23 +244,15 @@ export const connectorsMethods = {
     return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
   },
 
-  // Operator on/off switch. Driver-agnostic: the engine evicts whatever
-  // live state the driver holds (an mcp pooled session, a postgres pool)
-  // so a disabled connector stops serving immediately.
   enableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/enable`);
   },
   disableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/disable`);
   },
-  // mcp driver only: force one handshake and report what the remote
-  // actually serves. 422 when the connector is not an mcp connector.
   inspectMcpConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`);
   },
-  // Start the interactive OAuth consent flow for an mcp connector whose
-  // config.mcp.auth.kind is "oauth2". The engine returns the authorize URL
-  // the user opens in a browser; the callback completes server-side.
   authorizeMcpConnector(
     this: EngineClient,
     id: string,
@@ -339,7 +260,6 @@ export const connectorsMethods = {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/authorize`);
   },
 
-  // -------------------- Connector Templates --------------------
   listConnectorTemplates(
     this: EngineClient,
     query: Record<string, string | undefined> = {},

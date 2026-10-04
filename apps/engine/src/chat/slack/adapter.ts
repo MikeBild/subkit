@@ -1,13 +1,3 @@
-// Slack chat adapter.
-//
-//   - Inbound verification via v0 HMAC-SHA256 over "v0:${ts}:${body}".
-//   - Inbound normalization for Events API (app_mention), slash
-//     commands (application/x-www-form-urlencoded) and block action
-//     interactions (payload=<urlencoded json>).
-//   - Outbound via `@slack/web-api`'s WebClient. Tests construct the
-//     adapter with { slackApiUrl: "<mock>/" } so all outbound HTTP
-//     calls land on a local Hono server.
-
 import { WebClient } from "@slack/web-api";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -37,20 +27,13 @@ import { verifySlackRequest } from "./verifier.ts";
 export interface SlackAdapterOptions {
   signingSecret: string;
   botToken: string;
-  /** Override for tests (points at a local mock Slack API). */
   slackApiUrl?: string;
-  /** Tolerance for HMAC timestamp checks. Defaults to 5 minutes. */
   maxSkewSeconds?: number;
-  /** Clock override for tests. */
   now?: () => number;
 }
 
 export class SlackAdapter implements ChatAdapter {
   readonly platform = "slack" as const;
-  /** Slack natively renders all five elicitation kinds: confirm/choice/multi
-   *  as inline Block Kit interactive elements, text/form via a modal opened
-   *  from an "Antworten" button (sync `views.open` on the click's
-   *  `trigger_id`). */
   readonly capabilities: ChatAdapterCapabilities = {
     interactive: ["confirm", "choice", "multi", "text", "form"],
   };
@@ -95,7 +78,6 @@ export class SlackAdapter implements ChatAdapter {
     if (contentType.includes("application/json")) {
       return { platform: "slack", raw: JSON.parse(body) };
     }
-    // Form-encoded (slash commands, interactions).
     const params = new URLSearchParams(body);
     if (params.has("payload")) {
       return { platform: "slack", raw: JSON.parse(params.get("payload") ?? "{}") };
@@ -108,11 +90,6 @@ export class SlackAdapter implements ChatAdapter {
   }
 
   async receive(ev: VerifiedEvent): Promise<ChatEvent> {
-    // Single parse choke-point: every Slack inbound shape runs through
-    // `parseSlackInboundPayload` which enforces required fields via
-    // Zod schemas (`payloads.ts`). A renamed-required-field drift in
-    // the Slack contract surfaces as a logged warn rather than
-    // dispatching with silently-defaulted IDs.
     const parsed = parseSlackInboundPayload(ev.raw);
 
     if (parsed.kind === "app_mention") {
@@ -132,12 +109,6 @@ export class SlackAdapter implements ChatAdapter {
 
     if (parsed.kind === "message_im") {
       const inner = parsed.inner;
-      // Bot-echo suppression: Slack delivers the bot's own DMs through
-      // this same event stream. Drop messages carrying `bot_id`, any
-      // `subtype` (`bot_message`, `message_changed`, …), or
-      // `app_id` — together these cover every self-emitted shape.
-      // Treat IM-only events; channel-type other than "im" isn't
-      // routed to the dispatcher.
       if (inner.channel_type !== "im") {
         throw new Error(`slack: unrecognized event shape`);
       }
@@ -148,12 +119,8 @@ export class SlackAdapter implements ChatAdapter {
         platform: "slack",
         workspace_id: parsed.team_id,
         channel_id: inner.channel,
-        // DMs have no `thread_ts`; fall back to `ts` so the dispatcher
-        // maps the whole DM to one conversation 1:1.
         thread_id: inner.thread_ts ?? inner.ts,
         user_id: inner.user,
-        // Normalize to "mention" so the dispatcher takes the same
-        // bare-text-as-prompt branch as channel @mentions.
         kind: "mention",
         text: inner.text,
         ...(parsed.event_id ? { event_key: parsed.event_id } : {}),
@@ -167,10 +134,6 @@ export class SlackAdapter implements ChatAdapter {
       const channel_id = data.channel?.id ?? "";
       const workspace_id = data.team?.id ?? data.team_id ?? "";
 
-      // Flatten Slack's nested view.state.values shape into a flat
-      // `{ field_name: primitive }` dict the dispatcher passes
-      // directly into respondElicitation. Adapters elsewhere produce
-      // the same shape — the dispatcher stays provider-agnostic.
       const stateValues = view.state?.values ?? {};
       const form_values: Record<string, unknown> = {};
       for (const [blockId, elements] of Object.entries(stateValues)) {
@@ -211,9 +174,6 @@ export class SlackAdapter implements ChatAdapter {
         action_id,
         ...(typeof a.value === "string" ? { value: a.value } : {}),
       };
-      // For a `multi` submit click, the selected checkboxes live in
-      // the message's state.values keyed by the checkboxes block_id;
-      // re-encode them into form_values.values for the dispatcher.
       const multiMatch = /^elicit:([^:]+):multi:submit$/.exec(action_id);
       if (multiMatch) {
         const stateValues = data.state?.values ?? {};
@@ -243,8 +203,6 @@ export class SlackAdapter implements ChatAdapter {
 
     if (parsed.kind === "slash") {
       const form = parsed.data;
-      // Stable dedup key: a retry of the same submission collides; two
-      // distinct invocations don't.
       const stableKey = `slash:${form.team_id}:${form.command}:${form.text}:${form.trigger_id ?? form.user_id}`;
       return {
         platform: "slack",
@@ -258,9 +216,6 @@ export class SlackAdapter implements ChatAdapter {
       };
     }
 
-    // parsed.kind === "unknown" — schema rejected the payload. Surface
-    // the reason so a Slack contract drift shows up in diagnostics
-    // before it manifests as silently-dropped events.
     logger.warn({
       module: "chat",
       action: "slack.receive.payload_rejected",
@@ -313,17 +268,11 @@ export class SlackAdapter implements ChatAdapter {
     elicitation: ChatElicitation,
     target: { tenant_id: string; workspace_id: string; channel_id: string; thread_id?: string },
   ): Promise<{ platform_message_id: string }> {
-    // text / form → post an "Antworten" button; the modal opens on
-    // click via `handleSyncInteraction` (`views.open` synchronously
-    // within the trigger_id window). The same `chat.postMessage` shape
-    // serves every kind — the difference is the block payload.
     const blocks =
       elicitation.kind === "text" || elicitation.kind === "form"
         ? renderOpenFormBlocks(elicitation)
         : renderInlineElicitationBlocks(elicitation);
     if (!blocks) {
-      // Defensive: unknown kind. Fall back to a plain message so the
-      // user always sees the prompt rather than silence.
       const res = await this.client.chat.postMessage({
         channel: target.channel_id,
         ...(target.thread_id ? { thread_ts: target.thread_id } : {}),
@@ -344,9 +293,6 @@ export class SlackAdapter implements ChatAdapter {
     const { event, db } = args;
     if (event.kind !== "interaction" || !event.interaction) return { handled: false };
     const action_id = event.interaction.action_id;
-    // Only `open_elicit:<elicitation_id>` requires the sync fast path —
-    // any other action_id (the elicit:* resolutions, view_submission,
-    // approve/reject) is fine to queue.
     const m = /^open_elicit:(.+)$/.exec(action_id);
     if (!m) return { handled: false };
     const elicitation_id = m[1]!;
@@ -363,17 +309,6 @@ export class SlackAdapter implements ChatAdapter {
       return { handled: true };
     }
 
-    // Resolve the elicitation row to build a typed ChatElicitation for
-    // the modal.
-    //
-    // Tenant scoping is required here: the chat route uses ONE app-
-    // level signing secret across every installed workspace, so
-    // verify() succeeding only proves "this came from Slack to
-    // subkit's app" — not "from tenant T_X". An unscoped lookup by
-    // id would let a user in workspace W_A click an
-    // `open_elicit:<harvested-id>` button and see tenant T_B's
-    // elicitation `summary`/`body`/`options`/`fields` rendered into
-    // W_A's modal. We bind the lookup to the workspace's tenant first.
     // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
     // (mirrors dispatcher.ts:handleChatEvent and chat-event handler).
     const [workspace] = await db
@@ -407,10 +342,6 @@ export class SlackAdapter implements ChatAdapter {
       )
       .limit(1);
     if (!row) {
-      // Either the id is unknown OR it exists in a different tenant —
-      // both produce the same "not found" outcome. We DO NOT log the
-      // elicitation_id at info level to avoid teaching a probing
-      // attacker which ids exist; warn-level is fine.
       logger.warn({
         module: "chat",
         action: "slack.open_elicit.not_found",
@@ -443,10 +374,6 @@ export class SlackAdapter implements ChatAdapter {
     if (Array.isArray(input.options))
       elicitation.options = input.options as NonNullable<ChatElicitation["options"]>;
     if (Array.isArray(input.fields)) {
-      // ElicitationField.default is `string` (Block-Kit initial_value);
-      // engine form fields may carry number/boolean/string[] defaults —
-      // coerce to string at this boundary, drop array defaults (Slack
-      // multi pre-selection is not wired).
       elicitation.fields = (input.fields as Array<Record<string, unknown>>).map((f) => {
         const { default: def, ...rest } = f;
         if (def === undefined || Array.isArray(def)) return rest;
@@ -466,19 +393,10 @@ export class SlackAdapter implements ChatAdapter {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    // Regardless of API outcome: the interaction was handled inline —
-    // queueing a duplicate chat.event would only re-trigger lookup work
-    // for an action the dispatcher has no resolution for.
     return { handled: true };
   }
 }
 
-/**
- * Slack `view.state.values[block_id][action_id]` carries a typed value
- * object; pull out the primitive answer regardless of input element
- * type. Returns the raw value for unknown shapes so a future input
- * type doesn't silently lose data.
- */
 function extractInputValue(el: Record<string, unknown>): unknown {
   const t = el.type as string | undefined;
   if (t === "plain_text_input") return el.value ?? "";

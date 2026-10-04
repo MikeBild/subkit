@@ -1,14 +1,3 @@
-// MCP conversation tool handlers — async Tasks fast-return contract.
-//
-// Pins SEP-1686 step 7:
-//   - the three turn-driving tools return a fast `working` status and
-//     never run the model loop inline,
-//   - a Tasks-capable call (`taskAugmented: true`) returns a
-//     `CreateTaskResult`,
-//   - a non-Tasks call returns a plain `CallToolResult` text body that
-//     steers the client to `conversation_get`,
-//   - each call inserts exactly one `mcp_tasks` row + enqueues a job.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,9 +34,7 @@ async function ensureConfig(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not loaded
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-convtool-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/convtool-test", NODE_ENV: "test" },
@@ -81,7 +68,6 @@ beforeAll(async () => {
     provider: "api_key",
     roles: ["admin"],
   };
-  // A second tenant — used for the cross-tenant negative tests.
   const [t2] = await testDb.db
     .insert(tenants)
     .values({ slug: "t-convtool-foreign", display_name: "ConvTool Foreign" })
@@ -103,9 +89,6 @@ beforeAll(async () => {
     provider: "api_key",
     roles: ["admin"],
   };
-  // The handler enqueues a `conversation.run-turn` job via getBoss().
-  // No worker is registered — the job sits in the queue; this suite
-  // only asserts the fast-return shape, not the turn outcome.
   await startBoss({ connectionString: testDb.url });
 });
 
@@ -135,7 +118,6 @@ describe("conversation_start", () => {
     expect(body.conversation_id.length).toBeGreaterThan(0);
     expect(body.mcp_task_id.length).toBeGreaterThan(0);
 
-    // Exactly one conversation row + one mcp_tasks row were created.
     const [conv] = await testDb.db
       .select()
       .from(conversations)
@@ -147,7 +129,6 @@ describe("conversation_start", () => {
       .where(eq(mcpTasks.conversation_id, body.conversation_id));
     expect(taskRows).toHaveLength(1);
     expect(taskRows[0]?.kind).toBe("start");
-    // The job was enqueued — job_id is recorded on the row.
     expect(taskRows[0]?.job_id).toBeTruthy();
   });
 
@@ -200,10 +181,6 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
     expect(secondBody.resumed).toBe(true);
     expect(secondBody.conversation_id).toBe(firstBody.conversation_id);
 
-    // No duplicate conversation — but the resumed start APPENDS the
-    // incoming message and enqueues a turn for it (a resume that swallows
-    // the message would leave the client polling a conversation that
-    // never moves): one `start` task plus one `append` task.
     const tasks = await testDb.db
       .select()
       .from(mcpTasks)
@@ -216,7 +193,6 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
   test("a terminal (committed) conversation is not resumed — a fresh one is created", async () => {
     const slug = "sync-committed-orders-nightly";
     const message = `create workflow ${slug}`;
-    // Seed a committed conversation whose opening message names the slug.
     const [conv] = await testDb.db
       .insert(conversations)
       .values({
@@ -402,11 +378,6 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
   });
 
   test("shared prose compounds (German hyphenated words) never resume — only authored slugs do", async () => {
-    // Regression: `extractSlugTokens` sees German compounds like
-    // `http-connector` / `api-key` as kebab tokens. Matching them against
-    // the candidate's opening-message PROSE funnelled every later start
-    // that shared one compound into an unrelated stuck conversation
-    // (observed live). Prose overlap must not resume.
     const first = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -465,8 +436,6 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
     expect(body.conversation_id).toBe(conv.id);
     expect(body.status).toBe("working");
 
-    // The incoming message was persisted into the resumed conversation
-    // and a turn was enqueued for it — nothing swallowed.
     const tasks = await testDb.db
       .select()
       .from(mcpTasks)
@@ -479,7 +448,6 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
 
 describe("conversation_append", () => {
   test("non-Tasks client → fast working body, second mcp_tasks row", async () => {
-    // Seed a conversation via the start handler.
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -519,8 +487,6 @@ describe("conversation_respond_elicitation", () => {
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
 
-    // Seed a real pending elicitation — the handler stages the answer
-    // onto it before enqueue, so the row must exist and be `pending`.
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)
       .values({
@@ -556,9 +522,6 @@ describe("conversation_respond_elicitation", () => {
       .where(eq(mcpTasks.id, body.mcp_task_id));
     expect(row?.kind).toBe("respond_elicitation");
 
-    // S3: the answer was staged onto the elicitation row's `output`
-    // BEFORE enqueue — the job envelope carries no payload body. The
-    // row stays `pending` so the worker still drives the real resolve.
     const [staged] = await testDb.db
       .select({ output: conversationElicitations.output, status: conversationElicitations.status })
       .from(conversationElicitations)
@@ -578,9 +541,6 @@ describe("conversation_respond_elicitation", () => {
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
 
-    // A pending credential form: the client renders these markers to mask
-    // the secret field. `conversation_get` must relay them verbatim — the
-    // "advertise the secret input mode" half of #304 for poll-based clients.
     const [elicitation] = await testDb.db
       .insert(conversationElicitations)
       .values({
@@ -600,8 +560,6 @@ describe("conversation_respond_elicitation", () => {
       .returning();
     if (!elicitation) throw new Error("seed elicitation failed");
 
-    // Move the conversation into awaiting_input so conversation_get reports
-    // the pending form (mirrors the pause path).
     await testDb.db
       .update(conversations)
       .set({ status: "awaiting_input" })
@@ -624,9 +582,6 @@ describe("conversation_respond_elicitation", () => {
   });
 
   test("respond_elicitation against a non-existent elicitation → error, no orphan task", async () => {
-    // The handler stages the answer onto the elicitation row before
-    // enqueue; a missing row must surface a structured error rather
-    // than enqueue a job that can never resolve (S3/S4 root cause).
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -652,10 +607,6 @@ describe("conversation_respond_elicitation", () => {
   });
 
   test("refuses an elicitation whose commit_intent carries an approval_id — a model cannot grant a human's approval", async () => {
-    // AN APPROVAL IS GRANTED BY A HUMAN, NEVER BY A MODEL (see tools/approval.ts).
-    // An elicitation whose commit_intent names an approval_id IS a person's
-    // pending decision, not a question the model may answer on their behalf —
-    // see `refuseApprovalElicitation` in ./conversations.ts.
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -714,16 +665,11 @@ describe("conversation_respond_elicitation", () => {
     expect(body.status).toBe("cannot_help");
     expect(body.error_code).toBe("approval_requires_human");
     expect(body.approval_id).toBe(approvalId);
-    // This row carries no link, so the refusal must not invent one.
     expect(body.approval_url).toBeUndefined();
     expect(body.message).not.toContain("http");
-    // …and it must not send an MCP client to a "chat UI" that does not exist for
-    // it. The window stays stated, in its own field.
     expect(body.message).not.toContain("chat UI");
     expect(body.approval_window).toContain("expire 24 hours after they are raised");
 
-    // Nothing was resolved: the row is still pending, with no output staged —
-    // the refusal happens BEFORE stageElicitationAnswer would touch it.
     const [row] = await testDb.db
       .select({ status: conversationElicitations.status, output: conversationElicitations.output })
       .from(conversationElicitations)
@@ -731,7 +677,6 @@ describe("conversation_respond_elicitation", () => {
     expect(row?.status).toBe("pending");
     expect(row?.output).toBeNull();
 
-    // And no turn was enqueued for it — the refusal never reaches backgroundTurn.
     const tasksAfter = await testDb.db
       .select()
       .from(mcpTasks)
@@ -740,12 +685,6 @@ describe("conversation_respond_elicitation", () => {
   });
 
   test("when the confirm carries an approval_url, the refusal hands it over instead of dead-ending", async () => {
-    // The refusal is correct — a model may not grant — but it used to send every
-    // caller to "the chat UI where it was raised", which for an MCP client is
-    // nowhere. That is how a hosted client ended up reporting a dead end while a
-    // perfectly good browser link sat unused in the row. The refusal must name
-    // the channel the human can actually use, and say that the run continues on
-    // its own afterwards so the model does not try to relay the answer back.
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -800,7 +739,6 @@ describe("conversation_respond_elicitation", () => {
     expect(body.message).toContain("carries out the held call on its own");
     expect(body.message).not.toContain("chat UI");
 
-    // Still refused: nothing resolved, nothing staged.
     const [row] = await testDb.db
       .select({ status: conversationElicitations.status, output: conversationElicitations.output })
       .from(conversationElicitations)
@@ -810,9 +748,6 @@ describe("conversation_respond_elicitation", () => {
   });
 
   test("an ordinary ask_user_confirm elicitation (no approval handle) is still model-resolvable", async () => {
-    // Guards against an over-broad refusal: only a commit_intent carrying
-    // `approval_id` is refused. A plain confirm — no commit_intent at all —
-    // must keep resolving through the normal path.
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -897,7 +832,6 @@ describe("validation", () => {
 
 describe("conversation_get — tenant isolation", () => {
   test("a foreign tenant polling another tenant's conversation gets conversation-not-found", async () => {
-    // Tenant A starts a conversation.
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -908,9 +842,6 @@ describe("conversation_get — tenant isolation", () => {
       JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
     ).conversation_id;
 
-    // Tenant B polls the same conversation id. `conversation_get`
-    // resolves the conversation tenant-scoped — a foreign tenant must
-    // not see it.
     const foreignGet = await handleConversationTool({
       db: testDb.db,
       principal: foreignPrincipal,
@@ -920,7 +851,6 @@ describe("conversation_get — tenant isolation", () => {
     expect(foreignGet.isError).toBe(true);
     expect(foreignGet.content[0]?.text).toContain("conversation not found");
 
-    // The owning tenant still sees it.
     const ownerGet = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -959,7 +889,6 @@ describe("conversation_get — tenant isolation", () => {
       args: { conversation_id: conversationId, message: "intrude" },
     });
     expect(foreignAppend.isError).toBe(true);
-    // No mcp_tasks row leaked to the foreign tenant.
     const foreignTasks = await testDb.db
       .select()
       .from(mcpTasks)
@@ -970,9 +899,6 @@ describe("conversation_get — tenant isolation", () => {
 
 describe("conversation_get — derived status before any task settles", () => {
   test("a fresh backgrounded turn reports working until the worker runs", async () => {
-    // No worker is registered in this suite — the job sits queued.
-    // `conversation_get` must report `working` (the task row exists but
-    // has neither result nor failure nor cancel).
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -1051,11 +977,6 @@ describe("conversation_get — derived status before any task settles", () => {
   });
 });
 
-/**
- * Seed a live workflow + its current version. `steps` is the persisted
- * DAG's step list; tests diff a draft against it to drive the
- * structural-honesty gate.
- */
 async function seedWorkflow(
   slug: string,
   steps: Array<Record<string, unknown>>,
@@ -1114,8 +1035,6 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
 
   test("an in-flight respond_elicitation (job enqueued, no result) reports working — not a re-prompt", async () => {
     const { conversation_id } = await seedAwaitingInputWithPendingElicitation();
-    // The durable in-flight marker: a job WAS enqueued (job_id set) and the
-    // worker has not written result/failure/cancel yet.
     await testDb.db.insert(mcpTasks).values({
       tenant_id: principal.tenant_id,
       conversation_id,
@@ -1134,16 +1053,11 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
     });
     expect(got.isError).toBe(false);
     const body = JSON.parse(got.content[0]?.text ?? "{}") as { status: string };
-    // Still resolving — keep polling, do NOT re-surface the same form.
     expect(body.status).toBe("working");
   });
 
   test("a CRASHED respond_elicitation (no job_id) re-surfaces the pending form instead of working forever", async () => {
     const { conversation_id, elicitation_id } = await seedAwaitingInputWithPendingElicitation();
-    // The crash state: the task row was inserted but the process died
-    // BEFORE setMcpTaskJobId — no job_id, no result, no failure, no cancel.
-    // Pre-fix `!result` alone read this as "actively resolving" forever and
-    // permanently suppressed the still-pending elicitation.
     await testDb.db.insert(mcpTasks).values({
       tenant_id: principal.tenant_id,
       conversation_id,
@@ -1151,7 +1065,6 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
       kind: "respond_elicitation",
       actor_id: principal.id,
       request_source: "mcp",
-      // job_id intentionally omitted (null)
     });
 
     const got = await handleConversationTool({
@@ -1292,7 +1205,6 @@ describe("conversation_get — working heartbeat", () => {
       .values({ tenant_id: principal.tenant_id, owner_id: principal.id, status: "active" })
       .returning();
     if (!conv) throw new Error("seed conversation failed");
-    // A live (non-terminal) task row — no result/failure/cancel.
     await testDb.db.insert(mcpTasks).values({
       tenant_id: principal.tenant_id,
       conversation_id: conv.id,
@@ -1301,7 +1213,6 @@ describe("conversation_get — working heartbeat", () => {
       actor_id: principal.id,
       request_source: "mcp",
     });
-    // The newest authoring step drives last_action / phase / step.
     await testDb.db.insert(conversationToolCalls).values({
       tenant_id: principal.tenant_id,
       conversation_id: conv.id,
@@ -1331,10 +1242,6 @@ describe("conversation_get — working heartbeat", () => {
     expect(body.step).toBe("shape");
   });
 
-  // The authoring pipeline collapsed to two write tools; the heartbeat
-  // must report a truthful phase for each. Pre-fix `author_workflow`
-  // fell through the retired `build_/propose_/update_` prefix bucket to
-  // a generic `phase:"working"`, so a 30-60s build turn read as a hang.
   test.each([
     ["author_workflow", "building"],
     ["edit_workflow_patch", "editing"],
@@ -1408,10 +1315,6 @@ describe("conversation_get — working heartbeat", () => {
   });
 });
 
-// Option-B: the worker stamps phase/last_action/progress_step/heartbeat_at
-// on the live `mcp_tasks` row as each tool runs, and `conversation_get`
-// reports THOSE (authoritative) — falling back to the tool-call derivation
-// only when the row carries no stamp.
 describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
   test("the stamp is authoritative over the newest tool-call derivation", async () => {
     const [conv] = await testDb.db
@@ -1427,8 +1330,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       actor_id: principal.id,
       request_source: "mcp",
     });
-    // The newest tool-call row would DERIVE `validating`; the worker
-    // stamp says `building`. The stamp must win.
     await testDb.db.insert(conversationToolCalls).values({
       tenant_id: principal.tenant_id,
       conversation_id: conv.id,
@@ -1485,7 +1386,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
     if (!first?.heartbeat_at) throw new Error("first stamp did not land");
     expect(first.phase).toBe("building");
 
-    // A later tool stamps a new phase and a fresh heartbeat.
     await new Promise((r) => setTimeout(r, 5)); // allow-wall-clock
     await stampMcpTaskProgress(principal.tenant_id, conv.id, "save_workflow_draft", {}, testDb.db);
     const [second] = await testDb.db
@@ -1512,7 +1412,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       .values({ tenant_id: principal.tenant_id, owner_id: principal.id, status: "active" })
       .returning();
     if (!conv) throw new Error("seed conversation failed");
-    // Live task row with NO stamp (a legacy/in-flight row).
     await testDb.db.insert(mcpTasks).values({
       tenant_id: principal.tenant_id,
       conversation_id: conv.id,
@@ -1539,7 +1438,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       last_action: unknown;
       step: unknown;
     };
-    // Derived from the tool call, not a stamp.
     expect(body.phase).toBe("validating");
     expect(body.last_action).toBe("dry_run_workflow");
     expect(body.step).toBe("shape");
@@ -1566,7 +1464,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       .select({ phase: mcpTasks.phase, heartbeat_at: mcpTasks.heartbeat_at })
       .from(mcpTasks)
       .where(eq(mcpTasks.conversation_id, conv.id));
-    // Terminal row is untouched — the stamp's WHERE excludes it.
     expect(row?.phase ?? null).toBeNull();
     expect(row?.heartbeat_at ?? null).toBeNull();
   });
@@ -1574,11 +1471,6 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
 
 describe("conversation_commit — inline auto-commit reconciliation", () => {
   test("null target_workflow_id but a bound draft resolves the committed workflow (not the error)", async () => {
-    // Reproduces the inline auto-commit case: a green dry_run_workflow
-    // persisted the workflow but the conversation row's
-    // target_workflow_id ended up null. The draft's bound resource still
-    // points at the live workflow, so conversation_commit must report it
-    // idempotently instead of "conversation has no committed workflow".
     const wf = await seedWorkflow("hb-committed", [
       { id: "shape", kind: "transform", language: "javascript", expression: "return input;" },
     ]);
@@ -1588,14 +1480,10 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
         tenant_id: principal.tenant_id,
         owner_id: principal.id,
         status: "committed",
-        // The defect state: the row was never stamped with the target.
         target_workflow_id: null,
       })
       .returning();
     if (!conv) throw new Error("seed conversation failed");
-    // Bind the draft to the live workflow the way commitWorkflowAtomic
-    // does — an empty-steps draft classifies as `no_target`, so the
-    // structural-honesty gate does not fire on this clean commit.
     const boundDraft = withWorkflowPersisted(
       { workflow: { name: wf.name, steps: [] } },
       {
@@ -1630,8 +1518,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
     expect(body.workflow_id).toBe(wf.workflow_id);
     expect(body.conversation_id).toBe(conv.id);
     expect(body.usage).toBeDefined();
-    // The reply's committed block is derived from the persisted rows, and an
-    // empty draft says so instead of implying verification.
     expect(body.committed).toEqual(
       expect.objectContaining({
         workflow_version_id: wf.version_id,
@@ -1671,7 +1557,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
       committed?: { workflow_version_id: string; version: number; steps_present: number };
     };
     expect(body.workflow_id).toBe(wf.workflow_id);
-    // Response mirrors the persisted rows exactly.
     const [wfRow] = await testDb.db
       .select({ current_version_id: workflows.current_version_id })
       .from(workflows)
@@ -1688,7 +1573,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
   });
 
   test("a workflow with no persisted version returns NOT COMMITTED, not success", async () => {
-    // A no-op commit: the workflow row exists but nothing was ever versioned.
     const [workflow] = await testDb.db
       .insert(workflows)
       .values({
@@ -1739,7 +1623,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
       })
       .returning();
     if (!conv) throw new Error("seed conversation failed");
-    // A non-empty bound draft so the classifier reaches the dag parse.
     const boundDraft: DraftDocument = withWorkflowPersisted(
       {
         workflow: {
@@ -1774,9 +1657,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
   });
 
   test("a structural draft still returns the NOT COMMITTED directive error", async () => {
-    // The persisted version has one step; the working draft edits it to a
-    // different step. conversation_commit is read-only, so echoing
-    // "committed" would be a reported-not-written lie — it must refuse.
     const wf = await seedWorkflow("hb-structural", [
       { id: "shape", kind: "transform", language: "javascript", expression: "return input;" },
     ]);
@@ -1790,9 +1670,6 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
       })
       .returning();
     if (!conv) throw new Error("seed conversation failed");
-    // The draft is BOUND to the live workflow (so loadDraft does not
-    // re-hydrate it from the persisted dag) but its step has been edited
-    // away from the persisted version — the uncommitted-edit state.
     const dirtyDraft: DraftDocument = withWorkflowPersisted(
       {
         workflow: {

@@ -1,15 +1,3 @@
-// update_skill — patch a persisted tenant Skill's authored content
-// (title, body, examples, activation rules, gated tools, lifecycle).
-// Generic patch shape; send only the fields that should change.
-//
-// Pattern parity with update_knowledge_source / update_workflow.
-//
-// The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); the in-execute check
-// below stays because the chat surface invokes execute() directly and does
-// not route through the dispatcher's descriptor.rbac yet. Audit funnels
-// through the conversation.update_skill action with full before/after
-// snapshots.
-
 import { z } from "@hono/zod-openapi";
 import { UpdateSkillSchema } from "../../../../skills/types.ts";
 import type { ConversationTool } from "../../index.ts";

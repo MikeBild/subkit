@@ -1,14 +1,3 @@
-// Locks the four extension hooks added to ToolPolicyDefinition:
-//   - credentialFields  → forces confirm_before_execution when an
-//                         inline secret is detected on the input
-//   - prerequisites     → declared at the policy level, surfaced via
-//                         prerequisitesForTool for the dispatch gate
-//   - buildPendingOutput → produces a structured preview the elicit
-//                         carries on `pending_output`
-//   - resolveToolMode   → the credential gate runs BEFORE the
-//                         permission_mode=auto short-circuit so a
-//                         pasted token cannot silently land
-
 import { describe, expect, test } from "bun:test";
 import {
   buildPendingOutputForTool,
@@ -65,9 +54,6 @@ describe("resolveToolMode — credentialFields gate", () => {
 });
 
 describe("prerequisitesForTool", () => {
-  // Infrastructure-level tests. Specific tool declarations are added
-  // per-tool once the auto-load-skill flow ships; until then every
-  // tool reports an empty list and the sdk-wrap gate is a no-op.
   test("tools without explicit prerequisites return an empty array", () => {
     expect(prerequisitesForTool("edit_workflow_patch")).toEqual([]);
     expect(prerequisitesForTool("inspect_workflow_draft")).toEqual([]);

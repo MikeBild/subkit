@@ -1,37 +1,3 @@
-// authenticate_oauth — chat-driven OAuth2 authorization-code dance.
-//
-// Mirrors the existing MCP `authenticate` product tool
-// (`apps/engine/src/mcp/tools/authenticate.ts`) but exposes the same
-// capability inside the conversation loop so the agent can drive the
-// flow from a connector-creation thread:
-//
-//   1. save_connector_draft (with template-bound OAuth config OR an
-//      explicit credential.mode="oauth2" carrying client_id/secret)
-//   2. authenticate_oauth({ connector_id, scopes? })
-//   3. The CLI / portal opens `authorization_url` in the user's
-//      browser. Callback hits /v1/oauth/callback (single global URL
-//      per engine, routed by opaque state) which exchanges the code
-//      for tokens and persists them via upsertCredential.
-//
-// Surface-aware completion:
-//   - MCP client advertises elicitation (oob) — issue an out-of-band
-//     `elicitation/create` with the authorization URL, then block on
-//     `waitForOAuthCredential` until the callback lands the credential.
-//   - MCP client advertises elicitation (form only — same cap object
-//     in SDK 1.29) — issue a form elicitation with an `acknowledged`
-//     boolean and the URL in the message, then wait the same way.
-//   - No bridge (HTTP/SSE portal) — DB-pause via `ask_user_confirm`
-//     carrying the URL; on resume the tool is re-driven and, finding
-//     the state row already present, runs `waitForOAuthCredential`.
-//
-// `withConnectorAuthenticated` is marked ONLY after the credential
-// actually lands — the previous optimistic marking (before the operator
-// even opened the URL) is the bug this rework fixes.
-//
-// The credential row is keyed on (tenant_id, connector_id, environment),
-// so there is no user-supplied "credential name" — same auto-naming
-// pattern as bearer/basic/header/query atomic save.
-
 import { z } from "@hono/zod-openapi";
 import {
   OAUTH_AUTHORIZATION_URL_FIELD,
@@ -93,21 +59,6 @@ const inputSchema = z
   })
   .openapi("AuthenticateOAuthToolInput");
 
-/**
- * Open the governance elicitation row for an MCP-native OAuth prompt.
- *
- * The DB-pause path writes an `APPROVAL_REQUESTED` audit row via
- * `pauseForUserInput → createElicitation`. The MCP-native oob/form
- * branches issue `elicitation/create` straight through the bridge, so
- * without this they would skip that audit trail entirely. Insert a
- * `protocol_native` carrier row BEFORE the bridge call so the
- * APPROVAL_REQUESTED → APPROVAL_APPROVED/REJECTED lifecycle is recorded
- * for the OAuth authorization the same way the portal path records it.
- *
- * `ask_user_confirm` is the carrier tool name — the operator is
- * confirming a governed external authorization, the same intent the
- * DB-pause path expresses via `ask_user_confirm`.
- */
 function openOAuthApprovalElicitation(
   ctx: ToolContext,
   p: {
@@ -127,8 +78,6 @@ function openOAuthApprovalElicitation(
       ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
       tool_name: "ask_user_confirm",
       summary: `Authorize OAuth access for ${p.connectorLabel}.`,
-      // Source the carrier payload from the single `oauthApprovalInput`
-      // builder so the bridge (oob/form) and DB-pause paths cannot drift.
       input: oauthApprovalInput(
         p.authorizationUrl,
         p.redirectUri,
@@ -142,15 +91,6 @@ function openOAuthApprovalElicitation(
   );
 }
 
-/**
- * Close the governance elicitation row once `waitForOAuthCredential`
- * settles. `succeeded` → `resolved` (APPROVAL_APPROVED); every other
- * status → `cancelled` (APPROVAL_REJECTED) with the matching structured
- * error code as the reason. Idempotent against a lost race: a concurrent
- * resolver makes the conditional update miss, which `resolveElicitation`
- * reports as `already_resolved` — harmless here, the audit row already
- * landed.
- */
 async function resolveOAuthApprovalElicitation(
   ctx: ToolContext,
   elicitationId: string,
@@ -165,22 +105,12 @@ async function resolveOAuthApprovalElicitation(
       decided_by: ctx.actor_id,
       status: status === "succeeded" ? "resolved" : "cancelled",
       ...(status === "succeeded" ? {} : { reason: mapOAuthWaitFailure(status).code }),
-      // This row was delivered through the bridge (oob/form) and the
-      // round-trip completed — the operator answered. The subsequent
-      // wait outcome is independent of the elicitation transport.
       transport: "succeeded",
     },
     ctx.db,
   );
 }
 
-/**
- * Map a non-`succeeded` `waitForOAuthCredential` status to its canonical
- * structured `error_code` AND human-readable message. One dispatcher
- * over the `"failed" | "timeout"` discriminator — `finalizeWaitResult`
- * and `resolveOAuthApprovalElicitation` both read from here so the two
- * facets cannot drift.
- */
 function mapOAuthWaitFailure(status: "failed" | "timeout"): { code: string; message: string } {
   switch (status) {
     case "timeout":
@@ -198,17 +128,6 @@ function mapOAuthWaitFailure(status: "failed" | "timeout"): { code: string; mess
   }
 }
 
-/**
- * Did this connector already get an authorization URL this round?
- *
- * Scoped to `(tenant_id, connector_id)` ONLY — deliberately NOT to the
- * operator who started the dance. This pins a single-dance-per-connector
- * intent: a connector holds exactly one credential per environment, so a
- * second operator's `authenticate_oauth` for the same connector RESUMES
- * the in-flight dance rather than minting a competing second state row.
- * Do not add a `decided_by` / actor filter — concurrent dances for the
- * same connector would race to overwrite the one credential row.
- */
 async function hasPendingOAuthState(
   ctx: { db: import("../../db/client.ts").Db; tenant_id: string },
   connectorId: string,
@@ -228,33 +147,11 @@ async function hasPendingOAuthState(
   return rows.length > 0;
 }
 
-/**
- * Remaining `waitForOAuthCredential` budget after a bridge elicitation
- * round-trip already consumed part of the client's shared tool-call
- * timeout. `bridgeStartedAt` is a `performance.now()` reading captured
- * immediately before the `elicitOob` / `elicitForm` call; the elapsed
- * bridge cost is subtracted from `OAUTH_WAIT_CEILING_MS` and clamped to
- * `OAUTH_WAIT_MIN_FLOOR_MS` so the wait always gets at least a few
- * DB-poll ticks.
- *
- * `performance.now()` — a monotonic clock — is used deliberately instead
- * of `Date.now()`: an NTP slew between capture and delta could otherwise
- * make the elapsed measurement negative and inflate the wait budget past
- * the ceiling. The monotonic clock cannot run backwards.
- */
 function remainingWaitBudgetMs(bridgeStartedAt: number): number {
   const elapsed = performance.now() - bridgeStartedAt;
   return Math.max(OAUTH_WAIT_MIN_FLOOR_MS, OAUTH_WAIT_CEILING_MS - elapsed);
 }
 
-/**
- * Shared tail of the oob and form bridge branches: run the credential
- * wait on the bridge-adjusted budget, close the governance elicitation
- * row, and finalize the `ToolResult` carrying the URL/redirect/return_url
- * echo payload. Both branches differ only in WHICH `elicit*` call ran
- * before this — the wait → resolve → finalize sequence is identical, so
- * it lives here once rather than near-identically inline.
- */
 async function awaitOAuthCredentialAndFinalize(
   ctx: ToolContext,
   p: {
@@ -321,17 +218,8 @@ export const authenticateOAuthTool: ConversationTool = {
         },
       };
     }
-    // `credentials` rows are keyed on connector environment; the
-    // connector row carries the canonical environment for this draft.
     const environment: "dev" | "prod" = connector.environment === "prod" ? "prod" : "dev";
 
-    // Resume re-entry — applies to BOTH the bridge and no-bridge paths.
-    // If a pending state row already exists, the operator was handed a
-    // URL on a prior turn (DB-pause resume, OR a bridge client whose
-    // tool call timed out and is being retried). Re-drive straight into
-    // the credential wait instead of minting a SECOND authorization URL
-    // + a second state row. `waitForOAuthCredential` is idempotent: it
-    // returns immediately if the credential already landed.
     if (await hasPendingOAuthState(ctx, connectorId)) {
       const status = await waitForOAuthCredential({
         tenant_id: ctx.tenant_id,
@@ -342,11 +230,6 @@ export const authenticateOAuthTool: ConversationTool = {
       return finalizeWaitResult(ctx, connector, status);
     }
 
-    // Route gate: the connector's own sign-in (`connectorSignIn` — what its
-    // `sign_in` field and both start routes answer). This tool runs the
-    // `/oauth/start` flow; an MCP server discovers its authorization server
-    // and signs in on `/mcp/authorize`, which `request_connector_reauth`
-    // links to.
     const signIn = connectorSignIn(connector);
     if (signIn?.kind === "mcp") {
       return {
@@ -371,16 +254,6 @@ export const authenticateOAuthTool: ConversationTool = {
         },
       };
     }
-    // Grant-type gate. `authenticate_oauth` is for the BROWSER
-    // authorization-code dance only. Cognito USER_PASSWORD_AUTH and
-    // client_credentials_json (M2M) have no authorization endpoint, so
-    // starting the dance throws opaquely ("unexpected HTTP response status
-    // code") — the exact failure that sent a whole debugging session down a
-    // content-type rabbit hole. Fail fast with an actionable redirect to
-    // `request_connector_reauth`, which re-collects the credential in chat and
-    // rotates it in place. The Cognito refusal is the same predicate
-    // `beginConnectorOAuthDance` refuses with: an oauth2 connector that
-    // `connectorSignIn` gives no browser sign-in.
     if (connector.auth_type === "oauth2" && !signIn) {
       return {
         ok: false,
@@ -403,9 +276,6 @@ export const authenticateOAuthTool: ConversationTool = {
         },
       };
     }
-    // Canonical, engine-synthesized redirect_uri. Operators add THIS one
-    // URL to their OAuth provider's allowlist; the engine routes the
-    // callback to the right connector via the opaque `state` token.
     const redirect_uri = buildOAuthRedirectUri();
     if (!redirect_uri) {
       return {
@@ -431,14 +301,7 @@ export const authenticateOAuthTool: ConversationTool = {
       code_verifier: started.code_verifier,
       redirect_uri,
       expires_at: expires,
-      // G6: persist the scopes we ASKED the IdP to grant so the
-      // callback handler can diff them against the IdP's response.
-      // `cfgWithScope.scope` is the space-separated string passed to
-      // the authorization endpoint; null when no scope param was sent
-      // (the IdP applies its default consent set).
       requested_scopes: cfgWithScope.scope ?? null,
-      // The link is handed out in a conversation; that is where the person
-      // returns to, whichever client the conversation runs in.
       origin: "chat" satisfies OAuthFlowOrigin,
     });
 
@@ -449,11 +312,7 @@ export const authenticateOAuthTool: ConversationTool = {
 
     const bridge = ctx.elicitationBridge;
 
-    // ── MCP oob-capable — out-of-band URL elicitation, then wait ──────
     if (bridge?.capabilities.oob) {
-      // Open the governance elicitation row BEFORE the bridge call so
-      // the APPROVAL_REQUESTED audit row is written for this OAuth
-      // authorization — matching the DB-pause path's audit trail.
       const approval = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
@@ -462,33 +321,15 @@ export const authenticateOAuthTool: ConversationTool = {
         connectorId,
         connectorSlug: connector.slug,
       });
-      // Start the shared-budget clock before the bridge round-trip so its
-      // cost is subtracted from the `waitForOAuthCredential` timeout.
-      // `performance.now()` (monotonic) — NTP slew must not make the
-      // elapsed delta in `remainingWaitBudgetMs` go negative.
       const bridgeStartedAt = performance.now();
       try {
-        // Deliberate: an oob transport failure mid-call returns a
-        // structured error and the agent re-calls authenticate_oauth —
-        // there is NO automatic fallback to a form-mode elicitation
-        // retry. The behaviour is predictable and the live state row
-        // makes the retry resume the same flow.
         await bridge.elicitOob({
           url: started.authorization_url,
           message,
-          // The OAuth `state` token is intentionally reused as the
-          // elicitation correlation id — it already uniquely identifies
-          // this authorization attempt end-to-end (start → callback).
           elicitationId: started.state,
         });
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
-          // Capability raced away — degrade to the DB-pause path on the
-          // SAME governance row opened above. Minting a second row via
-          // `createElicitation` would trip the single-pending invariant
-          // and SQL-cancel the first `APPROVAL_REQUESTED` without a paired
-          // resolution — `demoteElicitationToPortal` keeps one row through
-          // the whole audit lifecycle instead.
           logger.warn({
             module: "conversation",
             action: "authenticate_oauth.oob_unsupported_fallback",
@@ -508,10 +349,6 @@ export const authenticateOAuthTool: ConversationTool = {
             connector.slug,
           );
         }
-        // A transport/timeout failure with the bridge present. Do NOT
-        // DB-pause: an external MCP client cannot resume a DB-pause.
-        // Return a structured error — the state row is still live, so a
-        // retry of `authenticate_oauth` resumes the same flow.
         logger.warn({
           module: "conversation",
           action: "authenticate_oauth.oob_transport_failed",
@@ -541,10 +378,7 @@ export const authenticateOAuthTool: ConversationTool = {
       });
     }
 
-    // ── MCP form-capable only — form elicitation with the URL ─────────
     if (bridge?.capabilities.form) {
-      // Governance elicitation row — same audit-trail rationale as the
-      // oob branch above.
       const approval = await openOAuthApprovalElicitation(ctx, {
         connectorLabel,
         authorizationUrl: started.authorization_url,
@@ -553,10 +387,6 @@ export const authenticateOAuthTool: ConversationTool = {
         connectorId,
         connectorSlug: connector.slug,
       });
-      // Start the shared-budget clock before the bridge round-trip so its
-      // cost is subtracted from the `waitForOAuthCredential` timeout.
-      // `performance.now()` (monotonic) — NTP slew must not make the
-      // elapsed delta in `remainingWaitBudgetMs` go negative.
       const bridgeStartedAt = performance.now();
       try {
         const result = await bridge.elicitForm({
@@ -573,15 +403,7 @@ export const authenticateOAuthTool: ConversationTool = {
             required: ["acknowledged"],
           },
         });
-        // An explicit non-accept action is a decline. An `accept` whose
-        // `acknowledged` boolean is not `true` is ALSO a decline: the
-        // operator dismissed the form without confirming they completed
-        // the authorization, so proceeding into `waitForOAuthCredential`
-        // and resolving the audit row as APPROVAL_APPROVED would be
-        // semantically wrong. Both collapse to the same decline path.
         if (result.action !== "accept" || result.content?.acknowledged !== true) {
-          // The form round-trip completed — the operator answered
-          // (declined / did not acknowledge), so `transport: "succeeded"`.
           return resolveAndError(ctx, approval.id, {
             reason: OAUTH_AUTHORIZATION_DECLINED,
             errorCode: OAUTH_AUTHORIZATION_DECLINED,
@@ -592,9 +414,6 @@ export const authenticateOAuthTool: ConversationTool = {
         }
       } catch (err) {
         if (err instanceof ElicitationUnsupportedError) {
-          // Same audit-trail rationale as the oob branch: degrade the
-          // already-created native row to a DB-pause via
-          // `demoteElicitationToPortal` instead of minting a second row.
           logger.warn({
             module: "conversation",
             action: "authenticate_oauth.form_unsupported_fallback",
@@ -614,9 +433,6 @@ export const authenticateOAuthTool: ConversationTool = {
             connector.slug,
           );
         }
-        // Transport/timeout failure with the bridge present — do NOT
-        // DB-pause (an external MCP client cannot resume one). Return a
-        // structured error; the live state row lets a retry resume.
         logger.warn({
           module: "conversation",
           action: "authenticate_oauth.form_transport_failed",
@@ -646,7 +462,6 @@ export const authenticateOAuthTool: ConversationTool = {
       });
     }
 
-    // ── No bridge — DB-pause via ask_user_confirm ─────────────────────
     return dbPauseForOAuth(
       ctx,
       started.authorization_url,
@@ -658,18 +473,6 @@ export const authenticateOAuthTool: ConversationTool = {
   },
 };
 
-/**
- * The `ask_user_confirm` row input for an OAuth authorization pause.
- *
- * `external_write` is deliberate: it forces this OAuth pause to be
- * non-auto-approvable. A dedicated `external_authorization` kind was
- * considered and rejected — it would risk an approval-semantics
- * regression for no behavioural gain.
- *
- * The `OAUTH_AUTHORIZATION_URL_FIELD` key is the shared contract sk-cli
- * reads off the `elicit_request` frame to detect the OAuth step and
- * auto-open the browser.
- */
 function oauthApprovalInput(
   authorizationUrl: string,
   redirectUri: string,
@@ -677,9 +480,6 @@ function oauthApprovalInput(
   connectorId: string,
   connectorSlug: string,
 ): Record<string, unknown> {
-  // Build THROUGH the shared `OAuthApprovalInputSchema` so the carrier
-  // shape the CLI consumer (`extractOAuthUrl`) parses cannot drift from
-  // what this producer emits — a Zod-checked contract end to end.
   const parsed = OAuthApprovalInputSchema.parse({
     kind: "external_write",
     question: "Have you completed the authorization in your browser?",
@@ -687,13 +487,6 @@ function oauthApprovalInput(
     [OAUTH_AUTHORIZATION_URL_FIELD]: authorizationUrl,
     redirect_uri: redirectUri,
   });
-  // G8: stamp the deterministic-resume commit_intent so when the
-  // operator confirms, the auto-persist dispatcher (oauth_completed
-  // case) injects a synthetic tool result naming the saved credential.
-  // The LLM's next turn sees "authenticated: true, connector_id: ..."
-  // and can immediately retry the originally-blocked tool call.
-  // Spread into a fresh object so the strict-parsed payload stays
-  // intact for the CLI URL extractor.
   return {
     ...parsed,
     commit_intent: {
@@ -704,7 +497,6 @@ function oauthApprovalInput(
   };
 }
 
-/** DB-pause path: surface the authorization URL via `ask_user_confirm`. */
 function dbPauseForOAuth(
   ctx: import("./index.ts").ToolContext,
   authorizationUrl: string,
@@ -724,25 +516,6 @@ function dbPauseForOAuth(
   );
 }
 
-/**
- * Bridge-degrade pause path: surface the authorization URL as a pause
- * that references the ALREADY-created native elicitation row.
- *
- * The oob/form branches open the governance row via
- * `openOAuthApprovalElicitation` (`createNativeElicitation`) BEFORE the
- * bridge call so an `APPROVAL_REQUESTED` audit row lands. When the bridge
- * raises `ElicitationUnsupportedError`, that row is still pending — it
- * must NOT be superseded by a second `createElicitation` (the
- * single-pending invariant would SQL-cancel the first row without a
- * paired `APPROVAL_APPROVED/REJECTED`, breaking the audit trail). Instead
- * `demoteElicitationToPortal` flips the same row to `protocol_native:
- * false` (it is now satisfied by a portal POST to `respondElicitation`)
- * and the pause envelope points at that same `rowId`. One row carries the
- * whole `APPROVAL_REQUESTED → APPROVAL_APPROVED/REJECTED` lifecycle.
- *
- * Mirrors the `ask_user_*` `ElicitationUnsupportedError` fallback in
- * `pauseForUserInput` (`ask-user/common.ts`).
- */
 async function demoteOAuthApprovalToPortal(
   ctx: ToolContext,
   rowId: string,
@@ -765,11 +538,6 @@ async function demoteOAuthApprovalToPortal(
   };
 }
 
-/**
- * Turn a `waitForOAuthCredential` status into a `ToolResult`. On
- * `succeeded` the connector_authenticated checkpoint is marked fresh —
- * and ONLY here, after the credential actually landed.
- */
 async function finalizeWaitResult(
   ctx: import("./index.ts").ToolContext,
   connector: { display_name?: string | null; slug: string },
@@ -777,10 +545,6 @@ async function finalizeWaitResult(
   extra?: Record<string, unknown>,
 ): Promise<ToolResult> {
   if (status === "succeeded") {
-    // `ctx.getDraft()` returns the closure-local draft for THIS
-    // `runLoop` invocation. A concurrent `respondElicitation` runs in a
-    // separate loop with its own draft closure, so it cannot mutate
-    // this one — no re-read is needed before `withConnectorAuthenticated`.
     const draft = ctx.getDraft();
     if (draft.connector) {
       const next = withConnectorAuthenticated(

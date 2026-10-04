@@ -1,16 +1,3 @@
-// A credential typed into the chat form reaches the connector's encrypted
-// credential and nowhere else.
-//
-// The engine asks for a static credential with
-// `ask_user_form({ name: "token", type: "password", sensitive: true })`.
-// This drives that exact path in-process, as the cockpit does it:
-//   1. the pending form is projected for the reader (resume summary) — the
-//      masked field is there, as a definition without a value;
-//   2. the operator's answer resumes the conversation (respondElicitation);
-//   3. the harness writes the credential AES-256-GCM encrypted to
-//      `credentials` and the plaintext appears in no other row, in no log
-//      line and in no model request.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
@@ -41,7 +28,6 @@ import {
   respondElicitationForTest,
 } from "./setup.ts";
 
-// Fake, but shaped like a real vendor key so no redaction pattern gets a pass.
 const SECRET = "mb_9f3c2a7e41d84b0c9a6e5f1d2b3c4a5e6f7081928374655a";
 
 let ctx: ConversationTestCtx;
@@ -114,14 +100,12 @@ describe("chat credential form", () => {
       .from(conversationElicitations)
       .where(eq(conversationElicitations.conversation_id, conversation_id));
     if (!pending) throw new Error("no pending form");
-    // (1) The reader sees the masked field — the regression was an empty prompt.
     expect(pendingPrompt(pending.input).prompt).toMatchObject({
       question: "Enter the Metabase API key",
       intent_kind: "save_connector_draft",
       fields: [{ name: "token", label: "API key", type: "password", sensitive: true }],
     });
 
-    // (2) The operator answers; capture every log line the resume emits.
     const logged: string[] = [];
     reconfigureLogger({ level: "trace", format: "ndjson" });
     const unsubscribe = logRing.subscribe((entry) => logged.push(JSON.stringify(entry)));
@@ -153,7 +137,6 @@ describe("chat credential form", () => {
       _resetLoggerForTests();
     }
 
-    // (3a) Stored, encrypted, on the connector.
     const [stored] = await db
       .select()
       .from(credentials)
@@ -165,7 +148,6 @@ describe("chat credential form", () => {
     const decrypted = await getCredentialForConnector(ctx.tenant_id, connector.id, "dev", db);
     expect(JSON.stringify(decrypted?.value)).toContain(SECRET);
 
-    // (3b) Everywhere else: the marker at most, never the value.
     const [answered] = await db
       .select({ output: conversationElicitations.output })
       .from(conversationElicitations)

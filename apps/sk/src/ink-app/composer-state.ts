@@ -1,15 +1,3 @@
-// Composer-adjacent state machines for the Ink REPL.
-//
-// Four hooks that own the stateful machinery around the input buffer:
-//
-//   * usePromptHistory   — persistent ↑/↓ prompt ring (~/.sk/history.jsonl)
-//   * usePasteBuffers    — paste store + `[Pasted text #N]` ref chips
-//   * useSecretRedirect  — input-side credential filter (PR5)
-//   * useGhostFeedback   — ghost-text accept/typed-over telemetry
-//
-// Each hook owns its state and exposes a small verb surface so the
-// submit path and key handler stay orchestration-only.
-
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EngineClient, RequestCredentialFormEvent } from "../engine-client.ts";
@@ -33,22 +21,14 @@ import {
   type StoredPaste,
 } from "../repl/paste-store.ts";
 
-// -------- Persistent prompt history --------
-
 export interface PromptHistoryApi {
   historyRef: React.MutableRefObject<string[]>;
   historyCursorRef: React.MutableRefObject<number>;
-  /** Draft preservation — when the user presses ↑ on a non-empty
-   *  buffer, stash the in-progress draft so ↓-past-zero restores it. */
   historyDraftRef: React.MutableRefObject<InputBuffer | null>;
   effectiveHistoryPath: string;
-  /** Record in the in-memory ring + persist (subkit-tenant scoped). */
   recordPrompt: (trimmed: string) => void;
 }
 
-// Load ~/.sk/history.jsonl on mount so ↑/↓ works across sessions.
-// The ring is kept as a ref so rapid keypresses don't trigger
-// re-renders on every navigation.
 export function usePromptHistory(
   historyPath: string | undefined,
   tenant: string | null,
@@ -62,9 +42,7 @@ export function usePromptHistory(
       const ring = loadPromptRing(effectiveHistoryPath, { tenant });
       historyRef.current = ring;
       historyCursorRef.current = ring.length;
-    } catch {
-      // silent — missing / locked file shouldn't crash the REPL
-    }
+    } catch {}
   }, [effectiveHistoryPath, tenant]);
   const recordPrompt = useCallback(
     (trimmed: string): void => {
@@ -72,16 +50,12 @@ export function usePromptHistory(
       historyCursorRef.current = historyRef.current.length;
       try {
         appendHistory(trimmed, { path: effectiveHistoryPath, tenant: tenant ?? null });
-      } catch {
-        // best-effort
-      }
+      } catch {}
     },
     [effectiveHistoryPath, tenant],
   );
   return { historyRef, historyCursorRef, historyDraftRef, effectiveHistoryPath, recordPrompt };
 }
-
-// -------- Paste store --------
 
 export interface PasteBuffersApi {
   pasteStoreRef: React.MutableRefObject<PasteStore>;
@@ -116,43 +90,10 @@ export function usePasteBuffers(
   return { pasteStoreRef, pendingPasteRefs, syncPendingPasteRefs, insertPasteChunk };
 }
 
-// -------- Input-side credential filter (PR5) --------
-//
-// When the user pastes a token-shaped string, the composer suppresses
-// the send, replaces the input field with a redirect hint, and arms
-// this state. The next Enter sends the typed
-// `request_credential_form` event (with the detected kind as
-// `credential_hint`) to the engine instead of the raw paste — the
-// engine opens the masked `ask_user_form(type: password, sensitive:
-// true)` deterministically, no LLM turn. The benign
-// REQUEST_CREDENTIAL_FORM_FALLBACK prose rides along as the turn's
-// `message`, so a path that cannot carry events (a create-conversation
-// first turn) degrades to the re-prompt behavior. Esc clears it without
-// sending anything. Only the kind name + 6-char prefix sample ever
-// surface in the UI; the matched secret is dropped on the floor and
-// never leaves this process.
-
 export interface SecretRedirectApi {
   pendingSecretRedirect: { kind: string; sample: string } | null;
-  /**
-   * Branch 1 — confirmation step. The previous submit detected a
-   * secret-shape and armed the redirect; the raw the composer holds is
-   * the hint text we put back into the buffer, and the user pressing
-   * Enter again is consent to forward the masked request to the agent.
-   * Returns the `message` to submit in place of `raw` (so the engine
-   * never sees the original token) plus the typed event the submit
-   * path threads onto the append call, or `null` when not armed.
-   */
   consumeArmedRedirect: () => { message: string; event: RequestCredentialFormEvent } | null;
-  /**
-   * Branch 2 — initial detection on a plain (non-slash) prompt.
-   * Scans both the literal buffer AND the paste-expanded form so a
-   * long paste that got stashed under `[Pasted text #N]` is still
-   * caught — the paste store is what actually goes on the wire.
-   * Returns true when the submission was swallowed.
-   */
   interceptPlainPrompt: (trimmed: string) => boolean;
-  /** Esc path — clears an armed redirect without sending anything. */
   cancelSecretRedirect: () => void;
 }
 
@@ -173,16 +114,6 @@ export function useSecretRedirect(
   } | null => {
     if (pendingSecretRedirect === null) return null;
     setPendingSecretRedirect(null);
-    // Engine-route contract: the append body carries the typed
-    // `request_credential_form` event (detected kind as
-    // `credential_hint`) — the engine short-circuits the turn and
-    // opens the masked `ask_user_form(type: password, sensitive:
-    // true)` deterministically, zero LLM calls. The benign
-    // REQUEST_CREDENTIAL_FORM_FALLBACK prose still rides as the
-    // `message` so any path that cannot carry events, like a
-    // create-conversation first turn, degrades to the plain-language
-    // re-prompt the agent's skills already handle. Neither path ever
-    // sees the original token.
     showInfo("forwarding masked credential request to the agent");
     return {
       message: REQUEST_CREDENTIAL_FORM_FALLBACK,
@@ -200,12 +131,6 @@ export function useSecretRedirect(
         }
       }
       if (shape.matched) {
-        // Stash kind + 6-char sample only — the matched secret is
-        // dropped here and never logged. Replace the buffer with a
-        // human-readable hint the user can confirm or cancel. The
-        // hint contains the sample (6 chars) but not the full token.
-        // We also drop any paste-store entries that contained the
-        // secret so they can't leak via a later @-mention or queue.
         for (const item of pasteStoreRef.current.all()) {
           if (item.kind === "text" && detectSecretShape(item.text).matched) {
             pasteStoreRef.current.delete(item.id);
@@ -221,8 +146,6 @@ export function useSecretRedirect(
     [pasteStoreRef, setInput, syncPendingPasteRefs],
   );
 
-  // PR5 input-side credential filter: Esc clears an armed redirect
-  // without sending anything.
   const cancelSecretRedirect = useCallback((): void => {
     setPendingSecretRedirect(null);
     setInput(EMPTY_BUFFER);
@@ -237,14 +160,7 @@ export function useSecretRedirect(
   };
 }
 
-// -------- Ghost-text feedback --------
-
 export interface GhostFeedbackApi {
-  /** Set true by the explicit Right-Arrow / Tab / Esc handlers before
-   *  they call setInput, so the post-render effect knows that branch
-   *  already fired feedback and skips the implicit `typed-over`
-   *  emission. Without this we'd double-count every right-arrow
-   *  accept as both "accepted" and "typed-over". */
   ghostHandledRef: React.MutableRefObject<boolean>;
 }
 
@@ -253,18 +169,9 @@ export function useGhostFeedback(
   conversationId: string | null,
   engineClient: EngineClient | undefined,
 ): GhostFeedbackApi {
-  // Tracks the ghost across renders so we can detect the
-  // "user typed the entire suggestion" transition. The reducer drops
-  // the ghost once `consumed === text.length` (input-buffer.ts:181).
   const prevGhostRef = useRef<{ text: string } | null>(null);
   const ghostHandledRef = useRef(false);
 
-  // Detect the "user typed the entire suggestion" transition. The
-  // input-buffer reducer drops the ghost the moment `consumed`
-  // reaches `text.length`; without this effect the matching feedback
-  // outcome (`typed_over`) would never fire and the dashboard pivot
-  // would stay flat. Right-Arrow / Tab / Esc set `ghostHandledRef`
-  // so we don't double-count an explicit accept as also typed-over.
   useEffect(() => {
     const prev = prevGhostRef.current;
     if (prev && !input.ghost) {
@@ -282,14 +189,6 @@ export function useGhostFeedback(
     prevGhostRef.current = input.ghost ? { text: input.ghost.text } : null;
   }, [input.ghost, input.value, conversationId, engineClient]);
 
-  // Drop the ghost-tracking refs when the active conversation switches
-  // (resume / fork / new). Without this, a stale ghost from the prior
-  // conversation could fire a `typed-over` POST against the wrong
-  // conversation_id during fast tab-switching: prevGhostRef holds
-  // text, the user types matching prefix in the new conversation, the
-  // typed-over branch above POSTs against `session.conversationId`
-  // (now the new conversation) with the prior ghost's text. Clearing
-  // here closes that window.
   useEffect(() => {
     prevGhostRef.current = null;
     ghostHandledRef.current = false;

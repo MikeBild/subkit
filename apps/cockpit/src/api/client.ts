@@ -47,11 +47,6 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return body as T;
 }
 
-/**
- * A JSON POST whose body is large enough that the reader should see it go:
- * the same request as `apiRequest`, sent so the browser reports how much of
- * the body has left (`onProgress` with 0…1).
- */
 export function apiUpload<T>(
   path: string,
   body: unknown,
@@ -101,11 +96,6 @@ export async function bootstrap(): Promise<Bootstrap> {
   return result;
 }
 
-/**
- * The person's own conversations, newest activity first. Hidden ones stay
- * out unless asked for; machine-account conversations never appear here —
- * they are a record, not a place to go back to.
- */
 export function listConversations(
   q = "",
   options: { hidden?: "only" } = {},
@@ -122,7 +112,6 @@ export function listConversations(
   return apiRequest(`/v1/conversations?${params}`);
 }
 
-/** Conversations that were started about one workflow or connector. */
 export function listConversationsAbout(
   target: { workflow_id?: string; connector_id?: string },
   limit = 8,
@@ -144,7 +133,6 @@ export function setConversationHidden(id: string, hidden: boolean): Promise<Conv
   });
 }
 
-/** Removes the conversation for everyone (owner or admin); 409 while a turn runs. */
 export function deleteConversation(id: string): Promise<{ id: string; deleted: true }> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
@@ -198,9 +186,6 @@ async function streamConversation(
         outcome = { ...parsed, events: [] } as unknown as ConversationRun;
       } else if (eventName === "error")
         throw new ApiError(500, parsed, response.headers.get("x-trace-id"));
-      // The create stream names the new conversation before its turn runs;
-      // its frame carries no `type`, so it gets one here — a send that fails
-      // later still knows which conversation the engine opened.
       else if (eventName === "conversation_started")
         onEvent?.({ ...parsed, type: "conversation_started" });
       else onEvent?.(parsed);
@@ -212,7 +197,6 @@ async function streamConversation(
   return outcome;
 }
 
-/** The `@`-mentions of a turn ride beside the prose; absent when none. */
 function withReferences(references?: readonly ConversationReference[]) {
   return references && references.length > 0 ? { references } : {};
 }
@@ -237,11 +221,6 @@ export async function sendConversationTurn(
 ): Promise<ConversationRun> {
   if (input.conversationId) {
     const path = `/v1/conversations/${encodeURIComponent(input.conversationId)}`;
-    // A typed reply answers a text question; it never becomes a boolean approval.
-    // Only a question the reader was shown routes here: one that appeared after
-    // the snapshot was read fails the append (`pending_elicitation_blocked`)
-    // and comes back to the page, which shows it — a message written without
-    // seeing the question is never taken as its answer.
     if (input.pendingElicitation?.tool_name === "ask_user_text") {
       return respondToChatText(
         input.conversationId,
@@ -294,7 +273,6 @@ export function respondToChatChoice(
   );
 }
 
-/** The reader's typed answer to a free-text question, passed on verbatim. */
 export function respondToChatText(
   conversationId: string,
   elicitationId: string,

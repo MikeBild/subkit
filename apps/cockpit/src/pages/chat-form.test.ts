@@ -68,18 +68,15 @@ test("a field without a label is its name, marked as one — never invented pros
     text: "Periodenende",
     machine: false,
   });
-  // Not dressed up as English prose: the input's own name, shown as a name.
   expect(
     formFieldLabel({ name: "report_recipient_email", label: "report_recipient_email" }, known),
   ).toEqual({ text: "report_recipient_email", machine: true });
-  // A label the engine did send is the author's word and stays.
   expect(formFieldLabel({ name: "site", label: "Website" }, known)).toEqual({
     text: "Website",
     machine: false,
   });
 });
 
-// The engine's credential form: `ask_user_form` with a masked `token` field.
 const credentialForm: ChatForm = {
   id: "credential",
   toolCallId: "ask",

@@ -1,7 +1,3 @@
-// Unit tests for the connector_resolutions rollup. These don't need the
-// engine's Postgres scaffolding — they exercise the pure function that
-// derives the run-level summary from per-step request_meta bags.
-
 import { describe, expect, test } from "bun:test";
 import { rollupConnectorResolutions } from "../engine.ts";
 
@@ -60,7 +56,7 @@ describe("rollupConnectorResolutions", () => {
     const out = rollupConnectorResolutions(stepSummaries, "dev");
     expect(out).toHaveLength(2);
     expect(out[0]?.connector_id).toBe("c1");
-    expect(out[0]?.step_key).toBe("a"); // first occurrence wins
+    expect(out[0]?.step_key).toBe("a");
     expect(out[1]?.connector_id).toBe("c2");
     expect(out[1]?.auth_method).toBe("oauth2_refreshed");
   });

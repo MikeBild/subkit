@@ -1,22 +1,3 @@
-// User story: As an admin, I drop a `SK.md` into my project
-// root, run `sk -p "..."`, and the contents flow through the CLI's
-// memory loader, land on `conversations.memory`, fire a
-// `conversation.memory_injected` audit row, and persist across
-// follow-up turns without me re-sending the payload.
-//
-// Acceptance criteria:
-//
-//   AC1. A project-level SK.md discovered by the memory loader
-//        is forwarded on conversation create, written to
-//        `conversations.memory`, and audited.
-//   AC2. A follow-up turn without `memory` on the wire REUSES the
-//        persisted row (no second `memory_injected` row is written).
-//   AC3. Explicitly re-sending memory on a later turn writes a new
-//        `memory_injected` row AND updates the row's memory column.
-//   AC4. `sk --no-memory` skips injection even when SK.md exists.
-//   AC5. The memory loader walks upward from a nested cwd and
-//        picks up the closest SK.md.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -101,13 +82,10 @@ describe("journey: sk-cli memory pipeline", () => {
     const persisted = await conversationMemory(id);
     expect(persisted).toContain("prefer JSON response shapes");
     const count = await memoryAuditCount(id);
-    // Create path emits exactly one memory_injected row when memory is
-    // present.
     expect(count).toBe(1);
   });
 
   test("AC2: a follow-up turn without memory reuses the persisted row", async () => {
-    // Create first.
     const created = await runHeadless({
       profile: profile(),
       prompt: "turn 1",
@@ -118,7 +96,6 @@ describe("journey: sk-cli memory pipeline", () => {
     });
     const id = created.conversation_id as string;
     const initialCount = await memoryAuditCount(id);
-    // Second turn reattaches without resending memory.
     const res = await journeyFetch(ctx, `/v1/conversations/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ message: "turn 2" }),
@@ -126,7 +103,6 @@ describe("journey: sk-cli memory pipeline", () => {
     expect(res.status).toBe(200);
     const finalCount = await memoryAuditCount(id);
     expect(finalCount).toBe(initialCount);
-    // Persisted memory is still there.
     expect(await conversationMemory(id)).toContain("prefer JSON response shapes");
   });
 

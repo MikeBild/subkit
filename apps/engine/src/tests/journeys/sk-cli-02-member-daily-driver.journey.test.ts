@@ -1,24 +1,3 @@
-// User story: As a member user, I can chat with the assistant and
-// iterate on drafts, but I cannot read the audit log and my tenant
-// switches require explicit membership. The test user is seeded with
-// the `member` built-in role which grants conversation:* but not
-// audit:read or workflow:delete.
-//
-// Acceptance criteria:
-//
-//   AC1. A member can POST /v1/conversations and receive a 201 — the
-//        conversation:write → workflow:write fallback in
-//        requireAnyPermission is exercised.
-//   AC2. A member POSTing with a memory payload writes the memory
-//        onto the conversation row and emits CONVERSATION_MEMORY_INJECTED.
-//   AC3. A member is denied GET /v1/audit-log with a 403 and a
-//        policy.denied audit row attributed to the member user.
-//   AC4. A member PATCHing /v1/conversations/:id with a new model
-//        succeeds (conversation:write grant) and the PATCH is audited.
-//
-// Audit coverage: CONVERSATION_CREATED, CONVERSATION_MEMORY_INJECTED,
-// CONVERSATION_UPDATED, policy.denied (audit:read).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";

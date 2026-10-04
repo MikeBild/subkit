@@ -1,15 +1,8 @@
-// Tenant-authored skill activation. Pins the contract that an
-// operator-supplied skill (one with `activates_when` set on its row,
-// not seeded from disk) is loaded by `loadActivationCatalog` and
-// matched by `autoloadForToolCall` exactly like a shipped skill —
-// proving the data-driven path is functional for non-shipped skills.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { skills, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { autoloadForToolCall, loadActivationCatalog } from "./skill-autoload.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;

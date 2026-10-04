@@ -1,18 +1,3 @@
-// User story: As a platform operator I want my before-request hooks to
-// express policy with the sk-Stdlib surface (sk.http.isMutating,
-// sk.deny, sk.allow) instead of inline comparisons, so the policy code
-// is uniform and the LLM-authoring layer can reliably propose it.
-// Acceptance criteria:
-//   - AC1: A hook that uses sk.* can be created via REST and is
-//          accepted by the hook lint pass.
-//   - AC2: A workflow whose step would POST is denied by the sk-based
-//          hook and the execution surfaces `policy.denied`.
-//   - AC3: A GET-only workflow still succeeds while the sk-based hook
-//          is enabled — parity with the inline-hook baseline in
-//          journey 12.
-// Spec refs: docs/authors/authoring-workflows.md (sk-Stdlib im Sandbox),
-// docs/admins/rbac-and-roles.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -67,7 +52,6 @@ describe("journey: sk-stdlib before-request hook", () => {
   });
 
   test("AC2: an sk-based hook blocks a POST workflow", async () => {
-    // Workflow that would POST the mock.
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({

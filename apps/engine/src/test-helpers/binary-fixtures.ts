@@ -1,25 +1,7 @@
-// @internal — tests only.
-//
-// In-memory fixture builders for the binary parser tests. Imported by
-// `parsers.test.ts`, `file-upload.test.ts`, `extract-formats.test.ts`,
-// `text-extract-binary.test.ts`, and `knowledge/tests/parsers.test.ts`.
-//
-// We deliberately avoid checking binary blobs into the repo: each
-// fixture is generated from primitives so the tests stay portable
-// (cross-platform, deterministic, easy to inspect). Each helper
-// generates a minimal valid Office Open XML package (or PDF) on demand.
-//
-// Do NOT import from runtime code paths; the hand-rolled PDF / DOCX /
-// XLSX / PPTX builders are only valid as test fixtures and not full
-// implementations of their respective specs.
-
 import { Buffer } from "node:buffer";
 import { deflateRawSync } from "node:zlib";
 import * as XLSX from "xlsx";
 
-/** Build a minimal valid PDF that contains a single page of text. The
- *  PDF spec is hand-rolled rather than going through a library so the
- *  tests don't pick up another runtime dependency just for fixtures. */
 export function buildPdfFixture(text: string): Buffer {
   const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const objects = [
@@ -47,9 +29,6 @@ export function buildPdfFixture(text: string): Buffer {
   return Buffer.from(header + body + xref + trailer, "binary");
 }
 
-/** Build a minimal valid DOCX (Office Open XML) ZIP containing a
- *  single heading + paragraph. Hand-roll the ZIP central directory so
- *  the only test-time dependency is `node:zlib` for DEFLATE. */
 export async function buildDocxFixture(heading: string, paragraph: string): Promise<Buffer> {
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -75,9 +54,6 @@ export async function buildDocxFixture(heading: string, paragraph: string): Prom
   ]);
 }
 
-/** Build a PDF containing one ruled table (grid lines + cell text
- *  positioned per column) so `pdf-parse`'s table detector has real
- *  rulings to key on. `rows` is row-major; three columns supported. */
 export function buildPdfTableFixture(rows: string[][]): Buffer {
   const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const xs = [72, 220, 380];
@@ -126,8 +102,6 @@ export function buildPdfTableFixture(rows: string[][]): Buffer {
   return Buffer.from(header + body + xref + trailer, "binary");
 }
 
-/** Build an XLSX buffer from a simple `{sheetName: rows}` map using the
- *  SheetJS writer. Keeps the fixture aligned with what the parser reads. */
 export function buildXlsxFixture(sheets: Record<string, Array<Record<string, unknown>>>): Buffer {
   const wb = XLSX.utils.book_new();
   for (const [name, rows] of Object.entries(sheets)) {
@@ -138,15 +112,6 @@ export function buildXlsxFixture(sheets: Record<string, Array<Record<string, unk
   return Buffer.from(out);
 }
 
-/** Build a minimal valid PPTX containing N slides, each with a single
- *  text body. Same hand-rolled ZIP approach as the DOCX builder.
- *
- *  NOTE: `slideTexts` is interpolated raw into the `<a:t>` element —
- *  it is NOT XML-escaped. Callers must pass plain text only; a `<`,
- *  `>`, or `&` would corrupt the fixture XML. This is fine because
- *  fixture inputs are test-authored constants, never user-derived
- *  data. If a test ever needs to assert entity-decoding behaviour,
- *  escape the input at the call site or add an `escapeXml` helper. */
 export async function buildPptxFixture(slideTexts: string[]): Promise<Buffer> {
   const slideOverrides = slideTexts
     .map(
@@ -195,9 +160,6 @@ interface ZipEntry {
   data: string | Buffer;
 }
 
-/** Build a plain (non-Office) ZIP from arbitrary text or binary
- *  entries. Exported for the archive-strategy tests — nesting a PDF or
- *  another ZIP inside requires Buffer entries. */
 export function buildZipFixture(entries: ZipEntry[]): Buffer {
   return buildZip(entries);
 }
@@ -213,37 +175,37 @@ function buildZip(entries: ZipEntry[]): Buffer {
     const crc = crc32(raw);
     const localHeader = Buffer.alloc(30);
     localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(20, 4); // version needed
-    localHeader.writeUInt16LE(0, 6); // flags
-    localHeader.writeUInt16LE(8, 8); // method: deflate
-    localHeader.writeUInt16LE(0, 10); // time
-    localHeader.writeUInt16LE(0, 12); // date
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(8, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
     localHeader.writeUInt32LE(crc, 14);
     localHeader.writeUInt32LE(compressed.length, 18);
     localHeader.writeUInt32LE(raw.length, 22);
     localHeader.writeUInt16LE(nameBuf.length, 26);
-    localHeader.writeUInt16LE(0, 28); // extra length
+    localHeader.writeUInt16LE(0, 28);
     const local = Buffer.concat([localHeader, nameBuf, compressed]);
     localBlocks.push(local);
 
     const centralHeader = Buffer.alloc(46);
     centralHeader.writeUInt32LE(0x02014b50, 0);
-    centralHeader.writeUInt16LE(20, 4); // version made by
-    centralHeader.writeUInt16LE(20, 6); // version needed
-    centralHeader.writeUInt16LE(0, 8); // flags
-    centralHeader.writeUInt16LE(8, 10); // method
-    centralHeader.writeUInt16LE(0, 12); // time
-    centralHeader.writeUInt16LE(0, 14); // date
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(8, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
     centralHeader.writeUInt32LE(crc, 16);
     centralHeader.writeUInt32LE(compressed.length, 20);
     centralHeader.writeUInt32LE(raw.length, 24);
     centralHeader.writeUInt16LE(nameBuf.length, 28);
-    centralHeader.writeUInt16LE(0, 30); // extra length
-    centralHeader.writeUInt16LE(0, 32); // comment length
-    centralHeader.writeUInt16LE(0, 34); // disk
-    centralHeader.writeUInt16LE(0, 36); // internal attrs
-    centralHeader.writeUInt32LE(0, 38); // external attrs
-    centralHeader.writeUInt32LE(offset, 42); // offset of local header
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
     const central = Buffer.concat([centralHeader, nameBuf]);
     centralBlocks.push(central);
 

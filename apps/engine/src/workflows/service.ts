@@ -1,7 +1,3 @@
-// Workflow CRUD + version snapshots. Every upsert writes a new row in
-// `workflow_versions` and points `workflows.current_version_id` at it.
-// The stored versions themselves — history and restore — live in `versions.ts`.
-
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -32,15 +28,6 @@ import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
-/**
- * Emit a `workflow.lifecycle` outbox event after Zod-validating the
- * payload. Every state-changing entry point in this
- * file flows through this helper so the channel can't drift into
- * untyped object literals over time. The schema lives in
- * `pubsub/types.ts` so subscribers (today: the MCP forwarder) can
- * share a single source of truth. Exported for the definition-only
- * rotate in `version-rotate.ts`.
- */
 export async function emitWorkflowLifecycle(
   tx: Executor,
   args: {
@@ -68,30 +55,17 @@ export interface WorkflowView {
   tenant_id: string;
   slug: string;
   name: string;
-  /** First-class workflow description (workflows.description column). Null
-   *  when never set — readers fall back to the DAG description, then name. */
   description: string | null;
   lifecycle: "draft" | "active" | "archived";
   current_version_id: string | null;
-  /** Independent authoring pointer; never used for saved live execution. */
   draft_version_id?: string | null;
   current_version: number | null;
   created_at: Date;
   updated_at: Date;
-  /** When the engine last started a run of this workflow. Null until the
-   *  first one. Bumped by `execution/engine.ts`; read here so a catalog row
-   *  can say "last run" without a second query per workflow. */
   last_executed_at: Date | null;
-  /** Reconciled operational state, written only through
-   *  `connectors/health-state.ts`. Same vocabulary as
-   *  `GET /v1/diagnostics/integrations` reports. */
   health_state: string;
   health_reason: string | null;
   health_changed_at: Date | null;
-  /** True when the current version is stored in an earlier definition format
-   *  and no longer passes the schema. `definition` is then the stored dag as
-   *  written — readable, never executable: a run or an activation of it is
-   *  refused with `workflow_version_invalid`. */
   invalid: boolean;
   definition: WorkflowDef;
   steps: WorkflowDef["steps"];
@@ -122,7 +96,6 @@ async function loadWorkflowView(
   return (await workflowViewsFromRows(tenant_id, rows, exec))[0] ?? null;
 }
 
-/** Views for already-selected rows: one version query for the whole set, never one per row. */
 async function workflowViewsFromRows(
   tenant_id: string,
   rows: Array<typeof workflows.$inferSelect>,
@@ -144,10 +117,6 @@ async function workflowViewsFromRows(
   const byId = new Map(versions.map((v) => [v.id, v]));
   return rows.map((wf) => {
     const v = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
-    // A read shows what is stored. One version written under an earlier
-    // schema must not take the workflow's page — or the whole list it is a
-    // row of — down with it; it is marked and left to the paths that act on
-    // a definition to refuse.
     const stored = v ? readStoredDefinition(v.dag) : null;
     const def: WorkflowDef = stored
       ? stored.invalid
@@ -181,13 +150,6 @@ export interface CreateWorkflowInput {
   tenant_id: string;
   def: unknown;
   actor_id: string | null;
-  /**
-   * Optional `step_id → scope_at_step` map captured from the most
-   * recent dry_run / run before commit. When supplied, persisted on
-   * `workflow_versions.scope_index` so a follow-up authoring session
-   * can populate `inspect_workflow` / `suggest_jsonata_paths` without
-   * re-running the workflow.
-   */
   scope_index?: Record<
     string,
     { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -224,12 +186,6 @@ export async function createWorkflow(
           tenant_id: input.tenant_id,
           slug,
           name: def.name,
-          // Seed the top-level description column from the DAG so a freshly
-          // built workflow's `wf_<slug>` tool carries the authored description
-          // immediately — without forcing a follow-up update_workflow /
-          // edit_workflow_patch. The column is the canonical source the catalog
-          // prefers (column → DAG → name); leaving it NULL here was why every
-          // newly committed workflow showed a "missing" top-level description.
           ...(def.description ? { description: def.description } : {}),
           lifecycle: "active",
         })
@@ -269,8 +225,6 @@ export async function createWorkflow(
       return wf.id;
     });
   } catch (err) {
-    // Duplicate active slug → clean conflict result instead of an unhandled
-    // 500. Any non-conflict failure rethrows unchanged.
     const conflict = await slugConflictResult(err, db, input.tenant_id, slug);
     if (conflict) return { errors: conflict.errors };
     throw err;
@@ -293,7 +247,6 @@ export interface UpdateWorkflowInput {
   id: string;
   def: unknown;
   actor_id: string | null;
-  /** See `CreateWorkflowInput.scope_index`. */
   scope_index?: Record<
     string,
     { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -324,8 +277,6 @@ export async function updateWorkflow(
   const updated = await db.transaction(async (tx) => {
     const wf = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.id);
     if (!wf) return null;
-    // Idempotency: an unchanged def must not rotate the version (that
-    // churns history and unbinds schedules). See `version-dedup.ts`.
     const dedup = await isUnchangedFromCurrentVersion({
       tx,
       tenant_id: input.tenant_id,
@@ -338,7 +289,6 @@ export async function updateWorkflow(
     if (dedup.unchanged) {
       return wf.id;
     }
-    // determine next version
     const versionRows = (await tx
       .select({
         max_version: sql<number>`coalesce(max(${workflowVersions.version}), 0)`,
@@ -364,11 +314,6 @@ export async function updateWorkflow(
     assertInsertRow(v, "workflow_versions");
     await tx
       .update(workflows)
-      // Keep the top-level description column in sync with the committed DAG
-      // (def.description is authoritative on the full-def path). Authors who
-      // edit the description inside build_workflow / save_workflow_draft get
-      // it reflected on the `wf_<slug>` tool without a separate metadata call;
-      // removing it from the def clears the column too.
       .set({
         name: def.name,
         description: def.description ?? null,
@@ -414,14 +359,6 @@ export async function updateWorkflow(
       step_count: def.steps.length,
       actor_id: input.actor_id,
     });
-    // Reconcile trigger bindings ONLY when the trigger block actually changed.
-    // An unconditional reconcile here unbinds out-of-band schedules (those
-    // bound via create_schedule, carrying a workflow input the inline trigger
-    // cannot express) on any step-only edit — the PUT-unbinds-schedules trap.
-    // `!dedup.current_def` (no prior version) → bind. Removing/changing an
-    // inline trigger DOES change the block → still reconciles (so an
-    // intentional unbind/rebind still happens). Mirrors the byte-equality
-    // invariant the migration rotate path already enforces.
     const triggerChanged =
       !dedup.current_def ||
       JSON.stringify(triggerOf(def)) !== JSON.stringify(triggerOf(dedup.current_def));
@@ -439,22 +376,9 @@ export async function updateWorkflow(
 export interface UpdateWorkflowMetadataInput {
   tenant_id: string;
   id: string;
-  /**
-   * New slug. Lowercase, hyphenated. Must be unique across live
-   * (non-deleted) workflows in the tenant. Reject when omitted AND
-   * every other patch field is also omitted (no-op).
-   */
   slug?: string;
-  /** New display name. Independently optional. */
   name?: string;
-  /**
-   * New workflow description (workflows.description column). Independently
-   * optional. A non-empty string sets it; an empty/whitespace string clears
-   * it (stored as NULL). Omit to leave the description unchanged. Metadata
-   * patch — never rolls a new version.
-   */
   description?: string | null;
-  /** New lifecycle state ("active" / "archived"). "draft" cannot be set explicitly. */
   lifecycle?: "active" | "archived";
   actor_id: string | null;
 }
@@ -464,31 +388,9 @@ export type UpdateWorkflowMetadataResult =
   | {
       workflow?: never;
       errors: string[];
-      /** When the failure is a slug collision, surfaces the colliding workflow id. */
       conflict?: { workflow_id: string; slug: string; name: string };
     };
 
-/**
- * Patch a workflow's metadata (slug, display name, lifecycle) in place.
- * Does NOT change the dag, version history, or workflow id — those
- * mutations go through `updateWorkflow` which writes a new
- * workflow_versions row. This op is the structural twin of the
- * reference's HTTP `POST /tools/:toolId/rename` (rename) plus the
- * existing lifecycle endpoints, collapsed into one generic patch:
- * the LLM tool surface chooses what subset of fields to send.
- *
- * Slug uniqueness is enforced by the partial unique index
- * `workflows_tenant_slug_active_key` (tenant_id, slug WHERE
- * deleted_at IS NULL). Postgres raises 23505 on collision; we map it
- * to a structured `slug_conflict_with_live_workflow` error with the
- * conflicting row's id + name so the caller can decide.
- *
- * Audit shape: `WORKFLOW_UPDATED` with metadata
- * `{ kind: "metadata", from: { slug, name, lifecycle }, to: {...} }`.
- * No new audit-action enum entry — semantically still a workflow
- * update event. The discriminator lets dashboards split rename / def
- * / lifecycle without losing the "workflow.updated" topic.
- */
 export async function updateWorkflowMetadata(
   input: UpdateWorkflowMetadataInput,
   exec?: Executor,
@@ -499,10 +401,6 @@ export async function updateWorkflowMetadata(
   const desiredName =
     typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
   const desiredLifecycle = input.lifecycle ?? null;
-  // Description is the only patch field where an empty value is meaningful
-  // (clear → NULL), so we track "provided" separately from the trimmed
-  // value. `undefined` means "leave unchanged"; any string (incl. "") means
-  // "set", with empty/whitespace normalised to NULL.
   const descriptionProvided = typeof input.description === "string";
   const desiredDescription = descriptionProvided
     ? (input.description as string).trim() || null
@@ -532,9 +430,6 @@ export async function updateWorkflowMetadata(
         .limit(1);
       const wf = wfRows[0];
       if (!wf) return null;
-      // Slug-conflict pre-check so we can surface the conflicting row's
-      // id + name. The partial unique index will catch concurrent inserts
-      // anyway and produce a 23505 — caught below.
       if (desiredSlug && desiredSlug !== wf.slug) {
         const conflictRows = await tx
           .select({ id: workflows.id, slug: workflows.slug, name: workflows.name })
@@ -561,16 +456,12 @@ export async function updateWorkflowMetadata(
       };
       if (desiredSlug && desiredSlug !== wf.slug) patch.slug = desiredSlug;
       if (desiredName && desiredName !== wf.name) patch.name = desiredName;
-      // Only patch description when it was provided AND differs from the
-      // current value (NULL-normalised both sides) — so a redundant set is a
-      // no-op rather than a spurious audit row.
       if (descriptionProvided && desiredDescription !== (wf.description ?? null)) {
         patch.description = desiredDescription;
       }
       if (desiredLifecycle && desiredLifecycle !== wf.lifecycle) {
         patch.lifecycle = desiredLifecycle;
       }
-      // Nothing actually changed — no-op patch, no audit.
       if (
         patch.slug === undefined &&
         patch.name === undefined &&
@@ -580,18 +471,10 @@ export async function updateWorkflowMetadata(
         return { id: wf.id, noop: true as const };
       }
       await tx.update(workflows).set(patch).where(eq(workflows.id, wf.id));
-      // Archiving tears down trigger bindings exactly like delete does —
-      // an archived workflow must not keep live-looking schedule/inbound
-      // rows that only a reconciler filter stops from firing. Unarchiving
-      // does not restore them; re-saving the trigger re-binds.
       if (patch.lifecycle === "archived") {
         await inboundService.unbindFromWorkflow(input.tenant_id, wf.id, input.actor_id ?? null, tx);
         await scheduleRepo.unbindFromWorkflow(tx, input.tenant_id, wf.id, input.actor_id ?? null);
       }
-      // Reactivating binds the running version's own trigger again, so
-      // switching a workflow off and on is reversible for what its
-      // definition declares. A schedule set apart from the definition is
-      // gone with the archive and stays gone.
       if (patch.lifecycle === "active" && wf.lifecycle === "archived" && wf.current_version_id) {
         const [version] = await tx
           .select({ dag: workflowVersions.dag })
@@ -642,9 +525,6 @@ export async function updateWorkflowMetadata(
         },
         tx,
       );
-      // Emit on the same channel as definition-level updates — a rename
-      // / lifecycle flip changes what `readResource("workflow://<id>")`
-      // would return, so MCP subscribers must see it.
       await emitWorkflowLifecycle(tx, {
         tenant_id: input.tenant_id,
         type: "workflow.metadata_updated",
@@ -655,9 +535,6 @@ export async function updateWorkflowMetadata(
           actor_id: input.actor_id ?? null,
         },
       });
-      // Metadata-only update — no new version row, no step count.
-      // Reuse the workflow.committed log line so dashboards see the
-      // event without inventing a separate "metadata-only" topic.
       log.workflow.committed({
         workflow_id: wf.id,
         tenant_id: input.tenant_id,
@@ -693,10 +570,6 @@ export async function updateWorkflowMetadata(
   }
 }
 
-// The list scaffolding (`ListWorkflowsOptions`, `buildWorkflowListConds`,
-// `WORKFLOW_LIST_MAX_LIMIT`, `countWorkflows`) and the derived catalog view
-// live in `catalog-view.ts` — this file sits against the 1000-LOC audit
-// invariant. Both are re-exported by the subsystem barrel (`index.ts`).
 export async function listWorkflows(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
@@ -716,9 +589,6 @@ export async function listWorkflows(
           : workflows.created_at;
   const ordered = opts.order === "asc" ? asc(sortColumn) : desc(sortColumn);
 
-  // Derived filters cannot be expressed in SQL, so they run over the matching
-  // row set before the page is cut — which also means only the page's views
-  // get loaded, not every match.
   const derived = await resolveCatalogFilter(tenant_id, opts, db);
   if (derived) {
     const all = await db
@@ -756,15 +626,6 @@ export interface WorkflowSummary {
   step_count: number;
 }
 
-/**
- * Lightweight list path for callers that only need the metadata
- * displayed in a picker, the MCP `resources/list` view, or a
- * dashboard summary — no `WorkflowDefSchema.parse` per row, no full
- * `dag` payload over the wire. Uses Postgres' `jsonb_array_length`
- * to count steps server-side. Mirrors `listWorkflows` filtering
- * surface (status, name_contains, limit, offset) and ordering
- * (newest first).
- */
 export async function listWorkflowSummaries(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
@@ -806,8 +667,6 @@ export async function listWorkflowSummaries(
     step_count: Number(r.step_count ?? 0),
   });
 
-  // Same reason as `listWorkflows`: a derived predicate has to see the whole
-  // match set before the page is cut, or `total` would count non-matches.
   if (derived) {
     const kept = (await base).filter((r) => derived.keep(r));
     return {
@@ -830,11 +689,6 @@ export async function getWorkflow(
   return loadWorkflowView(tenant_id, id, db);
 }
 
-/**
- * Resolve a workflow by slug within a tenant. Returns null if no
- * matching active row exists. Used by the chat dispatcher's
- * `/subkit run <slug>` path so users don't have to know UUIDs.
- */
 export async function getWorkflowBySlug(
   tenant_id: string,
   slug: string,
@@ -873,10 +727,6 @@ export async function deleteWorkflow(
       )
       .returning();
     if (!row) return false;
-    // Tear down both reverse-bound rows regardless of the workflow's
-    // last trigger kind. A schedule binding still belongs to a
-    // soft-deleted workflow until we remove it; ditto the inbound
-    // public ingress.
     await inboundService.unbindFromWorkflow(tenant_id, row.id, actor_id, tx);
     await scheduleRepo.unbindFromWorkflow(tx, tenant_id, row.id, actor_id);
     await auditAwait(

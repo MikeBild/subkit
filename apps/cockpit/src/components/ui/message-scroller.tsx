@@ -78,19 +78,6 @@ function MessageScrollerItem({
   );
 }
 
-/**
- * The jump button. Its caption is the caller's, and it is required.
- *
- * The icon is the whole button, so the screen-reader caption is the ONLY
- * account anybody gets of what it does — and it used to be two English strings
- * typed into this file, chosen by `direction`. Nothing on the rendered page
- * showed them, so the German cockpit read English to exactly the person who
- * could not see that it did.
- *
- * A component of this layer holds no words (the same reason `Sheet` takes its
- * `closeLabel`), and the prop is required rather than defaulted: a caption
- * nobody passed should not compile, not quietly fall back to a language.
- */
 function MessageScrollerButton({
   direction = "end",
   label,

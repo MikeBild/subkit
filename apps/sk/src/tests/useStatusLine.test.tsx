@@ -23,7 +23,7 @@ const baseInput: StatusLineInput = {
   permission_mode: "ask",
   cwd: "/",
   git_branch: null,
-  timestamp: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
+  timestamp: "2024-11-14T22:13:20.000Z",
 };
 
 beforeEach(() => _resetShellHookCacheForTests());
@@ -61,9 +61,6 @@ describe("useStatusLine", () => {
       />,
     );
     try {
-      // flush() yields to the microtask queue; the status-line tick
-      // resolves on the next render. Loop only on flush — wall-clock
-      // sleeps are forbidden in tests per the determinism gate.
       for (let i = 0; i < 100 && !ref.current; i++) {
         await flush();
       }

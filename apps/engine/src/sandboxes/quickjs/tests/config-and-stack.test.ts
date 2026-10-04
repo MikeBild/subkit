@@ -1,15 +1,3 @@
-// Two properties of the sandbox limit plumbing:
-//
-//   1. The effective default limits are sourced from engine config
-//      (`sandbox.*`) — a `runJs` call with NO per-call overrides honors
-//      the configured caps, not just the static DEFAULT_LIMITS.
-//   2. The stack cap is a real knob: deep recursion that fits inside the
-//      2 MB default fails outright under a tiny stack budget.
-//
-// Both reset the config singleton in afterEach so the no-config fallback
-// (DEFAULT_LIMITS) is restored for the other sandbox test files sharing
-// this process.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,9 +21,6 @@ afterEach(() => {
 
 describe("sandbox limits are sourced from config", () => {
   test("a configured memory cap is enforced without per-call overrides", async () => {
-    // 24 MB cap via config override. A 64 MB allocation would succeed under
-    // the 128 MB static default, so its failure here proves the configured
-    // cap — not DEFAULT_LIMITS — is what `runJs` applied.
     const configPath = join(dir, "subkit.config.json");
     writeFileSync(configPath, JSON.stringify({ sandbox: { memory_bytes: 24 * 1024 * 1024 } }));
     await loadConfig({ env: BASE_ENV, configPathOverride: configPath });
@@ -50,7 +35,6 @@ describe("sandbox limits are sourced from config", () => {
     } catch (err) {
       threw = err;
     }
-    // memory cap, or an interrupt/timeout the allocator tripped first.
     expect(threw).toBeInstanceOf(SandboxError);
   });
 

@@ -1,6 +1,3 @@
-// The closed pattern set (spec §6), rendered: each pattern draws the anatomy
-// the spec gives it, and the props that matter change what is on screen.
-
 import { describe, expect, test } from "bun:test";
 import { Badge } from "@/components/ui/badge";
 import { translate } from "@/lib/i18n";
@@ -40,7 +37,6 @@ describe("P1 Page", () => {
         </Page>,
       );
       expect(html).toContain(`data-page-kind="${kind}"`);
-      // The header and the body share one column.
       expect(count(html, new RegExp(width.replace(/[[\]]/g, "\\$&"), "g"))).toBe(2);
       expect(html).not.toContain("mx-auto");
       expect(html).toContain('data-family-slot="scroll-region"');
@@ -88,7 +84,6 @@ describe("P2 PageHeader", () => {
     expect(html).toContain('data-testid="detail-back"');
     expect(html).toContain('data-slot="page-back"');
     expect(html).toMatch(/href="\/workflows"/);
-    // Once as text (the h1); its `title` attribute is the tooltip of a truncated name.
     expect(count(html, />upraft-auth-notify</g)).toBe(1);
   });
 
@@ -176,8 +171,6 @@ describe("P7 FilterBar", () => {
 
 describe("P8 RecordSheet", () => {
   test("two widths and no others, stated for the side the sheet opens on", () => {
-    // The primitive caps a right-hand sheet with `data-[side=right]:sm:max-w-sm`;
-    // a plain `sm:max-w-xl` loses to it on specificity, so the width names the side.
     expect(sheetWidthClass("default")).toBe("data-[side=right]:sm:max-w-xl");
     expect(sheetWidthClass("wide")).toBe("data-[side=right]:sm:max-w-5xl");
   });
@@ -298,7 +291,6 @@ describe("P15 CopyField and CodeBlock", () => {
     expect(html).toContain("readOnly");
     expect(html).toContain('data-testid="mcp-copy"');
     expect(html).toContain('data-testid="mcp-field"');
-    // The id names the value: the input carries it, next to its value.
     expect(html).toMatch(/<input[^>]*data-testid="mcp"/);
   });
 

@@ -1,16 +1,6 @@
-// RBAC + policy surfaces of the engine client: permission probes,
-// effective-permission introspection, roles, grants, groups, and
-// before-request hooks. Method group merged into `EngineClient` by
-// `../engine-client.ts`.
-
 import type { EngineClient } from "../engine-client.ts";
 
 export const rbacMethods = {
-  // --------------------------- RBAC probe ---------------------------
-  /**
-   * Probe whether the caller (or a specified principal id) holds a
-   * permission. Used by the persona resolver + slash-command filter.
-   */
   rbacCan(
     this: EngineClient,
     body: {
@@ -22,12 +12,9 @@ export const rbacMethods = {
     return this.request("POST", "/v1/rbac/can", body);
   },
 
-  // -------------------- RBAC Management --------------------
   listPermissions(this: EngineClient): Promise<{ items: string[] }> {
     return this.request("GET", "/v1/rbac/permissions");
   },
-  /** The caller's own effective access level on a resource (currently
-   *  connectors). Self-introspection — no permission required. */
   getEffectivePermissions(
     this: EngineClient,
     resource_type: string,
@@ -140,7 +127,6 @@ export const rbacMethods = {
     );
   },
 
-  // -------------------- Request Hooks --------------------
   listRequestHooks(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/auth/request-hooks");
   },

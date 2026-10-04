@@ -1,5 +1,3 @@
-// Durable, inert authoring versions. This path never changes the executable
-// current_version_id, reconciles triggers, or grants execution authority.
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -33,16 +31,12 @@ export type SaveWorkflowDraftResult =
 export interface SaveWorkflowDraftInput {
   tenant_id: string;
   workflow_id?: string;
-  /** Required for updates. null means no previous draft was observed. */
   expected_draft_version_id?: string | null;
   def: unknown;
-  /** Preview-derived shape hints, never an execution grant. Omission preserves
-   * an unchanged draft; a changed definition starts without stale hints. */
   scope_index?: typeof workflowVersions.$inferInsert.scope_index;
   actor_id: string | null;
   actor_type?: "user" | "system_account" | "system";
   request_source: RequestSource;
-  /** Server-owned provenance; authoritative draft identity fields win below. */
   audit_metadata?: Record<string, unknown>;
 }
 
@@ -143,8 +137,6 @@ export async function saveWorkflowDraft(
             if (stored && canonical(stored.scope_index) === canonical(input.scope_index)) {
               return { draft: previous };
             }
-            // Retain immutable preview evidence on the old version. New shape
-            // hints receive their own draft version, not an in-place rewrite.
           }
         }
       } else {

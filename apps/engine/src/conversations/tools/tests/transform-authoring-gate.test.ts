@@ -1,8 +1,3 @@
-// transform-authoring-gate — pure unit tests for the inspect-before-
-// transform gate. No DB; the gate reads workflow.steps +
-// latest_preview.step_traces and emits typed blocks when a transform
-// reads `$scope.<X>` without a recorded preview for X.
-
 import { describe, expect, test } from "bun:test";
 import type { WorkflowDraftStepPreview } from "../../types.ts";
 import {
@@ -85,7 +80,6 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         ok: true,
         summary: "ok",
-        // only `other` has a recorded preview; `fetch` does not
         step_traces: [traceFor("other", { something: 1 })],
       },
     );
@@ -162,7 +156,6 @@ describe("evaluateTransformAuthoringGate", () => {
       {
         ok: true,
         summary: "ok",
-        // trace exists but output_preview is null
         step_traces: [{ ...traceFor("fetch"), output_preview: null }],
       },
     );
@@ -170,14 +163,6 @@ describe("evaluateTransformAuthoringGate", () => {
     expect(result.blocks[0]?.reason).toBe("no_preview_for_referenced_step");
   });
 
-  // Control-flow exemption — loop/branch/parallel steps and their
-  // body/then/branch children have no recordable standalone preview (a
-  // loop's children run inside the iteration and are skipped in the
-  // linear walk; a 0-row loop never runs its body; a non-taken branch
-  // arm never runs). Blocking a transform that reads them is an
-  // unsatisfiable gate. Regression guard for the publish-ready-essays
-  // deadlock: a post-loop summary transform could never be authored
-  // because the loop produced 0 rows and thus no preview, ever.
   test("exempts a transform that reads a loop step's aggregated output (no dry-run)", () => {
     const result = evaluateTransformAuthoringGate(
       {
@@ -281,12 +266,6 @@ describe("evaluateTransformAuthoringGate", () => {
     expect(result.blocks[0]?.referenced_step_id).toBe("fetch");
   });
 
-  // Runtime/data-failure exemption. A transform whose referenced sibling
-  // dry-ran but died on a 404/410/403/401 (runtime/data error) has no
-  // output_preview because the request never returned a body — gating on it
-  // would freeze the authoring loop forever (the draft is structurally
-  // sound; only the remote test fixture failed). Same spirit as the
-  // control-flow exemption.
   test("exempts a transform whose referenced step failed with a 404 runtime error", () => {
     const result = evaluateTransformAuthoringGate(
       {
@@ -304,7 +283,6 @@ describe("evaluateTransformAuthoringGate", () => {
             kind: "request",
             status: "failed",
             request_meta: { status: 404 },
-            // No output_preview — the request returned 404
           },
         ],
       },
@@ -339,8 +317,6 @@ describe("evaluateTransformAuthoringGate", () => {
   });
 
   test("still blocks a transform if the referenced step failed with a config-invalid error (not runtime)", () => {
-    // An unresolved_identifier error means the draft itself is wrong —
-    // the exemption must NOT fire for config-invalid failures.
     const result = evaluateTransformAuthoringGate(
       {
         steps: [
@@ -361,18 +337,11 @@ describe("evaluateTransformAuthoringGate", () => {
         ],
       },
     );
-    // The referenced step's failure is not a runtime/data error — gate holds.
     expect(result.ok).toBe(false);
     expect(result.blocks[0]?.referenced_step_id).toBe("fetch");
   });
 });
 
-// Hand-rolled-codec rejection. A transform that re-implements a
-// base64/base32/hex codec (or its reverse-lookup table) in JS instead of
-// calling the deterministic `sk.*` encoders is blocked and steered to
-// sk.base64*/sk.hex*. This is the failure class behind the Gmail send
-// outage: a redaction-corrupted alphabet literal drove a hand-rolled
-// encoder to emit a 416KB malformed body.
 describe("detectHandRolledCodec", () => {
   const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -419,8 +388,6 @@ describe("detectHandRolledCodec", () => {
   });
 
   test("does NOT flag a long base64 DATA literal (not the ordered alphabet)", () => {
-    // A real base64-encoded asset — long, high-entropy, but NOT the
-    // sequential A-Z a-z 0-9 alphabet ordering. Must pass through.
     const data = "const asset='SGVsbG8sIHdvcmxkISBUaGlzIGlzIGEgZml4dHVyZSBwYXlsb2FkLg==aGVsbG8';";
     expect(detectHandRolledCodec(data)).toEqual({ found: false, kind: null });
   });
@@ -432,9 +399,6 @@ describe("detectHandRolledCodec", () => {
     });
   });
 
-  // Concatenation-evasion: an author (or LLM) can split the alphabet across
-  // adjacent string/object literals joined by `+`. normalizeAdjacentStringLiterals
-  // collapses the seams for detection so the anchored regexes still fire.
   test("flags a base64 alphabet split across concatenated string literals", () => {
     const split = `const B="ABCDEFGHIJKLM"+"NOPQRSTUVWXYZ"+"abcdefghijklm"+"nopqrstuvwxyz"+"0123456789+/";`;
     expect(detectHandRolledCodec(split)).toEqual({ found: true, kind: "base64" });
@@ -545,8 +509,6 @@ describe("evaluateTransformAuthoringGate — hand-rolled codec", () => {
   });
 
   test("a codec block fires regardless of step references / preview", () => {
-    // No $scope refs at all — the codec block is a static-source check,
-    // independent of the inspect-before-transform gate.
     const result = evaluateTransformAuthoringGate(
       {
         steps: [

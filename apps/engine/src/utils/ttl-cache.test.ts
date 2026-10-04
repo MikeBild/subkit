@@ -41,7 +41,6 @@ describe("TtlCache", () => {
     const cache = new TtlCache<number>({ maxEntries: 2, ttlMs: 10_000 });
     cache.set("a", 1);
     cache.set("b", 2);
-    // Touch a so b is now the oldest.
     cache.get("a");
     cache.set("c", 3);
     expect(cache.get("a")).toBe(1);

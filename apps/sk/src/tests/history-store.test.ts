@@ -1,6 +1,3 @@
-// Unit tests for the persistent REPL history store. Every test uses
-// a fresh tmpdir path so runs don't touch the user's real ~/.sk.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -86,13 +83,8 @@ describe("history-store: load + append", () => {
 
   test("caps the file at MAX_PROMPT_HISTORY entries with FIFO eviction", () => {
     const path = tmpHistoryPath();
-    // Seed with one more than MAX_PROMPT_HISTORY (10_000 is the new cap).
-    // To keep the test fast we exercise the rotation logic with a
-    // smaller bound by stubbing MAX_PROMPT_HISTORY indirectly: we
-    // simply assert the cap itself rather than walking 10k inserts.
     expect(MAX_PROMPT_HISTORY).toBeGreaterThan(MAX_HISTORY);
     expect(MAX_PROMPT_HISTORY).toBe(10_000);
-    // Sanity-check append + load round-trip on a small set.
     for (let i = 0; i < 20; i++) appendHistory(`prompt-${i}`, { path });
     const entries = loadHistory(path);
     expect(entries.length).toBe(20);
@@ -122,12 +114,8 @@ describe("history-store: clear + prompt ring", () => {
     const path = tmpHistoryPath();
     appendHistory("a", { path, tenant: "acme" });
     appendHistory("b", { path, tenant: "other" });
-    appendHistory("c", { path }); // untagged — DROPPED under filter
-    // Pre-R9-W3 the result was ["a", "c"]: untagged rows leaked
-    // across tenants. Strict tenant filter now returns only rows
-    // tagged with that exact tenant.
+    appendHistory("c", { path });
     expect(loadPromptRing(path, { tenant: "acme" })).toEqual(["a"]);
-    // No tenant filter still includes everything (e.g. headless dump).
     expect(loadPromptRing(path)).toEqual(["a", "b", "c"]);
   });
 

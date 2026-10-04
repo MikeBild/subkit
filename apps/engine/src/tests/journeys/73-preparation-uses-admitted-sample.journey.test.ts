@@ -1,15 +1,3 @@
-// User story: As an operator reviewing a webhook-started workflow whose new
-// version needs a held preparation, I want the preparation to use the last
-// delivery the engine actually admitted, so that I do not have to hand-craft a
-// sample of a payload the engine has already seen.
-// Acceptance criteria:
-//   - AC1: With no admitted delivery, preparing without an input still answers
-//     `input_required` for the hook and starts no run.
-//   - AC2: After one admitted delivery, preparing without an input runs held
-//     with exactly that delivery's input — not `input_required`, not `{}`.
-//   - AC3: The answer never echoes the delivery's payload.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
@@ -30,8 +18,6 @@ const INPUT_SCHEMA = {
   required: ["body"],
   properties: { body: { type: "object", required: ["raw"] } },
 };
-// A complete single-part report message, so the held run has a real request
-// to observe rather than a placeholder the profile refuses.
 const RAW = Buffer.from(
   [
     "From: reports@example.com",
@@ -73,8 +59,6 @@ const prepare = () =>
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("admitted-sample");
-  // Version 1 reads the delivery and writes nothing: its boundary is exact, so
-  // a reviewed authority admits deliveries to it.
   const wf = await seedWorkflow(ctx, {
     slug: "finding-intake",
     name: "Finding intake",
@@ -94,7 +78,6 @@ beforeAll(async () => {
     })
     .where(eq(workflowVersions.id, bindableVersionId));
   await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, workflowId);
-  // Version 2 mails what the delivery carries: only a held run can observe it.
   const [report] = await ctx.db
     .insert(workflowVersions)
     .values({
@@ -181,7 +164,6 @@ describe("journey: a preparation uses the latest admitted delivery", () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(JSON.parse(text)).toMatchObject({ prepared: true });
-    // AC3: the payload stays in the engine.
     expect(text).not.toContain(RAW);
     expect(text).not.toContain("admitted-sample-marker");
     const runs = await heldRuns();

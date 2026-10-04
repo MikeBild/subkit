@@ -1,9 +1,3 @@
-// Magic-byte sniffer for HTTP response bodies. Real-world APIs return
-// JSON with `Content-Type: application/octet-stream` (some S3-compatible
-// proxies), `text/plain` (some legacy gateways), or no header at all.
-// The trusted-header fast path stays unchanged; sniffing only kicks in
-// when the header is uninformative.
-
 import { describe, expect, test } from "bun:test";
 import { parseResponseBody, serializeXmlBody } from "./http.ts";
 
@@ -134,8 +128,6 @@ describe("parseResponseBody · sniff path · non-JSON", () => {
 
 describe("parseResponseBody · false-positive guards", () => {
   test("HTML response with text/html header is NOT sniffed", () => {
-    // Header is informative — text/html is not a sniff candidate, so
-    // even an HTML body that contains a stray `{` is left as text.
     const html = "<html>{ not actually json }</html>";
     expect(parseResponseBody(html, "text/html")).toBe(html);
   });

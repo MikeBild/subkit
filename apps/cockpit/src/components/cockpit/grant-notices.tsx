@@ -27,17 +27,10 @@ import type { WorkflowAuthorityList, WorkflowAuthorityPreview } from "@/lib/work
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
-/**
- * What the approval dialog has to know beyond the review itself: the approvals
- * that already exist, where the workflow is started, and which version runs.
- * Read only while the dialog is open; every read may be missing — a reader
- * without the permission simply gets no notice built on it.
- */
 export function useGrantContext(workflowId: string, open: boolean) {
   const session = useSession();
   const id = encodeURIComponent(workflowId);
   const authorities = useQuery({
-    // Under the approvals' own key, so every act that changes them refreshes it.
     queryKey: ["workflow-authorities", workflowId, "newest"],
     enabled: open,
     queryFn: () =>
@@ -72,7 +65,6 @@ function useEnvironmentWord() {
     t(environment === "prod" ? "authority.production" : "authority.development");
 }
 
-/** The scope of the approval, where it is not the ordinary one. */
 export function GrantScopeWarnings({ warnings }: { warnings: readonly GrantScopeWarning[] }) {
   const { t } = useI18n();
   const word = useEnvironmentWord();
@@ -103,7 +95,6 @@ export function GrantScopeWarnings({ warnings }: { warnings: readonly GrantScope
   );
 }
 
-/** Where the suggested limits come from, in one line beside the fields. */
 export function GrantSuggestionNote({ review }: { review: WorkflowAuthorityPreview }) {
   const { t } = useI18n();
   const note = suggestionNote(review.suggested_bounds_basis);
@@ -115,7 +106,6 @@ export function GrantSuggestionNote({ review }: { review: WorkflowAuthorityPrevi
   );
 }
 
-/** What the press that opens the dialog sets off — said beside the opener. */
 export function GrantOpeningNotice({ notice }: { notice: "trial" | "sample" | null }) {
   const { t } = useI18n();
   if (!notice) return null;
@@ -126,12 +116,6 @@ export function GrantOpeningNotice({ notice }: { notice: "trial" | "sample" | nu
   );
 }
 
-/**
- * The act that removes what keeps the reviewed version from being approved —
- * the gate diagnosis' own, the same one the workflow page offers. Null when
- * the only way on is an author (the dialog's chat action already is that) or
- * the reader may not perform it.
- */
 export function useGrantRemedy(
   workflowId: string,
   environment: ReviewEnvironment,
@@ -156,11 +140,6 @@ export function useGrantRemedy(
   return permitted ? { diagnosis: diagnosis.data, via } : null;
 }
 
-/**
- * The remedy as the dialog's filled action. A missing trial run is repeated by
- * the dialog itself — its own re-check runs the trial and reads the review
- * again in place; a repair is the diagnosis block's own act.
- */
 export function GrantRemedyAction({
   remedy,
   environment,
@@ -194,11 +173,6 @@ export function GrantRemedyAction({
   );
 }
 
-/**
- * A step's repair as the approval dialog's remedy: the same act as the step's
- * own button on the workflow page. What a repair request answers is said as a
- * toast — a dialog footer has no room for a sentence.
- */
 function DiagnosisRepairAction({
   diagnosis,
   environment,
@@ -207,7 +181,6 @@ function DiagnosisRepairAction({
 }: {
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
-  /** `review`: the repair is already filed; `auto`: the engine can compute one. */
   via: "review" | "auto";
   testId: string;
 }) {

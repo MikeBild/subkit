@@ -1,10 +1,3 @@
-// getApprovalMode + APPROVAL_LABELS power the
-// discoverable `/policy` panel. The test pins:
-//   - every dangerous tool reports "approval_before"
-//   - read-only tools report "auto"
-//   - confirm_after_execution tools report "approval_after"
-//   - tools with computeModeFromInput are over-promised as "approval_before"
-
 import { describe, expect, test } from "bun:test";
 import { APPROVAL_LABELS, getApprovalMode } from "./tool-policies.ts";
 
@@ -27,9 +20,6 @@ describe("getApprovalMode", () => {
   });
 
   test("tools with computeModeFromInput are over-promised as approval_before", () => {
-    // run_workflow has a dynamic mode (env-dependent); the badge
-    // promises the worst-case behaviour ("Asks before running") so
-    // the operator never sees a tool surprise-run.
     expect(getApprovalMode("run_workflow")).toBe("approval_before");
     expect(getApprovalMode("probe_connector")).toBe("approval_before");
   });

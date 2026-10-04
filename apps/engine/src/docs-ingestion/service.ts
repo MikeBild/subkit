@@ -1,18 +1,3 @@
-// Documentation ingestion orchestrator.
-//
-// Flow: fetch → normalize → chunk+fingerprint → dedup → persist.
-// Every ingest writes one row to `connector_documents` and N rows to
-// `connector_document_chunks`, with total + per-chunk bytes enforced
-// against the canonical budget table (10 MB / 3 MB / 20 links / 100
-// specs / 25 concurrent). Budgets are soft-stop: if the total cap
-// trips partway through, we commit the rows we already accepted and
-// mark `budget_exceeded: true` in the result.
-//
-// The service is called from two places:
-//   1. The `POST /v1/connectors/:id/docs/ingest` route (synchronous).
-//   2. The `connector.ingest-docs` pg-boss handler (background refresh).
-// Both paths land in `ingestDocs(...)`.
-
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -54,7 +39,6 @@ export interface IngestParams {
   connector_id: string;
   input: IngestSourceInput;
   actor_id?: string | null;
-  /** Injectable fetch for tests. */
   fetchImpl?: typeof fetch;
 }
 
@@ -112,10 +96,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
   const state = createBudgetState();
   let uri = p.input.url ?? "inline";
   let rawChunks: RawChunk[] = [];
-  // Cascade may override the declared source_type with whichever strategy
-  // actually produced content, so downstream rows tag correctly. The DB
-  // enum does not carry "cascade" — by the time we write, one of the
-  // concrete source kinds is stored. "cascade" is a request-time intent.
   type PersistedDocSourceType = Exclude<DocSourceType, "cascade">;
   let persistedSourceType: PersistedDocSourceType =
     p.input.source_type === "cascade" ? "openapi" : p.input.source_type;
@@ -174,10 +154,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         break;
       }
       case "postgres": {
-        // The postgres source reads `information_schema` over the
-        // connector's own DSN. The orchestrator looks up the connector
-        // and forwards the dsn through `p.input.url` since it doubles as
-        // an opaque source identifier.
         if (!p.input.url) throw new Error("postgres source requires url (dsn)");
         const params: Parameters<typeof ingestPostgresInformationSchema>[0] = {
           dsn: p.input.url,
@@ -235,13 +211,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       source_type: p.input.source_type,
       error: msg,
     });
-    // Audit binary parse failures on the file-upload source. The HTTP
-    // `/v1/extract` surface already writes `DATA_EXPORTED + error +
-    // parse_failed`; this branch closes the asymmetry for tenants
-    // uploading via the connector_docs path (e.g. queue handlers,
-    // batch ingest). Other failure classes keep their pre-existing
-    // logger.error-only behaviour to avoid audit-log volume blowup
-    // on a single bad URL.
     if (err instanceof BinaryParseError) {
       await auditAwait(
         {
@@ -271,10 +240,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     throw err;
   }
 
-  // Fingerprint + budget-gated accept + dedup. The chunker raises a
-  // budget warning whenever it has to trim a chunk over the per-page
-  // 3 MB cap so the orchestrator can record the truncation in the audit
-  // metadata.
   const fingerprinted = fingerprintChunks(rawChunks, {
     onTruncate: (msg) => recordBudgetWarning(state, msg),
   });
@@ -299,7 +264,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     .digest("hex")
     .slice(0, 32);
 
-  // Persist in a single transaction.
   const result: IngestResult = await db.transaction(async (tx) => {
     const [docRow] = await tx
       .insert(connectorDocuments)
@@ -316,10 +280,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     assertInsertRow(docRow, "connector_documents");
 
     if (accepted.length > 0) {
-      // Chunks are written WITHOUT embeddings — embedding is populated
-      // out-of-band by backfillEmbeddings so neither the inline HTTP create
-      // nor a large ingest blocks on model load + per-chunk inference. FTS
-      // works immediately; vectors follow shortly after.
       await tx.insert(connectorDocumentChunks).values(
         accepted.map((c, i) => ({
           tenant_id: p.tenant_id,
@@ -347,8 +307,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
       });
     }
 
-    // Stamp the connector with the ingest time so the auto-refresh
-    // reconciler can compare it against the cron expression.
     await tx
       .update(connectors)
       .set({ last_ingested_at: new Date() })
@@ -389,8 +347,6 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     };
   });
 
-  // Invalidate any cached search results for this connector — the next
-  // search must reflect the freshly-ingested chunks, not a stale snapshot.
   invalidateDocsCache(p.tenant_id, p.connector_id);
 
   logger.info({
@@ -538,10 +494,6 @@ export interface SearchParams {
   limit?: number;
 }
 
-// In-memory cache for repeated FTS lookups. Entries scope to
-// (tenant, connector, normalized query, limit) and live for 60s. Cap of
-// 256 keeps the cache from drifting unbounded under heavy multitenant
-// load. Process-local — no cross-replica coherence.
 const searchCache = new TtlCache<SearchHit[]>({ maxEntries: 256, ttlMs: 60_000 });
 
 function searchCacheKey(p: SearchParams): string {
@@ -550,12 +502,10 @@ function searchCacheKey(p: SearchParams): string {
   return `${p.tenant_id}:${p.connector_id}:${limit}:${normQuery}`;
 }
 
-/** Drop every cached search entry for a connector. Called after ingest. */
 export function invalidateDocsCache(tenant_id: string, connector_id: string): void {
   searchCache.invalidatePrefix(`${tenant_id}:${connector_id}:`);
 }
 
-/** Test/observability hook — counters for cache hits + size. */
 export function getDocsSearchCacheStats(): { hits: number; misses: number; size: number } {
   return searchCache.stats();
 }
@@ -568,7 +518,6 @@ export interface SearchHit {
   snippet: string;
   rank: number;
   match_type: SearchHitMatchType;
-  /** ISO-8601 timestamp of the document's most recent fetch. */
   fetched_at: string | null;
 }
 
@@ -577,17 +526,9 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
   const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
   const candidateLimit = Math.min(Math.max(limit * 5, limit), 250);
 
-  // Always cache: HTTP routes and conversation tools pass a request-scoped
-  // executor, but reads from connector_document_chunks are stable enough
-  // that a 60s TTL with invalidate-on-ingest is the right tradeoff.
   const cacheKey = searchCacheKey(p);
   const cached = searchCache.get(cacheKey);
   if (cached) return cached;
-  // Drizzle's `sql` template binds params safely. plainto_tsquery itself
-  // normalises the query string so we don't need to escape the content.
-  // We JOIN connector_documents so each chunk hit carries the source
-  // document's last-fetch timestamp, letting the caller reason about
-  // staleness without an extra round-trip.
   const out = await db.execute(sql`
     SELECT
       cdc.id::text AS id,
@@ -641,18 +582,8 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
     })),
     limit,
   );
-  // Hybrid recovery: the FTS prefilter above is English-stemmer only, so a
-  // German or synonym query can return few/zero lexical hits. Scan a
-  // bounded set of this connector's embedded chunks, rank by query↔chunk
-  // cosine, and fuse semantic hits in vector-first — so the right doc
-  // surfaces even when it shares no stemmed lexeme. NULL-safe + bounded:
-  // chunks without an embedding stay reachable via FTS, and the scan is
-  // capped (beyond the cap the tail degrades to FTS recall).
   const fused = await fuseDocsWithVectors(db, p, hits, limit);
 
-  // Retrieval-quality signal for the evidence process. Emitted only on a
-  // real (non-cached) search so the hit/miss rate reflects distinct
-  // queries. query_length (not query) keeps user text out of logs.
   log.docs.searched({
     tenant_id: p.tenant_id,
     connector_id: p.connector_id,
@@ -666,9 +597,6 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
   return fused;
 }
 
-/** Bounded full-scope vector recovery for searchDocs. Returns `hits`
- *  unchanged when embeddings are unavailable or nothing clears the cosine
- *  floor. Extracted so the search query stays readable. */
 const DOCS_VECTOR_SCAN_CAP = 2000;
 async function fuseDocsWithVectors(
   db: Executor,
@@ -733,6 +661,4 @@ async function fuseDocsWithVectors(
   return fuseVectorFirst({ fts: hits, vector, idOf: (h) => h.id, limit });
 }
 
-// Touch byteLen so the linter doesn't flag an unused import — the
-// chunker re-exports it but the service used to rely on it directly.
 void byteLen;

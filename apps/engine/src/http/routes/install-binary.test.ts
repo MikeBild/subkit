@@ -1,12 +1,3 @@
-// install-binary route — unit + handler tests against a tmpdir bundle.
-//
-// Every test points SUBKIT_BINARIES_DIR at a freshly-mkdtemp'd directory
-// and clears the per-dir manifest cache so a stale parse from a previous
-// test does not leak. Hono's `app.request()` is used in lieu of a
-// running HTTP server — the install-binary route has no DB dependency,
-// so the smaller surface keeps tests honest about what the route does
-// and does not touch.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -86,9 +77,9 @@ describe("parseAsset", () => {
 
   test("rejects unknown kinds, platforms, archs, and malformed slugs", () => {
     const invalid = [
-      "engine-linux-x64", // engine is not served via /install
-      "sk-windows-aarch64", // aarch64 alias only valid in the install-script side
-      "sk_darwin_arm64", // underscore, not hyphen — disk shape, not URL shape
+      "engine-linux-x64",
+      "sk-windows-aarch64",
+      "sk_darwin_arm64",
       "sk-darwin",
       "sk--arm64",
       "",
@@ -113,7 +104,7 @@ describe("diskFilename", () => {
 
 describe("GET /install/{asset} — bundled image", () => {
   test("streams sk binary with sha header + correct length", async () => {
-    const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]); // ELF magic
+    const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
     process.env.SUBKIT_BINARIES_DIR = fixture.dir;
@@ -134,11 +125,6 @@ describe("GET /install/{asset} — bundled image", () => {
   });
 
   test("HEAD request returns the same headers as GET (install-script probe contract)", async () => {
-    // The install.ts script probes the engine with `curl -fsSI` (HEAD)
-    // before downloading. Hono auto-handles HEAD on GET routes by
-    // running the handler and stripping the body — pin that the
-    // x-subkit-sha256 / content-length headers survive so the
-    // probe-then-fetch flow works against a real engine.
     const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
@@ -175,7 +161,7 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
     process.env.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk_linux_x64"); // underscore, not hyphen
+    const res = await buildApp().request("/install/sk_linux_x64");
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("github.com/MikeBild/subkit/releases");
   });
@@ -203,8 +189,6 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
   });
 
   test("bundle has SHA256SUMS but is missing the requested binary → 404", async () => {
-    // Manifest lists sk_linux_x64; we ask for sk_darwin_arm64 which is
-    // referenced in the manifest but the file is also absent.
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-partial-bundle-"));
     activeDir = dir;
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
@@ -257,7 +241,7 @@ describe("manifest cache", () => {
 
     const first = await _internal.loadManifest(fixture.dir);
     const second = await _internal.loadManifest(fixture.dir);
-    expect(first).toBe(second); // same object reference — cache hit
+    expect(first).toBe(second);
   });
 
   test("clearCache forces a fresh parse", async () => {
@@ -273,9 +257,6 @@ describe("manifest cache", () => {
   });
 
   test("absence is NOT cached — a bundle staged after a miss is served without restart", async () => {
-    // An engine that booted before the deploy staged the CLI bundle must pick
-    // it up on a later request, not stay 404 until a process restart. Caching
-    // "absent" permanently would break this; this test pins the fix.
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-late-stage-"));
     activeDir = dir;
     process.env.SUBKIT_BINARIES_DIR = dir;
@@ -285,7 +266,6 @@ describe("manifest cache", () => {
     const miss = await app.request("/install/sk-linux-x64");
     expect(miss.status).toBe(404);
 
-    // Deploy stages the bundle into the same dir — no restart, no clearCache.
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
     await fs.writeFile(path.join(dir, "sk_linux_x64"), bytes);
     const sha = createHash("sha256").update(bytes).digest("hex");

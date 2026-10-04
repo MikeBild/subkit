@@ -1,8 +1,3 @@
-// Status tab — runtime snapshot + 5s MCP polling.
-// Asserts the tab renders identity rows from skBootstrap, MCP catalog
-// counts from listMcp* endpoints, and that the polling timer is
-// cleared when the tab unmounts (no-leak assertion).
-
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
@@ -37,7 +32,6 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.setInterval = realSetInterval;
   globalThis.clearInterval = realClearInterval;
-  // Clear any leftover timers so they can't fire after the test exits.
   for (const t of liveTimers) {
     if (!t.cleared) realClearInterval(t.id as Parameters<typeof realClearInterval>[0]);
   }
@@ -93,9 +87,6 @@ function makeClient(opts: {
       mime_type: null,
     })),
   }));
-  // The Status tab now embeds the ActivityHeatmap, which fetches the
-  // audit log. Stub it to an empty result so the heatmap doesn't render
-  // a `failed:` row and collide with the MCP-failure assertion below.
   const tailAuditLog = mock(async () => ({ items: [] }));
   return {
     skBootstrap,
@@ -132,7 +123,6 @@ async function renderOnStatusTab(client: EngineClient): Promise<ReturnType<typeo
     />
   ) as React.ReactElement;
   const ui = renderInk(node);
-  // Status is the default landing tab (idx 0) — no navigation needed.
   await ui.waitFor((t) => t.includes("Runtime status"));
   return ui;
 }
@@ -178,10 +168,8 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       await ui.waitFor((t) => /1 tools/.test(t));
       const beforeSwitch = liveTimers.size;
       expect(beforeSwitch).toBeGreaterThan(0);
-      // Switch back to Settings tab — Status component unmounts.
       await ui.press("left");
       await ui.waitFor((t) => !t.includes("Runtime status"), { tries: 50, sleepMs: 5 });
-      // After unmount, every timer the StatusTab created should be cleared.
       const stillLive = [...liveTimers].filter((t) => !t.cleared);
       expect(stillLive.length).toBe(0);
     } finally {
@@ -206,7 +194,6 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       />,
     );
     try {
-      // Status is the default landing tab (idx 0).
       await ui.waitFor((t) => t.includes("Runtime status"));
       const txt = ui.text();
       expect(txt).toContain("abc12345");
@@ -231,11 +218,8 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       />,
     );
     try {
-      // Status is the default landing tab (idx 0).
       await ui.waitFor((t) => t.includes("Runtime status"));
       const txt = ui.text();
-      // Permission mode + token counters should fall back to "—" when
-      // the host doesn't pass REPL state.
       expect(txt).toMatch(/permission mode\s+—/);
       expect(txt).toMatch(/tokens · session\s+—/);
       expect(txt).toMatch(/tokens · this week\s+—/);

@@ -1,6 +1,3 @@
-// Unit tests for apps/sk/src/turn-event.ts. Shared reducer coverage
-// keeps the interactive and headless `sk` surfaces behavior-compatible.
-
 import { describe, expect, test } from "bun:test";
 import {
   applyTurnEvent,
@@ -81,11 +78,6 @@ describe("sk turn-event reducer", () => {
   });
 
   test("extended usage fields ride through the completed frame to REPL state", () => {
-    // Fix 7 — honest cost telemetry. The reducer stores `ev.usage`
-    // wholesale, so the engine's `prompt_tokens_last_call` /
-    // `turn_tokens_total` survive even though the cli-core TurnUsage
-    // type doesn't declare them; `readExtendedTurnUsage` narrows them
-    // where the footer renders `ctx <last>/<cap>` and `turn <total>`.
     let s = initialSessionState("c1");
     s = applyTurnEvent(s, {
       type: "completed",
@@ -105,7 +97,6 @@ describe("sk turn-event reducer", () => {
     expect(ext.turn_tokens_total).toBe(3_900_000);
     expect(ext.cache_read_tokens).toBe(120_000);
     expect(ext.cache_read_pct).toBe(85.5);
-    // Absent / malformed fields narrow to null, never NaN or undefined.
     expect(readExtendedTurnUsage({ turn_tokens: 1 })).toEqual({
       prompt_tokens_last_call: null,
       turn_tokens_total: null,
@@ -129,10 +120,6 @@ describe("sk turn-event reducer", () => {
   });
 
   test("tool_call_start AFTER a validation_error clears stale errors and resumes running", () => {
-    // Mid-turn iteration: the LLM saw a validation failure and is
-    // trying again. The standalone "validation errors" panel must
-    // not linger past the new attempt — the previous draft's errors
-    // aren't the user's problem to solve.
     let s = initialSessionState("c1");
     s = applyTurnEvent(s, {
       type: "validation_error",
@@ -151,8 +138,6 @@ describe("sk turn-event reducer", () => {
   });
 
   test("tool_call_start does NOT clear errors when the turn never went into error state", () => {
-    // Sanity: starting a tool call from a fresh (running) session
-    // shouldn't touch validationErrors or transition status weirdly.
     let s = initialSessionState("c1");
     expect(s.status).toBe("running");
     s = applyTurnEvent(s, {

@@ -1,16 +1,3 @@
-// Draft-centric authoring slashes: `/draft`, `/connector`,
-// `/workflow`, `/templates`, `/probe`, `/preview`, `/edit`,
-// `/snapshots`, `/versions`, `/restore`, `/context`, `/approvals`,
-// `/policy`. Bodies moved verbatim from handler.ts so the main switch
-// keeps focus on the local + diagnostics commands; handler.ts keeps
-// the grouped case labels and delegates here with the canonical
-// (post-alias) command name.
-//
-// Returns:
-//   - `string | null` if the command was handled (string = banner,
-//     null = pane was opened)
-//   - `undefined` if the name doesn't belong to this group
-
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -378,7 +365,6 @@ export async function dispatchAuthoringDraftSlash(
           ...(scalarString(probe.summary) ? ["", scalarString(probe.summary)] : []),
         ]);
       };
-      // `/probe show` displays the latest recorded probe.
       const sub = (rawArgs[0] ?? "").toLowerCase();
       if (sub === "show" || sub === "last") {
         const detail = await ctx.client.getConversation(ctx.session.conversationId);
@@ -395,10 +381,6 @@ export async function dispatchAuthoringDraftSlash(
         }
         return renderProbe(probe, "latest probe");
       }
-      // Default (or explicit `/probe run [path]`): probe the connector
-      // draft directly — one synchronous engine call, no model turn.
-      // The engine persists the tool call so the next model turn sees
-      // the result.
       const pathArg = sub === "run" ? rawArgs[1] : rawArgs[0];
       const outcome = await ctx.client.probeConversationConnector(
         ctx.session.conversationId,
@@ -441,10 +423,6 @@ export async function dispatchAuthoringDraftSlash(
         }
         return panify(ctx, "latest preview", lines);
       }
-      // Default (or explicit `/preview run [step]`): dry-run the draft
-      // directly — one synchronous engine call, no model turn. Writes
-      // stay held; the engine persists the tool call so the next model
-      // turn sees the preview.
       const stepArg = sub === "run" ? rawArgs[1] : rawArgs[0];
       const outcome = await ctx.client.previewConversationDraft(
         ctx.session.conversationId,
@@ -499,10 +477,6 @@ export async function dispatchAuthoringDraftSlash(
       return panify(ctx, "preview", lines);
     }
     case "edit": {
-      // Expert direct-edit: dump the draft (or one step) as JSON, let
-      // the operator edit the file, then `/edit apply` submits the
-      // change as a validated RFC-6902 patch — no model turn, same
-      // engine-side gates as the model-driven editor.
       if (!ctx.session.conversationId) return "no active conversation";
       const editDir = join(homedir(), ".sk", "edit");
       const bodyPath = join(editDir, `${ctx.session.conversationId}.json`);
@@ -540,8 +514,6 @@ export async function dispatchAuthoringDraftSlash(
             else patches.push({ op: "replace", path: `/${escapePointer(key)}`, value: a });
           }
         } else {
-          // Single-step edit: resolve the step's CURRENT index by id and
-          // replace it wholesale.
           const detail = await ctx.client.getConversation(ctx.session.conversationId);
           const draft = draftRecord(detail.draft);
           const workflow = draft ? asRecord(draft.workflow) : null;
@@ -583,7 +555,6 @@ export async function dispatchAuthoringDraftSlash(
         ];
         return panify(ctx, "edit", lines);
       }
-      // Start an edit: dump the draft (or the named step) to a file.
       const detail = await ctx.client.getConversation(ctx.session.conversationId);
       const draft = draftRecord(detail.draft);
       const workflow = draft ? asRecord(draft.workflow) : null;
@@ -784,14 +755,8 @@ export async function dispatchAuthoringDraftSlash(
       );
     }
     case "policy": {
-      // /policy                              → list tools + current mode
-      // /policy <tool> auto|ask|review|reset → pin per-conversation override
-      // Sets the per-conversation tool policy in one slash. The "review"
-      // alias maps to confirm_after_execution
-      // (APPROVAL_LABELS["approval_after"] = "Review after run").
       if (!ctx.session.conversationId) return "no active conversation";
       const args = rawArgs;
-      // Map CLI shorthands → engine modes.
       const modeAlias: Record<
         string,
         "no_confirm" | "confirm_before_execution" | "confirm_after_execution" | null
@@ -820,11 +785,6 @@ export async function dispatchAuthoringDraftSlash(
         const remaining = Object.keys(result.policies).length;
         return `/policy: ${tool} ${verb}. ${remaining} per-tool override${remaining === 1 ? "" : "s"} active.`;
       }
-      // Listing path. Pull current overrides + emit the badge per
-      // visible tool. The "default badge" comes from the engine's
-      // tool-policies module — but the slash handler can't import the
-      // engine package; we render the override map and tell the user
-      // how to read the default by category.
       const { policies } = await ctx.client.getConversationToolPolicies(ctx.session.conversationId);
       const overrideKeys = Object.keys(policies).sort();
       const lines =

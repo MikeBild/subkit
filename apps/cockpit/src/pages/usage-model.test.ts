@@ -1,14 +1,3 @@
-// What the workspace spent, and what it has left.
-//
-// The page called "Usage" answered with duration and success rate. The engine
-// had measured tokens per model, per purpose, per user and per workflow all
-// along and served them on `/v1/stats/llm`; the cap and the remainder sat on
-// `/v1/status`. Neither was ever asked for, so an operator's only answer to
-// "what does this cost us" was the terminal.
-//
-// The assertions below are mostly about the difference between nothing and
-// zero, because that is the distinction this data keeps losing.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { llmStatsEndpoint, windowBounds } from "@/pages/operations-figures";
@@ -28,10 +17,6 @@ import {
 } from "@/pages/usage-model";
 
 describe("the consumption breakdown", () => {
-  // The PUBLISHED shape: `key` is a map of dimension to value, because a
-  // caller may group by two at once. An earlier version of this test fed a
-  // bare string — the shape the code assumed rather than the one the engine
-  // sends — and stayed green while the page could render nothing at all.
   const envelope = {
     groups: [
       {
@@ -77,8 +62,6 @@ describe("the consumption breakdown", () => {
   });
 
   test("a window that consumed nothing has no shares, not shares of zero", () => {
-    // 0/0 is not 0 %. A row claiming "0 % of the month" reads as a measured
-    // fact; there is nothing to take a share of.
     const rows = consumptionRows(
       {
         groups: [{ key: { workflow: "idle" }, totals: { calls: 0, tokens: { total: 0 } } }],
@@ -117,8 +100,6 @@ describe("the month against its cap", () => {
   });
 
   test("an absent cap is nothing, not a cap of zero", () => {
-    // Rendering "no cap configured" as a cap of zero would tell an operator
-    // their workspace is exhausted while nothing bounds it at all.
     const s = budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null });
     expect(s.budgetTokens).toBeNull();
     expect(s.consumedShare).toBeNull();
@@ -126,8 +107,6 @@ describe("the month against its cap", () => {
   });
 
   test("an unbounded workspace is not reported as comfortable", () => {
-    // `null`, not "ample": unbounded is unmeasured, and calling it healthy is
-    // the zero that means "not measured".
     expect(budgetPressure(budgetSummary({ tokens_month: 1 }))).toBeNull();
   });
 
@@ -163,8 +142,6 @@ describe("the window's money", () => {
   });
 
   test("a window nothing could be priced in has no amount at all", () => {
-    // Zero beside a month that plainly consumed tokens reads as "this was
-    // free" — the most expensive misreading this data can produce.
     expect(
       windowCost({
         cost: {
@@ -206,9 +183,6 @@ describe("the window's money", () => {
   });
 
   test("a window nothing could be priced in still names the models that lack a price", () => {
-    // No amount is shown, so the line beneath it is the only place the reader
-    // learns WHICH models need a price — "no prices at all" is not the case
-    // once SubKit ships list prices.
     const envelope = {
       cost: {
         amount: 0,
@@ -224,9 +198,6 @@ describe("the window's money", () => {
 
 describe("the published group shape", () => {
   test("reads the value for the axis that was asked for", () => {
-    // A two-dimension grouping puts both in the key. Picking the wrong one
-    // would label every row with a model name under a heading that says
-    // workflow.
     const envelope = {
       groups: [
         {
@@ -240,26 +211,16 @@ describe("the published group shape", () => {
   });
 
   test("a bare string key is NOT accepted", () => {
-    // The shape this code used to assume. Accepting it would let the same
-    // mistake back in behind a passing test.
     expect(consumptionRows({ groups: [{ key: "ga4", totals: {} }] }, "workflow")).toEqual([]);
   });
 
   test("a group missing the requested dimension is dropped", () => {
-    // No such dimension at all — a different thing from a dimension that is
-    // present and empty, which is the case below.
     expect(consumptionRows({ groups: [{ key: { model: "x" }, totals: {} }] }, "workflow")).toEqual(
       [],
     );
   });
 
   test("consumption nothing can be attributed to is KEPT and marked", () => {
-    // `llm_usage` has no workflow: attribution comes from a join on
-    // `executions`, so every call without a run — chat, self-healing,
-    // discovery — arrives with an empty key. Dropping those made a page about
-    // consumption say "no model calls in this window" beside a header naming
-    // forty million tokens, because on that installation nearly all of it was
-    // chat. "Cannot be attributed" and "did not happen" are different facts.
     const rows = consumptionRows(
       {
         groups: [
@@ -273,18 +234,12 @@ describe("the published group shape", () => {
     const unattributed = rows.find((r) => r.unattributed);
     expect(unattributed?.tokens).toBe(400);
     expect(rows.find((r) => r.key === "ga4")?.unattributed).toBe(false);
-    // And it counts toward the shares, or the percentages would not add up.
     expect(rows.reduce((sum, r) => sum + (r.share ?? 0), 0)).toBeCloseTo(1, 5);
   });
 });
 
 describe("the call count", () => {
   test("is read from the per-group number the schema declares", () => {
-    // PER GROUP `totals.calls` is a plain number; only the ENVELOPE total is
-    // `{ total, by_result }`. This file fed the envelope shape and asserted
-    // nothing about `calls` at all, so it stayed green while every row on the
-    // page reported nought calls beside millions of tokens. The one field the
-    // code turns into a zero was the one field no test looked at.
     const rows = consumptionRows(
       { groups: [{ key: { flow: "converse" }, totals: { calls: 792, tokens: { total: 10 } } }] },
       "flow",
@@ -301,8 +256,6 @@ describe("the call count", () => {
       },
       "flow",
     );
-    // Zero is what the wrong shape produced. It must not be reachable from a
-    // payload that plainly carries a count.
     expect(rows[0]?.calls).toBe(0);
   });
 });
@@ -377,8 +330,6 @@ describe("runs per workflow", () => {
 });
 
 describe("what the money was spent on", () => {
-  // `group_by=flow`, in the published shape: one dimension, so each group
-  // carries its own amount.
   const flow = (key: string, total: number, amount: number | null, calls = 1) => ({
     key: { flow: key },
     totals: { calls, tokens: { total } },
@@ -386,8 +337,6 @@ describe("what the money was spent on", () => {
   });
 
   test("names every flow the engine records — a new one breaks here, not on the page", () => {
-    // Read from the engine's own union, so the table cannot fall behind it
-    // silently: an unmapped flow would land in "Sonstiges" on every page.
     const source = readFileSync(
       new URL("../../../engine/src/llm/types.ts", import.meta.url),
       "utf8",
@@ -438,7 +387,6 @@ describe("what the money was spent on", () => {
     const rows = originRows({ groups: [flow("generate", 10, 1), flow("repair", 10, null)] });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.cost).toBeNull();
-    // Without an amount on every row, shares are of the tokens.
     expect(rows[0]?.share).toBe(1);
   });
 

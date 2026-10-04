@@ -1,14 +1,3 @@
-// Tool-policy audit recorder.
-//
-// Emitted by `conversations/tools/sdk-wrap/invoke.ts` whenever the
-// enforcement resolver (`decideToolMode`) decides a tool call must pause
-// for human confirmation. Operators can SELECT these rows to answer "what
-// tools paused the loop today, and why" — the resolver previously logged
-// at debug level only, which is non-durable and tenant-blind.
-//
-// Every field below is sourced from the decision the confirm gate ACTS on.
-// An audit row describing a mode nothing enforced is worse than no row.
-
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
 import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
@@ -16,13 +5,9 @@ import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types
 export interface RecordToolPolicyConfirmationRequiredParams extends RecorderBase {
   conversation_id: string;
   tool: string;
-  /** Enforced execution mode — typically "confirm_before_execution". */
   mode: string;
-  /** Kind stamped on the `ask_user_confirm` the gate raises for this tool. */
   confirmation_kind: string | null;
-  /** The `ToolModeRule` branch that produced the mode (e.g. "sensitive_input"). */
   resolver_reason: string | null;
-  /** Environment the call named, when the enforcement table routed on it. */
   environment?: string | null;
 }
 

@@ -14,21 +14,12 @@ describe("detectStdlibDrift", () => {
   });
 
   test("patch and minor diffs on the same major return null", () => {
-    // Today's stdlib is 1.x. Anything under 2.x is compatible.
     expect(detectStdlibDrift("1.0.1")).toBeNull();
     expect(detectStdlibDrift("1.2.3")).toBeNull();
     expect(detectStdlibDrift("1.9.99")).toBeNull();
   });
 
   test("additive minor bumps stay on major 1 — no drift vs an earlier 1.x", () => {
-    // hex/hash/now/uuid shipped as 1.4.0; the MIME surface
-    // (mimeEncodeHeaderValue / buildMimeMessage) as 1.5.0; the vendor
-    // payload shaping surface (emailBody / rfc3339Parts /
-    // documentToMarkdown — generic names, vendor wire formats detected
-    // by shape behind them) as 1.6.0; sk.fmt plus the toLocaleString locale
-    // guard as 1.7.0. A workflow recorded against any earlier 1.x must NOT
-    // spawn a Patch Candidate — the surface is additive, and the guard only
-    // fails code that was already producing wrong output.
     expect(STDLIB_VERSION).toBe("1.7.0");
     expect(detectStdlibDrift("1.6.0")).toBeNull();
     expect(detectStdlibDrift("1.5.0")).toBeNull();

@@ -1,10 +1,3 @@
-// GraphQL introspection ingestion test.
-//
-// A stub fetch hands the orchestrator a canned `__schema` payload so the
-// chunker code path is fully exercised without booting a real GraphQL
-// server. Asserts that we get an overview chunk plus per-type and
-// per-operation chunks.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { ingestDocs } from "../service.ts";
 import { createDocsTestCtx, type DocsTestCtx, stubFetch } from "./setup.ts";
@@ -93,7 +86,6 @@ describe("docs-ingestion/graphql", () => {
       },
       ctx.testDb.db,
     );
-    // overview + 4 types (Query, Mutation, User, Role) + 2 operations (users, createUser)
     expect(result.ingested_count).toBeGreaterThanOrEqual(6);
     expect(result.budget_exceeded).toBe(false);
   });

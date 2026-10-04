@@ -1,27 +1,3 @@
-// The operator commands the bootstrap-preflight contract requires, as a
-// pure module: argv in, `{exitCode, lines}` out.
-//
-//     engine --preflight
-//     engine --vault-check <name>
-//     engine --vault-set <name> --value-file <path> [--bind <b>,…] [--purpose "…"] [--if-unreadable]
-//                                [--pending]
-//     engine --rewrap-master-key --from-file <path-to-previous-key>
-//
-// WHY the way back in exists at all: a runtime secret version written under
-// an earlier MASTER_KEY cannot be decrypted by this process, and the
-// bootstrap preflight then refuses to start (`secret_unreadable`) — which
-// is the correct refusal and also a deadlock, because the HTTP settings
-// surface needs a running engine. These commands run on the host, where
-// the caller already holds MASTER_KEY, DATABASE_URL and a shell: a higher
-// bar than any API key.
-//
-// This module never reads the process environment and never reads the
-// process argument vector itself — argv arrives as a parameter and every
-// effect arrives through `VaultOps`. That is asserted by a test which scans
-// this file's source for both accessors, because it is the property keeping
-// the secret value out of argv and out of the environment. Which is also
-// why neither accessor is spelled out above: the scan is literal.
-
 import { readFileSync } from "node:fs";
 
 const VALUE_BEARING_FLAGS = ["--value", "--secret-value", "--previous-key", "--master-key"];
@@ -38,11 +14,6 @@ export interface VaultSetCommand {
   bindings: string[];
   purpose: string | null;
   ifUnreadable: boolean;
-  /**
-   * Write the version but do not make it current and do not re-pin: it waits
-   * in the Cockpit as a prepared change until a person approves it. `--bind`
-   * then names what approval re-pins.
-   */
   pending: boolean;
 }
 
@@ -63,7 +34,6 @@ export type VaultCliCommand =
 
 export type VaultCliParse = { ok: true; command: VaultCliCommand } | { ok: false; message: string };
 
-/** The flags this module owns. `index.ts` dispatches on these. */
 export const VAULT_CLI_FLAGS = [
   "--preflight",
   "--vault-check",
@@ -71,8 +41,6 @@ export const VAULT_CLI_FLAGS = [
   "--rewrap-master-key",
 ] as const;
 
-// No "Usage:" header of its own — `--help` owns one already and the error
-// path adds one. Two headers on one screen is how a help text starts lying.
 export const VAULT_CLI_USAGE: string = [
   "  engine --preflight",
   "      can this release run on this bootstrap? changes nothing",
@@ -245,7 +213,6 @@ export function parseVaultCliArgs(argv: string[]): VaultCliParse {
   };
 }
 
-/** Strip exactly one trailing newline, so `printf '%s\n' > file` and a raw write agree. */
 export function trimOneTrailingNewline(raw: string): string {
   if (raw.endsWith("\r\n")) return raw.slice(0, -2);
   if (raw.endsWith("\n")) return raw.slice(0, -1);
@@ -253,16 +220,13 @@ export function trimOneTrailingNewline(raw: string): string {
 }
 
 export interface VaultCliOutcome {
-  /** 0 done or nothing to do, 1 failure, 3 the current version does not decrypt / the preflight refused. */
   exitCode: 0 | 1 | 3;
   lines: string[];
 }
 
 export interface VersionProbe {
-  /** The highest non-revoked version, or null when the name has none. */
   version: number | null;
   readable: boolean;
-  /** True when the name has no rows at all. */
   absent: boolean;
 }
 
@@ -272,31 +236,18 @@ export interface Rebound {
   version: number;
 }
 
-/**
- * Every effect the commands have, injected. The production implementation
- * is `vault-ops.ts`; tests pass a fake and assert on the lines.
- */
 export interface VaultOps {
   probeCurrentVersion(name: string): Promise<VersionProbe>;
-  /** Mint the next immutable version of `name`. `purpose` is audited, never stored beside the ciphertext. */
   createVersion(name: string, value: string, purpose: string | null): Promise<{ version: number }>;
-  /**
-   * Mint the next version as a PREPARED one: not current, not bound, waiting
-   * for a person in the Cockpit. `bindings` are re-pinned on approval.
-   */
   prepareVersion(
     name: string,
     value: string,
     purpose: string | null,
     bindings: string[],
   ): Promise<{ version: number }>;
-  /** Re-point one dotted settings path at `secret://name/version` in a new revision. */
   rebind(path: string, name: string, version: number): Promise<Rebound>;
-  /** Instance ids whose replica lease is still healthy. Non-empty means the process is serving. */
   servingReplicas(): Promise<string[]>;
-  /** Re-encrypt every stored version under the running key, reading with `previousKeyHex`. */
   rewrap(previousKeyHex: string): Promise<{ names: number; versions: number }>;
-  /** Run the six checks. */
   preflight(): Promise<VaultCliOutcome>;
 }
 
@@ -344,8 +295,6 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
     return { exitCode: 1, lines: [`${command.name}: ${messageOf(error)}`] };
   }
 
-  // `--if-unreadable` only short-circuits when the secret already exists.
-  // A name with no version yet is always written, flag or not.
   if (command.ifUnreadable && !probe.absent && probe.readable) {
     return {
       exitCode: 0,
@@ -358,9 +307,6 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
   let value: string;
   try {
     const read = deps.readFile ?? defaultReadFile;
-    // No attempt to scrub this afterwards: a JS string is immutable, so
-    // reassigning the variable frees nothing, and a gesture that reads like
-    // a guarantee without being one is worse than its absence.
     value = trimOneTrailingNewline(read(command.valueFile));
   } catch (error) {
     return { exitCode: 1, lines: [`${command.valueFile}: cannot be read — ${messageOf(error)}`] };
@@ -368,8 +314,6 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
   if (value.length === 0) return { exitCode: 1, lines: [`${command.valueFile}: holds no value`] };
 
   if (command.pending) {
-    // A prepared version changes nothing yet, which is the whole point: the
-    // value is in, encrypted, and the decision about using it is a person's.
     try {
       const prepared = await ops.prepareVersion(
         command.name,
@@ -419,9 +363,6 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
     }
   }
   lines.push(...failures);
-  // The new version exists either way; a binding that could not be re-pinned
-  // is still a failure, because the deploy it was meant to unblock will fail
-  // again on the version the binding still points at.
   return { exitCode: failures.length ? 1 : 0, lines };
 }
 
@@ -430,10 +371,6 @@ const MASTER_KEY_HEX = /^[0-9a-fA-F]{64}$/;
 async function runRewrap(command: RewrapCommand, deps: VaultCliDeps): Promise<VaultCliOutcome> {
   const { ops } = deps;
 
-  // Refuse while the process is serving. A rewrap rewrites the ciphertext
-  // of every version in place; a replica still holding the old key in memory
-  // would keep serving from a cache it can no longer refresh, and a replica
-  // that restarts mid-sweep would read half a vault.
   let serving: string[];
   try {
     serving = await ops.servingReplicas();
@@ -477,7 +414,6 @@ async function runRewrap(command: RewrapCommand, deps: VaultCliDeps): Promise<Va
   }
 }
 
-/** The reader every test replaces. The path is the ONLY way a value gets in. */
 function defaultReadFile(path: string): string {
   return readFileSync(path, "utf8");
 }

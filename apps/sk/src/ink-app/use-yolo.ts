@@ -1,12 +1,3 @@
-// Permission-mode state + the yolo arming/expiry state machine.
-//
-// `yolo` lifts the delete/revoke/approve confirmation gate, so it is
-// deliberately hard to arm (explicit `/yolo` + literal `yes`) and
-// impossible to leave armed forever (10-turn / 10-minute auto-disarm,
-// whichever comes first). The hook owns every piece of that lifecycle
-// so the submit path only calls three verbs: `noteTurnStart`,
-// `consumeArmAnswer`, `runYoloSlash`.
-
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionMode } from "../repl/status-line/render.ts";
@@ -18,16 +9,8 @@ export interface YoloApi {
   activeMode: PermissionMode;
   setActiveMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   awaitingYoloArm: boolean;
-  /** Per-submit yolo expiry bookkeeping — call once per plain submit. */
   noteTurnStart: () => void;
-  /**
-   * Yolo arming intercept. The `/yolo` slash set the awaiting flag;
-   * the very next submit must be the literal `yes`. Returns true when
-   * the submission was consumed (armed or cancelled) and must not
-   * reach the engine.
-   */
   consumeArmAnswer: (trimmed: string) => boolean;
-  /** Handles the `/yolo [off]` slash command. */
   runYoloSlash: (trimmed: string, hasPendingElicitation: boolean) => void;
 }
 
@@ -36,30 +19,12 @@ export function useYoloMode(
   showInfo: (message: string) => void,
   showError: (message: string) => void,
 ): YoloApi {
-  // Permission mode — cycled by Shift-Tab through ask/auto/plan. yolo
-  // is intentionally NOT in the cycle: it must be armed explicitly via
-  // the `/yolo` slash command (with a typed-yes confirmation) and
-  // expires automatically after 10 turns / 10 minutes whichever comes
-  // first. Seed from the prop so hosts that persist a preference can
-  // drive it, but own the state locally once the user interacts.
   const [activeMode, setActiveMode] = useState<PermissionMode>(initialMode);
-  // Tracks the previous sticky mode so `/yolo off` (or auto-expiry)
-  // can restore exactly what the operator had selected before arming.
   const preYoloModeRef = useRef<PermissionMode>(initialMode);
-  // Yolo arming guard — when set, the next composer submission must
-  // be the literal `yes` to confirm arming. Anything else cancels.
   const [awaitingYoloArm, setAwaitingYoloArm] = useState<boolean>(false);
-  // yolo expiry tracking. Both counters reset every time yolo arms.
   const yoloArmedAtRef = useRef<number | null>(null);
   const yoloTurnCountRef = useRef<number>(0);
 
-  // Yolo time-based expiry. When yolo is armed, schedule a single
-  // disarm at YOLO_MAX_DURATION_MS after the arming time. Reuse
-  // `activeMode` as the dependency: arming sets it to "yolo" so this
-  // effect fires; disarming sets it back, which invalidates the
-  // pending timer via the cleanup. The turn-based path in
-  // `handleSubmit` covers the case of an active operator hitting the
-  // 10-turn ceiling first.
   useEffect(() => {
     if (activeMode !== "yolo") return;
     const armedAt = yoloArmedAtRef.current ?? Date.now();
@@ -81,9 +46,6 @@ export function useYoloMode(
     return () => clearTimeout(timer);
   }, [activeMode]);
 
-  // Yolo expiry — by-turn. Auto-disarms after YOLO_MAX_TURNS
-  // turns so a tab left open mid-task doesn't keep destructive
-  // confirmations bypassed indefinitely.
   const noteTurnStart = useCallback((): void => {
     if (activeMode === "yolo") {
       if (yoloTurnCountRef.current >= YOLO_MAX_TURNS) {
@@ -120,10 +82,6 @@ export function useYoloMode(
 
   const runYoloSlash = useCallback(
     (trimmed: string, hasPendingElicitation: boolean): void => {
-      // Refuse arming while a confirmation is pending — the
-      // operator might resolve a confirm-step under a mode they
-      // didn't intend, which is exactly the foot-gun yolo opens
-      // up.
       if (hasPendingElicitation) {
         showError("/yolo: cannot arm while an elicitation is pending — resolve it first.");
         return;

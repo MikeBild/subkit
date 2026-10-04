@@ -1,17 +1,3 @@
-// What a browser sign-in tells the rest of the product when it comes back.
-//
-// Both sign-in callbacks — the connector OAuth callback and the MCP
-// authorization callback — end the same wait: a conversation paused on a
-// re-sign-in link for this connector (an MCP-surface URL elicitation) and a
-// terminal tailing `connector.oauth` for the outcome (`sk` auto-resume, the
-// install flow). Both are keyed by the connector, not by the route the
-// browser went through, so one sign-in route that skipped them would leave
-// those waiters to time out on a sign-in that already succeeded.
-//
-// Best-effort by design: the credential is stored (or the failure recorded)
-// before these run, and the page the person reads must not depend on them.
-// A failure here is logged, never thrown.
-
 import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { writeEvent } from "../../../db/events.ts";
@@ -28,7 +14,6 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A credential from a browser sign-in is stored: settle the waiters. */
 export async function signalSignInSucceeded(
   db: Db,
   p: {
@@ -79,13 +64,6 @@ export async function signalSignInSucceeded(
   }
 }
 
-/**
- * A browser sign-in came back without a credential: settle the waiters.
- * `reason` is a sanitized token from the published allowlist — never a
- * provider's or an exception's own text. A failure the published event has
- * no reason for (null) still settles the paused conversation; a terminal
- * waiting on the event then times out.
- */
 export async function signalSignInFailed(
   db: Db,
   p: {

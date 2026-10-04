@@ -1,34 +1,3 @@
-// Extract HTTP surface.
-//
-// This module registers two sibling routes that both live under the
-// "ai/extract" concept but serve different callers:
-//
-//   POST /v1/ai/extract
-//     The LLM-driven inference surface. Takes a JSON body of the shape
-//     `{sample, hint?}`, passes it through `runExtractFlow`, and returns
-//     the inferred JSON Schema + canonical data. Unchanged from the
-//     pre-P2 shape.
-//
-//   POST /v1/extract
-//     The file-upload surface documented in docs/authors/authoring-workflows.md. Accepts
-//     a raw request body whose format is detected from the `content-type`
-//     header. Formats: json, csv, yaml, xml, plaintext, pdf, docx,
-//     xlsx/xls, pptx. Binary formats are handled by the docs-ingestion
-//     parser registry (`docs-ingestion/parsers/`); anything still
-//     unknown is rejected with HTTP 415 + a typed
-//     `unsupported_file_format` envelope listing the supported set. No
-//     LLM is called.
-//
-// Both routes enforce the shared 100 MB body cap from
-// docs/operators/observability.md. The cap is checked twice so a hostile
-// or buggy client cannot evade it:
-//   1. `content-length` header — rejected before the body is read so we
-//      never touch the socket for an obviously-oversized upload.
-//   2. Streaming fallback — if the client omits `content-length`, we
-//      aggregate the body chunk-by-chunk and bail the moment the
-//      running total crosses the cap. Rejection writes a typed
-//      `data.exported` audit row so operators see the attempt.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -57,10 +26,8 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-/** 100 MB — see docs/operators/observability.md § File and payload sizes. */
 export const EXTRACT_BODY_CAP_BYTES = 100 * 1024 * 1024;
 
-/** Formats the file-upload extractor knows how to parse. */
 export const SUPPORTED_FILE_FORMATS = [
   "json",
   "csv",
@@ -75,23 +42,8 @@ export const SUPPORTED_FILE_FORMATS = [
 ] as const;
 export type SupportedFileFormat = (typeof SUPPORTED_FILE_FORMATS)[number];
 
-/** Binary formats that participate in the data-export audit trail —
- *  the canonical `BINARY_FORMATS` set from `docs-ingestion/parsers/`.
- *  Text formats (json/csv/yaml/xml/plaintext) skip the audit row to
- *  keep volume reasonable — they're shape-only and don't carry the
- *  same governance weight as PDFs / Office docs. */
 const AUDITED_BINARY_FORMATS: ReadonlySet<string> = BINARY_FORMATS;
 
-// `sanitizeForAudit` lives in `audit/sanitize.ts` so this route, the
-// LLM context placeholder, and the docs-ingestion failure audit all
-// share one bounded length + control-char strip.
-
-/** Validation for the `x-filename` request header used by `POST /v1/extract`.
- *  The header is operator-supplied (the `sk` CLI sends it, custom clients
- *  may too), so we treat it as untrusted input: bounded length, no path
- *  separators, no control chars. The parsed value is logged inside the
- *  parser failure audit row, so an unbounded or shell-meta value would
- *  reach SIEM consumers. Zod-at-the-boundary keeps that surface clean. */
 const FILENAME_HEADER_SCHEMA = z
   .string()
   .max(255)
@@ -99,12 +51,6 @@ const FILENAME_HEADER_SCHEMA = z
     message: "filename header must not contain path separators or NULs",
   });
 
-// `ExtractFileResponseSchema` lives in `apps/engine/src/api/` so other
-// surfaces (engine-client, MCP probes, external typed clients) can
-// import the response shape directly. This route still validates the
-// body before `c.json(...)` so a future contributor can't introduce a
-// silent shape regression even though the request is polymorphic and
-// out-of-spec by design.
 const ExtractFileResponse = ExtractFileResponseSchema;
 
 const ExtractBody = z
@@ -147,11 +93,6 @@ function auditDeniedTooLarge(
   details: Record<string, unknown>,
   db?: Db,
 ): void {
-  // `tenant_id` can legitimately be null when the body cap trips
-  // *before* we have a validated principal — fall back to the system
-  // tenant marker so the audit row still lands. When a per-request
-  // executor is handed in we bind the audit write to it so tests with
-  // per-db isolation observe the row.
   audit(
     {
       tenant_id: tenantId ?? "00000000-0000-0000-0000-000000000000",
@@ -168,11 +109,6 @@ function auditDeniedTooLarge(
   );
 }
 
-/**
- * Body-cap middleware shared by both extract routes. Declared as a
- * standalone factory so `/v1/ai/extract` and `/v1/extract` can install
- * the same cap without duplicating the stream-aggregation logic.
- */
 function extractBodyCap() {
   return async (c: Context<AppEnv>, next: Next) => {
     if (c.req.method !== "POST") return next();
@@ -182,7 +118,6 @@ function extractBodyCap() {
     const actorId = principal?.kind === "user" ? principal.id : null;
     const middlewareDb = c.get("db");
 
-    // 1. Reject on the declared content-length before we read the body.
     const lenHeader = c.req.header("content-length");
     let declaredLength: number | null = null;
     if (lenHeader) {
@@ -207,11 +142,6 @@ function extractBodyCap() {
       }
     }
 
-    // 2. If content-length is missing (or the header couldn't be
-    //    parsed), stream the body and bail as soon as the running
-    //    total crosses the cap. When a valid, in-range content-length
-    //    was provided we trust it and skip the copy so the happy path
-    //    stays a zero-overhead passthrough.
     const rawBody = c.req.raw.body;
     if (declaredLength === null && rawBody) {
       const reader = rawBody.getReader();
@@ -243,11 +173,8 @@ function extractBodyCap() {
       } finally {
         try {
           reader.releaseLock();
-        } catch {
-          // ignore — reader may already be released
-        }
+        } catch {}
       }
-      // Re-hydrate the request body so downstream handlers can parse it.
       const buf = Buffer.concat(
         parts.map((p) => Buffer.from(p.buffer, p.byteOffset, p.byteLength)),
       );
@@ -257,9 +184,6 @@ function extractBodyCap() {
         body: buf,
       });
       c.req.raw = reconstructed;
-      // Clear any cached parsed body on the Hono request wrapper so the
-      // openapi validator / text() accessor re-reads the reconstructed
-      // request.
       const cache = (c.req as unknown as { bodyCache?: Record<string, unknown> }).bodyCache;
       if (cache) {
         for (const k of Object.keys(cache)) delete cache[k];
@@ -271,16 +195,8 @@ function extractBodyCap() {
 }
 
 export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
-  // `/v1/extract` is hand-registered via `app.post(...)` because the
-  // request body is polymorphic (content-type dispatch) — see the
-  // module header. The *response* shape is well-typed, so we register
-  // `ExtractFileResponse` as a standalone `components/schemas` entry:
-  // external clients can `$ref` the response from `openapi.json` even
-  // though the route path itself isn't in the document.
   app.openAPIRegistry.register("ExtractFileResponse", ExtractFileResponseSchema);
 
-  // RBAC: extract endpoints are read-only — they surface data that
-  // already lives in the tenant's workflow context.
   app.use("/v1/ai/extract", async (c, next) => {
     if (c.req.method !== "POST") return next();
     return requirePermission("workflow:read")(c, next);
@@ -290,8 +206,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     return requirePermission("workflow:read")(c, next);
   });
 
-  // Middleware runs before the zod `openapi` handler, so we can reject
-  // with a typed HttpError while the body is still on the wire.
   app.use("/v1/ai/extract", extractBodyCap());
   app.use("/v1/extract", extractBodyCap());
 
@@ -326,13 +240,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     );
   });
 
-  // -----------------------------------------------------------------
-  // POST /v1/extract — file-upload extraction surface.
-  //
-  // Not declared via `app.openapi(...)` because the request body is
-  // intentionally polymorphic (text/json/yaml/xml/csv) and the openapi
-  // validator would second-guess the content-type routing.
-  // -----------------------------------------------------------------
   app.post("/v1/extract", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -342,9 +249,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     if (rawFilenameHeader !== undefined) {
       const parsed = FILENAME_HEADER_SCHEMA.safeParse(rawFilenameHeader);
       if (!parsed.success) {
-        // Convention across `apps/engine/src/http/routes/`: BadRequestError
-        // takes a human-readable message first; machine-readable codes
-        // live in `details`. Keeps the OpenAPI error envelope uniform.
         throw new BadRequestError(
           parsed.error.issues[0]?.message ?? "x-filename header is invalid",
           { code: "invalid_x_filename_header" },
@@ -357,9 +261,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     const bytes = raw.byteLength;
     const buffer = Buffer.from(raw);
 
-    // `text/plain` gets short-circuited because the docs ingester's
-    // detector rightly refuses it (plain text is not a doc format) but
-    // the extract endpoint treats it as a first-class format.
     const isPlainText =
       contentType.startsWith("text/plain") || filenameHeader?.toLowerCase().endsWith(".txt");
     if (isPlainText) {
@@ -371,9 +272,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       return c.json(payload, 200);
     }
 
-    // Resolve format through the same detector the docs ingester uses,
-    // so unsupported types surface as `UnsupportedFileUploadError` and
-    // we can map them to 415 uniformly.
     let format: SupportedFileFormat;
     try {
       const detectInput: Parameters<typeof detectFormat>[0] = { buffer };
@@ -381,13 +279,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       if (mimeHead) detectInput.mime = mimeHead;
       if (filenameHeader) detectInput.filename = filenameHeader;
       const detected = detectFormat(detectInput);
-      // `detectFormat` returns the broader `FileUploadFormat` union
-      // (includes `markdown`, `html`) — those are accepted by the
-      // docs ingester but NOT by `/v1/extract`. Without this guard a
-      // .md / .html upload would fall through the switch with
-      // `data === undefined` and then `ExtractFileResponse.parse(…)`
-      // would throw → unhandled 500. Reject explicitly with a typed
-      // 415 instead so the contract matches `SUPPORTED_FILE_FORMATS`.
       if (!(SUPPORTED_FILE_FORMATS as readonly string[]).includes(detected)) {
         throw new UnsupportedMediaTypeError("unsupported_file_format", {
           supported: [...SUPPORTED_FILE_FORMATS],
@@ -406,9 +297,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       throw err;
     }
 
-    // Dispatch to the matching parser. We don't route through
-    // `ingestFileUpload` because it emits RawChunks suitable for the
-    // doc retrieval store; this endpoint wants the parsed data tree.
     let data: unknown;
     let pages: number | undefined;
     try {
@@ -436,10 +324,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
         case "plaintext":
           data = buffer.toString("utf8");
           break;
-        // `parseBinaryFile` returns a discriminated union already
-        // narrowed by the `format` argument, so the result shape is
-        // statically guaranteed — no runtime `parsed.format !== …`
-        // re-check is needed.
         case "pdf": {
           const parsed = await parseBinaryFile(buffer, "pdf");
           data = { text: parsed.text };
@@ -470,22 +354,11 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
           : err instanceof Error
             ? err.message
             : String(err);
-      // Audit binary parse failures as well as successes. Without
-      // this, a pathological-upload campaign would only show up in
-      // metrics (`subkit_docs_binary_parse_total{result="error"}`)
-      // and never in `audit_log`, making forensic queries blind.
-      // Text formats skip the audit row to keep volume reasonable.
-      // `auditAwait` so the row persists before the 400 returns —
-      // `data.exported` is a governance event and operators expect
-      // it visible by the time the client sees the response.
       if (AUDITED_BINARY_FORMATS.has(format)) {
         await auditAwait(
           {
             tenant_id: principal.tenant_id,
             actor_type: principal.kind,
-            // `principal.id` for both user and system-account
-            // principals — a SIEM "which API key exported this?"
-            // query needs the key id, so we never null it out.
             actor_id: principal.id,
             action: AuditAction.DATA_EXPORTED,
             resource_type: "extract",
@@ -497,10 +370,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
               bytes,
               error: sanitizeForAudit(detail),
               request_source: readRequestSource(c),
-              // `filenameHeader` is Zod-validated (no path seps/NULs)
-              // but can still carry TAB/CR/LF — sanitize so the audit
-              // row matches the `docs/concepts/governance-and-audit.md`
-              // contract that metadata is control-char-free.
               ...(filenameHeader ? { filename: sanitizeForAudit(filenameHeader) } : {}),
             },
           },
@@ -518,11 +387,6 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Audit successful binary parses BEFORE the response Zod parse so
-    // a future schema-shape regression can't silently drop the
-    // governance row. Text formats are omitted (shape-only, no
-    // tenant-content egress). `auditAwait` keeps `data.exported`
-    // durable before the 200 acks.
     if (AUDITED_BINARY_FORMATS.has(format)) {
       await auditAwait(
         {

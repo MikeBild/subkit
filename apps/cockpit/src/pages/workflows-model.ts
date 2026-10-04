@@ -4,14 +4,6 @@ import type { TranslationKey } from "@/lib/i18n";
 
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
 
-/**
- * A workflow list item names the connectors it uses by **slug**; the connector
- * detail route needs an **id**. The page inverts one `/v1/connectors` read into
- * this map rather than resolving each row on its own.
- *
- * A slug the map does not know renders as plain text. A link to nowhere is
- * worse than a word.
- */
 export function connectorSlugHref(
   slug: string,
   slugToId: ReadonlyMap<string, string>,
@@ -22,16 +14,6 @@ export function connectorSlugHref(
 
 const ON_REQUEST: TranslationKey = "workflows.trigger.request";
 
-/**
- * The word for what really starts a workflow, read from the engine's
- * `effective_trigger` — never from the definition's `trigger`. A schedule set
- * up on its own lives only in the schedule binding; reading the definition
- * called such a workflow "Auf Anfrage" while it fired every hour.
- *
- * A schedule or webhook that is declared but not bound fires nothing, so it
- * must not read as "Zeitplan": its word says it runs on request only. Paused
- * and held schedules keep their own words for the same reason.
- */
 export function triggerLabelKey(trigger: EffectiveTrigger): TranslationKey {
   if (trigger.kind === "schedule") {
     switch (trigger.state) {

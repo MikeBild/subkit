@@ -1,6 +1,3 @@
-// Integration tests for MCP OAuth HTTP routes — mcp-oauth-discovery group.
-// Shared setup + helpers live in ./mcp-oauth-test-helpers.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
@@ -84,11 +81,6 @@ describe("POST /mcp unauthenticated challenge", () => {
     });
 
     expect(res.status).toBe(401);
-    // Exact header: the challenge must advertise the FULL supported scope
-    // set (identical to the RFC 8414 discovery document), or MCP clients
-    // only ever request mcp:read and the consent screen never offers the
-    // authoring/admin scopes — nor `metrics:read`, without which a
-    // monitoring client cannot connect at all and goes back to a pasted key.
     expect(res.headers.get("www-authenticate")).toBe(
       'Bearer resource_metadata="https://test.example.com/.well-known/oauth-protected-resource", scope="mcp:read mcp:authoring mcp:admin metrics:read"',
     );
@@ -120,8 +112,6 @@ describe("GET /.well-known/oauth-authorization-server", () => {
   });
 });
 
-// ─── POST /v1/oauth/register (DCR) ─────────────────────────────────────────
-
 describe("AS metadata: token_endpoint_auth_methods_supported", () => {
   test("contains 'none' and does NOT contain client_secret_basic or client_secret_post", async () => {
     const res = await fetch(`${ctx.baseUrl}/.well-known/oauth-authorization-server`);
@@ -133,8 +123,6 @@ describe("AS metadata: token_endpoint_auth_methods_supported", () => {
     expect(methods).not.toContain("client_secret_post");
   });
 });
-
-// ── DCR redirect_uri validation ────────────────────────────────────────────────
 
 describe("POST /v1/oauth/register", () => {
   test("registers client and returns 201 with required fields", async () => {
@@ -151,8 +139,6 @@ describe("POST /v1/oauth/register", () => {
     expect(typeof body.client_id).toBe("string");
     expect(typeof body.client_id_issued_at).toBe("number");
     expect(Array.isArray(body.redirect_uris)).toBe(true);
-    // registration_client_uri is intentionally not advertised — subkit
-    // does not serve the RFC 7591 client-configuration endpoint.
     expect(body.registration_client_uri).toBeUndefined();
   });
 
@@ -189,8 +175,6 @@ describe("POST /v1/oauth/register", () => {
     expect(body.error).toBe("invalid_client_metadata");
   });
 });
-
-// ─── GET /v1/oauth/authorize ────────────────────────────────────────────────
 
 describe("POST /v1/oauth/register — redirect_uri validation", () => {
   test("rejects http:// to public host with 400 invalid_client_metadata", async () => {
@@ -263,12 +247,8 @@ describe("POST /v1/oauth/register — redirect_uri validation", () => {
   });
 });
 
-// ── DCR per-IP rate limit ──────────────────────────────────────────────────────
-
 describe("POST /v1/oauth/register — per-IP rate limit", () => {
   test("11th registration from same IP returns 429", async () => {
-    // Use a unique IP that isn't used anywhere else in this file to avoid
-    // collisions with the module-level dcrBuckets map.
     const uniqueIp = "10.9.8.7";
     let lastStatus = 0;
     for (let i = 0; i < 11; i++) {
@@ -281,11 +261,8 @@ describe("POST /v1/oauth/register — per-IP rate limit", () => {
         body: JSON.stringify({ redirect_uris: [`https://ratelimit-test.example.com/cb${i}`] }),
       });
       lastStatus = res.status;
-      // drain body
       await res.json().catch(() => null);
     }
     expect(lastStatus).toBe(429);
   });
 });
-
-// ── /token: 64KB form body limit ──────────────────────────────────────────────

@@ -1,15 +1,3 @@
-// api_key auth provider — real implementation.
-//
-// - Parses `Authorization: Bearer wf_live_<rand>` or `?token=<key>` query
-// - Looks up `api_keys` row by prefix
-// - Constant-time sha256 comparison
-// - Validates not_before / expires_at / revoked_at, resolves the owner and
-//   builds a ResolvedPrincipal populated with tenant + roles + scopes — the
-//   row-bound half lives in `api-key-row.ts` so the RFC 8693 exchanged token
-//   (`auth/oauth/token-exchange.ts`) runs exactly the same checks.
-// - Schedules a `last_used_at` flush throttled to once per 60s per key and
-//   writes an `api_key.used` audit row only when the throttle window fires
-
 import { eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -34,9 +22,7 @@ export function extractBearerToken(req: Request): string | null {
     const url = new URL(req.url);
     const q = url.searchParams.get("token");
     if (q) return q;
-  } catch {
-    // ignore — non-absolute URL
-  }
+  } catch {}
   return null;
 }
 
@@ -48,12 +34,6 @@ export function clientIp(req: Request): string {
   );
 }
 
-/**
- * Look up the `api_keys` row a plaintext key names and verify the hash.
- * Returns `null` (logged, audited) on an unknown prefix or a hash mismatch.
- * Shared with the token-exchange grant, which authenticates the key the
- * same way before minting.
- */
 export async function matchApiKeyRow(
   db: Db,
   plaintext: string,
@@ -62,14 +42,6 @@ export async function matchApiKeyRow(
 ): Promise<ApiKeyRow | null> {
   const parsed = parseKey(plaintext);
   if (!parsed) {
-    // A bearer token that doesn't even carry the subkit key prefix is
-    // a foreign credential (a chat-platform JWT on the webhook route,
-    // an OIDC token, an unrelated probe), not a malformed subkit key.
-    // Return null silently so it falls through to the next provider
-    // without a spurious auth.denied WARN on every such request — the
-    // noise that fired on every /v1/chat/* call. Only a token that DOES
-    // carry the prefix but still fails to parse is a genuinely broken
-    // subkit key an operator should see.
     if (plaintext.startsWith(KEY_PREFIX_LITERAL)) {
       log.auth.denied({ provider, reason: "malformed_token" });
     }
@@ -113,7 +85,6 @@ export async function matchApiKeyRow(
 
 export interface ApiKeyProviderOptions {
   db?: Db;
-  // Test seam: clear the in-process throttle map so tests can force a flush.
   resetThrottle?: boolean;
 }
 

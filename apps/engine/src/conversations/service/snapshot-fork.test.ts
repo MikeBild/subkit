@@ -1,11 +1,3 @@
-// Integration test: fork a conversation that has file attachments.
-//
-// Asserts:
-//   1. `file_links` rows are duplicated for the forked conversation.
-//   2. Both forked link rows point at the same `files.id`s as the source.
-//   3. The cleanup cron does NOT reap files that are referenced by either
-//      side (soft-delete unlinked sweep skips them).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -81,7 +73,6 @@ describe("forkConversation + file_links", () => {
     expect(result).not.toBeNull();
     const forkedConvId = result!.conversation.id;
 
-    // Both source link file_uuids must appear in forked conv links
     const forkLinks = await srv.db
       .select({ file_id: fileLinks.file_id, slug: fileLinks.slug })
       .from(fileLinks)
@@ -97,12 +88,10 @@ describe("forkConversation + file_links", () => {
     expect(forkFileIds).toContain(att2.file_uuid);
     expect(forkFileIds).toHaveLength(2);
 
-    // The link slugs are preserved
     const slugs = forkLinks.map((l) => l.slug);
     expect(slugs).toContain("fork-doc1");
     expect(slugs).toContain("fork-doc2");
 
-    // FILE_LINK_ADDED audit rows for the fork
     const auditRows = await srv.db
       .select()
       .from(auditLog)
@@ -147,10 +136,8 @@ describe("forkConversation + file_links", () => {
     );
     expect(result).not.toBeNull();
 
-    // Run the cleanup cron — files linked from both source + fork should NOT be reaped
     await runFilesCleanup(new Date(FROZEN_NOW), srv.db);
 
-    // The file row must still be `ready` (not `deleted`)
     const [fileRow] = await srv.db
       .select({ status: files.status, deleted_at: files.deleted_at })
       .from(files)

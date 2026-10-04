@@ -24,8 +24,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   const quirks = (fixture.input as { quirks: Record<string, string> }).quirks;
   const fails: string[] = [];
 
-  // Workflow-validated turn (transform-shaped). Only schema-related
-  // categories should land in the rendered block.
   const transformCats = selectOperatorQuirkCategories(hint("workflow_validated"), false);
   const transformBlock = formatOperatorQuirks("c", "C", quirks, transformCats);
   if (!transformBlock) {
@@ -41,7 +39,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     }
   }
 
-  // Workflow-draft-started turn (request-shaped). schema must NOT appear.
   const requestCats = selectOperatorQuirkCategories(hint("workflow_draft_started"), false);
   const requestBlock = formatOperatorQuirks("c", "C", quirks, requestCats);
   if (!requestBlock) {
@@ -59,15 +56,12 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     }
   }
 
-  // Failure-recovery turn — overrides stage; expects error_handling + schema + general.
   const recoveryCats = selectOperatorQuirkCategories(hint("workflow_validated"), true);
   const recoveryBlock = formatOperatorQuirks("c", "C", quirks, recoveryCats);
   if (!recoveryBlock?.includes("ERR_QUIRK_BODY")) {
     fails.push("recovery turn missing error_handling quirk");
   }
 
-  // Token-budget assertion: rendering only one slot must be strictly
-  // smaller than rendering all six.
   const fullCats = [
     "auth",
     "pagination",

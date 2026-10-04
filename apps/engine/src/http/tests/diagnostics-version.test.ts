@@ -1,17 +1,3 @@
-// Integration test for /v1/diagnostics/version.
-//
-// Replaces the test surface that used to cover the public `/health`
-// update fields — those moved off that route and now require
-// `audit:read`. This test covers:
-//
-//   - 200 + correct shape on a clean engine
-//   - audit row written via the recorder pattern (auditAwait, durable
-//     before the response leaves the handler)
-//   - the `update_available` / `latest_version` fields reflect what
-//     `setUpdateState` set
-//   - 403 for a token that lacks `audit:read`
-//   - 401 for an absent token
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte } from "drizzle-orm";
@@ -84,8 +70,6 @@ describe("/v1/diagnostics/version", () => {
     };
     expect(typeof body.engine_version).toBe("string");
     expect(body.engine_version.length).toBeGreaterThan(0);
-    // No update probe ran in tests, so the boot probe state is null →
-    // update_available defaults to false; latest_version is omitted.
     expect(body.update_available).toBe(false);
     expect(body.latest_version).toBeUndefined();
     expect(body.schema_drift).toBe(false);

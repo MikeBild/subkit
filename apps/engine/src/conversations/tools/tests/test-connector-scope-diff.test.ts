@@ -1,9 +1,3 @@
-// G6 / H1 / H4: scope-diff helper now lives in
-// apps/engine/src/connectors/oauth-scope-diff.ts and is shared by both
-// the conversation-tool `test_connector` AND the REST handler at
-// /v1/connectors/{id}/test. This test pins the pure-function diff
-// contract; surface-level surfacing is exercised by integration tests.
-
 import { describe, expect, test } from "bun:test";
 import { diffOauthScopes } from "../../../connectors/oauth-scope-diff.ts";
 
@@ -19,11 +13,6 @@ describe("diffOauthScopes (G6 / H4)", () => {
   });
 
   test('H4: expected known but granted missing → partial_grant="unknown"', () => {
-    // Legacy pre-6.2.4 credential row: the migration added the
-    // granted_scopes column but historical rows have NULL forever
-    // (no safe backfill without a fresh OAuth round). The helper
-    // distinguishes "no data" from "fully granted" so the LLM does
-    // not infer "everything is fine" from missing data.
     expect(diffOauthScopes("drive.readonly", null)).toMatchObject({
       partial_grant: "unknown",
       expected: ["drive.readonly"],

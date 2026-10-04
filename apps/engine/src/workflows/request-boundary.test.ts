@@ -1,11 +1,3 @@
-// The author-declared request boundary, tested on its own before the compiler
-// depends on it. The property that matters most is agreement: whatever target
-// the review shows a human must be exactly the set of targets dispatch admits.
-// Reviewing with `new URL(path, base)` and dispatching through `resolveUrl`
-// disagreed for every base_url that carries a path; these tests use such bases
-// on purpose, including the production case where the author repeats the base
-// prefix and the resolver dedupes it.
-
 import { expect, test } from "bun:test";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { canonicalWorkflowJson } from "./canonical-json.ts";
@@ -56,7 +48,6 @@ test("the reviewed target keeps the base path and names the variable", () => {
 });
 
 test("review and dispatch agree, including when the author repeats the base prefix", () => {
-  // Same step authored both ways; `resolveUrl` dedupes the repeated prefix.
   for (const path of [
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     "/sites/${input.site}/releases",
@@ -66,7 +57,6 @@ test("review and dispatch agree, including when the author repeats the base pref
     const { boundary } = compileRequestBoundary(step({ ...release, path }), BASE);
     expect(boundary).toBeDefined();
     for (const site of ["company-cockpit", "blog"]) {
-      // Exactly what the HTTP driver would send for this value.
       // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       const url = resolveUrl(BASE, path.replace("${input.site}", site)).toString();
       expect(() =>
@@ -86,8 +76,6 @@ test("every refusal names its cause", () => {
       BASE,
     ).refusal,
   ).toBe("not_http_step");
-  // A paginating step without a page cap makes an unreviewable number of
-  // requests; one that pages through the body is not a key set at all.
   expect(
     reason({
       pagination: {
@@ -108,7 +96,6 @@ test("every refusal names its cause", () => {
       },
     }),
   ).toBe("pagination_unsupported");
-  // A query value may vary only as a WHOLE placeholder with a rule of its own.
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ query: { since: "from-${input.since}" } })).toBe("query_placeholder_unsupported");
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
@@ -119,22 +106,18 @@ test("every refusal names its cause", () => {
   expect(reason({ path: "/properties/${input.id}:run" })).toBe("partial_segment_placeholder");
   expect(reason({ path: "/sites/a?x=1" })).toBe("path_unsupported");
   expect(reason({ path: "/sites/a%2Fb" })).toBe("path_unsupported");
-  // A rule for a placeholder that is not there, and a placeholder with no rule.
   expect(reason({ path: "/sites/fixed/releases" })).toBe("variables_mismatch");
   expect(reason({ boundary: { variables: {}, max_body_bytes: 10, max_calls: 1 } })).toBe(
     "variables_mismatch",
   );
   expect(reason({ method: "DELETE" })).toBe("delete_requires_destructive");
   expect(reason({}, null)).toBe("target_unresolved");
-  // The dedupe looks at the leading segments; a variable there would let a
-  // runtime value decide how the URL is assembled.
   expect(
     reason({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/${input.site}/releases",
     }),
   ).toBe("variable_in_base_prefix");
-  // Nothing refused: the happy path compiles.
   expect(reason({})).toBeUndefined();
 });
 
@@ -149,7 +132,6 @@ test("a removal has to be declared destructive, on the schema itself", () => {
     BASE,
   );
   expect(boundary?.destructive).toBe(true);
-  // A hand-assembled DELETE boundary without the flag does not parse anywhere.
   const { destructive: _flag, ...unflagged } = boundary!;
   expect(RequestBoundarySchema.safeParse(unflagged).success).toBe(false);
 });
@@ -164,16 +146,16 @@ test("dispatch denies everything outside the reviewed statement", () => {
   };
   expect(() => assertRequestBoundary(boundary!, ok)).not.toThrow();
   for (const change of [
-    { url: "https://api.example.test/v2/sites/other-site/releases" }, // not an approved value
-    { url: "https://api.example.test/sites/blog/releases" }, // base path dropped
-    { url: "https://evil.example.test/v2/sites/blog/releases" }, // other origin
-    { url: "https://api.example.test/v2/sites/blog/releases/extra" }, // longer path
-    { url: "https://api.example.test/v2/sites/blog%2F..%2Fadmin/releases" }, // encoded traversal
-    { url: "https://api.example.test/v2/sites/blog/releases?force=1" }, // unreviewed query
+    { url: "https://api.example.test/v2/sites/other-site/releases" },
+    { url: "https://api.example.test/sites/blog/releases" },
+    { url: "https://evil.example.test/v2/sites/blog/releases" },
+    { url: "https://api.example.test/v2/sites/blog/releases/extra" },
+    { url: "https://api.example.test/v2/sites/blog%2F..%2Fadmin/releases" },
+    { url: "https://api.example.test/v2/sites/blog/releases?force=1" },
     { url: "https://user:pw@api.example.test/v2/sites/blog/releases" },
     { method: "PUT" },
-    { body: { blob: "x".repeat(400) } }, // over max_body_bytes
-    { unsupported_body: true }, // not measurable → denied, never skipped
+    { body: { blob: "x".repeat(400) } },
+    { unsupported_body: true },
   ])
     expect(() => assertRequestBoundary(boundary!, { ...ok, ...change })).toThrow(
       "reviewed target, method or size boundary",
@@ -207,15 +189,13 @@ test("a static query is part of the boundary; a GET may not carry a body", () =>
     { url: ok.url.replace("pending", "approved") },
     { url: `${ok.url}&limit=5` },
     { url: ok.url.replace("?status=pending", "") },
-    { url: `${ok.url}&status=pending` }, // duplicate key
+    { url: `${ok.url}&status=pending` },
     { body: "{}" },
   ])
     expect(() => assertRequestBoundary(boundary!, { ...ok, ...change })).toThrow();
 });
 
 test("a value that could change the route never gets as far as a boundary", () => {
-  // The rule is part of the step schema, so an unusable value is refused where
-  // the workflow is parsed — before any compile, review or dispatch.
   for (const value of [
     "a/b",
     "..",
@@ -223,8 +203,6 @@ test("a value that could change the route never gets as far as a boundary", () =
     "x?y",
     "x#y",
     "",
-    // An escape is allowed; one that smuggles a traversal, a control character
-    // or a backslash past a server that decodes before routing is not.
     "%2e%2e",
     ".%2E",
     "%2E",
@@ -250,8 +228,6 @@ test("a value that could change the route never gets as far as a boundary", () =
 });
 
 test("a refused `destructive: false` says to omit the key, not to flip it", () => {
-  // The stock message was "expected true", and an author who had written
-  // `false` on a plain POST changed it to `true` to get past the validator.
   const parsed = RequestStepSchema.safeParse({
     ...release,
     boundary: { ...release.boundary, destructive: false },
@@ -260,11 +236,8 @@ test("a refused `destructive: false` says to omit the key, not to flip it", () =
   const message = parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join(" ");
   expect(message).toContain("OMIT the key");
   expect(message).not.toBe("Invalid input: expected true");
-  // Omitting it is what parses.
   expect(RequestStepSchema.safeParse(release).success).toBe(true);
 });
-
-// ── Values that cannot be listed: classes, and query values that vary ────────
 
 const stats = step({
   method: "GET",
@@ -302,32 +275,23 @@ test("the class patterns are pinned: a live approval must never change meaning",
 
 test("the path class refuses what would make a path mean something else", () => {
   const ok = (value: string) => pathValueAllowed(value);
-  // A route is a path, and so is the root.
   expect(ok("")).toBe(true);
   expect(ok("/")).toBe(true);
   expect(ok("de/datenstand/")).toBe(true);
   expect(ok("robots.txt")).toBe(true);
   expect(ok("a%20b/c")).toBe(true);
-  // Another origin, reached by spelling one. `:` is what makes both possible.
   expect(ok("https://evil.test/x")).toBe(false);
   expect(ok("//evil.test/x")).toBe(false);
   expect(ok("a:b")).toBe(false);
-  // Walking out of what was approved, plainly and in disguise.
   expect(ok("../secret")).toBe(false);
   expect(ok("a/../../b")).toBe(false);
   expect(ok("%2e%2e/secret")).toBe(false);
-  // A separator hidden inside one segment. The pattern alone cannot see it:
-  // `%2F` is a legal escape, and a server reads it as a `/`.
   expect(ok("a%2Fb")).toBe(false);
   expect(ok("a\\b")).toBe(false);
-  // Length is a boundary too: an approval nobody can read is not an approval.
   expect(ok("a".repeat(1025))).toBe(false);
 });
 
 test("a file name stays one segment and cannot walk out of its folder", () => {
-  // The class exists because a content repository addresses a file by name;
-  // without it the only bounded shape was an enum of every file that would
-  // ever exist. It must not become a way to reach a sibling directory.
   const ok = VALUE_CLASSES.file_name;
   expect(ok.test("my-essay.md")).toBe(true);
   expect(ok.test("post_2026.mdx")).toBe(true);
@@ -364,11 +328,11 @@ test("review and dispatch agree on a class segment and varying query values", ()
 test("a class denies everything that is not a member, in the path", () => {
   const { boundary } = compileRequestBoundary(stats, BASE);
   for (const id of [
-    "", // empty
+    "",
     "..",
-    "3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e7", // 35 characters
+    "3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e7",
     "{3f2c1b9a-7d4e-4c1a-9b8e-2a6f0c5d1e77}",
-    "3f2c1b9a-7d4e-0c1a-9b8e-2a6f0c5d1e77", // version nibble 0
+    "3f2c1b9a-7d4e-0c1a-9b8e-2a6f0c5d1e77",
     `${ID}%2F..`,
     `${ID}/extra`,
     "a%2Fb",
@@ -387,15 +351,14 @@ test("a class denies everything that is not a member, in the path", () => {
 test("a varying query keeps an exact key set and holds each value to its rule", () => {
   const { boundary } = compileRequestBoundary(stats, BASE);
   for (const query of [
-    `${GOOD_QUERY}&admin=1`, // extra key
-    "from=2026-09-20T00%3A00%3A00Z&tz=UTC", // missing key
-    `${GOOD_QUERY}&from=2026-09-19T00%3A00%3A00Z`, // duplicate key
-    GOOD_QUERY.replace("from=", "From="), // another key
-    GOOD_QUERY.replace("tz=UTC", "tz=CET"), // changed fixed value
-    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", ""), // empty value
-    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20T00%3A00%3A00%2B02%3A00"), // offset
-    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20"), // a date is not a timestamp
-    // One value that tries to be two parameters stays one key and fails its class.
+    `${GOOD_QUERY}&admin=1`,
+    "from=2026-09-20T00%3A00%3A00Z&tz=UTC",
+    `${GOOD_QUERY}&from=2026-09-19T00%3A00%3A00Z`,
+    GOOD_QUERY.replace("from=", "From="),
+    GOOD_QUERY.replace("tz=UTC", "tz=CET"),
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", ""),
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20T00%3A00%3A00%2B02%3A00"),
+    GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20"),
     GOOD_QUERY.replace("2026-09-20T00%3A00%3A00.000Z", "2026-09-20T00%3A00%3A00Z%26admin%3D1"),
   ])
     expect(() =>
@@ -459,8 +422,6 @@ test("a removal may only vary over listed values", () => {
   expect(compileRequestBoundary(removal, BASE).refusal).toBe("delete_requires_enum");
 });
 
-// ── Segments an API spells with `:` or percent-escapes ───────────────────────
-
 const ENCODED_SITE = "https%3A%2F%2Fexample.com%2F";
 const searchQuery = step({
   method: "POST",
@@ -489,11 +450,11 @@ test("an escaped or colon-bearing segment is compared exactly as it is sent", ()
   expect(() => assertRequestBoundary(boundary!, send(ENCODED_SITE))).not.toThrow();
   expect(() => assertRequestBoundary(boundary!, send("sc-domain%3Aexample.com"))).not.toThrow();
   for (const site of [
-    "https%3a%2f%2fexample.com%2f", // other hex case: not the reviewed bytes
-    "https:%2F%2Fexample.com%2F", // partly decoded
-    "https%253A%252F%252Fexample.com%252F", // double encoded
+    "https%3a%2f%2fexample.com%2f",
+    "https:%2F%2Fexample.com%2F",
+    "https%253A%252F%252Fexample.com%252F",
     "https%3A%2F%2Fevil.example%2F",
-    "https://example.com/", // decoded: more segments
+    "https://example.com/",
     `${ENCODED_SITE}%2F%2E%2E`,
   ])
     expect(() => assertRequestBoundary(boundary!, send(site))).toThrow();
@@ -509,7 +470,6 @@ test("an escaped or colon-bearing segment is compared exactly as it is sent", ()
 test("a value that would be read as a URL scheme is caught at review, not at dispatch", () => {
   const leading = step({
     method: "GET",
-    // No leading slash: the first segment is the variable itself.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "${item.account}/insights",
     boundary: {
@@ -521,15 +481,12 @@ test("a value that would be read as a URL scheme is caught at review, not at dis
   expect(compileRequestBoundary(leading, "https://api.example.test").refusal).toBe(
     "enum_value_unroutable",
   );
-  // The same value behind a literal segment routes where it was reviewed.
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   const behind = step({ ...leading, path: "/billing/${item.account}/insights" });
   expect(compileRequestBoundary(behind, "https://api.example.test").refusal).toBeUndefined();
 });
 
 test("a refused query says which parameter, and for a declared variable which value and rule", () => {
-  // An author who declared a time window as `timestamp` while the API takes
-  // unix seconds was told only that "the query differs", and guessed.
   const { boundary } = compileRequestBoundary(stats, BASE);
   const describe = (query: string) => {
     const violation = requestBoundaryViolation(boundary!, {
@@ -549,8 +506,6 @@ test("a refused query says which parameter, and for a declared variable which va
   expect(describe("from=2026-09-20T00%3A00%3A00Z&tz=UTC")).toContain(
     "`to` the step declares is missing",
   );
-  // A key the step does not declare is named WITHOUT its value: a connector
-  // may have put a credential there.
   const extra = describe(`${GOOD_QUERY}&api_key=s3cr3t-value`);
   expect(extra).toContain("`api_key`");
   expect(extra).not.toContain("s3cr3t-value");
@@ -568,9 +523,6 @@ test("a rule keyed by a parameter name is refused with what a key is", () => {
 });
 
 test("a JS selector may hold a template literal; a real runtime value elsewhere still refuses", () => {
-  // `for_each` and `data_selector` are evaluated in the sandbox, never
-  // placeholder-substituted. Scanning them for `${` refused a correct step and
-  // told its author to make a selector "a literal".
   const iterated = step({
     ...release,
     for_each:
@@ -581,7 +533,6 @@ test("a JS selector may hold a template literal; a real runtime value elsewhere 
     boundary: { ...release.boundary, max_calls: 20 },
   });
   expect(compileRequestBoundary(iterated, BASE).refusal).toBeUndefined();
-  // A runtime value in a field the engine DOES substitute is still refused.
   expect(
     compileRequestBoundary(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
@@ -591,13 +542,6 @@ test("a JS selector may hold a template literal; a real runtime value elsewhere 
   ).toBe("runtime_value_outside_path_and_body");
 });
 
-// A read the provider hands out one page at a time.
-//
-// Refusing these outright meant a step that reads one page's blocks — fixed
-// target, one uuid, no body — could carry no boundary at all, and its workflow
-// could never be approved. No authoring fixes that: the follow-up requests come
-// from the engine, not from the definition. What is reviewable is which keys the
-// engine moves and how many requests there can be, and the step says both.
 const paged = step({
   method: "GET",
   // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
@@ -636,14 +580,11 @@ test("the follow-up request is admitted, and only because of its paging key", ()
     headers: {},
     body: null,
   });
-  // First page, then the one the provider's own answer asked for.
   expect(requestBoundaryViolation(boundary!, request(""))).toBeNull();
   expect(requestBoundaryViolation(boundary!, request("&start_cursor=eyJib"))).toBeNull();
-  // Any other key is still outside the boundary — the exemption is by name.
   const other = requestBoundaryViolation(boundary!, request("&filter=all"));
   expect(other).toEqual({ kind: "query", detail: { reason: "unexpected_key", key: "filter" } });
   expect(describeRequestBoundaryViolation(other!)).toContain("filter");
-  // And the exemption does not loosen the path.
   expect(
     requestBoundaryViolation(boundary!, {
       method: "GET",
@@ -655,8 +596,6 @@ test("the follow-up request is admitted, and only because of its paging key", ()
 });
 
 test("a step that does not paginate carries no pagination field at all", () => {
-  // Present-but-undefined and absent are different bytes to the digest, and a
-  // moved digest revokes every live approval of that workflow.
   const { boundary } = compileRequestBoundary(release, BASE);
   expect("pagination" in (boundary as object)).toBe(false);
 });
@@ -696,55 +635,28 @@ const routeStep = (over: Record<string, unknown> = {}) =>
   });
 
 test("a step that varies the whole path can be bounded at all", () => {
-  // The production shape: a step fetches whichever route a previous step
-  // listed. Every other class describes ONE segment, so this step could carry
-  // no boundary — and a workflow with an unboundable step can never be
-  // approved. Not a narrower rule than before: a shape that had none.
   const { boundary, refusal } = compileRequestBoundary(routeStep(), "https://www.example.test");
   expect(refusal).toBeUndefined();
   expect(boundary?.origin).toBe("https://www.example.test");
-  // Named in the sentence the reviewer reads, like any other variable.
   expect(requestBoundaryTarget(boundary!)).toContain("{item.path}");
 
   const allow = (url: string) =>
     requestBoundaryViolation(boundary!, { method: "GET", url, headers: {}, body: null }) === null;
-  // The real values this was derived from, one, several and no segments deep.
   expect(allow("https://www.example.test/")).toBe(true);
   expect(allow("https://www.example.test/robots.txt")).toBe(true);
   expect(allow("https://www.example.test/de/datenstand/")).toBe(true);
-  // Another origin is still another origin, however the value is spelled.
   expect(allow("https://evil.test/de/")).toBe(false);
-  // What this class means, said plainly: the reviewer approved ANY route on
-  // this origin, so a deep one is inside the boundary. Traversals do not reach
-  // the tail check at all — `new URL` resolves `..` AND `%2e%2e` before the
-  // pathname exists (both of these arrive as `/secret`), so the rule is not
-  // what stops them and must not be credited with it.
   expect(allow("https://www.example.test/deep/route/here")).toBe(true);
   expect(allow("https://www.example.test/a/../../secret")).toBe(true);
-  // `%2F` is the one escape the parser leaves standing, and the server decodes
-  // it into a separator afterwards. That one the tail check does refuse — see
-  // the class unit test for the rest, which a URL can never deliver here.
   expect(allow("https://www.example.test/a%2Fb")).toBe(false);
 });
 
 test("a connector whose base carries a path cannot take a whole-path rule yet", () => {
-  // Stated rather than discovered at approval time. `resolveUrl` strips a base
-  // prefix the author repeated, and that decision must depend on literals only
-  // — so no variable may sit inside the part the dedupe looks at. A whole-path
-  // placeholder IS that first part when the base has any depth.
-  //
-  // A connector whose base is a bare origin compiles; one like
-  // `https://api.example.test/v2` does not. The refusal is the existing one and
-  // names the real reason, which is the point: a limit that says what it is
-  // beats one that looks like success.
   expect(compileRequestBoundary(routeStep(), BASE).refusal).toBe("variable_in_base_prefix");
   expect(compileRequestBoundary(routeStep(), "https://www.example.test").refusal).toBeUndefined();
 });
 
 test("a whole-path rule is refused anywhere but the last path position", () => {
-  // It covers everything after it, so in the middle it would silently swallow
-  // the literals the reviewer approved after it, and in the query it would
-  // describe something that is not a path at all.
   expect(
     compileRequestBoundary(
       step({
@@ -779,18 +691,8 @@ test("a whole-path rule is refused anywhere but the last path position", () => {
 });
 
 test("a whole-path rule does not widen a single approved segment", () => {
-  // The one way this class could loosen an existing boundary: judged as a
-  // segment it would admit a value carrying `/`, turning one approved position
-  // into an unbounded number of them. `valueAllowed` refuses it by name.
   const { boundary } = compileRequestBoundary(routeStep(), "https://www.example.test");
-  // Force the rule into a NON-final position — the state the compiler refuses
-  // to build — and check the matcher would not honour it either. Two layers,
-  // because a boundary can also arrive from the database, written when the
-  // compiler had a different opinion.
   const forged = { ...boundary!, segments: [...boundary!.segments, "tail"] };
-  // Segment counts MATCH here, so the ordinary per-segment branch runs and the
-  // only thing standing between `a%2Fb` and approval is `valueAllowed`
-  // refusing the path class by name. Drop that line and this passes.
   expect(
     requestBoundaryViolation(forged, {
       method: "GET",
@@ -802,11 +704,6 @@ test("a whole-path rule does not widen a single approved segment", () => {
 });
 
 test("a boundary approved before this class existed parses to the same bytes", () => {
-  // The standing risk with any change here: a live approval is pinned to the
-  // digest of the manifest it was granted on, so a boundary that parses to one
-  // extra key — or one key in a different order — revokes every running grant
-  // the moment this ships. Adding a member to the class enum cannot do that,
-  // and this says so with the bytes rather than with an argument.
   const stored = {
     base_url: BASE,
     method: "POST",

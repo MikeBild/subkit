@@ -1,7 +1,3 @@
-// Coverage for the two stop-condition predicates that drive when the
-// SDK halts the conversation tool-use loop. Pure inputs/outputs — no
-// orchestrator state — so a unit test pins the runtime contract.
-
 import { describe, expect, test } from "bun:test";
 import {
   abstainedStopCondition,
@@ -19,7 +15,6 @@ test("completed readiness card ends narration; failed or earlier-format reviews 
   expect(run({ ok: true, data })).toBe(true);
   expect(run({ ok: false, data })).toBe(false);
   expect(run({ ok: true, data: { kind: data.kind } })).toBe(false);
-  // Nothing to show is not a card: the model answers in prose instead.
   expect(run({ ok: true, data: { ...data, presentation: "text" } })).toBe(false);
   expect(run({ ok: true, data }, "other_tool")).toBe(false);
   expect(run(null)).toBe(false);
@@ -171,10 +166,6 @@ describe("pausedStopCondition", () => {
   });
 });
 
-// Build a dry_run_workflow tool result in the real envelope shape:
-// `{ ok, data: { requires_repair, classification, judge, warnings } }`
-// (see dry-run-workflow.ts buildLifecyclePayload). `missing` is the
-// judge's unmet-item set; `warningCodes` are the blocking warning codes.
 function dryRunStep(opts: {
   blocked?: boolean;
   missing?: string[];
@@ -240,7 +231,7 @@ describe("noProgressRepairStopCondition", () => {
     const steps = [
       dryRunStep({ missing: ["a"] }),
       dryRunStep({ missing: ["a"] }),
-      dryRunStep({ blocked: false }), // green — resets
+      dryRunStep({ blocked: false }),
       dryRunStep({ missing: ["a"] }),
     ];
     expect(noProgressRepairStopCondition({ steps })).toBe(false);
@@ -249,7 +240,7 @@ describe("noProgressRepairStopCondition", () => {
   test("a different missing-set mid-run resets, then a fresh stall trips", () => {
     const steps = [
       dryRunStep({ missing: ["a"] }),
-      dryRunStep({ missing: ["x"] }), // changed → resets
+      dryRunStep({ missing: ["x"] }),
       dryRunStep({ missing: ["x"] }),
       dryRunStep({ missing: ["x"] }),
     ];
@@ -320,9 +311,6 @@ describe("abstainedStopCondition — a refused abstention must not end the turn"
   });
 
   test("a REFUSED abstention does not stop the turn", () => {
-    // The whole point. `hasToolCall` fired on the call and threw the turn
-    // away even when the engine had just proven the claim false and told
-    // the model which tool it actually holds.
     expect(abstainedStopCondition({ steps: [step(false)] })).toBe(false);
   });
 
@@ -338,8 +326,6 @@ describe("abstainedStopCondition — a refused abstention must not end the turn"
   });
 
   test("only the LAST step is considered", () => {
-    // Mirrors every other predicate here: an abstention two steps back must
-    // not keep re-stopping a turn that has since moved on.
     expect(abstainedStopCondition({ steps: [step(true), step(false)] })).toBe(false);
   });
 });

@@ -1,8 +1,3 @@
-// Journey 31: Knowledge source full lifecycle via REST API.
-//
-// Operator creates a knowledge source, searches it, updates metadata,
-// refreshes content, and deletes it. All via the public HTTP contract.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -84,7 +79,6 @@ describe("journey: knowledge source lifecycle", () => {
     });
     expect(delRes.status).toBe(200);
 
-    // Should no longer appear in search
     const searchRes = await journeyFetch(ctx, "/v1/knowledge-sources/search?q=pagination");
     expect(searchRes.status).toBe(200);
     const hits = (await searchRes.json()) as { hits: unknown[] };

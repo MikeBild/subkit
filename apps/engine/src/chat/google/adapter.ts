@@ -1,13 +1,3 @@
-// Google Chat chat adapter.
-//
-//   - Inbound verification: JWT signed by chat@system.gserviceaccount.com,
-//     audience = bot's google_client_id. Issuer / audience / JWKS URL
-//     are all injectable so tests hit a local mock.
-//   - Outbound auth: service-account JWT assertion → token endpoint
-//     → access_token (cached via GoogleAuth).
-//   - Outbound send: POST to `${baseUrl}/v1/spaces/${name}/messages`.
-//   - Approval prompt: Card v2 with a buttonList of two buttons.
-
 import { and, eq } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { Db } from "../../db/client.ts";
@@ -34,22 +24,14 @@ import {
 } from "./cards.ts";
 
 export interface GoogleChatAdapterOptions extends GoogleAuthOptions {
-  /** Base URL of the Google Chat REST API. */
   baseUrl: string;
-  /** Injectable inbound JWKS URL. */
   jwksUrl?: string;
-  /** Expected inbound issuer. Defaults to chat@system.gserviceaccount.com. */
   issuer?: string;
-  /** Expected inbound audience (bot client id). */
   audience?: string;
 }
 
 export class GoogleChatAdapter implements ChatAdapter {
   readonly platform = "google_chat" as const;
-  /** All five elicitation kinds render natively: confirm/choice/multi
-   *  as inline cardsV2, text/form via a synchronous Dialog (see
-   *  `cards.ts` + `handleSyncInteraction`). The legacy sendApproval
-   *  card remains only as the unknown-kind fallback. */
   readonly capabilities: ChatAdapterCapabilities = {
     interactive: ["confirm", "choice", "multi", "text", "form"],
   };
@@ -111,40 +93,16 @@ export class GoogleChatAdapter implements ChatAdapter {
     const thread = (message.thread as Record<string, unknown>) ?? {};
     const text = typeof message.text === "string" ? message.text : "";
 
-    // Session keying: `message.thread.name` is populated on EVERY
-    // Google Chat message (each message formally belongs to a thread),
-    // so keying on its presence would fragment a space into one
-    // conversation per message. The documented discriminator is
-    // `message.threadReply` (output-only boolean; proto3 JSON omits
-    // false — treat absent as false): only a genuine reply INSIDE a
-    // thread carries it. Top-level messages and DMs therefore map to
-    // the dispatcher's `${space}:root` fallback — one persistent
-    // conversation per space (topic memory) — while real thread
-    // replies get their own thread-scoped conversation. Applies
-    // uniformly to SPACE, GROUP_CHAT, and DIRECT_MESSAGE (DMs are
-    // inline-threaded too).
     const threadId =
       message.threadReply === true && typeof thread.name === "string" ? thread.name : undefined;
 
-    // 1:1 human↔app DM detection — drives DM auto-registration in the
-    // queue handler (Google user ids are tenant-global, so the linked
-    // identity is a sound tenant anchor there).
     const isDm = space.spaceType === "DIRECT_MESSAGE" || space.singleUserBotDm === true;
 
-    // Human-friendly space name (`space.displayName`) — carried so the
-    // `workspace_not_installed` deny audit can label a pending-space
-    // candidate for the `sk chat` picker. Named spaces have one; DMs and
-    // some group chats do not.
     const spaceDisplayName =
       typeof space.displayName === "string" && space.displayName.length > 0
         ? space.displayName
         : undefined;
 
-    // Replay dedup: Google retries deliveries best-effort on timeout /
-    // non-2xx, so every ingested event needs a stable key. A MESSAGE is
-    // uniquely `message.name`; a CARD_CLICKED reuses the card message's
-    // name across DIFFERENT legitimate clicks, so the delivery
-    // `eventTime` disambiguates (a retry replays the same eventTime).
     const messageName = typeof message.name === "string" ? message.name : "";
     const eventTime = typeof raw.eventTime === "string" ? raw.eventTime : "";
     const eventKey =
@@ -154,10 +112,6 @@ export class GoogleChatAdapter implements ChatAdapter {
           ? `${String(raw.type ?? "unknown")}:${eventTime}:${messageName || ((space.name as string) ?? "")}`
           : undefined;
 
-    // A dialog SUBMIT arrives as CARD_CLICKED (unified events, with
-    // formInputs) or as legacy SUBMIT_FORM depending on the app config.
-    // Both must route as interactions — a fall-through to the system-
-    // event branch would silently drop every form answer.
     const common = (raw.common as Record<string, unknown>) ?? {};
     const isInteraction =
       raw.type === "CARD_CLICKED" ||
@@ -165,12 +119,6 @@ export class GoogleChatAdapter implements ChatAdapter {
       (typeof common.invokedFunction === "string" && common.formInputs !== undefined);
 
     if (isInteraction) {
-      // cardsV2 clicks deliver the action through `event.common`:
-      // `common.invokedFunction` (the onClick.action.function name) and
-      // `common.parameters` as a FLATTENED string:string map. The
-      // legacy cards-v1 shape (`event.action.actionMethodName` +
-      // `action.parameters` as a {key,value} LIST) is still present on
-      // some payloads — keep it as the fallback.
       const commonParams =
         common.parameters && typeof common.parameters === "object"
           ? (common.parameters as Record<string, unknown>)
@@ -188,12 +136,6 @@ export class GoogleChatAdapter implements ChatAdapter {
           ? commonParams.value
           : listParam("value");
 
-      // form_values extraction from `common.formInputs`, split by
-      // action_id (cardinality can't discriminate — stringInputs.value
-      // is ALWAYS an array): the multi card's CHECK_BOX is named
-      // `values` and delivers the whole array; a dialog submit
-      // (view_submission) delivers one entry per widget, keyed by
-      // widget name (= field.name / `answer`), scalars unwrapped.
       const formInputs =
         common.formInputs && typeof common.formInputs === "object"
           ? (common.formInputs as Record<string, Record<string, unknown>>)
@@ -212,7 +154,6 @@ export class GoogleChatAdapter implements ChatAdapter {
           if (Array.isArray(si)) {
             fv[name] = si.length > 1 ? si.map(String) : String(si[0] ?? "");
           } else if (di != null) {
-            // DATE_ONLY picker: msSinceEpoch at UTC midnight → YYYY-MM-DD.
             fv[name] = new Date(Number(di)).toISOString().slice(0, 10);
           }
         }
@@ -234,14 +175,6 @@ export class GoogleChatAdapter implements ChatAdapter {
       };
     }
 
-    // Every remaining non-MESSAGE event type is a system event the
-    // dispatcher must ack-and-ignore instead of running a turn on —
-    // the live EventType enum also carries ADDED_TO_SPACE,
-    // REMOVED_FROM_SPACE, APP_COMMAND, WIDGET_UPDATED, APP_HOME, and
-    // Google adds more without notice. (Interaction shapes — incl. the
-    // legacy SUBMIT_FORM dialog submit — were routed above.)
-    // REMOVED_FROM_SPACE is normalized so the dispatcher can drop the
-    // space's session bindings.
     if (raw.type !== "MESSAGE") {
       const systemEvent =
         raw.type === "REMOVED_FROM_SPACE"
@@ -277,12 +210,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     };
   }
 
-  /**
-   * Messages path for a space. `channel_id` carries the full Google
-   * resource name (`spaces/<id>`, from `space.name` in `receive()`);
-   * accept a bare id too. Resource names are plain path segments — no
-   * URL-encoding (encoding the embedded `/` breaks the route).
-   */
   private messagesPath(channelId: string): string {
     const name = channelId.startsWith("spaces/") ? channelId : `spaces/${channelId}`;
     return `/v1/${name}/messages`;
@@ -301,18 +228,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     });
   }
 
-  /**
-   * Post a message body into a space, honoring an optional thread. A
-   * thread reply REQUIRES the `messageReplyOption` query parameter:
-   * with the default (UNSPECIFIED) the API silently ignores any thread
-   * in the body and starts a NEW thread — which would fork the
-   * thread-keyed conversation without anyone noticing. OR_FAIL makes
-   * the miss loud (404) so we can degrade deliberately to a top-level
-   * message (covers DM threads, where in-thread replies are
-   * undocumented API surface). Shared by send / renderElicitation /
-   * sendApproval so replies, prompts, and approval cards all land in
-   * the thread their conversation lives in.
-   */
   private async postMessage(
     channel_id: string,
     thread_id: string | undefined,
@@ -335,8 +250,6 @@ export class GoogleChatAdapter implements ChatAdapter {
         return { platform_message_id: json.name ?? "" };
       }
       if (res.status !== 404) throw new Error(`google_chat ${label} failed: ${res.status}`);
-      // Thread not addressable (e.g. DM thread) — fall through to a
-      // top-level send so the message is never dropped.
     }
     const res = await this.post(basePath, body);
     if (!res.ok) throw new Error(`google_chat ${label} failed: ${res.status}`);
@@ -356,8 +269,6 @@ export class GoogleChatAdapter implements ChatAdapter {
   async update(delivery: ChatDelivery, platform_message_id: string): Promise<void> {
     const token = await this.auth.getAccessToken();
     const f = this.opts.fetchImpl ?? fetch;
-    // `updateMask` is REQUIRED — without it the API rejects the update.
-    // PATCH is the documented preference over PUT.
     const res = await f(
       `${this.opts.baseUrl.replace(/\/$/, "")}/v1/${platform_message_id
         .split("/")
@@ -431,12 +342,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     );
   }
 
-  /**
-   * Native elicitation rendering. confirm/choice/multi post an inline
-   * interactive card; text/form post an opener card whose button makes
-   * Google request a Dialog synchronously (see `handleSyncInteraction`).
-   * Posted async via the same messages path `sendApproval` uses.
-   */
   async renderElicitation(
     elicitation: ChatElicitation,
     target: { tenant_id: string; workspace_id: string; channel_id: string; thread_id?: string },
@@ -453,17 +358,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     );
   }
 
-  /**
-   * Synchronous fast path for the events endpoint — Google can only
-   * open a Dialog as the SYNC HTTP response to an OPEN_DIALOG click
-   * (there is no async views.open equivalent), and a dialog submit
-   * needs an immediate close-ack while the (>30s) LLM resolution runs
-   * async via the queue.
-   *
-   *   open_elicit:<id>  → {handled, response: DIALOG body, enqueue: false}
-   *   view_submission   → {handled, response: OK close-ack, enqueue: true}
-   *   anything else     → {handled: false} (route enqueues + {ok:true})
-   */
   async handleSyncInteraction(args: {
     event: ChatEvent;
     db: Db;
@@ -473,9 +367,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     const action_id = event.interaction.action_id;
 
     if (action_id === "view_submission") {
-      // Close the dialog immediately; the answer (form_values from
-      // receive()) resolves asynchronously through routeChatInteraction
-      // — which owns ALL tenant/actor/validation checks.
       return { handled: true, enqueue: true, response: buildDialogCloseOk() };
     }
 
@@ -483,13 +374,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     if (!m) return { handled: false };
     const elicitation_id = m[1] ?? "";
 
-    // Tenant scoping is REQUIRED: the app-level JWT only proves "from
-    // Google to this app", not "from tenant T". An unscoped lookup by
-    // id would let a probing click render another tenant's elicitation
-    // summary/body/options/fields into this space's dialog. Bind the
-    // lookup to the workspace's tenant first; unknown workspace,
-    // unknown id, and foreign-tenant id all produce the SAME
-    // probe-resistant "expired" dialog.
     // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
     // (mirrors the Slack open_elicit path and the chat-event handler).
     const [workspace] = await db
@@ -555,9 +439,6 @@ export class GoogleChatAdapter implements ChatAdapter {
     if (Array.isArray(input.options))
       elicitation.options = input.options as NonNullable<ChatElicitation["options"]>;
     if (Array.isArray(input.fields)) {
-      // ElicitationField.default is `string`; engine form fields may
-      // carry number/boolean/string[] defaults — coerce to string at
-      // this boundary, drop array defaults (same coercion as Slack).
       elicitation.fields = (input.fields as Array<Record<string, unknown>>).map((f) => {
         const { default: def, ...rest } = f;
         if (def === undefined || Array.isArray(def)) return rest;

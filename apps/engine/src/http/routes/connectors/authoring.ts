@@ -1,19 +1,3 @@
-// Connector authoring, before anything is saved:
-//   POST /v1/connectors/validate — is this definition well-formed?
-//   POST /v1/connectors/probe    — does it actually reach the upstream?
-//   POST /v1/connectors/import   — turn a spec into a draft definition
-//
-// NONE OF THESE PERSIST ANYTHING. That is the point. `sk connectors` mirrors
-// `sk workflows` — validate, then preview, then save — and an author only gets
-// that loop if the first two steps can run against a definition that does not
-// exist in the tenant yet. Previously the only way to find out whether a
-// connector worked was to create it and see, which left half-working connectors
-// behind every time an author guessed wrong.
-//
-// A credential may ride in the probe request so an authenticated upstream can be
-// reached before the connector exists. It is used to sign that one request and
-// dropped — never written to `credentials`, never echoed back in the response.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
@@ -151,15 +135,6 @@ const importRoute = createRoute({
   },
 });
 
-/**
- * A `ConnectorView` for a definition that has no row yet.
- *
- * The drivers take a `ConnectorView`, so the unsaved definition has to look
- * like one. The synthetic id is deliberately not a UUID: it appears in probe
- * error text, and `unsaved` reads as what it is rather than as a row someone
- * could go look up. Nothing reads this id from the database — the credential
- * arrives as an override precisely so no lookup happens.
- */
 function draftConnectorView(input: z.infer<typeof CreateConnectorSchema>): ConnectorView {
   return {
     id: "unsaved",
@@ -185,8 +160,6 @@ function draftConnectorView(input: z.infer<typeof CreateConnectorSchema>): Conne
     self_description: {},
     created_at: new Date(),
     updated_at: new Date(),
-    // A draft is by definition not disabled and has no failure history —
-    // there is no row it could have been recorded against.
     enabled: true,
     last_error: null,
     circuit_state: "closed",
@@ -214,17 +187,11 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
       body.auth_type ?? "none",
       body.config as Record<string, unknown> | undefined,
     );
-    // Both driver-dependent fields, so `validate` refuses exactly what
-    // `POST /v1/connectors` refuses — an author who validates first must not
-    // then be surprised by the save.
     const issues = [
       ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
       ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
       ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
     ];
-    // A malformed definition is a 200 with `ok:false`, not a 4xx: the request
-    // itself was well-formed, and the caller asked a question rather than
-    // attempting a write. Same shape as `POST /v1/workflows/validate`.
     return c.json({ ok: issues.length === 0, issues }, 200);
   });
 
@@ -233,12 +200,6 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
 
-    // A definition read back from the API carries the mask where the stored
-    // connector keeps a secret. Saving it restores them; probing it first has
-    // to as well, or the upstream is handed the mask as a password. They are
-    // read from the connector the definition would be saved onto, under the
-    // rule a write follows: only towards the destination they are stored for,
-    // and only for a caller who may probe that connector.
     const saved = await getConnectorForDefinition(principal.tenant_id, body.connector, db);
     const mayUseSaved =
       saved !== null &&
@@ -265,9 +226,6 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
       config: secrets.config ?? {},
       dsn: secrets.dsn ?? null,
     };
-    // An explicit `null` override (rather than leaving it undefined) is what
-    // stops the driver from falling back to a credential lookup for the
-    // synthetic id and probing unauthenticated.
     const credential = body.credential ? credentialBodyToValue(body.credential) : null;
 
     const result = await probeConnector({

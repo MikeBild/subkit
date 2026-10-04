@@ -8,9 +8,6 @@ import {
   type DiscoveryStrategyName,
 } from "./types.ts";
 
-// Spy signature covers only the (input, init) subset the strategies use
-// — `typeof fetch` would force every mockImplementation to also carry
-// `preconnect`.
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 let fetchSpy: ReturnType<typeof mock<FetchLike>>;
@@ -19,10 +16,6 @@ beforeEach(() => {
   fetchSpy = mock<FetchLike>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
@@ -162,7 +155,6 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
       if (e instanceof DiscoveryError) caught = e;
     }
     expect(caught?.code).toBe("auth_required");
-    // The originating 401 reason still surfaces in the message.
     expect(caught?.message).toContain("needs credentials");
     expect(caught?.message).toContain("401");
   });
@@ -257,7 +249,6 @@ describe("discoverConnectorEndpoints — integration with default strategies", (
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       calls += 1;
-      // openapi-direct's first attempt at the input URL returns 404.
       if (calls === 1) {
         return Promise.resolve(new Response(null, { status: 404 }));
       }

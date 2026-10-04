@@ -43,8 +43,6 @@ const inputSchema = z
   })
   .openapi("ProbeConnectorDraftToolInput");
 
-/** Deterministic JSON encoding (sorted object keys) so the fingerprint
- *  is stable across turns regardless of property insertion order. */
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) {
@@ -56,15 +54,6 @@ function stableStringify(value: unknown): string {
   return `{${entries.join(",")}}`;
 }
 
-/**
- * Identity of a probe attempt: everything that could change its outcome
- * — the draft's connection shape, the probe arguments, and the cached
- * credential (as a sha256, NEVER the raw secret). Two probes with the
- * same fingerprint are guaranteed to hit the same endpoint the same way
- * with the same auth material, so re-running one that just failed
- * non-transiently is pure turn burn (session 97679846 re-probed an
- * unchanged Jira GraphQL draft 3× into the same 403).
- */
 export function computeProbeFingerprint(
   draftView: {
     driver: string;
@@ -86,12 +75,6 @@ export function computeProbeFingerprint(
   const credentialSha256 = createHash("sha256")
     .update(stableStringify(credential ?? null))
     .digest("hex");
-  // Fingerprint the EFFECTIVE probe request, not the raw model args:
-  // only the http driver shapes its probe from args — graphql always
-  // fires the fixed `{ __typename }` introspection and postgres/s3
-  // probe the connection itself. Hashing raw args there lets per-turn
-  // arg jitter (path "/" vs omitted, ad-hoc headers) defeat the
-  // re-probe guard with an identical request on the wire.
   const effectiveProbe =
     draftView.driver === "http"
       ? {
@@ -118,9 +101,6 @@ export function computeProbeFingerprint(
     .digest("hex");
 }
 
-/** A failed probe whose outcome could legitimately change on an
- *  identical retry: rate limiting (429), upstream errors (5xx), or a
- *  timeout. The `probe_unchanged` guard skips these. */
 function isTransientProbeFailure(probe: ConnectorDraftProbeSummary): boolean {
   if (probe.failure_code === "probe_timeout") return true;
   const status = probe.status_code;
@@ -187,8 +167,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
     const effectiveDriver = connector.driver ?? "http";
-    // A mutable draft is not an immutable write boundary. Hold before reading
-    // or minting credentials; a generic tool confirmation cannot release it.
     if (effectiveDriver === "http" && classifyHttpSideEffect({ method: args.method }) !== "read") {
       const summary =
         "Write probe held. Validate with a read-only development probe, save the connector, then review the exact write with call_connector.";
@@ -240,15 +218,8 @@ export const probeConnectorDraftTool: ConversationTool = {
         }),
       };
     }
-    // This is where the draft becomes a request, so its masks are resolved
-    // against the stored connector here (see probe-draft-secrets.ts).
     const secrets = await resolveDraftProbeSecrets(ctx.tenant_id, connector, ctx.db);
     if (!secrets.ok) return { ok: false, data: buildGateError(currentDraft, secrets.refusal) };
-    // Once the draft is bound to a saved connector, probe under that
-    // connector's real id so the drivers resolve its credential from the
-    // encrypted vault. A fresh (unsaved) draft keeps the synthetic id —
-    // it has no `connector_credentials` row, so it relies on the
-    // in-memory draft credential instead.
     const draftView = {
       id: connector.saved_connector_id ?? `draft-${ctx.conversation_id}`,
       tenant_id: ctx.tenant_id,
@@ -286,10 +257,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       successor_uri: null,
     };
 
-    // Non-HTTP drivers run their dedicated read-only probe (connect +
-    // shape check). HTTP continues below — it needs the full plan
-    // builder so users can probe arbitrary endpoints, not just the
-    // driver's canned handshake.
     if (connector.driver === "postgres" || connector.driver === "s3") {
       const started = Date.now();
       const res =
@@ -362,11 +329,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
-    // Single helper for the gate-denial envelopes below. Builds the
-    // failing probe payload, persists it to the draft snapshot, and
-    // emits a `CONVERSATION_PROBE_CONNECTOR` audit row with
-    // result:"error" so operators can see the denial in the audit
-    // stream alongside successful probes.
     const buildProbeGateEnvelope = async (params: {
       failure_code:
         | "credential_required"
@@ -430,19 +392,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     };
 
-    // Auth-required drafts need a credential before the probe can be
-    // meaningful. We read it from the in-memory draft cache populated
-    // when the user filled the `ask_user_form`. Without it, the request
-    // goes out unauthenticated and the symptom (HTTP 401 / "Last used:
-    // Never" on the upstream) is indistinguishable from a real auth
-    // failure.
-    //
-    // EXCEPTION: once the draft is bound to a saved connector, its
-    // credential already lives in the encrypted vault. A save clears the
-    // in-memory draft credential, so re-probing a saved connector finds
-    // no draft credential — but it must NOT re-demand one. We probe
-    // under the saved connector's id (set on `draftView` above) and let
-    // the driver resolve the stored credential.
     const draftCredential =
       draftView.auth_type !== "none" ? getDraftCredential(ctx.conversation_id) : null;
     if (draftView.auth_type !== "none" && !draftCredential && !connector.saved_connector_id) {
@@ -456,12 +405,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
-    // Cache consistency: a cached credential collected for a
-    // DIFFERENT auth shape must never drive a probe. Pre-fix a bearer
-    // token cached before an auth_type switch to basic survived in the
-    // cache and the probe went out with `Authorization: Bearer …`
-    // against a basic-auth endpoint — a 401 indistinguishable from a
-    // wrong secret. Clear the stale entry and demand re-collection.
     if (
       draftCredential &&
       !credentialModeMatchesAuthType(draftCredential.mode, draftView.auth_type)
@@ -475,11 +418,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
-    // Read the draft's oauth config once — the machine-to-machine grant
-    // check below and the cognito region/client_id resolution both need
-    // it. `aws_region` is accepted on either `config.aws_region` (the
-    // canonical slot the template seeds) OR `config.oauth.aws_region`
-    // (the LLM occasionally nests it there). Same for `client_id`.
     const draftCfg = (draftView.config ?? {}) as {
       aws_region?: unknown;
       oauth?: Record<string, unknown>;
@@ -487,13 +425,6 @@ export const probeConnectorDraftTool: ConversationTool = {
     const oauthCfg = (draftCfg.oauth ?? {}) as Record<string, unknown>;
     const oauthGrantType = typeof oauthCfg.grant_type === "string" ? oauthCfg.grant_type : null;
 
-    // OAuth2 seed credentials: BROWSER-based grants cannot drive a
-    // probe — the access token is minted later by authenticate_oauth +
-    // the OAuth callback. Machine-to-machine grants
-    // (client_credentials_json) are different: the engine mints the
-    // bearer inline from the cached client_id/client_secret (the
-    // cognito_user_password branch below is the precedent), so the
-    // probe verifies the credentials immediately — no save, no browser.
     if (draftCredential?.mode === "oauth2" && oauthGrantType !== "client_credentials_json") {
       return buildProbeGateEnvelope({
         failure_code: "authenticate_oauth_required",
@@ -505,18 +436,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       });
     }
 
-    // Resolve the in-memory credential override for the probe. For
-    // `cognito_user_password` the cached credential is the raw username +
-    // password; the async helper mints an IdToken via Cognito InitiateAuth.
-    // Other modes round-trip through the sync converter.
-    //
-    // `aws_region` is accepted on either `config.aws_region` (the canonical
-    // slot the template seeds) OR `config.oauth.aws_region` (the LLM
-    // occasionally nests it there). Both are valid. Same for `client_id`.
-    //
-    // Wrap in its own try/catch so a missing region/client_id on a Cognito
-    // draft returns a structured `credential_required` envelope rather than
-    // crashing the HTTP path's try/catch and losing the typed error message.
     const region =
       (typeof draftCfg.aws_region === "string" && draftCfg.aws_region) ||
       (typeof oauthCfg.aws_region === "string" && oauthCfg.aws_region) ||
@@ -524,12 +443,6 @@ export const probeConnectorDraftTool: ConversationTool = {
     const clientId = typeof oauthCfg.client_id === "string" ? oauthCfg.client_id : null;
     let credentialOverride: DecryptedCredential | null = null;
     if (draftCredential?.mode === "oauth2") {
-      // Reachable only for client_credentials_json (the browser-grant
-      // gate above returned for everything else): mint the bearer
-      // inline so the probe carries real auth. A failed exchange is a
-      // REAL probe verdict — the credentials are wrong or the token
-      // endpoint is unreachable — so surface it as such instead of a
-      // generic credential prompt.
       try {
         credentialOverride = await mintM2mDraftCredential(draftCredential, oauthCfg);
       } catch (err) {
@@ -565,12 +478,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       }
     }
 
-    // Re-probe guard: an identical probe of an unchanged draft +
-    // credential cannot succeed where the last one failed — unless the
-    // failure was transient (429 / 5xx / timeout). Session 97679846
-    // re-probed an unchanged Jira GraphQL draft 3× into the same 403.
-    // Refuse WITHOUT firing the network call, return the cached failed
-    // probe, and audit the denial so the loop is visible to operators.
     const probeFingerprint = computeProbeFingerprint(draftView, args, draftCredential);
     const lastProbe = connector.latest_probe ?? null;
     if (
@@ -612,9 +519,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     }
 
-    // Local helper: after a green probe, auto-persist the connector + credential
-    // atomically and return the enriched success envelope. Called from both the
-    // graphql branch (on ok: true) and the HTTP path's probe-success tail.
     const finishWithGreenProbeAutoPersist = async (
       latest_probe: Record<string, unknown>,
       probe_duration_ms: number,
@@ -628,9 +532,6 @@ export const probeConnectorDraftTool: ConversationTool = {
         reason: "auto_persist_on_green_probe",
         emitAutoPersistAudit: true,
         commitIntentKind: "save_connector",
-        // The probe just proved the endpoint live; a fire-and-forget
-        // introspection here would outlive this tool call. Discovery
-        // remains available via discover_connector_endpoints.
         skipBackgroundDiscovery: true,
       });
       if (!saveResult.ok) {
@@ -689,7 +590,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       };
     };
 
-    // The transient MCP session closes before a green result is atomically persisted.
     if (connector.driver === "mcp") {
       const started = Date.now();
       const res = await probeMcpConnector({
@@ -762,10 +662,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       return finishWithGreenProbeAutoPersist(latest_probe, duration_ms, undefined, res.manifest);
     }
 
-    // GraphQL connectors ALWAYS use the introspection probe, regardless of
-    // the `path` arg. A graphql-driver connector must never fall through to
-    // the raw-HTTP path which sends an empty POST body — that returns a 400
-    // from every real GraphQL endpoint.
     if (connector.driver === "graphql") {
       const started = Date.now();
       const res = await probeGraphQLConnector({
@@ -785,15 +681,10 @@ export const probeConnectorDraftTool: ConversationTool = {
         summary: res.ok
           ? `GraphQL introspection probe succeeded in ${duration_ms}ms.`
           : `GraphQL probe failed: ${res.detail ?? `HTTP ${res.status ?? 0}`}.${probeStatusHint(res.status ?? 0)}`,
-        // On failure carry the upstream's own words — scrubbed body
-        // snippet + allowlisted diagnostic headers from the driver — so
-        // the LLM/operator can read the real cause instead of "HTTP 403".
         ...(res.ok
           ? {}
           : {
               failure_code: "probe_failed",
-              // Identity of this failed attempt — the re-probe guard
-              // refuses an identical retry until something changes.
               fingerprint: probeFingerprint,
               ...(res.body_snippet !== undefined ? { response_preview: res.body_snippet } : {}),
               ...(res.response_headers !== undefined
@@ -831,10 +722,6 @@ export const probeConnectorDraftTool: ConversationTool = {
         ctx.db,
       );
       if (!res.ok) {
-        // Same structured recovery hint as the HTTP path. Pass the
-        // ProbeFailureSignal shape explicitly — the GraphQL latest_probe
-        // stores the status under `status_code`, so passing it verbatim
-        // would classify every failure as the catch-all bucket.
         return {
           ok: false,
           data: buildLifecyclePayload(nextDraft, {
@@ -910,8 +797,6 @@ export const probeConnectorDraftTool: ConversationTool = {
               ? `Probe succeeded with HTTP ${status}.`
               : `Probe reached the system but returned HTTP ${status}.${probeStatusHint(status)}`,
           response_preview: truncated.data,
-          // Only failed probes carry a fingerprint — the re-probe
-          // guard keys on it; green probes auto-persist and move on.
           ...(status >= 200 && status < 400 ? {} : { fingerprint: probeFingerprint }),
           probed_at,
         };
@@ -947,14 +832,6 @@ export const probeConnectorDraftTool: ConversationTool = {
       ctx.db,
     );
     if (errorDetail) {
-      // Probe failure with structured next-best-actions so the LLM
-      // doesn't have to guess the recovery move. Pre-fix a 404 left
-      // the LLM to manually decide whether to call search_docs,
-      // discover_connector_endpoints, or update the path — the
-      // session ebd66982 trace showed the LLM pivoting to "let me
-      // check the DigitalOcean API documentation" without prompting,
-      // costing extra turns. The hint maps the HTTP status to the
-      // most likely fix.
       const nextBestActions = pickProbeRecoveryActions(latest_probe);
       return {
         ok: false,
@@ -966,21 +843,8 @@ export const probeConnectorDraftTool: ConversationTool = {
         }),
       };
     }
-    // Probe-success envelope. A green probe is consent to persist —
-    // the credentials work, the draft is validated, there is no
-    // ambiguity left for the operator to resolve. Delegate to the
-    // shared helper which calls saveConnectorAtomic inline, logs, and
-    // builds the enriched envelope.
     return finishWithGreenProbeAutoPersist(latest_probe, duration_ms, status);
   },
 };
 
-/**
- * Backwards-compatible re-export. The mapping itself lives in
- * `./probe-recovery.ts` so probe_connector / dry_run_step share the
- * same surface. Kept here for the existing test that imports from
- * this file.
- *
- * @internal Exported for unit tests.
- */
 export const pickProbeRecoveryActions = pickFromShared;

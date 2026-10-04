@@ -1,6 +1,3 @@
-// Integration tests for MCP OAuth HTTP routes — mcp-oauth-scope-audit group.
-// Shared setup + helpers live in ./mcp-oauth-test-helpers.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -44,8 +41,6 @@ describe("unauthenticated POST /mcp", () => {
     expect(wwwAuth).toContain("resource_metadata=");
   });
 });
-
-// ─── Consent denial ────────────────────────────────────────────────────────
 
 describe("consent denial", () => {
   test("deny redirects to redirect_uri with error=access_denied", async () => {
@@ -132,7 +127,6 @@ describe("consent denial", () => {
     const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)?.[1] as string;
     expect(csrfToken).toBeDefined();
 
-    // Revoke the session row AFTER the consent page rendered.
     await db
       .update(sessions)
       .set({ revoked_at: new Date() }) // allow-wall-clock
@@ -196,11 +190,8 @@ describe("consent denial", () => {
   });
 });
 
-// ─── Scope intersection: member role cannot get mcp:admin ─────────────────
-
 describe("scope intersection — role-based scope restriction", () => {
   test("member role requesting mcp:admin receives token without mcp:admin", async () => {
-    // Seed a member-role user
     const [memberUser] = await db
       .insert(users)
       .values({
@@ -232,16 +223,12 @@ describe("scope intersection — role-based scope restriction", () => {
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        // Request mcp:admin — should be stripped for a member
         scope: "mcp:read mcp:admin",
       })}`,
       { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
     );
-    // Consent page loads (200)
     expect(authRes.status).toBe(200);
     const html = await authRes.text();
-    // The consent page should NOT offer mcp:admin for a member role
-    // (the role lacks it). mcp:admin must be absent from the offered checkboxes.
     expect(html).not.toContain('value="mcp:admin"');
 
     const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
@@ -289,8 +276,6 @@ describe("scope intersection — role-based scope restriction", () => {
   });
 
   test("role downgrade between consent render and decision denies when the baseline is lost", async () => {
-    // Member renders read + authoring, is downgraded to enduser, and clicks
-    // Approve. The fresh role has no MCP baseline, so the grant is denied.
     const [user] = await db
       .insert(users)
       .values({
@@ -332,7 +317,6 @@ describe("scope intersection — role-based scope restriction", () => {
     expect(csrfMatch).not.toBeNull();
     const csrfToken = csrfMatch![1] as string;
 
-    // Downgrade AFTER the consent page rendered, BEFORE the decision POST.
     await db
       .update(users)
       .set({ role_id: await builtinRoleId(db, "enduser") })
@@ -361,10 +345,6 @@ describe("scope intersection — role-based scope restriction", () => {
     expect(location.searchParams.get("code")).toBeNull();
   });
 });
-
-// ─── Audit log assertions ──────────────────────────────────────────────────
-// The HTTP layer uses the same db connection that the test DB uses (via
-// createHttpTestServer). Audit writes go to the test DB here.
 
 describe("scope selection — client request is a hard ceiling", () => {
   test("admin requesting only mcp:read cannot display or grant mcp:admin", async () => {
@@ -402,14 +382,12 @@ describe("scope selection — client request is a hard ceiling", () => {
     const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
     const csrfToken = csrfMatch![1] as string;
 
-    // A forged admin checkbox is ignored because it was never requested.
     const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
         cookie: `subkit_session=${jwt}`,
       },
-      // Two `scope` values, exactly as the checkbox form would post them.
       body: `csrf_token=${encodeURIComponent(csrfToken)}&client_id=${clientId}&redirect_uri=${encodeURIComponent("https://elevate.example.com/cb")}&resource=${encodeURIComponent("https://test.example.com/mcp")}&state=&decision=approve&scope=mcp%3Aread&scope=mcp%3Aadmin`,
       redirect: "manual",
     });
@@ -436,9 +414,6 @@ describe("scope selection — client request is a hard ceiling", () => {
   });
 
   test("member tampering with a non-offered mcp:admin scope is clamped away", async () => {
-    // A member never gets mcp:admin offered. If the form is tampered to POST
-    // scope=mcp:admin, the decision handler clamps it by ceiling ∩ role; the
-    // result drops admin and keeps only what the member holds.
     const [memberUser] = await db
       .insert(users)
       .values({
@@ -477,7 +452,6 @@ describe("scope selection — client request is a hard ceiling", () => {
     const html = await authRes.text();
     const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)![1] as string;
 
-    // Tamper: inject scope=mcp:admin alongside the legitimate read baseline.
     const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
       method: "POST",
       headers: {
@@ -534,7 +508,6 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
       tenant_id: ctx.tenantId,
     });
 
-    // Request ONLY mcp:admin — the role lacks it and read was not requested.
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
         client_id: clientId,
@@ -555,9 +528,6 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
   });
 });
 
-// ── Audit entries: token_issued, token_refreshed, token_revoked ───────────────
-
-// Full-flow helper used by the audit tests below
 async function runFullOAuthFlow(opts: {
   redirectUri: string;
   label: string;
@@ -680,7 +650,6 @@ describe("audit log entries (HTTP layer)", () => {
     });
     expect(decisionRes.status).toBe(302);
 
-    // consent_granted is written via auditAwait before the 302 response.
     const rows = await db
       .select()
       .from(auditLog)
@@ -691,8 +660,6 @@ describe("audit log entries (HTTP layer)", () => {
   });
 });
 
-// ── AS metadata: token_endpoint_auth_methods_supported ────────────────────────
-
 describe("audit log entries — token lifecycle (HTTP layer)", () => {
   test("mcp_oauth.token_issued row exists after full code exchange", async () => {
     await runFullOAuthFlow({
@@ -700,7 +667,6 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
       label: "AuditIssued",
     });
 
-    // token_issued is written via auditAwait before the token response.
     const rows = await db
       .select()
       .from(auditLog)
@@ -727,7 +693,6 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
     });
     expect(refreshRes.status).toBe(200);
 
-    // token_refreshed is written via auditAwait before the token response.
     const rows = await db
       .select()
       .from(auditLog)
@@ -750,7 +715,6 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
     });
     expect(revokeRes.status).toBe(200);
 
-    // token_revoked is written via auditAwait before the 200 response.
     const rows = await db
       .select()
       .from(auditLog)
@@ -786,18 +750,6 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
   });
 });
 
-// ─── Consent form structure ──────────────────────────────────────────────────
-// Regression guard for the bug where the scope <ul> (checkboxes + the hidden
-// mcp:read baseline input) was rendered OUTSIDE the <form>, so the browser
-// submitted no `scope` field and every fresh consent was denied as
-// role_downgrade. The other tests in this file hand-build the decision body
-// with `scope=` params, which bypasses the HTML structure and missed this.
-
-/**
- * Extract the scope values a real browser would submit: every scope input that
- * lives INSIDE the <form> and is either a hidden input or a checked, non-disabled
- * checkbox. Inputs rendered outside the form contribute nothing.
- */
 function browserSubmittedScopes(html: string): string[] {
   const form = html.match(/<form\b[^>]*>([\s\S]*?)<\/form>/i)?.[1] ?? "";
   const scopes: string[] = [];
@@ -846,7 +798,6 @@ describe("consent form structure — scope inputs must submit", () => {
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        // ChatGPT-style request: only mcp:read. The baseline must still submit.
         scope: "mcp:read",
       })}`,
       { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
@@ -854,14 +805,11 @@ describe("consent form structure — scope inputs must submit", () => {
     expect(authRes.status).toBe(200);
     const html = await authRes.text();
 
-    // Structural invariant: the scope inputs live inside the form, so a browser
-    // submits at least the mcp:read baseline.
     const submitted = browserSubmittedScopes(html);
     expect(submitted).toContain("mcp:read");
 
     const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)![1] as string;
 
-    // Submit EXACTLY what the rendered form would post — no hand-added scopes.
     const body = new URLSearchParams();
     body.set("csrf_token", csrfToken);
     body.set("client_id", clientId);
@@ -882,7 +830,6 @@ describe("consent form structure — scope inputs must submit", () => {
     });
     expect(decisionRes.status).toBe(302);
     const location = new URL(decisionRes.headers.get("location") ?? "");
-    // The bug manifested as error=access_denied (empty scope → role_downgrade).
     expect(location.searchParams.get("error")).toBeNull();
     expect(location.searchParams.get("code")).not.toBeNull();
   });

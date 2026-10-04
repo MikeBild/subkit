@@ -1,15 +1,3 @@
-// Integration test for /v1/settings — DB-backed via testcontainers,
-// real Hono app, real config-loader bootstrap.
-//
-// Covers the v3.5 wire contract:
-//   - GET /v1/settings returns the effective tree + diagnostics
-//   - PUT /v1/settings/{path} returns 200 { value, requiresRestart }
-//   - PUT validation failure returns 422 { code, message, path, expected }
-//   - PUT requires-restart in production returns 409
-//   - PUT scope_violation (global leaf with ?tenant) returns 403
-//   - Audit row carries the target tenant_id for ?tenant=X writes
-//   - Cross-tenant guard rejects non-admin callers targeting other tenants
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -24,8 +12,6 @@ import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
-// One deterministic seed per file so re-running the suite produces
-// identical fixture bytes — required by the determinism gate.
 const det = createDeterministicHexFactory(0xc0ffee);
 let seq = 0;
 function nextSeq(): string {
@@ -113,7 +99,6 @@ describe("GET /v1/settings", () => {
       requiresRestart: false,
       scope: "global",
     });
-    // Defaults and enum members come from the schema, not from a second list.
     const logLevel = body.items.find((i) => i.path === "log.level");
     expect(logLevel!.meta.default).toBe("info");
     expect(logLevel!.meta.enum_values).toEqual([
@@ -127,10 +112,8 @@ describe("GET /v1/settings", () => {
     const budget = body.items.find((i) => i.path === "tokens.monthly_budget");
     expect(budget!.meta.default).toBe(0);
     expect(budget!.meta).not.toHaveProperty("enum_values");
-    // A nullable enum defaults to null — reported, not dropped.
     const fallback = body.items.find((i) => i.path === "llm.fallback_provider");
     expect(fallback!.meta).toHaveProperty("default", null);
-    // A bootstrap binding has no default to report.
     const database = body.items.find((i) => i.path === "database.url");
     expect(database!.meta).not.toHaveProperty("default");
   });
@@ -222,9 +205,6 @@ describe("GET /v1/settings/{path}", () => {
   });
 
   test("object-store credentials render masked when set", async () => {
-    // Pre-condition: write secret values, then read them back via GET
-    // to confirm the route's mask layer redacts every secret leaf in
-    // the offload section (not just llm.api_key).
     await authedFetch("/v1/settings/storage.object_store.access_key_id", {
       method: "PUT",
       body: JSON.stringify({ value: "actual-access-key" }),
@@ -250,7 +230,6 @@ describe("GET /v1/settings/{path}", () => {
     expect(skBody.value).toBe("***");
     expect(skBody.meta.sensitive).toBe(true);
 
-    // The list endpoint must also mask both leaves.
     const listRes = await authedFetch("/v1/settings");
     const list = (await listRes.json()) as {
       items: Array<{
@@ -263,8 +242,6 @@ describe("GET /v1/settings/{path}", () => {
     const skEntry = list.items.find((i) => i.path === "storage.object_store.secret_access_key");
     expect(akEntry!.value).toBe("***");
     expect(skEntry!.value).toBe("***");
-    // Final defence: the literal raw value never appears anywhere
-    // in the JSON body.
     const blob = JSON.stringify(list);
     expect(blob).not.toContain("actual-access-key");
     expect(blob).not.toContain("actual-secret-key");
@@ -295,10 +272,6 @@ describe("PUT /v1/settings/{path}", () => {
       requiresRestart: false,
     });
 
-    // Public, and byte-identical either way: a caller with no credential is
-    // exactly the caller that needs to know which credentials exist. The label
-    // is generic per protocol — the operator typed "Workforce SSO", and an
-    // operator's wording can name an organisation.
     const anonymous = await fetch(`${server.baseUrl}/v1/identity/providers`);
     expect(anonymous.status).toBe(200);
     const discovery = await authedFetch("/v1/identity/providers");
@@ -343,7 +316,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as PutResult;
     expect(body.requiresRestart).toBe(false);
-    // Sensitive leaf — value comes back masked.
     expect(body.value).toBe("***");
 
     const rows = await server.db
@@ -355,8 +327,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(row.actor_id).toBe(server.userId);
     expect(row.resource_type).toBe("setting");
     expect(row.resource_id).toBe("llm.api_key");
-    // Masked diff is the primitive value (matches audit_log convention).
-    // Never a raw secret.
     expect(JSON.stringify(row.after)).not.toContain("sk-test");
     expect(row.after).toBe("***");
   });
@@ -429,7 +399,7 @@ describe("PUT /v1/settings/{path}", () => {
         .select()
         .from(auditLog)
         .where(eq(auditLog.action, "settings.changed"));
-      expect(rows.length).toBe(0); // 409 before commit → no audit row
+      expect(rows.length).toBe(0);
     } finally {
       if (prev === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = prev;
@@ -465,9 +435,6 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("non-admin caller cannot mutate another tenant's overlay", async () => {
-    // Seed a separate tenant + a non-admin user + api key in that
-    // tenant. The cross-tenant guard expects either a same-tenant
-    // target OR `principal.roles.includes("admin")`.
     const seqTag = nextSeq();
     const [otherTenant] = await server.db
       .insert(tenants)
@@ -481,8 +448,6 @@ describe("PUT /v1/settings/{path}", () => {
         role_id: await builtinRoleId(server.db, "member"),
       })
       .returning();
-    // Deterministic 32-char hex token — replaces randomBytes() so the
-    // determinism gate stays clean.
     const plaintext = `wf_live_${det(16)}`;
     await server.db.insert(apiKeys).values({
       tenant_id: otherTenant!.id,
@@ -492,7 +457,6 @@ describe("PUT /v1/settings/{path}", () => {
       scopes: ["*"],
     });
 
-    // The non-admin tenant tries to PUT against `server.tenantId`.
     const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
       method: "PUT",
       headers: {
@@ -511,11 +475,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(rows.length).toBe(0);
   });
 
-  // A tenant's OWN admin must not reach across the tenant boundary. The
-  // built-in "admin" role is shared across all tenants, so the previous
-  // `roles.includes("admin")` gate let tenant A's admin read/write tenant
-  // B's settings — a cross-tenant isolation breach. Only a system-tenant
-  // operator may now manage another tenant.
   test("a tenant admin cannot mutate another tenant's overlay", async () => {
     const seqTag = nextSeq();
     const [otherTenant] = await server.db
@@ -552,9 +511,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(body.code).toBe("scope_violation");
   });
 
-  // The allow path must still work: a SYSTEM-tenant operator manages other
-  // tenants. Proves the fix tightened the gate without disabling the
-  // legitimate platform-operator capability.
   test("a system-tenant operator can mutate another tenant's overlay", async () => {
     const seqTag = nextSeq();
     await server.db
@@ -593,11 +549,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(res.status).toBe(200);
   });
 
-  // Cross-tenant guard must cover the tenant-scoped overlay sections —
-  // `repl.permissionMode`, `ui.*`, `notifications.push.*`. Without an
-  // explicit assertion per section, a future refactor that special-
-  // cases one of them risks letting a non-admin tenant flip another
-  // tenant's REPL mode or push-notification settings.
   test("cross-tenant guard rejects writes to repl/ui/notifications overlays", async () => {
     const seqTag = nextSeq();
     const [otherTenant] = await server.db
@@ -651,8 +602,6 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("source_map and live value reflect every layer of the precedence chain", async () => {
-    // 1. Default — fresh boot, no overrides, no writes. ring_size
-    //    starts at the schema default (100).
     let res = await authedFetch("/v1/settings/errors.ring_size");
     let body = (await res.json()) as {
       value: unknown;
@@ -661,7 +610,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(body.value).toBe(100);
     expect(body.meta.source).toBe("default");
 
-    // 2. Global write — flips the leaf to source:"global".
     await authedFetch("/v1/settings/errors.ring_size", {
       method: "PUT",
       body: JSON.stringify({ value: 250 }),
@@ -671,7 +619,6 @@ describe("PUT /v1/settings/{path}", () => {
     expect(body.value).toBe(250);
     expect(body.meta.source).toBe("global");
 
-    // 3. List shows the diagnostics tally honoring the new source.
     const listRes = await authedFetch("/v1/settings");
     const list = (await listRes.json()) as {
       items: Array<{ path: string; meta: { source: string } }>;
@@ -681,11 +628,6 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("non-restart leaf returns requiresRestart:false explicitly", async () => {
-    // Sanity: the success envelope's requiresRestart MUST be the
-    // boolean false (not undefined) for leaves that do not require a
-    // restart. Catches a regression where the route forgets to surface
-    // the flag and defaults to undefined → upstream JSON-strict
-    // consumers (TS clients, Ink form) would mishandle it.
     const res = await authedFetch("/v1/settings/log.level", {
       method: "PUT",
       body: JSON.stringify({ value: "debug" }),
@@ -700,8 +642,6 @@ describe("PUT /v1/settings/{path}", () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     try {
-      // Two PUTs to the same requiresRestart leaf — the second one
-      // must NOT add a duplicate entry to pending_restart_keys.
       await authedFetch("/v1/settings/server.port", {
         method: "PUT",
         body: JSON.stringify({ value: 4010, force: true }),
@@ -725,12 +665,6 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("audit row carries actor_tenant_id (resolved from principal context)", async () => {
-    // The audit module fills tenant_id from the entry. We pass the
-    // target tenant explicitly. The actor's tenant_id is recoverable
-    // from the trace_id → request log; v3.6 will add a dedicated
-    // `actor_tenant_id` column. For v3.5, the contract is that the
-    // row's tenant_id is the *target* tenant (where the change
-    // applies), and actor_id alone identifies the principal.
     const res = await authedFetch(`/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
       method: "PUT",
       body: JSON.stringify({ value: "audit-id-test" }),

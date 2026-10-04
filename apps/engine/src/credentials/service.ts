@@ -1,14 +1,3 @@
-// Credential CRUD — every write encrypts with the AES-256-GCM helper,
-// every read decrypts. AAD binds a ciphertext to `tenant_id:credential_id`
-// so a blob lifted from one row can't be replayed into another.
-//
-// For non-oauth2 modes the plaintext is a JSON object serialized to a
-// UTF-8 string. For oauth2 the access token lives in the primary
-// ciphertext triple and the refresh token (if any) lives in the sibling
-// `oauth2_refresh_*` triple.
-//
-// Every mutation writes an audit row.
-
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -49,8 +38,6 @@ import type {
 export interface CredentialRow {
   id: string;
   tenant_id: string;
-  /** Owning connector. An external MCP server is a connector whose driver
-   *  is `mcp`, so there is exactly one owner column. */
   connector_id: string;
   environment: "dev" | "prod";
   mode: CredentialMode;
@@ -78,12 +65,9 @@ export type CredentialPlaintext =
   | ({ mode: "aws_sigv4" } & AwsSigV4CredentialValue)
   | {
       mode: "token_mint";
-      // Cached access token from the most recent mint. Empty until the
-      // first mint runs.
       access_token: string;
       refresh_token?: string | null;
       expires_at?: Date | null;
-      // Static mint config — encrypted at rest with the cached token.
       shape: TokenMintShape;
       mint_endpoint: string;
       credentials: TokenMintCredentialValue["credentials"];
@@ -231,36 +215,15 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
 
 export interface UpsertCredentialInput {
   tenant_id: string;
-  /** Owning connector — including an external MCP server, which is a
-   *  connector whose driver is `mcp`. */
   connector_id: string;
   environment: "dev" | "prod";
   mode: CredentialMode;
   value: CredentialPlaintext;
   oauth2_refresh_token?: string | null;
   oauth2_expires_at?: Date | null;
-  /**
-   * G6 (runtime-logs review plan): scopes the IdP actually granted on
-   * the most recent OAuth flow, as the scope string of the token-exchange
-   * response (stored space-separated). Persisted on the credential row so
-   * probe / test can diff against the connector template's expected
-   * scopes and surface a `partial_grant` warning to the LLM. Optional
-   * because non-oauth2 credentials and pre-G6 callers leave it null.
-   */
   oauth2_granted_scopes?: string | null;
-  /**
-   * Point the credential at an outbound connection (Cockpit "Verbindung
-   * wählen"). The stored payload is then an empty `oauth2` value; the access
-   * token is read from the connection's current secret version at use time.
-   */
   connection_id?: string | null;
   actor_id: string | null;
-  /** Provenance tag stamped into the audit metadata so operators can
-   *  distinguish callback-triggered writes (`oauth_callback`) from
-   *  conversation-tool writes (`conversation_tool`), refresh-worker
-   *  rotations (`refresh_worker`), HTTP route writes (`http_route`),
-   *  and CLI-driven setup. Optional for backwards-compat with internal
-   *  callers; missing is recorded as `unspecified`. */
   source?: CredentialWriteSource;
 }
 
@@ -271,9 +234,6 @@ export type CredentialWriteSource =
   | "http_route"
   | "cli_bootstrap"
   | "connector_promotion"
-  // Browser-submitted via the single-use credential-setup grant form
-  // (GET/POST /v1/connectors/{id}/credentials/setup) — the non-OAuth
-  // counterpart to `oauth_callback`.
   | "credential_setup_grant"
   | "unspecified";
 
@@ -281,42 +241,17 @@ function toBuf(u: Uint8Array): Buffer {
   return Buffer.from(u);
 }
 
-/**
- * Insert or replace a credential for a connector/environment pair.
- * AAD is `credential:{tenant}:{credential_id}` on the primary triple and
- * `credential-refresh:...` on the oauth2 refresh triple.
- */
 export async function upsertCredential(
   input: UpsertCredentialInput,
   exec?: Executor,
 ): Promise<CredentialRow> {
   const db = exec ?? getDb();
   const ownerPredicate = eq(credentials.connector_id, input.connector_id);
-  // Two-step encrypt: insert a row with placeholder bytes so we have the
-  // id, then update with the real ciphertext keyed on the id. This keeps
-  // the AAD = tenant_id + credential_id contract intact. Postgres lets
-  // us do this in a single transaction trivially.
   const row = await db.transaction(async (tx) => {
-    // Credentials are bucketed into two slots:
-    //   - the "oauth2_client" slot: RFC 7591 registered OAuth2 client
-    //     identity (client_id + client_secret). At most one row per
-    //     (connector, environment).
-    //   - the "primary" slot: user-facing auth material — bearer, oauth2
-    //     access token, header, query, basic, aws_sigv4, token_mint.
-    //     At most one row per (connector, environment); operators may
-    //     switch modes (e.g. bearer → oauth2) which mutates the row in
-    //     place so call-sites that hold the credential_id stay valid.
-    // The two slots coexist so an OAuth callback writing `mode: "oauth2"`
-    // never clobbers the dynamically-registered client identity that the
-    // refresh-token grant still needs.
     const isClientSlot = input.mode === "oauth2_client";
     const slotPredicate = isClientSlot
       ? eq(credentials.mode, "oauth2_client")
       : ne(credentials.mode, "oauth2_client");
-    // This function runs inside data migrations (and their proofs) against
-    // the schema that preceded 0048, so it names only the columns every
-    // release has had: the select projects legacy identity/material columns, the insert is written by
-    // hand there, and `connection_id` is set only where it exists.
     const withConnectionColumn = await hasCredentialConnectionColumn(tx);
     const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
     const existing = await tx
@@ -346,7 +281,6 @@ export async function upsertCredential(
       .for("update");
     const priorId = existing[0]?.id ?? null;
 
-    // Allocate a placeholder row first to get the id for AAD binding.
     const placeholder = encryptSecret("__placeholder__");
     let id: string;
     if (priorId) {
@@ -375,7 +309,6 @@ export async function upsertCredential(
       id = row.id;
     }
     const plain = serializePlain(input.value);
-    // One stored form, whatever separator the authorization server used.
     const grantedScopes = storedScopes(
       input.oauth2_granted_scopes ??
         (input.value.mode === "oauth2" ? (input.value.scope ?? null) : null),
@@ -415,8 +348,6 @@ export async function upsertCredential(
           !isDeepStrictEqual(previousMaterial, nextMaterial) ||
           previousRefresh !== nextRefresh;
       } catch {
-        // An operator must still be able to replace unreadable old material.
-        // Unknown equivalence means a new boundary, never retained authority.
         authorityChanged = true;
       }
     }
@@ -440,10 +371,6 @@ export async function upsertCredential(
         oauth2_refresh_iv: refreshPayload ? toBuf(refreshPayload.iv) : null,
         oauth2_refresh_auth_tag: refreshPayload ? toBuf(refreshPayload.auth_tag) : null,
         oauth2_expires_at: input.oauth2_expires_at ?? null,
-        // G6: stash the IdP-granted scope string on the credential row
-        // so probe / test can compute partial_grant without re-fetching
-        // the OAuth bundle. Null for non-oauth2 modes (refresh-worker
-        // and conversation-tool callers pass through).
         granted_scopes: grantedScopes,
         ...(withAuthorityRevision && authorityChanged
           ? { authority_revision: sql`${credentials.authority_revision} + 1` }
@@ -483,7 +410,6 @@ export async function upsertCredential(
       mode: input.mode,
     };
   });
-  // Whether a connection is in use is read off credentials (attention list).
   invalidateTenantState(input.tenant_id);
   return row;
 }
@@ -533,8 +459,6 @@ export async function rotateOAuth2Tokens(
     const nextScope = storedScopes(input.scope ?? previousScope);
     const previousType = priorValue.token_type ?? "Bearer";
     const nextType = input.token_type ?? previousType;
-    // OAuth token type names are case-insensitive. The OAuth client normalizes
-    // Bearer to bearer during refresh; that is not a new permission grant.
     const authorityChanged =
       !sameAuthorityScopes(previousScope, nextScope) ||
       previousType.toLowerCase() !== nextType.toLowerCase();
@@ -608,11 +532,6 @@ export async function getCredentialForConnector(
   value: DecryptedCredential;
   connection_authority?: ConnectionAuthorityIdentity | null;
 } | null> {
-  // Draft-authoring flows probe a connector before it's been inserted —
-  // their synthetic id looks like `draft-<conversation_uuid>` which
-  // would make the UUID-typed credentials.connector_id column throw a
-  // hard SQL error. Short-circuit the lookup so the probe continues
-  // without pretending credentials were found.
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
@@ -623,27 +542,14 @@ export async function getCredentialForConnector(
         eq(credentials.tenant_id, tenant_id),
         eq(credentials.connector_id, connector_id),
         eq(credentials.environment, environment),
-        // The `oauth2_client` mode is a registration-time identity slot, not
-        // user-facing auth material. Callers asking for "the credential" want
-        // the primary mode (oauth2 access token, bearer, etc.); the RFC 7591
-        // client identity is read via `getOAuth2ClientCredential` below.
         ne(credentials.mode, "oauth2_client"),
-        // Match authority review: a retained tombstone is never auth material.
         isNull(credentials.deleted_at),
       ),
     )
-    // Deterministic pick: if a mode change (e.g. bearer → oauth2)
-    // transiently leaves two primary-slot rows, always resolve the newest
-    // so the resolver is stable instead of relying on physical row order.
     .orderBy(desc(credentials.created_at), desc(credentials.id))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  // A credential that points at an outbound connection carries no token of
-  // its own: the connection's current version is the token, refreshed on
-  // the way if it is about to expire. An empty access token means the grant
-  // is gone, which the driver reports as a missing credential rather than
-  // sending nothing.
   if (row.connection_id) {
     const grant = await readAccessToken(db as Db, tenant_id, row.connection_id);
     return {
@@ -684,21 +590,12 @@ export async function getCredentialForConnector(
     value.refresh_token = refresh;
     value.expires_at = row.oauth2_expires_at ?? null;
   }
-  // Grants like client_credentials_json store no refresh token but DO persist
-  // expires_at so the staleness check works correctly. Read it here for any
-  // oauth2 credential that doesn't already have expires_at set (i.e. no
-  // refresh_token branch above ran).
   if (value.mode === "oauth2" && value.expires_at === null && row.oauth2_expires_at) {
     value.expires_at = row.oauth2_expires_at;
   }
   return { row, value };
 }
 
-/**
- * How a connector authenticates, for a page that must never see the material:
- * the mode, the environment, and the outbound connection it points at — with
- * that connection's state, so an expired grant shows on the connector too.
- */
 export async function describeCredentialForConnector(
   tenant_id: string,
   connector_id: string,
@@ -708,7 +605,6 @@ export async function describeCredentialForConnector(
   mode: string;
   environment: "dev" | "prod";
   connection: ConnectionSummary | null;
-  /** The header names a `header` credential sends — names only, never values. */
   header_names: string[];
   updated_at: string;
 } | null> {
@@ -751,11 +647,6 @@ export async function describeCredentialForConnector(
   };
 }
 
-/**
- * The names of the headers a `header` credential sends, so a page can say
- * "Schlüssel im Header X-API-KEY" without the key. The value is decrypted to
- * read its shape and dropped here; only the keys leave this function.
- */
 function headerNamesOf(
   tenant_id: string,
   row: { id: string; mode: string; ciphertext: Uint8Array; iv: Uint8Array; auth_tag: Uint8Array },
@@ -766,13 +657,6 @@ function headerNamesOf(
   return value.mode === "header" ? Object.keys(value.headers).sort() : [];
 }
 
-/** Load the `oauth2_client` credential for a connector — i.e. the
- *  client_id + client_secret issued by an IdP via RFC 7591 dynamic
- *  registration. Returns null if the connector was registered with a
- *  pre-provisioned OAuth client (the common case). Kept separate from
- *  `getCredentialForConnector` because that function returns the
- *  primary auth material and callers must opt in to the registration
- *  slot. AAD-bound by `aadFor(tenant_id, credential_id)`. */
 export async function getOAuth2ClientCredential(
   tenant_id: string,
   connector_id: string,
@@ -808,28 +692,11 @@ export async function getOAuth2ClientCredential(
   return { client_id: value.client_id, client_secret: value.client_secret };
 }
 
-/**
- * Determine the environment a connector actually has an authorised primary
- * credential for, so dry-run flows can avoid hard-pinning "dev" when the
- * connector only has a prod grant.
- *
- * Resolution order (mirrors the preference stated in the connector-builder
- * spec):
- *   1. dev  — when a primary-slot dev credential exists.
- *   2. prod — when a primary-slot prod credential exists but no dev one.
- *   3. null — when neither environment has a credential (never-configured
- *              or draft connector id that is not yet a UUID).
- *
- * Read-only — no audit entry is written.
- */
 export async function resolveDefaultEnvironmentForConnector(
   tenant_id: string,
   connector_id: string,
   exec?: Executor,
 ): Promise<"dev" | "prod" | null> {
-  // Draft-authoring flows use synthetic ids like `draft-<uuid>`. The
-  // credentials.connector_id column is UUID-typed; a non-UUID value
-  // would throw a Postgres 22P02 (invalid_text_representation).
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
@@ -839,30 +706,16 @@ export async function resolveDefaultEnvironmentForConnector(
       and(
         eq(credentials.tenant_id, tenant_id),
         eq(credentials.connector_id, connector_id),
-        // Only primary-slot rows — skip the oauth2_client registration
-        // identity slot, which always exists alongside the real grant.
         ne(credentials.mode, "oauth2_client"),
         inArray(credentials.environment, ["dev", "prod"]),
       ),
     )
-    // Fetch both environments in one query; we pick dev below if present.
     .limit(2);
   if (rows.length === 0) return null;
   if (rows.some((r) => r.environment === "dev")) return "dev";
   return "prod";
 }
 
-/**
- * Resolve the effective execution environment for a dry-run. When the
- * caller passes `requested`, that value is authoritative. Otherwise probe
- * the credentials table for every connector referenced by the draft
- * steps: prefer "dev" when any connector has a dev grant, fall back to
- * "prod" when all connectors only have prod grants. When no referenced
- * connector has any credential (mis-configured, or no connector_id
- * steps), default to "dev" and warn so the operator understands why the
- * run may 404/401. Extracted from dry-run-workflow.ts so the credential
- * logic lives next to `resolveDefaultEnvironmentForConnector`.
- */
 export async function resolveDryRunEnvironment(p: {
   tenant_id: string;
   steps: unknown[];
@@ -880,11 +733,6 @@ export async function resolveDryRunEnvironment(p: {
     ),
   ];
   if (connectorIds.length === 0) return "dev";
-  // Keyless connectors (auth_type "none" — public APIs like open-meteo) need
-  // no credential, so they must not count toward the "no credential found"
-  // check. Without this, a workflow built only from keyless connectors warns
-  // "the run may fail with 401/404" even though the run cannot fail on auth —
-  // a false positive that mislabels a perfectly healthy dry-run.
   const db = p.exec ?? getDb();
   const uuidIds = connectorIds.filter((id) => UUID_RE.test(id));
   const authRows = uuidIds.length
@@ -895,7 +743,6 @@ export async function resolveDryRunEnvironment(p: {
     : [];
   const keyless = new Set(authRows.filter((r) => r.auth_type === "none").map((r) => r.id));
   const authRequiringIds = connectorIds.filter((id) => !keyless.has(id));
-  // Every referenced connector is keyless → no credential is ever needed.
   if (authRequiringIds.length === 0) return "dev";
 
   const envResults = await Promise.all(
@@ -922,13 +769,6 @@ export async function resolveDryRunEnvironment(p: {
   return resolvedEnvs.includes("dev") ? "dev" : "prod";
 }
 
-/** Load the `oauth2_private_key` credential for a connector — the
- *  client_id, PEM/JWK private key, and signing algorithm used to
- *  construct a `PrivateKeyJwtProvider` for machine-to-machine OAuth2
- *  (today: an `mcp` connector declaring `oauth2_private_key_jwt`).
- *  Returns null when the connector has no private-key credential stored.
- *  AAD-bound by `aadFor(tenant_id, credential_id)`. Tenant/connector-scoped
- *  via both predicates — never read across tenants. */
 export async function getOAuth2PrivateKeyCredential(
   tenant_id: string,
   connector_id: string,
@@ -948,7 +788,6 @@ export async function getOAuth2PrivateKeyCredential(
         eq(credentials.mode, "oauth2_private_key"),
       ),
     )
-    // Deterministic pick — mirrors `getOAuth2ClientCredential`.
     .orderBy(desc(credentials.created_at), desc(credentials.id))
     .limit(1);
   const row = rows[0];

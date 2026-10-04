@@ -1,23 +1,3 @@
-// User story: As a person who had the chat build a manual workflow — no
-// schedule, no webhook — I want the run refusal "needs your review" to come
-// with the review it names, so that I can apply the saved change and run it
-// instead of being sent to an API call that the product forbids.
-// Acceptance criteria:
-//   - AC1: In the chat, run_workflow on a saved, never-applied workflow is
-//     refused with workflow_activation_required AND carries the saved-change
-//     review card (the dialog the refusal promises), in the run's environment.
-//     Nothing ran.
-//   - AC2: review_workflow_automation shows that card for the workflow although
-//     nothing starts it automatically, and the turn ends on it.
-//   - AC3: Over MCP — no card, no human channel — the same refusal and review
-//     hand the person a review_url on the workflow's cockpit page instead.
-//   - AC4: Neither the refusal nor its recovery guidance offers an API call, a
-//     command, or leaving the chat.
-//   - AC5: The human applies the reviewed change over HTTP from a browser
-//     session; afterwards run_workflow no longer refuses, and the review has
-//     nothing left to show.
-// Spec refs: docs/authors/authoring-workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -43,11 +23,9 @@ let draftVersionId = "";
 type Output = { ok?: boolean; data?: Record<string, unknown> } & Record<string, unknown>;
 type TurnEvent = { type: string; tool?: string; output?: Output };
 
-/** Unwraps the `{ ok, data }` envelope a tool result carries in the stream. */
 const dataOf = (output: Output | undefined): Record<string, unknown> =>
   (output?.data ?? output ?? {}) as Record<string, unknown>;
 
-/** One chat turn whose model step is the given tool call. */
 async function chatTurn(tool: string, args: Record<string, unknown>): Promise<TurnEvent[]> {
   const created = await journeyFetch(ctx, "/v1/conversations", {
     method: "POST",
@@ -56,8 +34,6 @@ async function chatTurn(tool: string, args: Record<string, unknown>): Promise<Tu
   expect(created.status).toBe(201);
   const conversationId = ((await created.json()) as { conversation: { id: string } }).conversation
     .id;
-  // The chat that saved the workflow is bound to it — what its auto-commit
-  // leaves on the conversation, and what puts run_workflow in the palette.
   await ctx.db
     .update(conversations)
     .set({
@@ -102,7 +78,6 @@ async function mcpCall(name: string, args: Record<string, unknown>) {
     const result = await client.callTool({ name, arguments: args });
     const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? "{}";
     const envelope = JSON.parse(text) as Output & { details?: Record<string, unknown> };
-    // A failed tool's own payload travels as `details` on this surface.
     return (envelope.details ? { data: envelope.details } : envelope) as Output;
   } finally {
     await client.close();
@@ -118,8 +93,6 @@ async function runsOf(id: string) {
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("saved-change-review");
-  // What the chat's auto-commit leaves behind: a saved draft, never applied,
-  // and nothing that starts it automatically.
   const saved = await saveWorkflowDraft(
     {
       tenant_id: ctx.tenantId,

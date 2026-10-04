@@ -1,28 +1,3 @@
-// Dual-mode Zod-driven form (form / code).
-//
-// The form mode walks the schema and renders one row per top-level
-// property — strings get a text input, booleans a toggle, enums a
-// select, numbers a numeric input. The code mode is a JSON editor with
-// inline validation. The mode toggle preserves the draft on either
-// side: the JSON editor materializes the form value, and re-entering
-// form mode parses the JSON back. This is the same UX the reference
-// web-UI uses for tool/system schemas, adapted to a TTY.
-//
-// The form does not own submit/save semantics — call sites pass an
-// `onChange` and use Enter / explicit confirm to commit. The
-// `errors` prop renders field-level engine validation errors below
-// each field by JSONPath.
-//
-// **Today's edit semantics:** form-mode is a
-// read-only inspector — the rendered rows render the current value
-// and surface field-level errors but DO NOT call `onChange`. Code-mode
-// is the edit surface; toggling to it parses-and-edits, then toggling
-// back to form-mode just re-displays the parsed object. The public
-// `onChange` is wired through both branches so a future PR that lands
-// keystroke handling for form-mode rows doesn't change the call-site
-// contract — but until that lands, expect form-mode to remain
-// read-only. Tests pin this behavior in `apps/sk/src/tests/schema-form.component.test.tsx`.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
@@ -38,14 +13,6 @@ export interface SchemaFormError {
 export interface SchemaFormProps<T> {
   schema: z.ZodType<T>;
   value: T;
-  /**
-   * Called when the user commits an edit. **Today only fires from
-   * code-mode** — form-mode is a read-only inspector.
-   * The prop is exposed unconditionally so consumers don't have to
-   * branch on `mode`; a future PR that adds form-mode keystroke
-   * editing will wire it through this same callback without changing
-   * the public surface.
-   */
   onChange: (next: T) => void;
   mode: SchemaFormMode;
   onModeChange: (m: SchemaFormMode) => void;
@@ -208,8 +175,6 @@ function FormMode<T>({
       <Box marginTop={1}>
         <Text color={tokens.severity.dim}>(form mode is read-only here; code mode for edits)</Text>
       </Box>
-      {/* The code mode is the canonical edit surface for now — keeps
-          this component dependency-light and passes onChange through. */}
       <ChangeForwarder value={value} onChange={onChange} />
     </Box>
   );
@@ -222,10 +187,6 @@ function ChangeForwarder<T>({
   value: T;
   onChange: (next: T) => void;
 }): React.ReactElement | null {
-  // Currently a no-op — exists so the read-only form preserves
-  // referential equality with the parent state until a richer field
-  // editor lands. Marked as a dependency so the test surface stays
-  // aware of the forwarding contract.
   void value;
   void onChange;
   return null;
@@ -254,7 +215,6 @@ function CodeMode<T>({
 
   useInput((input, key) => {
     if (key.return && key.shift) {
-      // Shift+Enter inserts a newline.
       setDraft((d) => `${d}\n`);
       return;
     }

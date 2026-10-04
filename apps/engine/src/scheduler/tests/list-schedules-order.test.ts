@@ -1,9 +1,3 @@
-// `listSchedules` returns a tenant's schedules in one order, every time.
-//
-// Without an ORDER BY the database hands rows back in whatever order it finds
-// them — which changes when a row is updated — so two reads of the same
-// catalog could disagree, and anything rendered or diffed from them with it.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants, workflows, workflowsSchedules } from "../../db/schema/index.ts";
@@ -29,7 +23,6 @@ afterAll(async () => {
 });
 
 test("schedules come back oldest first, and stay in that order after an update", async () => {
-  // Inserted newest first, so insertion order is the reverse of the expected one.
   const base = new Date(FROZEN_NOW).getTime();
   for (const [slug, minutesAgo] of [
     ["third", 1],
@@ -51,7 +44,6 @@ test("schedules come back oldest first, and stay in that order after an update",
   const crons = async () => (await listSchedules(testDb.db, tenant_id)).rows.map((row) => row.cron);
   expect(await crons()).toEqual(["3 3 * * *", "2 3 * * *", "1 3 * * *"]);
 
-  // Rewriting a row moves it physically; the order must not follow.
   await testDb.db
     .update(workflowsSchedules)
     .set({ paused: true })

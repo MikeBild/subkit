@@ -1,19 +1,3 @@
-// Token-mint client. One function: `runTokenMintGrant` — issues a
-// shape-specific POST to the mint endpoint and normalises the response
-// into an `OAuth2TokenBundle`-compatible record so the rest of the
-// credential lifecycle (refreshIfStale, applyAuthMaterial, audit) can
-// reuse the same persistence + retry plumbing as `oauth2`.
-//
-// Three request shapes:
-//   - json             { "username": ..., "password": ..., ... }
-//   - form             username=...&password=... (x-www-form-urlencoded)
-//   - aws_initiate_auth { AuthFlow, ClientId, AuthParameters: {USERNAME,
-//                       PASSWORD, SECRET_HASH?} } with x-amz-target.
-//
-// SECRET_HASH (Cognito-only) is computed when `client_secret` is set on
-// the credential. The same helper that powers the legacy
-// `cognito_user_password` client is reused.
-
 import { createHmac } from "node:crypto";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import type { TokenMintCredentialValue } from "../types.ts";
@@ -51,7 +35,7 @@ export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise
       ...(credentials.client_secret ? { client_secret: credentials.client_secret } : {}),
       ...(credentials.audience ? { audience: credentials.audience } : {}),
       ...(credentials.scope ? { scope: credentials.scope } : {}),
-      returnSecureToken: true, // Firebase shape — harmless for other JSON providers
+      returnSecureToken: true,
     });
   } else if (shape === "form") {
     headers["content-type"] = "application/x-www-form-urlencoded";
@@ -64,7 +48,6 @@ export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise
     if (credentials.scope) form.set("scope", credentials.scope);
     body = form.toString();
   } else {
-    // aws_initiate_auth
     if (!credentials.client_id) {
       throw new Error("token_mint shape=aws_initiate_auth requires credentials.client_id");
     }
@@ -114,8 +97,6 @@ export async function runTokenMintGrant(cred: TokenMintCredentialValue): Promise
   let expires_at: Date | null = null;
   if (cred.expires_in_path) {
     const ein = dotPath(payload, cred.expires_in_path);
-    // Cognito returns ExpiresIn as a number; some providers stringify
-    // (Firebase: `expiresIn: "3600"`). Coerce to number when possible.
     const seconds = typeof ein === "number" ? ein : typeof ein === "string" ? Number(ein) : NaN;
     if (Number.isFinite(seconds) && seconds > 0) {
       expires_at = new Date(Date.now() + Math.floor(seconds) * 1000);

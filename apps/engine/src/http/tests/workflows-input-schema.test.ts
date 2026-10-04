@@ -1,9 +1,3 @@
-// Integration tests for `GET /v1/workflows/:id/input-schema` and the
-// schema fields surfaced on `GET /v1/workflows/:id`. Subkit's MCP layer
-// surfaced these but the bare HTTP route did not.
-// These tests pin the public-facing shape so non-MCP HTTP callers can
-// discover a workflow's I/O without round-tripping through MCP.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { workflowsSchedules } from "../../db/schema/index.ts";
@@ -98,7 +92,6 @@ describe("GET /v1/workflows/:id/input-schema", () => {
   test("synthesizes the schema from $input.X references when input_schema is omitted", async () => {
     const wf = await createWorkflow({
       name: "synth-input-schema",
-      // No input_schema declared — but the transform references $input.user_id.
       steps: [
         {
           kind: "transform",
@@ -155,11 +148,6 @@ describe("GET /v1/workflows/:id/input-schema", () => {
 });
 
 describe("POST /v1/workflows (definition fields are not silently dropped)", () => {
-  // Regression: the create/update CreateBody schema was a partial copy of
-  // the WorkflowDef that omitted `trigger` + `output_transform`, so a
-  // `schedule` trigger submitted over HTTP (and via the `sk` CLI on top of
-  // it) was stripped before save — no schedule ever bound (trigger-on-save
-  // is the only binding path). Now CreateBody preserves them end to end.
   test("a schedule trigger binds a workflows_schedules row", async () => {
     const wf = await createWorkflow({
       name: "scheduled-fields-check",
@@ -176,8 +164,6 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     expect(rows[0]?.timezone).toBe("Europe/Berlin");
     expect(rows[0]?.paused).toBe(false);
 
-    // GET surfaces the trigger (symmetric with the create body) so the
-    // `sk` CLI banner + non-MCP callers can read it back.
     const get = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
     });
@@ -199,7 +185,6 @@ describe("POST /v1/workflows (definition fields are not silently dropped)", () =
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
-    // Pre-fix this was stripped by CreateBody → serialized as null.
     expect(body.output_transform).toBe('{ "ok": true }');
   });
 

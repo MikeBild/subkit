@@ -1,18 +1,3 @@
-// Engine error-ring tail endpoint.
-//
-//   GET /v1/diagnostics/errors
-//
-// The ring is populated by `errorMiddleware` on every 5xx (unhandled
-// `internal_error` + LLM-mapped 502/504 + typed 5xx HttpErrors). The
-// CLI's `/logs` slash command reads this so operators can correlate a
-// `trace_id` from the user-facing banner to the actual server-side
-// cause without SSH-ing into the engine container.
-//
-// Tenant scoping: a request without a tenant context (e.g. an early
-// auth failure) gets `tenant_id: null` in the ring. We filter strictly
-// to the caller's tenant; the rare auth-time failure stays invisible
-// by design.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { errorRing } from "../../../observability/index.ts";

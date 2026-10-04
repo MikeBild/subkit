@@ -1,8 +1,3 @@
-// A model-authored ask_user_confirm with a write commit_intent must have the
-// same durable browser channel as a policy-generated confirmation. Hosted MCP
-// clients may advertise form elicitation without ever rendering the form; the
-// approval URL is the fail-closed fallback the operator can always open.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";

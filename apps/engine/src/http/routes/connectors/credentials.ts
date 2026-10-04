@@ -1,8 +1,3 @@
-// Credential attachment for a connector:
-//   GET  /v1/connectors/{id}/credential              — how it signs in, never the material
-//   POST /v1/connectors/{id}/credentials             — non-oauth credential
-//   POST /v1/connectors/{id}/end-user-credentials    — end-user-scoped
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
@@ -37,30 +32,12 @@ const credentialsRoute = createRoute({
   },
 });
 
-// There is deliberately no end-user-credential endpoint here.
-//
-// The table, the encryption path and a promotion guard for per-end-user
-// credentials all existed, and one route wrote to them — but nothing on the
-// execution path ever read a row back. `combine_mode` was stored and never
-// consulted. An operator could attach a credential per end user, receive a
-// 201, and have it silently never apply.
-//
-// Accepting data the product cannot honour is worse than not offering the
-// feature, so the endpoint is gone. `end_user_credentials` remains in the
-// schema for rows written by older versions, and the promotion guard still
-// refuses to copy them. Reintroducing this needs a read path in the dispatch
-// layer first, not a route.
-
 const CredentialSummary = z
   .object({
     mode: z.string(),
     environment: z.enum(["dev", "prod"]),
     connection: ConnectionSummarySchema.nullable(),
-    /** The header names a `header` credential sends — names only, never values. */
     header_names: z.array(z.string()),
-    /** Permissions the connector asks its provider for that the last sign-in
-     *  did not grant. Empty when all were, when none are asked for, and when
-     *  the grant was never recorded — it is a statement, never a guess. */
     missing_scopes: z.array(z.string()),
     updated_at: z.string(),
   })
@@ -110,8 +87,6 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
     const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!connector) throw new NotFoundError("connector");
 
-    // "Verbindung wählen": no material arrives; the credential row points at
-    // the connection and the token is read from it at request time.
     if (body.mode === "connection") {
       if (!body.connection_id) throw new BadRequestError("connection mode requires connection_id");
       const connection = await credsvc.getConnection(db, principal.tenant_id, body.connection_id);
@@ -147,7 +122,6 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const value = credentialBodyToValue(body);
 
-    // If connector auth_type differs, keep them consistent by updating connector too.
     if (connector.auth_type !== body.mode) {
       await connectorSvc.updateConnector(
         principal.tenant_id,
@@ -169,8 +143,6 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    // A person replaced the credential: the same resolution as a sign-in at
-    // the provider — the sign-in flag and the breaker, never the on/off switch.
     await connectorSvc.completeConnectorReauthorization(db, {
       tenant_id: principal.tenant_id,
       connector_id: id,

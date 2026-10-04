@@ -1,33 +1,3 @@
-// Engine crash recovery.
-//
-// Scenario: the engine process exits hard (OOM kill, kernel panic,
-// SIGKILL from the orchestrator) while one or more executions are
-// `status='running'`. Without a sweep, those rows are stuck forever —
-// the worker that owned them is gone, no one will ever flip them to a
-// terminal state, and the API surface keeps reporting them as live.
-//
-// On boot and on a periodic reconciliation pass we SELECT every `running`
-// execution. A row is terminalized when either a durable abort request is
-// present or its `started_at` is older than `workflow.timeout_ms × 1.5`
-// (defaulting to 6h × 1.5 = 9h when the workflow has no explicit timeout).
-// Abort requests become `aborted`; expired rows become `timed_out`. Each
-// transition runs inside a transaction that:
-//   - asserts `status='running'` in the WHERE so a concurrent engine
-//     instance racing the same row loses cleanly (RETURNING is empty,
-//     we skip).
-//   - terminalizes any still-running step rows in the same transaction,
-//     preserving the execution/step state invariant after a crash.
-//   - writes the matching terminal outbox events so the existing
-//     notification pipeline can fan out alerts.
-//   - emits an `execution.crash_recovered` audit row with the timing
-//     context (`started_at`, `recovered_at`, `timeout_ms`,
-//     `actor_type: "system"`) so compliance tooling can see crashes
-//     without reading structured logs.
-//
-// The sweep is bounded to LIMIT 1000 per call so a pathological backlog
-// after a long outage cannot blow out memory. Subsequent reconciler
-// passes will pick up anything left behind.
-
 import { eq, sql } from "drizzle-orm";
 import { recordExecutionCrashRecovered } from "../audit/recorders/index.ts";
 import { getConfig } from "../config/loader.ts";
@@ -37,23 +7,13 @@ import { executionSteps, executions, workflowVersions } from "../db/schema/index
 import { logger } from "../logging/logger.ts";
 import type { ExecutionStatus } from "./types.ts";
 
-/** 6h default — the upper bound used when no workflow timeout is set. */
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
-/** Multiplier applied to `workflow.timeout_ms` to define the crash-grace window. */
 const CRASH_GRACE_MULTIPLIER = 1.5;
-/** Cap one sweep pass at this many rows so a backlog cannot OOM the boot. */
 const MAX_RECOVER_PER_PASS = 1000;
 
 export interface RecoverCrashedExecutionsOptions {
   now?: Date;
   source?: "boot_recovery" | "periodic_recovery";
-  /**
-   * Per-tenant override threshold in ms. If provided and positive,
-   * trumps the per-workflow `timeout_ms × 1.5` calculation. The runtime
-   * setting `queue.crash_recovery_threshold_ms` supplies this when non-zero.
-   * The override is a hard cap on the grace window — callers that want
-   * "never reap" should not call this function.
-   */
   overrideThresholdMs?: number;
 }
 
@@ -62,10 +22,6 @@ export interface RecoverCrashedExecutionsResult {
   reconciled_steps: number;
 }
 
-/**
- * Parse a legacy textual recovery threshold. Retained for migration tooling;
- * production reads the typed runtime setting.
- */
 export function resolveCrashRecoveryThresholdMs(envValue: string | undefined): number | undefined {
   if (!envValue) return undefined;
   const parsed = Number.parseInt(envValue, 10);
@@ -79,7 +35,6 @@ interface CandidateRow {
   workflow_id: string | null;
   started_at: Date | null;
   abort_requested_at: Date | null;
-  /** Pulled from `workflow_versions.dag->>timeout_ms` — may be null. */
   workflow_timeout_ms: number | null;
 }
 
@@ -94,11 +49,6 @@ interface TerminalExecutionWithRunningStepRow {
   status: TerminalExecutionStatus;
 }
 
-/**
- * Boot-time sweep. Promotes every stuck `running` execution to
- * `timed_out` and emits the matching audit + outbox events. Returns
- * the count of rows promoted so the caller can log it.
- */
 export async function recoverCrashedExecutions(
   db: Db,
   opts: RecoverCrashedExecutionsOptions = {},
@@ -106,14 +56,6 @@ export async function recoverCrashedExecutions(
   const now = opts.now ?? new Date();
   const source = opts.source ?? "boot_recovery";
 
-  // Candidate select. We pull the workflow's `timeout_ms` out of the
-  // dag JSON of the exact workflow version bound to the execution — falling
-  // back to the default when the field is missing. Reading the workflow's
-  // current version here would let a later edit silently change the timeout
-  // contract of an already-running execution. The threshold is computed
-  // per-row in JS (not SQL) so the override and the multiplier stay
-  // visible at the call site rather than buried inside an INTERVAL
-  // expression.
   // tenant-filter:exempt — recovery sweeps every tenant on resume
   const candidates = (await db
     .select({
@@ -134,7 +76,7 @@ export async function recoverCrashedExecutions(
   let recovered = 0;
   for (const row of candidates) {
     const abortRequested = row.abort_requested_at !== null;
-    if (!abortRequested && !row.started_at) continue; // can't classify an expiry without a start time
+    if (!abortRequested && !row.started_at) continue;
     const baseTimeout = row.workflow_timeout_ms ?? DEFAULT_WORKFLOW_TIMEOUT_MS;
     const thresholdMs = opts.overrideThresholdMs ?? baseTimeout * CRASH_GRACE_MULTIPLIER;
     const ageMs = row.started_at ? now.getTime() - row.started_at.getTime() : null;
@@ -151,9 +93,6 @@ export async function recoverCrashedExecutions(
           .set({
             status: terminalStatus,
             finished_at: now,
-            // The run's own failure record, as the engine's finalize writes
-            // it. A crash between steps leaves no step row to carry a cause;
-            // without this the run reads failed-without-a-cause forever.
             failure: {
               step_id: null,
               error_code: recoveryReason,
@@ -163,9 +102,6 @@ export async function recoverCrashedExecutions(
             },
             output_contract: "none",
           })
-          // status='running' is repeated in the WHERE so a competing
-          // engine instance that already promoted this row loses the
-          // race cleanly (the UPDATE returns no rows and we skip).
           .where(sql`${executions.id} = ${row.id} AND ${executions.status} = 'running'`)
           .returning({ id: executions.id });
         if (updated.length === 0) return false;
@@ -268,7 +204,6 @@ export async function recoverCrashedExecutions(
         threshold_ms: thresholdMs,
       });
     } catch (err) {
-      // One bad row must not abort the sweep — log and continue.
       logger.error({
         module: "execution",
         action: "crash_recovery.row_failed",
@@ -280,12 +215,6 @@ export async function recoverCrashedExecutions(
     }
   }
 
-  // A previous engine version could terminalize the execution row while
-  // leaving one or more step rows in `running`. Those rows no longer have a
-  // running parent, so selecting only running executions can never repair
-  // them. Reconcile that invariant independently on every pass. The initial
-  // query is bounded by step rows, then de-duplicated by execution because a
-  // single transaction repairs every still-running step of that parent.
   // tenant-filter:exempt — recovery sweeps every tenant on resume
   const inconsistentRows = (await db
     .select({
@@ -415,17 +344,6 @@ export interface CrashRecoveryMonitor {
   checkNow(): Promise<RecoverCrashedExecutionsResult>;
 }
 
-/**
- * Periodically reconcile executions whose owning worker disappeared.
- *
- * A boot-only sweep has a race: when an execution is younger than its grace
- * window during startup, it remains `running` forever because no later pass
- * revisits it. The recursive timer reads the setting after every pass, so an
- * operator can tune the cadence through SubKit settings without a deployment.
- * A single-flight guard prevents overlapping global scans on a slow database;
- * the row-level compare-and-set in recoverCrashedExecutions keeps concurrent
- * engine replicas safe.
- */
 export function startCrashRecoveryMonitor(
   db: Db,
   options: {

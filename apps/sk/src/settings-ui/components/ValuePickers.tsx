@@ -1,14 +1,3 @@
-// Stand-alone value pickers for Theme / Personality / Title / Statusline.
-// These four flows are surfaced from the Config tab when a setting row's
-// path matches a picker-eligible key. Since the engine has no `ui.theme`,
-// `ui.personality`, `ui.title.format`, or `ui.statusline.format` setting
-// today, the components ship as standalone Ink components — wiring into
-// the Config tab is a follow-up that lands when the corresponding engine
-// settings are added.
-//
-// All four pickers share the same shape: a list of options, optional live
-// preview, Enter commits, Esc cancels and restores the snapshot.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";

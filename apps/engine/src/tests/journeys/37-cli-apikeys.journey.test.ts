@@ -1,25 +1,8 @@
-// User story: As a platform operator, I want to manage API keys through
-// the `sk apikeys` CLI so I can automate key issuance, rotation, and
-// revocation without writing curl.
-// Acceptance criteria:
-//   - AC1: `apikeys list --json` returns at least the seed key with id
-//          and prefix fields present on every item.
-//   - AC2: After issuing a key via the REST API, `apikeys list --json`
-//          reflects the new key in the returned items array.
-//   - AC3: `apikeys rotate <id>` returns a new plaintext token starting
-//          with "wf_live_" and a new prefix differing from the original.
-//   - AC4: `apikeys revoke <id>` prints "revoked" to stdout.
-//   - AC5: After revoke, `apikeys list --json` no longer contains the
-//          revoked key's id.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { apiKeysCommand } from "../../../../sk/src/commands/apikeys.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -179,16 +162,12 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// Seed a second API key via the REST API (the CLI `create` command requires
-// owner_kind + owner_id which the CLI does not currently expose as flags).
-// All CLI list/rotate/revoke tests operate against this seeded key.
 let seededKeyId = "";
 let seededKeyPrefix = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-apikeys");
 
-  // Issue a key for the seeded user so the tests have a key to work with.
   const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
     method: "POST",
     body: JSON.stringify({
@@ -214,7 +193,6 @@ afterAll(async () => {
 describe("journey 37: sk apikeys CLI", () => {
   test("AC1: apikeys list --json returns >= 1 item; each item has id and prefix", async () => {
     const { stdout } = await run(apiKeysCommand, ["list"]);
-    // emitList with --json outputs the raw array, not { items: [] }
     const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; prefix: string }>;
     expect(Array.isArray(items)).toBe(true);
     expect(items.length).toBeGreaterThanOrEqual(1);
@@ -227,7 +205,6 @@ describe("journey 37: sk apikeys CLI", () => {
   });
 
   test("AC2: newly issued key appears in apikeys list --json", async () => {
-    // Issue a second key via REST so we can assert it surfaces in the CLI list.
     const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
       body: JSON.stringify({
@@ -241,7 +218,6 @@ describe("journey 37: sk apikeys CLI", () => {
     expect(issued.plaintext_key).toMatch(/^wf_live_/);
     expect(issued.prefix).toBe(issued.plaintext_key.slice(0, 12));
 
-    // Verify the CLI list reflects the newly issued key.
     const { stdout } = await run(apiKeysCommand, ["list"]);
     const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string }>;
     const ids = items.map((k) => k.id);
@@ -250,7 +226,6 @@ describe("journey 37: sk apikeys CLI", () => {
 
   test("AC3: apikeys rotate <id> returns new token with wf_live_ prefix and changed prefix", async () => {
     const { stdout, stderr } = await run(apiKeysCommand, ["rotate", seededKeyId]);
-    // The rotate command emits a warning on stderr before the JSON.
     expect(stderr).toContain("warning");
     const body = JSON.parse(extractLastJson(stdout)) as {
       old: { id: string; prefix: string };
@@ -259,13 +234,11 @@ describe("journey 37: sk apikeys CLI", () => {
     expect(body.new.plaintext_key).toMatch(/^wf_live_/);
     expect(typeof body.new.prefix).toBe("string");
     expect(body.new.prefix.length).toBeGreaterThan(0);
-    // The new prefix must differ from the original (new key generated).
     expect(body.new.prefix).not.toBe(seededKeyPrefix);
     expect(body.old.id).toBe(seededKeyId);
   });
 
   test("AC4: apikeys revoke <id> prints 'revoked'", async () => {
-    // Issue a fresh key specifically for the revoke test.
     const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
       body: JSON.stringify({
@@ -282,7 +255,6 @@ describe("journey 37: sk apikeys CLI", () => {
   });
 
   test("AC5: revoked key no longer appears in apikeys list --json", async () => {
-    // Issue and immediately revoke a key.
     const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
       body: JSON.stringify({
@@ -294,14 +266,9 @@ describe("journey 37: sk apikeys CLI", () => {
     expect(issueRes.status).toBe(201);
     const { id: ephemeralId } = (await issueRes.json()) as { id: string };
 
-    // Revoke via CLI.
     const { stdout: revokeOut } = await runPlain(apiKeysCommand, ["revoke", ephemeralId]);
     expect(revokeOut).toContain("revoked");
 
-    // NOTE: The engine's listApiKeys returns all rows (including revoked)
-    // for admin principals. The real contract being tested here is that
-    // `revoke` changes the DB state (revoked_at is non-null). We verify
-    // via a direct DB assertion rather than a list membership check.
     const { apiKeys } = await import("../../db/schema/index.ts");
     const { eq } = await import("drizzle-orm");
     const rows = await ctx.db.select().from(apiKeys).where(eq(apiKeys.id, ephemeralId)).limit(1);
@@ -309,11 +276,6 @@ describe("journey 37: sk apikeys CLI", () => {
   });
 
   test("wrong tenant: key id from a different context is not found by rotate", async () => {
-    // Use a synthetic uuid that doesn't exist in this tenant.
-    // RFC-4122-compliant (version 4 / variant 8) so the route's
-    // IdParam uuid validation passes and the tenant-scoped lookup is
-    // what fails — the contract this test pins is "unknown id → not
-    // found", not "malformed uuid → 400".
     const fakeId = "00000000-0000-4000-8000-000000000099";
     const { message, captured } = await runExpectError(apiKeysCommand, ["rotate", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();

@@ -2,27 +2,12 @@ import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
-/**
- * Which rule of an approved report boundary a refused step broke — the
- * engine's own list, published by its schema.
- *
- * "Freigabe passt nicht mehr" says THAT the approval no longer fits. The
- * engine knows WHY: the message was encoded byte by byte instead of as UTF-8,
- * or it went to someone other than the approved recipient. Those are different
- * repairs, and a reader shown only the first sentence cannot tell which one to
- * ask for.
- */
 export type RefusalReason = NonNullable<
   components["schemas"]["ExecutionOutcome"]["refusal_reason"]
 >;
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-/**
- * Every reason the engine names, as the cockpit's own words. `satisfies` makes
- * a reason the engine adds and this table lacks a compile error; the test
- * beside this file checks the same against the engine's source.
- */
 export const REFUSAL_REASON_KEYS = {
   not_json_raw: "refusal.reason.not_json_raw",
   not_base64url: "refusal.reason.not_base64url",
@@ -44,18 +29,12 @@ export const REFUSAL_REASON_KEYS = {
   content_type_differs: "refusal.reason.content_type_differs",
 } as const satisfies Record<RefusalReason, TranslationKey>;
 
-/** The cockpit's sentence key for a reason; undefined for one this build does not know. */
 export function refusalReasonKey(reason: string): TranslationKey | undefined {
   return Object.hasOwn(REFUSAL_REASON_KEYS, reason)
     ? REFUSAL_REASON_KEYS[reason as RefusalReason]
     : undefined;
 }
 
-/**
- * A reason as the reader sees it, or null when the engine named none. A reason
- * a newer engine sends and this build has no sentence for stays the engine's
- * own value, marked as one — never dropped, never "Unbekannt".
- */
 export function refusalReasonLabel(
   reason: string | null | undefined,
   t: Translate,

@@ -1,5 +1,3 @@
-// Which scopes a person grants and which the engine asks for on its own.
-
 import { describe, expect, test } from "bun:test";
 import { permissionScopes, requestedScopes } from "../scopes.ts";
 import type { AuthorizationServerMetadata } from "../types.ts";

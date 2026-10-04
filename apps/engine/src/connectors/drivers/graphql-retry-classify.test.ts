@@ -1,6 +1,3 @@
-// Unit tests for isGraphqlRetryable.
-// Pure function — no database, no network.
-
 import { describe, expect, test } from "bun:test";
 import { classifyGraphqlSchemaError, isGraphqlRetryable } from "./graphql-retry-classify.ts";
 
@@ -160,8 +157,6 @@ describe("isGraphqlRetryable · message substring (last resort)", () => {
   });
 
   test("message with structured non-retryable code overrides retryable message substring", () => {
-    // extensions.code=FORBIDDEN (not retryable) should win over a message
-    // that happens to contain 'TIMEOUT' text.
     expect(
       isGraphqlRetryable(200, {
         errors: [{ message: "TIMEOUT on forbidden path", extensions: { code: "FORBIDDEN" } }],

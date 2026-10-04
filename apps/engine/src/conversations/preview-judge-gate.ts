@@ -1,33 +1,3 @@
-// The judge gate for green dry-runs (Fix C / P3) — extracted from
-// dry_run_workflow so the tool stays focused on orchestration and the
-// semantic-gate decision has a single owner.
-//
-// A green dry-run is a STRUCTURAL signal; the judge asks the semantic
-// question — "does this preview satisfy the user's goal?" — in ONE
-// deterministic LLM call BEFORE the auto-commit. `partial`/`failed`
-// joins the requires_repair path (no auto-commit; verdict + missing
-// items returned for repair); the explicit save path incl. force_commit
-// remains the operator escape hatch. Skips (no goal stashed on the
-// draft / judge infrastructure unavailable) never block — the commit
-// proceeds exactly as before this feature existed.
-//
-// Convergence (P3):
-//   - Memoization. Before calling the judge, if the current definition
-//     fingerprint matches the last judged verdict on the draft, the
-//     cached verdict is reused and the judge LLM call is SKIPPED — an
-//     unchanged re-preview never re-judges.
-//   - Circuit-breaker = blocks-since-last-commit. The block counter is
-//     MONOTONIC per-draft (NOT per-fingerprint): it increments on every
-//     block regardless of whether the model edited the definition, and
-//     resets only on commit. The cap breaks the edit→dry-run LOOP; it does
-//     NOT release the quality gate — at and over `JUDGE_BREAKER_MAX_BLOCKS`
-//     the preview stays HELD (`judgeBlocked` remains true, see below), so an
-//     unsatisfied preview never auto-commits just because the model kept
-//     trying.
-//   - Terminal done-signal. At/over the cap the result carries an explicit
-//     EXIT instruction: stop editing, tell the user what's missing, ask how
-//     to proceed — instead of yet another silent requires_repair.
-
 import { logger } from "../logging/logger.ts";
 import { recordPreviewJudgeVerdict } from "../observability/instrumentation.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
@@ -45,35 +15,16 @@ import type { JudgeBreakerState, JudgeVerdictMemo } from "./types.ts";
 export interface PreviewJudgeGateResult {
   judgeOutcome: PreviewJudgeOutcome | null;
   judgeBlocked: boolean;
-  /** undefined = leave the stored breaker untouched. */
   nextJudgeBreaker: JudgeBreakerState | undefined;
-  /** The judge_goal_mismatch warning to append when blocked. */
   warning: { step_key: null; code: "judge_goal_mismatch"; message: string } | null;
-  /**
-   * Terminal done-signal. Present when the judge would block and the breaker
-   * is at/over the cap: the preview stays HELD and this EXIT guidance is
-   * surfaced so the model stops editing and asks the user instead of looping.
-   */
   doneSignal: {
     attempts: number;
     missing: string[];
     guidance: string;
   } | null;
-  /**
-   * Hard escalation (P3 hardening). True once the preview has been HELD at
-   * the block cap `JUDGE_BREAKER_ESCALATE_AFTER` extra times — i.e. the model
-   * kept re-running dry_run_workflow despite the terminal done-signal. The
-   * consumer then emits a forced operator-choice envelope (commit-as-is /
-   * abandon / more guidance) instead of yet another silent `ok:false`, so an
-   * ignored EXIT cannot spin forever.
-   */
   escalate?: boolean;
 }
 
-/**
- * Map a non-skipped judge outcome to the memo persisted on the draft so
- * an unchanged re-preview can reuse it without a fresh LLM call.
- */
 function toVerdictMemo(fingerprint: string, outcome: PreviewJudgeOutcome): JudgeVerdictMemo | null {
   if (outcome.verdict === "skipped") return null;
   return {
@@ -92,11 +43,8 @@ export async function runPreviewJudgeGate(p: {
   definition: WorkflowDef;
   steps: ReadonlyArray<Record<string, unknown>>;
   run_steps: Parameters<typeof buildJudgeStepArtifacts>[0];
-  /** The run's resolved final output (post output_transform) — the format
-   *  check evaluates this, not the step artifacts. */
   final_output?: unknown;
   prior_breaker: JudgeBreakerState | null;
-  /** Turn/pipeline abort signal (P1) threaded into the judge call. */
   signal?: AbortSignal;
 }): Promise<PreviewJudgeGateResult> {
   let judgeOutcome: PreviewJudgeOutcome | null = null;
@@ -121,8 +69,6 @@ export async function runPreviewJudgeGate(p: {
   const priorBlocks = p.prior_breaker?.blocks_since_commit ?? 0;
   const memo = p.prior_breaker?.last_verdict ?? null;
 
-  // Memoized verdict (P3): an unchanged re-preview (same fingerprint)
-  // reuses the cached verdict and skips the judge LLM call entirely.
   if (memo && memo.fingerprint === fingerprint) {
     judgeOutcome = { verdict: memo.verdict, reason: memo.reason, missing: memo.missing };
     logger.info({
@@ -147,14 +93,11 @@ export async function runPreviewJudgeGate(p: {
   }
 
   if (judgeOutcome.verdict === "skipped") {
-    // `judge.unavailable` already logged inside judgePreview.
     recordPreviewJudgeVerdict({ verdict: "skipped", blocked: false });
     return { judgeOutcome, judgeBlocked, nextJudgeBreaker, warning: null, doneSignal };
   }
 
   if (judgeOutcome.verdict === "passes") {
-    // A passing verdict refreshes the memo so a re-preview short-circuits
-    // straight to the commit path.
     recordPreviewJudgeVerdict({ verdict: "passes", blocked: false });
     nextJudgeBreaker = {
       blocks_since_commit: priorBlocks,
@@ -163,14 +106,8 @@ export async function runPreviewJudgeGate(p: {
     return { judgeOutcome, judgeBlocked, nextJudgeBreaker, warning: null, doneSignal };
   }
 
-  // partial / failed. The breaker counts blocks since the last commit;
-  // the (priorBlocks)-th block is the one at the cap that stops inviting
-  // another edit and emits the terminal done-signal. The preview stays held.
   if (priorBlocks >= JUDGE_BREAKER_MAX_BLOCKS) {
     const attempts = priorBlocks + 1;
-    // Count holds AT the cap. The cap is hit once; every subsequent re-run
-    // while still failing is a hold the model should not have made (it was
-    // told to stop). After ESCALATE_AFTER such holds, force an operator choice.
     const priorHolds = p.prior_breaker?.holds_at_cap ?? 0;
     const holdsAtCap = priorHolds + 1;
     const escalate = holdsAtCap >= JUDGE_BREAKER_ESCALATE_AFTER;
@@ -187,17 +124,8 @@ export async function runPreviewJudgeGate(p: {
       blocks_since_commit: priorBlocks,
       holds_at_cap: holdsAtCap,
     });
-    // The breaker breaks the edit→dry-run→block LOOP, NOT the quality gate:
-    // a still-unsatisfied preview must NEVER auto-commit (that minted empty /
-    // goal-violating workflows inline). Keep `judgeBlocked = true` so the
-    // consumer withholds the commit, AND surface the terminal done-signal so
-    // the model STOPS re-running dry_run_workflow and instead tells the user
-    // what is missing / offers an explicit commit-as-is via save_workflow_draft.
     judgeBlocked = true;
     recordPreviewJudgeVerdict({ verdict: judgeOutcome.verdict, blocked: true });
-    // Hold the block counter where it is (do NOT reset — only a real commit
-    // resets it) and advance the at-cap hold counter so an ignored EXIT
-    // escalates rather than looping silently forever.
     nextJudgeBreaker = {
       blocks_since_commit: priorBlocks,
       holds_at_cap: holdsAtCap,
@@ -224,8 +152,6 @@ export async function runPreviewJudgeGate(p: {
     };
   }
 
-  // Below the cap: BLOCK the auto-commit and increment the monotonic
-  // counter regardless of fingerprint change.
   judgeBlocked = true;
   nextJudgeBreaker = {
     blocks_since_commit: priorBlocks + 1,

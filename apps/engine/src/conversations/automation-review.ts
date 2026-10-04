@@ -22,19 +22,10 @@ interface EnvironmentReview {
   preview_evidence?: Awaited<ReturnType<typeof inspectHeldPreviewEvidence>>;
 }
 
-/** The cockpit page where a person reviews and applies a workflow's saved
- *  change when the surface they are on renders no review card. */
 export function savedChangeReviewPath(workflow_id: string): string {
   return `/cockpit/workflows/${encodeURIComponent(workflow_id)}`;
 }
 
-/**
- * The saved version that waits for a person to apply it, or null.
- *
- * A saved draft is inert: nothing runs it until a human applies it. That holds
- * for a workflow nothing starts automatically just as for a scheduled one, so
- * the review that applies it cannot depend on a schedule or webhook existing.
- */
 export function pendingSavedChange(workflow: {
   current_version_id?: string | null;
   draft_version_id?: string | null;
@@ -45,13 +36,6 @@ export function pendingSavedChange(workflow: {
     : null;
 }
 
-/**
- * Keep live scheduling evidence separate from the saved version the person reviews.
- *
- * `inbound_hooks` is asked for, not implied: a hook has its own read permission
- * and its refusal reason is audit-log content, so only a caller that has
- * checked both may pass it — the same two probes `automation-status` makes.
- */
 export async function inspectAutomationReview(
   db: Db,
   tenant_id: string,
@@ -61,8 +45,6 @@ export async function inspectAutomationReview(
   const workflow = await getWorkflow(tenant_id, workflow_id, db);
   if (!workflow) return null;
   const version_id = workflow.draft_version_id ?? workflow.current_version_id;
-  // One review per environment: a schedule and a hook in the same environment
-  // are judged against the same version and the same boundary.
   const reviews = new Map<"dev" | "prod", Promise<EnvironmentReview>>();
   const reviewFor = (environment: "dev" | "prod") => {
     let review = reviews.get(environment);
@@ -104,10 +86,6 @@ export async function inspectAutomationReview(
   };
 }
 
-/**
- * The saved change a person applies, judged in the environment a run would
- * use. Null when nothing waits: the active version is the latest saved one.
- */
 async function savedChangeReview(
   db: Db,
   tenant_id: string,
@@ -120,8 +98,6 @@ async function savedChangeReview(
   try {
     environment = await workflowExecutionEnvironment(db, tenant_id, workflow.id);
   } catch {
-    // Schedules in both environments: each schedule row already carries the
-    // review of its own environment, and the card offers both.
     return null;
   }
   return {
@@ -151,8 +127,6 @@ async function reviewEnvironment(
       : null;
     const preview = input ? await previewWorkflowAuthority(input, db) : null;
     const held = input ? await inspectHeldPreviewEvidence(input, db) : null;
-    // The same diagnosis every other surface reads, built from the preview
-    // and the held evidence this review already holds.
     const diagnosis =
       version_id && preview
         ? await diagnoseWorkflow(db, tenant_id, workflow_id, environment, {
@@ -168,10 +142,6 @@ async function reviewEnvironment(
       issues: preview?.manifest.issues ?? [],
       unavailable_steps: preview?.unavailable_steps ?? [],
       preview_evidence: held,
-      // The remedy travels with the diagnosis. Joining over `issues` (not
-      // over `effects`) is what makes a storage or child-call problem
-      // carry its fix too — the old construction only ever matched one
-      // hard-coded report endpoint, so every other issue arrived bare.
       repair_guidance: repairGuidanceForIssues(
         preview?.manifest.issues ?? [],
         preview?.manifest.effects ?? [],

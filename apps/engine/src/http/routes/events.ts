@@ -1,13 +1,3 @@
-// Events HTTP surface.
-//
-//   POST /v1/events   — admin-only manual emission. Validates the
-//                       payload against the zod schema in the
-//                       catalog, writes an outbox row, and fans
-//                       out to subscriptions when a pg-boss handle
-//                       is available.
-//   GET  /v1/events   — tail the tenant's outbox, filtered by
-//                       channel and/or type.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ErrorSchema, paginatedResponse } from "../../api/common-schemas.ts";
@@ -81,8 +71,6 @@ const emitRoute = createRoute({
 });
 
 export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
-  // Outbox events sit under audit:read — they describe the same
-  // compliance surface as the audit log itself.
   app.use("/v1/events", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("audit:read")(c, next);
     if (c.req.method === "POST") return requirePermission("audit:read")(c, next);
@@ -159,8 +147,6 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // Best-effort inline fanout so the caller sees immediate downstream
-    // effect. If pg-boss isn't running (e.g. tests), skip silently.
     try {
       const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
         | ReturnType<typeof getBoss>
@@ -174,26 +160,15 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
         event_type: body.type,
         payload: body.payload,
       });
-    } catch {
-      /* boss not running; fanout will happen async via the listener */
-    }
+    } catch {}
     return c.json({ event_id }, 202);
   });
 
-  // -----------------------------------------------------------------
-  // GET /v1/events/stream — tenant-wide SSE tail over the outbox.
-  // Replay + poll semantics live in the shared `streamOutboxTail`
-  // helper (also backing GET /v1/executions/{id}/stream).
-  // -----------------------------------------------------------------
   app.get("/v1/events/stream", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenantId = principal.tenant_id;
 
-    // Optional narrowing filters. `execution_id` extracts
-    // `payload->>'execution_id'` from the JSONB column — every event
-    // emitted by `apps/engine/src/execution/state.ts` carries that key.
-    // `channel` and `type` parity with the `GET /v1/events` route.
     const rawExecutionId = c.req.query("execution_id") ?? null;
     if (rawExecutionId !== null) {
       const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

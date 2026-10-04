@@ -78,7 +78,6 @@ describe("connector by hand: what it connects, then how SubKit signs in", () => 
         scope: "read write admin",
       },
     });
-    // An empty secret (a public client) and no scopes are left out, not sent empty.
     expect(
       connectorCreateBody({
         ...base,
@@ -117,7 +116,6 @@ describe("connector by hand: what it connects, then how SubKit signs in", () => 
     expect(manualConnectorProblem({ ...ok, oauth: { ...ok.oauth, clientId: " " } })).toBe(
       "create.connector.clientIdMissing",
     );
-    // No public address: no service could send the reader back, for either kind.
     expect(manualConnectorProblem({ ...ok, callbackUrl: null })).toBe("signIn.failed.publicUrl");
     expect(
       manualConnectorProblem({
@@ -127,7 +125,6 @@ describe("connector by hand: what it connects, then how SubKit signs in", () => 
         callbackUrl: null,
       }),
     ).toBe("signIn.failed.publicUrl");
-    // An MCP server finds its own sign-in service: no OAuth app is asked for.
     expect(manualConnectorProblem({ ...ok, target: "mcp", oauth: EMPTY_OAUTH_CLIENT })).toBeNull();
     expect(manualConnectorProblem({ ...ok, signIn: "key" })).toBe("create.connector.secretMissing");
     expect(

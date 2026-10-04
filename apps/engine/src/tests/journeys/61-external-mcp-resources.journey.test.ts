@@ -1,40 +1,3 @@
-// User story: As an operator who connected a reporting server over MCP,
-// I ask the chat which databases exist and which tables one of them has,
-// and the model answers from the server — it can see the server's own
-// tools, its resource templates, and the guidance the server ships.
-// Acceptance criteria:
-//   - AC1: a remote TOOL the server names `read_resource` reaches the model
-//          with the server's own description, and calling it issues
-//          `tools/call` on that tool — never `resources/read`. An
-//          engine-minted adapter must not take a name the server already
-//          uses.
-//   - AC2: resource templates are reachable: a `list_resource_templates`
-//          entry is offered and, once a person approves it, issues
-//          `resources/templates/list` and returns the server's answer.
-//   - AC3: the server's `instructions` reach the model, attributed to the
-//          server as its own words.
-// Spec refs: docs/developers/tool-palette.md
-//
-// THE REMOTE REPLAYS A RECORDING. The server below is a real SDK
-// `McpServer` on an in-memory transport, swapped in through the pool's
-// transport seam, and the engine's real SDK `Client` negotiates with it.
-// Its answers are the ones recorded from the reporting server the defect
-// was observed against:
-//   - `resources/list` names ONE document; its data is not a resource, and
-//     `resources/read` on a data URI answers "not found";
-//   - its TOOL `read_resource` takes `{ uris }` and is the only way to the
-//     data — `metabase://databases` lists eight databases,
-//     `metabase://database/8/tables` pages 327 tables 25 at a time.
-// Not recorded, and set here to pin the pass-through: the server's
-// `instructions`. The recording has no resource templates, so AC2 pins the
-// path, not a template the real server may not have.
-//
-// The model is the mock provider, used only to issue the calls; it records
-// the palette it was offered, which is what the assertions read — every
-// layer between assembly and the provider call has had its say by then.
-// The conversational proof (the model answering with the databases) is a
-// live check against the real server, not this file.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -66,8 +29,6 @@ let ctx: JourneyCtx;
 let remoteToolCalls: string[][] = [];
 let resourceReads: string[] = [];
 
-/** The recorded reporting server. A fresh instance per handshake: an
- *  `McpServer` connects exactly once. */
 function recordedReportingServer(): McpServer {
   const server = new McpServer(
     { name: "reporting", version: "1.0.0" },
@@ -149,8 +110,6 @@ beforeAll(async () => {
     transport: "http",
     url: "https://metabase.journey.example.com/mcp",
   });
-  // The operator lets the server's own `read_resource` tool run without a
-  // question — the setting that exists for exactly this kind of read.
   await setMcpToolConfirmation(ctx.db, {
     tenant_id: ctx.tenantId,
     connector_id: seeded.id,
@@ -203,7 +162,6 @@ describe("journey 57: a connected MCP server's resources reach the model", () =>
       const paused = await say(conversationId, "Welche Tabellen hat CM-Prod?");
       expect(lastPalette().map((t) => t.name)).toContain("mcp_metabase__list_resource_templates");
 
-      // A read the engine minted still asks, like every other adapter.
       const pause = paused.events.find(
         (e) => e.type === "tool_result" && e.tool === "mcp_metabase__list_resource_templates",
       );
@@ -233,7 +191,6 @@ describe("journey 57: a connected MCP server's resources reach the model", () =>
           e.output?.status === "succeeded",
       );
       expect(result?.output?.remote_tool).toBe("resources/templates/list");
-      // The server's answer, verbatim: the recording has no templates.
       expect(result?.output?.content).toEqual({ resource_templates: [], next_cursor: null });
       expect(resourceReads).toEqual([]);
     },

@@ -18,7 +18,6 @@ afterAll(async () => {
 
 describe("http /v1/skills + /v1/ai/generate", () => {
   test("create skill then generate draft workflow and record usage", async () => {
-    // 1. create a global skill
     const skillRes = await fetch(`${srv.baseUrl}/v1/skills`, {
       method: "POST",
       headers: {
@@ -36,7 +35,6 @@ describe("http /v1/skills + /v1/ai/generate", () => {
     expect(skill.id).toBeTruthy();
     expect(skill.scope).toBe("global");
 
-    // 2. run generate
     const genRes = await fetch(`${srv.baseUrl}/v1/ai/generate`, {
       method: "POST",
       headers: {
@@ -61,7 +59,6 @@ describe("http /v1/skills + /v1/ai/generate", () => {
     expect(body.tokens.total).toBeGreaterThan(0);
     expect(body.model_used).toBeTruthy();
 
-    // 3. assert the llm_usage row was written, bound to this tenant.
     const rows = await srv.db
       .select()
       .from(llmUsage)

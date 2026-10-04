@@ -1,19 +1,6 @@
-// A real S3 server for the suites that must not be answered by a fake.
-//
-// Four suites used to carry their own copy of this bootstrap, each pinning the
-// same image by digest. When that image stopped being published, every one of
-// them broke at once and the repair had to be made four times. One fixture, one
-// pin.
-//
-// The store speaks the S3 API over a signed request, which is the point: the
-// driver, the object store and the credential resolution are all being tested
-// for whether what they send is accepted by a server that checks it. A mock
-// that ignores the signature would pass those tests without verifying anything.
-
 const IMAGE =
   "chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e";
 
-/** The one identity the fixture serves, written into the container at start. */
 const ACCESS_KEY = "subkit-fixture-key";
 const SECRET_KEY = "subkit-fixture-secret";
 const IDENTITIES = JSON.stringify({
@@ -33,13 +20,6 @@ export interface ObjectStoreFixture {
   stop: () => Promise<void>;
 }
 
-/**
- * Whether these suites can run at all.
- *
- * `SKIP_DOCKER=1` is how CI's test shards run, and a case that could not run
- * must report SKIP rather than PASS — a count that cannot tell "verified" from
- * "never ran" is not evidence, and it is the number a release reads.
- */
 export async function dockerAvailable(): Promise<boolean> {
   if (process.env.SKIP_DOCKER === "1") return false;
   const { spawnSync } = await import("node:child_process");
@@ -50,15 +30,6 @@ export async function dockerAvailable(): Promise<boolean> {
   }
 }
 
-/**
- * Start the server and return once it both listens and rejects an unsigned
- * request.
- *
- * The readiness probe is an unauthenticated GET, and the answer it waits for is
- * 403. A 200 would mean the identities file was not read and every signature
- * would be accepted — the fixture would come up, the tests would pass, and they
- * would have checked nothing.
- */
 export async function startObjectStore(namePrefix: string): Promise<ObjectStoreFixture> {
   const name = `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique container name per run
   const proc = Bun.spawn(
@@ -119,7 +90,6 @@ export async function startObjectStore(namePrefix: string): Promise<ObjectStoreF
       }
     } catch (error) {
       if (error instanceof Error && error.message.includes("unsigned request")) throw error;
-      // not listening yet
     }
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: fixture warm-up
   }

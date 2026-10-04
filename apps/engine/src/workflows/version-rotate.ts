@@ -1,7 +1,3 @@
-// INTERNAL definition-only workflow version rotation — extracted from
-// service.ts so the migration-facing write path has a single focused
-// owner (and service.ts stays under the file-size invariant).
-
 import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -20,31 +16,11 @@ import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 export interface RotateWorkflowVersionInternalInput {
   tenant_id: string;
   workflow_id: string;
-  /** Fully-validated replacement definition. MUST carry the same
-   *  `trigger` block as the current version — asserted below. */
   def: WorkflowDef;
-  /** workflow_versions.note for the new row. */
   note: string;
-  /** Extra audit metadata merged into the WORKFLOW_UPDATED row. */
   audit_metadata?: Record<string, unknown>;
 }
 
-/**
- * INTERNAL definition-only version rotation for engine-side migrations
- * (today: the item_var boot backfill). Unlike `updateWorkflow`, this
- * path NEVER calls `applyTriggerBindings`: the public update path
- * re-applies trigger bindings on every rotate, and for a
- * `kind: "request"` definition that tears down `workflows_schedules` /
- * `webhooks_inbound` rows — the known PUT-unbinds-schedules trap. A
- * migration that only rewrites step expressions must leave every
- * trigger binding row exactly as it found it, so instead of
- * preserve+restore we assert the trigger block is byte-identical and
- * skip binding reconciliation entirely.
- *
- * Throws on: workflow missing, validation failure, or a trigger
- * mismatch. Callers run it inside their own transaction so a throw
- * leaves the workflow untouched.
- */
 export async function rotateWorkflowVersionInternal(
   input: RotateWorkflowVersionInternalInput,
   exec: Executor,
@@ -58,12 +34,6 @@ export async function rotateWorkflowVersionInternal(
     );
   }
   const def = validation.workflow;
-  // Belt-and-suspenders for the item_var migration: even a rewrite that
-  // passed the AST-equivalence proof must carry ZERO residual bare
-  // iteration references — a ref the rewriter's walker missed would be
-  // byte-identical in both ASTs (proof blind spot) yet unbound at
-  // runtime. Any finding aborts the rotate; the caller flags
-  // needs_review instead of committing a silently-broken definition.
   const bareRefs = validateBareIterationIdentifiers(
     def.steps as unknown as Array<Record<string, unknown>>,
   );
@@ -115,9 +85,6 @@ export async function rotateWorkflowVersionInternal(
       version: next,
       dag: def,
       note: input.note,
-      // The migration does not change scope shapes — carry the recorded
-      // scope_index forward so inspect_workflow / suggest_jsonata_paths
-      // keep their evidence.
       ...(current.scope_index ? { scope_index: current.scope_index } : {}),
     })
     .returning();

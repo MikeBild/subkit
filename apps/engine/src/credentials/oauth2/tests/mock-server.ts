@@ -1,14 +1,3 @@
-// Tiny local OAuth2 / OIDC server for the refresh and client-credentials
-// tests. Implements just enough of the spec for openid-client v6:
-//
-//   GET  /.well-known/openid-configuration
-//   POST /token
-//   GET  /authorize (redirects to redirect_uri with ?code + ?state)
-//
-// The token endpoint accepts `client_credentials` and `refresh_token`
-// grants. Each access token carries a configurable `expires_in` so the
-// refresh test can shrink it to 1s.
-
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -17,10 +6,7 @@ export interface MockOAuthServer {
   issuedCount: () => number;
   lastGrantType: () => string | null;
   close: () => Promise<void>;
-  /** seconds until expiry on issued access tokens */
   setExpiresIn: (seconds: number) => void;
-  /** The `scope` the token endpoint reports as granted; null (the default)
-   *  echoes the request's own scope, as a provider that grants all does. */
   setGrantedScope: (scope: string | null) => void;
 }
 

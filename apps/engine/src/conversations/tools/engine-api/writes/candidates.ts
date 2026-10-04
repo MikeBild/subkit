@@ -1,5 +1,3 @@
-// approve_* / dismiss_* write tools for skill + patch candidates.
-
 import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
 import { AdvisoryCandidateError } from "../../../../skill-candidates/candidate-view.ts";
@@ -14,12 +12,7 @@ export const approveSkillCandidateTool: ConversationTool = {
     "Approve a skill candidate and create a draft tenant skill. Activation is a separate permissioned action. Writes audit. Idempotent — already-approved candidates return ok=false.",
   inputSchema: IdInput,
   category: "tenant_write",
-  // Closes the capture loop IN the coding session: the client's native
-  // destructiveHint dialog is the explicit operator approval and RBAC
-  // `skill:write` stays the hard boundary. Without this, the loop's last
-  // mile forces a surface switch to `sk learnings review` per approval.
   visible_when_readonly: true,
-  // Promotion creates a draft; this tool never implies active knowledge.
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
     let out: Awaited<ReturnType<typeof approveSkillCandidate>>;

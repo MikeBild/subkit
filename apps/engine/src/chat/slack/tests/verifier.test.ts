@@ -1,16 +1,9 @@
-// Slack v0 HMAC verifier unit tests.
-//
-// Uses a fixed signing secret and timestamp so the expected
-// signature is deterministic and referenceable from the phase
-// report.
-
 import { describe, expect, test } from "bun:test";
 import { computeSlackSignature, verifySlackRequest } from "../verifier.ts";
 
 const SIGNING_SECRET = "subkit-test-secret";
 const TIMESTAMP = "1700000000";
 const BODY = "payload=hello";
-// Pin "now" so the `stale` check is deterministic.
 const NOW = () => 1700000000_000;
 
 describe("slack verifier", () => {

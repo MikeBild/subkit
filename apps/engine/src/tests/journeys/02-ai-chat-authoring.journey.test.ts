@@ -1,16 +1,3 @@
-// User story: As an operator, I want to author a workflow through an AI
-// conversation and save its draft in manual authoring mode, so that
-// I don't have to hand-edit JSON.
-// Acceptance criteria:
-//   - AC1: A signed Slack `app_mention` ingress verifies against the
-//          Slack HMAC scheme and is accepted; a bad signature is denied.
-//   - AC2: Starting a conversation with "list users from the api" drives
-//          the canned mock-LLM plan through an approval.
-//   - AC3: Confirming the pending prompt saves an inert draft and creates
-//          a real workflow row without activating a version.
-// Spec refs: docs/developers/input-surfaces.md, docs/authors/authoring-workflows.md,
-//            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { type ServerType, serve } from "@hono/node-server";
@@ -84,8 +71,6 @@ beforeAll(async () => {
     .returning();
   if (!key) throw new Error("seed api_key");
 
-  // Seed a connector so the canned list-users plan has something to
-  // ground in. The mock provider's plan wires its step to this id.
   const [connector] = await testDb.db
     .insert(connectors)
     .values({
@@ -101,10 +86,6 @@ beforeAll(async () => {
     .returning();
   if (!connector) throw new Error("seed connector");
 
-  // Register a Slack adapter as the fallback verifier. The chat route
-  // resolves `findVerifier('slack')` so fallback adapters are enough
-  // for HMAC verification. No outbound Slack calls are made by the
-  // route itself — the adapter only verifies + normalizes.
   const chatRegistry = new ChatAdapterRegistry();
   const slackAdapter = new SlackAdapter({
     signingSecret: SIGNING_SECRET,
@@ -114,11 +95,6 @@ beforeAll(async () => {
   chatRegistry.registerFallback("slack", slackAdapter);
 
   const registry = buildDefaultRegistry(testDb.db);
-  // The chat HTTP route's default enqueue resolves pg-boss via `getBoss()`,
-  // which throws when no boss is started — this journey only validates
-  // the route's HMAC verify + URL-verification path (no agentic turn),
-  // so we pass a no-op enqueue stub. The escape hatch exists exactly
-  // for tests of the route surface that don't run the worker.
   const app = createApp({
     db: testDb.db,
     registry,
@@ -141,7 +117,6 @@ beforeAll(async () => {
         close: (cb: () => void) => void;
         closeAllConnections?: () => void;
       };
-      // Force any idle keep-alive sockets to drop so close() resolves.
       s.closeAllConnections?.();
       await new Promise<void>((r) => s.close(() => r()));
       await testDb.cleanup();
@@ -193,8 +168,6 @@ describe("journey: AI chat authoring", () => {
   });
 
   test("AC2+AC3: manual authoring confirmation saves a draft without activation", async () => {
-    // Start a conversation via the public REST surface with the
-    // canned "list users" message so the mock plan kicks in.
     const createRes = await fetch(`${ctx.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: {
@@ -218,8 +191,6 @@ describe("journey: AI chat authoring", () => {
     const elicitationId = outcome.pending_elicitation_id!;
     const convId = outcome.conversation.id;
 
-    // Answer the pending askUser.confirm elicitation with
-    // `{confirmed: true}` — the engine saves an inert draft.
     const approveRes = await fetch(
       `${ctx.baseUrl}/v1/conversations/${convId}/elicitations/${elicitationId}/respond`,
       {
@@ -240,7 +211,6 @@ describe("journey: AI chat authoring", () => {
     const committedWorkflowId = approveOutcome.committed_workflow_id;
     expect(committedWorkflowId).toBeTruthy();
 
-    // A new workflow row exists.
     const wfRows = await ctx.testDb.db
       .select()
       .from(workflows)
@@ -250,7 +220,6 @@ describe("journey: AI chat authoring", () => {
     expect(wfRows[0]?.draft_version_id).toBeTruthy();
     expect(wfRows[0]?.current_version_id).toBeNull();
 
-    // Authoring remains open; the legacy result ID does not imply activation.
     const convRows = await ctx.testDb.db
       .select()
       .from(conversations)

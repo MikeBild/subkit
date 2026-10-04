@@ -18,9 +18,6 @@ export const ReportDeliveryBoundarySchema = z
 export type ReportDeliveryBoundary = z.infer<typeof ReportDeliveryBoundarySchema>;
 export const GMAIL_SEND_TARGET = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
-/** Why a materialized message is outside the report profile. Recorded on the
- * held step and carried on a dispatch refusal, so a refused report says which
- * rule it broke instead of only that it broke one. */
 export const REPORT_MESSAGE_REFUSALS = [
   "not_json_raw",
   "not_base64url",
@@ -40,7 +37,6 @@ export const REPORT_MESSAGE_REFUSALS = [
 ] as const;
 export type ReportMessageRefusal = (typeof REPORT_MESSAGE_REFUSALS)[number];
 
-/** A message inside the profile that still is not the one that was reviewed. */
 export const REPORT_DELIVERY_DISCREPANCIES = [
   "recipient_differs",
   "sender_differs",
@@ -48,23 +44,15 @@ export const REPORT_DELIVERY_DISCREPANCIES = [
 ] as const;
 export type ReportDeliveryDiscrepancy = (typeof REPORT_DELIVERY_DISCREPANCIES)[number];
 
-/** Why a report dispatch was refused: the message is outside the profile, or
- * inside it and addressed differently from its reviewed boundary. The one list
- * of reasons a refused step can carry — every reader that names one in words
- * is checked against it. */
 export const REPORT_DELIVERY_REFUSALS = [
   ...REPORT_MESSAGE_REFUSALS,
   ...REPORT_DELIVERY_DISCREPANCIES,
 ] as const;
 export type ReportDeliveryRefusal = (typeof REPORT_DELIVERY_REFUSALS)[number];
-// Unnamed on purpose: a named component behind `.nullable()` is rendered by
-// the client generator as an intersection that drops the `null`.
 export const ReportDeliveryRefusalSchema = z.enum(REPORT_DELIVERY_REFUSALS);
 
 const KNOWN_REFUSALS: ReadonlySet<string> = new Set(REPORT_DELIVERY_REFUSALS);
 
-/** The report gate's refusal reason recorded on a refused step's error, when
- *  the error is the changed-approval refusal and names a known rule. */
 export function reportRefusalReason(error: unknown): ReportDeliveryRefusal | null {
   const record = error as { code?: unknown; reason?: unknown } | null;
   if (record?.code !== "execution_authority_changed") return null;
@@ -77,7 +65,6 @@ export type ReportMessageInspection =
   | { ok: true; boundary: ReportDeliveryBoundary; subject: string; text: string }
   | { ok: false; reason: ReportMessageRefusal };
 
-/** What a held step records about its message: the verdict, never contents. */
 export type ReportDeliveryInspectionRecord =
   | { ok: true }
   | { ok: false; reason: ReportMessageRefusal };
@@ -97,11 +84,8 @@ const PART_HEADERS = new Set(["content-type", "content-transfer-encoding"]);
 const TRANSFER_ENCODINGS = new Set(["7bit", "8bit", "base64"]);
 const TEXT_TYPE = /^(text\/(?:plain|html))(?:;\s*charset="?utf-8"?)?$/i;
 const ALTERNATIVE_TYPE = /^multipart\/alternative;\s*boundary=(?:"([^"]*)"|([^\s";]+))$/i;
-// RFC 2046 boundary characters, without the space it permits mid-boundary.
 const BOUNDARY = /^[0-9A-Za-z'()+_,./:=?-]{1,70}$/;
-// One whole RFC 2047 B-encoded UTF-8 word: the unit sk.buildMimeMessage folds.
 const ENCODED_WORD = /^=\?utf-8\?b\?([A-Za-z0-9+/]+={0,2})\?=$/i;
-// Every control byte except the tab RFC 5322 allows inside a field body.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: reject ambiguous MIME control bytes
 const CONTROL_BYTE = /[\x00-\x08\x0a-\x1f\x7f]/;
 const FIELD = /^([A-Za-z0-9-]+):[ \t]*(.*)$/;
@@ -121,14 +105,8 @@ function strictBase64(encoded: string): Buffer | null {
   return decoded.toString("base64") === encoded ? decoded : null;
 }
 
-// An unquoted display name: RFC 5322 atext words separated by spaces. Every
-// special — `()<>[]:;@\,."` — is outside it, so a group (`Team: a@x;`), a
-// comment, a quoted-pair or a second address can never hide in the name.
 const DISPLAY_NAME = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?: +[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
 
-/** The bare address of exactly one mailbox, `addr` or `Name <addr>`. A display
- * name is atext words and spaces only: a quoted name is refused rather than
- * parsed, so no spelling of the value can carry a second address. */
 function mailboxAddress(value: string): string | null {
   if (mailbox.safeParse(value).success) return value;
   const named = /^([^<>]*?)[ \t]*<([^<>]*)>$/.exec(value);
@@ -136,8 +114,6 @@ function mailboxAddress(value: string): string | null {
   return mailbox.safeParse(named[2]).success ? named[2]! : null;
 }
 
-/** One mailbox too many is a different finding from a malformed one, because
- * its remedy is different. */
 function addressRefusal(
   value: string,
   invalid: "sender_invalid" | "recipient_invalid",
@@ -150,8 +126,6 @@ function addressRefusal(
     : invalid;
 }
 
-/** The subject as a reader sees it. It routes nothing, so a value that is not
- * wholly encoded words is shown as written. */
 function subjectText(words: string[]): string {
   const bytes: Buffer[] = [];
   for (const word of words) {
@@ -171,8 +145,6 @@ function decodeBody(body: string, encoding: string | undefined): { text: string 
   return text === null ? refuse("not_utf8") : { text };
 }
 
-/** One part of a multipart/alternative report: a single text body with only
- * its type and transfer encoding. No nesting, no disposition, nothing else. */
 function inspectPart(part: string): { type: string; text: string } | Refused {
   const end = part.indexOf("\r\n\r\n");
   if (end < 0) return refuse("multipart_unsupported");
@@ -201,9 +173,6 @@ function inspectPart(part: string): { type: string; text: string } | Refused {
   return "ok" in body ? body : { type: type[1]!.toLowerCase(), text: body.text };
 }
 
-/** Exactly two parts, text/plain then text/html, between one opening and one
- * closing delimiter: no preamble, and nothing after the close but an empty
- * line. Yields the HTML part, which is what the reader sees. */
 function inspectAlternative(body: string, boundary: string): { text: string } | Refused {
   const open = `--${boundary}\r\n`;
   const separator = `\r\n--${boundary}\r\n`;
@@ -225,13 +194,6 @@ function inspectAlternative(body: string, boundary: string): { text: string } | 
   return { text: html.text };
 }
 
-/** Narrow MIME profile, shared by proposal and dispatch. Unsupported MIME is
- * not guessed: additional recipients, folded or duplicate headers, attachments,
- * nested parts, forwarding headers and encoded addresses all require
- * concrete-run review. What it accepts is what sk.buildMimeMessage produces for
- * one sender and one recipient: a named or bare mailbox, a subject folded into
- * whole encoded words, and a single text body or a text/plain + text/html
- * alternative. Only the extracted addresses are compared, never display names. */
 export function inspectReportMessage(body: unknown): ReportMessageInspection {
   let value: unknown;
   try {
@@ -263,8 +225,6 @@ export function inspectReportMessage(body: unknown): ReportMessageInspection {
   for (const line of message.slice(0, end).split("\r\n")) {
     if (CONTROL_BYTE.test(line)) return refuse("header_control_byte");
     if (/^[ \t]/.test(line)) {
-      // Only the subject may continue, and only as whole encoded words: the
-      // shape sk.buildMimeMessage emits, and one no other header can hide in.
       const word = line.slice(1);
       if (previous !== "subject" || line[0] !== " " || !ENCODED_WORD.test(word))
         return refuse("header_folded");
@@ -291,8 +251,6 @@ export function inspectReportMessage(body: unknown): ReportMessageInspection {
     headers.get("mime-version") !== "1.0"
   )
     return refuse("missing_headers");
-  // A folded subject is encoded words throughout, never text that happens to
-  // continue on one.
   if (subjectWords.length > 1 && !ENCODED_WORD.test(subjectWords[0]!))
     return refuse("header_folded");
 
@@ -314,7 +272,6 @@ export function inspectReportMessage(body: unknown): ReportMessageInspection {
   } else if (alternative) {
     const delimiter = alternative[1] ?? alternative[2]!;
     if (!BOUNDARY.test(delimiter)) return refuse("multipart_unsupported");
-    // The parts carry their own encoding; the container is never encoded.
     if (encoding === "base64") return refuse("transfer_encoding_unsupported");
     content = "multipart/alternative";
     decoded = inspectAlternative(message.slice(end + 4), delimiter);
@@ -331,8 +288,6 @@ export function inspectReportMessage(body: unknown): ReportMessageInspection {
   };
 }
 
-/** The one comparison between a reviewed boundary and an inspected message,
- * shared by the review and the dispatcher so the two cannot drift apart. */
 export function reportDeliveryDiscrepancy(
   declared: ReportDeliveryBoundary,
   observed: ReportDeliveryBoundary,
@@ -343,7 +298,6 @@ export function reportDeliveryDiscrepancy(
   return null;
 }
 
-/** The recorded verdict for an inspection: never the message itself. */
 export function reportInspectionRecord(
   inspection: ReportMessageInspection,
 ): ReportDeliveryInspectionRecord {
@@ -356,8 +310,6 @@ export function hasRuntimeValue(value: unknown): boolean {
   return value !== null && typeof value === "object" && Object.values(value).some(hasRuntimeValue);
 }
 
-/** Only the body may vary. The endpoint, method and other authored options are
- * still exact-version bound. A reviewed recipient is never inferred at dispatch. */
 export function supportsReportDelivery(step: RequestStep, target: string | null): boolean {
   const { body, ...fixed } = step;
   return (
@@ -389,8 +341,6 @@ export function supportsReadQuery(step: RequestStep): boolean {
   );
 }
 
-/** Why a materialized request is not the reviewed report delivery, or null
- * when it is. `undefined` reason: the request is not a report send at all. */
 function reportDeliveryRefusal(
   boundary: ReportDeliveryBoundary,
   request: MaterializedRequest | undefined,

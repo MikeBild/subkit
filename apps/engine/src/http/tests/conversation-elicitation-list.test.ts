@@ -1,27 +1,3 @@
-// HTTP-layer coverage for `pending_elicitation_*` on `GET /v1/conversations`
-// (the list route's `ConversationListItem` / `ConversationSchema` fields).
-//
-// `listConversations` (conversations/service/lifecycle.ts) used to fill
-// `pending_elicitation_expires_at` with a `min(expires_at)` GROUP BY over
-// pending `conversation_elicitations`. It is now a
-// `selectDistinctOn([conversation_id])` ordered by
-// `(conversation_id, expires_at ASC)` that additionally returns `summary`
-// and `tool_name`, populating `pending_elicitation_summary` and
-// `pending_elicitation_tool`.
-//
-// The tests below pin:
-//   - a single pending elicitation surfaces its summary + tool on the list row
-//   - TWO pending elicitations on one conversation: the row returned is the
-//     one that expires FIRST, not an arbitrary one a naive rewrite might pick
-//   - no pending elicitation → null for all three fields
-//   - a resolved (non-pending) elicitation contributes nothing
-//   - a long question arrives WHOLE, unlike the message-excerpt fields beside
-//     it: the surface clips it, the engine does not, or expanding a decision
-//     card could never show more than its collapsed line
-//   - the payload guard nonetheless binds on a runaway question
-//   - cross-tenant isolation and the deadline field itself, which a prior
-//     `min(expires_at)` implementation already covered and must keep passing
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { PENDING_QUESTION_MAX } from "../../conversations/service/lifecycle.ts";
@@ -110,16 +86,9 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
   });
 
   test("two pending elicitations: the row returned is the one expiring FIRST", async () => {
-    // The decisive case for `distinct on (conversation_id) order by
-    // (conversation_id, expires_at asc)`: a naive rewrite (e.g. distinct on
-    // without the expires_at ordering, or a plain limit-1) could return
-    // whichever row the planner happens to visit first. Two rows that
-    // differ in BOTH expires_at and summary make a wrong pick unambiguous.
     const id = await seedConversation("two-pending");
     const base = getTestNow();
     const soonerExpiry = new Date(base + 30_000);
-    // Insert the LATER-expiring row first so insertion order cannot be
-    // mistaken for the correct ordering signal.
     await seedElicitation({
       conversation_id: id,
       tenant_id: srv.tenantId,
@@ -167,10 +136,6 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
   });
 
   test("a long question arrives whole, not as an excerpt of itself", async () => {
-    // Longer than the 140-char excerpt budget the two message fields use, and
-    // longer than the longest prompt production actually holds. A reader who
-    // expands the card must get more than the collapsed line already showed,
-    // which is impossible if the engine clips before sending.
     const id = await seedConversation("long-summary");
     const question = `Should I overwrite the existing schedule? ${"Details follow. ".repeat(30)}`;
     expect(question.length).toBeGreaterThan(400);
@@ -187,8 +152,6 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
   });
 
   test("a runaway question still meets the payload guard", async () => {
-    // The bound is a guard against a malformed tool call inflating a 200-row
-    // page, not a display rule — so it has to actually bind somewhere.
     const id = await seedConversation("runaway-summary");
     const runaway = "x".repeat(PENDING_QUESTION_MAX + 500);
     await seedElicitation({
@@ -224,15 +187,11 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
       tool_name: "ask_user_confirm",
     });
 
-    // The foreign conversation must not even be visible to this tenant's
-    // credential — the list is tenant-scoped end to end.
     const res = await fetch(`${srv.baseUrl}/v1/conversations?limit=200`, { headers: headers() });
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
     expect(body.items.find((i) => i.id === otherConv.id)).toBeUndefined();
 
-    // And the row in the database really did carry the foreign tenant_id —
-    // proving this is a tenant-scope assertion, not an accidental miss.
     const [row] = await srv.db
       .select()
       .from(conversationElicitations)

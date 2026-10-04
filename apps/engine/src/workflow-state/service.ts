@@ -1,15 +1,3 @@
-// Persistent per-workflow state service.
-//
-// Read / write tenant-encrypted JSON values keyed by
-// `(tenant_id, workflow_id, key)`. The step-runner calls these around a
-// request step that declares `state_read` / `state_write`, with both the
-// step result and the state write committed in a single transaction so a
-// crash between cannot leave the watermark and the side-effect divergent.
-//
-// Encryption: AES-256-GCM via `crypto/aes-gcm.ts`. AAD binds each row to
-// `tenant_id:workflow_id:key`. The plaintext is `JSON.stringify(value)`
-// so any JSON-serialisable value round-trips losslessly.
-
 import { and, eq } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db } from "../db/client.ts";
@@ -32,15 +20,6 @@ function inferKind(v: unknown): string {
   return typeof v;
 }
 
-/**
- * Read a single state value for `(tenant_id, workflow_id, key)`. Returns
- * `undefined` when the row does not exist — the step-runner falls back
- * to `state_read.default_value` in that case (e.g. first run of a
- * cursor-based reverse-ETL workflow).
- *
- * Decrypt failures throw and propagate — a failed AAD verification is a
- * tenant-leakage signal, never silently swallowed.
- */
 export async function readWorkflowState(
   db: Db,
   tenant_id: string,
@@ -76,15 +55,6 @@ export async function readWorkflowState(
   };
 }
 
-/**
- * Upsert a state value. The encryption AAD binds the ciphertext to the
- * `(tenant_id, workflow_id, key)` triple, so a stolen ciphertext cannot
- * be lifted into another row.
- *
- * Caller is responsible for running this inside the same transaction as
- * the request step's persistence so a crash in between cannot leave the
- * watermark and the side-effect inconsistent.
- */
 export async function writeWorkflowState(
   db: Db,
   p: {

@@ -1,6 +1,3 @@
-// A badge draws its own status dot. Four chips drew a second one as a text
-// glyph in front of their word — "● ● abgelaufen" on the connection card.
-
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";

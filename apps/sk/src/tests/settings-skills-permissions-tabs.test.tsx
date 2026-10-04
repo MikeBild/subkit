@@ -1,7 +1,3 @@
-// Skills tab (via SettingsModal) + PermissionsTab (rendered directly,
-// no longer reachable from /settings — see PermissionsCommand wiring
-// in apps/sk/src/settings-ui/PermissionsCommand.tsx) + ConsentPrompt.
-
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
@@ -74,7 +70,6 @@ describe("SkillsTab — multi-select toggle (M6)", () => {
       { id: "s1", title: "draft-workflow", scope: "global", status: "active" },
       { id: "s2", title: "lint-recipe", scope: "global", status: "archived" },
     ]);
-    // Status(0) → Config(1) → Usage(2) → Skills(3)
     const ui = await navigateTo(client, 3);
     try {
       await ui.waitFor((t) => t.includes("draft-workflow"));
@@ -113,7 +108,6 @@ describe("PermissionsTab — radio with three options (rendered direct, M6)", ()
       expect(txt).toContain("Default");
       expect(txt).toContain("Auto-review");
       expect(txt).toContain("Full Access");
-      // Default is the initial active row
       expect(txt).toContain("(•) Default");
     } finally {
       ui.unmount();

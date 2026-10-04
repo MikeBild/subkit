@@ -1,9 +1,3 @@
-// Tests for the canonical OAuth2 redirect URI synthesizer. The engine
-// MUST always return the same value regardless of which connector is
-// authenticating — one callback URL per server. These tests pin that
-// contract + the resolution precedence
-// (config → x-forwarded-* → host → req.url).
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

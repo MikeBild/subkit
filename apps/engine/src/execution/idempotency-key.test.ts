@@ -1,9 +1,3 @@
-// Outbound Idempotency-Key — the request step attaches a logical request key
-// to non-idempotent methods so retried writes against remotes that honour
-// the standard don't double-apply. Key shape is
-// `${execution_id}:${step_row_id}:${page}` so retries reuse one key while
-// separate step instances and pages cannot collide.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -49,7 +43,6 @@ beforeAll(async () => {
     if (mockBehaviour.kind === "fail-then-ok") {
       if (mockBehaviour.remaining > 0) {
         mockBehaviour.remaining -= 1;
-        // Drain request body before responding to keep keep-alive happy.
         req.on("data", () => {});
         req.on("end", () => {
           jsonResponse(res, mockBehaviour.kind === "fail-then-ok" ? mockBehaviour.status : 500, {
@@ -147,7 +140,6 @@ describe("outbound Idempotency-Key", () => {
     expect(observed.length).toBe(1);
     expect(observed[0]?.method).toBe("POST");
     expect(observed[0]?.idempotency_key).toBe(`${execution_id}:${step_row_id}:0`);
-    // Surfaces in audit trail.
     expect((r.request_meta as Record<string, unknown>).idempotency_key).toBe(
       `${execution_id}:${step_row_id}:0`,
     );
@@ -155,8 +147,6 @@ describe("outbound Idempotency-Key", () => {
 
   test("retried POST reuses the same logical effect key", async () => {
     observed.length = 0;
-    // Force one 429 then succeed — POST retries on 429 even though the
-    // method is non-idempotent (matches the request step's retry policy).
     mockBehaviour = { kind: "fail-then-ok", remaining: 1, status: 429 };
     const { execution_id, step_row_id } = await createExecutionRow();
     const step: RequestStep = {
@@ -171,12 +161,9 @@ describe("outbound Idempotency-Key", () => {
     const ctx = makeStepRunCtx({ execution_id, step_row_id, step });
     const r = await runRequestStep({ ctx, step, scope: {} });
     expect(r.status).toBe("succeeded");
-    // Two attempts: first attempt got 429, second got 200.
     expect(observed.length).toBe(2);
     expect(observed[0]?.idempotency_key).toBe(`${execution_id}:${step_row_id}:0`);
     expect(observed[1]?.idempotency_key).toBe(observed[0]?.idempotency_key);
-    // The same key is recorded for diagnosis, whether or not the remote
-    // supports deduplicating it.
     expect((r.request_meta as Record<string, unknown>).idempotency_key).toBe(
       `${execution_id}:${step_row_id}:0`,
     );

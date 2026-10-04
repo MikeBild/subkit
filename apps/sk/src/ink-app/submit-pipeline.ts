@@ -1,19 +1,3 @@
-// Submit pipeline for the Ink REPL.
-//
-// The pure / near-pure phases of driving a turn, extracted from the
-// app's `handleSubmit` orchestrator:
-//
-//   * runEventStream            — consume the engine TurnEvent stream,
-//                                 reduce it into session state, fire
-//                                 the post-turn push notification
-//   * dispatchSlashSubmit       — the composer's slash-command router
-//   * showPendingElicitationHint— structured-only elicitation gate
-//   * warnIfUnresolvedConfirmIntent — phantom-confirmation forensics
-//   * preparePromptForEngine    — paste-ref expansion + local-path
-//                                 auto-upload + length ceiling
-//   * drainQueueOrHold          — post-turn FIFO drain (never past an
-//                                 open dialog)
-
 import type { PendingElicitation, SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { applyTurnEvent, lastAssistantText } from "@cli-core/index.ts";
 import type React from "react";
@@ -40,8 +24,6 @@ import { findTaskActionById } from "../repl/task-actions.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp } from "../slash.ts";
 import type { NotifyPrefs, PushNotifyOverride } from "./types.ts";
 
-// -------- Event-stream consumption --------
-
 export interface RunEventStreamOptions {
   base: SkSessionState;
   events: AsyncIterable<TurnEvent> | undefined;
@@ -65,13 +47,6 @@ export async function runEventStream(opts: RunEventStreamOptions): Promise<SkSes
     pushNotifyOverride,
   } = opts;
   if (!events) return base;
-  // Record the turn start so we can decide whether to ring an OS
-  // notification when the stream completes. Opt-in via
-  // SK_PUSH_NOTIFY=1; threshold via SK_PUSH_NOTIFY_THRESHOLD_MS
-  // (defaults to NOTIFY_DEFAULTS.thresholdMs = 30s). The env vars
-  // are read once at REPL boot and passed in via
-  // `pushNotifyOverride` so a mid-REPL `export` cannot silently
-  // change behavior.
   const turnStartedAt = Date.now();
   let notifyTitle = "subkit";
   let next: SkSessionState = {
@@ -80,11 +55,6 @@ export async function runEventStream(opts: RunEventStreamOptions): Promise<SkSes
   };
   setSession(next);
   for await (const ev of events) {
-    // Forensic event: every elicit_request that crosses the wire
-    // is recorded with the originating tool_call_id and shape.
-    // Bookends the engine-side `elicitation.created` log so a
-    // "did the prompt actually reach the CLI?" question is one
-    // grep away across both halves of the trace.
     if (ev.type === "elicit_request") {
       const inputKind =
         ev.input && typeof ev.input === "object" && ev.input !== null
@@ -104,30 +74,11 @@ export async function runEventStream(opts: RunEventStreamOptions): Promise<SkSes
     next = applyTurnEvent(next, ev);
     setSession({ ...next });
   }
-  // Stream completed — fire a push notification when the turn took
-  // long enough and the operator opted in. notify() itself no-ops
-  // when stdout isn't a TTY (e.g. piped output, CI), so this is
-  // safe to call unconditionally.
-  // Primary read is the engine-resolved prefs
-  // (notifications.push.*); env vars survive as a per-process
-  // override so tests / one-shot operator switches don't need a
-  // setSetting round-trip.
   const elapsedMs = Date.now() - turnStartedAt;
-  // Stream finished — if the engine emitted a non-null next-message
-  // suggestion, paint it as ghost text in the composer. The reducer
-  // refuses to attach a ghost when the buffer is non-empty (operator
-  // is mid-edit), so this is safe to fire unconditionally; it just
-  // no-ops when inappropriate. The settings gate trumps everything:
-  // operators who disabled the feature in `~/.sk/settings.json`
-  // (`nextCommandPreviewEnabled: false`) never see a ghost.
   if (nextCommandPreviewEnabled && next.nextSuggestion) {
     const { suggestion, kind } = next.nextSuggestion;
     setInput((prev) => applyInput(prev, { type: "ghostSet", text: suggestion, kind }));
   }
-  // Resolution order: per-process override (boot-time env read) →
-  // engine-resolved prefs → built-in defaults. The override is
-  // populated once at REPL start, so a mid-REPL `export
-  // SK_PUSH_NOTIFY=...` does not silently flip behavior.
   const enabled =
     pushNotifyOverride?.enabled !== undefined
       ? pushNotifyOverride.enabled
@@ -145,21 +96,12 @@ export async function runEventStream(opts: RunEventStreamOptions): Promise<SkSes
   notify(`subkit · turn complete`, notifyTitle, elapsedMs, {
     enabled,
     thresholdMs,
-    // OS DND wins over the configured quiet-hours window. When DND
-    // can't be probed reliably (other OS, missing tooling), the
-    // probe returns false and we fall back to the time-window
-    // setting alone.
     quietHours: () =>
       isOsDoNotDisturb() ||
       inQuietHoursWindow(prefs?.quietHoursStart ?? "", prefs?.quietHoursEnd ?? "", new Date()),
   });
-  // Return the final state so callers can make a decision on the
-  // turn's *resolved* session (e.g. "did a dialog open?") without
-  // waiting for the post-commit effect that syncs the mirror ref.
   return next;
 }
-
-// -------- Slash dispatch --------
 
 export interface SlashDispatchContext {
   session: SkSessionState;
@@ -183,21 +125,10 @@ export interface SlashDispatchContext {
   showStructuredError: (err: unknown, slashName?: string) => void;
   respondElicitation: (elicitationId: string, output: unknown, reason?: string) => Promise<void>;
   runYoloSlash: (trimmed: string, hasPendingElicitation: boolean) => void;
-  /** Built-in slash commands ink-app owns (paste, queue, history, …). */
   runBuiltin: (trimmed: string) => Promise<boolean>;
-  /** Re-enters the submit path with a plain prompt — the same route a
-   *  prompt-kind TaskAction takes. Used by thin prompt-dispatch slashes
-   *  (/learnings) after the registry's RBAC gate has passed. */
   submitPrompt: (prompt: string) => void;
 }
 
-/**
- * Routes a slash-shaped submission. Returns true when the input was
- * consumed (dispatched, rejected, or errored) and must not reach the
- * engine as a plain prompt. Path-shaped unknown slashes (`/tmp/x.pdf`,
- * `./doc.md`) fall through so the plain-prompt path can treat them as
- * file mentions.
- */
 export async function dispatchSlashSubmit(
   trimmed: string,
   ctx: SlashDispatchContext,
@@ -234,9 +165,6 @@ export async function dispatchSlashSubmit(
       slashHead.startsWith("~/") ||
       slashHead.startsWith("./"));
   if (!(trimmed.startsWith("/") && !pathShapedUnknownSlash)) return false;
-  // Built-in slash commands that ink-app owns (paste, queue,
-  // history). Short-circuit so the host's `onSlash`
-  // doesn't see them.
   if (await runBuiltin(trimmed)) return true;
   const head = trimmed.split(/\s+/)[0] ?? "";
   const cmd = findSlashCommand(head);
@@ -264,11 +192,6 @@ export async function dispatchSlashSubmit(
       showError("no pending elicitation");
       return true;
     }
-    // Idempotency guard: a second `/approve` while the engine is
-    // still processing the first one re-resolves an already-resolved
-    // elicitation and triggers a duplicate runLoop turn (wasted
-    // tokens). Match the bare-text shortcut's behavior: hint and
-    // bail.
     if (busyRef.current) {
       showInfo(
         cmd.name === "approve"
@@ -297,9 +220,6 @@ export async function dispatchSlashSubmit(
       reasonTokens = parts;
     }
     const confirmed = cmd.name === "approve";
-    // Operator-typed free text is user feedback — it travels in
-    // the `output` payload. The wire `reason` only ever carries
-    // the stable `user_declined` machine-code token.
     const feedback = !confirmed && reasonTokens.length > 0 ? reasonTokens.join(" ") : undefined;
     await respondElicitation(
       elicitationId,
@@ -313,10 +233,6 @@ export async function dispatchSlashSubmit(
     return true;
   }
   if (cmd.name === "learnings") {
-    // Thin prompt dispatch — the prompt is read off the review-learnings
-    // TaskAction itself, so slash, starter action, and number key share
-    // one source. The registry's `requires: "skill:read"` gate above
-    // already ran.
     const action = findTaskActionById("review-learnings");
     if (action?.invoke.kind === "prompt") submitPrompt(action.invoke.prompt);
     return true;
@@ -326,9 +242,6 @@ export async function dispatchSlashSubmit(
       const response = await onSlash(cmd.name, trimmed, setPane, session);
       if (response) showInfo(response);
     } catch (err) {
-      // Without this guard a thrown slash handler vanished — no
-      // notice, no log entry. Surface it as a user-visible error
-      // and a debug record so operators can grep the trace id.
       debugLog(
         "dialog.error",
         {
@@ -343,25 +256,6 @@ export async function dispatchSlashSubmit(
   }
   return true;
 }
-
-// -------- Pending-elicitation routing — structured-only confirmation --------
-//
-// The engine pauses the conversation on any `askUser.*` tool and
-// expects the next /respond call to carry a STRUCTURED answer
-// (confirmed boolean, option index, or form values). The chat-ui
-// ships a dedicated component for each tool — ConfirmPrompt,
-// ChoicePrompt, MultiChoicePrompt, TextPrompt, FormPrompt — all
-// with explicit keybinds (Y/N/Enter/Esc/Tab/arrows) that drive
-// submitElicitationResponse directly.
-//
-// Free text typed at the main prompt input while an elicitation
-// is open is NEVER classified as a confirmation answer. The
-// pre-c35ef1c regex classifier ("yes" / "save it" / "ship it" →
-// confirm) was fragile and surfaced silent false-positives. We
-// forward the user to the structured component instead. Slash
-// commands (/approve,
-// /reject, /respond, /cancel) remain available for explicit
-// CLI-only flows.
 
 export function showPendingElicitationHint(
   pendingElicitation: PendingElicitation,
@@ -398,15 +292,6 @@ export function showPendingElicitationHint(
   showInfo(hint);
 }
 
-// -------- Phantom-confirmation forensics --------
-
-// Forensic event: any prompt that reaches the plain-prompt branch with
-// a recently-emitted "Reply 'yes'"-style assistant message but no
-// pending elicitation is almost certainly hitting the silent
-// failure mode where the engine asked for confirmation in prose
-// without actually emitting an elicit_request. Surface a loud
-// warning so the operator knows the next "yes" will become a
-// phantom new prompt instead of an approval.
 export function warnIfUnresolvedConfirmIntent(
   session: SkSessionState,
   trimmed: string,
@@ -431,20 +316,11 @@ export function warnIfUnresolvedConfirmIntent(
   }
 }
 
-// -------- Prompt preparation --------
-
 export interface PreparedPrompt {
   finalPrompt: string;
   consumedIds: ExpandedPrompt["consumedIds"];
 }
 
-/**
- * Expand paste-store refs back inline, fan out image / file refs as
- * `@path` mentions so the existing mention resolver can attach their
- * contents, auto-ingest local filesystem paths, and enforce the
- * length ceiling. Returns `null` when the prompt exceeds the ceiling
- * (the error notice has already fired).
- */
 export async function preparePromptForEngine(opts: {
   trimmed: string;
   pasteStore: PasteStore;
@@ -455,10 +331,6 @@ export async function preparePromptForEngine(opts: {
   showError: (message: string) => void;
 }): Promise<PreparedPrompt | null> {
   const { trimmed, pasteStore, engineClient, cwd, conversationId, showInfo, showError } = opts;
-  // Expand paste-store refs back inline, fan out image / file
-  // refs as `@path` mentions so the existing mention resolver can
-  // attach their contents. This runs before local path preprocessing
-  // so a pasted path hidden behind a paste-ref is still detected.
   const {
     prompt: expandedRefsPrompt,
     attachmentPaths,
@@ -469,9 +341,6 @@ export async function preparePromptForEngine(opts: {
       ? `${expandedRefsPrompt}${attachmentPaths.map((p) => ` @${p}`).join("")}`
       : expandedRefsPrompt;
 
-  // Auto-ingest local filesystem paths from the expanded prompt.
-  // The user-facing transcript keeps `trimmed`; this branch only
-  // prepares the engine payload.
   if (engineClient) {
     try {
       const result = await autoUploadLocalPaths(
@@ -510,16 +379,6 @@ export async function preparePromptForEngine(opts: {
   return { finalPrompt, consumedIds };
 }
 
-// -------- Post-turn queue drain --------
-
-/**
- * Drain the queue — one prompt at a time. But NOT past an open
- * dialog: if this turn ended awaiting an elicitation, hold the
- * queue. Flushing a queued prompt here would race the engine's
- * pending elicitation and get rejected (`pending_elicitation_blocked`).
- * The elicit-response handler drains the queue once the dialog
- * is answered.
- */
 export function drainQueueOrHold(opts: {
   openedElicitation: boolean;
   pendingElicitationRef: React.MutableRefObject<boolean>;
@@ -538,8 +397,6 @@ export function drainQueueOrHold(opts: {
     const nextQueued = queue.dequeue();
     setQueuedCount(queue.length);
     if (nextQueued) {
-      // Defer to let React flush the `busy=false` frame before
-      // we start the next turn.
       setTimeout(() => {
         resubmit(nextQueued);
       }, 0);

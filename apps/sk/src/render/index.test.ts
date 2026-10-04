@@ -1,6 +1,3 @@
-// Dispatcher tests for renderIntent / renderSummary / renderTaskList.
-// Three code paths: jsonMode (silent), non-TTY (plain ASCII), TTY (Ink mount).
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AnyIntent } from "./intent-card.tsx";
 import type { AnySummary } from "./summary-card.tsx";
@@ -13,8 +10,6 @@ import type {
   WorkflowIntent,
   WorkflowSummary,
 } from "./types.ts";
-
-// --- Fixtures ---
 
 const wfIntent: WorkflowIntent = {
   kind: "workflow",
@@ -33,7 +28,6 @@ const connIntent: ConnectorIntent = {
   base_url: "https://api.stripe.com",
 };
 
-/** The shape `sk connectors create --file` builds: a name, no template. */
 const fileAuthoredConnIntent: ConnectorIntent = {
   kind: "connector",
   name: "Loop MCP",
@@ -100,8 +94,6 @@ const phases: ReadonlyArray<PlanStep> = [
   { id: "commit", label: "Commit", status: "failed", detail: "duplicate slug" },
 ];
 
-// --- Stderr capture helpers ---
-
 let stderrBuf = "";
 const origWrite = process.stderr.write.bind(process.stderr);
 const origIsTTY = process.stderr.isTTY;
@@ -119,18 +111,13 @@ afterEach(() => {
   Object.defineProperty(process.stderr, "isTTY", { value: origIsTTY, configurable: true });
 });
 
-// Helper to set isTTY
 function setTTY(value: boolean): void {
   Object.defineProperty(process.stderr, "isTTY", { value, configurable: true });
 }
 
-// Lazy import so tests can control process.stderr.isTTY before the module
-// resolves the code path on each call.
 async function importDispatcher() {
   return import("./index.ts");
 }
-
-// ---- jsonMode: silent ----
 
 describe("renderIntent · jsonMode", () => {
   test("workflow intent — nothing written to stderr", async () => {
@@ -187,12 +174,6 @@ describe("renderTaskList · jsonMode", () => {
   });
 });
 
-// ---- Non-TTY: plain ASCII ----
-
-// Each non-TTY plain-output test asserts that EVERY field of the fixture
-// appears in the rendered output. Without this, a new optional field added
-// to an Ink card but forgotten in the plain renderer would silently slip
-// through CI.
 describe("renderIntent · non-TTY plain ASCII", () => {
   test("workflow intent emits every fixture field", async () => {
     setTTY(false);
@@ -221,9 +202,6 @@ describe("renderIntent · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("https://api.stripe.com");
   });
 
-  // `sk connectors create --file` authors a connector with no template at
-  // all. Interpolating the absent slug printed `Loop MCP (undefined)` and a
-  // `Template: undefined` line into the operator's terminal.
   test("connector intent without a template names no template and no undefined", async () => {
     setTTY(false);
     const { renderIntent } = await importDispatcher();
@@ -247,10 +225,8 @@ describe("renderIntent · non-TTY plain ASCII", () => {
     await renderIntent(ksIntent as AnyIntent);
     expect(stderrBuf).toContain("●");
     expect(stderrBuf).toContain("API Spec");
-    // basename of file_path
     expect(stderrBuf).toContain("spec.pdf");
     expect(stderrBuf).toContain("application/pdf");
-    // human-readable size for 512 KiB
     expect(stderrBuf).toContain("512KB");
   });
 
@@ -274,7 +250,6 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("0 9 * * *");
     expect(stderrBuf).toContain("UTC");
     expect(stderrBuf).toContain("exec-preview-1");
-    // Usage block renders the engine-provided access entries verbatim
     expect(stderrBuf).toContain("inputs: date (required)");
     expect(stderrBuf).toContain("Use it via:");
     expect(stderrBuf).toContain("sk workflows run daily-report");
@@ -378,13 +353,10 @@ describe("renderTaskList · non-TTY plain ASCII", () => {
   });
 });
 
-// ---- jsonMode short-circuits before TTY detection ----
-
 describe("jsonMode short-circuits before TTY detection", () => {
   test("jsonMode:true with isTTY:true still writes nothing", async () => {
     setTTY(true);
     const { renderIntent } = await importDispatcher();
-    // jsonMode must return before touching isTTY or Ink
     await renderIntent(wfIntent as AnyIntent, { jsonMode: true });
     expect(stderrBuf).toBe("");
   });
@@ -396,9 +368,3 @@ describe("jsonMode short-circuits before TTY detection", () => {
     expect(stderrBuf).toBe("");
   });
 });
-
-// The TTY mount path uses Ink's render() + waitUntilExit(), which needs a
-// real PTY to exit. The bun test runner has no PTY, so that path is verified
-// at the e2e layer (real terminal) rather than here. ttyAllowed() is still
-// covered: the jsonMode tests above run with isTTY=true to confirm jsonMode
-// short-circuits before TTY detection.

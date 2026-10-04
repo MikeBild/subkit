@@ -1,7 +1,3 @@
-// The request-boundary panel must say what is being approved and what is not.
-// Every method is mapped explicitly; an unknown one is never given a harmless
-// label — the storage panel once showed a removal to its approver as a read.
-
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import { presentRequestBoundary, type RequestBoundaryView } from "./authority-request";
@@ -69,7 +65,6 @@ describe("presentRequestBoundary", () => {
       destructive: true,
       declaredDestructive: true,
     });
-    // A DELETE already says so in its title; the extra line is for the others.
     expect(
       presentRequestBoundary({ ...base, method: "DELETE", destructive: true }, plain)
         .declaredDestructive,
@@ -97,7 +92,6 @@ describe("presentRequestBoundary", () => {
       },
       plain,
     );
-    // The varying query value is part of the target the approver reads.
     expect(shown.target).toBe(
       "https://api.example.test/v2/sites/{input.site}/stats/{item.id}?tz=UTC&from={scope.window.data.start}",
     );

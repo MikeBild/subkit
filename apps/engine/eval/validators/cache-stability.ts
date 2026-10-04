@@ -42,11 +42,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   const stableHead = (fixture.input as { stable_head: string }).stable_head;
   const fails: string[] = [];
 
-  // Render the same skill+recipe stable head with three different
-  // per-turn quirk slots. The fixture carries the same explicit section
-  // metadata as the real context assembler: recipes are stable, while
-  // operator quirks are volatile. This checks the current contract rather
-  // than the conservative fallback used by legacy prompt producers.
   const blocks = ["auth", "schema", "general"].map((slot) =>
     splitPromptIntoBlocks(
       makePrompt(stableHead, slot as "auth" | "schema" | "general"),
@@ -59,8 +54,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   if (a !== c1 || a !== c2) {
     fails.push("stable prefix differs across quirk-category swaps — cache key would invalidate");
   }
-  // The skill/recipe headers must actually be present in the stable
-  // section (otherwise the test is trivially passing on empty strings).
   if (!a?.includes("# Skill:")) fails.push("skill header missing from stable prefix");
   if (!a?.includes("# Available recipes")) fails.push("recipe header missing from stable prefix");
   for (const block of blocks) {

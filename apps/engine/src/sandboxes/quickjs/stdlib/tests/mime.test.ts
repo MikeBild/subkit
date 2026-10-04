@@ -1,11 +1,3 @@
-// sk.mimeEncodeHeaderValue / sk.buildMimeMessage — the MIME surface that
-// keeps email-send workflows RFC-compliant. Headers are ASCII-only by
-// RFC 5322; the prod incident this pins: an authored transform placed a
-// raw UTF-8 en-dash in the Subject header, the receiving server decoded
-// the bytes as Latin-1 and re-encoded, and the inbox showed
-// "Ã¢Â€Â“" instead of "–". These tests run inside the real QuickJS
-// sandbox and verify the wire bytes with Node's own decoders.
-
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { runJs } from "../../runtime.ts";
@@ -13,7 +5,6 @@ import { runJs } from "../../runtime.ts";
 const run = <T>(code: string, input: unknown): Promise<T> =>
   runJs<T>({ code, input, clock: null }).then((r) => r.output as T);
 
-/** Decode a chain of RFC 2047 B-encoded words back to the original text. */
 function decodeEncodedWords(headerValue: string): string {
   return headerValue
     .split(/\r\n\s/)
@@ -42,7 +33,6 @@ describe("sk.mimeEncodeHeaderValue", () => {
     const out = await run<string>("return sk.mimeEncodeHeaderValue(input.s);", { s });
     expect(out.startsWith("=?UTF-8?B?")).toBe(true);
     expect(out.endsWith("?=")).toBe(true);
-    // The header value itself must be pure ASCII on the wire.
     expect(/^[\x20-\x7e\r\n]*$/.test(out)).toBe(true);
     expect(decodeEncodedWords(out)).toBe(s);
   });
@@ -54,8 +44,6 @@ describe("sk.mimeEncodeHeaderValue", () => {
     expect(words.length).toBeGreaterThan(1);
     for (const word of words) {
       expect(word.length).toBeLessThanOrEqual(75);
-      // Each word must decode standalone — proving no UTF-8 sequence was
-      // split across a chunk boundary.
       const decoded = decodeEncodedWords(word);
       expect(decoded.includes("�")).toBe(false);
     }
@@ -78,8 +66,6 @@ describe("sk.buildMimeMessage", () => {
 
     const [headerBlock, ...bodyParts] = mime.split("\r\n\r\n");
     const body = bodyParts.join("\r\n\r\n");
-    // Every header byte is ASCII — the property whose violation caused
-    // the prod mojibake.
     expect(/^[\x20-\x7e\r\n]*$/.test(headerBlock ?? "")).toBe(true);
     expect(headerBlock).toContain("MIME-Version: 1.0");
     expect(headerBlock).toContain("Content-Type: text/html; charset=UTF-8");
@@ -87,7 +73,6 @@ describe("sk.buildMimeMessage", () => {
     const subjectLine = (headerBlock ?? "").split("\r\n").find((l) => l.startsWith("Subject: "));
     expect(subjectLine).toBeDefined();
     expect(decodeEncodedWords((subjectLine ?? "").slice("Subject: ".length))).toBe(opts.subject);
-    // Body decodes back to the exact html.
     expect(Buffer.from(body.replace(/\r\n/g, ""), "base64").toString("utf8")).toBe(opts.html);
   });
 
@@ -105,7 +90,6 @@ describe("sk.buildMimeMessage", () => {
     expect(boundaryMatch).not.toBeNull();
     const boundary = boundaryMatch?.[1] ?? "";
     const parts = mime.split(`--${boundary}`);
-    // preamble, text part, html part, closing "--"
     expect(parts.length).toBe(4);
     expect(parts[1]).toContain("Content-Type: text/plain; charset=UTF-8");
     expect(parts[2]).toContain("Content-Type: text/html; charset=UTF-8");

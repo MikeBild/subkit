@@ -1,24 +1,3 @@
-// Frozen digests for the effect-manifest compiler.
-//
-// A human grant is a decision bound to a digest. `assertExecutionAuthorityCurrent`
-// (execution/authority-admission.ts:339-356) recompiles the manifest and compares
-// digests on EVERY dispatch, so a compiler change that moves the digest of an
-// unchanged workflow silently stops every matching live authority in production —
-// per workflow, at dispatch time, with no CI signal at all.
-//
-// Two things move a digest without anyone touching a workflow:
-//   - a manifest/effect key that is ALWAYS present (a conditionally spread key
-//     does not; `canonicalWorkflowJson` serialises a present-but-undefined key as
-//     null, so "present with undefined" is NOT the same as absent);
-//   - a `.default()` on a step schema, which changes `normalized_definition` and
-//     therefore `execution_options_digest` even when the stored DAG is byte-identical.
-//
-// These pins catch both. Every input here is a LITERAL on purpose. Deriving a
-// fixture from the code under test — calling `readPathBoundary(...)`, re-parsing the
-// definition, recomputing `request_digest` — makes it co-move with the compiler and
-// pin nothing. That is why this file does not reuse the `fixture()` helper in
-// effect-manifest.test.ts.
-
 import { expect, test } from "bun:test";
 import { canonicalWorkflowJson, workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest } from "../effect-manifest.ts";
@@ -41,7 +20,6 @@ const RUNTIME_OPTIONS_DIGEST = "a".repeat(64);
 const CONFIG_DIGEST = "d".repeat(64);
 const CREDENTIAL_DIGEST = "e".repeat(64);
 
-/** A binding as resolution would have frozen it into a granted authority. */
 function binding(step_id: string, request_digest: string, extra: Record<string, unknown>) {
   return {
     tenant_id: TENANT,
@@ -57,12 +35,7 @@ function binding(step_id: string, request_digest: string, extra: Record<string, 
   };
 }
 
-/**
- * The shapes live production authorities take, plus the author-declared boundary. Each is the
- * whole compile input, written out rather than built.
- */
 const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?: unknown[] }> = {
-  // (a) a GET whose path carries one whole dynamic segment.
   read_path: {
     definition: {
       name: "read path",
@@ -88,9 +61,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       }),
     ],
   },
-  // (b) a GET whose query carries the runtime value. `read_query` is NOT a binding
-  // field — the compiler spreads it conditionally onto the effect, so this shape is
-  // the only thing that would catch it becoming always-present.
   read_query: {
     definition: {
       name: "read query",
@@ -112,8 +82,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       }),
     ],
   },
-  // (c) the report-delivery profile: a fixed send target whose only runtime value
-  // is the MIME body.
   report_delivery: {
     definition: {
       name: "report delivery",
@@ -135,8 +103,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           "send_report",
           "562d85e4d755a7ddf1493ac0cab4ca415274adc3ab5a28e34fad782a33fd96ca",
           {
-            // Written out, not imported: importing GMAIL_SEND_TARGET would let a
-            // change to that constant travel into the pin unnoticed.
             target: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
             report_delivery: {
               kind: "gmail_report",
@@ -150,8 +116,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       },
     ],
   },
-  // (d) content publication: a revision producer and the release that publishes
-  // exactly its receipts, in ONE definition so the cross-step source check runs.
   content_publication: {
     definition: {
       name: "content publication",
@@ -210,10 +174,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       },
     ],
   },
-  // (f) an author-declared request boundary, on a base_url that carries a path.
-  // The path is the point: the reviewed target has to be the one `resolveUrl`
-  // dispatches to (`/v2/sites/…`), and every other shape here uses a path-less
-  // base that cannot tell the two resolvers apart.
   request_boundary: {
     definition: {
       name: "request boundary",
@@ -256,9 +216,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       }),
     ],
   },
-  // (g) the same boundary kind with what came later: a value CLASS on a path
-  // segment and a query value that varies. It has its own pin so that (f) above
-  // keeps proving that approvals made before these existed did not move.
   request_boundary_classes_query: {
     definition: {
       name: "request boundary classes query",
@@ -307,8 +264,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       }),
     ],
   },
-  // (e) the control: no profile at all. If this one moves too, the change is in the
-  // core schema or the effect row — not in one boundary.
   static_post: {
     definition: {
       name: "static post",
@@ -329,8 +284,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       }),
     ],
   },
-  // (f) a workflow that starts another one. The child's effect is folded in
-  // under the call step, and the approval pins which child version runs.
   bound_call: {
     definition: {
       name: "bound call",
@@ -378,9 +331,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       },
     ],
   },
-  // (g) parent and child use the SAME step id. If a call path were ever dropped
-  // or flattened into the step id, these two effects would collapse into one
-  // and this digest would move.
   bound_call_shared_step_id: {
     definition: {
       name: "bound call shared step id",
@@ -431,11 +381,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
   },
 };
 
-/**
- * Pinned values. Generated from the code under test, then read field by field
- * before being pasted here — see the file header. Updating one of these is a
- * deliberate act that needs a re-grant rollout in the same change.
- */
 const PINNED: Record<string, { options_digest: string; digest: string }> = {
   read_path: {
     options_digest: "0adb25c715644c263971c3e264472a024b620562636261be4a9b969d43c09290",
@@ -534,13 +479,9 @@ for (const [name, shape] of Object.entries(SHAPES)) {
     });
     if (result.digest !== PINNED[name]!.digest || !result.eligible_for_repeated_runs)
       console.error(explain(name, result.digest, PINNED[name]!.digest, result.manifest));
-    // Eligibility first: it separates "the digest moved" from "this shape stopped
-    // being grantable at all", which is a different and louder problem.
     expect(result.manifest.issues).toEqual([]);
     expect(result.eligible_for_repeated_runs).toBe(true);
     expect(result.digest).toBe(PINNED[name]!.digest);
-    // The manifest is what the digest is taken over, so re-digesting it here catches
-    // a pin whose two halves were pasted from different runs.
     expect(workflowJsonDigest(result.manifest)).toBe(PINNED[name]!.digest);
   });
 }

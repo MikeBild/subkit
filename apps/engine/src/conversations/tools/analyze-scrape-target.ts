@@ -1,15 +1,3 @@
-// analyze_scrape_target — web-scraper pre-flight authoring gate.
-//
-// The chat surface calls this tool BEFORE drafting a `crawl-sitemap-to-
-// markdown` workflow. The tool probes the target origin and returns a
-// Green / Yellow / Red verdict so the authoring loop refuses obviously
-// unscrapable scopes (sitemap > red_sitemap_threshold, robots.txt
-// disallows the path) and pauses on borderline scopes (sitemap >
-// yellow_sitemap_threshold).
-//
-// Thresholds are tenant-effective config under
-// `connectors.web_scraper.authoring.*` — operators override per tenant.
-
 import { z } from "@hono/zod-openapi";
 
 import { getConfig } from "../../config/loader.ts";
@@ -23,15 +11,11 @@ import {
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-/** Hard cap on the sitemap probe so a slow-loris origin can't stall
- *  the chat tool. A timeout falls through to `count = 0`, which the
- *  caller treats as "sitemap empty" → Green verdict path. */
 const SITEMAP_FETCH_TIMEOUT_MS = 5_000;
 
 const inputSchema = z
   .object({
     target_url: z.string().url(),
-    /** Defaults to `${origin}/sitemap.xml` when omitted. */
     sitemap_url: z.string().url().optional(),
   })
   .openapi("AnalyzeScrapeTargetToolInput");
@@ -59,9 +43,6 @@ async function countSitemapEntries(
     });
     if (!res.ok) return 0;
     const text = await res.text();
-    // Cheap regex count avoids pulling a full XML parser into the chat
-    // tool — every <loc>…</loc> is one URL. Index-only sitemaps still
-    // count (they pin a Yellow/Red gate at the index level too).
     let count = 0;
     for (const _ of text.matchAll(SITEMAP_LOC_RE)) count += 1;
     return count;
@@ -82,8 +63,6 @@ export const analyzeScrapeTargetTool: ConversationTool = {
     "Probe a target URL before authoring a web-scraper workflow. Returns a Green / Yellow / Red verdict based on sitemap size and robots.txt, with per-tenant thresholds. Red verdicts refuse to author the recipe; Yellow pauses for operator confirmation; Green is the green-light.",
   inputSchema,
   category: "tenant_read" as const,
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   use_case:
     "Run before `start_workflow_from_recipe` on the `crawl-sitemap-to-markdown` recipe so the authoring loop does not draft against a 100K-page sitemap or a robots-disallowed origin.",
@@ -109,13 +88,6 @@ export const analyzeScrapeTargetTool: ConversationTool = {
       details: { target_url: args.target_url, sitemap_url: sitemapUrl },
     };
 
-    // SSRF guard runs FIRST — before robots.txt, before sitemap. A
-    // tenant-supplied URL pointing at 169.254.169.254 / localhost /
-    // RFC 1918 is rejected at the gate and the tool returns a Red
-    // verdict with the same shape as a robots-disallowed refusal. The
-    // existing `assertEgressAllowed` is the only SSRF policy in the
-    // codebase; this surface MUST go through it just like every other
-    // outbound site (drivers/http.ts, webhooks/outbound, etc.).
     for (const probe of [target, new URL(sitemapUrl)]) {
       try {
         assertEgressAllowed(probe, { tenant_id: ctx.tenant_id });
@@ -135,8 +107,6 @@ export const analyzeScrapeTargetTool: ConversationTool = {
       }
     }
 
-    // robots.txt — Red if disallow on the path. Honours tenant
-    // respect_robots; when respect_robots=false we skip and Green-light.
     if (cfg.runtime.respect_robots) {
       try {
         await assertRobotsAllowed(target, {
@@ -155,8 +125,6 @@ export const analyzeScrapeTargetTool: ConversationTool = {
             },
           };
         }
-        // Network failures on robots.txt are non-fatal — assertRobotsAllowed
-        // already logs them; we proceed to the sitemap check.
       }
     }
 

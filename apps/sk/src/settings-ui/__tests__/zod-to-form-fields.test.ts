@@ -1,11 +1,3 @@
-// zod-to-form-fields bridge unit tests.
-//
-// The bridge maps the engine's GET /v1/settings response (kind +
-// metadata) to a renderable FormField. The schema-walking test asserts
-// every kind we see in production maps to a non-null FormFieldKind so a
-// future leaf type is caught at test time rather than rendering as raw
-// JSON in the form.
-
 import { describe, expect, test } from "bun:test";
 import type { SettingLeafEntry } from "../../engine-client.ts";
 import { leafToFormField } from "../lib/zod-to-form-fields.ts";

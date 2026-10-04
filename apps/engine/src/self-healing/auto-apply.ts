@@ -1,12 +1,3 @@
-// Apply a self-healing patch to the workflow definition.
-//
-// Extracted from `service.ts` to keep that file under the 1000-LOC
-// ceiling enforced by the audit-invariants `file_size` gate. This holds
-// only the apply primitive — rewriting the patched step into a new workflow
-// version + flipping the candidate to `applied`. It has no dependency on
-// `service.ts`, so both the reactive/proactive apply paths and the manual
-// approve route can import it without an import cycle.
-
 import { and, eq, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { patchCandidates, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -26,14 +17,6 @@ export type AutoApplyResult =
   | { applied: true; version_id: string; changed_paths: string[] }
   | { applied: false; reason: PatchApplyFailure | "workflow_missing" | "version_missing" };
 
-/**
- * Report a patch that was cleared for apply but could not be performed on the
- * definition. It is never recorded as a repair, or the next scan reads a healed
- * endpoint that was never healed. Callers follow with `closeIfUndecidable`
- * (open-decisions.ts): when readiness proves the current version can never
- * take the patch the candidate becomes `inapplicable`; otherwise it stays
- * `proposed`.
- */
 export function logPatchNotApplied(
   ctx: { tenant_id: string; workflow_id: string; source: string },
   candidate_id: string,
@@ -43,26 +26,6 @@ export function logPatchNotApplied(
   log.selfHealing.patch.notApplicable({ ...ctx, candidate_id, reason, detail });
 }
 
-/**
- * Apply a patch by writing a new workflow version in which the patched step is
- * actually rewritten, then point the workflow at it and mark the candidate
- * `applied`.
- *
- * The rewrite runs through `applyPatchToWorkflowDag` — the same pure function
- * behind the operator preview — so the version that goes live is the diff the
- * operator approved, not a re-derivation of it.
- *
- * The candidate is marked `applied` ONLY when a step actually changed. When the
- * patch cannot be performed (no failing-step anchor, the step is gone, the
- * proposal kind has no executable semantics), this writes nothing and returns
- * the reason: a version that changes no behaviour must never be recorded as a
- * repair, or the next drift scan sees a healed endpoint that was never healed.
- *
- * Note: this does NOT touch `workflows_schedules` — applying a patch
- * rotates the version in place (updates `current_version_id`) without
- * deleting schedule bindings, so an auto-applied safe patch never
- * unbinds a scheduled workflow.
- */
 export async function autoApplyPatch(
   tx: Executor,
   params: {
@@ -99,9 +62,6 @@ export async function autoApplyPatch(
 
   const newDag = {
     ...patched.dag,
-    // Provenance, not mechanism: the rewrite above is what changes behaviour.
-    // This records which candidate produced it so an operator reading a version
-    // can trace it back without joining through the audit log.
     __self_healing: {
       applied_patch_id: params.candidate_id,
       kind: params.proposal.kind,
@@ -112,8 +72,6 @@ export async function autoApplyPatch(
     },
   };
 
-  // The workflow row lock serializes this allocation with every other version
-  // writer. A MAX subquery inside INSERT alone does not serialize transactions.
   const [prepared] = params.prepared_version_id
     ? await tx
         .select()
@@ -153,8 +111,6 @@ export async function autoApplyPatch(
     .update(workflows)
     .set({ current_version_id: inserted.id, updated_at: new Date() })
     .where(and(eq(workflows.tenant_id, params.tenant_id), eq(workflows.id, params.workflow_id)));
-  // A repair that reaches nothing new keeps running on the approval it had; one
-  // that does waits for a person like any other wider change.
   await carryApprovalsForward(tx, {
     tenant_id: params.tenant_id,
     workflow_id: params.workflow_id,
@@ -180,13 +136,6 @@ export async function autoApplyPatch(
   return { applied: true, version_id: inserted.id, changed_paths: patched.changed_paths };
 }
 
-/**
- * Resolve the DAG step this candidate is about to patch, through the same
- * helper the review preview uses.
- *
- * Null when neither anchor resolves, which is a hard stop rather than a guess:
- * a patch with no target must not be recorded as applied.
- */
 async function resolvePatchStepKey(
   tx: Executor,
   tenant_id: string,

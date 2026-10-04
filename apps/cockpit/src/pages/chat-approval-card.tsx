@@ -5,12 +5,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ChatApproval } from "./chat-approval";
 
-/**
- * A decision the conversation waits for: the title says what is decided, one
- * line what it does, the deadline below, and the verb itself as the button.
- * A saved draft says "inactive" once — on the button; the engine's own
- * question repeated it a second, third and fourth time.
- */
 export function ChatApprovalCard({
   approval,
   busy,
@@ -57,7 +51,6 @@ export function ChatApprovalCard({
               tool: approval.externalTool.tool,
             })
           : readable(approval.question);
-  // What will change, where the engine says more than the line: behind (?).
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
     <ChatCard

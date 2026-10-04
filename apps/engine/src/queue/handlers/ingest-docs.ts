@@ -1,12 +1,3 @@
-// Worker for the `connector.ingest-docs` queue.
-//
-// The job payload is small — `{tenant_id, connector_id, source_type,
-// url?, content?}` — and the handler just forwards to the same
-// `ingestDocs` service the REST endpoint uses. P6 does not install a
-// global cron that fans these out; operators call `enqueueIngest(...)`
-// or hit `POST /docs/ingest` directly. A later pass wires an automatic
-// schedule against every connector with a docs source configured.
-
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
@@ -95,11 +86,6 @@ export async function registerIngestDocsHandler(opts: RegisterIngestDocsOptions)
   return workerId;
 }
 
-/**
- * Manual enqueue helper — used by tests and by any phase that wants to
- * hand a refresh job off the hot path. A scheduled fan-out is intentionally
- * out of scope for P6.
- */
 export async function enqueueIngest(boss: PgBoss, payload: IngestDocsJob): Promise<string | null> {
   return await boss.send(INGEST_DOCS_QUEUE, payload);
 }

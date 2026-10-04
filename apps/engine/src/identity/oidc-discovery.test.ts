@@ -1,15 +1,3 @@
-// Pure-function tests for the OIDC discovery helper.
-//
-// No DB. msw intercepts HTTP so openid-client never leaves the process.
-// Covers:
-//   - happy-path Zod parse and return shape
-//   - per-issuer caching (second call does not hit the network)
-//   - cache eviction when nowMs advances past CACHE_TTL_MS
-//   - discovery doc missing jwks_uri (still valid — callers check)
-//   - issuer mismatch: discovery doc issuer !== requested issuer
-//   - network errors from 429 / 5xx responses
-//   - flushDiscoveryCache + isCached utilities
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -20,10 +8,6 @@ import {
   flushDiscoveryCache,
   isCached,
 } from "./oidc-discovery.ts";
-
-// ---------------------------------------------------------------------------
-// MSW server setup
-// ---------------------------------------------------------------------------
 
 const ISSUER = "http://127.0.0.1:19999";
 const DISCOVERY_PATH = "/.well-known/openid-configuration";
@@ -56,10 +40,6 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe("DiscoveryDocSchema", () => {
   test("parses a minimal valid document", () => {
@@ -142,12 +122,10 @@ describe("fetchDiscovery — per-issuer caching", () => {
     server.use(
       http.get(`${ISSUER}${DISCOVERY_PATH}`, () => HttpResponse.json(makeDiscoveryBody())),
     );
-    // Seed the cache with a fake fetchedAt that is already 5m+1ms in the past.
     const TTL_MS = 5 * 60 * 1_000;
     const staleNow = getTestNow() - TTL_MS - 1;
     await fetchDiscovery(new URL(ISSUER), { nowMs: staleNow });
 
-    // A second call with present-time nowMs should be treated as a cache miss.
     const freshNow = getTestNow();
     expect(isCached(ISSUER, freshNow)).toBe(false);
   });

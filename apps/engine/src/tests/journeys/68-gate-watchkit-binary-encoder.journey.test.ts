@@ -1,19 +1,3 @@
-// User story: As an operator whose finding e-mail declares its recipient, I am
-// told WHY the runtime refused to send it — not just that an approval no longer
-// fits — and the review says so before I approve, once a preparation has seen
-// the real message.
-// Acceptance criteria:
-//   - AC1: A report step whose transform encodes MIME with `sk.base64UrlEncode`
-//     (one byte per character) and declares `report_delivery` is eligible on a
-//     review that has observed nothing yet — the declaration is believed.
-//   - AC2: The approved run is refused before egress with
-//     `execution_authority_changed`, and the step error carries the profile's
-//     own reason, `not_utf8`: the encoder truncated "·" to a lone 0xB7 byte.
-//   - AC3: Once a preparation of the same version reaches the step, the review
-//     reports `report_delivery_contradicted` and is no longer eligible, so the
-//     mismatch is visible before anybody approves it.
-// Spec refs: docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -39,9 +23,6 @@ let ctx: JourneyCtx;
 let principal: ResolvedPrincipal;
 let grantRequest: Request;
 
-// The shape of a real finding mailer: the subject joins target and headline
-// with "—", the body separates fields with "·", and the whole message goes
-// through the byte-per-character encoder.
 const ENCODER = [
   "const subject = '[watchkit page] api.example.com — certificate expires';",
   "const html = '<p>watchkit.finding · api.example.com · ' + input.input.at + '</p>';",
@@ -183,7 +164,6 @@ describe("journey 68: a declared report the encoder breaks is refused with its r
         reason: "not_utf8",
       });
       expect(sends).toBe(0);
-      // The reason is what the row keeps, not only what the run returned.
       const [row] = await ctx.db
         .select({ error: executionSteps.error })
         .from(executionSteps)

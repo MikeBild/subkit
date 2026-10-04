@@ -1,6 +1,3 @@
-// A free-text question as the reader sees it: the question on screen, a field
-// with the asked-for placeholder and one action that says "answer".
-
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate } from "@/lib/i18n";
@@ -41,7 +38,6 @@ test("the question, its placeholder and an answer action are on screen", () => {
   expect(html).toContain("Wie soll dein Workflow heißen?");
   expect(element(html, "input", "text-input")).toContain('placeholder="Example API Data Fetch"');
   expect(html).toMatch(/data-testid="text-submit"[^>]*>(?:<[^>]+>)*Antworten</);
-  // Nothing typed yet: the action waits for an answer.
   expect(element(html, "button", "text-submit")).toMatch(/ disabled=""/);
 });
 

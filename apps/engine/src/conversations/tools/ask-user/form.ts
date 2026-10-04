@@ -1,5 +1,3 @@
-// ask_user_form — ask the user to fill in a structured form.
-
 import { z } from "@hono/zod-openapi";
 import { resolveConnectorTemplate } from "../../../connectors/template-resolver.ts";
 import {
@@ -10,29 +8,6 @@ import type { ConversationTool, ToolResult } from "../index.ts";
 import { commitIntentSchema } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
 
-/**
- * Field type contract for `ask_user_form`.
- *
- * `text` / `number` / `boolean` / `select` are the original four types.
- *
- * `password` renders as a masked input on the client and is omitted
- * from any rendered transcript (never echoed). Single-line — the server
- * rejects values containing newlines.
- *
- * `json` renders as a multi-line buffer; the client parses on blur and
- * pins a parse error inline until the buffer is valid JSON. The server
- * also re-validates with `JSON.parse(value)` so a malformed value
- * cannot reach a downstream tool through any other surface.
- *
- * `multi` is a checkbox grid. The field declares `options: string[]`
- * and the value MUST be a `string[]` subset of those options. The
- * client uses Space to toggle and Enter to confirm.
- *
- * `options` accepts two shapes:
- *   - `Array<{ value: string; label: string }>` — used by `select`
- *   - `string[]`                                 — used by `multi`
- * The renderer disambiguates on the field `type`.
- */
 export const FORM_FIELD_TYPES = [
   "text",
   "number",
@@ -52,32 +27,11 @@ const fieldSchema = z
     name: z.string().min(1),
     label: z.string().min(1),
     type: z.enum(FORM_FIELD_TYPES),
-    /**
-     * `select` expects `Array<{value,label}>`. `multi` expects
-     * `string[]`. Other types ignore this field. The schema accepts
-     * both shapes; `validateFormFieldDefinition` enforces the
-     * type-specific shape so an LLM cannot ship a `multi` field
-     * without choices.
-     */
     options: z.union([z.array(selectOptionSchema), z.array(z.string())]).optional(),
     placeholder: z.string().optional(),
     required: z.boolean().optional(),
-    /** When true, the client must mask the field value on keystroke echo. */
     sensitive: z.boolean().optional(),
-    /**
-     * Optional pre-filled value the client renders as the initial input
-     * state — the user confirms or edits instead of retyping. Never
-     * allowed on password/sensitive fields (secrets are not pre-filled).
-     * `select` defaults must match an option value; `multi` defaults
-     * must be a subset of the declared options.
-     */
     default: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]).optional(),
-    /**
-     * Optional inline error pin shown by the renderer (e.g. "invalid
-     * JSON: Unexpected token …"). The server populates this when it
-     * re-prompts after a value-validation failure; the client may also
-     * set it locally for immediate feedback.
-     */
     error_message: z.string().optional(),
   })
   .superRefine((field, ctx) => {
@@ -161,24 +115,10 @@ const inputSchema = z
   .object({
     question: z.string().min(1),
     fields: z.array(fieldSchema).min(1),
-    /**
-     * Optional commit intent. When set, the harness applies the
-     * intended write atomically once the operator submits — the LLM
-     * does NOT need to call save_connector_draft/save_workflow_draft
-     * afterwards. See `./commit-intent.ts` for the schema.
-     */
     commit_intent: commitIntentSchema.optional(),
   })
   .openapi("AskUserFormInput");
 
-/**
- * Validate a single form-value pair against its field declaration.
- * Returns `null` on success, or a `{ message }` payload the harness
- * uses to re-prompt the form with `error_message` populated.
- *
- * Centralized here so the renderer (`FormPrompt.tsx`) and the engine
- * resume path share the contract.
- */
 export function validateFormFieldValue(
   field: FormFieldDefinition,
   value: unknown,
@@ -200,10 +140,6 @@ export function validateFormFieldValue(
         JSON.parse(value);
         return null;
       } catch (err) {
-        // The parser's reason quotes the offending token ("Unexpected
-        // identifier \"<token>\""), and this message travels in field_errors,
-        // SSE error frames and chat text. A sensitive field's token is the
-        // secret, so its message names only the fact.
         if (field.sensitive === true) return { message: "invalid JSON" };
         const reason = err instanceof Error ? err.message : "parse error";
         return { message: `invalid JSON: ${reason}` };
@@ -240,13 +176,6 @@ export const askUserFormTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     let args = inputSchema.parse(rawArgs);
-    // Gate: if the form collects a sensitive credential (password field or
-    // sensitive: true) AND a connector draft is active BUT its auth_type has
-    // not been set yet, refuse early. The connector's auth shape must be
-    // established via start_connector_from_description or
-    // update_connector_draft before a credential can be collected — without
-    // auth_type the credential cache has no mode to key on and the probe loop
-    // enters credential_required repeatedly.
     const hasSensitiveField = args.fields.some(
       (f) => f.type === "password" || f.sensitive === true,
     );
@@ -262,12 +191,6 @@ export const askUserFormTool: ConversationTool = {
           data: { error_code: "connector_auth_unset" },
         };
       }
-      // Gate: enforce the canonical credential field names at form
-      // CREATION time. Pre-fix the mismatch only surfaced at submit
-      // time — a form field named `basic_auth` matched no extractor
-      // alias, auto-persist failed with `credential_required`, and the
-      // operator had already typed the secret (session 97679846). See
-      // `persistence/credential-form-contract.ts` for the table.
       if (draftConnector != null && draftConnector.auth_type !== "none") {
         const resolution = await resolveDraftCredentialSeedMode({
           connector: draftConnector,
@@ -291,10 +214,6 @@ export const askUserFormTool: ConversationTool = {
               ),
             };
           }
-          // Slots already supplied outside the form: real (non-mustache)
-          // string values in commit_intent.payload.credential (e.g. the
-          // LLM pre-supplies `header_name`) plus config/template-derived
-          // seed overrides (aws_region, client_id).
           const intentCredential = (args.commit_intent?.payload?.credential ?? {}) as Record<
             string,
             unknown
@@ -317,10 +236,6 @@ export const askUserFormTool: ConversationTool = {
             seededSlots,
           });
           if (!verdict.ok) {
-            // Template-bound drafts get the template's setup_instructions
-            // as a hint — the canonical "where do I get this credential"
-            // steps. Best-effort: a lookup failure (stub executor, db
-            // blip) only drops the hint, never blocks the gate.
             let setupInstructions: string | null = null;
             if (draftConnector.template_slug) {
               try {
@@ -330,14 +245,8 @@ export const askUserFormTool: ConversationTool = {
                   slug: draftConnector.template_slug,
                 });
                 setupInstructions = resolved?.template.setup_instructions ?? null;
-              } catch {
-                // hint only — fall through without it
-              }
+              } catch {}
             }
-            // `data` is the payload that reaches the model as the tool
-            // result — the prose message and the EXPECTED field set must
-            // live there, or the model thrashes re-guessing field names
-            // (conversation 68b5c87e: 4 rejected forms in a row).
             return {
               ok: false,
               error_code: "credential_form_mismatch",
@@ -353,18 +262,6 @@ export const askUserFormTool: ConversationTool = {
               },
             };
           }
-          // Re-issue draft: when `request_connector_reauth` staged this
-          // draft (last_action = "connector_reauth_started") and the LLM
-          // did NOT attach its own commit_intent, stamp one
-          // deterministically so the existing `save_connector_draft`
-          // dispatch path fires on submit instead of silently no-opping.
-          // Without this stamp `extractCommitIntent` returns null,
-          // `maybeAutoPersistFromElicitation` logs `auto_persist.skipped`,
-          // and only the credential cache is populated — `saveConnectorAtomic`
-          // (which calls `clearConnectorReauth` + emits `credential_rotated`
-          // + `connector.reauth_cleared`) is never reached.
-          // We derive the intent from live draft state, not from LLM input,
-          // so it is always correct regardless of what the model writes.
           if (
             !args.commit_intent &&
             ctx.getDraft().summary?.last_action === "connector_reauth_started"

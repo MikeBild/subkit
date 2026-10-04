@@ -1,7 +1,3 @@
-// Unit tests for the welcome banner tip picker. The Ink component
-// itself is exercised indirectly via the InkApp integration tests;
-// here we just lock the tip rotation logic.
-
 import { describe, expect, test } from "bun:test";
 import { BANNER_TIPS, pickTip } from "../repl/welcome-banner.tsx";
 

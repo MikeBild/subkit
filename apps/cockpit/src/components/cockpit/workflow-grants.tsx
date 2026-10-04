@@ -31,12 +31,10 @@ import {
   type WorkflowAuthority,
 } from "@/lib/workflow-authorities";
 
-/** The approval's engine state as the badge reads it: approved, or not any more. */
 function badgeState(state: WorkflowAuthority["state"]): string {
   return state === "approved" ? "approved" : state === "not_yet_valid" ? "pending" : "inactive";
 }
 
-/** What an approval permits — the part a reader decides by — as facts. */
 function useEffectFacts(authority: WorkflowAuthority): Fact[] {
   const { t } = useI18n();
   const connectorNames = useConnectorNames();
@@ -45,8 +43,6 @@ function useEffectFacts(authority: WorkflowAuthority): Fact[] {
     value: [
       t(AUTHORITY_EFFECT_KEYS[effect.effect]),
       `${effect.driver} / ${effect.operation}`,
-      // The connector by its name, as the approval dialog names it — never a
-      // fragment of its id.
       effect.connector_id
         ? (connectorNames.get(effect.connector_id) ?? t("authority.configuredConnector"))
         : t("authority.directRequest"),
@@ -55,7 +51,6 @@ function useEffectFacts(authority: WorkflowAuthority): Fact[] {
   }));
 }
 
-/** One approval (O6): what it permits, and its exact boundary for whoever has to quote it. */
 function ApprovalSheet({
   authority,
   versions,
@@ -97,7 +92,6 @@ function ApprovalSheet({
     },
     {
       label: t("authority.digest"),
-      // A hash is evidence: its head identifies it, the whole stays on the title.
       value: (
         <span className="font-mono text-xs" title={authority.effect_manifest_digest}>
           {`${authority.effect_manifest_digest.slice(0, 12)}…`}
@@ -115,7 +109,6 @@ function ApprovalSheet({
       testId="authority-sheet"
       closeTestId="authority-sheet-close"
     >
-      {/* An approval can be valid and still cover nothing that runs. */}
       {authority.active_version ? null : (
         <p className="text-sm text-muted-foreground" data-testid="authority-inactive-version">
           {t("authority.inactiveVersion")}
@@ -133,7 +126,6 @@ function ApprovalSheet({
   );
 }
 
-/** "Widerrufen" on one approval (O5), with the one line of what it stops. */
 function RevokeApproval({
   authority,
   versionText,
@@ -145,9 +137,6 @@ function RevokeApproval({
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  // Revoked at once on screen; put back if the engine refuses. A revoked
-  // approval changes the verdict, the diagnosis and what the call promises —
-  // and the attention list, once a start is refused.
   const revoke = useOptimisticAction({
     queryKey: ["workflow-authorities", authority.workflow_id],
     mutationFn: () =>
@@ -204,7 +193,6 @@ function ApprovalTable({
   items: readonly WorkflowAuthority[];
   automation: WorkflowAutomation;
   collectionId: string;
-  /** The positional test id of row `index` — an approval's id never becomes a selector. */
   rowTestId: (index: number) => string;
   emptyLine: string;
 }) {
@@ -278,10 +266,6 @@ function ApprovalTable({
   );
 }
 
-/**
- * "Freigaben" (V4d): the approvals a run can use now, each revocable, and the
- * former ones folded. Approving lives in the strip only.
- */
 export function WorkflowApprovals({ automation }: { automation: WorkflowAutomation }) {
   const { t } = useI18n();
   const { state } = automation;
@@ -291,7 +275,6 @@ export function WorkflowApprovals({ automation }: { automation: WorkflowAutomati
       : state.alsoValid
     : [];
   const history = state?.history ?? [];
-  // A count, never a repeat of one row (R9); approving lives in the strip.
   const total = current.length + history.length;
   const summary =
     total === 0

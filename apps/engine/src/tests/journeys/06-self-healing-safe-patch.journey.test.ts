@@ -1,16 +1,3 @@
-// User story: As a platform operator, I want the engine to heal itself
-// when an upstream schema drifts and a safe patch is obvious, so that my
-// workflows don't fail in production.
-// Acceptance criteria:
-//   - AC1: A failing step with drift triggers a repair proposal.
-//   - AC2: The proposal is classified as `safe`, passes the fixture
-//          dry-run, and is auto-applied — a new workflow_version row is
-//          written and the patch_candidates row lands at `applied`.
-//   - AC3: Audit log records `patch_candidate.proposed` and
-//          `patch_candidate.auto_applied`, and the outbox holds a
-//          `patch.proposed` event.
-// Spec refs: docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import {
@@ -56,7 +43,6 @@ beforeAll(async () => {
     .returning();
   connectorId = connector!.id;
 
-  // Seed workflow + version with the OLD shape.
   const [wf] = await ctx.db
     .insert(workflows)
     .values({
@@ -90,7 +76,6 @@ beforeAll(async () => {
     .set({ current_version_id: version!.id })
     .where(eq(workflows.id, workflowId));
 
-  // Seed an execution + failing step.
   const [exec] = await ctx.db
     .insert(executions)
     .values({
@@ -185,7 +170,6 @@ describe("journey: self-healing safe patch", () => {
     expect(candidate[0]?.status).toBe("applied");
     expect(candidate[0]?.fixture_id).toBe(fixtureId);
 
-    // A new workflow version was written.
     const versions = await ctx.db
       .select()
       .from(workflowVersions)
@@ -218,16 +202,6 @@ describe("journey: self-healing safe patch", () => {
   });
 
   test("AC4: schema-version drift repair runs end-to-end", async () => {
-    // Simulate three invocations of a workflow against a mock upstream
-    // whose response shape drifts mid-series. We don't boot a real
-    // `request` driver because the step runner is owned by another
-    // stream this pass; instead we drive the same moving parts the
-    // driver touches — `schema_versions`, the drift detector, and the
-    // self-healing loop — so the end-to-end story still lands in a
-    // single test.
-
-    // Fresh connector + workflow for this test case so it doesn't
-    // collide with the rows seeded by the earlier test.
     const endpoint = "GET /users/42";
     const [drift_connector] = await ctx.db
       .insert(connectors)
@@ -270,10 +244,6 @@ describe("journey: self-healing safe patch", () => {
               method: "GET",
               connector_id: driftConnectorId,
               path: "/users/42",
-              // Selector tracks the drift-relevant field; the mock
-              // LLM always proposes rewriting `data.id` to
-              // `data.result.id` so the dry-run path needs a selector
-              // that starts as `data.id`.
               data_selector: "data.id",
             },
           ],
@@ -285,10 +255,6 @@ describe("journey: self-healing safe patch", () => {
       .set({ current_version_id: drift_version!.id })
       .where(eq(workflows.id, driftWorkflowId));
 
-    // Seed a fixture matching the endpoint. The mock LLM's canned
-    // repair rewrites `data.id` → `data.result.id`; once the patch
-    // is applied the dry run walks the fixture response and should
-    // find a non-undefined value.
     const [drift_fixture] = await ctx.db
       .insert(executionFixtures)
       .values({
@@ -302,13 +268,6 @@ describe("journey: self-healing safe patch", () => {
       .returning();
     const driftFixtureId = drift_fixture!.id;
 
-    // -----------------------------------------------------------------
-    // Call 1 — upstream returns the v1 shape. Record the canonical
-    // shape in `schema_versions`, mirroring what the request driver
-    // does on a successful response. We wrap the upstream in a
-    // `data.*` envelope so it lines up with the step's existing
-    // `data.id` selector.
-    // -----------------------------------------------------------------
     const upstreamFlat = { data: { id: 1, name: "Ada" } };
     await recordSuccessShape(
       {
@@ -332,12 +291,6 @@ describe("journey: self-healing safe patch", () => {
     expect(shapeAfterFlat).not.toBeNull();
     expect(shapeAfterFlat).toEqual(deriveShape(upstreamFlat));
 
-    // -----------------------------------------------------------------
-    // Call 2 — upstream flips to the v2 shape. The `id` field has been
-    // wrapped inside a `result` sub-object, causing the JSONata step
-    // selector `data.id` to miss. The drift detector should read the
-    // v1 shape from `schema_versions` and emit a `schema_diff` signal.
-    // -----------------------------------------------------------------
     const upstreamWrapped = { data: { result: { id: 1, full_name: "Ada" } } };
     const [drift_exec] = await ctx.db
       .insert(executions)
@@ -388,10 +341,6 @@ describe("journey: self-healing safe patch", () => {
       .returning();
     const driftStepId = drift_step!.id;
 
-    // Prove the drift detector classifies a shape change as
-    // `schema_diff`. We hand it the canonical v1 shape and a payload
-    // whose top-level keys differ — the detector compares shallowly
-    // and should flag the delta.
     const schemaDiffSignal = analyzeStepFailure(
       {
         id: driftStepId,
@@ -414,8 +363,6 @@ describe("journey: self-healing safe patch", () => {
           },
           extras: { data_selector: "data.id" },
         },
-        // This payload is at the top level `{id, name, extra}` vs
-        // the recorded `{id, name}` — the diff lands in `added`.
         output_preview: { id: 1, name: "Ada", extra: "new-field" },
       },
       deriveShape({ id: 1, name: "Ada" }),
@@ -423,13 +370,6 @@ describe("journey: self-healing safe patch", () => {
     expect(schemaDiffSignal).not.toBeNull();
     expect(schemaDiffSignal?.kind).toBe("schema_diff");
 
-    // -----------------------------------------------------------------
-    // Drive the self-healing loop the same way the queue handler would
-    // for this failed step. Under the default `safe-patches` policy the
-    // loop should classify the patch as `safe`, pass the fixture dry
-    // run, and auto-apply — producing a `patch_candidates` row with
-    // `classification: "safe"` and `status: "applied"`.
-    // -----------------------------------------------------------------
     const loopResult = await runSelfHealingLoop(
       {
         tenant_id: ctx.tenantId,
@@ -454,12 +394,6 @@ describe("journey: self-healing safe patch", () => {
     expect(driftCandidate[0]?.status).toBe("applied");
     expect(driftCandidate[0]?.fixture_id).toBe(driftFixtureId);
 
-    // -----------------------------------------------------------------
-    // Call 3 — with the patch applied, the next invocation is expected
-    // to succeed. We simulate the third call by recording a fresh
-    // `schema_versions` row for the v2 shape and confirming that no
-    // new drift is raised against it.
-    // -----------------------------------------------------------------
     await recordSuccessShape(
       {
         tenant_id: ctx.tenantId,
@@ -507,8 +441,6 @@ describe("journey: self-healing safe patch", () => {
     );
     expect(postSignal).toBeNull();
 
-    // Two rows ever lived in `schema_versions` for this endpoint: the
-    // pre-drift `v1` shape and the post-drift `v2` shape.
     const versions = await ctx.db
       .select()
       .from(schemaVersions)

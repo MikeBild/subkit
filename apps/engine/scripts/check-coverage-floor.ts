@@ -1,28 +1,4 @@
 #!/usr/bin/env bun
-//
-// check-coverage-floor — runs `bun test <subsystem> --coverage` for each entry in
-// apps/engine/.coverage-floor.json and fails when the observed line
-// or branch coverage drops below the recorded floor.
-//
-// Usage:
-//   bun run check:coverage-floor              # all subsystems
-//   bun run check:coverage-floor rbac audit   # just these
-//
-// Output is line-oriented and parseable, mirroring audit-invariants.ts:
-//   PASS  apps/engine/src/rbac      line=92.10 (>=90) branch=85.40 (>=85)
-//   FAIL  apps/engine/src/audit     line=88.00 (<90)
-//   SKIP  apps/engine/src/http/routes  floor=0/0 (deferred)
-//
-// Exits non-zero on any FAIL. Designed so the audit-invariants
-// `coverage_floor` check can call it and surface the result in CI.
-//
-// Implementation note: `bun test --coverage` prints a per-file ASCII
-// table on stderr. We invoke it per subsystem and parse the relevant
-// row (the "All files" aggregate, scoped by the test path glob). For
-// large subsystems where bun's aggregate reports many files outside
-// the subsystem root (because every test file imports cross-cutting
-// modules), we filter to lines whose path begins with the subsystem
-// directory and average them weighted by line count.
 
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -47,8 +23,6 @@ interface CoverageRow {
   file: string;
   funcs: number;
   lines: number;
-  // Branch coverage isn't reported by `bun test --coverage` today;
-  // we surface it as undefined and let the floor check tolerate that.
   branch?: number;
   totalLines: number;
 }
@@ -118,21 +92,13 @@ function runCoverage(subsystemDir: string): CoverageRow[] {
         "00000000000000000000000000000000000000000000000000000000000000aa",
     },
     encoding: "utf8",
-    // Route suites log ~1MB+ of structured JSON; the 1MB spawnSync default
-    // kills the child with ENOBUFS before the coverage table prints.
     maxBuffer: 64 * 1024 * 1024,
   });
-  // bun prints the coverage table on stderr alongside the test summary.
   const stream = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   return parseCoverageTable(stream);
 }
 
 function parseCoverageTable(text: string): CoverageRow[] {
-  // The bun coverage table looks like:
-  //   File                | % Funcs | % Lines | Uncovered Line #s
-  //   ----                | ------- | ------- | ----------------
-  //    apps/engine/src/rbac/evaluator.ts | 100.00 | 98.95 | 112-113
-  // We pull rows whose first column starts with `apps/`.
   const rows: CoverageRow[] = [];
   for (const line of text.split("\n")) {
     if (!line.includes("|")) continue;
@@ -157,8 +123,6 @@ function aggregateByPrefix(rows: CoverageRow[], subsystem: string): { line: numb
   const prefix = subsystem.endsWith("/") ? subsystem : `${subsystem}/`;
   const matched = rows.filter((r) => r.file.startsWith(prefix));
   if (matched.length === 0) return null;
-  // LOC-weighted average so a tiny 100%-covered helper doesn't pull
-  // the aggregate up artificially.
   let totalLines = 0;
   let coveredLines = 0;
   for (const r of matched) {
@@ -181,7 +145,6 @@ const results: Result[] = [];
 
 for (const [subsystem, floor] of Object.entries(floors.subsystems)) {
   if (want.size > 0) {
-    // Allow either the full path or the trailing leaf to match.
     const leaf = subsystem.split("/").pop() ?? "";
     if (!want.has(subsystem) && !want.has(leaf)) continue;
   }

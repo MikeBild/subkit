@@ -1,16 +1,3 @@
-// source_faithful anti-drift check.
-//
-// Two layers under test:
-//   - Pure deterministic helpers (no DB, no LLM): quote extraction and
-//     quote-vs-excerpt fidelity.
-//   - `checkSourceFaithful` against a real Postgres: id resolution, the
-//     no-envelope no-op skip, and the judge escalation for free-text
-//     paraphrase faithfulness (LLM via the in-process mock provider).
-//
-// LLM provider is the in-process mock (`LLM_PROVIDER=mock` set by this
-// isolated test); the judge flow is steered via
-// `getMockProvider().generateOverrides.judge` — no network, deterministic.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { knowledgeChunks, knowledgeSources, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -70,8 +57,6 @@ describe("findUngroundedQuotes (pure)", () => {
     );
   });
 });
-
-// ---- DB-backed: checkSourceFaithful -----------------------------------------
 
 let testDb: TestDb;
 let tenantId: string;
@@ -202,10 +187,6 @@ describe.skipIf(skip)("checkSourceFaithful", () => {
   });
 
   test("a fabricated connector_doc id is flagged unresolved (the provenance-hole guard)", async () => {
-    // Before connector_doc citations got their own resolve query, a
-    // connector_doc id was DROPPED from the filter → silently exempt →
-    // a fabricated one passed the gate. It must now fail like a bogus
-    // knowledge_chunk id does.
     const v = await checkSourceFaithful({
       text: "Per the connector docs, charges use POST /v1/charges.",
       citations: [
@@ -255,8 +236,6 @@ describe.skipIf(skip)("checkSourceFaithful", () => {
   test("free-text-only claim escalates to the judge → judge 'drift' fails", async () => {
     getMockProvider().generateOverrides.judge = () => "drift";
     const v = await checkSourceFaithful({
-      // No verbatim quote, resolvable id → deterministic checks pass, so the
-      // free-text faithfulness call is the ONLY thing that can fail it.
       text: "The compliance policy requires SOC 2 certification for all vendors.",
       citations: [
         cite({

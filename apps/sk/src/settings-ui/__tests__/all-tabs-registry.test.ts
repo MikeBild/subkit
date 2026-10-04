@@ -1,9 +1,3 @@
-// Locks the SettingsModal outer tab registry to its 5-tab shape.
-// If anyone re-introduces "Settings", "Stats", "Permissions",
-// "Profile", or "Admin" to ALL_TABS, this test fails — the SinglePane
-// slash commands (/permissions, /profile, /admin) and the embedded
-// Status heatmap are the source of truth for those surfaces.
-
 import { describe, expect, test } from "bun:test";
 import { ALL_TABS, type OuterTabName } from "../SettingsModal.tsx";
 
@@ -21,7 +15,6 @@ describe("SettingsModal — ALL_TABS registry", () => {
   });
 
   test("OuterTabName excludes moved tab names", () => {
-    // Compile-time guard: legacy names must NOT be assignable to
     // OuterTabName. Each `// @ts-expect-error` line will fail the
     // typecheck if the union ever widens again.
     // @ts-expect-error — Settings was the old engine-section tab (deleted)
@@ -34,7 +27,6 @@ describe("SettingsModal — ALL_TABS registry", () => {
     const _profile: OuterTabName = "Profile";
     // @ts-expect-error — moved to /admin SinglePane
     const _admin: OuterTabName = "Admin";
-    // Silence unused-var lints — the assignments above are the test.
     void _settings;
     void _stats;
     void _permissions;

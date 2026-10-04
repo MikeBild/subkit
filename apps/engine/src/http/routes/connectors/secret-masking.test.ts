@@ -1,20 +1,3 @@
-// HTTP integration tests for what a connector representation may carry.
-//
-// A connector stores its OAuth client secret in `config.oauth` and its
-// database password inside `dsn`, because the OAuth client and the postgres
-// driver read them there. Neither may leave the engine: every route that
-// returns a connector — create, get, list, patch, enable, disable, and the
-// from-template serializer — returns the public projection.
-//
-// The other half is the write path. `sk connectors get` followed by
-// `sk connectors patch --file` sends the representation straight back, mask
-// included. That round trip must keep the stored secret; a connector whose
-// secret was replaced by its own mask keeps working until the access token
-// expires and then fails against the upstream with nothing pointing here.
-//
-// The breaker fields ride on the same representation: `health_state` says
-// whether a connector is usable, the breaker says why a call is refused now.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -27,7 +10,6 @@ import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 import { serializeConnector } from "../connector-templates/schemas.ts";
 
-// Fixture markers, not credentials.
 const CLIENT_SECRET = "fixture-client-secret-not-real";
 const HEADER_SECRET = "fixture-header-secret-not-real";
 const DSN_SECRET = "fixture-dsn-secret-not-real";
@@ -81,7 +63,6 @@ function oauthDefinition(): Json {
 async function storedOAuthSecret(): Promise<string | undefined> {
   const view = await getConnector(ctx.tenantId, oauthConnectorId, ctx.db);
   if (!view) throw new Error("connector vanished");
-  // The same resolution `oauth/start` and the refresh worker go through.
   const cfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenantId, view);
   return cfg?.client_secret;
 }
@@ -339,7 +320,6 @@ describe("the audit trail of those writes", () => {
       .select({ before: auditLog.before, after: auditLog.after })
       .from(auditLog)
       .where(eq(auditLog.action, "connector.updated"));
-    // Both connectors were patched above, so both snapshots are in here.
     const text = JSON.stringify(rows);
     expect(text).toContain("replica.acme.test");
     expect(text).toContain("acme-client-id");

@@ -1,9 +1,3 @@
-// One reading of an OAuth scope string. RFC 6749 separates scope tokens with
-// spaces; an authorization server that answers with a comma-separated list
-// granted the same set. Read with spaces alone, a comma list is one unknown
-// token, every requested scope reads as missing, and a sign-in that granted
-// everything is reported as a partial grant.
-
 import { describe, expect, test } from "bun:test";
 import { diffOauthScopes } from "../../connectors/oauth-scope-diff.ts";
 import { parseScopeList, storedScopes } from "../authority-scopes.ts";

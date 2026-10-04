@@ -1,21 +1,3 @@
-// Strategy: `llms.txt` / `llms-full.txt` fallback.
-//
-// The llms-txt standard (<https://llmstxt.org>) lets a service publish a
-// plaintext / markdown document at `/llms-full.txt` (full content) or
-// `/llms.txt` (an index of links) describing the surface in LLM-friendly
-// prose. The spec's canonical location is the site root; some sites mirror
-// it under `/.well-known/` too, so we probe both — root first, full-content
-// variant first. For services that don't ship OpenAPI or GraphQL
-// introspection — but DO publish llms.txt — this strategy is the zero-cost
-// win.
-//
-// Output shape: a `DiscoveryResult` with `endpoints: []` and a populated
-// `text_corpus`. Downstream consumers feed `text_corpus` into RAG /
-// chunking; they do not iterate `endpoints` for this strategy.
-//
-// Size cap: merged corpus is truncated at 50 KB to keep prompt budgets
-// in check. Fan-out cap: max 10 sub-pages when llms.txt is an index.
-
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
@@ -33,9 +15,6 @@ const MAX_SINGLE_DOC_BYTES = 4 * 1024 * 1024;
 const MAX_INDEX_FANOUT = 10;
 const MIN_FULL_BODY_CHARS = 200;
 
-// Probed richest-first: full-content before index, root before `.well-known`.
-// Root is the llms-txt spec's canonical location; `.well-known` is a common
-// mirror, so we try both rather than assume one.
 export const CANDIDATE_PATHS: { path: string; preferred: boolean }[] = [
   { path: "/llms-full.txt", preferred: true },
   { path: "/.well-known/llms-full.txt", preferred: true },
@@ -58,7 +37,6 @@ function parseUrlsFromIndex(content: string): string[] {
   for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim().replace(/^[-*•]\s+/, "");
     if (!line || line.startsWith("#") || line.startsWith("//")) continue;
-    // Markdown link form: `[label](https://example.com/...)`.
     const md = line.match(/\[[^\]]+\]\((https?:\/\/[^)\s]+)\)/);
     if (md?.[1]) {
       if (!seen.has(md[1])) {
@@ -67,7 +45,6 @@ function parseUrlsFromIndex(content: string): string[] {
       }
       continue;
     }
-    // Bare URL line.
     const bare = line.match(/^(https?:\/\/\S+)\s*$/);
     if (bare?.[1]) {
       if (!seen.has(bare[1])) {
@@ -79,12 +56,6 @@ function parseUrlsFromIndex(content: string): string[] {
   return urls;
 }
 
-/**
- * Heuristic: a body is "index-shaped" when most of its non-empty lines
- * carry a URL. A body is "content-shaped" when it has markdown headings
- * or paragraphs and few standalone URLs. Used to decide whether to fan
- * out and fetch sub-pages or use the body as-is.
- */
 function looksLikeIndex(content: string): boolean {
   const nonEmpty = content
     .split(/\r?\n/)
@@ -118,7 +89,6 @@ async function fetchText(
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
     if (buf.byteLength > maxBytes) {
-      // Truncate rather than reject — these docs can legitimately be big.
       return new TextDecoder().decode(buf.slice(0, maxBytes));
     }
     return new TextDecoder().decode(buf);
@@ -176,7 +146,6 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
       if (!body) continue;
       const trimmed = body.trim();
       if (trimmed.length < MIN_FULL_BODY_CHARS && !looksLikeIndex(trimmed)) {
-        // Too small to be meaningful AND not a list of URLs — skip.
         continue;
       }
       chosenUrl = candidate;

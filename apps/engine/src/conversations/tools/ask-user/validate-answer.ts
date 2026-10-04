@@ -1,19 +1,3 @@
-// Server-side validation of an elicitation answer against the
-// originating ask_user_* input declaration.
-//
-// The renderers validate client-side (FormPrompt pins JSON parse
-// errors, TextPrompt tests validation_regex before submit), but the
-// HTTP respond route and the MCP-native bridge accept arbitrary
-// payloads — without this check an invalid answer flows into
-// auto-persist / the next LLM turn. Validation failure does NOT
-// resolve the row: the elicitation stays `pending`, which IS the
-// re-prompt (no new row, no state-machine change). The caller maps the
-// failure to a 422 (HTTP), a re-posted form (chat), or one bridge
-// retry (MCP).
-//
-// Decline/cancel answers are never validated — an operator saying "no"
-// (confirmed:false / declined:true) must always get through.
-
 import { type FormFieldDefinition, validateFormFieldValue } from "./form.ts";
 import { interpretConfirmDecision } from "./interpret-confirm.ts";
 
@@ -36,8 +20,6 @@ function isDecline(output: Record<string, unknown>): boolean {
   return interpretConfirmDecision(output) === "declined";
 }
 
-/** Read the answered value map for ask_user_form. The DB-pause portal
- *  sends `{ values: {...} }`; the MCP bridge resolves the flat map. */
 function formValues(output: Record<string, unknown>): Record<string, unknown> {
   const wrapped = asRecord(output.values);
   return wrapped ?? output;
@@ -87,7 +69,6 @@ export function validateElicitationAnswer(
       const regex =
         typeof inputObj.validation_regex === "string" ? inputObj.validation_regex : null;
       if (!regex) return { ok: true };
-      // Portal sends `{ text }`; the MCP bridge maps to `{ value }`.
       const answer =
         typeof outputObj.text === "string"
           ? outputObj.text
@@ -99,8 +80,6 @@ export function validateElicitationAnswer(
       try {
         re = new RegExp(regex);
       } catch {
-        // An invalid LLM-authored regex passes open — never block the
-        // operator on a malformed pattern.
         return { ok: true };
       }
       return re.test(answer)
@@ -170,12 +149,6 @@ export function validateElicitationAnswer(
     }
 
     case "ask_user_confirm": {
-      // A confirm answer must carry a recognizable decision. Declines
-      // already short-circuited above (isDecline), so reaching here with
-      // anything other than an explicit confirm means the client sent an
-      // ambiguous payload (e.g. `{}` or an unknown key). Reject it so the
-      // row stays pending and the client re-prompts, rather than letting
-      // it silently resolve as a `user_declined` non-confirmation.
       if (interpretConfirmDecision(outputObj) !== "confirmed") {
         return {
           ok: false,

@@ -1,17 +1,3 @@
-// Reconciler skill-candidate analysis sweep test.
-//
-// `reconcileSkillCandidateAnalysis` sweeps tenants and enqueues a
-// `skill-candidate.analyze` job per cadence, compare-and-setting
-// `tenants.last_skill_candidate_analyze_at` so a multi-instance
-// deployment fires exactly once per cadence per tenant. This file pins:
-//   - a never-analysed tenant (NULL stamp) fires on the first pass and
-//     stamps the column;
-//   - a second pass at the same instant does NOT re-fire (cadence dedup);
-//   - a pass after the cadence has elapsed fires again.
-//
-// We bypass pg-boss entirely by stubbing `boss.send` and counting
-// invocations, isolating the reconciler's enqueue + CAS-stamp logic.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -81,7 +67,6 @@ describe("reconciler skill-candidate analysis sweep", () => {
   test("does not re-fire within the cadence window", async () => {
     const calls: SendCall[] = [];
     const boss = createStubBoss(calls);
-    // Stamp = now, so the same-instant pass is inside the cadence.
     const now = new Date("2026-06-05T12:00:00.000Z");
     await setStamp(ctx.tenantId, now);
 
@@ -94,7 +79,6 @@ describe("reconciler skill-candidate analysis sweep", () => {
   test("fires again once the cadence has elapsed", async () => {
     const calls: SendCall[] = [];
     const boss = createStubBoss(calls);
-    // Stamp 7h ago; cadence is 6h, so the tenant is due again.
     const last = new Date("2026-06-05T05:00:00.000Z");
     const now = new Date("2026-06-05T12:00:00.000Z");
     await setStamp(ctx.tenantId, last);
@@ -104,7 +88,6 @@ describe("reconciler skill-candidate analysis sweep", () => {
 
     expect(analyzeCallsFor(calls, ctx.tenantId).length).toBe(1);
 
-    // Same instant again → stamp is now `now`, no second fire.
     await reconciler.reconcileSkillCandidateAnalysis(now);
     expect(analyzeCallsFor(calls, ctx.tenantId).length).toBe(1);
   });
@@ -112,10 +95,6 @@ describe("reconciler skill-candidate analysis sweep", () => {
   test("fires when the stored stamp carries microsecond precision (CAS is range-based)", async () => {
     const calls: SendCall[] = [];
     const boss = createStubBoss(calls);
-    // Inject a stored stamp with sub-millisecond microseconds (.123456) — the
-    // exact shape that stalled the old read-then-CAS-on-equality path, because
-    // node-postgres truncates the read-back Date to milliseconds (.123) so the
-    // equality never matched. A fixed past instant keeps the test deterministic.
     await ctx.testDb.db
       .update(tenants)
       .set({
@@ -124,12 +103,9 @@ describe("reconciler skill-candidate analysis sweep", () => {
       .where(eq(tenants.id, ctx.tenantId));
 
     const reconciler = new SchedulerReconciler({ boss, db: ctx.testDb.db, intervalMs: 60_000 });
-    // 7h later → stamp is older than the 6h cadence cutoff, so the row is due.
     const now = new Date("2026-06-05T12:00:00.000Z");
     await reconciler.reconcileSkillCandidateAnalysis(now);
 
-    // The atomic UPDATE...RETURNING claims the row on a `<` predicate, so
-    // microsecond precision in the stored value no longer stalls the tenant.
     expect(analyzeCallsFor(calls, ctx.tenantId).length).toBe(1);
   });
 });

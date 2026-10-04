@@ -1,8 +1,3 @@
-// #304 — targeted credential-arg scrub for the persisted tool-call row.
-// Must mask known credential slots for known tools while leaving every other
-// tool + arg byte-identical (the blanket-sweep-corrupts-workflow-code
-// incident class, pinned in redaction-persist.integration.test.ts).
-
 import { describe, expect, test } from "bun:test";
 import { ELICITATION_REDACTED_MARKER as MARKER } from "../ask-user/redact-answer.ts";
 import { redactToolArgsForPersist } from "./redact-tool-args.ts";
@@ -21,7 +16,6 @@ describe("redactToolArgsForPersist — save_connector_draft", () => {
     expect(out.credential.mode).toBe("bearer");
     expect(out.credential.note).toBe("prod key");
     expect(out.slug).toBe("acme");
-    // The caller's raw object is untouched (execution still needs it).
     expect(args.credential.token).toBe("sk-real-secret-value");
   });
 
@@ -66,13 +60,10 @@ describe("redactToolArgsForPersist — targeted, never blanket", () => {
     const args = {
       patches: [{ op: "replace", path: "/steps/0/expression", value: `const B="${alphabet}";` }],
     };
-    // edit_workflow_patch declares no credentialFields → identity passthrough.
     expect(redactToolArgsForPersist("edit_workflow_patch", args)).toBe(args);
   });
 
   test("save_connector_draft with a high-entropy value in a NON-secret slot is left intact", () => {
-    // Only SECRET_SEED_FIELDS slots are scrubbed — a base_url or client_id
-    // that happens to look high-entropy must survive.
     const args = { credential: { mode: "oauth2", client_id: "Xy9KqLm2NpRsTuVwAbCdEfGhJkMnPqRs" } };
     const out = redactToolArgsForPersist("save_connector_draft", args) as {
       credential: Record<string, string>;

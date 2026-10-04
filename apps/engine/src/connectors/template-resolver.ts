@@ -78,11 +78,6 @@ export function buildTemplateBindingFields(resolved: ResolvedConnectorTemplate):
   template_version: number;
   template_snapshot: ConnectorTemplate;
 } {
-  // The snapshot is the typed Zod-output value — no runtime widening
-  // happens here, so the field type stays specific. Consumers that
-  // need a generic JSON shape (e.g. drizzle's jsonb column writer) can
-  // accept ConnectorTemplate directly because every property is a
-  // valid JSON value already.
   return {
     template_slug: resolved.template.slug,
     template_name: resolved.template.name,

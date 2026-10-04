@@ -62,8 +62,6 @@ describe("per-step retry overrides", () => {
     const elapsed = Date.now() - start;
     expect(result.status).toBe("succeeded");
     expect(attempts).toBe(3);
-    // Default backoff would waste >400ms on two retries; custom 50ms base
-    // keeps both retry waits under 200ms combined (with jitter).
     expect(elapsed).toBeLessThan(2_000);
   });
 

@@ -1,14 +1,3 @@
-// `sk system restart [--wait]` — restart the engine so a saved
-// restart-sensitive setting takes effect.
-//
-// The engine refuses unless a supervisor will bring it back
-// (`server.restart_supervised`), a restart-required revision waits, and one
-// instance is live; each refusal is printed as what to do instead. With
-// `--wait` the command follows `GET /v1/system/restart-status` until a new
-// process (a new boot_id) runs the saved revision (active == saved). While
-// the engine is down, connection errors and 502/503/504 mean "still
-// restarting".
-
 import { isEngineError, isTransportError, reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -22,7 +11,6 @@ const POLL_INTERVAL_MS = 2_000;
 const MANUAL_RESTART =
   "Restart it where it runs: `systemctl restart subkit-engine` or `docker compose restart engine`.";
 
-/** What each refusal means for the person at the terminal. */
 export const REFUSAL_GUIDANCE: Record<string, string> = {
   not_supervised: `SubKit does not restart itself here: no supervisor is declared. ${MANUAL_RESTART} Or declare the supervisor: \`sk settings set server.restart_supervised true\`.`,
   nothing_pending: "Nothing waits for a restart: every saved setting is already active.",
@@ -37,16 +25,11 @@ export type RestartWaitOutcome =
   | { kind: "not_activated"; status: EngineRestartStatus }
   | { kind: "timeout" };
 
-/** While the engine is gone: no connection, or a gateway/draining answer. */
 function stillRestarting(error: unknown): boolean {
   if (isTransportError(error)) return true;
   return isEngineError(error) && [502, 503, 504].includes(error.status);
 }
 
-/**
- * Poll until a different process runs, then report whether it runs the saved
- * revision. Any other error (401, 403, …) is not "restarting" and is thrown.
- */
 export async function waitForRestart(args: {
   fromBootId: string;
   fetchStatus: () => Promise<EngineRestartStatus>;

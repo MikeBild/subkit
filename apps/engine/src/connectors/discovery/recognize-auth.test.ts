@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { recognizeAuthFromSchemes } from "./recognize-auth.ts";
 import type { DiscoveredAuthScheme } from "./types.ts";
 
-// Pure, deterministic recognition over the exact `DiscoveredAuthScheme`
-// shape produced by openapi-direct.ts. No DB / network / LLM.
-
 describe("recognizeAuthFromSchemes — apiKey + http arms", () => {
   test("apiKey in header → header", () => {
     const schemes: DiscoveredAuthScheme[] = [
@@ -103,7 +100,6 @@ describe("recognizeAuthFromSchemes — oauth2 arm", () => {
     expect(r?.auth_type).toBe("oauth2");
     expect(r?.oauth?.grant_type).toBe("client_credentials");
     expect(r?.oauth?.token_endpoint).toBe("https://id.example.com/token");
-    // No authorization endpoint on a pure client-credentials flow.
     expect(r?.oauth?.authorization_endpoint).toBeUndefined();
   });
 

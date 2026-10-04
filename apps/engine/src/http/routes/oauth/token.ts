@@ -1,9 +1,3 @@
-// MCP OAuth 2.1 token endpoints: POST /v1/oauth/token and POST /v1/oauth/revoke.
-//
-// Raw Hono handlers — application/x-www-form-urlencoded body per RFC 6749 / RFC 7009.
-// Not @hono/zod-openapi. Bodies are still Zod-validated at the boundary per AGENTS.md.
-// Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { readRequestSource } from "../../../audit/index.ts";
 import {
@@ -19,10 +13,6 @@ import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody, RevokeRequestSchema, TokenRequestSchema } from "./shared.ts";
 
 export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
-  // ── Token endpoint ─────────────────────────────────────────────────────────
-  // Raw handler — application/x-www-form-urlencoded body per RFC 6749
-  // (also accepts application/json). Both paths are validated through
-  // `TokenRequestSchema` so the request body is Zod-checked at the boundary.
   app.post("/v1/oauth/token", async (c) => {
     const contentType = c.req.header("content-type") ?? "";
     const rawBody = contentType.includes("application/x-www-form-urlencoded")
@@ -87,10 +77,6 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
         return c.json(tokens, 200, { "Cache-Control": "no-store" });
       } catch (err) {
         const oauthError = (err as { oauth_error?: string }).oauth_error ?? "invalid_grant";
-        // A refusal that knows why says so. The liveness refusals name what
-        // happened — the person was withdrawn, the client registration was
-        // revoked — instead of leaving the client to guess (and instead of
-        // advising an API key, the fallback tranche B removed).
         const description = (err as { oauth_error_description?: string }).oauth_error_description;
         logger.warn({
           module: "mcp_oauth",
@@ -106,8 +92,6 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // ── RFC 8693 token exchange: API key → short-lived Bearer token ──────
-    // No client secret and no client_id — the API key is the credential.
     if (body.grant_type === TOKEN_EXCHANGE_GRANT_TYPE) {
       const { subject_token: subjectToken, subject_token_type: subjectTokenType } = body;
       if (!subjectToken || !subjectTokenType) {
@@ -155,8 +139,6 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ error: "unsupported_grant_type" }, 400);
   });
 
-  // ── Revocation endpoint ────────────────────────────────────────────────────
-  // Raw handler — application/x-www-form-urlencoded body per RFC 7009.
   app.post("/v1/oauth/revoke", async (c) => {
     const parsed = RevokeRequestSchema.safeParse(
       Object.fromEntries(await parseFormBody(c.req.raw)),
@@ -168,7 +150,6 @@ export function registerOAuthTokenRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const db = c.get("db");
     const provider = createMcpOAuthProvider({ db, config: getConfig() });
-    // RFC 7009: always return 200 regardless of token validity
     await provider.revokeToken(token, readRequestSource(c) ?? "api").catch((err: unknown) => {
       logger.warn({
         module: "mcp_oauth",

@@ -1,12 +1,3 @@
-// Negative-coverage test for the C-1 fix in
-// SlackAdapter.handleSyncInteraction: an `open_elicit:<id>` click from
-// workspace W_A carrying an elicitation_id that exists in tenant T_B
-// must NOT open a modal exposing T_B's elicitation contents.
-//
-// The fix scopes the elicitation lookup by workspace tenant; the test
-// confirms the cross-tenant case takes the "not found" branch and does
-// not call `views.open`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -63,7 +54,6 @@ afterAll(async () => {
 
 describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defense (C-1)", () => {
   test("an open_elicit referencing an elicitation in a foreign tenant is dropped without views.open", async () => {
-    // Workspace A — under our test tenant.
     await ctx.testDb.db.insert(chatWorkspaces).values({
       tenant_id: ctx.tenant_id,
       platform: "slack",
@@ -73,8 +63,6 @@ describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defens
       bot_auth_tag: detBytes(1),
     });
 
-    // Create a SECOND tenant and an elicitation row inside it. This
-    // mimics the attack: an elicitation_id from another tenant.
     const [foreignTenant] = await ctx.testDb.db
       .insert(tenants)
       .values({ slug: "t-xtenant-foreign", display_name: "Foreign" })
@@ -124,18 +112,12 @@ describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defens
       .returning();
     if (!foreignElic) throw new Error("seed foreign elicitation");
 
-    // Build an adapter that talks to the recording mock instead of Slack.
     const adapter = new SlackAdapter({
       signingSecret: "x",
       botToken: "xoxb-test",
       slackApiUrl: baseUrl,
     });
 
-    // Drive `handleSyncInteraction` directly — the event was received
-    // by workspace T_LOCAL but carries the foreign tenant's
-    // elicitation_id. The pre-fix code would 200 OK + `views.open`
-    // with the foreign elicitation; the fix returns handled with NO
-    // Slack API call.
     const before = recorded.length;
     const outcome = await adapter.handleSyncInteraction({
       event: {
@@ -154,10 +136,7 @@ describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defens
     });
 
     expect(outcome.handled).toBe(true);
-    // No Slack API call was made — the elicitation lookup was scoped
-    // by the workspace's tenant and missed.
     expect(recorded.length).toBe(before);
-    // Specifically, no /views.open was made.
     expect(recorded.find((r) => r.path.includes("views.open"))).toBeUndefined();
   });
 });

@@ -47,7 +47,6 @@ async function connector(tenant_id: string, slug: string, base_url: string) {
   return row;
 }
 
-/** An active workflow whose v1 holds a live approval for `steps`. */
 async function fixture(
   steps: (connectors: { main: string; other: string }) => Step[],
   bounds: { max_runs: number | null; valid_until: Date | null; reserved_runs?: number } = {
@@ -112,7 +111,6 @@ async function version(tenant_id: string, workflow_id: string, n: number, steps:
   return row.id;
 }
 
-/** Make a new version active the way every activation path does. */
 async function activate(f: Awaited<ReturnType<typeof fixture>>, steps: Step[]) {
   const id = await version(f.tenant_id, f.workflow_id, f.next++, steps);
   const [current] = await ctx.db
@@ -166,7 +164,6 @@ describe("an approval follows a version whose boundary does not grow", () => {
       valid_until: until,
       reserved_runs: 4,
     });
-    // Different payload and step id; same connector, address and effect.
     const next = await activate(f, [
       { ...post(f.ids.main, "/messages", { to: "b" }), id: "deliver" },
     ]);
@@ -200,7 +197,6 @@ describe("an approval follows a version whose boundary does not grow", () => {
       workflow_version_id: next.id,
       max_runs: 6,
     });
-    // The carried approval is what admission and dispatch actually accept.
     const params = {
       tenant_id: f.tenant_id,
       workflow_id: f.workflow_id,
@@ -210,7 +206,6 @@ describe("an approval follows a version whose boundary does not grow", () => {
     const run = await admitAuthorizedWorkflowExecution(params, ctx.db);
     expect(run.execution_authority_id).toBe(child?.id ?? "missing");
     await assertExecutionAuthorityCurrent(ctx.db, f.tenant_id, run.execution_id);
-    // No doubled allowance: six runs in total, then refused.
     for (let i = 1; i < 6; i++) await admitAuthorizedWorkflowExecution(params, ctx.db);
     await expect(admitAuthorizedWorkflowExecution(params, ctx.db)).rejects.toMatchObject({
       code: "execution_authority_unavailable",
@@ -226,8 +221,6 @@ describe("an approval follows a version whose boundary does not grow", () => {
     expect(next.outcome.inherited).toHaveLength(1);
     const child = (await grantsOf(f.workflow_id)).find((row) => row.inherited_from);
     expect(child).toMatchObject({ max_runs: null, valid_until: null });
-    // A write to the same address as before is still inside the original
-    // approval, measured against what the person approved, not the subset.
     const again = await activate(f, [post(f.ids.main)]);
     expect(again.outcome.inherited).toHaveLength(1);
   });

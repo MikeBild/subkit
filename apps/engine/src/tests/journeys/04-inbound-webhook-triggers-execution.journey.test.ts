@@ -1,14 +1,3 @@
-// User story: As a partner system, I want to trigger a workflow by
-// signing a Standard Webhooks POST, so that external events flow into
-// the engine without pre-shared access tokens.
-// Acceptance criteria:
-//   - AC1: A valid Standard-Webhooks signature enqueues an execution.
-//   - AC2: A stale timestamp is denied.
-//   - AC3: A duplicate webhook-id is deduped.
-//   - AC4: A sender with its own HMAC scheme is bound with the hmac
-//     verifier; an invalid scheme is refused when the binding is created.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -41,7 +30,6 @@ beforeAll(async () => {
   workflowId = wf.id;
   await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, workflowId);
 
-  // Create an inbound binding that maps the slug to the workflow.
   const bindRes = await journeyFetch(ctx, "/v1/webhooks/inbound", {
     method: "POST",
     body: JSON.stringify({
@@ -121,7 +109,6 @@ describe("journey: inbound webhook triggers execution", () => {
     expect(out.accepted).toBe(true);
     expect(out.execution_id).toBeTruthy();
 
-    // Execution row exists for the workflow.
     const rows = await ctx.db
       .select()
       .from(executions)

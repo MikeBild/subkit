@@ -1,15 +1,3 @@
-// Central RBAC gate for conversation tools.
-//
-// Every write tool used to hand-roll `resolveConversationPrincipal(ctx) +
-// can(...)` at the top of its `execute`, plus a private copy of the principal
-// resolver. This module is the single home for both: `wrapOne` enforces a
-// tool's declarative `permission` descriptor here BEFORE `inner.execute`, so
-// the per-tool boilerplate is gone and the (action, resourceType, resourceId)
-// mapping lives on the tool definition instead of buried in its body.
-//
-// The dispatcher (`tools/dispatcher.ts`) has its OWN RBAC layer for the direct
-// MCP surface; this gate is the conversation-loop (chat) path enforcement.
-
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
@@ -17,12 +5,6 @@ import { can } from "../../rbac/evaluator.ts";
 import type { ApprovalAuditResource } from "../../tools/approval.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
 
-/**
- * Resolve the acting principal from the conversation's engine context
- * (`actor_id` / `actor_type`), loading its role name(s). Returns `null` for
- * system / unauthenticated actors — callers treat null as "allow" (system
- * work is trusted; RBAC governs user/system-account principals).
- */
 export async function resolveConversationPrincipal(
   ctx: ToolContext,
 ): Promise<ResolvedPrincipal | null> {
@@ -81,16 +63,6 @@ export type ToolPermissionResult =
   | { allow: true }
   | { allow: false; reason: string; permission: string };
 
-/**
- * Write a `policy.denied` audit row for a conversation-tool RBAC deny. Mirrors
- * the dispatcher's `emitPolicyDenied` (MCP surface) so the chat path has audit
- * parity — every deny is recorded against the resolved resource.
- *
- * When the denied call is the confirmed replay of an approval whose single-use
- * handle is already burned, the row anchors on the approval lifecycle instead,
- * so "approval opened → confirmed replay denied" is one JOIN rather than two
- * unrelated rows. The RBAC resource moves into metadata; nothing is lost.
- */
 async function recordPolicyDenied(
   ctx: ToolContext,
   permission: string,
@@ -114,32 +86,18 @@ async function recordPolicyDenied(
   });
 }
 
-/**
- * Enforce a tool's declarative `permission` descriptor. Resolves the principal
- * (null → allow), derives the resource id by the precedence documented on
- * `ConversationTool.permission` (`resolveResourceId` → `resourceIdArg` → `"*"`),
- * calls `can()`, and on deny writes a `policy.denied` audit row. The returned
- * `reason`/`permission` feed the tool's `permission_denied` envelope.
- *
- * `approval` is set only when this call replays a burned approval — the deny is
- * then the terminal row of that approval's lifecycle.
- */
 export async function checkToolPermission(
   ctx: ToolContext,
   descriptor: NonNullable<ConversationTool["permission"]>,
   rawArgs: Record<string, unknown>,
   approval?: ApprovalAuditResource,
 ): Promise<ToolPermissionResult> {
-  // Authenticated transport principals carry credential ceilings that a role
-  // lookup cannot reconstruct (including per-connector restrictions).
   const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
   if (!principal) return { allow: true };
 
   let resourceId: string;
   if (descriptor.resolveResourceId) {
     const resolved = await descriptor.resolveResourceId(ctx, rawArgs);
-    // null → the resource couldn't be resolved (e.g. slug not found): defer to
-    // the tool so it emits its own not_found instead of a confusing deny.
     if (resolved === null) return { allow: true };
     resourceId = resolved;
   } else {

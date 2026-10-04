@@ -6,8 +6,6 @@ export interface SecretPattern {
 }
 
 const REDACTED = (kind: SecretKind): string => `***REDACTED:${kind}***`;
-/** The un-kinded mask. Also what a public projection writes in place of a
- *  secret it will not show — see `isAlreadyRedacted` for the read side. */
 export const DEFAULT_REDACTED = "***redacted***";
 const SCRUB_SECRETS_MAX_DEPTH = 16;
 
@@ -55,16 +53,6 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
   /postgres(?:ql)?:\/\/[^:]+:[^@]+@/gi,
 ];
 
-/**
- * Exact-name membership in the log net. Case-insensitive, and a camelCase
- * spelling is the name it spells: `clientSecret` is `client_secret`.
- *
- * The counterpart to `SENSITIVE_KEY_PATTERN` for payloads whose keys are
- * STRUCTURE: the pattern is a substring match, so it also fires on
- * `token_endpoint` or `authorization_endpoint`, which name an attribute of a
- * secret rather than the secret. A projection that must leave those readable
- * asks this instead.
- */
 export function isLogSensitiveKey(key: string): boolean {
   return (
     LOG_SENSITIVE_KEYS.has(key.toLowerCase()) ||
@@ -75,71 +63,6 @@ export function isLogSensitiveKey(key: string): boolean {
 export const SENSITIVE_KEY_PATTERN: RegExp =
   /token|secret|password|api[_-]?key|credential|authorization/i;
 
-// Prompt-shaped keys — redacted by `scrubSecrets` (the audit payload
-// scrubber) ONLY.
-//
-// A prompt is not credential-shaped, so not one of the patterns above
-// fires on it: it is prose, and the assembled prompt is exactly the
-// tenant's business content (the tenant snapshot block, system-prompt
-// additions, skill bodies, knowledge excerpts). `audit_log` is
-// append-only and rides the ndjson export, so a prompt that lands in
-// `metadata` is durable forever and leaves the deployment with every
-// compliance extract.
-//
-// DELIBERATELY NOT folded into `SENSITIVE_KEY_PATTERN`: that constant
-// is also the gate in `conversations/tools/update-connector-draft.ts`
-// (which REFUSES a draft carrying a matching key) and in
-// `conversations/tools/ask-user/secret-detection.ts`. Widening it would
-// make any connector field legitimately named `prompt` or `instructions`
-// un-authorable. The audit trail needs a broader net than the draft
-// gate, so the two nets stay separate.
-//
-// `body` is in the net because a Skill's prompt is not stored under a
-// prompt-shaped name: the conversation `update_skill` tool audits whole
-// Skill rows under `metadata.before` / `metadata.after`, and `Skill.body`
-// IS the assembled prompt. The pattern matched the five keys someone
-// thought to look for and missed the one the product actually writes
-// (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER).
-//
-// WHERE THIS NET RUNS IS ITSELF A CHOICE — see `ScrubOptions.promptKeys`.
-// It runs on `metadata` / `reason` (caller-minted prose that exists
-// nowhere else) and NOT on the `audit_log.before` / `.after` snapshot
-// columns (copies of rows already stored unredacted in their own tables,
-// and the source `restoreSkill` reads back). Applying it there made every
-// skill snapshot unrestorable and wrote the marker in as the live body
-// (LOCAL-SK-SAEUBERER-FRISST-HISTORIE).
-//
-// Unlike its neighbours, `body` is ANCHORED — it fires on `body` and on a
-// `_body` suffix (`skill_body`, `request_body`), never on `body` as a
-// prefix. Added unanchored first, it swallowed `body_step_id` in the
-// loop→for_each migration audit row: a step IDENTIFIER, not prose, and the
-// operator lost it from an append-only record. A redaction net that eats
-// identifiers destroys the evidence the trail exists for. The loose forms
-// stay loose because `system_prompt` / `prompt_text` are all genuinely
-// prose; `body` is the one word that is also a common structural name.
-//
-// Non-string, non-object values under any of these keys (counters) still
-// fall through untouched — the caller gates on the VALUE type too.
-//
-// THE TWO HALVES GATE ON DIFFERENT VALUE TYPES, and the split below is the
-// rest of the same lesson (LOCAL-SK-BODY-NETZ-FRISST-STRUKTUR).
-//
-//   PROSE half (`prompt`, `messages`, `instructions`) collapses a string OR
-//   a carrier. `messages: [{ role, content }]` is prose wearing an array,
-//   and there is no structural field that answers to these names.
-//
-//   BODY half (`body`, `*_body`) collapses a STRING only. `body` is the one
-//   word here that is also a common structural name, which is why it is
-//   anchored — and anchoring alone was not enough: `request_body` in the sk
-//   debug trace and the structured log record holds an HTTP payload OBJECT,
-//   and collapsing it wholesale deleted the record an operator opens the log
-//   to read, `api_key` redaction and all. Prose is a string; a body that is
-//   an object is structure. We recurse into it instead, so a prompt nested
-//   one level down (`request_body.messages`) is still caught by the prose
-//   half, and every string leaf still goes through the value-shape net.
-//
-// Kept as one exported constant because it is the union that answers "is
-// this key in the net at all"; `isProseKey` / `isBodyKey` are what decide.
 export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|(?:^|_)body$/i;
 const PROSE_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
 const BODY_KEY_PATTERN: RegExp = /(?:^|_)body$/i;
@@ -163,131 +86,36 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
     kind: "jwt",
     regex: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
   },
-  // The operand must be ≥8 token chars AND carry at least one digit /
-  // dot / underscore / hyphen — true Authorization operands (JWTs,
-  // PATs, opaque tokens) always do, while prose words ("bearer auth",
-  // "Bearer tokens", "bearer authentication") never do. Needed since
-  // this pattern also runs over assistant text via the output-guard
-  // secret pre-pass (caught live: "proceed with ***REDACTED:bearer***
-  // auth" in a connector-authoring reply).
   {
     kind: "bearer",
     regex:
       /Bearer\s+(?=[A-Za-z0-9._-]*(?:[0-9_]|\.[A-Za-z0-9_-]))[A-Za-z0-9._-]{7,}[A-Za-z0-9_-]/gi,
   },
-  // NOTE: the `generic` high-entropy matcher is NOT in this flat-replace
-  // loop. It lives in `GENERIC_TOKEN_RE` and runs through a separate,
-  // code-context-suppressed pass (`redactGenericTokens` / the parallel
-  // scan in `findSecretSpans`) so it redacts a bare high-entropy run on
-  // shape but leaves codec alphabets and non-secret `var/const/let = "..."`
-  // literals alone. See `GENERIC_TOKEN_RE` below.
 ];
 
-// Generic high-entropy token: a contiguous 32+ char run over the token
-// charset that mixes lower case, upper case, and at least two digits.
-// Deliberately excluded by construction: hex SHAs / lowercase UUIDs (no
-// uppercase), SCREAMING_SNAKE constants (no lowercase), camelCase ids
-// (no digits / too short), Mustache `{{token}}` (`{`/`}` not in charset),
-// and individual file-path segments (`/` not in charset).
-//
-// A run of this shape with no surrounding context is treated as a secret
-// and redacted — a real opaque credential pasted into chat (`here you
-// go: <token>`, a lone-paste) carries no vendor prefix and no keyword,
-// so shape is the only signal we have. The redactor therefore fires on
-// shape by default.
-//
-// The shape alone is, however, too broad: a base64 / base32 / hex
-// *alphabet* literal, a content hash, or a reverse-lookup table all
-// satisfy it. Redacting those corrupted authored workflow / code
-// definitions into a malformed body (the validated v7.5 outage). The
-// outage literal was always inside source: the bare standard alphabet
-// assigned as the full value of a quoted string (`var B="<alphabet>"`).
-// So this matcher is CODE-CONTEXT-SUPPRESSED — a candidate run is
-// redacted UNLESS it is a known codec alphabet (an ordered base64 /
-// base32 / hex sequence) or it sits as the entire value of a
-// `var/const/let <non-secret-name> = "..."` assignment. A bare token
-// with no such code framing still redacts. Vendor-prefixed kinds above
-// are unaffected and still own their span/kind when both shapes match
-// (run them first, then this).
 const GENERIC_TOKEN_RE: RegExp =
   /\b(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*\d[A-Za-z0-9+=_-]*\d)[A-Za-z0-9+=_-]{32,}/g;
 
-// Known codec alphabets, ordered. These are the literals a hand-rolled
-// base64 / base32 / hex encoder embeds as a lookup table; redacting one
-// corrupts the encoder (the validated outage). Compared against the
-// matched run directly so only an exact ordered alphabet is suppressed —
-// a credential that merely reuses the same charset (random order) does
-// not match.
 const CODEC_ALPHABETS: ReadonlyArray<string> = [
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", // base32 RFC 4648
-  "0123456789abcdefghijklmnopqrstuvwxyz", // base36
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", // base36 upper
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+  "0123456789abcdefghijklmnopqrstuvwxyz",
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 ];
 
 function isCodecAlphabet(match: string): boolean {
-  // The trailing `/` of the standard base64 alphabet is not in the token
-  // charset, so the matched run is the alphabet truncated at the first
-  // out-of-charset character. Treat the run as a codec alphabet when it
-  // is a contiguous prefix of a known ordered alphabet AND covers the
-  // bulk of it (≥ 32 chars already guaranteed by the matcher) — this
-  // recognizes `…789+` (standard) and the url-safe `…789-_` form alike
-  // while a random credential reusing the charset will not be an ordered
-  // prefix.
   return CODEC_ALPHABETS.some((a) => a.startsWith(match));
 }
 
-// A high-entropy run is part of source code — NOT a pasted secret — when
-// it is the entire value of a `var/const/let <name> = "..."` assignment
-// whose variable name is not itself a secret keyword. The outage shape
-// was `var B="<alphabet>"`: the quote characters break the token charset
-// (quotes are not in `[A-Za-z0-9+=_-]`), so the matched run is the
-// alphabet content only and the lookback window ends just before the
-// opening quote. We re-walk that window here. A secret-named variable
-// (`const apiKey = "..."`) is deliberately NOT suppressed — that is a
-// credential literal, not codec source.
-// `var/const/let <name> = "` with an OPTIONAL inline block comment after
-// the keyword and around the `=` — `var /* note */ B = "…"` is the same
-// code-assignment shape and must be recognized so a long comment cannot
-// smuggle the alphabet literal past the suppression (the outage shape).
-// `(?:\s|\/\*[\s\S]*?\*\/)+` matches a run of whitespace and/or block
-// comments (`[\s\S]` is the lint-clean match-any so a comment can span
-// newlines).
 const CODE_ASSIGNMENT_RE: RegExp =
   /\b(?:var|const|let)(?:\s|\/\*[\s\S]*?\*\/)+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s|\/\*[\s\S]*?\*\/)*=(?:\s|\/\*[\s\S]*?\*\/)*["'`]$/;
-// Secret-named variables whose high-entropy literal value is a real
-// credential in source, not codec data — keep redacting those. `bearer`,
-// `jwt`, `pat`, a standalone `key`, plus `session`/`cookie`/`signature`/
-// `sig`, are common credential variable names that the original allowlist
-// (`token|secret|api_key|password|credential|auth`) missed, so a
-// `const bearer = "<hi-entropy>"` slipped through the code-context
-// suppression and survived unredacted.
-//
-// DELIBERATELY EXCLUDED: `data|raw|payload|body|value|blob|hash` and the
-// like. Those are ordinary code-literal variable names — `const raw =
-// "<base64>"` is exactly the outage class this whole pass exists to protect
-// (a hand-rolled encoder's alphabet must survive verbatim). Adding them
-// would re-introduce the corruption regression, so the allowlist only ever
-// grows with names that do NOT collide with legitimate code literals.
 const SECRET_VAR_NAME_RE: RegExp =
   /token|secret|api[_-]?key|password|credential|auth|bearer|jwt|pat\b|\bkey\b|session|cookie|signature|\bsig\b/i;
 
-// Hard cap on the assignment lookback. A `const <name> = "` prefix is
-// short, but a long inline comment between the keyword and the literal
-// (`var /* …very long… */ B = "<alphabet>"`) can push the assignment
-// further back than a small fixed window — exactly the shape that would
-// re-trigger the outage if the window were too tight. We instead scan
-// back to the nearest newline (an assignment lives on one logical source
-// line), capped here so a pathological comment-free line can't blow up
-// the regex scan.
 const CODE_CONTEXT_MAX_LOOKBACK = 256;
 
 function isCodeAssignmentValue(text: string, start: number): boolean {
-  // Walk back to the start of the current source line (nearest newline),
-  // bounded by CODE_CONTEXT_MAX_LOOKBACK so a long inline comment between
-  // the `var`/`const`/`let` keyword and the opening quote still lands
-  // inside the window instead of being truncated past it.
   const floor = Math.max(0, start - CODE_CONTEXT_MAX_LOOKBACK);
   const newline = text.lastIndexOf("\n", start - 1);
   const windowStart = Math.max(floor, newline + 1);
@@ -295,57 +123,13 @@ function isCodeAssignmentValue(text: string, start: number): boolean {
   const m = CODE_ASSIGNMENT_RE.exec(window);
   if (!m) return false;
   const varName = m[1] ?? "";
-  // A secret-named variable holding a high-entropy literal is a real
-  // credential in source, not codec data — keep redacting it.
   return !SECRET_VAR_NAME_RE.test(varName);
 }
 
-// True when the run is code, not a secret: an ordered codec alphabet, or
-// the full value of a non-secret `var/const/let = "..."` assignment.
 function isCodeLiteral(text: string, start: number, match: string): boolean {
   return isCodecAlphabet(match) || isCodeAssignmentValue(text, start);
 }
 
-// ── REDACTION CONTRACT (authoritative) ─────────────────────────────────
-// The generic high-entropy matcher is CODE-CONTEXT-SUPPRESSED. It redacts
-// a bare high-entropy run on shape by default — including the lone-paste /
-// `here you go: <token>` shape with no keyword and no vendor prefix — but
-// it leaves a known codec alphabet or a non-secret `var/const/let = "..."`
-// literal alone, so a pasted workflow / code definition survives VERBATIM
-// (into replay, transcripts, and assistant output) while a genuine pasted
-// secret still scrubs. Vendor-prefixed credential capture is unaffected.
-// This is the contract `redactGenericTokens` (string scrub) and the
-// parallel pass in `findSecretSpans` (span detection for assistant text)
-// both implement; call sites that scrub user/assistant text MUST NOT
-// re-describe it — point here instead. Reopening it (e.g. a too-tight code
-// lookback window) is the v7.5 Gmail-send outage.
-//
-// RESIDUAL EVASION CLASS (known and accepted). The code-context
-// suppression keys on the variable NAME of a `var/const/let <name> = "..."`
-// assignment: a secret-named variable (`apiKey`, `bearer`, `session`, …)
-// still redacts, but a neutrally-named one (`const data = "<token>"`,
-// `const raw = "<token>"`) survives. That means a high-entropy secret
-// DELIBERATELY pasted into a neutrally-named string literal will pass
-// through unredacted. This is accepted on purpose: the suppression is
-// best-effort against HONEST mistakes (a user pasting a real codec
-// alphabet / SHA / lookup table), NOT a defense against adversarial paste —
-// trying to redact `const data = "<base64-shaped>"` is precisely what
-// corrupted authored encoders in the outage. The backstop that does NOT
-// depend on the variable name: a VENDOR-PREFIXED secret (`ghp_`, `sk-ant`,
-// `AKIA…`, a JWT `eyJ…`, etc.) is matched by the `SECRET_PATTERNS` loop
-// FIRST and redacts INSIDE any assignment regardless of the variable name,
-// because those patterns fire on the value's shape, not its code framing.
-/**
- * Single source of truth for the code-context-suppressed generic token scan.
- *
- * Both the user-text scrubber (`scrubString` → `redactGenericTokens`) and the
- * assistant-text span pass (`findSecretSpans`) consume this so they can NEVER
- * diverge — divergence is exactly what reopened the redaction-corruption class.
- * Returns every high-entropy run that should redact: not a code literal, not a
- * presentable token, and not already covered by the caller (vendor spans /
- * prior `***REDACTED***` markers). `GENERIC_TOKEN_RE.exec` advances past each
- * match, so returned spans never overlap each other.
- */
 function scanGenericTokens(
   text: string,
   isCovered: (start: number, end: number) => boolean,
@@ -371,8 +155,6 @@ function scanGenericTokens(
 }
 
 function redactGenericTokens(value: string): string {
-  // scrubString runs this AFTER the vendor loop has already replaced its
-  // secrets with markers, so there are no caller-covered spans to honour here.
   const spans = scanGenericTokens(value, () => false);
   if (spans.length === 0) return value;
   let out = value;
@@ -383,27 +165,6 @@ function redactGenericTokens(value: string): string {
   return out;
 }
 
-/**
- * Presigned-URL query-string detector. Matches any URL whose query
- * string carries an upload-signature parameter and replaces the entire
- * query with a fixed sentinel so the signature, expiry, and any other
- * parameters never land in audit / log storage.
- *
- * Defense-in-depth: no current emitter persists presign URLs in audit
- * metadata, but the redactor keeps incidental leakage out of audit and
- * structured-log storage. Audit rows are append-only — a leaked HMAC
- * would survive forever and the URL itself confers write access to the
- * underlying object until the signature expires (typically 1h, but
- * cloud providers allow up to 7 days).
- *
- * Covered URL flavours:
- *   - S3 sigv4: `?X-Amz-Algorithm=...&X-Amz-Signature=...`
- *   - GCS V4 / V2 signed URLs: `?X-Goog-Algorithm=...&X-Goog-Signature=...`
- *   - Generic HMAC presign: `?signature=...` or `?Signature=...`
- *
- * The detection is intentionally narrow on the query parameter name —
- * a normal URL like `https://example.com/api?page=1` is left alone.
- */
 const PRESIGN_QUERY_RE =
   /\bhttps?:\/\/[^\s"'<>]+\?[^\s"'<>]*(?:X-Amz-(?:Algorithm|Signature|Credential)|X-Goog-(?:Algorithm|Signature|Credential)|[Ss]ignature=)[^\s"'<>]*/g;
 const PRESIGN_REDACTED_QUERY = "?<presign-redacted>";
@@ -417,74 +178,26 @@ function scrubPresignUrls(value: string): string {
   });
 }
 
-/**
- * Deliberately presentable token forms the scrubber must NOT redact.
- *
- * The `sk??_…` browser-grant family. Every one of them is a single-use,
- * short-TTL, sha256-at-rest capability whose entire purpose is to be shown to a
- * human who opens the URL in a browser; redacting one bricks the flow it exists
- * to carry (caught live: `?grant=***REDACTED:generic***` in the first 6.18.x
- * deploy made the sign-in link unusable). The prefix is what marks the token as
- * a user-facing capability rather than a credential:
- *
- *   `skog_…` — OAuth start grants (connector re-auth).
- *   `sksg_…` — credential-setup grants (non-OAuth connector re-auth).
- *   `skag_…` — approval grants. The approval portal is the ONLY channel through
- *              which a human grants a tool approval on MCP, so a redacted link
- *              means no write is ever approvable.
- */
-// The generic charset includes `=`, so inside a URL the matched run is
-// `grant=skog_…` — allow exactly one optional `<param>=` prefix ahead
-// of the grant, nothing else.
 const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?sk(?:og|sg|ag)_[A-Za-z0-9_-]{20,}$/;
 
 function isPresentableToken(match: string): boolean {
   return PRESENTABLE_TOKEN_RE.test(match);
 }
 
-/**
- * Public `org/model` identifiers (e.g. the embedding model id
- * `Xenova/paraphrase-multilingual-MiniLM-L12-v2`) are presentable NAMES,
- * not credentials. The model-name half is a long mixed-case run with
- * digits, so the generic high-entropy matcher fires on it and clobbers the
- * field (caught live: `"model":"Xenova/***REDACTED:generic***"`). The `/`
- * is outside the token charset, so the matched run is only the model half;
- * we recover the org context from a bounded lookback and treat the run as
- * presentable when it sits directly after a single `<org>/` slug.
- *
- * GENERALIZED BY SHAPE — no vendor name is encoded. The org segment must be
- * a STANDALONE identifier: its left boundary is the absolute start of the
- * text or a non-path delimiter (`"`, space, `=`, `:`, …), never `/` or `.`.
- * That bound keeps a secret embedded in a multi-segment URL path
- * (`https://host/dl/<token>`) or after a domain (`host.tld/<token>`) OUT of
- * the allowlist — only a clean, standalone `org/model` value is exempted.
- */
 const ORG_SEGMENT = "[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?";
-// A `<org>/` immediately before the run, with a non-path boundary in front
-// of the org so a longer path/URL segment cannot masquerade as the org.
 const ORG_MODEL_PREFIX_RE = new RegExp(`[^\\w./-]${ORG_SEGMENT}/$`);
-// Same, but the org sits at the very start of the text (no boundary char).
 const ORG_MODEL_PREFIX_AT_START_RE = new RegExp(`^${ORG_SEGMENT}/$`);
 const ORG_MODEL_MAX_LOOKBACK = 128;
 
 function isPresentableModelId(text: string, start: number): boolean {
-  // The run must sit directly after the `/` of an `<org>/<model>` id.
   if (start === 0 || text[start - 1] !== "/") return false;
   const floor = Math.max(0, start - ORG_MODEL_MAX_LOOKBACK);
-  const window = text.slice(floor, start); // ends with "<org>/"
+  const window = text.slice(floor, start);
   if (ORG_MODEL_PREFIX_RE.test(window)) return true;
-  // Only honour the start-anchored form when `floor` is the true text start —
-  // a truncated window must require an explicit preceding boundary so a long
-  // org-shaped run can't smuggle a path-embedded secret past the bound.
   return floor === 0 && ORG_MODEL_PREFIX_AT_START_RE.test(window);
 }
 
 export function scrubString(value: string): string {
-  // Strip presign URL query strings BEFORE the per-pattern token loop
-  // so the in-query secrets (X-Amz-Signature, X-Goog-Signature, JWT-
-  // shaped credentials inside X-Amz-Credential) are never touched —
-  // we replace the whole query, which is both cheaper and free of the
-  // false-positive risk of trying to match individual signature bytes.
   let out = scrubPresignUrls(value);
   for (const { kind, regex } of SECRET_PATTERNS) {
     if (out.indexOf("REDACTED:") !== -1 && !regex.test(out)) {
@@ -494,11 +207,6 @@ export function scrubString(value: string): string {
     regex.lastIndex = 0;
     out = out.replace(regex, (match) => (isPresentableToken(match) ? match : REDACTED(kind)));
   }
-  // Code-context-suppressed generic pass runs AFTER the vendor-prefixed
-  // loop so a vendor pattern already owns its span (and the `?` skip +
-  // the marker it left keeps this pass from re-touching it). A bare
-  // high-entropy token redacts on shape; a codec alphabet or a
-  // non-secret `var/const/let = "..."` literal survives.
   out = redactGenericTokens(out);
   return out;
 }
@@ -510,8 +218,6 @@ export interface SecretSpan {
   match: string;
 }
 
-/** Kinded redaction markers produced by `scrubString` — spans that
- *  overlap one are already handled and must not be re-reported. */
 const REDACTED_MARKER_RE = /\*\*\*REDACTED:[a-z_]+\*\*\*/g;
 
 function overlapsAny(
@@ -522,14 +228,6 @@ function overlapsAny(
   return ranges.some((r) => start < r.end && r.start < end);
 }
 
-/**
- * Locate every secret-shaped span in `text` WITHOUT rewriting it.
- * Pattern order is authoritative: when two patterns match overlapping
- * ranges, the earlier pattern in `SECRET_PATTERNS` owns the span (same
- * winner `scrubString`'s sequential replace would produce). Spans that
- * overlap an existing `***REDACTED:<kind>***` marker are skipped — the
- * text already went through a scrub pass. Result is sorted by `start`.
- */
 export function findSecretSpans(text: string): SecretSpan[] {
   const markers: Array<{ start: number; end: number }> = [];
   REDACTED_MARKER_RE.lastIndex = 0;
@@ -559,11 +257,6 @@ export function findSecretSpans(text: string): SecretSpan[] {
     regex.lastIndex = 0;
   }
 
-  // Code-context-suppressed generic pass — shares `scanGenericTokens` with
-  // `scrubString`'s `redactGenericTokens` so user-text and assistant-text
-  // redact the same runs (the consolidation that prevents divergence). Vendor
-  // spans were pushed first above, so a candidate overlapping one (or a prior
-  // marker) is skipped.
   for (const s of scanGenericTokens(
     text,
     (start, end) => overlapsAny(start, end, markers) || overlapsAny(start, end, spans),
@@ -578,73 +271,23 @@ function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
 }
 
-/** True for a key whose value carries prompt text under a name that has no
- *  structural meaning. Numeric neighbours (`prompt_tokens`,
- *  `message_count`) share the word but carry no prose, so the caller gates
- *  on the VALUE type, not on the key alone. */
 function isProseKey(key: string): boolean {
   return PROSE_KEY_PATTERN.test(key);
 }
 
-/** True for the `body` / `*_body` half of the net. Collapses a string only —
- *  see the note on `PROMPT_KEY_PATTERN` for why a carrier is structure. */
 function isBodyKey(key: string): boolean {
   return BODY_KEY_PATTERN.test(key);
 }
 
-/** True for a value that is a redaction mask and nothing else — either the
- *  un-kinded `DEFAULT_REDACTED` or a kinded `***REDACTED:<kind>***`. */
 export function isAlreadyRedacted(value: string): boolean {
   return /^\*\*\*redacted(?::[a-z_]+)?\*\*\*$/i.test(value);
 }
 
-/** An object or array — a shape that can carry prose beneath a
- *  prompt-shaped key (`messages: [{ role, content }]`). */
 function isPlainCarrier(value: unknown): boolean {
   return typeof value === "object" && value !== null;
 }
 
-/**
- * Which nets `scrubSecrets` runs. There are three, and they are NOT
- * interchangeable:
- *
- *   1. value-shape  — `scrubString` over every string leaf (PATs, JWTs,
- *                     Bearer operands, AWS keys, presign URLs, generic
- *                     high-entropy runs). Always on.
- *   2. sensitive-key — a credential-NAMED key (`token`, `api_key`,
- *                     `password`, …) collapses whatever it holds. Always on.
- *   3. prompt-prose — a prose-NAMED key (`prompt`, `messages`,
- *                     `instructions`, `_body`) collapses. OPTIONAL.
- *
- * Only net 3 is a policy choice, because it is the only one that fires on
- * a key name without any evidence the value is a secret.
- */
 export interface ScrubOptions {
-  /**
-   * Run the prompt-prose net (3). Default `true`.
-   *
-   * LOCAL-SK-SAEUBERER-FRISST-HISTORIE — set `false` for a STRUCTURED
-   * SNAPSHOT channel, i.e. one whose payload is a copy of a row that is
-   * already stored unredacted in its own table. `audit_log.before` /
-   * `.after` is that channel: `updateSkill` writes whole Skill rows there
-   * and `restoreSkill` reads them back, so the trail doubles as the skill
-   * version history. Collapsing `Skill.body` there redacts a COPY whose
-   * ORIGINAL sits in plaintext in `skills.body` — it buys no
-   * confidentiality, and it cost the restore: the marker came back as the
-   * live body of an append-only record.
-   *
-   * `metadata` / `reason` keep the net on. Those are caller-minted — an
-   * assembled prompt, a message array, a tenant snapshot block — content
-   * that exists NOWHERE else, which is exactly what makes the net worth
-   * its false positives there.
-   *
-   * Nets 1 and 2 are unaffected by this flag: a credential inside an
-   * exempted snapshot still redacts, on its key name and on its value
-   * shape alike. RESIDUAL, accepted and named: a credential typed into
-   * free prose that no pattern matches survives in the snapshot — and
-   * equally survives in the primary table, so the trail is not the
-   * exposure.
-   */
   readonly promptKeys?: boolean;
 }
 
@@ -676,12 +319,6 @@ function scrubSecretValue(
       ((isProseKey(key) && (typeof value === "string" || isPlainCarrier(value))) ||
         (isBodyKey(key) && typeof value === "string"))
     ) {
-      // A prompt reaches the audit trail as a string (`prompt`,
-      // `system_prompt`) or as a message array (`messages`), so both
-      // shapes collapse to the marker. A number or boolean under the
-      // same key is a counter, not prose — it falls through untouched.
-      // Under the `body` half only a string collapses: an object there is
-      // an HTTP payload, and we recurse rather than delete it.
       out[key] = typeof value === "string" && isAlreadyRedacted(value) ? value : REDACTED("prompt");
     } else {
       out[key] = scrubSecretValue(value, depth + 1, seen, promptKeys);
@@ -715,15 +352,6 @@ function scrubStringsDeepValue(input: unknown, depth: number, seen: WeakSet<obje
   return out;
 }
 
-/**
- * Pattern-only deep scrub: walks the value like `scrubSecrets` but
- * WITHOUT the sensitive-key branch — string leaves go through
- * `scrubString` only. A field legitimately *named* `token` or
- * `credential` (e.g. a form field definition or a Mustache reference
- * like `Bearer {{token}}`) passes untouched; only values that LOOK
- * like secrets are rewritten. Use for user-facing payloads where key
- * names are structure, not secrets.
- */
 export function scrubStringsDeep(value: unknown): unknown {
   return scrubStringsDeepValue(value, 0, new WeakSet<object>());
 }

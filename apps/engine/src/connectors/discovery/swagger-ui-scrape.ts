@@ -1,11 +1,3 @@
-// Strategy #2: documentation pages that embed Swagger UI but don't
-// expose a direct spec link in the URL we were handed.
-//
-// Approach: GET the HTML, regex out the spec URL from the Swagger UI
-// bootstrap (`SwaggerUIBundle({ url: "openapi.json", … })` or similar),
-// resolve it relative to the doc page, then delegate to
-// `openapi-direct` for the actual parse.
-
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
@@ -21,9 +13,6 @@ import {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
 
-// Match `url: "..."` or `"url": "..."` against a value that looks like a
-// JSON / YAML / openapi spec reference. Greedy on the path part to allow
-// query strings.
 const SPEC_URL_PATTERNS: RegExp[] = [
   /["']?url["']?\s*:\s*["']([^"']+\.ya?ml(?:\?[^"']*)?)["']/i,
   /["']?url["']?\s*:\s*["']([^"']+\.json(?:\?[^"']*)?)["']/i,
@@ -62,19 +51,13 @@ async function fetchHtml(url: string, opts: DiscoveryStrategyOptions): Promise<s
   }
 }
 
-/**
- * Find the first plausible spec URL embedded in the page HTML. Returns
- * `null` if none of the patterns match.
- */
 export function extractEmbeddedSpecUrl(html: string, baseUrl: string): string | null {
   for (const re of SPEC_URL_PATTERNS) {
     const match = re.exec(html);
     if (match?.[1]) {
       try {
         return new URL(match[1], baseUrl).toString();
-      } catch {
-        // Pattern matched but the value isn't a resolvable URL — skip.
-      }
+      } catch {}
     }
   }
   return null;
@@ -94,8 +77,6 @@ class SwaggerUiScrapeStrategy implements DiscoveryStrategy {
       strategy: this.name,
       url: scrubUrl(url),
     });
-    // Known doc-hosting hosts (e.g. SwaggerHub UI) have a deterministic
-    // spec URL — skip the HTML scrape entirely and delegate to direct.
     const rewritten = normalizeKnownHosts(url);
     if (rewritten !== url) {
       const inner = await openApiDirectStrategy.fetch(rewritten, opts);

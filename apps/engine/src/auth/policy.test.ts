@@ -1,8 +1,3 @@
-// Route policy evaluator — pure RBAC role-gate logic, no DB. Pins the
-// enduser-deny-by-default rule, the allowSelf escape hatch, the
-// readOnly member carve-out, and the three convenience wrappers routes
-// call directly.
-
 import { describe, expect, test } from "bun:test";
 import { checkRoute, policy } from "./policy.ts";
 import type { ResolvedPrincipal } from "./types.ts";

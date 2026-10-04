@@ -14,7 +14,6 @@ describe("rankEntries", () => {
   test("earlier match ranks higher than later match", () => {
     const entries = ["xxxrun", "run now", "walk and run"];
     const ranked = rankEntries(entries, "run");
-    // `run now` starts with the query — ranks first.
     expect(ranked[0]).toBe("run now");
   });
 

@@ -1,8 +1,3 @@
-// Reading the operator digest — over HTTP or as the MCP resource — is a pure
-// read, even while a critical risk signal stands. The RISK_SIGNAL_* edges are
-// the scheduler's (`runRiskSignalEdges`); this pins that no reader writes one
-// and that the scheduler does, once.
-
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import { _drainAuditWritesForTests, AuditAction } from "../../audit/index.ts";
@@ -45,7 +40,7 @@ async function riskRows(): Promise<number> {
 }
 
 test("HTTP digest and MCP digest resource write no risk audit and move no edge", async () => {
-  setDlqJobCount("execution.dlq", 10); // a critical, shared signal
+  setDlqJobCount("execution.dlq", 10);
   const before = await riskRows();
 
   const res = await fetch(`${suite.http.baseUrl}/v1/operator/health-digest`, {
@@ -53,7 +48,6 @@ test("HTTP digest and MCP digest resource write no risk audit and move no edge",
   });
   expect(res.status).toBe(200);
   const body = (await res.json()) as { risk: Array<{ kind: string; severity: string }> };
-  // Non-vacuous: the reader did see the critical signal.
   expect(body.risk.some((r) => r.kind === "dlq_growth" && r.severity === "critical")).toBe(true);
 
   const client = await suite.connect();
@@ -63,8 +57,6 @@ test("HTTP digest and MCP digest resource write no risk audit and move no edge",
   expect(await riskRows()).toBe(before);
   expect(await suite.http.db.select().from(riskSignalEdges)).toEqual([]);
 
-  // Positive control: the scheduler's pass records the same state once, then
-  // not again while it stands.
   expect((await runRiskSignalEdges(suite.http.db, { instance: "t" })).raised).toEqual([
     "dlq_growth",
   ]);

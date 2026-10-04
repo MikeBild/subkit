@@ -1,9 +1,3 @@
-// Conversation surfaces of the engine client: create/append/stream
-// turns, elicitation responses (with transport recovery), draft
-// preview/probe/patch/snapshots, forks, compaction, and per-tool
-// execution-mode overrides. Method group merged into `EngineClient` by
-// `../engine-client.ts`.
-
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineError } from "@cli-core/errors.ts";
 import { z } from "zod";
@@ -15,26 +9,9 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Build a synthetic ConversationRunOutcome from a conversation detail
- * after a transport-recovery path. Carries no events array — the UI
- * surfaces the recovery as a one-line notice and replays state from
- * the persisted conversation rows on the next render. The
- * `__recovered` marker lets the caller distinguish "real outcome" from
- * "we recovered, please re-render from getConversation" without
- * depending on a missing field.
- */
 function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRunOutcome & {
   __recovered: true;
 } {
-  // Emit a single synthesized `completed` event so the cli-core
-  // reducer transitions the session out of "running" and the spinner
-  // stops. We don't replay the lost text_deltas / tool events — the
-  // engine persisted the row, but reconstructing per-step events from
-  // the detail would risk drift. Forcing the user to send a prompt
-  // (or pull /status) to fully resync is acceptable; what matters is
-  // that the spinner stops and the UI doesn't pretend the engine is
-  // still mid-turn.
   const status = detail.conversation.status;
   const completedStatus =
     status === "awaiting_input"
@@ -56,24 +33,6 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
   };
 }
 
-/**
- * Honest cost telemetry on the SSE `completed` frame. The engine emits
- * two distinct figures alongside the legacy `turn_tokens`:
- *
- *   - `prompt_tokens_last_call` — the FINAL LLM call's prompt size
- *     (incl. cache reads/writes), the only number comparable to
- *     `context_cap_tokens`. Pre-fix the footer divided the
- *     turn-CUMULATIVE tokens by the per-prompt cap and showed
- *     `ctx 464k/180k (100%)` for prompts nowhere near the cap.
- *   - `turn_tokens_total` — cumulative tokens across every LLM call of
- *     the turn.
- *
- * The canonical `TurnUsage` type lives in `@cli-core/turn-event.ts`,
- * which is owned by a parallel in-flight change — the new fields ride
- * through the cli-core reducer untyped (it stores `ev.usage` wholesale
- * into `session.usage`), and this reader narrows them where the REPL
- * renders them.
- */
 export interface ExtendedTurnUsage {
   prompt_tokens_last_call: number | null;
   turn_tokens_total: number | null;
@@ -105,18 +64,6 @@ export function readExtendedTurnUsage(usage: unknown): ExtendedTurnUsage {
   };
 }
 
-/**
- * Zod schema for the fork-from-message response so a server that
- * breaks the shape (or a future engine that adds an unknown field
- * interpreted by the wrong path) is rejected at the CLI boundary
- * instead of smuggled through as TS-shape-only.
- *
- * `conversation` is parsed loosely (the engine returns the full
- * ConversationSummary; we don't re-derive that schema here, that's
- * the OpenAPI client's job). The fields the CLI actually reads —
- * `id`, `tenant_id`, `title`, `created_at`, `updated_at`, `status` —
- * are pinned strictly so a contract drift on those is a parse error.
- */
 const ForkResponseSchema = z.object({
   conversation: z
     .object({
@@ -133,8 +80,6 @@ const ForkResponseSchema = z.object({
   copied_message_count: z.number().int().nonnegative(),
   truncated: z.boolean(),
 });
-
-// ---------- Minimal response shapes ----------
 
 export interface ConversationSummary {
   id: string;
@@ -159,15 +104,6 @@ export interface ConversationRunOutcome {
   pending_approval_id?: string;
 }
 
-/**
- * Typed client event on POST /v1/conversations/{id}/messages — drives a
- * deterministic no-LLM turn on the engine. Single-variant for now;
- * mirrors `AppendConversationMessageBody.event` in the engine's Zod
- * schema. `request_credential_form` asks the engine to open the masked
- * `ask_user_form` (password/sensitive field) directly after the
- * composer's input-side secret filter fired. `credential_hint` is a
- * short kind label (e.g. "digitalocean_pat") — NEVER the secret itself.
- */
 export interface RequestCredentialFormEvent {
   type: "request_credential_form";
   credential_hint?: string;
@@ -308,16 +244,12 @@ export interface ConversationContextSnapshot {
     workflow_id: string;
     current_version: number | null;
   } | null;
-  /** What the LAST assembled turn dropped to fit the model context —
-   *  null when no turn ran since engine start. */
   last_context_budget: {
     cap_tokens: number;
     total_tokens: number;
     dropped_sections: string[];
     assembled_at: string;
   } | null;
-  /** Whether the draft's grounding is still current (advisory; never
-   *  blocks). null when the draft carries no grounding checkpoint. */
   grounding_status: {
     state: "fresh" | "stale" | "unknown";
     advisory: string | null;
@@ -325,7 +257,6 @@ export interface ConversationContextSnapshot {
 }
 
 export const conversationsMethods = {
-  // --------------------------- Conversations ---------------------------
   listConversations(
     this: EngineClient,
     query: { status?: string; owner?: "me"; limit?: number; offset?: number } = {},
@@ -343,20 +274,12 @@ export const conversationsMethods = {
       title?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       step_budget?: number;
-      /** Objects the opening message names; the engine resolves them per turn. */
       references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", "/v1/conversations", body, undefined, debugContext);
   },
-  /**
-   * Streaming variant of createConversation. Returns the live SSE
-   * response — frames must be consumed via `readSse`. The terminal
-   * `outcome` event carries the conversation row + status that
-   * `createConversation` returns in its JSON body; `events[]` is
-   * NOT repeated in `outcome` (everything already streamed live).
-   */
   createConversationStream(
     this: EngineClient,
     body: {
@@ -384,25 +307,14 @@ export const conversationsMethods = {
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       step_budget?: number;
-      /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
-      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
       event?: RequestCredentialFormEvent;
-      /** Objects the message names; the engine resolves them per turn. */
       references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
     return this.request("POST", `/v1/conversations/${id}/messages`, body, undefined, debugContext);
   },
-  /**
-   * Record an accept / dismiss / typed-over outcome for a suggestion.
-   * Fire-and-forget — the engine increments a metric and returns
-   * `{ ok: true }`. Errors are routed to the `debugLog` channel only
-   * (a 5xx storm on this telemetry endpoint must not affect the
-   * primary chat flow), so dev / on-call can still observe breakage
-   * when `SK_DEBUG=1` without leaking it to the operator.
-   */
   async submitSuggestionFeedback(
     this: EngineClient,
     conversationId: string,
@@ -426,8 +338,6 @@ export const conversationsMethods = {
       );
     }
   },
-  /** Streaming variant of appendConversationMessage. See
-   *  `createConversationStream` for terminal-event semantics. */
   appendConversationMessageStream(
     this: EngineClient,
     id: string,
@@ -436,9 +346,7 @@ export const conversationsMethods = {
       memory?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       step_budget?: number;
-      /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
-      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
       event?: RequestCredentialFormEvent;
     },
     debugContext?: DebugCorrelationFields,
@@ -452,12 +360,6 @@ export const conversationsMethods = {
   ): Promise<ConversationSummary> {
     return this.request("PATCH", `/v1/conversations/${id}`, body);
   },
-  /**
-   * Direct draft dry-run — one synchronous request, no model turn.
-   * Runs `dry_run_workflow` (or `dry_run_step` when `step_id` is set)
-   * against the conversation draft; the engine persists the tool call
-   * so the next model turn sees the result. Writes are always held.
-   */
   previewConversationDraft(
     this: EngineClient,
     id: string,
@@ -470,7 +372,6 @@ export const conversationsMethods = {
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
     return this.request("POST", `/v1/conversations/${id}/preview`, body);
   },
-  /** Direct connector-draft probe — one synchronous request, no model turn. */
   probeConversationConnector(
     this: EngineClient,
     id: string,
@@ -486,10 +387,6 @@ export const conversationsMethods = {
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
     return this.request("POST", `/v1/conversations/${id}/probe`, body);
   },
-  /**
-   * Direct RFC-6902 draft edit — same gates as the model-driven
-   * editor; an invalid patch leaves the draft untouched.
-   */
   patchConversationDraft(
     this: EngineClient,
     id: string,
@@ -502,7 +399,6 @@ export const conversationsMethods = {
   ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
     return this.request("POST", `/v1/conversations/${id}/draft/patch`, { patches });
   },
-  /** List the conversation's draft snapshots, newest first. */
   listConversationDraftSnapshots(
     this: EngineClient,
     id: string,
@@ -515,7 +411,6 @@ export const conversationsMethods = {
       limit !== undefined ? { limit } : undefined,
     );
   },
-  /** Roll the draft back to a captured snapshot (most recent when omitted). */
   restoreConversationDraftSnapshot(
     this: EngineClient,
     id: string,
@@ -527,14 +422,6 @@ export const conversationsMethods = {
       snapshotId ? { snapshot_id: snapshotId } : {},
     );
   },
-  /**
-   * Fork a conversation at a specific message id. Creates a new
-   * conversation copying messages up to and including the anchor.
-   *
-   * The response is parsed through a Zod schema rather than trusted
-   * by TS shape alone, matching the schema-validation direction the
-   * rest of the engine-client surface is moving toward.
-   */
   async forkConversationFromMessage(
     this: EngineClient,
     id: string,
@@ -571,11 +458,6 @@ export const conversationsMethods = {
   }> {
     return this.request("POST", `/v1/conversations/${id}/compact`, body);
   },
-  /** Streaming variant of respondElicitation. Returns the raw SSE
-   *  Response so the caller can read TurnEvents in real time exactly
-   *  like `createConversationStream` / `appendConversationMessageStream`.
-   *  Pre-fix the elicit-resume path was JSON-only — the CLI saw nothing
-   *  for the entire 1–2 minute resumed turn, then everything at once. */
   respondElicitationStream(
     this: EngineClient,
     conversationId: string,
@@ -617,16 +499,6 @@ export const conversationsMethods = {
         debugContext,
       );
     } catch (err) {
-      // Long LLM turns (the engine streams text + multiple tool calls
-      // server-side) can exceed bun-fetch's keep-alive window, dropping
-      // the response side of the socket while the engine keeps writing.
-      // The engine persists turn state at every step, so we recover by
-      // (a) trying the POST once more — the engine's elicitation
-      // dedup raises 409 elicitation_already_resolved if the first
-      // POST landed, which is the explicit "your response was applied"
-      // signal — and (b) on 409, replaying from the conversation
-      // detail. This keeps the user out of the duplicate-prompt
-      // workaround that session f00b8d1c walked into.
       if (!isTransientSocketDrop(err)) throw err;
       debugLog(
         "http.transport_recovery",
@@ -652,10 +524,6 @@ export const conversationsMethods = {
           retryErr.name === "EngineError" &&
           (retryErr as EngineError).code === "elicitation_already_resolved"
         ) {
-          // First POST already landed; the elicitation row moved on.
-          // Pull the latest detail and synthesize a recovered outcome.
-          // No SSE events to replay — the UI prints the recovery
-          // hint and re-renders messages/tool_calls from detail.
           debugLog(
             "http.transport_recovery",
             {
@@ -688,9 +556,6 @@ export const conversationsMethods = {
   ): Promise<Response> {
     return this.stream(`/v1/conversations/${id}/stream`, undefined, debugContext);
   },
-  // Per-tool execution-mode overrides (Bug RR). Empty `{policies}`
-  // GETs the current map; PUT merges the supplied entries (a `null`
-  // value clears that tool's override).
   getConversationToolPolicies(
     this: EngineClient,
     id: string,

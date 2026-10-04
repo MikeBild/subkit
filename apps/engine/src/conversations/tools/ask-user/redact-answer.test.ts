@@ -1,7 +1,3 @@
-// #304 — field-metadata-driven redaction of elicitation answers before
-// persistence / LLM replay. The raw value still flows through the
-// in-memory outcome pipeline; only the persisted projection is masked.
-
 import { describe, expect, test } from "bun:test";
 import { ELICITATION_REDACTED_MARKER, redactElicitationOutput } from "./redact-answer.ts";
 
@@ -27,7 +23,6 @@ describe("redactElicitationOutput — ask_user_form", () => {
     expect(redacted.values.base_url).toBe("https://api.example.com");
     expect(redacted.values.api_token).toBe(ELICITATION_REDACTED_MARKER);
     expect(redacted.values.client_secret).toBe(ELICITATION_REDACTED_MARKER);
-    // The caller's raw object is untouched (still needed by the outcome pipeline).
     expect(output.values.api_token).toBe("hunter2");
   });
 
@@ -95,7 +90,6 @@ describe("redactElicitationOutput — passthrough tools", () => {
   test("a declined form answer (no secret values present) passes through", () => {
     const input = formInput([{ name: "token", label: "Token", type: "password" }]);
     const declined = { confirmed: false };
-    // No secret value in the answer map → nothing changes materially.
     const redacted = redactElicitationOutput("ask_user_form", input, declined) as Record<
       string,
       unknown

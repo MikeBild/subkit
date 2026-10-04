@@ -1,9 +1,3 @@
-// Collection-level conversation endpoints:
-//   GET    /v1/conversations              — list
-//   POST   /v1/conversations              — create (+ optional SSE turn)
-//   GET    /v1/conversations/{id}         — fetch detail
-//   PATCH  /v1/conversations/{id}         — patch metadata
-
 import {
   createRoute,
   type OpenAPIHono,
@@ -50,15 +44,8 @@ const listRoute = createRoute({
     query: z
       .object({
         status: z.enum(["active", "awaiting_input", "committed", "abandoned"]).optional(),
-        /**
-         * When `me`, restrict to conversations owned by the calling
-         * principal (conversations.owner_id). Other values are
-         * reserved and rejected.
-         */
         owner: z.literal("me").optional(),
-        /** `exclude` (default) keeps conversations the caller hid out of the list. */
         hidden: z.enum(["exclude", "only", "all"]).optional(),
-        /** Only conversations owned by people, or only by machine accounts. */
         owner_kind: z.enum(["user", "system_account"]).optional(),
         target_workflow_id: z.string().uuid().optional(),
         target_connector_id: z.string().uuid().optional(),
@@ -135,7 +122,6 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       ...(q.status ? { status: q.status as ConversationStatus } : {}),
       ...(q.owner === "me" ? { owner_id: principal.id } : {}),
-      // The hide mark is the caller's own: only a person's list has one.
       ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
       ...(q.hidden ? { hidden: q.hidden } : {}),
       ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
@@ -176,18 +162,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 
-    // Conversation create is a two-step split: `createConversation`
-    // inserts the row + persists the first user-message row, then
-    // `runConversationTurn` drives the model loop. The HTTP route runs
-    // both inline so the SSE streaming surface keeps working; the MCP
-    // async-Tasks path runs the turn in a background worker instead.
     const driveTurn = async (
       created: svc.CreateConversationResult,
       onEvent?: (ev: TurnEvent) => void,
     ): Promise<svc.ConversationTurnOutcome> => {
-      // Register the AbortController on the synchronous frame right
-      // after the row insert; unregister in `finally` so the
-      // registry slot is released on every code path.
       const turnAbortCtrl = registerConversationAbort(principal.tenant_id, created.conversation.id);
       try {
         return await svc.runConversationTurn(
@@ -214,20 +192,11 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     };
 
     if (wantsSSE(c.req.header("accept"))) {
-      // streamSSE returns plain Response; the openapi handler signature
-      // wants a TypedResponse derived from the JSON schema. Cast — the
-      // runtime is correct, and the OpenAPI doc still describes the
-      // JSON branch faithfully (clients without `Accept: text/event-stream`
-      // never see the SSE wire). Mirrors the hand-rolled `/stream`
-      // replay route below that bypasses openapi for the same reason.
       return streamSSE(c, async (stream) => {
         let createdId: string | null = null;
         try {
           const created = await svc.createConversation(createParams, db);
           createdId = created.conversation.id;
-          // Emit the `conversation_started` frame as soon as the row
-          // exists so the client learns the conversation_id before the
-          // turn finishes.
           await stream.writeSSE({
             event: "conversation_started",
             data: JSON.stringify({ conversation: created.conversation }),
@@ -247,10 +216,6 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
           await stream.writeSSE(outcomeFrame(outcome));
         } catch (error) {
           const failure = svc.describeTurnFailure(error);
-          // The first turn fails like any later one: the conversation exists
-          // and holds the request, so it keeps why the turn died. Without
-          // this a reload — or a client that lost the stream — showed a
-          // conversation that looked as if it were still thinking.
           if (createdId) {
             await svc
               .recordConversationTurnFailure(db, principal.tenant_id, createdId, failure)

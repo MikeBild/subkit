@@ -1,37 +1,14 @@
-// Scriptable status line for the `sk` REPL. It is customizable, but
-// intentionally quiet by default so the conversation view stays clean.
-//
-// Two rendering modes:
-//
-//   1. Shell hook: `settings.statusLine.command` runs a shell
-//      command with a `StatusLineInput` JSON blob on stdin. The
-//      command's stdout (first line, trimmed) becomes the status
-//      line. Used by power users who want to splice in git state,
-//      kubectl context, a weather emoji, anything.
-//
-//   2. Local template: `settings.statusLine.format` is a simple
-//      `{placeholder}` template rendered client-side. No shell
-//      round-trip. The default template is tailored to subkit —
-//      it shows whatever compact context the operator wants. Empty
-//      placeholders collapse (no `—` dashes) so the line stays
-//      compact on fresh sessions.
-//
-// Both paths are rate-limited by `refreshMs` (default 500 ms) so a
-// slow hook can't block the REPL's render loop.
-
 import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 
 export type AuthStatus = "signed_in" | "signed_out";
 export type PermissionMode = "ask" | "auto" | "plan" | "yolo";
-/** Live connection state to the subkit engine. */
 export type ConnectionState = "online" | "reconnecting" | "offline" | "unknown";
 
 export interface StatusLineInput {
   schema_version: 1;
   profile: string;
   persona: string;
-  /** Authenticated user identifier (email for users, id for system accounts). */
   user: string | null;
   auth_status: AuthStatus;
   tenant: string | null;
@@ -40,39 +17,22 @@ export interface StatusLineInput {
   session_id: string | null;
   turn_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
-  /** Running total for the current day (UTC midnight rollover). */
   tokens_today: number | null;
-  /** Active connector count in tenant scope. */
   connectors_count: number | null;
-  /** Optional ephemeral status message shown after the main line (e.g. "updating…"). */
   status_message: string | null;
-  /** Active permission mode — `ask` / `auto` / `plan`. */
   permission_mode: PermissionMode;
   cwd: string;
   git_branch: string | null;
   timestamp: string;
-  /** Authoring mode of the active conversation (onboarding / connector_authoring / workflow_authoring / resume_review). */
   authoring_mode?: string | null;
-  /** "connector" | "workflow" | "none" — what the user is currently shaping. */
   target_kind?: "connector" | "workflow" | "none" | null;
-  /** Human-readable target name (connector display name or workflow name). */
   target_name?: string | null;
-  /** "dev" | "prod" for the active draft. */
   environment?: string | null;
-  /** Current draft readiness (drafting / needs_input / ready_to_probe / ready_to_save / saved). */
   draft_state?: string | null;
-  /** Number of pending approvals on the active conversation. */
   pending_approvals?: number | null;
-  /** "ok" / "failed" / null — latest probe outcome. */
   latest_probe_state?: string | null;
-  /** "ok" / "failed" / null — latest preview outcome. */
   latest_preview_state?: string | null;
-  /** Live connection state to the engine: "online" | "reconnecting" |
-   *  "offline" | "unknown". Defaults to "unknown" so existing
-   *  templates keep rendering when the ConnectionPinger is absent. */
   connection_state?: ConnectionState | null;
-  /** Human-readable reason for the current connection_state (e.g.
-   *  "ECONNREFUSED", "last heartbeat 12s ago"). Optional. */
   connection_reason?: string | null;
 }
 
@@ -85,17 +45,6 @@ export interface StatusLineConfig {
 const DEFAULT_FORMAT = "";
 const DEFAULT_REFRESH_MS = 500;
 
-/**
- * Expand a `{placeholder}` template against a StatusLineInput. Empty
- * values collapse — the whole placeholder disappears along with any
- * surrounding separator chain (` · `, `/`, `@`). This keeps the line
- * tidy for fresh sessions where many fields are still null.
- *
- * Special placeholders:
- *   `{@tenant}`  — renders `"@<tenant>"` when tenant is set; empty otherwise.
- *   `{engine_host}` — hostname component of engine_url (port included).
- *   `{tokens_today}` — always numeric; 0 when no usage has been recorded yet.
- */
 export function renderTemplate(template: string, input: StatusLineInput): string {
   const resolved = resolvePlaceholders(input);
   const expanded = template.replace(/\{([@#]?\w+)\}/g, (_match, key: string) => {
@@ -182,31 +131,16 @@ function renderAuthoringChip(input: StatusLineInput): string {
   return ` · ${target}=${input.target_name}${env}${state}${approvals}`;
 }
 
-/**
- * After placeholder expansion, empty values leave stranded separators
- * like ` ·  · ` or double slashes. Collapse them so the line reads
- * cleanly. We operate on the expanded string because template authors
- * shouldn't have to special-case every optional field.
- */
 function collapseSeparators(s: string): string {
   let out = s;
-  // Collapse repeated `·` / `/` / `,` / pipes separated only by
-  // whitespace into a single instance.
   out = out.replace(/(\s*·\s*){2,}/g, " · ");
   out = out.replace(/(\s*\/\s*){2,}/g, " / ");
   out = out.replace(/(\s*\|\s*){2,}/g, " | ");
-  // Trim a trailing / leading separator that was left orphaned by a
-  // collapsed placeholder at either end.
   out = out.replace(/^\s*[·/|,]+\s*/, "");
   out = out.replace(/\s*[·/|,]+\s*$/, "");
   return out.trim();
 }
 
-/**
- * Execute the user's status-line shell command with a JSON blob on
- * stdin. Resolves with the first line of stdout, trimmed. Rejects
- * on non-zero exit, timeout (2 s), or stderr > 0 bytes.
- */
 export async function runStatusLineHook(
   command: string,
   input: StatusLineInput,
@@ -255,8 +189,6 @@ export async function runStatusLineHook(
     });
 
     child.stdin?.on("error", (err: NodeJS.ErrnoException) => {
-      // A hook may intentionally ignore stdin and exit before the write.
-      // Its exit status and stdout remain authoritative in that case.
       if (err.code === "EPIPE") return;
       clearTimeout(timer);
       child.kill("SIGKILL");
@@ -267,12 +199,6 @@ export async function runStatusLineHook(
   });
 }
 
-/**
- * Top-level helper: given a config + an input, return the rendered
- * status line. Tries the shell hook first; falls back to the local
- * template on error (and surfaces the error string prefixed with
- * `⚠` so users can spot a misconfigured hook). Never throws.
- */
 export async function buildStatusLine(
   config: StatusLineConfig | undefined,
   input: StatusLineInput,

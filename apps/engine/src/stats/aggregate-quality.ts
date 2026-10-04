@@ -1,23 +1,3 @@
-// Read-time aggregation for GET /v1/stats/quality.
-//
-// Pure SQL builder over `executions`, `execution_steps`, and
-// `patch_candidates`. NO new persistence: every number is computed at read
-// time from existing rows. Three rollups come back in one call:
-//   1. one-shot success rate  — executions GROUP BY status.
-//   2. failure reasons        — failed/timed-out executions, by step error code.
-//   3. post-repair success    — applied patch_candidates outcome windows.
-//
-// TENANT ISOLATION (the critical invariant, mirrors aggregate-executions.ts):
-// `tenant_id = $tenantId` is the FIRST predicate in every WHERE clause and is
-// bound from the authenticated principal — never from a user-supplied filter.
-// A caller-supplied `workflow_id` can only narrow within the tenant; it can
-// never widen across tenants. The failure-reason join is keyed on BOTH
-// `e.id = es.execution_id` AND `e.tenant_id = es.tenant_id` so the join never
-// crosses a tenant boundary.
-//
-// All success-rate divisions are null-safe: a zero denominator yields 0, not
-// NaN.
-
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 
@@ -58,8 +38,6 @@ function rate(numerator: number, denominator: number): number {
 }
 
 export async function aggregateQuality(db: Db, p: QualityStatsParams): Promise<QualityStatsResult> {
-  // --- 1. one-shot over executions GROUP BY status -----------------------
-  // tenant_id FIRST. started_at window next. Optional workflow_id narrows.
   const execWhere: SQL[] = [
     sql`tenant_id = ${p.tenantId}`,
     sql`started_at is not null`,
@@ -88,10 +66,6 @@ export async function aggregateQuality(db: Db, p: QualityStatsParams): Promise<Q
   const oneShotDenom = succeeded + failed + timed_out + aborted;
   const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
 
-  // --- 2. failure reasons ------------------------------------------------
-  // Join execution_steps to their parent execution on BOTH id and tenant_id.
-  // Only failed/timed-out executions, only their failed steps. Group by the
-  // step error code (es.error->>'code'), defaulting to 'unknown'.
   const reasonWhere: SQL[] = [
     sql`es.tenant_id = ${p.tenantId}`,
     sql`e.started_at is not null`,
@@ -120,9 +94,6 @@ export async function aggregateQuality(db: Db, p: QualityStatsParams): Promise<Q
     count: Number(r.n ?? 0),
   }));
 
-  // --- 3. post-repair outcome over patch_candidates ----------------------
-  // Applied candidates whose outcome window has closed; sum the recorded
-  // successes/failures over the next N executions after the patch landed.
   const repairWhere: SQL[] = [
     sql`tenant_id = ${p.tenantId}`,
     sql`status = 'applied'`,

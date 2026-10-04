@@ -10,12 +10,10 @@ export interface PageTab {
   label: string;
   count?: number;
   testId?: string;
-  /** The panel's data is still loading: it shows a summary line and rows in their final shape. */
   loading?: boolean;
   content: ReactNode;
 }
 
-/** The tab an address names, or the fallback for a missing or unknown one. */
 export function tabFromSearch(
   search: string,
   param: string,
@@ -26,10 +24,6 @@ export function tabFromSearch(
   return raw !== null && values.includes(raw) ? raw : fallback;
 }
 
-/**
- * The query string with one tab chosen. The default tab is left out of the
- * address; every other parameter stays exactly as it was.
- */
 export function searchWithTab(
   search: string,
   param: string,
@@ -47,13 +41,6 @@ function currentSearch(): string {
   return typeof window === "undefined" ? "" : window.location.search;
 }
 
-/**
- * The page's tab bar (P4), bound to the address (`?tab=` / `?section=`) so a
- * reload and a link land on the same tab. Choosing a tab replaces the history
- * entry rather than adding one. A panel mounts the first time its tab is
- * shown and then stays mounted, hidden, so a reader's place in it survives
- * switching away. Never nested.
- */
 export function PageTabs({
   tabs,
   param,
@@ -66,8 +53,6 @@ export function PageTabs({
   defaultValue?: string;
 }) {
   const router = useRouter();
-  // Subscribed for the re-render: the value is read from the raw address,
-  // because the router's own search state is JSON-parsed.
   useRouterState({ select: (state) => state.location.href });
   const [, setPopped] = useState(0);
   useEffect(() => {
@@ -104,7 +89,6 @@ export function PageTabs({
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              // The bar's one sliding underline replaces each tab's own.
               className={cn("flex-none px-0", indicator && "after:hidden")}
               data-testid={tab.testId ?? `${testId}-tab-${tab.value}`}
             >
@@ -131,8 +115,6 @@ export function PageTabs({
             value={tab.value}
             forceMount
             hidden={tab.value !== active}
-            // A hidden panel is `display: none`; showing it again restarts the
-            // fade, so each switch crossfades without any state of its own.
             className="sk-fade-in mt-4 flex flex-col gap-8"
           >
             <Loadable

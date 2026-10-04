@@ -1,21 +1,3 @@
-// authenticate_oauth — grant-type gate tests.
-//
-// Covers the guard that fires AFTER `resolveConnectorOAuthConfig` resolves
-// `cfg` but BEFORE `startAuthorizationCode` is called:
-//
-//   - `cognito_user_password` grant  → wrong_reauth_flow error,
-//     next_best_actions includes "request_connector_reauth",
-//     startAuthorizationCode is NEVER called.
-//   - `client_credentials_json` grant → same wrong_reauth_flow shape.
-//   - `authorization_code` grant      → proceeds past the gate
-//     (no wrong_reauth_flow returned).
-//
-// No live OAuth provider is contacted. The test seeds minimal connector rows
-// that make `resolveConnectorOAuthConfig` return the desired grant_type, and
-// mocks `startAuthorizationCode` so the authorization_code path's network
-// call is intercepted. The DB-pause branch (no bridge) is exercised so we
-// never need a live elicitation bridge.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,9 +21,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* not yet loaded */
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-aog-gate-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/aog-gate", NODE_ENV: "test" },
@@ -51,8 +31,6 @@ async function ensureConfigLoaded(): Promise<void> {
 
 beforeAll(async () => {
   await ensureConfigLoaded();
-  // Set public_base_url so buildOAuthRedirectUri resolves for the
-  // authorization_code passthrough test (same pattern as elicitation test).
   priorBaseUrl = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", "https://engine.test.example", { force: true });
 
@@ -76,11 +54,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/**
- * Seed a connector whose `config.oauth.grant_type` makes
- * `resolveConnectorOAuthConfig` return the given grant_type. The connector
- * must be auth_type=oauth2 so the OAuth config resolution path is taken.
- */
 async function seedOAuthConnector(slug: string, grantType: string): Promise<string> {
   const [c] = await ctx.db
     .insert(connectors)
@@ -95,7 +68,6 @@ async function seedOAuthConnector(slug: string, grantType: string): Promise<stri
       config: {
         oauth: {
           grant_type: grantType,
-          // Minimal fields so resolveConnectorOAuthConfig doesn't 404.
           issuer_url: "https://issuer.example.test",
           client_id: "cid",
           client_secret: "csec",
@@ -154,7 +126,6 @@ describe("authenticate_oauth — grant-type gate: cognito_user_password", () => 
     expect(data.error_code).toBe(WRONG_REAUTH_FLOW);
     expect(data.next_best_actions).toContain("request_connector_reauth");
 
-    // startAuthorizationCode must NEVER be called for this grant type.
     expect(startSpy).not.toHaveBeenCalled();
 
     startSpy.mockRestore();
@@ -170,7 +141,6 @@ describe("authenticate_oauth — grant-type gate: cognito_user_password", () => 
     expect(result.ok).toBe(false);
     const data = result.data as { error_code: string; message: string };
     expect(data.error_code).toBe(WRONG_REAUTH_FLOW);
-    // The message must guide the caller away from authenticate_oauth.
     expect(data.message.toLowerCase()).toMatch(/cognito|user_password|request_connector_reauth/i);
   });
 });
@@ -227,7 +197,6 @@ describe("authenticate_oauth — grant-type gate: client_credentials_json", () =
     expect(data.error_code).toBe(WRONG_REAUTH_FLOW);
     expect(data.next_best_actions).toContain("request_connector_reauth");
 
-    // startAuthorizationCode must NEVER be called for this grant type.
     expect(startSpy).not.toHaveBeenCalled();
 
     startSpy.mockRestore();
@@ -251,9 +220,6 @@ describe("authenticate_oauth — grant-type gate: authorization_code passes thro
   test("authorization_code grant does NOT return wrong_reauth_flow", async () => {
     const connectorId = await seedOAuthConnector("authcode-passthrough", "authorization_code");
 
-    // Mock startAuthorizationCode to avoid a real network call.
-    // If the gate were erroneously triggered, the mock is never reached
-    // and the test verifies via the result shape.
     const startSpy = spyOn(oauthClient, "startAuthorizationCode").mockResolvedValue({
       authorization_url: "https://issuer.example.test/authorize?client_id=cid&state=stub",
       state: "stub-state-token",
@@ -264,12 +230,9 @@ describe("authenticate_oauth — grant-type gate: authorization_code passes thro
       connector_id: connectorId,
     });
 
-    // The gate must NOT trigger wrong_reauth_flow.
     const data = result.data as Record<string, unknown>;
     expect(data.error_code).not.toBe(WRONG_REAUTH_FLOW);
 
-    // startAuthorizationCode was called — the code reached the dance
-    // setup phase (gate was bypassed correctly).
     expect(startSpy).toHaveBeenCalledTimes(1);
 
     startSpy.mockRestore();

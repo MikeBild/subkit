@@ -1,16 +1,3 @@
-// Regression: fixture replay must not deepen the scope envelope.
-//
-// SUBKIT_BUGS.md Bug 2 — repeated dry-runs on the same draft made the engine
-// ask for `$scope.<step>.data.data.slug`, adding a `.data` layer every rerun.
-//
-// Root cause: the dry-run cache rebuilds a step fixture as
-// `{ data: <step_summary.output_preview> }`. The LIVE path records
-// `output_preview` as the RAW step output, but the fixture-REPLAY path used to
-// record the already-enveloped `{ data, … }`. So each rerun wrapped the body
-// one level deeper. The fix records the unwrapped fixture `.data` as
-// `output_preview`, keeping the replay path's summary shape identical to the
-// live path — fixture round-trips are now idempotent.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, type EngineTestCtx } from "./setup.ts";
@@ -47,7 +34,6 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     });
     expect(live.status).toBe("succeeded");
     const renderStep = live.steps.find((s) => s.step_key === "render");
-    // Raw transform body — NOT wrapped in an envelope.
     expect(renderStep?.output_preview).toEqual({
       markdown: "# Title",
       slug: "title",
@@ -56,8 +42,6 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
   });
 
   test("replaying the cached fixture yields the SAME output_preview shape (no extra .data)", async () => {
-    // The dry-run cache builds the fixture exactly like this:
-    // envelope = { data: <previous output_preview>, ... }
     const rawPreview = { markdown: "# Title", slug: "title", title: "Title" };
     const fixtureEnvelope = { data: rawPreview, duration_ms: 0, error: null };
 
@@ -71,22 +55,11 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     expect(replayed.status).toBe("succeeded");
     const renderStep = replayed.steps.find((s) => s.step_key === "render");
 
-    // The replayed summary's output_preview must equal the RAW body — the same
-    // shape the live run produced. Pre-fix this was the whole envelope
-    // `{ data: {…}, duration_ms, error }`, so the next fixture became
-    // `{ data: { data: {…} } }` and `$scope.render.data` drifted to
-    // `.data.data`.
     expect(renderStep?.output_preview).toEqual(rawPreview);
     expect((renderStep!.output_preview as Record<string, unknown>)?.data).toBeUndefined();
   });
 
   test("a fixture payload larger than the 512-byte inline preview cap survives replay untruncated", async () => {
-    // Guard: `previewOf` (offload.ts) slices step results to a 512-byte
-    // inline text preview when serializing for the LLM/DB. That truncation
-    // must stay a serialization-only concern — a downstream step reading a
-    // replayed fixture must see the FULL payload, and the re-recorded
-    // output_preview must be the full raw body, or a preview→rerun loop
-    // silently loses data past the cap.
     const bigText = "x".repeat(4096);
     const rawPreview = { blob: bigText, items: Array.from({ length: 32 }, (_, i) => ({ i })) };
     const fixtureEnvelope = { data: rawPreview, duration_ms: 0, error: null };
@@ -119,7 +92,6 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     });
     expect(run.status).toBe("succeeded");
 
-    // The downstream transform saw the FULL payload, not a 512-byte slice.
     const measured = run.steps.find((s) => s.step_key === "measure")?.output_preview as {
       blob_len: number;
       item_count: number;
@@ -127,8 +99,6 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     };
     expect(measured).toEqual({ blob_len: 4096, item_count: 32, last_i: 31 });
 
-    // And the re-recorded preview of the replayed step is the untruncated
-    // raw body — the next rerun's fixture would carry everything.
     const replayedPreview = run.steps.find((s) => s.step_key === "render")
       ?.output_preview as typeof rawPreview;
     expect(replayedPreview.blob.length).toBe(4096);
@@ -151,11 +121,8 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
         string,
         unknown
       >;
-      // output_preview stays the raw body on every rerun — `.slug` reachable
-      // at the same depth, never nesting under `.data`.
       expect(preview?.slug).toBe("title");
       expect(preview?.data).toBeUndefined();
-      // Rebuild the next fixture the way the dry-run cache does.
       envelope = { data: preview, duration_ms: 0, error: null };
     }
   });

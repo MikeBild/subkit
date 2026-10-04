@@ -1,9 +1,3 @@
-// A connection's state word and its cause are decided together: every state
-// that is not ok carries the reason the Cockpit turns into a sentence, and an
-// ok state carries none. Before this, `last_error` was only written on a
-// refused refresh, so "abgelaufen" (no refresh token) and "nicht lesbar" went
-// out with nothing to say why.
-
 import { describe, expect, test } from "bun:test";
 import { refreshWasRefused } from "../oauth-client.ts";
 import { connectionStateOf } from "../service.ts";

@@ -1,8 +1,3 @@
-// Quick-action slashes — /copy /rename /fork /mention.
-// /init, /draft, /export are exercised
-// elsewhere; /mention here is just a hint string so the test asserts
-// shape only.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../config.ts";
@@ -23,8 +18,6 @@ function makeCtx(
       patchConversation: mock(async () => ({})),
     } as unknown as EngineClient);
   const session = {
-    // Use `in` instead of `??` so an explicit `conversationId: null`
-    // overrides the default rather than being treated as nullish.
     conversationId: "conversationId" in opts ? opts.conversationId : "conv-1",
     status: "idle",
     messages: opts.messages ?? [],
@@ -68,10 +61,6 @@ describe("/copy slash (M9)", () => {
         ],
       }),
     );
-    // Two acceptable outputs depending on whether stdout is a TTY:
-    //   - TTY: "copied last assistant message (12 chars) to clipboard"
-    //   - non-TTY (most CI envs): "/copy failed: clipboard not writable on this terminal"
-    // The contract is that /copy never throws and never returns null.
     expect(typeof out).toBe("string");
     expect(out).toMatch(
       /(copied last assistant message \(12 chars\)|clipboard not writable on this terminal)/,
@@ -89,13 +78,6 @@ describe("/copy slash (M9)", () => {
     expect(out).toBe("/copy: last assistant message is empty");
   });
 
-  // The in-memory transcript may be
-  // empty (resumed session, paged history scrolled past, REPL booted
-  // straight into an existing conversation). In that case /copy falls
-  // back to `client.getConversation`. The 3 tests below pin the
-  // contract: string content is copied; structured content collapses
-  // to empty (and the "no assistant turn" hint still fires); engine
-  // errors fall through to the same hint without throwing.
   test("falls back to engine getConversation when in-memory transcript has no assistant turn (string content)", async () => {
     const getConversation = mock(async () => ({
       conversation: { id: "c-1" },
@@ -116,19 +98,12 @@ describe("/copy slash (M9)", () => {
     const args = getConversation.mock.calls[0] as unknown as [string];
     expect(args[0]).toBe("c-1");
     expect(typeof out).toBe("string");
-    // Two acceptable outputs depending on whether stdout is a TTY:
-    //   - TTY: "copied last assistant message (20 chars) to clipboard"
-    //   - non-TTY: "/copy failed: clipboard not writable on this terminal"
     expect(out).toMatch(
       /(copied last assistant message \(20 chars\)|clipboard not writable on this terminal)/,
     );
   });
 
   test("structured (non-string) content collapses to empty and the no-assistant-turn hint fires", async () => {
-    // The in-memory transcript guard only flags "empty" when there's
-    // already an assistant turn locally. With an empty local
-    // transcript and a structured engine response, the slash returns
-    // the no-assistant-turn hint — never throws.
     const getConversation = mock(async () => ({
       conversation: { id: "c-2" },
       messages: [
@@ -219,7 +194,7 @@ describe("/fork slash", () => {
     expect(forkConversationFromMessage.mock.calls.length).toBe(1);
     const args = forkConversationFromMessage.mock.calls[0] as unknown as [string, string];
     expect(args[0]).toBe("source-conv-1");
-    expect(args[1]).toBe("msg-2"); // most recent assistant turn
+    expect(args[1]).toBe("msg-2");
     expect(setTo).toBe("11111111-1111-1111-1111-111111111111");
     expect(out).toMatch(/forked from source-c at message msg-2/);
     expect(out).toMatch(/4 messages copied/);
@@ -238,7 +213,6 @@ describe("/fork slash", () => {
         conversationId: "source-1",
         messages: [
           { role: "user", content: "hi" },
-          // assistant turn without `id` (still streaming, not persisted)
           { role: "assistant", content: "in progress" },
         ],
       }),

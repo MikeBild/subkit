@@ -13,13 +13,6 @@ import {
 import { useLiveQueryOptions } from "./live-events";
 import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
-// Entries decided in this tab, hidden as what they were when decided.
-//
-// A decided entry leaves the list at once. It stays away while the engine
-// still lists it UNCHANGED — the read right after a decision can predate it —
-// and it is back the moment the engine lists it as anything else: the last fix
-// of a failing workflow decided, the workflow still failing, now with a chat
-// as its way forward. `settleHidden` in the model owns that rule.
 let hidden: HiddenEntries = NO_HIDDEN;
 const listeners = new Set<() => void>();
 
@@ -33,7 +26,6 @@ export function hideAttentionEntry(item: AttentionItem): void {
   publish(new Map([...hidden, [item.id, entrySnapshot(item)]]));
 }
 
-/** A decision that failed brings its entry back. */
 export function restoreAttentionEntry(id: string): void {
   if (!hidden.has(id)) return;
   const next = new Map(hidden);
@@ -58,10 +50,6 @@ export function canReadAttention(permissions: readonly string[]): boolean {
   return ATTENTION_READ_PERMISSIONS.some((permission) => permissions.includes(permission));
 }
 
-/**
- * One query behind Übersicht and the navigation badge, so the badge can never
- * disagree with the list it links to.
- */
 export function useAttention(permissions: readonly string[]) {
   const enabled = canReadAttention(permissions);
   const live = useLiveQueryOptions();

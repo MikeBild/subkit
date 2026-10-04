@@ -1,14 +1,3 @@
-// #39 — discovery upload cap (Content-Length fast-reject).
-//
-// Both multipart discovery routes (`POST /v1/discovery/runs` and
-// `/from-archive`) buffer uploaded files into memory. Without a cap a
-// single oversized upload can OOM the shared engine process. The
-// authoritative guard is the running-total check inside the buffering
-// loop; this advisory pre-check rejects with 413 BEFORE buffering when
-// the (honest) Content-Length header already exceeds the cap. It is
-// deliberately permissive when the header is absent (chunked encoding) —
-// the buffering loop is the backstop there.
-
 import { describe, expect, test } from "bun:test";
 import { contentLengthOverCap, MAX_DISCOVERY_UPLOAD_BYTES } from "./discovery.ts";
 

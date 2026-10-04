@@ -1,8 +1,3 @@
-// Shared scaffolding for the Knowledge Sources test suite.
-//
-// Each file creates its own disposable database via the P1 helper,
-// seeds a tenant, and hands back the primitives the tests need.
-
 import { tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
@@ -21,7 +16,6 @@ export async function createKnowledgeTestCtx(label: string): Promise<KnowledgeTe
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
 
-  // Seed a workflow for workflow-scoped knowledge tests
   const [workflow] = await testDb.db
     .insert(workflows)
     .values({

@@ -1,14 +1,3 @@
-// sk.emailBody — read-side email decoding behind ONE generic entry
-// point (the vendor wire format — Gmail's payload tree or a pre-decoded
-// { body: { contentType, content } } object — is detected by shape,
-// never named by the caller). Pins the data-fidelity incident where
-// transforms shipped `snippet` (a truncated teaser) as the message body
-// because decoding `payload.body.data` / walking `parts[]` by hand was
-// too fiddly — the run reported green while the user got garbage
-// output. Tests run inside the real QuickJS sandbox via runJs; fixtures
-// are encoded with Node's own base64url encoder so the decode path is
-// verified against an independent implementation.
-
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { runJs } from "../../runtime.ts";
@@ -121,8 +110,6 @@ describe("sk.emailBody", () => {
   });
 
   test("a Gmail payload whose body lacks contentType is NOT mistaken for the pre-decoded shape", async () => {
-    // Gmail's payload.body is { size, data } — no contentType/content
-    // strings — so shape detection must route it to the tree walk.
     const message = {
       payload: { mimeType: "text/plain", body: { size: 9, data: b64url("tree walk") } },
     };

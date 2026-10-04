@@ -1,6 +1,3 @@
-// Shared Zod schemas + types for the engine self-diagnostics surface.
-// Every per-route module imports from here.
-
 import { z } from "@hono/zod-openapi";
 
 export const ErrorRingEntrySchema = z

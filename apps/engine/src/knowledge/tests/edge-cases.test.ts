@@ -7,7 +7,6 @@ import {
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
@@ -32,7 +31,6 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
       },
       ctx.testDb.db,
     );
-    // Empty content is filtered by parseFileToChunks → 0 raw chunks → 0 stored
     expect(result.chunk_count).toBe(0);
     expect(result.status).toBe("active");
   });
@@ -47,17 +45,14 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
       },
       ctx.testDb.db,
     );
-    // Whitespace-only content filtered out by parseFileToChunks
     expect(result.chunk_count).toBe(0);
     expect(result.status).toBe("active");
   });
 
   test("search with SQL-special characters is safe", async () => {
-    // plainto_tsquery normalizes these
     const queries = ["a & b", "a | b", "!negation", ":* prefix", 'test\'s "quotes"'];
     for (const q of queries) {
       const hits = await searchKnowledge({ tenant_id: ctx.tenantId, query: q }, ctx.testDb.db);
-      // Should not throw — empty results are fine
       expect(Array.isArray(hits)).toBe(true);
     }
   });

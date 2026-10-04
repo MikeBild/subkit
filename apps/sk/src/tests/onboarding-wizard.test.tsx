@@ -1,10 +1,3 @@
-// Onboarding wizard end-to-end tests. Mounts <OnboardingWizard>
-// directly via ink-testing-library and walks the step machine
-// through happy path + retry-on-failure paths. Engine calls are
-// stubbed via the props (`onProbe`, `onSave`) so the test covers
-// the wizard's UI logic without touching the network or the
-// slash-handler wiring.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import {
@@ -74,24 +67,20 @@ describe("OnboardingWizard — happy path", () => {
     expect(frame).toContain("Stripe");
     expect(frame).toContain("GitHub");
 
-    // Step 1: Enter to advance from "pick" → "credential".
     instance.stdin.write("\r");
     await tick(20);
     frame = instance.lastFrame() ?? "";
     expect(frame).toContain("Enter the API token");
 
-    // Step 2: type a token then Enter.
     instance.stdin.write("sk_test_12345");
     await tick(20);
     frame = instance.lastFrame() ?? "";
-    // Token must be masked — never echo the value back.
     expect(frame).not.toContain("sk_test_12345");
     expect(frame).toContain("•".repeat("sk_test_12345".length));
 
     instance.stdin.write("\r");
     await tick(60);
 
-    // Probe + save fire automatically; landing on the success step.
     expect(probeCalls).toEqual([{ template: "stripe", credential: "sk_test_12345" }]);
     expect(saveCalls).toEqual([{ template: "stripe", credential: "sk_test_12345" }]);
 
@@ -99,7 +88,6 @@ describe("OnboardingWizard — happy path", () => {
     expect(frame).toContain("Connector created");
     expect(frame).toContain("/connectors list");
 
-    // Step 4: Enter again to dismiss.
     instance.stdin.write("\r");
     await tick(20);
     expect(done).toHaveLength(1);
@@ -121,13 +109,13 @@ describe("OnboardingWizard — happy path", () => {
       />,
     );
     await tick();
-    instance.stdin.write("[B"); // down arrow
+    instance.stdin.write("[B");
     await tick(20);
-    instance.stdin.write("\r"); // pick
+    instance.stdin.write("\r");
     await tick(20);
     instance.stdin.write("token");
     await tick(20);
-    instance.stdin.write("\r"); // probe + save
+    instance.stdin.write("\r");
     await tick(80);
     expect(probeCalls).toEqual([{ template: "github" }]);
     instance.unmount();
@@ -160,11 +148,11 @@ describe("OnboardingWizard — failure recovery", () => {
     );
 
     await tick();
-    instance.stdin.write("\r"); // pick
+    instance.stdin.write("\r");
     await tick(20);
     instance.stdin.write("token");
     await tick(20);
-    instance.stdin.write("\r"); // run probe (will fail)
+    instance.stdin.write("\r");
     await tick(60);
 
     let frame = instance.lastFrame() ?? "";
@@ -172,7 +160,6 @@ describe("OnboardingWizard — failure recovery", () => {
     expect(frame).toContain("Enter to retry");
     expect(saveCalls).toHaveLength(0);
 
-    // Retry — second probe succeeds + save runs through.
     instance.stdin.write("\r");
     await tick(80);
     expect(probeCalls).toBe(2);
@@ -203,11 +190,11 @@ describe("OnboardingWizard — failure recovery", () => {
     );
 
     await tick();
-    instance.stdin.write("\r"); // pick
+    instance.stdin.write("\r");
     await tick(20);
     instance.stdin.write("tok");
     await tick(20);
-    instance.stdin.write("\r"); // probe (ok) + save (fail)
+    instance.stdin.write("\r");
     await tick(80);
 
     let frame = instance.lastFrame() ?? "";
@@ -215,7 +202,6 @@ describe("OnboardingWizard — failure recovery", () => {
     expect(frame).toContain("Enter to retry");
     expect(saveCalls).toBe(1);
 
-    // Retry — second save succeeds.
     instance.stdin.write("\r");
     await tick(80);
     expect(saveCalls).toBe(2);
@@ -237,7 +223,7 @@ describe("OnboardingWizard — failure recovery", () => {
       />,
     );
     await tick();
-    instance.stdin.write(""); // Esc
+    instance.stdin.write("");
     await tick(40);
     expect(done).toEqual([{ status: "cancelled" }]);
     instance.unmount();

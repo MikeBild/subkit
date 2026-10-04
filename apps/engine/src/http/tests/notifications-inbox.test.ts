@@ -1,24 +1,3 @@
-// HTTP integration tests for the notification task-inbox routes.
-//
-//   GET  /v1/notifications/inbox?since=&limit=&unread_only=&actionable_only=
-//   POST /v1/notifications/inbox/ack
-//   POST /v1/notifications/inbox/read
-//   POST /v1/notifications/inbox/unread
-//
-// Covers:
-//   - List returns only the requesting tenant's rows, ascending by id.
-//   - `since` parameter returns only rows with id > since.
-//   - `limit` parameter is honoured and capped at 500.
-//   - `cursor` in the response is the id of the last returned row.
-//   - Ack MARKS read; it never deletes, and one user's ack leaves a
-//     colleague in the same tenant untouched.
-//   - Ack does not touch rows of a different tenant.
-//   - Ack returns { acked } count and writes an audit_log entry.
-//   - `unread_only` / `actionable_only` filter, and `actionable_only`
-//     pages correctly through the cursor.
-//   - A system-account principal has no read state of its own.
-//   - A principal without notification:read is rejected (401 / 403).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -35,22 +14,14 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 let tenantBKey: string;
-/** A principal without notification:read — enduser role only has workflow:* + conversation:*. */
 let enduserKey: string;
-/** A SECOND user inside tenant A — the colleague whose inbox `ack` used to empty. */
 let colleagueKey: string;
-/** An api key bound to a system account: kind="system_account", id ∉ users. */
 let systemAccountKey: string;
 
 function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
 }
 
-// Deterministic, unique key material — a counter, not randomBytes, so the
-// determinism lint stays green while each generated key remains distinct.
-// The counter must LEAD: the api_keys prefix is plaintext.slice(0,12) =
-// "wf_live_" + the first 4 chars of `rand`, so the unique part has to come
-// first or every prefix collides on the unique constraint.
 let keySeq = 0;
 function genKey(): { plaintext: string; prefix: string; hash: string } {
   const rand = `${String(++keySeq).padStart(4, "0")}skcliinboxtestkeypadding`.slice(0, 32);
@@ -120,7 +91,6 @@ function apiFetch(path: string, init: RequestInit = {}, token?: string): Promise
 beforeAll(async () => {
   srv = await createHttpTestServer("notifications-inbox");
 
-  // Seed a second tenant (B) for cross-tenant isolation.
   const [tB] = await srv.db
     .insert(tenants)
     .values({ slug: "ninbox-b", display_name: "Ninbox B" })
@@ -146,7 +116,6 @@ beforeAll(async () => {
   });
   tenantBKey = kB.plaintext;
 
-  // Seed an enduser (no notification:read) for tenant A.
   const [uE] = await srv.db
     .insert(users)
     .values({
@@ -166,8 +135,6 @@ beforeAll(async () => {
   });
   enduserKey = kE.plaintext;
 
-  // A second admin user inside tenant A. Two humans, one tenant, one
-  // inbox — the configuration the destructive ack used to corrupt.
   const [uC] = await srv.db
     .insert(users)
     .values({
@@ -187,8 +154,6 @@ beforeAll(async () => {
   });
   colleagueKey = kC.plaintext;
 
-  // A key owned by the seeded system account: resolves to
-  // kind="system_account" with an id from `system_accounts`.
   const kS = genKey();
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
@@ -219,7 +184,6 @@ describe("GET /v1/notifications/inbox", () => {
       .limit(1);
     if (!tB) throw new Error("tenant B not found");
 
-    // Seed rows for A and B.
     const idA1 = await insertInboxRow(srv.tenantId, { event_type: "ev.a1" });
     const idA2 = await insertInboxRow(srv.tenantId, { event_type: "ev.a2" });
     await insertInboxRow(tB.id, { event_type: "ev.b1" });
@@ -235,11 +199,9 @@ describe("GET /v1/notifications/inbox", () => {
     const ids = body.items.map((r) => r.id);
     expect(ids).toContain(idA1);
     expect(ids).toContain(idA2);
-    // Tenant B row must not leak.
     const eventTypes = body.items.map((r) => r.event_type);
     expect(eventTypes).not.toContain("ev.b1");
 
-    // Items must be in ascending id order.
     for (let i = 1; i < body.items.length; i++) {
       expect(body.items[i]!.id).toBeGreaterThan(body.items[i - 1]!.id);
     }
@@ -317,19 +279,16 @@ describe("POST /v1/notifications/inbox/ack", () => {
       .limit(1);
     if (!tB) throw new Error("tenant B not found");
 
-    // Seed rows for A (3 rows) and B (1 row).
     const idA1 = await insertInboxRow(srv.tenantId, { event_type: "ack.a1" });
     const idA2 = await insertInboxRow(srv.tenantId, { event_type: "ack.a2" });
     const idA3 = await insertInboxRow(srv.tenantId, { event_type: "ack.a3" });
     const idB1 = await insertInboxRow(tB.id, { event_type: "ack.b1" });
 
-    // Ack A's rows up to idA2.
     const res = await ack(idA2);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { acked: number };
     expect(body.acked).toBe(2);
 
-    // Every A row — including the acked ones — is still in the table.
     const remainingA = await srv.db
       .select({ id: cliNotificationInbox.id })
       .from(cliNotificationInbox)
@@ -339,7 +298,6 @@ describe("POST /v1/notifications/inbox/ack", () => {
     expect(remainingAIds).toContain(idA2);
     expect(remainingAIds).toContain(idA3);
 
-    // …and they come back over the wire, now flagged read.
     const list = await listInbox("?since=0");
     const byId = new Map(list.items.map((i) => [i.id, i]));
     expect(byId.get(idA1)?.read).toBe(true);
@@ -349,7 +307,6 @@ describe("POST /v1/notifications/inbox/ack", () => {
     expect(byId.get(idA3)?.read_at).toBeNull();
     expect(list.unread_count).toBe(1);
 
-    // B's row must be untouched.
     const remainingB = await srv.db
       .select({ id: cliNotificationInbox.id })
       .from(cliNotificationInbox)
@@ -370,9 +327,6 @@ describe("POST /v1/notifications/inbox/ack", () => {
   });
 
   test("one operator's ack does not empty a colleague's inbox in the same tenant", async () => {
-    // The live bug: `ack` used to DELETE the row window for the whole
-    // tenant, so the first operator to run `sk notifications inbox ack`
-    // silently cleared every colleague's inbox.
     await clearInbox();
     const id1 = await insertInboxRow(srv.tenantId, { event_type: "shared.1" });
     const id2 = await insertInboxRow(srv.tenantId, { event_type: "shared.2" });
@@ -380,7 +334,6 @@ describe("POST /v1/notifications/inbox/ack", () => {
     const acked = (await (await ack(id2)).json()) as { acked: number };
     expect(acked.acked).toBe(2);
 
-    // The colleague still sees both items, both unread.
     const colleagueView = await listInbox("?since=0", colleagueKey);
     const colleagueIds = colleagueView.items.map((i) => i.id);
     expect(colleagueIds).toContain(id1);
@@ -388,11 +341,9 @@ describe("POST /v1/notifications/inbox/ack", () => {
     expect(colleagueView.items.every((i) => i.read === false)).toBe(true);
     expect(colleagueView.unread_count).toBe(2);
 
-    // And their own unread-only view is still full.
     const colleagueUnread = await listInbox("?since=0&unread_only=true", colleagueKey);
     expect(colleagueUnread.items.length).toBe(2);
 
-    // While the acking operator sees zero unread.
     const ackerUnread = await listInbox("?since=0&unread_only=true");
     expect(ackerUnread.items.length).toBe(0);
     expect(ackerUnread.unread_count).toBe(0);
@@ -458,11 +409,8 @@ describe("POST /v1/notifications/inbox/ack", () => {
       .limit(1);
     if (!tB) throw new Error("tenant B not found");
 
-    // Seed a row for tenant A.
     const idA = await insertInboxRow(srv.tenantId, { event_type: "xten.a" });
 
-    // Tenant B acks up_to_cursor=idA (which belongs to A). It should
-    // delete 0 rows (all B's rows that exist with id ≤ idA, which is none).
     const res = await apiFetch(
       "/v1/notifications/inbox/ack",
       {
@@ -475,7 +423,6 @@ describe("POST /v1/notifications/inbox/ack", () => {
     const body = (await res.json()) as { acked: number };
     expect(body.acked).toBe(0);
 
-    // Tenant A's row must still be there.
     const stillThere = await srv.db
       .select({ id: cliNotificationInbox.id })
       .from(cliNotificationInbox)
@@ -520,15 +467,12 @@ describe("inbox filters", () => {
     expect(ids).toContain(id2);
     expect(unread.unread_count).toBe(1);
 
-    // Without the filter both rows are still listed.
     const all = await listInbox("?since=0");
     expect(all.items.length).toBe(2);
   });
 
   test("actionable_only filters on the persisted column and pages without empty pages", async () => {
     await clearInbox();
-    // 5 rows, 2 of them actionable, interleaved so a read-time filter
-    // would produce short pages and at least one empty one.
     const ids: number[] = [];
     for (const actionable of [false, true, false, false, true]) {
       ids.push(
@@ -555,7 +499,6 @@ describe("inbox filters", () => {
     }
 
     expect(seen).toEqual(expectedActionable as number[]);
-    // Two actionable rows at limit=1 ⇒ exactly two non-empty pages.
     expect(pages).toBe(2);
   });
 
@@ -629,7 +572,6 @@ describe("POST /v1/notifications/inbox/{read,unread}", () => {
       method: "POST",
       body: JSON.stringify({ ids: [idA, idB] }),
     });
-    // Only the caller's own tenant row is markable.
     expect((await first.json()) as { marked: number }).toEqual({ marked: 1 });
 
     const second = await apiFetch("/v1/notifications/inbox/read", {
@@ -667,7 +609,6 @@ describe("system-account principal has no read state of its own", () => {
   test("GET reports read:false on every item", async () => {
     await clearInbox();
     const id = await insertInboxRow(srv.tenantId, { event_type: "sysacct.1" });
-    // The human operator acks; the system account must not inherit that.
     await ack(id);
 
     const list = await listInbox("?since=0", systemAccountKey);
@@ -690,7 +631,6 @@ describe("system-account principal has no read state of its own", () => {
     const body = (await res.json()) as { code?: string; error?: { code?: string } };
     expect(body.code ?? body.error?.code).toBe("principal_not_user");
 
-    // No FK-violating row reached the reads table.
     const marks = await srv.db.select().from(cliNotificationInboxReads);
     expect(marks.length).toBe(0);
   });

@@ -40,8 +40,6 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
@@ -71,39 +69,15 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
         matched_segment,
       };
     });
-    // Fix 3 — Atlassian tinyui / direct-page / Jira-issue resolver. When
-    // the URL is an Atlassian Cloud resource, decode the resource id so
-    // the LLM can build the workflow's first request step against the
-    // real resource on the FIRST dry-run (session 0498925e cost 3+
-    // probe round-trips to discover that /wiki/x/y4ozBQ → page 87263947).
-    // Notion appends the page id as a bare 32-hex run to the slug, which an
-    // LLM-authored normalise transform tends to 404 on (conversation
-    // 661e7ad1). Resolve it here so the LLM passes a canonical page_id into
-    // the recipe and the first dry-run hits the real page.
     const resolved_resource =
       parseAtlassianCloudResourceUrl(args.url) ?? parseNotionResourceUrl(args.url);
 
-    // Adoption E — inline "you already have X" hint. List the tenant's
-    // existing connectors on the same URL host AND score the structural
-    // overlap (driver + base_url_host + auth_type) against each
-    // template match's expected shape. The LLM gets reuse candidates in
-    // the same response and proposes reuse BEFORE drafting a duplicate.
-    //
-    // `listConnectors` returns the complete catalog by default (safety
-    // bound 1000) plus the exact `total`, so the truncation signal is
-    // ground truth — `total > rows.length` — instead of a "did we hit
-    // the cap?" heuristic. `tenant_connectors_truncated` tells the LLM
-    // the scan missed rows and it can ask the user to narrow the search.
     const urlHost = baseUrlHost(args.url);
     const tenantConnectorList = urlHost
       ? await listConnectors(ctx.tenant_id, {}, ctx.db)
       : { rows: [], total: 0 };
     const tenantConnectors = tenantConnectorList.rows;
     const tenant_connectors_truncated = tenantConnectorList.total > tenantConnectors.length;
-    // For each template match, run the overlap scorer against the
-    // tenant's connectors and attach the top reuse candidate(s). The
-    // template's driver + auth_type drives the proposed shape; the URL
-    // host is the proposed base_url_host.
     const matchesWithReuse = matches.map((match) => {
       const reuseCandidates = compareConnectorOverlap(
         tenantConnectors,

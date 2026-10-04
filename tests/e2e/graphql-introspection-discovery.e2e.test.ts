@@ -1,24 +1,3 @@
-// E2E: GraphQL connector save → automatic introspection discovery.
-//
-// Two layers, both run by default:
-//
-//   1. Local mock GraphQL server. Asserts that any `driver: "graphql"`
-//      connector save kicks off `runDiscoveryCached(connector_id)` so
-//      the schema lands in the `knowledge_sources` cache without the
-//      operator asking. Hermetic — no live network needed.
-//
-//   2. Same flow against AppSync (live, opt-in). Skipped unless
-//      `APPSYNC_COGNITO_E2E=1` and the same env block as
-//      `appsync-cognito.e2e.test.ts` is set. Validates that the
-//      discovery hook AND the Cognito auth path play together end-to-
-//      end against real AWS.
-//
-// Negative paths covered:
-//   * Endpoint that refuses introspection (returns
-//     `errors[]: introspection is not allowed`) — the save still
-//     succeeds; the engine logs `post_save.graphql_introspection_disabled`
-//     at info level; no `knowledge_sources` row is written.
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -45,9 +24,6 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-// Minimal but spec-valid introspection response — `buildClientSchema`
-// requires `interfaces: []` on every OBJECT type and the standard
-// `String` / `ID` scalars.
 const SAMPLE_INTROSPECTION = {
   data: {
     __schema: {
@@ -118,7 +94,6 @@ async function startMockGraphQL(opts: {
       res.end(JSON.stringify(SAMPLE_INTROSPECTION));
       return;
     }
-    // Generic OK response for any other query — keeps the connector probe happy.
     res.statusCode = 200;
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ data: { ok: true } }));
@@ -180,20 +155,17 @@ describe("runDiscoveryCached against a GraphQL endpoint (mock)", () => {
     expect(result.result.strategy).toBe("graphql-introspect");
     expect(result.result.endpoints.length).toBe(1);
     expect(result.result.endpoints[0]?.operation_id).toBe("ping");
-    // SDL must be emitted so the LLM can read deep types — the
-    // normalised endpoints alone don't carry selection-set hints.
     expect(typeof result.result.text_corpus).toBe("string");
     expect(result.result.text_corpus).toContain("type Query");
     expect(result.result.text_corpus).toContain("ping: String!");
 
-    // Persisted under the cache slug → next call hits cache, not network.
     expect(mock.introspectionCallCount).toBe(1);
     const second = await runDiscoveryCached(
       { db: ctx.db, tenant_id: tenantId, actor_id: null },
       { base_url: mock.baseUrl },
     );
     expect(second.source).toBe("cache");
-    expect(mock.introspectionCallCount).toBe(1); // still 1 — no second hit
+    expect(mock.introspectionCallCount).toBe(1);
   });
 });
 
@@ -217,17 +189,11 @@ describe("runDiscoveryCached against introspection-disabled endpoint (mock)", ()
     } catch (err) {
       caught = err as Error;
     }
-    // Multi-strategy chain falls through every strategy; introspection
-    // is the only one that can speak GraphQL. Any other strategy
-    // declines or errors — the orchestrator throws
-    // `all_strategies_failed` whose aggregated message contains
-    // `introspection_disabled` at the head of the chain.
     expect(caught).not.toBeNull();
     expect(caught?.message).toMatch(
       /introspection.*not allowed|introspection.*disabled|all_strategies_failed/i,
     );
 
-    // No cache row materialised — the next refresh tries fresh again.
     const cacheRows = await ctx.db
       .select()
       .from(knowledgeSources)
@@ -238,21 +204,14 @@ describe("runDiscoveryCached against introspection-disabled endpoint (mock)", ()
         ),
       );
     expect(cacheRows.length).toBe(0);
-    // The introspection POST happened though (so we know the mock
-    // was reached) — proves the negative path is hermetic.
     expect(mock.introspectionCallCount).toBeGreaterThanOrEqual(1);
   });
 });
-
-// ----- Live AppSync layer (opt-in) ----------------------------------
 
 const live = process.env.APPSYNC_COGNITO_E2E === "1";
 const APPSYNC_URL = process.env.APPSYNC_E2E_URL ?? "";
 
 const liveTest = (name: string, fn: () => Promise<void>): void => {
-  // `.skipIf(!live)` so the determinism gate ("no test.skip") stays
-  // green; the env-flag named in the title still tells the operator
-  // exactly what to set when they want this run.
   test.skipIf(!live)(`${name} (set APPSYNC_COGNITO_E2E=1 to run)`, fn, 60_000);
 };
 
@@ -260,12 +219,6 @@ describe("runDiscoveryCached against live AppSync", () => {
   liveTest(
     "introspection via persisted Cognito credential surfaces real schema (chargers, artifacts, …)",
     async () => {
-      // Mirror the actual CLI authoring flow: mint an IdToken via
-      // Cognito InitiateAuth, persist it as an oauth2 credential
-      // attached to a real connector row, then call
-      // runDiscoveryCached with the connector_id. The discovery
-      // service resolves auth from the persisted credential and
-      // injects the raw JWT in `Authorization`.
       const { runCognitoUserPasswordGrant } = await import(
         "../../apps/engine/src/credentials/oauth2/client.ts"
       );
@@ -304,7 +257,7 @@ describe("runDiscoveryCached against live AppSync", () => {
           value: {
             mode: "oauth2",
             access_token: bundle.access_token,
-            token_type: bundle.token_type, // "none" → raw JWT in Authorization
+            token_type: bundle.token_type,
           },
           oauth2_refresh_token: bundle.refresh_token,
           oauth2_expires_at: bundle.expires_at,
@@ -324,16 +277,10 @@ describe("runDiscoveryCached against live AppSync", () => {
 
       expect(result.source).toBe("fresh");
       expect(result.result.strategy).toBe("graphql-introspect");
-      // SDL is the LLM-facing artefact — confirm the schema is
-      // captured deeply (root fields + at least one nested type).
       expect(typeof result.result.text_corpus).toBe("string");
       const sdl = result.result.text_corpus ?? "";
       expect(sdl).toContain("type Query");
-      // Beyond the root type, at least one domain field must survive the
-      // SDL round-trip — introspection that captures only `type Query`
-      // would still pass a bare contains-check.
       expect(sdl.length).toBeGreaterThan(200);
-      // Endpoint normalisation lands too.
       expect(result.result.endpoints.length).toBeGreaterThan(5);
     },
   );

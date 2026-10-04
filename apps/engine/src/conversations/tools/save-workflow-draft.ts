@@ -1,26 +1,3 @@
-// save_workflow_draft — diagnostic re-issue path for workflow drafts.
-//
-// The normal commit path is the harness auto-persist on
-// `ask_user_confirm` of the dry-run preview (driven by
-// `elicitations.ts` → `commitWorkflowAtomic` with
-// `reason: "auto_persist_on_confirmation"`). This tool stays
-// available for legitimate re-issue cases:
-//   - re-committing after an aborted save,
-//   - reverting + re-applying an edit,
-//   - force-committing after a failed dry-run by passing
-//     `force_commit: true`.
-//
-// The audit row emitted from this tool path carries
-// `reason: "manual_re_issue"`. That distinction lets operators tell
-// the two writes apart in the audit trail.
-//
-// The LLM-facing tool name is intentionally asymmetric with
-// `save_connector_draft`. Renaming this tool to `save_workflow_draft`
-// requires coordinated updates across ~100 files (mcp catalog, intent
-// detector, authoring palette, state gate, tool policies, build
-// workflow, mock provider, plus tests, journey fixtures, and seed
-// skill bodies) and so is sequenced as its own change.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
@@ -86,21 +63,9 @@ export const saveWorkflowDraftTool: ConversationTool = {
       force_commit: args.force_commit === true,
     });
 
-    // Idempotency lives one layer down: `updateWorkflow` compares the
-    // normalised def against the current version's dag and skips the
-    // version rotate when they match. Both the dry-run auto-persist and
-    // this re-issue tool route through it, so an unchanged draft never
-    // appends a redundant workflow_version (which would also unbind the
-    // workflow's schedules).
     const fullDraft = ctx.getDraft();
     const draftSnapshot = getWorkflowDraft(fullDraft);
 
-    // Destructive-skill confirmation gate. When the draft was cloned
-    // from a recipe whose backing skill declares
-    // `side_effects: "destructive"`, refuse to commit unless the LLM
-    // re-issued with `confirmed: true`. The conversation banner
-    // (rendered by the context assembler from the loaded skill) is
-    // the operator-facing prompt that authorises this flag.
     const derivedFromSkillId = (draftSnapshot as { derived_from_skill_id?: string | null })
       .derived_from_skill_id;
     if (derivedFromSkillId && !args.confirmed) {
@@ -123,17 +88,9 @@ export const saveWorkflowDraftTool: ConversationTool = {
       }
     }
 
-    // Snapshot the draft target before commit so it can be echoed in the
-    // result envelope even on the already_persisted / error paths. The
-    // 'edited the wrong draft' bug occurred because the model had no
-    // authoritative signal about which draft was being mutated — surfacing
-    // draft_target on every save response closes that gap.
     const draftSlug = draftSnapshot.slug ?? null;
     const draftName = draftSnapshot.name ?? null;
 
-    // Same predicate the gate itself applies — see commit-workflow.ts. When it
-    // is true nobody approved this commit, and both the reason and the flag
-    // below have to say so.
     const gateBypassed = commitGateBypassedByAutoMode({ permission_mode: ctx.permission_mode });
     const auditReason = gateBypassed ? "auto_mode_no_prior_approval" : "manual_re_issue";
 
@@ -146,14 +103,6 @@ export const saveWorkflowDraftTool: ConversationTool = {
     if (!result.ok) {
       return result;
     }
-    // commitWorkflowAtomic emits an audit row only when
-    // emitAutoPersistAudit=true (harness path). The tool path adds its
-    // own row here so operators triaging the audit log can tell the two
-    // paths apart. `manual_re_issue` is only honest when a human actually
-    // stood behind the call: under `permission_mode=auto` the prior-approval
-    // gate was skipped, so the row says that instead — and carries the flag,
-    // because "did anyone approve this commit?" must be answerable from the
-    // audit log alone.
     const data =
       typeof result.data === "object" && result.data !== null
         ? (result.data as Record<string, unknown>)
@@ -168,10 +117,6 @@ export const saveWorkflowDraftTool: ConversationTool = {
       typeof data.workflow_version_id === "string" ? data.workflow_version_id : null;
     const version = typeof data.version === "number" ? data.version : null;
     const previewOverride = args.force_commit === true && fullDraft.latest_preview?.ok !== true;
-    // Idempotent re-commit: when commitWorkflowAtomic detected the def
-    // was unchanged from the current version, nothing was written — do
-    // not emit a `manual_re_issue` audit row for a no-op. Mirrors the
-    // `already_persisted` short-circuit in save-connector-draft.ts.
     const alreadyPersisted = data.already_persisted === true;
     if (workflow_id && !alreadyPersisted) {
       if (previewOverride) {
@@ -221,9 +166,6 @@ export const saveWorkflowDraftTool: ConversationTool = {
         `force_commit: workflow saved with a failed preview (${failureCode}). Audit reason: manual_re_issue, kind: preview_override.`,
       );
     }
-    // Resolve the authoritative slug/id from the commit result — the
-    // committed slug is canonical; fall back to the draft snapshot values
-    // captured before the commit for the already_persisted path.
     const readiness = workflow_id ? await savedDraftReadiness(ctx, workflow_id) : null;
     const resolvedSlug = typeof data.slug === "string" ? data.slug : draftSlug;
     const resolvedId = workflow_id;
@@ -232,13 +174,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        // `data` from commitWorkflowAtomic already carries the usage
-        // block plus next_best_actions / next_prompt — do not re-stamp
-        // them here or the usage.follow_up gets clobbered.
         ...data,
-        // Always surface the active draft target so the model and
-        // operator can confirm which workflow was mutated. Closes the
-        // 'edited the wrong draft' failure class.
         draft_target: {
           id: resolvedId,
           slug: resolvedSlug,

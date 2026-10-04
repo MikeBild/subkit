@@ -4,31 +4,22 @@ import { cn } from "@/lib/utils";
 import { useEdgeFade } from "./tab-motion";
 
 export interface RouteTab {
-  /** Router-relative path of the tab's own page. */
   to: string;
   label: string;
   testId?: string;
 }
 
-/** The tab a path stands on: the tab whose page it is, or whose record it shows. */
 export function activeRouteTab(pathname: string, tabs: readonly RouteTab[]): string | null {
   const path = pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/";
   return tabs.find((tab) => path === tab.to || path.startsWith(`${tab.to}/`))?.to ?? null;
 }
 
-/**
- * The tab bar of a page whose tabs are pages of their own (P4, route form):
- * Wissen's sources, skills and files are each an address, so the tab is the
- * path rather than a query parameter. It looks and sits like `PageTabs`, and
- * like it is never nested.
- */
 export function RouteTabs({
   tabs,
   label,
   testId,
 }: {
   tabs: readonly RouteTab[];
-  /** What the tab bar is, for assistive technology. */
   label: string;
   testId: string;
 }) {

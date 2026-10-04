@@ -1,15 +1,3 @@
-// Width-keyed LRU height cache for VirtualTranscript.
-//
-// VirtualTranscript skips re-measuring rendered messages by remembering
-// (key, width) -> height. When the terminal width changes (SIGWINCH)
-// the cache is invalidated for the old widths automatically because
-// lookups always include the current width. When the theme changes a
-// caller can `clear()` to drop everything.
-//
-// The cache is bounded by `maxEntries`. Once full, the oldest entry
-// (by last-touch timestamp) is evicted. 1024 messages × 1 width is a
-// generous default — typical sessions are well under 200 entries.
-
 export interface HeightCacheOptions {
   maxEntries?: number;
 }
@@ -17,7 +5,6 @@ export interface HeightCacheOptions {
 interface CacheEntry {
   width: number;
   height: number;
-  /** Monotonic counter — highest value = most recent touch. */
   touch: number;
 }
 
@@ -42,12 +29,10 @@ export class HeightCache {
     if (this.map.size > this.maxEntries) this.evictOldest();
   }
 
-  /** Drop the entry for a given key (e.g. content updated, must remeasure). */
   invalidate(key: string): void {
     this.map.delete(key);
   }
 
-  /** Drop every entry. Use when the theme changes or any global affects measurement. */
   clear(): void {
     this.map.clear();
     this.tick = 0;

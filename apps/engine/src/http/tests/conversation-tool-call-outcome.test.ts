@@ -1,12 +1,3 @@
-// The persisted tool-call outcome, end to end over
-// `GET /v1/conversations/:id`.
-//
-// `output` alone cannot say how a call ended, so the engine states it in
-// its own column. These tests assert the column survives the whole way to
-// the client — on the flat `tool_calls` array and on the `tool_result` part
-// of `messages` — together with the two confirmation columns a transcript
-// reader needs to explain a call that waited on a human.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { recordTransition } from "../../conversations/confirmation.ts";
 import {
@@ -63,8 +54,6 @@ beforeAll(async () => {
   ok_call_id = await insertToolCall(srv.db, { ...base, tool: "list_workflows", input: {} });
   await updateToolCallOutput(srv.db, ok_call_id, { workflows: [] }, "ok");
 
-  // The case the column exists for: a failure whose payload is shaped
-  // exactly like a success.
   denied_call_id = await insertToolCall(srv.db, { ...base, tool: "run_workflow", input: {} });
   await updateToolCallOutput(srv.db, denied_call_id, { rows: [] }, "denied");
 
@@ -87,8 +76,6 @@ beforeAll(async () => {
     tool: "save_workflow_draft",
   });
 
-  // A row as it would have been written before the engine persisted an
-  // outcome: the column is simply absent from the insert.
   const [legacy] = await srv.db
     .insert(conversationToolCalls)
     .values({
@@ -134,8 +121,6 @@ describe("GET /v1/conversations/:id · tool_calls", () => {
   test("a failure whose output mimics a success still reports its outcome", async () => {
     const body = await detail();
     const denied = byId(body, denied_call_id);
-    // Byte-identical payloads, different outcomes — the column is the only
-    // thing separating them.
     expect(denied.output).toEqual(byId(body, legacy_call_id).output);
     expect(denied.outcome).toBe("denied");
   });
@@ -163,7 +148,6 @@ describe("GET /v1/conversations/:id · messages", () => {
     for (const part of results) {
       expect(part.outcome).toBe(byId(body, part.call_id as string).outcome);
     }
-    // Not vacuous: the four rows above cover three outcomes plus a null.
     expect(new Set(results.map((p) => p.outcome))).toEqual(
       new Set(["ok", "denied", "pending", null]),
     );

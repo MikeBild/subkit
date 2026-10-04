@@ -1,8 +1,3 @@
-// file-ref utility tests.
-//
-// Covers: formatFileRef, isFileRef discriminator, parseFileMention,
-// collectFileRefs walker on nested objects/arrays.
-
 import { describe, expect, test } from "bun:test";
 import {
   collectFileRefs,
@@ -52,11 +47,6 @@ describe("isFileRef", () => {
   });
 
   test("returns false for an object with additional keys alongside $file", () => {
-    // An object with extra keys is NOT a pure FileRef leaf.
-    // According to the implementation the isFileRef checks only $file
-    // regardless of extra keys — let's match actual implementation.
-    // The real test: does it have a valid $file? Extra keys don't matter
-    // for isFileRef according to the implementation.
     expect(isFileRef({ $file: VALID_FID, extra: "x" })).toBe(true);
   });
 
@@ -150,7 +140,6 @@ describe("collectFileRefs", () => {
   });
 
   test("does not descend into $file leaf (terminal node)", () => {
-    // A valid FileRef should be treated as a leaf and NOT walked further.
     const obj = { $file: VALID_FID };
     const refs = collectFileRefs(obj);
     expect(refs).toEqual([VALID_FID]);

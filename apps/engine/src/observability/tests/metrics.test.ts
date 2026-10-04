@@ -1,16 +1,3 @@
-// Round-trip test for the hand-rolled metrics registry: we register one
-// of each kind, write a few samples, render the text exposition, and
-// then re-parse the output to assert the shape lines back up.
-//
-// This guards against:
-//   - histogram bucket cumulative sums going wrong
-//   - label escape rules drifting
-//   - counter increments getting clobbered by gauge writes (or vice versa)
-//   - the TYPE/HELP header lines being out of sync with the sample names
-//
-// We also exercise the bundled MetricsRegistry singleton via getMetrics()
-// so the canonical series catalog stays render-able with zero data.
-
 import { describe, expect, it } from "bun:test";
 import {
   getMetrics,
@@ -46,9 +33,6 @@ function parseExposition(text: string): {
       if (m?.[1] && m?.[2]) types.set(m[1], m[2]);
       continue;
     }
-    // metric_name{label="value",label2="v2"} 12.5
-    // OR
-    // metric_name 12.5
     const labelMatch = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+(\S+)$/.exec(line);
     if (!labelMatch) continue;
     const name = labelMatch[1] as string;
@@ -100,7 +84,7 @@ describe("MetricsRegistry", () => {
     reg.observe("demo_duration_ms", 5, { op: "find" });
     reg.observe("demo_duration_ms", 50, { op: "find" });
     reg.observe("demo_duration_ms", 500, { op: "find" });
-    reg.observe("demo_duration_ms", 5000, { op: "find" }); // +Inf
+    reg.observe("demo_duration_ms", 5000, { op: "find" });
 
     const text = reg.render();
     const parsed = parseExposition(text);
@@ -124,7 +108,6 @@ describe("MetricsRegistry", () => {
     );
     expect(gauge?.value).toBe(42);
 
-    // Histogram buckets are cumulative.
     const buckets = parsed.samples
       .filter((s) => s.name === "demo_duration_ms_bucket" && s.labels.op === "find")
       .sort(
@@ -132,14 +115,10 @@ describe("MetricsRegistry", () => {
           Number(a.labels.le === "+Inf" ? Infinity : a.labels.le) -
           Number(b.labels.le === "+Inf" ? Infinity : b.labels.le),
       );
-    expect(buckets.length).toBe(4); // 3 declared + +Inf
-    // 5 -> bucket le=10
+    expect(buckets.length).toBe(4);
     expect(buckets[0]?.value).toBe(1);
-    // 50 -> bucket le=100 (cumulative: 5 + 50)
     expect(buckets[1]?.value).toBe(2);
-    // 500 -> bucket le=1000 (cumulative: 5 + 50 + 500)
     expect(buckets[2]?.value).toBe(3);
-    // 5000 -> +Inf (cumulative: 4)
     expect(buckets[3]?.value).toBe(4);
 
     const sum = parsed.samples.find((s) => s.name === "demo_duration_ms_sum");

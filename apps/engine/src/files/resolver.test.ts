@@ -1,18 +1,5 @@
-// Resolver unit tests — no DB, no object store.
-//
-// We stub `requireFileForTenant` by constructing in-memory FileRow
-// fixtures and feeding them through the pure functions that don't touch
-// the DB (`walkAndResolve`, `storageKey`, `resolvedFromRow`,
-// `FileNotFoundError`). The `requireFileForTenant` function itself needs
-// a Db mock for the cross-tenant negative tests; we build a minimal
-// mock that returns rows by (tenant_id, fid) lookup.
-
 import { describe, expect, test } from "bun:test";
 import { FileNotFoundError, type ResolvedFile, storageKey, walkAndResolve } from "./resolver.ts";
-
-// ---------------------------------------------------------------------------
-// storageKey() pure function tests
-// ---------------------------------------------------------------------------
 
 describe("storageKey", () => {
   test("strips 'local://' prefix", () => {
@@ -40,10 +27,6 @@ describe("storageKey", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// FileNotFoundError
-// ---------------------------------------------------------------------------
-
 describe("FileNotFoundError", () => {
   test("has code='file_not_found'", () => {
     const err = new FileNotFoundError("fid_abc");
@@ -59,10 +42,6 @@ describe("FileNotFoundError", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// walkAndResolve — pure walker tests using in-memory ResolvedFile stubs
-// ---------------------------------------------------------------------------
-
 function makeResolvedFile(id = "uuid-1"): ResolvedFile {
   return {
     id,
@@ -75,17 +54,11 @@ function makeResolvedFile(id = "uuid-1"): ResolvedFile {
   };
 }
 
-// Simulate `requireFileForTenant` by pre-populating the cache — tests
-// that don't need a DB miss path use this pattern.
 describe("walkAndResolve", () => {
   const VALID_FID = "fid_11111111-2222-4333-8444-555555555555";
   const VALID_FID2 = "fid_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 
-  // A stub context that throws FileNotFoundError for any fid not in the cache.
-  // We use the cache-pre-populate pattern: populate the cache before calling
-  // walkAndResolve with a context whose db is never hit because the cache
-  // already has the entry.
-  const stubDb = {} as never; // db is never called when cache is warm
+  const stubDb = {} as never;
 
   test("passes non-ref primitives through unchanged", async () => {
     const c = new Map<string, ResolvedFile>();
@@ -127,7 +100,7 @@ describe("walkAndResolve", () => {
       { db: stubDb, tenant_id: "t" },
       c,
     )) as unknown;
-    expect(r1).toBe(r2); // same reference — no duplicate read
+    expect(r1).toBe(r2);
   });
 
   test("walks an array and resolves every $file leaf", async () => {
@@ -166,8 +139,6 @@ describe("walkAndResolve", () => {
 
   test("unknown fid (not in cache, stubDb throws) propagates FileNotFoundError", async () => {
     const c = new Map<string, ResolvedFile>();
-    // No entry in cache; db stub will throw since we haven't set up drizzle queries.
-    // We create a db stub that correctly throws FileNotFoundError.
     const throwingDb = {
       select: () => ({
         from: () => ({
@@ -184,7 +155,6 @@ describe("walkAndResolve", () => {
 
   test("cross-tenant fid (different tenant_id) throws FileNotFoundError", async () => {
     const c = new Map<string, ResolvedFile>();
-    // DB returns zero rows because tenant_id doesn't match.
     const crossTenantDb = {
       select: () => ({
         from: () => ({

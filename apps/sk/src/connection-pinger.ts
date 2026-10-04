@@ -1,25 +1,10 @@
-// Connection-state monitor for the subkit engine.
-//
-// The old sk-cli swallowed every transport failure (status refresh +
-// stream errors were caught silently), so a disconnected engine
-// produced an unresponsive TUI. This pinger calls `/health` on a
-// steady cadence, tracks consecutive failures, and broadcasts a
-// three-state result (online / reconnecting / offline) so the Ink
-// status line can show something useful.
-//
-// Keep it small and dependency-free — it gets created once per sk
-// session and lives for the lifetime of the process.
-
 import type { EngineClient } from "./engine-client.ts";
 import type { ConnectionState } from "./repl/status-line/render.ts";
 
 export interface ConnectionPingerOptions {
   client: EngineClient;
-  /** Base ping interval in ms. Default 15s. */
   intervalMs?: number;
-  /** Per-request timeout in ms. Default 3s. */
   timeoutMs?: number;
-  /** Consecutive failures before moving to "offline". Default 2. */
   failureThreshold?: number;
 }
 
@@ -56,7 +41,6 @@ export class ConnectionPinger {
   start(): void {
     if (this.running) return;
     this.running = true;
-    // Kick an immediate tick so the first status line reflects reality.
     void this.tick();
     const schedule = (): void => {
       if (!this.running) return;
@@ -89,7 +73,6 @@ export class ConnectionPinger {
     return () => this.listeners.delete(fn);
   }
 
-  /** Single health probe — exposed for tests. Callers should prefer `start()`. */
   async tick(): Promise<void> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort("timeout"), this.timeoutMs);
@@ -120,9 +103,7 @@ export class ConnectionPinger {
     for (const l of this.listeners) {
       try {
         l(snap);
-      } catch {
-        /* listener isolated — never crashes the pinger */
-      }
+      } catch {}
     }
   }
 }

@@ -1,14 +1,3 @@
-// Why the approval gate holds a workflow, and the deterministic repairs for it.
-//
-//   GET  /v1/workflows/{id}/diagnosis?environment=&version_id=  — workflow:read
-//   POST /v1/workflows/{id}/repairs                 — workflow:write
-//
-// The diagnosis is read-only. A repair request names a step and a fixer and
-// nothing else: the operations are computed by the fixer from the saved
-// definition, never taken from the caller, and land as an ordinary patch
-// candidate. Reviewing and applying it reuses /v1/patch-candidates/{id}/
-// preview, dry-run, prepare and approve.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { GateRepairError, proposeGateRepair } from "../../self-healing/index.ts";

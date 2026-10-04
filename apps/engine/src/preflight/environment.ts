@@ -1,10 +1,3 @@
-// The one production wiring of `PreflightEnvironment`.
-//
-// Kept apart from `checks.ts` so the checks stay testable with no process,
-// no database and no S3, and so every read the preflight performs is
-// visible in one file. Nothing here writes, with the single exception the
-// contract asks for: check 3 puts one probe object and deletes it again.
-
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Config } from "../config/schema.ts";
 import { decryptSecret } from "../crypto/aes-gcm.ts";
@@ -19,25 +12,16 @@ import { CONFIG_STATE_KEY } from "../runtime-config/contracts.ts";
 import { type ObjectStoreConfig, S3ObjectStore } from "../storage/object-store.ts";
 import type { ObjectStoreBinding, PreflightEnvironment } from "./checks.ts";
 
-/** The AAD every runtime secret version is bound to. Mirrors `runtime-config/service.ts`. */
 export function secretAad(name: string, version: number): string {
   return `runtime-secret:${name}:${version}`;
 }
 
-/** Mirrors `runtime-config/service.ts`; the preflight must not import its internals. */
 const SECRET_REF = /^secret:\/\/([A-Za-z0-9][A-Za-z0-9._-]{0,254})\/([1-9][0-9]*)$/;
 
 function truthy(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
-/**
- * The revision-1 environment seed, exactly as `config/loader.ts`
- * `collectBootstrapEnvSeeds()` reads it. Repeated here rather than
- * imported because the preflight must be able to answer check 3 whether or
- * not the loader has run, and because reading the seed is three lines while
- * depending on the loader's internals is a coupling.
- */
 export function objectStoreSeedFromEnv(
   environment: Record<string, string | undefined> = process.env,
 ): ObjectStoreBinding | null {
@@ -61,24 +45,6 @@ export function objectStoreSeedFromEnv(
   };
 }
 
-/**
- * The object-store block of a revision document, with its secret leaves
- * resolved.
- *
- * The three credential leaves (`access_key_id`, `secret_access_key`,
- * `session_token`) are `meta.secret` in `config/schema.ts`, so
- * `externalizeSeedSecrets` replaces them with `secret://name/version` in
- * every stored revision. A preflight that read them verbatim would probe
- * with the literal string "secret://…" as an access key; one that treated
- * them as "not a usable value" and fell through to the environment would
- * probe a credential the engine does not use — and, on a stateless deploy
- * that has stopped setting OBJECT_STORAGE_*, would refuse a healthy engine
- * with `object_store_missing`. So they are decrypted here.
- *
- * `resolveSecret` throws when a version does not decrypt. That is
- * deliberate: the caller reports it as `secret_unreadable` rather than as
- * an object-store code, because the cause is the key, not the bucket.
- */
 export async function objectStoreBindingFromDocument(
   document: Record<string, unknown> | null,
   resolveSecret: (name: string, version: number) => Promise<string>,
@@ -120,24 +86,6 @@ export async function objectStoreBindingFromDocument(
   };
 }
 
-/**
- * Migration identities in the database that this binary does not carry.
- *
- * Read-only by construction: it queries the journal directly and treats an
- * undefined_table error (SQLSTATE 42P01) as a virgin database — the state
- * this release migrates forward from. Tagless rows are accepted pre-squash
- * history and are never "ahead" (see `db/migrate.ts` `detectDrift` for the
- * same identity rules; that function is deliberately NOT used here because
- * it creates the schema, the extension and the journal table).
- */
-
-/**
- * The driver wraps a failed statement ("Failed query: … params: …") and keeps
- * the PostgreSQL error underneath as `cause`; the SQLSTATE and the "does not
- * exist" wording live there, not on the wrapper. Measured 2026-09-03 on a
- * fresh database: the wrapper alone read as `database_unreachable` and
- * refused the compose smoke of 6.27.3.
- */
 export function isUndefinedTable(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; current !== null && current !== undefined && depth < 8; depth += 1) {
@@ -170,7 +118,6 @@ export async function schemaAheadTags(db: Db): Promise<string[]> {
     .map((r) => r.tag!);
 }
 
-/** The active revision's document, or null when no revision exists yet. */
 export async function activeSettingsDocument(db: Db): Promise<Record<string, unknown> | null> {
   try {
     // tenant-filter:exempt — the canonical active pointer is product-global.
@@ -193,21 +140,11 @@ export async function activeSettingsDocument(db: Db): Promise<Record<string, unk
   }
 }
 
-/** Decrypt one stored version under the running MASTER_KEY. Throws when it cannot. */
 export async function readSecretVersion(db: Db, name: string, version: number): Promise<void> {
   await readSecretValue(db, name, version);
 }
 
-/**
- * The plaintext of one stored version. Used only by check 3, which has to
- * hold an object-store credential long enough to probe with it; check 5
- * goes through `readSecretVersion`, which throws the value away, because it
- * only needs to know that the decrypt succeeded.
- */
 export async function readSecretValue(db: Db, name: string, version: number): Promise<string> {
-  // Base columns only, by name: the preflight runs BEFORE this release's
-  // migrations, and a `select()` would name columns the previous schema
-  // lacks — a crash where the contract promises an answer.
   // tenant-filter:exempt — secret versions are product-global operator state.
   const [row] = await db
     .select({
@@ -231,12 +168,6 @@ export async function readSecretValue(db: Db, name: string, version: number): Pr
   );
 }
 
-/**
- * Bucket reachable, and one probe object written and read back. The key
- * carries the pid so two simultaneous preflights cannot collide, and the
- * object is deleted in a `finally` so a failed read-back never leaves
- * litter behind.
- */
 export async function probeObjectStore(binding: ObjectStoreBinding): Promise<void> {
   const store = new S3ObjectStore(binding as ObjectStoreConfig);
   await store.headBucket();
@@ -251,11 +182,6 @@ export async function probeObjectStore(binding: ObjectStoreBinding): Promise<voi
   }
 }
 
-/**
- * Wire the checks against the live process. `cfg` is the config the loader
- * has just produced — its `database.url` is the real DSN, because the
- * bootstrap sentinel is only written into a stored revision.
- */
 export function createPreflightEnvironment(db: Db, cfg: Config): PreflightEnvironment {
   return {
     masterKey: () => process.env.MASTER_KEY,

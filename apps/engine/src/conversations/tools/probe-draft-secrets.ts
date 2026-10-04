@@ -1,16 +1,3 @@
-// Where a connector draft becomes a request: its masks are resolved here.
-//
-// A draft bound to a saved connector was hydrated from that connector's
-// public projection, so it holds the mask where the connector stores a secret
-// (a static header, the dsn password). The draft never carries the secret;
-// the probe reads it from the stored connector at the moment it sends.
-//
-// The same rule as a connector write applies: a mask stands for the stored
-// secret only while the draft still points where that secret was stored for.
-// A draft whose host was edited, or whose saved connector is gone, has nothing
-// the mask could stand for — the probe is refused rather than sent with the
-// stored secret to the new host, or with the literal mask as a credential.
-
 import { restoreMaskedConnectorSecrets } from "../../connectors/public-view.ts";
 import { getConnector } from "../../connectors/service.ts";
 import type { Executor } from "../../db/client.ts";
@@ -26,7 +13,6 @@ export type DraftProbeSecrets =
     }
   | {
       ok: false;
-      /** The gate error the tool answers with. */
       refusal: {
         error_code: "connector_secret_not_kept";
         message: string;

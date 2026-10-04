@@ -1,17 +1,3 @@
-// Token accountant — post-hoc reconciliation of SDK-reported usage into
-// `llm_usage`.
-//
-// Why post-hoc: tiktoken (what `llm/tokens.ts` uses) and each provider's
-// tokenizer drift by 10–15 %. Pre-call estimates drive *budget check*
-// decisions; the accountant records the *actual* tokens reported by the
-// SDK (`result.usage.inputTokens`, `result.usage.outputTokens`, plus
-// cache-read / cache-creation from providerMetadata) so monthly usage
-// sums match provider invoices.
-//
-// This module is a single seam around the existing `recordUsage` in
-// `llm/budgets.ts` — it does not replace budget math, it just makes sure
-// the row written reflects the SDK's numbers, not the tiktoken estimate.
-
 import type { AuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
@@ -19,21 +5,12 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
 import { recordUsage } from "./budget.ts";
 
-/**
- * `llm_usage.execution_id` and `.conversation_id` are `uuid` columns fed from
- * free-form telemetry metadata. Guard the shape here rather than letting
- * Postgres raise inside the best-effort catch below, where the cost of a bad
- * value is the entire usage row rather than one missing attribution.
- */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
 }
 
-/** The run and conversation a usage row belongs to, read from free-form
- *  telemetry metadata. Every row a call writes — the answer, a refused
- *  primary, a final error — links the same way. */
 export function usageAttribution(metadata: Record<string, unknown> | undefined): {
   execution_id?: string;
   conversation_id?: string;
@@ -52,11 +29,8 @@ export interface AccountParams {
   latency_ms: number;
   result: "success" | "quota_exhausted" | "context_too_large" | "error";
   error?: string;
-  /** Estimated tokens from the upfront tokenizer (for drift observation). */
   estimated_prompt_tokens?: number;
-  /** Acting end-user, if any (null for system / system_account flows). */
   user_id?: string | null;
-  /** Attribution class; defaults to "system" when omitted. */
   actor_type?: AuditActorType;
 }
 
@@ -68,12 +42,6 @@ export interface AccountResult {
   cache_creation_tokens: number;
 }
 
-/**
- * Record one LLM call's usage into `llm_usage` and (when an estimate was
- * supplied) emit a drift log so operators can see the tiktoken ↔ SDK gap.
- * Pure I/O: does not raise on write failure — logs and swallows because
- * accounting errors must not fail a user-visible LLM response.
- */
 export async function account(p: AccountParams, exec?: Executor): Promise<AccountResult> {
   const inputTokens = p.usage.input_tokens;
   const outputTokens = p.usage.output_tokens;
@@ -97,9 +65,6 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
         drift_pct,
       });
     }
-    // Always record the drift sample so the observability dashboard
-    // can chart estimate quality at provider granularity. The
-    // histogram buckets are 0..50 in percentage points.
     try {
       const provider = inferProvider(p.model);
       getMetrics().observe(METRIC_NAMES.LLM_TOKEN_DRIFT_PCT, Math.min(50, drift_pct * 100), {
@@ -107,10 +72,7 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
         model: p.model,
         kind: "prompt",
       });
-    } catch {
-      // Metric registry init can fail in tests that don't set up
-      // observability; never fail accounting on it.
-    }
+    } catch {}
   }
 
   try {
@@ -128,19 +90,9 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     if (cacheRead > 0) entry.cache_read_tokens = cacheRead;
     if (cacheCreate > 0) entry.cache_creation_tokens = cacheCreate;
     if (p.error !== undefined) entry.error = p.error;
-    // `telemetry_metadata` is free-form, but these two keys are not telemetry
-    // once they reach here — they become foreign keys. Both columns are
-    // `uuid`, so a non-uuid string does not degrade to a bad reference, it
-    // aborts the INSERT, and the catch below turns that into a lost row: the
-    // provider bills the call and `llm_usage` never hears about it.
-    //
-    // Dropping an unusable id costs one attribution. Keeping it costs the
-    // whole row.
     Object.assign(entry, usageAttribution(p.metadata));
     await recordUsage(entry, exec);
   } catch (err) {
-    // Accounting is best-effort. A write failure must not mask the LLM
-    // response itself — log and continue.
     logger.warn({
       module: "llm",
       action: "token.account_failed",
@@ -160,17 +112,6 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
   };
 }
 
-/**
- * Best-effort provider classification from a model id. Anthropic's
- * `claude-*`, OpenAI's `gpt-*`, Google's `gemini-*` plus common
- * open-weight families (`qwen`, `ministral`/`mistral`, `glm`, `deepseek`,
- * `llama`) are known prefixes; everything else lands as `other` so the
- * histogram label cardinality stays bounded. Exported for unit assertion.
- *
- * The open-weight family list mirrors `contextCapFor` in `count.ts` — when
- * adding a family here, add its context-window cap there too, and vice
- * versa, so telemetry labels and token budgets stay in lockstep.
- */
 export function inferProvider(model: string): string {
   const m = model.toLowerCase();
   if (m.startsWith("claude-") || m.includes("anthropic")) return "anthropic";
@@ -179,8 +120,6 @@ export function inferProvider(model: string): string {
   if (m.startsWith("qwen")) return "qwen";
   if (m.startsWith("ministral") || m.startsWith("mistral") || m.startsWith("mixtral"))
     return "mistral";
-  // Family-name label, consistent with the other open-weight buckets above
-  // (`qwen`/`deepseek`); the publisher is Zhipu.
   if (m.startsWith("glm")) return "glm";
   if (m.startsWith("deepseek")) return "deepseek";
   if (m.startsWith("llama")) return "meta";

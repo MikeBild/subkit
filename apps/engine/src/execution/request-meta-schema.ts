@@ -1,11 +1,3 @@
-// Zod surface for the driver-discriminated RequestMeta union. Used
-// by the OpenAPI route definitions so external clients see the same
-// structure the engine produces. Mirrors the TS type in
-// `execution/types.ts:RequestMeta` 1:1.
-//
-// External consumers can `.parse(meta)` and switch on `.driver` to
-// narrow — same affordance the internal types give us.
-
 import { z } from "@hono/zod-openapi";
 
 const RequestDigestSchema = z
@@ -57,7 +49,6 @@ const HttpRequestMetaSchema = z
     url: z.string().nullable(),
     status: z.number().int().optional(),
     bytes_in: z.number().int().optional(),
-    /** How much this request SENT, measured at dispatch. */
     bytes_out: z.number().int().nonnegative().optional(),
     idempotency_key: z.string().optional(),
     connector: ConnectorResolutionSummarySchema,
@@ -77,10 +68,6 @@ const GraphqlRequestMetaSchema = z
     method: z.string(),
     status: z.number().int(),
     connector: ConnectorResolutionSummarySchema,
-    /** Operation name parsed from the query document. The reactive
-     *  repair enqueue derives the shape/dedup endpoint key from this
-     *  (see graphqlEndpointKey) — without it all GraphQL operations
-     *  collapse into one endpoint identity. */
     operation_name: z.string().optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
@@ -103,14 +90,10 @@ const S3RequestMetaSchema = z
   .object({
     driver: z.literal("s3"),
     method: z.string(),
-    // Absent when a boundary refused the request: nothing reached the store,
-    // so there is no status, and a placeholder number would make the trail
-    // claim a call that never happened.
     status: z.number().int().optional(),
     refused: z.literal(true).optional(),
     key: z.string().optional(),
     prefix: z.string().optional(),
-    /** How large the content really was, measured at the write. */
     bytes_out: z.number().int().nonnegative().optional(),
     connector: ConnectorResolutionSummarySchema,
     extras: z.record(z.string(), z.unknown()).optional(),
@@ -120,8 +103,6 @@ const S3RequestMetaSchema = z
 const McpRequestMetaSchema = z
   .object({
     driver: z.literal("mcp"),
-    /** The MCP method issued. Deliberately no `status`: a JSON-RPC result
-     *  carries none, and an invented one would misreport what happened. */
     operation: z.string(),
     bytes_in: z.number().int().min(0),
     tool_name: z.string().optional(),
@@ -137,7 +118,6 @@ const ConnectorlessRequestMetaSchema = z
     url: z.string().nullable(),
     status: z.number().int().optional(),
     bytes_in: z.number().int().optional(),
-    /** How much this request SENT, measured at dispatch. */
     bytes_out: z.number().int().nonnegative().optional(),
     idempotency_key: z.string().optional(),
     unresolved_placeholders: z.array(z.string()).optional(),

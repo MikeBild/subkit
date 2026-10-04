@@ -1,8 +1,3 @@
-// Unit coverage for the live-authoring report writer (Fix E):
-// envelope extraction, content checks, benchmark-target evaluation
-// (boundaries pinned to BENCHMARK_TARGETS), the under-specified
-// "judge must block" inversion, and the stable report shape.
-
 import { describe, expect, test } from "bun:test";
 import {
   aggregateTrials,
@@ -39,8 +34,6 @@ const BLOCK_SPEC: LiveScenarioSpec = {
   content_checks: [],
 };
 
-/** A happy-path observation: one author_workflow (1 pass) + one green
- *  judged preview whose artifacts satisfy the content checks. */
 function happyObservation(): ScenarioObservation {
   return {
     scenario: SPEC.slug,
@@ -247,7 +240,6 @@ describe("buildLiveReport", () => {
     expect(report.total).toBe(2);
     expect(report.passed).toBe(1);
     expect(report.failed).toBe(1);
-    // Stable contract: these keys are diffed across release runs.
     for (const key of [
       "scenario",
       "tool_calls",
@@ -265,16 +257,11 @@ describe("buildLiveReport", () => {
 
 describe("live scenario specs", () => {
   test("curated estate scenarios + bounded probe scenarios, exactly one judge-block probe, valid regexes", () => {
-    // Core estate-derived scenarios plus a few `ta-*` probe scenarios (added
-    // for the skills-in-authoring evidence experiments) — kept bounded so the
-    // live eval stays cheap. Exactly one deliberately under-specified
-    // judge-block probe.
     expect(LIVE_SCENARIOS.length).toBeGreaterThanOrEqual(3);
     expect(LIVE_SCENARIOS.length).toBeLessThanOrEqual(8);
     expect(LIVE_SCENARIOS.filter((s) => s.expect_judge_block)).toHaveLength(1);
     for (const spec of LIVE_SCENARIOS) {
       for (const check of spec.content_checks) {
-        // Constructing the RegExp throws on an invalid pattern.
         expect(() => new RegExp(check.pattern, check.flags ?? "")).not.toThrow();
       }
     }

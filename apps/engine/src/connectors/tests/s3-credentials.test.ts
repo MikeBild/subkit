@@ -1,24 +1,3 @@
-// S3 encrypted-credential-row resolution.
-//
-// The anonymous inline-config path is covered by s3-driver.test.ts; this
-// suite exercises the store-backed path: header-mode pseudo-headers and
-// aws_sigv4 both yield signing material, while every unusable stored
-// shape throws a typed S3CredentialError instead of silently sending an
-// unsigned request (whose upstream "Missing signature" rejection hides
-// the real cause from the operator).
-//
-// The typed-error cases never open a connection, so they run without
-// Docker. The two signing round-trips reuse the object-store gating pattern
-// from s3-driver.test.ts.
-
-// A case that could not run must report SKIP, never PASS.
-//
-// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the two signing round-trips used a
-// bare `return` as their docker gate, so under `SKIP_DOCKER=1` they reported
-// "pass" while asserting nothing. The typed-error cases below need no docker
-// and are not gated; only the signing round-trips are, with
-// `describe.skipIf`, so bun counts them as skipped.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { upsertCredential } from "../../credentials/service.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -33,7 +12,6 @@ import { executeS3Request, probeS3Connector, S3CredentialError } from "../driver
 import { createConnector, getConnector } from "../service.ts";
 import type { ConnectorView } from "../types.ts";
 
-// Module scope, so the result is known before bun builds the test list.
 const DOCKER = await dockerAvailable();
 let testDb: TestDb;
 let tenantId: string;
@@ -55,7 +33,7 @@ async function makeS3Connector(p: {
         auth_type: p.auth_type,
         config: {
           region: "us-east-1",
-          endpoint: p.endpoint ?? "http://127.0.0.1:1", // never dialed in the typed-error cases
+          endpoint: p.endpoint ?? "http://127.0.0.1:1",
           bucket: BUCKET,
           force_path_style: true,
         },
@@ -87,9 +65,6 @@ beforeAll(async () => {
       secretKey: objectStore.secretKey,
       pathStyle: true,
     });
-    // The bucket name is unique for this run, so creation must succeed. Hiding
-    // an arbitrary store error here only moves the failure into the signing
-    // assertions as a misleading `NoSuchBucket` response.
     await bootstrap.makeBucket(BUCKET);
   }
 }, 120_000);

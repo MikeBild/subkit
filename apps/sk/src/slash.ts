@@ -1,88 +1,20 @@
-// Slash-command registry for the `sk` REPL and persona-aware
-// filtering inside `/help`.
-//
-// Every command is a small declarative object: a name, a list of
-// aliases, a one-line help string, and an optional `requires`
-// permission that gates visibility + execution. When the REPL opens
-// a `/` autocomplete menu we consult the persona resolver's
-// allow-list and hide commands the caller cannot run.
-//
-// Execution is deliberately not wired here — the REPL owns the
-// invocation side effects. This module is a pure catalog + filter
-// so unit tests can assert on the shape without standing up Ink.
-//
-// `searchSlashCommands(query, persona)` is deliberately predictable:
-// empty `/` uses frequency bias, typed text uses exact/prefix matches.
-
 import { z } from "zod";
 import { frequencyBias } from "./usage-stats.ts";
 
-/**
- * Single canonical predicate for "what counts as a slash-name
- * character" — owned by the registry because the registry decides
- * which characters are legal in a registered command name. The
- * cursor-aware scanner in `repl/slash/findPositions.ts` reuses this
- * to guarantee both surfaces (the catalog + the input scanner)
- * accept the same alphabet.
- */
 export const SLASH_NAME_CHAR_RE = /[A-Za-z0-9_-]/;
 
-/** Helper exported alongside the regex so callers consume the
- *  predicate behind a name. Keeps a future Unicode-class change in
- *  one place. */
 export function isSlashNameChar(ch: string): boolean {
   return SLASH_NAME_CHAR_RE.test(ch);
 }
 
-/**
- * Slash commands tagged `routing: "local"` that DO NOT have a `case`
- * branch in `apps/sk/src/repl/slash/handler.ts` because the Ink-only
- * host (`ink-app.tsx`) intercepts them before dispatch.
- *
- * The list lives here (next to `SLASH_COMMANDS`)
- * because it's metadata about the registry, not about dispatch.
- * `apps/sk/src/repl/slash/dispatcher.ts` re-exports it for the
- * dispatcher contract test.
- */
 export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
-  // /actions opens an Ink modal launcher (apps/sk/src/ink-app.tsx:1760)
   "actions",
-  // /history is rendered as an Ink-modal panel (apps/sk/src/ink-app.tsx:1731);
-  // `handleSlash` doesn't see it.
   "history",
-  // /help renders the SLASH_COMMANDS catalog at the Ink host
-  // (apps/sk/src/ink-app.tsx:2004); `handleSlash` doesn't see it.
   "help",
-  // /exit / /quit are handled at the readline input loop (process exit);
-  // `handleSlash` is never reached for these.
   "exit",
-  // `/files` opens an interactive picker over files linked to the
-  // active conversation. Inserts an `@file:fid_...` mention at the
-  // cursor on selection — composer state lives in the Ink host.
   "files",
 ] as const);
 
-/**
- * Engine-routed slashes that are intercepted by the Ink host before
- * dispatch (different contract from `INK_INTERCEPTED_LOCAL_SLASHES`
- * which covers `routing: "local"` commands). These commands default
- * to `routing: "engine"` (so RBAC + audit run on the same path the
- * LLM tool-call would when they DO go through the engine), but the
- * Ink host short-circuits with custom in-process UX:
- *
- *   - /approve, /reject — handled by the approval-card flow
- *     (`ink-app.tsx:2020-2057`)
- *   - /yolo — toggles the destructive-action confirmation gate
- *     in-session (`ink-app.tsx:2062`)
- *   - /paste, /queue, /view — input/transcript-side
- *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
- *   - /learnings — submits the review-learnings starter prompt as a
- *     conversation turn (submit-pipeline.ts)
- *
- * The contract test asserts every `routing: "engine"` slash
- * either has a `case` in `handler.ts`, lands in a per-category
- * sub-dispatcher, or appears here.
- */
 export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "approve",
   "reject",
@@ -93,41 +25,15 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "learnings",
 ] as const);
 
-/** Every slash command can declare a Zod schema
- *  for its positional args (`/foo bar baz` → `["bar", "baz"]`).
- *  Local-only slashes that today parse args ad-hoc (e.g. `/debug`
- *  accepting `on|off|tail`) get validated at the dispatcher entry,
- *  closing the "slash boundary has no Zod" gap AGENTS.md flags. The
- *  default schema, when omitted, is `z.array(z.string())` —
- *  identity, so existing handlers stay backward-compatible. */
 export const SlashArgsSchemaDefault = z.array(z.string());
 
 export interface SlashCommand {
   name: string;
   aliases?: string[];
   help: string;
-  /** Optional permission required to invoke. When absent, always allowed. */
   requires?: string;
-  /** Category for the `/help` listing. */
   category: "session" | "auth" | "context" | "mcp" | "admin" | "util";
-  /**
-   * Where the dispatcher routes this command. Default `"engine"` —
-   * the slash flows through the engine so RBAC + audit run on the
-   * same path the LLM tool-call would. `"local"` means the command
-   * touches only the CLI's session state (no engine effect, no audit
-   * row): /clear, /help, /cost, /verbose, /debug, etc. Setting this
-   * field at registration removes a class of bug where the dispatcher
-   * routes by raw name (`LOCAL_ONLY_NAMES`) and a future name collision
-   * silently bypasses the audited path.
-   */
   routing?: "local" | "engine";
-  /**
-   * Optional Zod schema for the positional argv vector
-   * (`["bar", "baz"]` for `/foo bar baz`). Validated at dispatcher
-   * entry — a malformed call fails before reaching the handler with
-   * a structured Zod error. When omitted, `SlashArgsSchemaDefault`
-   * is used (any string array).
-   */
   argsSchema?: z.ZodType<readonly string[]>;
 }
 
@@ -142,9 +48,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
-    // Lists pending chat spaces (added-but-not-installed) and installs
-    // one by id. Local dispatch (direct REST call); the install route
-    // enforces chat_workspace:write + audits server-side.
     name: "install-space",
     help: "List/install pending chat spaces (Google Chat)",
     category: "admin",
@@ -243,14 +146,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "identity:read",
   },
   {
-    // `/install` is a single alias of `/onboard`, not a second entry.
-    // Two registry rows pointing at the same handler would show up
-    // twice in `/help`, double the audit surface for static inventory
-    // tools, and let future drift (different `requires`, different
-    // category) slip in unnoticed. The handler still exposes both
-    // `case "install":` and `case "onboard":` because the dispatcher
-    // passes the typed name through — aliases resolve to the same
-    // `command`, but the raw user-typed string reaches the switch.
     name: "onboard",
     aliases: ["install"],
     help: "Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save",
@@ -262,7 +157,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Approve a pending request_human_approval",
     category: "session",
     requires: "conversation:approve",
-    // 0 args (approve latest) or 1 arg (approval id).
     argsSchema: z.union([z.tuple([]), z.tuple([z.string().min(1).max(128)])]),
   },
   {
@@ -270,9 +164,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Reject a pending approval (with optional reason)",
     category: "session",
     requires: "conversation:approve",
-    // 0+ args. First arg is approval id (optional);
-    // remaining args are the rejection reason — we don't tightly
-    // bound it, just require non-empty strings if present.
     argsSchema: z.array(z.string().min(1).max(512)),
   },
   {
@@ -341,19 +232,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "skill:read",
   },
   {
-    // Thin prompt dispatch: the Ink host intercepts this and submits the
-    // review-learnings starter prompt (repl/task-actions.ts) as a turn, so
-    // the curation flow runs on the engine's conversation path.
     name: "learnings",
     help: "Review proposed session learnings (approve or reject each in chat)",
     category: "context",
     requires: "skill:read",
   },
   {
-    // `/knowledge` lists/inspects (handlers/inspect.ts); `/knowledge
-    // import <dir>` walks a local markdown directory and posts it to the
-    // audited bundle endpoint, which enforces knowledge:write server-side
-    // (handlers/knowledge.ts).
     name: "knowledge",
     help: "List knowledge sources, or import a markdown directory — /knowledge import <dir> [name]",
     category: "context",
@@ -382,10 +266,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     help: "Show token usage across recent AI requests (input / output / total per flow)",
     category: "util",
     routing: "local",
-    // The Usage tab aggregates the same `llm.invocation` audit events
-    // that /audit reads, so it shares /audit's permission. Hiding it
-    // from members also keeps autocomplete from picking /usage
-    // when the operator types /audit (which they cannot see either).
     requires: "audit:read",
   },
   {
@@ -401,11 +281,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
-    // "Tail your audit log" promised a live stream. The handler reads
-    // `GET /v1/audit-log` once and prints the newest rows — there is no audit
-    // stream anywhere in the engine, which is also why `sk audit tail` was
-    // removed. Help string now mirrors observed behavior so /help and the
-    // command don't drift.
     name: "audit",
     help: "Show the 20 most recent audit-log entries",
     category: "admin",
@@ -439,9 +314,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
-    // The handler returns the GitHub issues URL — log-bundle dispatch
-    // is a future feature. Help string mirrors observed behavior so
-    // /help and the slash don't drift.
     name: "feedback",
     aliases: ["bug"],
     help: "Open the subkit GitHub issues URL for filing a bug or feature request",
@@ -454,9 +326,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "context",
   },
   {
-    // `/files` lists files already linked to the active conversation
-    // and lets the user insert an `@file:fid_…` mention at the
-    // cursor.
     name: "files",
     help: "Browse files linked to this conversation and insert an @file mention",
     category: "context",
@@ -491,15 +360,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
-  // Universal chat-REPL muscle-memory slashes.
   {
-    // The in-memory transcript happy path is local, but a fallback
-    // calls `client.getConversation` when the local cache is empty
-    // (resumed session, paged history, REPL booted into an existing
-    // conversation). That request fails 403 for any principal lacking
-    // `conversation:read`. Declaring the perm here filters /copy out
-    // of /help for read-denied personas instead of letting them hit
-    // a cryptic engine error mid-keystroke.
     name: "copy",
     help: "Copy the last assistant message (markdown) to the clipboard",
     category: "util",
@@ -525,11 +386,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "context",
     routing: "local",
   },
-  // Open the settings palette inside the REPL. Passes sessionId /
-  // permissionMode / token counters to the modal so the Status tab
-  // renders real values. Operator surfaces (Permissions / Profile /
-  // Admin) live in their own SinglePane commands — see /permissions,
-  // /profile, /admin.
   {
     name: "settings",
     aliases: ["preferences"],
@@ -537,11 +393,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "util",
     routing: "local",
   },
-  // Mobile / portal connect via QR code. The engine route
-  // `POST /v1/identity/portal-tokens` requires `portal_token:write`,
-  // not `:read`. Declaring the slash with `:read` would let it
-  // appear in /help for read-only operators who would then hit a
-  // 403 from the server.
   {
     name: "session",
     help: "Mint a short-lived portal token + render a QR code — `/session <workflow-id>`",
@@ -549,7 +400,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "portal_token:write",
     argsSchema: z.tuple([z.string().min(1, "workflow id required")]).rest(z.string()),
   },
-  // operator list commands
   {
     name: "connectors",
     help: "List connectors in this tenant",
@@ -587,7 +437,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     category: "admin",
     requires: "discovery:read",
   },
-  // admin list commands
   {
     name: "apikeys",
     help: "List API keys (masked)",
@@ -608,13 +457,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
 ] as const;
 
-// Typecheck-time invariant: every slash command's `requires:` must
-// be a member of `UX_GATING_PERMISSIONS`. The
-// explainer + mapped-type live in their own file. The runtime assignment
-// stays here because anchoring it where `SLASH_COMMANDS` is in scope
-// avoids a runtime import cycle. See
-// `apps/sk/src/slash-permissions-invariant.ts` for the full
-// rationale and the "what to do when this fails to compile" guide.
 import type { AssertSlashRequiresAreInUxGating } from "./slash-permissions-invariant.ts";
 
 const _ASSERT_SLASH_REQUIRES_ARE_IN_UX_GATING: AssertSlashRequiresAreInUxGating<
@@ -626,19 +468,10 @@ export interface PersonaProbe {
   allows: (permission: string) => boolean;
 }
 
-/**
- * Filter the slash catalog to just the commands the given persona is
- * allowed to invoke. Commands without a `requires` permission are
- * always included.
- */
 export function slashCommandsForPersona(persona: PersonaProbe): SlashCommand[] {
   return SLASH_COMMANDS.filter((c) => !c.requires || persona.allows(c.requires));
 }
 
-/**
- * Resolve a user-typed slash (with or without the leading `/`) against
- * the catalog, honoring aliases. Returns undefined for unknown commands.
- */
 export function findSlashCommand(raw: string): SlashCommand | undefined {
   const name = raw.startsWith("/") ? raw.slice(1) : raw;
   for (const cmd of SLASH_COMMANDS) {
@@ -648,15 +481,6 @@ export function findSlashCommand(raw: string): SlashCommand | undefined {
   return undefined;
 }
 
-/**
- * Fuzzy search the slash-command catalog for commands matching
- * `query`, restricted to the caller's persona. Returns ranked
- * suggestions with the best match first. Thresholds: name 3x weight,
- * aliases 2x, help 0.5x, threshold 0.3.
- *
- * An empty query returns the whole visible catalog (useful for
- * the "just typed `/`" autocomplete panel).
- */
 export function searchSlashCommands(
   query: string,
   persona: PersonaProbe,
@@ -665,8 +489,6 @@ export function searchSlashCommands(
   const visible = slashCommandsForPersona(persona);
   const trimmed = query.replace(/^\//, "").trim();
   if (trimmed.length === 0) {
-    // No query — surface the most-frequently-used commands first so
-    // a typed-but-empty `/` opens the picker on the operator's hot list.
     const sorted = [...visible].sort((a, b) => frequencyBias(b.name) - frequencyBias(a.name));
     return sorted.slice(0, limit);
   }
@@ -686,10 +508,6 @@ export function searchSlashCommands(
   return [...exact, ...prefix].slice(0, limit);
 }
 
-/**
- * Render a `/help` screen — categorized, with hidden commands omitted
- * so an enduser never sees an `/audit` entry they cannot invoke.
- */
 export function renderHelp(persona: PersonaProbe): string {
   const visible = slashCommandsForPersona(persona);
   const byCategory = new Map<string, SlashCommand[]>();

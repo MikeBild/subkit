@@ -1,15 +1,5 @@
-// Unit tests for the `--since` relative time parsing logic used by the
-// `sk audit query` command (apps/sk/src/commands/audit.ts).
-//
-// The parsing logic is mirrored inline here for isolation — no engine,
-// no Postgres, no external dependencies.
-
 import { describe, expect, test } from "bun:test";
 
-// Mirror of the parsing logic from apps/sk/src/commands/audit.ts:
-// If the value matches <number><unit> where unit is m/h/d, subtract that
-// duration from now and return an ISO-8601 string. Otherwise return the
-// raw value unchanged (ISO passthrough).
 function parseSince(raw: string): string {
   const relative = raw.match(/^(\d+)(m|h|d)$/);
   if (relative) {
@@ -21,8 +11,6 @@ function parseSince(raw: string): string {
   return raw;
 }
 
-// Tolerance for timing assertions: 5 seconds is generous enough to survive
-// slow CI runners without creating fragile millisecond-exact comparisons.
 const TOLERANCE_MS = 5_000;
 
 describe("parseSince — relative time expressions", () => {
@@ -90,8 +78,6 @@ describe("parseSince — relative time expressions", () => {
   });
 
   test("parseSince('1h') is lexicographically less than parseSince('10m')", () => {
-    // 1 hour ago is earlier in time than 10 minutes ago, so its ISO string
-    // sorts before the 10-minute one.
     const oneHour = parseSince("1h");
     const tenMin = parseSince("10m");
     expect(oneHour < tenMin).toBe(true);

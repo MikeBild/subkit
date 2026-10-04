@@ -1,13 +1,3 @@
-/**
- * A free-text question (`ask_user_text`) is on screen and answered on purpose.
- *
- * Production showed the opposite: the question rode in a collapsed tool row,
- * the composer's placeholder was the only trace of it, and every reply the
- * reader wrote — "ich sehe hier keinen dialog" — was taken as the answer. The
- * fixture therefore sends what the engine sends: no prose repeating the
- * question, an empty `summary`, the question in `prompt.question` and the
- * placeholder only in the call's input.
- */
 export async function verifyChatReplies(page, stand, conversation, locale, capture) {
   await stand.visit(page, `chat/${conversation.id}`);
   await page.getByTestId("chat-composer-input").waitFor();
@@ -28,17 +18,12 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
   };
   const later = new Date(Date.parse(conversation.updated_at) + 60_000).toISOString();
   const state = {
-    // "tool": asked through the ask_user_text tool; "prose": the assistant
-    // asked in prose and the harness parked it — no tool call at all.
     mode: "tool",
     kind: "ask_user_text",
     asked: true,
     waiting: true,
-    // The snapshot predates the question: the page cannot know it yet.
     stale: false,
     answer: null,
-    // What the next append does: refuse because a question waits, or run a
-    // turn that ends on a question.
     append: "blocked",
   };
   let appends = 0;
@@ -115,9 +100,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
                   ...pending,
                   tool_name: state.kind,
                   tool_call_id: tool ? pending.tool_call_id : null,
-                  // The engine's summary for these rows is empty, or a
-                  // generic line for a parked prose question: never the
-                  // question, so nothing may read it as one.
                   summary: tool ? "" : "the assistant asked a question",
                   prompt: { question },
                 }
@@ -129,8 +111,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
   const append = (route) => {
     appends += 1;
     if (state.append === "turn") {
-      // A turn that ends on a question: the stream says nothing about it but
-      // the outcome; the next read of the conversation carries it.
       state.asked = true;
       state.waiting = true;
       return route.fulfill({
@@ -138,8 +118,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
         body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "awaiting_input" })}\n\n`,
       });
     }
-    // The engine refuses the append while a question waits; the question
-    // reaches the page with the next read.
     state.stale = false;
     state.asked = true;
     state.waiting = true;
@@ -182,7 +160,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       const el = document.querySelector('[data-testid="chat-composer-input"]');
       return el && !el.disabled && !el.value;
     });
-  /** The question is on screen, with a field and an action to answer it. */
   const expectQuestionShown = async (where) => {
     const card = questionCard();
     await card.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
@@ -195,7 +172,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     const submit = card.locator('[data-testid$="text-question-submit"]');
     if ((await submit.innerText()).trim() !== (de ? "Antworten" : "Answer"))
       throw new Error(`${where}: the answer action is not named "${de ? "Antworten" : "Answer"}"`);
-    // The composer says, naming the question, that the next message answers it.
     const hint = page.getByTestId("chat-composer-hint");
     if (!(await hint.isVisible()))
       throw new Error(`${where}: the composer does not say that it answers the question`);
@@ -206,7 +182,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       throw new Error(`${where}: a text question displays binary approval actions`);
     return { card, field, submit };
   };
-  /** The answered question still reads as question + answer. */
   const expectAnswered = async (value) => {
     await page.waitForFunction(
       () =>
@@ -221,8 +196,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     const marker = transcript().locator('[data-testid$="-answer-to"]');
     if (!(await marker.isVisible()))
       throw new Error("The reply is not marked as the answer to the question");
-    // The marker can render a frame before the refetched reply text does;
-    // wait for the words rather than reading the transcript once.
     await page
       .waitForFunction(
         (expected) =>
@@ -240,17 +213,12 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
   await page.route(appendPattern, append);
   await page.route(answerPattern, answer);
   try {
-    // 1. Asked through the tool: question card, placeholder, "Antworten".
     reset({});
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
     const shown = await expectQuestionShown("tool question");
     if ((await shown.field.getAttribute("placeholder")) !== placeholder)
       throw new Error("The answer field does not carry the question's placeholder");
-    // "Wartet auf dich" once, amber (§2), in the header badge — not red
-    // there and amber in the list, and not repeated under the title.
-    // The badge is a state (`StatusBadge`): its tone is the pattern's own
-    // reading of the state, not a class a page chose.
     const status = page.getByTestId("chat-status");
     if (
       (await status.getAttribute("data-state")) !== "awaiting_input" ||
@@ -268,7 +236,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       throw new Error("The composer still claims a question waits after it was answered");
     await capture("answered");
 
-    // 2. Answered from the composer, which said it would.
     reset({});
     await stand.visit(page, `chat/${conversation.id}`);
     await expectQuestionShown("composer answer");
@@ -280,9 +247,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       throw new Error("Answering a text question displayed an error");
     await expectAnswered(expected);
 
-    // 3. The question arrived after the page read the conversation. A message
-    //    written without seeing it is NOT its answer: the page refuses, keeps
-    //    the text and shows the question.
     reset({ stale: true, asked: false });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
@@ -308,8 +272,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     await composerReady();
     await expectAnswered(expected);
 
-    // 4. Asked in prose and parked by the harness: no tool row to stand
-    //    beside, the question is still shown and answerable.
     reset({ mode: "prose" });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
@@ -324,7 +286,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
         !document.querySelector('[data-testid="chat-transcript"] [data-testid$="text-question"]'),
     );
 
-    // 5. A turn that ends on a question shows it without a reload.
     reset({ asked: false, waiting: false, append: "turn" });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
@@ -335,7 +296,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     if (answers !== 4 || appends !== 2)
       throw new Error(`Wrong reply routing: answers=${answers}, appends=${appends}`);
 
-    // 6. A typed "ja" never becomes a structured confirmation.
     reset({ kind: "ask_user_confirm", stale: true });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().fill("ja");

@@ -1,15 +1,8 @@
-// data_selector_error post-processing — when QuickJS throws "Cannot
-// read property 'X' of undefined" because the LLM accessed
-// `sourceData.<typo>`, attach `did_you_mean` candidates so the next
-// retry can fix the typo without reading the docs.
-
 import { describe, expect, test } from "bun:test";
 import { LoopStepSchema } from "../../../workflows/types.ts";
 import { runLoopStep } from "../loop.ts";
 
 function ctx() {
-  // Stub abort signal + the execution fields the data_selector path threads
-  // into the sandbox clock (`started_at` / `execution_id`).
   return {
     signal: new AbortController().signal,
     started_at: new Date(1_700_000_000_000),
@@ -22,7 +15,6 @@ describe("loop · data_selector did_you_mean", () => {
     const step = LoopStepSchema.parse({
       kind: "loop",
       id: "iter",
-      // typo: fetch_projets vs. fetch_projects (the actual key)
       data_selector: "(s) => s.fetch_projets.data.projects",
       body: ["x"],
     });
@@ -34,10 +26,6 @@ describe("loop · data_selector did_you_mean", () => {
     expect(result.error?.code).toBe("data_selector_error");
     const details = result.error?.details as Record<string, unknown>;
     expect(details.bad_key).toBe("data");
-    // Levenshtein matches on the bad_key against the available
-    // scope keys. `data` doesn't have a near-match in scope keys
-    // here, so did_you_mean is empty in this case — but
-    // `available_scope_keys` is always populated.
     expect(details.available_scope_keys).toContain("fetch_projects");
   });
 
@@ -45,7 +33,6 @@ describe("loop · data_selector did_you_mean", () => {
     const step = LoopStepSchema.parse({
       kind: "loop",
       id: "iter",
-      // Force the QuickJS error to mention the step-id-typo path
       data_selector: "(s) => { const x = s.fetch_projets; return x.foo; }",
       body: ["x"],
     });

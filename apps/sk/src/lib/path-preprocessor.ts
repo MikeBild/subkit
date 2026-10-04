@@ -1,16 +1,3 @@
-// Preprocesses local filesystem paths that appear in natural-language
-// chat prompts so the user never has to copy bytes by hand. Text-like
-// files are read locally and appended to the prompt as visible context
-// for workflow-style inputs; knowledge-source intents still upload text
-// files through the shared Files chokepoint so the engine ingests the
-// original file artifact.
-//
-// The architectural premise is: the engine cannot read the operator's
-// local filesystem, but `sk` runs on the operator's machine and can.
-// Closing this gap here removes the agent's need to bounce users to a
-// slash command they then have to copy-paste — a UX failure that no
-// amount of slash-command hardening fixes.
-
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { uploadPath } from "../commands/files.ts";
@@ -21,14 +8,9 @@ import { sanitizePathInput } from "./path-input.ts";
 export const MAX_INLINE_LOCAL_PATH_BYTES = 262144;
 
 export interface PathCandidate {
-  /** Exact substring as it appears in the input, including surrounding
-   *  trailing punctuation that the trim removed. */
   raw: string;
-  /** Sanitized + trimmed path used for filesystem lookup. */
   cleaned: string;
-  /** Inclusive byte offset of `raw` in the original input. */
   start: number;
-  /** Exclusive byte offset of `raw` end in the original input. */
   end: number;
 }
 
@@ -66,13 +48,9 @@ export interface AutoUploadOptions {
   mode?: LocalPathMode;
 }
 
-// Path-shaped tokens. Handles bare, shell-escaped, quoted, and file://
-// forms that terminals commonly emit for drag/drop.
 const PATH_RE =
   /(["'])(?:file:\/\/|~\/|\.{1,2}\/|\/)(?:\\.|(?!\1)[^\r\n])*?\1|(?:^|(?<=\s))(?:file:\/\/|~\/|\.{1,2}\/|\/)(?:\\.|[^\s"'<>`(){}[\]])+/g;
 
-// Trailing characters to strip when they sit after an alphanumeric —
-// markdown renderers love attaching these to paths in prose.
 const TRAILING_PUNCT_RE = /[.,;:!?)\]>]+$/;
 
 const KNOWLEDGE_SOURCE_INTENT_RE =
@@ -83,10 +61,6 @@ export function extractCandidatePaths(input: string): PathCandidate[] {
   for (const m of input.matchAll(PATH_RE)) {
     if (m.index === undefined) continue;
     const raw = m[0];
-    // Strip trailing punct only if the preceding char is alphanumeric.
-    // Keeps "/tmp/x.md" (ends in 'd') trimming "/tmp/x.md," correctly,
-    // and leaves "/tmp/foo." (a literal path ending in dot, rare) as
-    // existsSync's problem.
     let cleaned = normalizeCandidatePath(raw);
     const trail = cleaned.match(TRAILING_PUNCT_RE);
     if (trail && trail.index !== undefined && trail.index > 0) {
@@ -183,8 +157,6 @@ export async function autoUploadLocalPaths(
   const uploaded: UploadedPath[] = [];
   const skipped: SkippedPath[] = [];
   const inlineBlocks: string[] = [];
-  // Map of `start` offset → replacement text, applied right-to-left so
-  // earlier offsets stay valid.
   const replacements: Array<{ start: number; end: number; with: string }> = [];
 
   for (const c of candidates) {
@@ -235,26 +207,17 @@ export async function autoUploadLocalPaths(
         bytes: st.size,
       });
       if (conversationId) {
-        // Best-effort link so `/files` and the agent's
-        // `list_attachments` surface it. Failure here doesn't block
-        // submit — the `$file` leaf still resolves on the engine.
         try {
           await client.linkFile(row.id, {
             resource_type: "conversation",
             resource_id: conversationId,
             role: "attachment",
           });
-        } catch {
-          /* link is best-effort */
-        }
+        } catch {}
       }
       replacements.push({
         start: c.start,
         end: c.end,
-        // The `@file:fid_…` mention is rewritten by `expandRefs` →
-        // `rewriteFileMentions` to the canonical `{"$file":"fid_…"}`
-        // leaf at submit. Keeping the mention shape here gives the
-        // REPL one internal form before the final wire payload.
         with: `@file:${row.id}`,
       });
     } catch (err) {

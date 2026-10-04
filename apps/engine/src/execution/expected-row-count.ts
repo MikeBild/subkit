@@ -1,12 +1,3 @@
-// Polymorphic `expected_row_count` evaluator. Supports:
-//   - number            exact match
-//   - [min, max]        inclusive range tuple
-//   - { min, max }      inclusive range object (either bound may be omitted)
-//
-// Pure function. Returns `null` on satisfied, otherwise a string
-// describing the mismatch — caller threads it into the typed
-// `expected_row_count_mismatch` envelope.
-
 export type ExpectedRowCount =
   | number
   | readonly [number, number]

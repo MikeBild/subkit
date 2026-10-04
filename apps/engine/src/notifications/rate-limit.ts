@@ -1,18 +1,3 @@
-// P-GC5: token-bucket rate limiter for notification channels.
-//
-// A bucket is keyed by `(tenant_id, workspace_id, channel_id)`. Each
-// bucket has a capacity (tokens per minute, default 60) and refills
-// linearly over a 60-second window. `tryAcquire` either deducts `n`
-// tokens and returns `{ok: true}`, or computes the earliest time the
-// caller could retry and returns `{ok: false, retryAfterMs}`.
-//
-// The implementation is intentionally in-memory so that a single
-// engine process can bounce a burst of events without hitting the
-// chat adapter. Multi-process deployments would need a shared store
-// (redis / db row) — that's out of scope for GC5. The store is
-// exported as a module-level singleton; tests reset it via
-// `__resetRateLimiter()`.
-
 export interface RateLimitKey {
   tenant_id: string;
   workspace_id: string;
@@ -22,7 +7,6 @@ export interface RateLimitKey {
 interface BucketState {
   tokens: number;
   capacity: number;
-  /** Refill rate in tokens per ms. */
   refillPerMs: number;
   lastRefillAt: number;
 }
@@ -69,10 +53,6 @@ export interface AcquireResult {
   tokensRemaining?: number;
 }
 
-/**
- * Try to take `n` tokens from the bucket. If insufficient, returns the
- * ms the caller must wait before the bucket will contain `n` tokens.
- */
 export function tryAcquire(
   key: RateLimitKey,
   capacityPerMinute: number = 60,
@@ -92,12 +72,10 @@ export function tryAcquire(
   return { ok: false, retryAfterMs };
 }
 
-/** Test helper — wipe every bucket. */
 export function __resetRateLimiter(): void {
   buckets.clear();
 }
 
-/** Test helper — introspect bucket state. */
 export function __peekBucket(key: RateLimitKey): BucketState | undefined {
   return buckets.get(keyOf(key));
 }

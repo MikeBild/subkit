@@ -1,17 +1,3 @@
-// HTTP integration tests for the connector authoring trio:
-//   POST /v1/connectors/validate
-//   POST /v1/connectors/probe
-//   POST /v1/connectors/import
-//
-// The load-bearing claim is that none of them persist anything. An authoring
-// step that quietly created a row would defeat its own purpose: the point of
-// checking before saving is that nothing exists yet if the check fails. Every
-// test here counts connectors before and after.
-//
-// The probe runs against a per-suite mock HTTP server so the credential
-// override reaches a real socket rather than a stub — the failure mode being
-// guarded is a probe that reports success while sending no credential at all.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
@@ -98,7 +84,6 @@ afterAll(async () => {
 
 describe("POST /v1/connectors/validate", () => {
   test("an invalid definition is a 200 with ok:false and the offending field", async () => {
-    // Not a 4xx: the request was well-formed, the caller asked a question.
     const before = await connectorCount();
     const res = await post("/v1/connectors/validate", {
       name: "Bad S3",
@@ -157,18 +142,13 @@ describe("POST /v1/connectors/probe", () => {
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
 
-    // The credential actually went out. Without the override threading, the
-    // probe would have sent an unauthenticated request and still reported ok.
     expect(received.length).toBeGreaterThan(0);
     expect(received[0]?.headers.authorization).toBe("Bearer PROBE-ONLY-TOKEN");
 
-    // Neither the connector nor the credential was written.
     expect(await connectorCount()).toBe(before);
   });
 
   test("an auth-required definition with no credential reports credential_missing", async () => {
-    // Rather than probing anonymously and returning a 401 that reads like a
-    // connectivity problem.
     const res = await post("/v1/connectors/probe", {
       connector: {
         name: "Unsaved No Cred",
@@ -193,13 +173,10 @@ describe("POST /v1/connectors/probe", () => {
 });
 
 describe("POST /v1/connectors/probe — a definition read back from the API", () => {
-  // A fixture marker, not a credential.
   const HEADER_SECRET = "fixture-probe-header-not-real";
   const MASK = "***redacted***";
   let readBackId: string | undefined;
 
-  // The import tests below match a spec against the saved connectors; this
-  // one must not be there to be found.
   afterAll(async () => {
     if (!readBackId) return;
     await fetch(`${ctx.baseUrl}/v1/connectors/${readBackId}`, {
@@ -226,7 +203,6 @@ describe("POST /v1/connectors/probe — a definition read back from the API", ()
     expect((body.config as { static_headers: Record<string, string> }).static_headers).toEqual({
       "X-Session-Id": MASK,
     });
-    // The fields of the representation a definition is made of.
     return {
       name: body.display_name,
       slug: body.slug,
@@ -290,9 +266,6 @@ describe("POST /v1/connectors/import", () => {
   });
 
   test("the returned draft is directly saveable", async () => {
-    // The contract the CLI depends on: import → review → create, with no
-    // reshaping in between. If the draft ever stops being a valid create body,
-    // `sk connectors import --spec` breaks with a confusing 400.
     const imported = await post("/v1/connectors/import", {
       source: "curl",
       content: `curl ${mockBaseUrl}/v1/things`,
@@ -309,10 +282,6 @@ describe("POST /v1/connectors/import", () => {
 });
 
 describe("driver-scoped auth kinds", () => {
-  // `auth_type` is one shared enum, so the contract alone would offer the two
-  // machine-to-machine MCP kinds to every driver. The HTTP driver throws on
-  // both rather than sign a request, so a connector that declared one would be
-  // stored uncallable.
   test("validate reports oauth2_client on an http definition as an issue", async () => {
     const res = await post("/v1/connectors/validate", {
       name: "Wrong Auth",

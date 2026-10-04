@@ -1,17 +1,3 @@
-// Endpoint dedup + safe auto-apply for proactive drift signals.
-//
-// Before this slice the proactive scheduler re-proposed an identical
-// `safe` patch every cadence tick — no idempotency key — so 25+
-// duplicate `status='proposed'` rows piled up unreviewed (they could
-// never auto-apply: the fixture gate is skipped for proactive scans).
-//
-// This file pins the fix:
-//   1. A proactive `safe` signal with no fixture AUTO-APPLIES under the
-//      default safe-patches policy (relaxed no-fixture rule).
-//   2. A second signal for the SAME endpoint is short-circuited by the
-//      dedup guard — refreshed when still proposed, skipped once applied
-//      — so no duplicate row and no workflow-version churn.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { patchCandidates, workflowVersions } from "../../db/schema/index.ts";
@@ -73,7 +59,6 @@ function proactiveCtx(allowAutoApply: boolean) {
         failing_step_id: `proactive:test:${ctx.step_id}`,
         response: { data: { id: 1 } },
       },
-      // No dry_run_step — proactive callers omit it.
     },
     options: { allowAutoApply },
   };
@@ -107,7 +92,7 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
 
   test("first proactive scan (operator-invoked) parks one candidate stamped with the endpoint", async () => {
     const { signal } = await buildSignal();
-    const { signalCtx, options } = proactiveCtx(/* allowAutoApply */ false);
+    const { signalCtx, options } = proactiveCtx(false);
 
     const result = await processDriftSignal(signal, signalCtx, options, ctx.testDb.db);
     firstCandidateId = result.candidate_id;
@@ -126,28 +111,28 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
 
   test("a second proactive scan refreshes the proposed candidate — no duplicate row, no LLM re-run", async () => {
     const { signal } = await buildSignal();
-    const { signalCtx, options } = proactiveCtx(/* allowAutoApply */ false);
+    const { signalCtx, options } = proactiveCtx(false);
 
     const before = await endpointCandidateCount();
     const result = await processDriftSignal(signal, signalCtx, options, ctx.testDb.db);
 
     expect(result.candidate_id).toBe(firstCandidateId);
     expect(result.status).toBe("proposed");
-    expect(await endpointCandidateCount()).toBe(before); // still 1
+    expect(await endpointCandidateCount()).toBe(before);
   });
 
   test("the scheduler tick (allowAutoApply) auto-applies the safe patch with no fixture", async () => {
     const { signal } = await buildSignal();
-    const { signalCtx, options } = proactiveCtx(/* allowAutoApply */ true);
+    const { signalCtx, options } = proactiveCtx(true);
 
     const versionsBefore = await versionCount();
     const result = await processDriftSignal(signal, signalCtx, options, ctx.testDb.db);
 
-    expect(result.candidate_id).toBe(firstCandidateId); // refreshed, not new
+    expect(result.candidate_id).toBe(firstCandidateId);
     expect(result.status).toBe("applied");
     expect(result.auto_applied).toBe(true);
-    expect(await endpointCandidateCount()).toBe(1); // never duplicated
-    expect(await versionCount()).toBe(versionsBefore + 1); // exactly one rotate
+    expect(await endpointCandidateCount()).toBe(1);
+    expect(await versionCount()).toBe(versionsBefore + 1);
 
     const [row] = await ctx.testDb.db
       .select()
@@ -158,16 +143,16 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
 
   test("once applied, further scans skip the endpoint — no re-apply, no version churn", async () => {
     const { signal } = await buildSignal();
-    const { signalCtx, options } = proactiveCtx(/* allowAutoApply */ true);
+    const { signalCtx, options } = proactiveCtx(true);
 
     const versionsBefore = await versionCount();
     const result = await processDriftSignal(signal, signalCtx, options, ctx.testDb.db);
 
     expect(result.candidate_id).toBe(firstCandidateId);
     expect(result.status).toBe("applied");
-    expect(result.auto_applied).toBe(false); // skipped, not re-applied
+    expect(result.auto_applied).toBe(false);
     expect(await endpointCandidateCount()).toBe(1);
-    expect(await versionCount()).toBe(versionsBefore); // no new version
+    expect(await versionCount()).toBe(versionsBefore);
   });
 });
 
@@ -214,14 +199,10 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
         return signal;
       };
 
-      // Two genuinely different drifts on the SAME endpoint. The drift
-      // signal fingerprints by SHAPE, so driftB must have a different body
-      // structure (different keys / nesting), not just different values.
       const driftA = mkSignal({ error: { code: "not_found", detail: "User not found" } });
       const driftB = mkSignal({ message: "gone", retry_after: 30, details: ["a", "b"] });
       expect(signalFingerprint(driftA)).not.toBe(signalFingerprint(driftB));
 
-      // Heal drift A (auto-applies the safe patch).
       const a = await processDriftSignal(driftA, signalCtx, { allowAutoApply: true }, db);
       expect(a.status).toBe("applied");
 
@@ -239,12 +220,6 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
       })();
       expect(countAfterA).toBe(1);
 
-      // NEW drift B on the now-healed endpoint must NOT be masked by the
-      // applied A candidate — it must propose a FRESH candidate (the bug:
-      // the applied short-circuit skipped it, leaving B unhealed). The mock
-      // repair proposes the same path move for B; restore the pre-drift step
-      // so that move still changes something — against the healed step it is
-      // a `no_change` and the engine closes it as `inapplicable` at birth.
       await resetSeedDag(local);
       const b = await processDriftSignal(driftB, signalCtx, { allowAutoApply: false }, db);
       expect(b.candidate_id).not.toBe(a.candidate_id);
@@ -259,10 +234,8 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
             eq(patchCandidates.endpoint_key, local.endpoint_key),
           ),
         );
-      expect(rowsAfterB.length).toBe(2); // A (applied) + B (proposed) — B was healed
+      expect(rowsAfterB.length).toBe(2);
 
-      // Re-observing drift A (the SAME, already-healed shape) is still
-      // deduped: no third candidate, the applied A is skipped.
       const aAgain = await processDriftSignal(driftA, signalCtx, { allowAutoApply: true }, db);
       expect(aAgain.candidate_id).toBe(a.candidate_id);
       expect(aAgain.auto_applied).toBe(false);
@@ -275,7 +248,7 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
             eq(patchCandidates.endpoint_key, local.endpoint_key),
           ),
         );
-      expect(rowsFinal.length).toBe(2); // still A + B, no churn from A
+      expect(rowsFinal.length).toBe(2);
     } finally {
       await local.cleanup();
     }

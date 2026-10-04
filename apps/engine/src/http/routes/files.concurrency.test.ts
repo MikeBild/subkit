@@ -1,8 +1,3 @@
-// Concurrency integration test for the files inline upload dedup path.
-//
-// Two parallel POSTs of the same sha256 from the same tenant must both
-// resolve to the same fid, only one row exists in the DB.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, count, eq } from "drizzle-orm";
@@ -48,11 +43,9 @@ describe("files inline upload — concurrent dedup", () => {
     const j1 = (await r1.json()) as { id: string };
     const j2 = (await r2.json()) as { id: string };
 
-    // Same fid regardless of race outcome
     expect(j1.id).toBe(j2.id);
     expect(j1.id).toMatch(/^fid_/);
 
-    // Only one row with this sha256 in the DB
     const sha256 = createHash("sha256").update(content).digest("hex");
     const rows = await srv.db
       .select({ n: count() })

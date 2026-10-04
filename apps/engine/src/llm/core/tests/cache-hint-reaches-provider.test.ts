@@ -1,13 +1,3 @@
-// The cache hint has to survive the trip to the provider — and the wall-clock
-// stamp must not stand in front of it.
-//
-// WHY these are asserted on the wire and not on the helper: `toSystemMessages`
-// was already covered, and it was already correct. The hint was built and then
-// discarded one function later, where nothing looked. A prefix that is unique
-// on every call cannot be cached either, and the millisecond timestamp sat at
-// index 0. Both defects are invisible to any test that stops at the helper, so
-// these stop at the argument object the SDK actually receives.
-
 import { describe, expect, it } from "bun:test";
 import { AiSdkModel } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
@@ -91,8 +81,6 @@ describe("the prompt-cache hint on the wire", () => {
     const stamp = calls[0]!.messages.find(
       (m) => typeof m.content === "string" && m.content.startsWith("The current date and time is"),
     );
-    // Full ISO-8601 with milliseconds — the fix moves the stamp, it does not
-    // coarsen it.
     expect(stamp!.content).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 

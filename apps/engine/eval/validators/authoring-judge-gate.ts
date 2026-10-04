@@ -1,15 +1,3 @@
-// Authoring scenario (Fix E / CI mode): the instruction-grounded
-// preview judge gates the green-preview auto-commit on the user's goal.
-//
-// The mock judge is CONTENT-DRIVEN, not call-ordered: it reads the
-// judge prompt it receives (goal + recorded step artifacts) and fails
-// exactly when the previewed output carries the empty-project-names
-// marker — the "Project: ()" incident shape. That proves the wiring
-// end-to-end: the dry-run feeds the REAL preview artifacts to the
-// judge, a failed verdict blocks the auto-commit and joins the
-// requires_repair path with the missing items attached, and the
-// correct-content preview in explicit auto mode commits with a passing verdict.
-
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";
 import { getMockProvider } from "../../src/llm/mock-provider.ts";
@@ -26,8 +14,6 @@ interface Input {
   goal: string;
   wrong_expression: string;
   correct_expression: string;
-  /** Substring of the judge prompt that identifies the wrong-content
-   *  preview (empty project name in the recorded artifacts). */
   empty_name_marker: string;
   failed_verdict: Verdict;
   passing_verdict: Verdict;
@@ -55,15 +41,11 @@ function previewableDraft(slug: string, goal: string, expression: string): Draft
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const input = fixture.input as Input;
   return withAuthoringEvalEnv("judge_gate", async (env) => {
-    // Content-driven verdict: failed iff the artifacts carry the
-    // empty-name marker. The prompt the override sees IS the judge
-    // prompt, so this also pins that real preview artifacts reach it.
     getMockProvider().generateOverrides.judge = (last: string) =>
       last.includes(input.empty_name_marker) ? input.failed_verdict : input.passing_verdict;
 
     const c = new Checks();
 
-    // ── Wrong-content green preview: judge blocks the auto-commit ──
     const wrongCtx = env.makeToolCtx(
       previewableDraft("eval-judge-blocks", input.goal, input.wrong_expression),
     );
@@ -103,7 +85,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       "judge breaker did not record the block",
     );
 
-    // ── Correct-content preview: judge passes, auto-commit proceeds ──
     const rightCtx = {
       ...env.makeToolCtx(
         previewableDraft("eval-judge-passes", input.goal, input.correct_expression),

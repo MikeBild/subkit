@@ -1,7 +1,3 @@
-// edit_workflow_patch / inspect_workflow are gated on the
-// `workflow-authoring` skill being loaded — the model cannot edit a
-// workflow draft without first reading the contract.
-
 import { describe, expect, test } from "bun:test";
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../gated.ts";
 

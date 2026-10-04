@@ -1,12 +1,3 @@
-// Transcript cell components for the Ink REPL.
-//
-// Pure presentational pieces rendered into the scrollback: the
-// tool-call card, next-best-action chips, message rows, the turn
-// separator, the telemetry status bar, plus the validation-error and
-// thinking-spinner blocks that sit between the transcript and the
-// composer. All of them are pure consumers of session state — no
-// engine traffic, no input handling.
-
 import { useTheme } from "@chat-ui/index.ts";
 import type {
   Citation,
@@ -28,20 +19,11 @@ import { Spinner } from "../repl/spinner.tsx";
 import { resolveTaskActionSuggestion } from "../repl/task-actions.ts";
 import { truncateEnd, truncateMiddle } from "../repl/truncate.ts";
 
-// ---------- Tool-call card ----------
-//
-// Indented under the turn with a `⎿` glyph. Status glyph colors by
-// state (running yellow, done green, failed red). One-line input
-// summary stays visible; full output stays collapsed until the user
-// expands (Ctrl+E in a future iteration — for now always compact).
-
 export const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"] as const;
 
 function summarizeSuccessData(data: unknown): string | null {
   if (data === null || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
-  // Most of our tools return `{ok, data: {...}}`; unwrap once so the
-  // user sees the meaningful keys instead of just `ok: true`.
   const inner =
     "data" in obj && typeof obj.data === "object" && obj.data !== null
       ? (obj.data as Record<string, unknown>)
@@ -58,12 +40,6 @@ function summarizeSuccessData(data: unknown): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
-/**
- * Extract the auto-commit envelope from a tool result. A green
- * `dry_run_workflow` returns `{ ok, data: { auto_committed: true,
- * version, slug?, workflow_id? } }`; this surfaces the version + a
- * human label so the CLI can render a one-line committed event.
- */
 function autoCommitInfo(result: unknown): { version: number; label: string } | null {
   if (result === null || typeof result !== "object") return null;
   const obj = result as Record<string, unknown>;
@@ -101,8 +77,6 @@ export const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed
     };
   }, [call.status]);
 
-  // Reserve ~2 (⎿ ), 2 (glyph + space), name length, 2 (parens) for the
-  // header line. The remainder is for the args summary.
   const headerOverhead = 6 + call.name.length;
   const argsBudget = Math.max(20, columns - headerOverhead);
   const argsJson =
@@ -125,9 +99,6 @@ export const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed
     color = theme.severity.dim;
   }
 
-  // Result/error body — transparency block. Always
-  // visible for failures (the operator needs the reason to course-
-  // correct); collapsed for successes unless explicitly expanded.
   const bodyLines: Array<{ text: string; tone: "ok" | "fail" | "dim" }> = [];
   if (call.status === "failed" && call.result !== undefined) {
     const inner =
@@ -144,10 +115,6 @@ export const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed
       bodyLines.push({ text: truncateEnd(summary, lineBudget), tone: "dim" });
     }
   }
-  // Auto-commit surfacing: a green `dry_run_workflow` persists the
-  // workflow inline (`auto_committed: true` with `version` + `slug` /
-  // `workflow_id`). Render a clear one-line committed event so the
-  // operator sees the write landed instead of it being invisible.
   if (call.status === "done" && call.result !== undefined) {
     const committed = autoCommitInfo(call.result);
     if (committed) {
@@ -188,20 +155,6 @@ export const ToolCard: React.FC<ToolCardProps> = memo(({ call, columns, detailed
   );
 });
 ToolCard.displayName = "ToolCard";
-
-// ---------- Next-best-actions chips ----------
-//
-// When an engine tool returns `{ ok: false, next_best_actions: [...] }`,
-// the suggested follow-up tools render below the tool card as inverse-
-// styled numbered chips. The user can either type
-// `please run <tool_name>` themselves or — while the composer is empty
-// — press the chip number (1..9) to dispatch a synthetic message
-// through the same submit path.
-//
-// The shape lives at one of two paths in `call.result`:
-//   * top-level: `{ ok: false, next_best_actions: [...] }`
-//   * nested under `data`: `{ ok: false, data: { next_best_actions: [...] } }`
-// Both are produced by different tools today; we accept either.
 
 const MAX_CHIPS = 9;
 
@@ -249,32 +202,18 @@ export const NextBestActionsChips: React.FC<NextBestActionsChipsProps> = memo(({
 });
 NextBestActionsChips.displayName = "NextBestActionsChips";
 
-// ---------- Message row ----------
-
-export const MESSAGE_ROW_INDENT = 8; // 2 glyph + 6 label
-const MESSAGE_ROW_RIGHT_MARGIN = 2; // safety so a wide ¶ doesn't kiss the right edge
+export const MESSAGE_ROW_INDENT = 8;
+const MESSAGE_ROW_RIGHT_MARGIN = 2;
 
 export const MessageRow: React.FC<{
   role: string;
   content: string;
   parts?: RenderableMessagePart[] | undefined;
-  /**
-   * Terminal column count, used to constrain the body box width so
-   * continuation lines don't lose the speaker indent. Pre-fix the
-   * absence of this prop made Ink wrap at full terminal width and
-   * split words across the column origin (session 86de186b).
-   */
   columns?: number;
-  /** Source refs for an assistant answer → dim "Sources: …" footer.
-   *  Absent/empty on citation-less turns (no footer, byte-identical). */
   citations?: Citation[] | undefined;
 }> = memo(({ role, content, parts, columns, citations }) => {
   const theme = useTheme();
   const footer = formatCitationsFooter(citations);
-  // Speaker label + glyph. Two columns: a 2-char glyph slot, then a
-  // fixed-width label so wrapping body text aligns under itself, not
-  // under the label — `›  you` for the operator, `•  sk` for the
-  // assistant, `$  tool` for tool calls, `·` for system rows.
   const glyph = role === "user" ? "›" : role === "assistant" ? "•" : role === "tool" ? "$" : "·";
   const label =
     role === "user" ? "you" : role === "assistant" ? "sk" : role === "tool" ? "tool" : "";
@@ -328,15 +267,10 @@ export const TurnSeparator: React.FC<{ columns?: number | undefined }> = memo(({
 });
 TurnSeparator.displayName = "TurnSeparator";
 
-// ---------- Status bar ----------
-
 export const StatusBar: React.FC<{ statusLine: string; columns: number }> = memo(
   ({ statusLine, columns }) => {
     const theme = useTheme();
     if (!statusLine) return null;
-    // Reserve 4 cols for the leading `╌ ` prefix + a small safety
-    // margin so resize does not push the line onto a second row mid-
-    // glyph.
     const clamped = truncateEnd(statusLine, Math.max(20, columns - 4));
     return (
       <Box marginBottom={1}>
@@ -348,14 +282,6 @@ export const StatusBar: React.FC<{ statusLine: string; columns: number }> = memo
 );
 StatusBar.displayName = "StatusBar";
 
-// ---------- Validation-error block ----------
-
-/* Validation errors — surfaced only when the turn is actually
-   in a terminal failure state. Mid-turn iterations clear via
-   the `tool_call_start` reducer reset; the block here stays
-   for awaiting_input / completed / error so the user has the
-   last word on what failed. Tone follows status: error → red
-   (real failure), other → yellow (the LLM may still recover). */
 export function renderValidationErrorsBlock(
   validationErrors: SkSessionState["validationErrors"],
   status: SkSessionState["status"],
@@ -368,11 +294,6 @@ export function renderValidationErrorsBlock(
   ) {
     return null;
   }
-  // Pick a header that matches the *kind* of error. Pre-fix
-  // every error landed under "validation errors" — so an
-  // upstream-Anthropic quota reset to "validation errors ·
-  // internal" left the operator hunting for a workflow bug
-  // that didn't exist.
   const kinds = validationErrors.map((e) =>
     classifyEngineError({
       path: e.path,
@@ -409,35 +330,17 @@ export function renderValidationErrorsBlock(
   );
 }
 
-// ---------- Thinking spinner block ----------
-
-/* Thinking spinner — surfaces the in-flight tool name so the
-   user sees concrete progress instead of just "thinking…" for
-   long turns. Pre-fix session 86de186b sat on "thinking…
-   1m16s" while the engine ran author_workflow → validate_draft
-   → dry_run_workflow with no visibility. */
 export function renderTurnSpinner(
   toolCalls: ToolCallState[],
   busy: boolean,
   turnTokens: number | null,
 ): React.ReactNode {
   const running = toolCalls.find((c) => c.status === "running" || c.status === "pending");
-  // Count tools that COMPLETED this turn (status done/failed)
-  // so we can show "processing N tool result(s)…" instead of
-  // the rotating verb when the LLM is composing without an
-  // active tool call.
   const completedThisTurn = toolCalls.filter(
     (c) => c.status === "done" || c.status === "failed",
   ).length;
   const failed = toolCalls.filter((c) => c.status === "failed");
   const lastFailure = failed[failed.length - 1];
-  // Best-effort: pull `error_code` from the last failed tool's
-  // result envelope. Surface it in the spinner so a long
-  // recovery flow reads "5 tools failed (slug_already_in_use)"
-  // instead of an opaque "processing 5 tool results" — the
-  // exact symptom of session 975a64b0 (3m09s of opaque
-  // summarisation while the LLM tried to recover from a
-  // 23505 unique-violation).
   const lastFailureCode = (() => {
     const result = lastFailure?.result as
       | {

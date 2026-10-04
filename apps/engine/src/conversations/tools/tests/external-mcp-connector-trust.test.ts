@@ -1,14 +1,3 @@
-// Operator trust ("Ohne Rückfrage") for external `mcp_<ns>__<tool>` tools.
-//
-// An operator may mark individual remote tools of an mcp connector to run
-// without the confirm pause (`config.mcp.tools_without_confirmation`, written
-// only by `setMcpToolConfirmation`). Pinned here, through the real palette and
-// the real pool code with only the SDK client swapped by the pool's test seam:
-//   - a listed tool runs at once, and its audit row names the rule
-//   - an unlisted tool of the same server still pauses
-//   - permission_mode "plan" still pauses the listed tool
-//   - revoking the grant makes the tool pause again on the next call
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -28,8 +17,6 @@ import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
 import type { TurnSignals } from "../sdk-wrap.ts";
 
-// Counts remote invocations: the pending gate must fire BEFORE any
-// `callTool` reaches the (fake) remote server.
 let remoteCallToolCalls = 0;
 
 const fakeClient: McpClientLike = {
@@ -91,9 +78,6 @@ const _origDatabaseUrl = process.env.DATABASE_URL;
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("external-mcp-connector-trust");
-  // Pin DATABASE_URL + reset the global pool so any getDb() fallback inside
-  // the real pool/handshake path dials this suite's isolated test database
-  // (same discipline as the pool-*.test.ts suites).
   await closeDb();
   process.env.DATABASE_URL = ctx.url;
   const [t] = await ctx.db
@@ -108,7 +92,6 @@ beforeAll(async () => {
     .returning({ id: conversations.id });
   conversation_id = conv!.id;
 
-  // Real server row — `none` auth so the (fake) handshake needs no credential.
   const seeded = await seedMcpConnector(ctx.db, {
     tenant_id,
     slug: "examplemcp",
@@ -116,7 +99,6 @@ beforeAll(async () => {
     url: "https://examplemcp.trusttest.example.com/mcp",
   });
   connector_id = seeded.id;
-  // The operator lets ONE remote tool run without asking.
   await setMcpToolConfirmation(ctx.db, {
     tenant_id,
     connector_id,
@@ -127,8 +109,6 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  // ALWAYS restore the seam (null-by-default protects production, but a
-  // leaked non-null factory would still poison sibling test files).
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();

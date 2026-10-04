@@ -1,14 +1,3 @@
-// Unit tests for discover_systems_from_files.
-//
-// Covers the contract:
-//   - Fresh call: LLM is invoked, candidates are persisted as a
-//     `knowledge_sources` row of `kind: "connector_endpoint_candidates"`,
-//     and an audit row is recorded with `reason: "file_analysis"`.
-//   - Cache hit: a second call within 24h returns `source: "cache"`,
-//     does NOT invoke the LLM, and does NOT emit a new audit row.
-//   - Refusal on oversized content: returns
-//     `error_code: "knowledge_source_too_large"`.
-
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -203,7 +192,6 @@ describe("discover_systems_from_files — fresh call", () => {
       expect(data.candidates[0]?.endpoints[0]?.path).toBe("/v2/droplets");
       expect(spy).toHaveBeenCalledTimes(1);
 
-      // Persisted under kind: "connector_endpoint_candidates"
       const candRows = await ctx.db
         .select()
         .from(knowledgeSources)
@@ -216,7 +204,6 @@ describe("discover_systems_from_files — fresh call", () => {
       expect(candRows).toHaveLength(1);
       expect(candRows[0]?.source_uri).toBe(sourceId);
 
-      // Single chunk holds the JSON envelope.
       const candChunks = await ctx.db
         .select()
         .from(knowledgeChunks)
@@ -225,7 +212,6 @@ describe("discover_systems_from_files — fresh call", () => {
       const stored = JSON.parse(candChunks[0]!.content) as typeof CANDIDATES_RESPONSE;
       expect(stored.candidates[0]?.name).toBe("DigitalOcean");
 
-      // Audit row with reason="file_analysis".
       const audits = await ctx.db
         .select()
         .from(auditLog)
@@ -262,7 +248,6 @@ describe("discover_systems_from_files — cache hit", () => {
       );
     expect(before).toHaveLength(1);
 
-    // Second invocation must NOT touch the LLM.
     const blocked = spyOn(invokeModule, "invoke").mockRejectedValue(
       new Error("must not be called"),
     );
@@ -285,7 +270,7 @@ describe("discover_systems_from_files — cache hit", () => {
             eq(auditLog.action, "knowledge_source.candidates_synthesized"),
           ),
         );
-      expect(after).toHaveLength(1); // unchanged
+      expect(after).toHaveLength(1);
     } finally {
       blocked.mockRestore();
     }
@@ -334,7 +319,6 @@ describe("discover_systems_from_files — connection graph", () => {
       seed.mockRestore();
     }
 
-    // Cache hit must surface the same graph.
     const blocked = spyOn(invokeModule, "invoke").mockRejectedValue(
       new Error("must not be called"),
     );
@@ -363,7 +347,6 @@ describe("discover_systems_from_files — connection graph", () => {
 
 describe("discover_systems_from_files — guards", () => {
   test("knowledge_source_id missing for tenant → knowledge_source_not_found", async () => {
-    // Source belongs to other_tenant; the tool runs under tenant_id.
     const sourceId = await seedSourceWithContent(other_tenant_id, SAMPLE_MARKDOWN);
     const spy = mockedInvokeOk();
     try {

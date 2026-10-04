@@ -1,7 +1,3 @@
-// Pure unit tests for the recipe-bodies section formatter + trim helpers.
-// No DB, no Docker. Drives formatConnectorRecipeBodies, renderRecipeBody,
-// and trimRecipeBodiesToBudget from loaders.ts directly.
-
 import { describe, expect, test } from "bun:test";
 import { countTokens } from "../../accounting/index.ts";
 import {
@@ -12,10 +8,6 @@ import {
   renderRecipeBody,
 } from "../context-assembler/formatters.ts";
 import { loadTopRecipeBodies, trimRecipeBodiesToBudget } from "../context-assembler/loaders.ts";
-
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 function makeRecipe(overrides: Partial<RecipeBodyView> = {}): RecipeBodyView {
   return {
@@ -45,33 +37,24 @@ function makeRecipe(overrides: Partial<RecipeBodyView> = {}): RecipeBodyView {
   };
 }
 
-// ---------------------------------------------------------------------------
-// AC1: payload includes all required fields
-// ---------------------------------------------------------------------------
-
 describe("formatConnectorRecipeBodies — payload", () => {
   test("AC1: section includes description + prerequisites + required_connectors + sample_input + workflow JSON", () => {
     const recipe = makeRecipe();
     const section = formatConnectorRecipeBodies("stripe", [recipe]);
     expect(section).not.toBeNull();
 
-    // Description
     expect(section).toContain("Trigger a workflow when a Stripe charge.succeeded webhook");
 
-    // Prerequisites
     expect(section).toContain("Prerequisites:");
     expect(section).toContain("Stripe connector configured");
 
-    // Required connectors
     expect(section).toContain("Required connectors:");
     expect(section).toContain("stripe");
     expect(section).toContain("slack");
 
-    // Sample input present as JSON fence
     expect(section).toContain("Sample input:");
     expect(section).toContain("charge.succeeded");
 
-    // Workflow JSON
     expect(section).toContain("```json");
     expect(section).toContain("stripe-charge-succeeded");
   });
@@ -79,7 +62,6 @@ describe("formatConnectorRecipeBodies — payload", () => {
   test("AC3: rendered section contains workflow JSON fence for small recipe", () => {
     const recipe = makeRecipe();
     const { text, fellBack } = renderRecipeBody(recipe);
-    // p90 recipe workflow is ~600 tokens, which is under the 800-token cap
     expect(fellBack).toBe(false);
     expect(text).toContain("```json");
     expect(text).toContain("stripe-charge-succeeded");
@@ -102,10 +84,6 @@ describe("formatConnectorRecipeBodies — payload", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// AC2: intra-section pre-trim — section ≤ 2000 tokens with elision notice
-// ---------------------------------------------------------------------------
-
 describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
   test("AC2: a single normal recipe fits without trimming", () => {
     const recipe = makeRecipe();
@@ -117,7 +95,6 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
   });
 
   test("AC2: 50 large recipes → section ≤ 2000 tokens with elision notice", () => {
-    // Build 50 recipes with a large workflow body to stress the trim loop.
     const bigWorkflow = {
       name: "big",
       steps: Array.from({ length: 20 }, (_, i) => ({
@@ -135,19 +112,15 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
     if (result.section !== null) {
       const tokens = countTokens(result.section);
       expect(tokens).toBeLessThanOrEqual(RECIPE_BODIES_SECTION_CAP);
-      // When something was trimmed, the elision notice must be present.
       if (result.trimmed > 0) {
         expect(result.section).toContain("elided — token budget");
       }
     } else {
-      // All dropped — expected when every recipe is huge; section is null.
       expect(result.trimmed).toBeGreaterThan(0);
     }
   });
 
   test("AC2: elision notice present when trimmed > 0", () => {
-    // Create one recipe that will force trimming by adding many more
-    // with large payloads to exceed cap.
     const bigWorkflow = {
       name: "big",
       steps: Array.from({ length: 30 }, (_, i) => ({
@@ -168,10 +141,6 @@ describe("trimRecipeBodiesToBudget — 2000-token cap", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Decision 3: hybrid fallback at 800-token soft cap
-// ---------------------------------------------------------------------------
-
 describe("renderRecipeBody — 800-token hybrid fallback", () => {
   test("D3: recipe under 800 tokens renders with workflow JSON (no fallback)", () => {
     const recipe = makeRecipe();
@@ -180,7 +149,6 @@ describe("renderRecipeBody — 800-token hybrid fallback", () => {
   });
 
   test("D3: recipe over 800 tokens falls back to hybrid — elides workflow but keeps required_connectors", () => {
-    // Build a fat workflow that forces the hybrid path.
     const hugeWorkflow = {
       name: "huge",
       metadata: "x".repeat(3000),
@@ -196,21 +164,15 @@ describe("renderRecipeBody — 800-token hybrid fallback", () => {
     const recipe = makeRecipe({ workflow: hugeWorkflow });
     const { text, fellBack } = renderRecipeBody(recipe);
 
-    // Must have triggered the hybrid path
     expect(fellBack).toBe(true);
 
-    // Hybrid notice present
     expect(text).toContain("workflow body elided");
     expect(text).toContain("inspect_recipe");
 
-    // required_connectors stays in the hybrid output (load-bearing for multi-connector)
     expect(text).toContain("Required connectors:");
     expect(text).toContain("stripe");
     expect(text).toContain("slack");
 
-    // The huge workflow's distinctive contents MUST NOT be in the hybrid output.
-    // (We can't just check for absence of "```json" — sample_input also uses
-    // a json fence. Check for workflow-specific markers instead.)
     expect(text).not.toContain("A very long description of step");
     expect(text).not.toContain("step-25");
   });
@@ -226,18 +188,12 @@ describe("renderRecipeBody — 800-token hybrid fallback", () => {
       expect(text).toContain("Stripe connector configured");
       expect(text).toContain("Sample input:");
     }
-    // If it didn't fall back the full path was used — also valid.
   });
 
   test("D3: hybrid fallback cap is RECIPE_BODY_HYBRID_SOFT_CAP", () => {
-    // Sanity: the exported constant matches what renderRecipeBody uses.
     expect(RECIPE_BODY_HYBRID_SOFT_CAP).toBe(800);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Pure loader: loadTopRecipeBodies
-// ---------------------------------------------------------------------------
 
 describe("loadTopRecipeBodies — pure ranking over snapshot", () => {
   function makeSnapshot(recipes: unknown[]): Record<string, unknown> {
@@ -282,7 +238,6 @@ describe("loadTopRecipeBodies — pure ranking over snapshot", () => {
       { ...RECIPE_A, slug: "extra", workflow: {} },
     ]);
     const result = loadTopRecipeBodies(snapshot, undefined, "charge payment", 3);
-    // charge-succeeded should rank first given keyword overlap with "charge payment"
     expect(result.length).toBeGreaterThan(0);
     expect(result[0]!.recipe_slug).toBe("charge-succeeded");
   });
@@ -301,10 +256,8 @@ describe("loadTopRecipeBodies — pure ranking over snapshot", () => {
   });
 
   test("slug asc tiebreak for equal scores", () => {
-    // Both have no keyword overlap with the query → equal score 0
     const snapshot = makeSnapshot([RECIPE_B, RECIPE_A]);
     const result = loadTopRecipeBodies(snapshot, undefined, "unrelated query", 2);
-    // Should be sorted by slug asc: charge-succeeded < refund-issued
     expect(result[0]!.recipe_slug).toBe("charge-succeeded");
     expect(result[1]!.recipe_slug).toBe("refund-issued");
   });

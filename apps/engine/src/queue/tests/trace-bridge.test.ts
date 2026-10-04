@@ -1,12 +1,3 @@
-// Queue trace_id bridge — log ring assertion.
-//
-// The bridge contract: a job envelope stamped with a `trace_id` at enqueue
-// time is re-read by `withJobContext` in the worker so every log the handler
-// emits carries the same trace_id in its structured fields. This is a unit-
-// level assertion: it drives `withJobContext` + `logger` and reads the result
-// back from the in-memory log ring — the same surface that
-// `GET /v1/diagnostics/logs` serves — without needing a real pg-boss queue.
-
 import { describe, expect, test } from "bun:test";
 import { getContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
@@ -23,14 +14,11 @@ describe("queue trace_id bridge — log ring", () => {
     logRing.clear();
 
     withJobContext({ trace_id: TRACE, tenant_id: TENANT }, () => {
-      // Assert the context is set before logging.
       const ctx = getContext();
       expect(ctx.trace_id).toBe(TRACE);
       expect(ctx.tenant_id).toBe(TENANT);
       expect(ctx.request_source).toBe("queue");
 
-      // Emit a structured log — the logger mirrors it to the ring with the
-      // current context merged into `fields`.
       logger.info({
         module: MODULE,
         action: ACTION,
@@ -39,11 +27,9 @@ describe("queue trace_id bridge — log ring", () => {
       });
     });
 
-    // The ring should carry the entry with the trace_id from the envelope.
     const entries = logRing.tail({ module: MODULE, action: ACTION });
     expect(entries.length).toBeGreaterThanOrEqual(1);
     const entry = entries[0]!;
-    // The context fields are merged into `fields` by `recordToRing`.
     expect(entry.fields.trace_id).toBe(TRACE);
     expect(entry.fields.tenant_id).toBe(TENANT);
     expect(entry.fields.request_source).toBe("queue");
@@ -61,7 +47,6 @@ describe("queue trace_id bridge — log ring", () => {
     const entries = logRing.tail({ module: "trace-bridge", action: "no-trace" });
     expect(entries.length).toBeGreaterThanOrEqual(1);
     const entry = entries[0]!;
-    // trace_id must be absent when the envelope doesn't carry it.
     expect(entry.fields.trace_id).toBeUndefined();
     expect(entry.fields.tenant_id).toBe("other-tenant");
   });
@@ -77,7 +62,6 @@ describe("queue trace_id bridge — log ring", () => {
     });
 
     const entries = logRing.tail({ module: "trace-bridge", action: "scope-check" });
-    // Newest-first (default tail order).
     expect(entries.length).toBe(2);
     const msgB = entries.find((e) => e.msg === "B");
     const msgA = entries.find((e) => e.msg === "A");

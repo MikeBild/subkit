@@ -1,21 +1,3 @@
-// POST /v1/setup — first-run bootstrap redemption endpoint.
-//
-// Public route (no API key required — there is none yet).  Accepts the
-// one-time token printed to engine stdout on first boot plus the four
-// operator-supplied values that materialise the engine's first tenant.
-// On success: 200 with the new admin api key (the only time it is ever
-// returned).  Subsequent calls return 410 Gone.
-//
-// Surface contract:
-//   - Token sits in the request body, NOT the Authorization header,
-//     because there is no auth principal yet.  Bearer auth comes online
-//     once this route returns the admin key.
-//   - The route is open by design; the rate-limit + single-use token +
-//     post-bootstrap sentinel together gate it.  Adding it to a "public
-//     paths" list isn't necessary because the auth middleware doesn't
-//     reject unauthenticated requests — `requireAuth` is opt-in per
-//     route, and this route never calls it.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -28,8 +10,6 @@ import {
 } from "../../onboarding/index.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/index.ts";
 import type { AppEnv } from "../openapi.ts";
-
-// -------- schemas --------
 
 const SetupRequestBody = z
   .object({
@@ -53,14 +33,9 @@ const SetupResponse = z
 const SetupStatusResponse = z
   .object({
     pending: z.boolean(),
-    /** True when bootstrap is pending but the banner token has expired.
-     *  A POST /v1/setup attempt re-mints the token and reprints the
-     *  banner to the engine logs. */
     token_expired: z.boolean(),
   })
   .openapi("SetupStatusResponse");
-
-// -------- routes --------
 
 const statusRoute = createRoute({
   method: "get",
@@ -141,8 +116,6 @@ const bootstrapCompleteRoute = createRoute({
   responses: postRoute.responses,
 });
 
-// -------- handler --------
-
 function clientIp(headers: Headers): string {
   const fwd = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   if (fwd) return fwd;
@@ -163,8 +136,6 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
     const ip = clientIp(c.req.raw.headers);
     const userAgent = c.req.raw.headers.get("user-agent");
 
-    // RBAC seed needs to have run already (engine boot does this), but
-    // be defensive — calling it twice is idempotent and cheap.
     const rbacIds = await seedBuiltinRolesAndPermissions(db);
 
     const outcome = await consume(

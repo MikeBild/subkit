@@ -1,13 +1,3 @@
-// Live process-runtime snapshot. Reads current values directly from the
-// running process (not a metric-registry scrape) so an operator/probe can
-// confirm memory, DB-pool, and event-loop-lag health at the instant of the
-// request.
-//
-//   GET /v1/diagnostics/runtime
-//
-// Host-global (not tenant-scoped), gated by `audit:read` like
-// /v1/diagnostics/llm.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getPool } from "../../../db/client.ts";

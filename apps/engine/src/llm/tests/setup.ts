@@ -1,9 +1,3 @@
-// Shared helpers for the llm flow tests. Each test file gets its own
-// per-file disposable database via createTestDb and wires the mock LLM
-// provider into the registry. A fresh tenant + a handful of skills +
-// a connector + ingested doc chunks are seeded so the context pipeline
-// has something real to pick up.
-
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,12 +31,6 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
   resetMockProvider();
   const testDb = await createTestDb(`llm_${label}`);
 
-  // The LLM path reads runtime config — the model, the provider, and now the
-  // monthly token cap, which used to be a database column no surface could
-  // write. A test that wants a cap sets it the way an operator does, with
-  // `setConfigKey("tokens.monthly_budget", n, { tenantId })`, and that needs a
-  // loaded config. Each file gets its own directory so one test's leaf cannot
-  // reach another's.
   const configDir = mkdtempSync(join(tmpdir(), `sk-cfg-llm-${label}-`));
   _resetConfigForTests();
   await loadConfig({
@@ -116,8 +104,6 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
     throw new Error("seed skills failed");
   }
 
-  // Seed a connector document + a few chunks so doc search can produce
-  // hits against the assembled prompt.
   const [doc] = await testDb.db
     .insert(connectorDocuments)
     .values({
@@ -171,8 +157,6 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
       },
     ])
     .returning();
-
-  // tsv is a generated column so it populates itself on insert.
 
   const cleanup = async () => {
     await testDb.cleanup();

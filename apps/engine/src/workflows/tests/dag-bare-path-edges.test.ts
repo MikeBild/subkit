@@ -1,8 +1,3 @@
-// dag.ts now reads bare-path step references when the leading
-// identifier matches a known step id. This pins the cycle-detection
-// behaviour so a forward-ref via the bare form still produces an
-// edge.
-
 import { describe, expect, test } from "bun:test";
 import { buildStepDag, detectCycles } from "../dag.ts";
 import type { WorkflowDef } from "../types.ts";
@@ -19,7 +14,6 @@ describe("dag · bare-path edges", () => {
         {
           id: "shape",
           kind: "transform",
-          // bare path, not $scope
           expression: "fetch.data.id",
         },
       ]),
@@ -31,7 +25,6 @@ describe("dag · bare-path edges", () => {
   test("cycle via bare-path forward refs is detected", () => {
     const dag = buildStepDag(
       wf([
-        // a references b via bare path; b references a via $scope
         { id: "a", kind: "transform", expression: "b.data" },
         { id: "b", kind: "transform", expression: "$scope.a.data" },
       ]),

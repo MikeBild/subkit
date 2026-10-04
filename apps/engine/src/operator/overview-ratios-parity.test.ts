@@ -1,19 +1,3 @@
-// The overview's success and repair ratios are the Übersicht's figures.
-//
-// They were not. `GET /v1/stats/operating-figures` — the cockpit's bar and the
-// MCP tool `get_operating_figures` — counts runs STARTED in the window and
-// repairs DECIDED in it (the audit verbs). The overview asked its own SQL:
-// runs FINISHED in the last 24 hours, and repairs by their stored status over
-// all time. One installation therefore quoted two success rates and two repair
-// rates for one question, depending on whether a person looked at the cockpit
-// or a scrape looked at `/metrics`.
-//
-// This seeds a history on which the two definitions disagree and holds the
-// overview — the section tile, the health component and the Prometheus
-// projection — to the figures' counts. On the old SQL it fails: the success
-// ratio read 2/3 (finished in the window) and the repair ratio was null (no
-// patch candidate stored).
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { AuditAction } from "../audit/index.ts";
 import { auditLog, executions, tenants, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -73,17 +57,14 @@ beforeAll(async () => {
     started_at: hoursAgo(startedHoursAgo),
     finished_at: finishedHoursAgo === null ? null : hoursAgo(finishedHoursAgo),
   });
-  await db.insert(executions).values([
-    // Started and finished inside the window: both definitions count it.
-    run("succeeded", 2, 1),
-    run("failed", 3, 2.5),
-    // Still running: started in the window, not finished — counted in the
-    // total, but neither a success nor a failure for the rate.
-    run("running", 0.5, null),
-    // Started yesterday, finished today: the old SQL counted it, the figures
-    // (started in the window) do not.
-    run("succeeded", 30, 1),
-  ]);
+  await db
+    .insert(executions)
+    .values([
+      run("succeeded", 2, 1),
+      run("failed", 3, 2.5),
+      run("running", 0.5, null),
+      run("succeeded", 30, 1),
+    ]);
 
   const nextId = createDeterministicUuidFactory(7);
   const decision = (action: string, at: Date) => ({
@@ -95,12 +76,13 @@ beforeAll(async () => {
     result: "success",
     ts: at,
   });
-  await db.insert(auditLog).values([
-    decision(AuditAction.PATCH_CANDIDATE_APPROVED, hoursAgo(4)),
-    decision(AuditAction.PATCH_CANDIDATE_REJECTED, hoursAgo(5)),
-    // Decided the day before: outside the window.
-    decision(AuditAction.PATCH_CANDIDATE_AUTO_APPLIED, hoursAgo(48)),
-  ]);
+  await db
+    .insert(auditLog)
+    .values([
+      decision(AuditAction.PATCH_CANDIDATE_APPROVED, hoursAgo(4)),
+      decision(AuditAction.PATCH_CANDIDATE_REJECTED, hoursAgo(5)),
+      decision(AuditAction.PATCH_CANDIDATE_AUTO_APPLIED, hoursAgo(48)),
+    ]);
 });
 
 afterAll(async () => {
@@ -123,9 +105,7 @@ test("the success and repair ratios are the operating figures' counts", async ()
 
   const success = sectionMetric(overview, "executions.success_ratio");
   expect(success?.value).toBeCloseTo(figures.runs.succeeded / figures.runs.finished, 10);
-  // The running run counts neither way: one of the two that ended succeeded.
   expect(success?.value).toBeCloseTo(1 / 2, 10);
-  // The health score weighs the same number, not a second copy of it.
   const component = overview.core.health.components.find(
     (c) => c.id === "executions.success_ratio",
   );

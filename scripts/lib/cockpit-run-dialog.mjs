@@ -1,25 +1,3 @@
-// The run dialog of a saved workflow, answered by fixtures that follow the
-// engine's real schemas — and by the answers that refuse.
-//
-// The defect this stands on: "Ausführen" → "Entwicklung" → "Ausführen" showed
-// "Lauf: internal error". The development twin of the workflow's Mail
-// connector had lost its sign-in; the engine threw, the route answered 500 and
-// the dialog printed the raw message. Now:
-//
-// 1. The dialog reads the authority preview for the version POST really runs
-//    (`current_version_id`, never the draft) in both environments. The
-//    development preview names Mail as needing a new sign-in, so development
-//    is offered disabled, with the reason in words, and production — the first
-//    environment that can run — is the default. Production still asks first.
-// 2. The preview is advisory. When it said nothing and the run is refused with
-//    409 `prepared_credential_unavailable`, the dialog says the same sentence
-//    from the refusal's `details` and links to that connector's sign-in.
-// 3. A 500 is "could not be started", never the engine's "internal error".
-// 4. Input fields are filled in by their type — a number field, a select of
-//    the allowed values, a JSON area for an object — and a value that does not
-//    fit its type is named and never sent as text under the right name. Every
-//    field used to be a text input.
-
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 const WORKFLOW_ID = "6c1e7f24-3b9a-4d05-8e61-2f7a9c4d1b83";
@@ -40,9 +18,6 @@ const RECORD = {
   lifecycle: "active",
   current_version: 4,
   current_version_id: CURRENT_VERSION_ID,
-  // A newer draft exists. POST /v1/executions runs the CURRENT version, so the
-  // pre-check must judge that one — judging the draft answers for a run that
-  // is not about to happen.
   draft_version_id: DRAFT_VERSION_ID,
   health_state: "ok",
   health_reason: null,
@@ -58,7 +33,6 @@ const MAIL_REFUSAL = {
   connector_name: "Mail",
 };
 
-/** WorkflowAuthorityPreview, as the engine shapes it. */
 function preview(environment, unavailable) {
   return {
     manifest: {
@@ -86,7 +60,6 @@ function preview(environment, unavailable) {
   };
 }
 
-/** One field of every control the dialog knows, in the engine's schema shape. */
 const TYPED_SCHEMA = {
   type: "object",
   required: ["recipient_email", "limit"],
@@ -99,9 +72,6 @@ const TYPED_SCHEMA = {
   },
 };
 
-/** `variant`: "blocked" (the preview names Mail), "refused" (it does not, the
- *  run is refused with 409), "crashed" (the run answers 500), "typed" (the
- *  workflow declares typed inputs; the run is refused as in "refused"). */
 function runDialogApi(state) {
   return async (route) => {
     const request = route.request();
@@ -135,8 +105,6 @@ function runDialogApi(state) {
       });
       if (state.variant === "crashed")
         return json(route, { code: "internal_error", message: "internal error" }, 500);
-      // The version was stored in an earlier format: refused by name, with the
-      // steps that no longer validate.
       if (state.variant === "legacy")
         return json(
           route,
@@ -199,7 +167,6 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
   await page.route(isRunDialogApi, handler);
   const where = `/workflows/<run dialog> (${localeName})`;
   try {
-    // ── Development is blocked, with the reason, before anything runs ────────
     await openDialog(page, stand);
     const blocked = page.getByTestId("workflow-run-blocked-dev");
     await blocked.waitFor({ state: "visible", timeout: 10_000 });
@@ -232,7 +199,6 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!(await devItem.innerText()).includes(expected))
       throw new Error(`${where}: the disabled option does not say why`);
     await page.keyboard.press("Escape");
-    // Production still asks before it runs.
     const submit = (await text(page, "workflow-run-submit")) ?? "";
     if (submit !== (de ? "Weiter" : "Continue"))
       throw new Error(`${where}: production runs without its confirmation ("${submit}")`);
@@ -240,7 +206,6 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await assertNoVisibleUuids(page.getByTestId("workflow-run-dialog"), where);
     await capture("run-dialog-blocked");
 
-    // ── The pre-check said nothing; the run is refused with 409 ─────────────
     state.variant = "refused";
     state.previewed = [];
     await openDialog(page, stand);
@@ -263,15 +228,12 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (await page.getByTestId("workflow-run-outcome").count())
       throw new Error(`${where} · refused: an outcome line stands beside the refusal`);
-    // The same press would be refused the same way: it is not offered again,
-    // and one line says why — until another environment is chosen.
     if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
       throw new Error(`${where} · refused: the refused run can be started again`);
     await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
     await assertNoEngineWords(page, `${where} · refused`);
     await capture("run-dialog-refused");
 
-    // ── The engine fails: a sentence, never its words ─────────────────────────
     state.variant = "crashed";
     await openDialog(page, stand);
     for (let attempt = 0; attempt < 40 && state.previewed.length < 4; attempt += 1)
@@ -282,12 +244,10 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     const failed = de ? "Der Lauf konnte nicht gestartet werden." : "The run could not be started.";
     if (!crashed.includes(failed))
       throw new Error(`${where} · crashed: the dialog says "${crashed}"`);
-    // A fault is not a refusal: trying again may work.
     if (await page.getByTestId("workflow-run-submit").isDisabled())
       throw new Error(`${where} · crashed: a fault disables another attempt`);
     await assertNoEngineWords(page, `${where} · crashed`);
 
-    // ── A version in an earlier format: refused by its reason ────────────────
     state.variant = "legacy";
     await openDialog(page, stand);
     await page.getByTestId("workflow-run-submit").waitFor({ state: "visible" });
@@ -309,7 +269,6 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
     await capture("run-dialog-legacy");
 
-    // ── Fields are filled in by their type ───────────────────────────────────
     state.variant = "typed";
     state.previewed = [];
     await openDialog(page, stand);
@@ -320,17 +279,14 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     const limit = page.getByTestId("workflow-run-input-1");
     if ((await limit.getAttribute("type")) !== "number")
       throw new Error(`${typed}: a whole number is filled in through a text field`);
-    // The schema's default is what a run would use, so it is what stands there.
     if ((await limit.inputValue()) !== "5")
       throw new Error(`${typed}: the default is not shown: "${await limit.inputValue()}"`);
     const options = page.getByTestId("workflow-run-input-3");
     if ((await options.evaluate((node) => node.tagName)) !== "TEXTAREA")
       throw new Error(`${typed}: an object is filled in through a one-line field`);
-    // Required and missing: named, and nothing runs.
     if (!(await text(page, "workflow-run-missing"))?.includes("recipient_email"))
       throw new Error(`${typed}: the missing required field is not named`);
     await page.getByTestId("workflow-run-input-0").fill("ops@example.org");
-    // A value that does not fit its type: named, and nothing runs.
     await options.fill("{broken");
     if (!(await text(page, "workflow-run-invalid"))?.includes("options"))
       throw new Error(`${typed}: a value that is not JSON is not named`);

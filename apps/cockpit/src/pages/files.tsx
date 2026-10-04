@@ -42,24 +42,15 @@ type StoredFile = components["schemas"]["File"];
 type ListedFile = components["schemas"]["FileListItem"];
 type FileUsage = components["schemas"]["FileUsage"];
 
-/**
- * The engine takes a file in one request up to this size
- * (`MAX_INLINE_BYTES`); the drop zone refuses anything larger before it is
- * sent.
- */
 export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
 const LIST_PATH = "/v1/files";
 const LIST_PARAMS = { sort: "created_at", order: "desc" } as const;
 
-/** The reference a workflow or the chat holds to a stored file: its
- *  `@attachment:<slug>`, or the `$file` id where the engine gave no slug. */
 export function fileReference(file: Pick<StoredFile, "id" | "reference">): string {
   return file.reference ?? JSON.stringify({ $file: file.id });
 }
 
-/** "4 workflows · 2 conversations" — the parts that are not zero, or null
- *  when nothing uses the file. */
 export function fileUsageLine(
   t: ReturnType<typeof useI18n>["t"],
   usage: ListedFile["usage"] | undefined,
@@ -89,7 +80,6 @@ const KIND_KEYS = {
   other: "files.kind.other",
 } as const;
 
-/** A stored size, or a dash where the engine has none to give. */
 function sizeText(bytes: unknown, locale: string): string {
   return typeof bytes === "number" ? formatBytes(bytes, locale) : "—";
 }
@@ -98,7 +88,6 @@ function fileKindLabel(t: ReturnType<typeof useI18n>["t"], file: StoredFile): st
   return t(KIND_KEYS[previewKind(file.filename, file.content_type)]);
 }
 
-/** A file as base64, for the engine's one-request upload. */
 function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -111,13 +100,11 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-/** What went wrong with one upload, in the reader's words. */
 function uploadFailure(t: ReturnType<typeof useI18n>["t"], name: string, error: unknown): string {
   if (error instanceof ApiError && error.code === "duplicate_content") return t("files.duplicate");
   return t("files.failed", { name });
 }
 
-/** Files arriving by drop onto the page, anywhere outside a dialog. */
 function usePageDrop(enabled: boolean, onFiles: (files: File[]) => void): boolean {
   const [over, setOver] = useState(false);
   useEffect(() => {
@@ -154,7 +141,6 @@ function usePageDrop(enabled: boolean, onFiles: (files: File[]) => void): boolea
   return over;
 }
 
-/** The Dateien page: the stored files, their upload, and one file in a sheet. */
 export function FilesPage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
@@ -340,7 +326,6 @@ interface QueuedFile {
   failed: string | null;
 }
 
-/** "Dateien hochladen" or "{name} ersetzen": pick or drop, see each file go, done. */
 function UploadDialog({
   initial,
   replace,
@@ -494,7 +479,6 @@ function UploadDialog({
   );
 }
 
-/** One stored file: its preview, its reference, its facts and what to do with it. */
 function FileSheet({
   id,
   canWrite,
@@ -698,7 +682,6 @@ function FileSheet({
   );
 }
 
-/** A new name; the reference stays. */
 function RenameDialog({ file, onClose }: { file: StoredFile; onClose(): void }) {
   const { t } = useI18n();
   const client = useQueryClient();

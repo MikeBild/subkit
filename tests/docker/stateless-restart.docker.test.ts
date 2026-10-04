@@ -1,6 +1,3 @@
-// Stateless replacement acceptance: product state must survive replacing the
-// application container while no application volume or /data mount exists.
-
 import { beforeAll, describe, expect, test } from "bun:test";
 import {
   type DockerEnv,

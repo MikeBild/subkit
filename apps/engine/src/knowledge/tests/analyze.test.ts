@@ -1,10 +1,3 @@
-// analyzeKnowledgeSource — integration tests.
-//
-// The LLM call is intercepted via spyOn on the invoke module so no real
-// model is contacted and the test controls exactly what the "model"
-// returns or throws. Each test resets the spy before/after so sibling
-// files are unaffected.
-
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -18,12 +11,10 @@ import {
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
 
-// A minimal InvokeResult shape analyzeKnowledgeSource reads from.
 function makeInvokeResult(object: unknown) {
   return {
     object,
@@ -45,7 +36,6 @@ afterAll(async () => {
   if (!skip && ctx?.cleanup) await ctx.cleanup();
 }, 30_000);
 
-// Reset any spy installed by an individual test so sibling tests stay clean.
 afterEach(() => {
   if (skip) return;
 });
@@ -87,11 +77,9 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
       expect(enriched).not.toBeNull();
       expect(enriched!.description).toBe("Security and access policy.");
       expect(enriched!.tags).toEqual(["security", "oauth2", "logging"]);
-      // name and slug must not change
       expect(enriched!.name).toBe(source.name);
       expect(enriched!.slug).toBe(source.slug);
 
-      // Audit entry written
       const audits = await ctx.testDb.db
         .select()
         .from(auditLog)
@@ -103,9 +91,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
   });
 
   test("preserves namespaced tags (domain:*) and replaces only topical tags", async () => {
-    // Regression: analysis used to REPLACE the whole tag set, silently
-    // dropping `domain:<slug>` — the source vanished from its domain
-    // briefing and tag-filtered search until the operator re-tagged it.
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -143,10 +128,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
   });
 
   test("only name-shaped namespace prefixes are structural — and analysis mints no routing keys", async () => {
-    // `isStructuralTag`: NAME-shaped prefix (letters/digits/underscore,
-    // hyphens inside, Unicode) + colon + content directly after. Prose or
-    // punctuation colons ("note: x", "note about: chords", "q&a:faq") must
-    // not pin a tag forever; `café:paris` stays structural.
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -167,8 +148,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
       makeInvokeResult({
         description: "Chord theory.",
-        // `domain:evil` is structural-shaped model output — analysis must
-        // never mint a routing key, only replace topical tags.
         tags: ["chords", "domain:evil"],
       }),
     );
@@ -249,9 +228,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         ctx.testDb.db,
       );
 
-      // Description must be preserved — force was not passed
       expect(result!.description).toBe("Original human description.");
-      // Tags should be updated
       expect(result!.tags).toEqual(["guide", "cli", "setup"]);
     } finally {
       spy.mockRestore();
@@ -340,7 +317,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
   });
 
   test("returns null for a valid id belonging to a different tenant", async () => {
-    // Create a source under the real tenant
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -354,7 +330,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
       ctx.testDb.db,
     );
 
-    // Attempt to analyze it as a different (random) tenant
     const result = await analyzeKnowledgeSource(
       { tenant_id: crypto.randomUUID(), id: source.id, actor_id: null }, // allow-random: deliberate wrong-tenant test
       ctx.testDb.db,
@@ -363,7 +338,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
   });
 
   test("source with no chunks is a no-op (returns view unchanged, invoke not called)", async () => {
-    // Create a source with empty content so chunk_count = 0
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -389,13 +363,11 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         ctx.testDb.db,
       );
 
-      // Returns the view unchanged
       expect(result).not.toBeNull();
       expect(result!.id).toBe(source.id);
       expect(result!.description).toBeNull();
       expect(result!.tags).toEqual([]);
 
-      // invoke must NOT have been called (no chunks → no LLM call)
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
@@ -431,7 +403,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         ),
       ).rejects.toThrow();
 
-      // Row must be unchanged
       const row = await getKnowledgeSource(ctx.tenantId, source.id, ctx.testDb.db);
       expect(row!.description).toBeNull();
       expect(row!.tags).toEqual([]);
@@ -469,7 +440,6 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         ),
       ).rejects.toBeInstanceOf(LlmQuotaExhausted);
 
-      // Row must be unchanged — callers at interactive sites swallow this
       const row = await getKnowledgeSource(ctx.tenantId, source.id, ctx.testDb.db);
       expect(row!.description).toBeNull();
       expect(row!.tags).toEqual([]);
@@ -500,14 +470,12 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     );
 
     try {
-      // First analysis
       const first = await analyzeKnowledgeSource(
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,
       );
       expect(first!.tags).toEqual(["api", "rest", "users"]);
 
-      // Second analysis with same tags — must replace, not concat
       const second = await analyzeKnowledgeSource(
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,

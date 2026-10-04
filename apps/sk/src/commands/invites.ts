@@ -1,8 +1,3 @@
-// `sk invites` — admin view over the user-provisioning invites issued
-// by `sk users invite`. The plaintext token is shown only at issue
-// time (see `sk users invite`); this surface lists the live invites and
-// revokes un-redeemed ones. The invited user redeems via `sk join`.
-
 import { reportCommandError } from "@cli-core/errors";
 import { emitList } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -18,12 +13,6 @@ function makeClient() {
   });
 }
 
-/**
- * Derive a display status from the invite's timestamps. The list route
- * serializes the raw `redeemed_at` / `revoked_at` / `expires_at`
- * columns (no precomputed `status` field), so the CLI derives the same
- * four-state label the route's `?status=` filter accepts.
- */
 export function inviteStatus(invite: UserInviteWire, nowMs: number = Date.now()): string {
   if (invite.revoked_at) return "revoked";
   if (invite.redeemed_at) return "redeemed";

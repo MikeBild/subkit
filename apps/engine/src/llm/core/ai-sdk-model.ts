@@ -1,16 +1,3 @@
-// AiSdkModel — single LLM-call abstraction for the engine.
-//
-//   - `generateText()` — simple text response, with broad-class fallback.
-//   - `generateObject()` — schema-constrained response via the submit-tool
-//     loop (`toolChoice: "required"`). Tolerant of providers that don't
-//     support `generateObject` directly and works uniformly through the
-//     gateway.
-//   - `cleanSchema` normalisation before every structured call.
-//   - Broad provider-error detection (5xx/429/503/timeout/keyword match).
-//
-// This file imports only from `ai`. Provider packages are loaded via
-// `model-init.ts` on demand.
-
 import {
   generateText,
   jsonSchema,
@@ -47,23 +34,8 @@ import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 
 export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
-// Per-call hard ceiling on a single provider round-trip. Nested LLM calls made
-// inside a tool execution (author_workflow pipeline, transform-repair,
-// preview-judge) historically had ZERO timeout — the turn's stream abort signal
-// only reaches the top-level `streamText`, never these nested `invoke()`s. A
-// single wedged provider connection could therefore outlive the client socket
-// (~15 min) while the engine stayed healthy. This constant bounds EVERY
-// provider call so a stuck round-trip aborts promptly instead of hanging. It is
-// merged (via `AbortSignal.any`) with any caller-supplied signal, so the
-// stricter of (caller abort, 90s timeout) wins. Overridable per-model via
-// `AiSdkModelOptions.callTimeoutMs`.
 export const LLM_CALL_TIMEOUT_MS = 90_000;
 
-// Hard cap on the submit/abort tool-use loop in `generateObject()`. Prevents a
-// buggy or adversarial model from looping indefinitely when it keeps calling
-// auxiliary tools without ever choosing `submit` or `abort`. Eight attempts is
-// enough for a legitimate multi-step tool workflow and cheap to surface as a
-// structured failure (reason = `max_attempts_exceeded`).
 export const MAX_TOOL_LOOP_ATTEMPTS = 8;
 const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "claude-sonnet-4-5": 200_000,
@@ -79,7 +51,6 @@ const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
   "o1-mini": 128_000,
 };
 
-/** Every model id with a known context window — models SubKit knows by name. */
 export function knownContextModelIds(): string[] {
   return Object.keys(MODEL_CONTEXT_LENGTHS);
 }
@@ -91,17 +62,6 @@ function contextLengthFor(modelId: string): number {
 
 const DATE_PREFIX = "The current date and time is";
 
-/**
- * State the wall-clock time to the model, AFTER the leading system messages.
- *
- * WHY not at position 0, where this used to sit: the string carries
- * milliseconds, so it was unique on every call and stood in front of
- * everything. A cached prefix has to match from the first byte, so nothing
- * behind it could ever be reused — the cache hint attached to the stable
- * system block could not have worked even once. Placing the stamp behind that
- * block keeps the full precision AND leaves the prefix intact, so neither
- * property has to be traded for the other.
- */
 function withCurrentDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
   const already = messages.some(
     (m) => typeof m.content === "string" && m.content.startsWith(DATE_PREFIX),
@@ -117,30 +77,12 @@ function withCurrentDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
 }
 
 export interface AiSdkModelOptions extends ModelInitOptions {
-  /**
-   * Optional fallback model initialisation. When present, provider-error
-   * classes trigger a single retry against this model before surfacing.
-   */
   fallback?: ModelInitOptions;
-  /** Max retries at the SDK layer. Default 0 — upstream handles retries. */
   maxRetries?: number;
-  /**
-   * Per-call hard timeout in ms. Default {@link LLM_CALL_TIMEOUT_MS} (90s).
-   * Merged with any caller-supplied signal so the stricter abort wins. Tests
-   * inject a short value to assert the timeout without a real 90s wait.
-   */
   callTimeoutMs?: number;
-  /** Override the `generateText` reference (used by unit tests). */
   generateTextFn?: typeof generateText;
 }
 
-/**
- * Marker for an LLM call that was aborted by the per-call timeout or a
- * caller-supplied signal. `classifyProviderError` maps `timeout`/abort wording
- * to a retryable provider-error kind, so wrapping the platform `AbortError`
- * with a clear message lets `invoke()`'s existing dispatch surface it as a
- * typed `LlmProviderError` rather than a raw hang.
- */
 export class LlmCallAbortedError extends Error {
   constructor(timeoutMs: number, callerAborted: boolean) {
     super(
@@ -152,11 +94,6 @@ export class LlmCallAbortedError extends Error {
   }
 }
 
-/**
- * Merge a caller-supplied abort signal with a per-call hard timeout into a
- * single signal. Either source aborts the provider round-trip. Uses the
- * platform `AbortSignal.any` / `AbortSignal.timeout` (Bun supports both).
- */
 function buildCallSignal(
   timeoutMs: number,
   callerSignal?: AbortSignal,
@@ -166,11 +103,6 @@ function buildCallSignal(
   return { signal, isCallerAborted: () => callerSignal?.aborted ?? false };
 }
 
-/**
- * True when the error is the platform abort raised by an `AbortSignal`
- * (timeout or caller). The AI SDK rejects with a `DOMException`/`Error` whose
- * `name` is `AbortError` or `TimeoutError` when the supplied signal fires.
- */
 function isAbortError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const name = (err as { name?: unknown }).name;
@@ -202,9 +134,6 @@ export class AiSdkModel implements SubkitLlm {
     if (!this.initPromise) {
       this.initPromise = (async () => {
         const initial = await initializeModel(this.opts);
-        // Apply the DevTools wrap once at init time so the cached
-        // resolution carries the middleware for every subsequent call.
-        // No-op in production (see devtools-wrap.ts).
         this.resolved = { ...initial, model: await maybeWrapForDevtools(initial.model) };
         this.modelId = this.resolved.modelId;
         this.contextLength = contextLengthFor(this.modelId);
@@ -280,31 +209,17 @@ export class AiSdkModel implements SubkitLlm {
     tools?: Record<string, Tool>;
     toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
     metadata?: SubkitLlmTelemetryMetadata;
-    /** Optional caller abort signal; merged with the per-call timeout. */
     signal?: AbortSignal;
     maxOutputTokens?: number;
   }): Promise<SubkitLlmAnsweredBy & { result: Awaited<ReturnType<typeof generateText>> }> {
     const primary = await this.ensureInit();
-    // Bound EVERY provider round-trip: a per-call hard timeout merged with the
-    // optional caller signal. Even with no caller signal, the call cannot
-    // outlive the timeout — this is the foundational fix for the nested-call
-    // STALL. The same signal is reused for the fallback model call below.
     const timeoutMs = this.opts.callTimeoutMs ?? LLM_CALL_TIMEOUT_MS;
     const { signal: callSignal, isCallerAborted } = buildCallSignal(timeoutMs, params.signal);
     const callOpts: Parameters<typeof generateText>[0] = {
       model: primary.model,
-      // One seam cast: `SubkitLlmMessage` deliberately re-declares the
-      // role/content shapes this abstraction produces (see base-types.ts)
-      // instead of importing the SDK's ModelMessage union; the runtime
-      // shapes are the SDK-accepted subset (system-in-messages is opted
-      // in via `allowSystemInMessages` below).
       messages: params.messages as ModelMessage[],
       maxRetries: this.opts.maxRetries ?? 0,
       abortSignal: callSignal,
-      // withCurrentDate() injects a system-role message into `messages`;
-      // AI SDK 7 rejects system messages inside the `messages` array unless
-      // this is opted in (the top-level `instructions` option is the other
-      // sanctioned channel). No-op when there is no system-role message.
       allowSystemInMessages: true,
     };
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
@@ -312,14 +227,10 @@ export class AiSdkModel implements SubkitLlm {
     if (params.toolChoice) callOpts.toolChoice = params.toolChoice;
     if (params.maxOutputTokens !== undefined) callOpts.maxOutputTokens = params.maxOutputTokens;
     if (params.metadata) {
-      // AI SDK 7 dropped TelemetryOptions.metadata; the replacement is a
-      // typed runtimeContext surfaced into telemetry via includeRuntimeContext.
       const rc = params.metadata as Record<string, string | number | boolean>;
       callOpts.runtimeContext = rc;
       callOpts.telemetry = {
         isEnabled: true,
-        // See loop.ts: full-IO span attributes are stringified eagerly
-        // even into noop spans — only record them when an exporter exists.
         recordInputs: isTracingActive(),
         recordOutputs: isTracingActive(),
         functionId: String(params.metadata.flow ?? "unknown"),
@@ -327,9 +238,6 @@ export class AiSdkModel implements SubkitLlm {
       };
     }
     try {
-      // `generateText` returns a resolved result object (no streaming here),
-      // so the instrument bracket is behaviour-transparent — it times the
-      // primary model round-trip and rethrows on provider error.
       const result = await instrument({
         module: "llm",
         action: "model.call",
@@ -338,10 +246,6 @@ export class AiSdkModel implements SubkitLlm {
       });
       return { result, model_used: primary.modelId, fell_back: false };
     } catch (err) {
-      // A timed-out or caller-aborted call surfaces as a clean typed error
-      // (mapped to `timeout` by classifyProviderError) rather than a hang. We
-      // do NOT fall back here: the timeout already represents a wedged call,
-      // and a caller abort means the work is no longer wanted.
       if (isAbortError(err)) throw new LlmCallAbortedError(timeoutMs, isCallerAborted());
       if (
         !this.fallbackResolved ||
@@ -362,7 +266,6 @@ export class AiSdkModel implements SubkitLlm {
         primary: primary.modelId,
         fallback: this.fallbackResolved.modelId,
       });
-      // Reuse the same merged signal so the fallback call is bounded too.
       const fbOpts: Parameters<typeof generateText>[0] = {
         ...callOpts,
         model: this.fallbackResolved.model,
@@ -446,8 +349,6 @@ export class AiSdkModel implements SubkitLlm {
       cache_creation_tokens: 0,
     };
 
-    // The model of the last answered iteration carries the result; a loop that
-    // fell back on any iteration fell back, and keeps the refusal that moved it.
     let answeredBy: SubkitLlmAnsweredBy = { model_used: this.modelId, fell_back: false };
     const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
     let attempts = 0;
@@ -520,8 +421,6 @@ export class AiSdkModel implements SubkitLlm {
       if (finalResult !== undefined || abortReason !== undefined) break;
 
       if (toolCalls.length === 0) {
-        // Model produced neither submit nor tool calls — terminate with an
-        // error rather than loop forever. Callers see a structured failure.
         return {
           success: false,
           response: "no tool calls produced by model",
@@ -555,10 +454,8 @@ export class AiSdkModel implements SubkitLlm {
 export function extractCacheRead(meta: unknown): number {
   if (!meta || typeof meta !== "object") return 0;
   const m = meta as Record<string, Record<string, unknown>>;
-  // Anthropic direct
   const anthUsage = m.anthropic?.usage as { cache_read_input_tokens?: number } | undefined;
   if (anthUsage?.cache_read_input_tokens) return Number(anthUsage.cache_read_input_tokens);
-  // Gateway may surface it under `gateway.usage` — best effort.
   const gwUsage = m.gateway?.usage as { cache_read_input_tokens?: number } | undefined;
   return Number(gwUsage?.cache_read_input_tokens ?? 0);
 }

@@ -1,17 +1,3 @@
-// Slash commands the Ink app itself owns.
-//
-// `/paste` — read the system clipboard, classify as text / image,
-// push into the paste store, insert the ref at the cursor.
-// `/knowledge` — upload + ingest a local file as a Knowledge Source.
-// `/queue` — print queued prompts into the transient banner.
-// `/files` — numbered-list picker over conversation-linked files.
-// `/history` — show / clear the persistent history file.
-// `/view` — toggle chat/inspect transcript mode.
-// `/actions` — open the task launcher.
-//
-// Other slash commands fall through to the host's `onSlash`.
-// `runBuiltinSlash` returns true when the command was handled here.
-
 import type React from "react";
 import { uploadPath } from "../commands/files.ts";
 import type { EngineClient } from "../engine-client.ts";
@@ -26,22 +12,14 @@ import type { TranscriptMode } from "./types.ts";
 export interface BuiltinSlashContext {
   engineClient: EngineClient | undefined;
   cwd: string | undefined;
-  /** Active conversation id (`session.conversationId`). */
   conversationId: string | null;
-  /** Resolved persistent-history file path. */
   historyPath: string;
   transcriptMode: TranscriptMode;
   pasteStoreRef: React.MutableRefObject<PasteStore>;
   queue: CommandQueue;
-  /**
-   * Cache of the most recent numbered listings rendered into a text
-   * pane (today: `/files`). Keeps a tiny Map<cacheKey, rows[]> so
-   * `/files <n>` can resolve the n-th row without re-listing.
-   */
   recentLists: Map<string, unknown[]>;
   historyRef: React.MutableRefObject<string[]>;
   historyCursorRef: React.MutableRefObject<number>;
-  /** Inserts text at the composer cursor. */
   insertText: (text: string) => void;
   setPane: (spec: PaneSpec) => void;
   setTranscriptMode: (mode: TranscriptMode) => void;
@@ -125,23 +103,10 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
     return true;
   }
   if (name === "knowledge" || name === "ks") {
-    // Upload a local file AND ingest it as a Knowledge Source in one
-    // step. Same upload chokepoint as binary path preprocessing (so the file shows
-    // up in /files), then POSTs to /v1/knowledge-sources with the
-    // metadata derived from --name / --scope / --workflow-id flags.
-    // Direct HTTP — no LLM round-trip — for deterministic, instant
-    // UX. The natural-language path (chat agent calling the
-    // `create_knowledge_source` tool) is the conversational
-    // alternative for when the user wants to discuss metadata
-    // before committing.
     if (!engineClient) {
       showError(`/${name}: no engine client — restart sk to wire the upload path`);
       return true;
     }
-    // Split rest into path tokens (everything before the first
-    // --flag) and flag tokens. Flag values are single tokens —
-    // multi-word names should use the natural-language path or
-    // `/knowledge ./file.md` then `sk knowledge-sources patch`.
     const flagStart = rest.findIndex((t) => t.startsWith("--"));
     const pathTokens = flagStart === -1 ? rest : rest.slice(0, flagStart);
     const flagTokens = flagStart === -1 ? [] : rest.slice(flagStart);
@@ -199,8 +164,6 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
       setTransientStatus(renderProgressLine(ev));
     };
     try {
-      // Upload to the unified Files store first.
-      // so the bytes are deduped, audited, and linkable.
       const row = await uploadPath(engineClient, abs, {
         quiet: true,
         onProgress,
@@ -217,8 +180,6 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
         { name: filename, content: bytes, mime_type },
         metadata,
       )) as { id?: string; chunk_count?: number; scope?: string; name?: string };
-      // Best-effort link to the active conversation so /files shows
-      // the upload alongside other attachments.
       if (conversationId) {
         try {
           await engineClient.linkFile(row.id, {
@@ -226,9 +187,7 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
             resource_id: conversationId,
             role: "attachment",
           });
-        } catch {
-          /* link is best-effort */
-        }
+        } catch {}
       }
       const ksId = ks.id ?? "?";
       const chunks = ks.chunk_count ?? 0;
@@ -249,11 +208,6 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
     return true;
   }
   if (name === "files") {
-    // Numbered-list picker over files linked to the active
-    // conversation. `/files` lists; `/files <n>` inserts the
-    // n-th row's `@file:fid_...` mention at the cursor. The
-    // mention is rewritten to `{"$file":"..."}` at submit time by
-    // `expandRefs` in `repl/paste-store.ts`.
     if (!engineClient) {
       showError("/files: no engine client — restart sk to enable file browsing");
       return true;

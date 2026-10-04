@@ -1,15 +1,3 @@
-// inspect_execution — read a completed execution's step-level diagnosis:
-// per-step status, duration, warnings, truncated output previews, and
-// scope shapes.
-//
-// The surface-agnostic sibling of inspect_execution_step. It is a
-// tenant_read — a pure (ctx, args) function over tenant-scoped tables —
-// so it runs unchanged on the chat and MCP surfaces. diagnose_latest_execution
-// covers the same ground for the chat authoring loop, but that tool is
-// draft_write (it stashes the diagnosis into the conversation draft) and
-// is therefore unavailable on the stateless MCP surface. MCP callers use
-// this tool instead.
-
 import { z } from "@hono/zod-openapi";
 import { desc, eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
@@ -43,7 +31,6 @@ export const inspectExecutionTool: ConversationTool = {
     const args = Input.parse(rawArgs);
     let executionId = args.execution_id ?? null;
     if (!executionId) {
-      // Tenant-scoped — resolve the most recent execution for this tenant.
       const latest = await ctx.db
         .select({ id: executions.id })
         .from(executions)

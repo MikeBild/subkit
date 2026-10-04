@@ -1,7 +1,3 @@
-// Connector CRUD. Tenant + environment scoped. The service is the only
-// place that touches the `connectors` table — routes call through it so
-// audit rows and slug normalization land consistently.
-
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -35,14 +31,6 @@ import type {
   UpdateConnectorInput,
 } from "./types.ts";
 
-/**
- * Refuse an auth kind the driver cannot honour.
- *
- * A `BadRequestError` rather than a bare domain error because the plain
- * `Object.assign(new Error(), { code })` shape used elsewhere in this file is
- * not mapped by the HTTP error middleware and would surface as a 500 — a
- * misconfiguration the caller can fix must not read as an engine fault.
- */
 function assertAuthTypeAllowedForDriver(
   driver: DriverName,
   auth_type: ConnectorView["auth_type"] | undefined,
@@ -112,11 +100,6 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     successor_uri: row.successor_uri ?? null,
   };
 }
-
-// Config validation lives in `config-schemas.ts` so the write path, the
-// validate endpoint and the CLI all reach the same verdict. This used to be an
-// HTTP-only check that returned early for every other driver, which is how a
-// graphql or s3 config could be stored and then fail at call time instead.
 
 async function resolveCreateTemplateBinding(
   tenant_id: string,
@@ -188,16 +171,6 @@ export async function createConnector(
     assertAuthTypeAllowedForDriver(effective.driver, auth_type);
     validateConnectorConfigOrThrow(effective.driver, effective.config);
     assertMcpAuthConfigConsistent(effective.driver, auth_type, effective.config);
-    // Upsert semantics on (tenant_id, environment, slug): when a
-    // connector with the same slug already exists in the same
-    // environment, treat the call as an update rather than letting the
-    // unique-constraint throw (an `ON CONFLICT ... DO UPDATE`
-    // equivalent on (tenant_id, environment, slug)). Without this the
-    // LLM authoring flow looped here: re-running
-    // start_connector_from_description with the same URL produced the
-    // same slug, the insert threw `duplicate key violates …
-    // connectors_tenant_environment_slug_idx`, and the LLM started
-    // recreating workflows from scratch.
     const existingRows = await tx
       .select()
       .from(connectors)
@@ -211,10 +184,6 @@ export async function createConnector(
       )
       .limit(1);
     const existing = existingRows[0];
-    // A definition read back from the API carries the mask where its secrets
-    // were. On an upsert that means "keep the stored one"; on a fresh insert
-    // there is nothing to keep and the write is refused. So is a kept secret
-    // on a definition that now points somewhere else.
     const secrets = restoreMaskedConnectorSecrets(
       { base_url: effective.base_url, config: effective.config, dsn: effective.dsn },
       existing ?? null,
@@ -223,8 +192,6 @@ export async function createConnector(
           resolved.binding != null && resolved.binding.template_slug !== existing?.template_slug,
       },
     );
-    // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
-    // an upsert keeps the stored list, a fresh insert may not name one.
     const config = carryMcpTrustList(
       effective.driver,
       existing?.driver === effective.driver ? existing.config : null,
@@ -280,8 +247,6 @@ export async function createConnector(
       .values({
         tenant_id: p.tenant_id,
         slug,
-        // Never persist a blank name — conversational drafts sometimes carry
-        // only a slug, which left the connector list showing an empty name.
         display_name: effective.name || slug,
         driver: effective.driver,
         environment,
@@ -330,32 +295,15 @@ export async function createConnector(
   });
 }
 
-/**
- * Connectors are a bounded business catalog — the default page IS the
- * safety bound so enumeration surfaces see the complete set unless a
- * caller explicitly pages. `total` is the exact tenant-scoped count
- * under the same filters (window count, no second round trip).
- */
 export const CONNECTOR_LIST_MAX_LIMIT = 1000;
 
 export async function listConnectors(
   tenant_id: string,
   opts: {
     environment?: Environment;
-    /**
-     * Catalog block. Connector slugs are single tokens, so unlike workflows
-     * there is nothing to derive: a connector's category IS its driver
-     * (`workflows/categorize.ts#categoryOfConnector`), which makes this a
-     * plain stored-column filter.
-     */
     category?: string;
     enabled?: boolean;
     health_state?: string;
-    /**
-     * `not_ok`: the connectors that count against the connector-health ratio
-     * (`connectorCountsAgainstHealth` — enabled and anything but `ok`). ANDed
-     * with every other filter, so `enabled=false` beside it is an empty list.
-     */
     health?: "not_ok";
     q?: string;
     sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
@@ -413,11 +361,6 @@ export async function listConnectors(
   return { rows: rows.map((r) => toView(r.row)), total };
 }
 
-/**
- * Catalog block sizes, counted over every connector of the tenant. List
- * callers render these as filter chips, so they must not shrink to whatever
- * the current page or filter happens to contain.
- */
 export async function connectorCategoryCounts(
   tenant_id: string,
   exec?: Executor,
@@ -452,11 +395,6 @@ export async function getConnector(
   return row ? toView(row) : null;
 }
 
-/**
- * The stored connector a definition would land on if it were saved: the row
- * `createConnector` upserts on, by (tenant, environment, slug). Null when
- * saving the definition would create a new connector.
- */
 export async function getConnectorForDefinition(
   tenant_id: string,
   definition: Pick<CreateConnectorInput, "name" | "slug" | "environment">,
@@ -486,16 +424,10 @@ export interface CredentialSummary {
   has_oauth_refresh: boolean;
   granted_scopes: string | null;
   oauth2_expires_at: string | null;
-  /** The outbound connection the credential sends, if any; the route adds its name and state. */
   connection_id: string | null;
   created_at: string;
 }
 
-/**
- * Redacted credential summaries for a connector — what's attached, never the
- * secret. Powers `sk credentials list` and the single-connector GET view so an
- * operator who runs `sk credentials set` can confirm the credential landed.
- */
 export async function listConnectorCredentials(
   tenant_id: string,
   connector_id: string,
@@ -534,16 +466,6 @@ export async function listConnectorCredentials(
   }));
 }
 
-/**
- * Pure circuit-breaker gate: true while the connector's breaker is open AND
- * the reset window has not yet elapsed. This is the single predicate behind
- * the dispatch-time `circuit_open` short-circuit — a `true` here means a
- * request against this connector fails fast without touching the upstream.
- * A stale open breaker (reset window elapsed, or no opened_at stamp) returns
- * false so the caller lets a probe through to transition to half-open.
- * Fan-out callers (`for_each` in the engine) use it to fail ONCE at the
- * container instead of scheduling N doomed iterations.
- */
 export function isCircuitOpenBlocking(
   connector: Pick<ConnectorView, "circuit_state" | "circuit_opened_at" | "circuit_reset_ms">,
   now_ms: number = Date.now(),
@@ -553,13 +475,6 @@ export function isCircuitOpenBlocking(
   return now_ms - connector.circuit_opened_at.getTime() < connector.circuit_reset_ms;
 }
 
-/**
- * Resolve a connector for a target execution environment. The workflow
- * DAG pins a specific connector row by id (usually the `dev` row). When
- * an execution runs under a different `execution_mode`, we look up a
- * sibling row with the same tenant + slug + target environment and use
- * that instead. Falls back to the original row when no sibling exists.
- */
 export async function getConnectorForEnvironment(
   tenant_id: string,
   id: string,
@@ -608,11 +523,6 @@ export async function updateConnector(
       .limit(1);
     const prior = existing[0];
     if (!prior) return null;
-    // A client that reads a connector and writes it back returns the mask
-    // where a secret was. Resolved here, before anything reads the patch, so
-    // enrichment, validation and the stored row all see the kept secret. A
-    // patch that also moves the connector keeps none: the mask is honoured
-    // only where the secret still goes to the destination it was stored for.
     const patch = restoreMaskedConnectorSecrets(requested, prior, {
       template_rebound:
         requested.clear_template_binding === true ||
@@ -675,16 +585,6 @@ export async function updateConnector(
         set.auth_type = enriched.auth_type;
       }
     }
-    // `set.config` is only populated when the patch actually carries one, so
-    // driver-schema validation leaves a pre-existing config untouched. MCP
-    // auth consistency still uses the effective stored-plus-patched pair.
-    // `connectors.driver` is NOT NULL, so there is no absent case to
-    // default. A `?? "http"` here would validate (say) an mcp config
-    // against the strict HTTP schema and reject it with HTTP field names —
-    // a wrong error pointing at the wrong layer.
-    // `prior.driver` and not the patch: `driver` is not patchable, so the
-    // connector's driver at rest is the one that will have to honour whatever
-    // auth kind this patch lands.
     assertAuthTypeAllowedForDriver(
       prior.driver as DriverName,
       (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
@@ -698,8 +598,6 @@ export async function updateConnector(
       (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
       (set.config ?? prior.config ?? {}) as Record<string, unknown>,
     );
-    // The per-tool trust list has one writer (connectors/mcp-tool-trust.ts):
-    // a config edit keeps the stored list and may not name a different one.
     if (set.config !== undefined) {
       set.config = carryMcpTrustList(
         prior.driver,
@@ -718,10 +616,6 @@ export async function updateConnector(
         resource_type: "connector",
         resource_id: id,
         result: "success",
-        // The trail is read back through the audit routes and tools, and it
-        // is append-only: it records the public projection, so what changed
-        // stays visible while the connection-string password and the config
-        // secrets never land in it.
         before: toPublicConnector(prior),
         after: toPublicConnector(row),
         metadata: {},
@@ -738,25 +632,6 @@ export async function updateConnector(
   return updated;
 }
 
-/**
- * Flip the operator on/off switch, driver-agnostic.
- *
- * `enabled` is the one bit only a human sets — distinct from `health_state`
- * (a verdict the engine derives) and from `deleted_at` (gone). Disabling
- * keeps the row and its credentials intact and simply stops offering the
- * connector for use.
- *
- * DRIVER DISPATCH ON THE WAY OUT: an `mcp` connector holds a live pooled
- * SDK session and a cached tool manifest that outlive the row read, and a
- * `postgres` connector holds a live pg pool. Neither notices a column
- * change, so a disable that did not evict would keep serving the thing it
- * just turned off until the process restarted.
- *
- * Returns null when no live connector matches, and the updated view
- * otherwise — including when the bit was already in the requested state,
- * because "disable an already-disabled connector" is a success, not a
- * missing row.
- */
 export async function setConnectorEnabled(
   tenant_id: string,
   id: string,
@@ -807,16 +682,9 @@ export async function deleteConnector(
   id: string,
   actor_id: string | null,
   exec?: Executor,
-  // When the delete was confirmed despite live workflows binding this
-  // connector, the caller passes their ids so the single CONNECTOR_DELETED
-  // audit row records "operator was warned about N broken workflows and
-  // proceeded anyway" — the governance breadcrumb for an orphaning delete.
   opts?: { orphaned_workflow_ids?: string[] },
 ): Promise<boolean> {
   const db = exec ?? getDb();
-  // The transaction returns the row to evict (when one matches the
-  // postgres-eviction policy). This avoids a side-channel `let` that
-  // TS struggles to narrow across the async boundary.
   type EvictRow = {
     id: string;
     environment: "dev" | "prod";
@@ -838,10 +706,6 @@ export async function deleteConnector(
       .limit(1);
     if (!existing[0]) return { ok: false, evict: null, evict_mcp: false };
     const evict = existing[0].driver === "postgres" ? (existing[0] as unknown as EvictRow) : null;
-    // An mcp connector's live SDK client and cached manifest live in the
-    // per-tenant MCP pool, not in this process's connector row. Deleting
-    // the row without evicting would leave the socket open and the
-    // manifest servable until the process restarts.
     const evict_mcp = existing[0].driver === "mcp";
     await tx
       .update(connectors)
@@ -877,8 +741,6 @@ export async function deleteConnector(
     return { ok: true, evict, evict_mcp };
   });
   const ok = result.ok;
-  // After the row is soft-deleted, evict the postgres pool so the
-  // connector's connection pool doesn't linger until process restart.
   if (ok && result.evict) {
     await closePoolForConnector(result.evict as never).catch(() => {});
   }
@@ -888,15 +750,6 @@ export async function deleteConnector(
   return ok;
 }
 
-/**
- * Non-destructive upsert of connector self-description LINKS (llms.txt /
- * llms-full / OpenAPI / GraphQL). LINKS ONLY — never document bodies. At most
- * one link per `kind`; the newest `discovered_at` wins. Only the
- * `self_description` column is touched, so it never disturbs a working
- * connector's config/auth. Used by create-time link capture and the
- * self-healing enrichment pass. Returns the merged links (or null if the
- * connector row is gone).
- */
 export async function attachConnectorSelfDescriptionLinks(
   p: {
     tenant_id: string;
@@ -919,7 +772,6 @@ export async function attachConnectorSelfDescriptionLinks(
   const byKind = new Map<string, ConnectorSelfDescriptionLink>();
   for (const link of [...(current.links ?? []), ...p.links]) {
     const existing = byKind.get(link.kind);
-    // Newest discovered_at wins; incoming wins ties (it was just observed).
     if (!existing || link.discovered_at >= existing.discovered_at) byKind.set(link.kind, link);
   }
   const merged = [...byKind.values()].sort((a, b) => a.kind.localeCompare(b.kind));

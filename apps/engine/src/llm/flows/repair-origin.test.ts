@@ -1,22 +1,3 @@
-// What the repair flow says about its own origin, and what it hands the
-// accountant.
-//
-// Both used to come from a single required `execution_id: string`. The
-// proactive caller had no execution and filled the field with
-// `ctx.scan_id ?? "proactive"` (self-healing/service.ts), so:
-//
-//   - a `self_healing_scans.id` — a well-formed uuid — was written into
-//     `llm_usage.execution_id`, where it looked like an execution reference
-//     and joined to nothing. 163 rows, 2026-06-26 to 2026-08-19.
-//   - "proactive" is not a uuid, so that INSERT raised inside the
-//     best-effort accounting catch and the billing row was lost entirely.
-//   - the prompt told the model "Execution: <scan uuid>".
-//
-// These pin the field staying empty when there is nothing honest to put in
-// it. The uuid guard in the accountant and the foreign key in migration 0040
-// are the other two layers; this is the one that stops the wrong value at
-// the source.
-
 import { describe, expect, it } from "bun:test";
 import { repairOrigin, repairTelemetry } from "./repair.ts";
 
@@ -43,8 +24,6 @@ describe("repairOrigin", () => {
 describe("repairTelemetry", () => {
   it("omits execution_id entirely when there is no execution", () => {
     const t = repairTelemetry({ execution_id: null, scan_id: SCAN, failing_step: STEP }, 1);
-    // Absent, not null and not the scan id: the accountant only copies the
-    // key when it is present, and `llm_usage.execution_id` must stay NULL.
     expect("execution_id" in t).toBe(false);
     expect(t.execution_id).not.toBe(SCAN);
   });

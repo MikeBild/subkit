@@ -1,11 +1,3 @@
-// `knowledge://<id>` MCP resource body — full markdown content, byte-capped.
-//
-// Historically the read returned only a metadata stub, which made the
-// resource useless to clients that wanted the actual knowledge; the
-// metadata now rides along as a leading comment. No audit row — parity
-// with the metadata-only read this replaces (chunk access via search is
-// likewise unaudited).
-
 import type { Executor } from "../../db/client.ts";
 import { listKnowledgeChunks } from "../../knowledge/bundle-service.ts";
 import type { KnowledgeSourceView } from "../../knowledge/types.ts";

@@ -1,12 +1,3 @@
-// Docker REPL smoke — NIGHTLY (not in the PR subset).
-//
-// Drives the host-built `sk` REPL over a PTY against the production
-// container: boots to the quick-start banner and exits cleanly. Proves the
-// compiled binary + Ink/readline wiring + network auth work against the
-// packaged image (vs the in-process repl-conversational e2e). Nightly
-// because it spawns a real pseudo-terminal and is slower / more exotic than
-// the HTTP smoke.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { runPtyScenario, SKIP_PTY_WHEN_NO_EXPECT } from "../e2e/_helpers/pty.ts";
@@ -25,9 +16,6 @@ afterAll(() => {
 const HOME = path.resolve(import.meta.dir, "../../.docker-repl-home");
 
 describe("sk REPL against the container", () => {
-  // Skip only when `expect` is missing AND not in CI; in CI a missing
-  // `expect` fails loudly instead of dropping coverage. See
-  // SKIP_PTY_WHEN_NO_EXPECT in _helpers/pty.ts.
   test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "boots to the quick-start banner over a PTY and exits cleanly",
     async () => {

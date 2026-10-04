@@ -1,6 +1,3 @@
-// Determinism gate for the settings-doc generator. Runs the script
-// twice and asserts byte-stable output.
-
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -23,7 +20,6 @@ describe("gen-settings-doc", () => {
   test("output documents every leaf in the schema and includes the auto-generated header", () => {
     const out = runOnce();
     expect(out.startsWith("<!-- AUTO-GENERATED")).toBe(true);
-    // Spot-check a few well-known leaves.
     expect(out).toContain("`database.url`");
     expect(out).toContain("`llm.providers.anthropic.api_key`");
     expect(out).toContain("`auth.session.secret`");

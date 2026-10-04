@@ -1,8 +1,3 @@
-// Materialized persona snapshot for the Ink REPL bridge.
-//
-// Persona resolution: `/v1/sk/bootstrap` (one round-trip for the full
-// UX-gating allow-set). `loadBootstrap` owns the disk cache.
-
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { loadBootstrap, type SkBootstrapSnapshot, unresolvedSnapshot } from "../lib/bootstrap.ts";
@@ -12,24 +7,13 @@ export interface ResolvedPersona {
   label: string;
   probe: PersonaProbe;
   allowed: Set<string>;
-  /** Tenant slug or uuid returned by whoami, preferred over the profile. */
   tenant: string | null;
-  /** Email or sub returned by whoami — nice to show in the status line. */
   email: string | null;
-  /** Wall-clock time the bootstrap snapshot was produced (ms).
-   *  Surfaced in /status so an operator can see whether the
-   *  cached allow-set is fresh or stale. */
   fetchedAt: number;
-  /** Where the snapshot came from: network, disk cache, or the
-   *  no-grant profile-only snapshot. */
   source: "network" | "cache" | "fallback";
-  /** Engine-resolved REPL/UI/notification prefs. */
   prefs: SkBootstrapSnapshot["prefs"];
 }
 
-/** Minimal persona keyed off the profile alone — used when the engine is
- *  unreachable during a profile switch so the footer at least shows the
- *  right engine + profile name. Grants nothing. */
 export function fallbackPersona(profile: ResolvedProfile): ResolvedPersona {
   return personaFromSnapshot(unresolvedSnapshot(profile, Date.now()));
 }

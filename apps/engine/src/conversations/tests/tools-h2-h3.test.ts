@@ -1,7 +1,3 @@
-// Tests for conversation tool registration — covers the H2/H3 tools
-// (search_knowledge, list_skill_suggestions, propose_*) plus the
-// `ask_user_*` family that paused-loop elicitations dispatch through.
-
 import { describe, expect, test } from "bun:test";
 import { getTool, listTools } from "../tools/index.ts";
 
@@ -66,16 +62,11 @@ describe("conversation tools — registration", () => {
     "validate_draft",
   ] as const;
 
-  // Generated read tools + hand-written writes from the gap-fix work.
-  // Asserting the full set gives us a regression gate for additions
-  // (a new tool without a registration line here fails the test).
   const EXPECTED_EXTENSION_TOOLS = [
-    // Loaders + utility
     "load_skill",
     "get_raw_result",
     "test_rbac_expression",
     "get_vendor_recipe",
-    // Generated read tools (15 domains)
     "list_workflows",
     "get_workflow",
     "list_connectors",
@@ -112,12 +103,10 @@ describe("conversation tools — registration", () => {
     "list_subscriptions",
     "get_subscription",
     "get_engine_status",
-    // Discovery (2 read + 1 write) + capability-gap backlog
     "list_discovery_artifacts",
     "get_discovery_artifact",
     "approve_discovery_artifact",
     "list_capability_gaps",
-    // Hand-written write tools
     "run_workflow",
     "rerun_execution",
     "delete_workflow",
@@ -146,12 +135,7 @@ describe("conversation tools — registration", () => {
     "update_subscription",
     "list_draft_snapshots",
     "restore_draft_snapshot",
-    // Rolls a SAVED workflow back to an earlier version — the recovery move
-    // for a bad commit. Distinct from `restore_draft_snapshot`, which only
-    // rewinds the conversation's unsaved draft.
     "restore_workflow_version",
-    // Why the approval gate holds a workflow, and the reviewed deterministic
-    // repair a named fixer files for it.
     "diagnose_workflow",
     "propose_workflow_repair",
   ] as const;

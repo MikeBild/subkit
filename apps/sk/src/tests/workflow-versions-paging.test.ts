@@ -1,13 +1,8 @@
-// `sk workflows history` and `/versions` show the WHOLE history. The engine
-// serves it one bounded page at a time, so the client reads page after page;
-// a client that read one page would silently show a truncated history.
-
 import { describe, expect, test } from "bun:test";
 import { EngineClient } from "../engine-client.ts";
 
 const WORKFLOW = "3fb5fc90-1c2d-4e5f-8a6b-7c8d9e0f1a2b";
 
-/** An engine that holds `total` versions and serves them as the real one does. */
 function engineWith(total: number, serverPageCap = 200) {
   const requests: Array<{ limit: number; offset: number }> = [];
   const client = new EngineClient({
@@ -68,7 +63,6 @@ describe("listWorkflowVersions", () => {
   });
 
   test("a history that shrinks while it is read still ends", async () => {
-    // The engine reports a total it then cannot fill: an empty page is the end.
     const client = new EngineClient({
       engine_url: "https://engine.example.com",
       api_key: "placeholder-key",

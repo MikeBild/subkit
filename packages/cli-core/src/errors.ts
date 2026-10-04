@@ -1,13 +1,5 @@
 import pc from "picocolors";
 
-// Typed errors mapped from the engine's envelope shape.
-//
-// The engine returns `{ code, message, trace_id, hint?, retry_after?,
-// details? }` on failures. EngineError is the single class for that
-// envelope across the CLI — the engine client throws it, command
-// handlers render it via `reportCommandError`, and the top-level
-// dispatcher maps it to an exit code via `exitCodeFor`.
-
 export class EngineError extends Error {
   public readonly status: number;
   public readonly code: string;
@@ -66,11 +58,6 @@ export class TransportError extends Error {
   }
 }
 
-// Name + shape guards instead of `instanceof`: under bun's parallel
-// test runner a module can be loaded twice, yielding two distinct
-// class identities for the same import specifier. `instanceof` then
-// returns false even though the error has the right shape. Every
-// branch point in the CLI routes through these guards.
 export function isEngineError(err: unknown): err is EngineError {
   return (
     err instanceof Error &&
@@ -93,7 +80,6 @@ export function formatError(err: unknown): string {
   return String(err);
 }
 
-/** Maps an error to a CLI exit code. */
 export function exitCodeFor(err: unknown): number {
   if (isEngineError(err)) {
     if (err.status === 400 || err.status === 409 || err.status === 422) return 1;
@@ -103,23 +89,6 @@ export function exitCodeFor(err: unknown): number {
   return 1;
 }
 
-/**
- * Render a command failure once, then rethrow so the top-level
- * dispatcher (not the handler) sets `process.exitCode`.
- *
- * Text mode writes to stderr:
- *   error: <code>: <message>
- *     hint: <engine remediation hint, when present>
- *     trace: <trace_id, when present>
- *
- * JSON mode writes a single machine-readable object to stdout (so a
- * downstream `jq` always reads valid JSON); stderr stays silent:
- *   { "error": <message>, "code"?, "hint"?, "trace_id"? }
- *
- * The error is marked as rendered (see `wasReported`) so the top-level
- * dispatcher knows not to print a second copy — exactly one layer owns
- * rendering, the dispatcher owns the exit code.
- */
 const REPORTED = Symbol.for("sk.cli.errorReported");
 
 export function wasReported(err: unknown): boolean {
@@ -137,9 +106,6 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
       if (err.hint) payload.hint = err.hint;
       if (err.trace_id) payload.trace_id = err.trace_id;
     } else if (isTransportError(err)) {
-      // A transport failure is the engine being unreachable, not an
-      // engine-reported error. Tag it so machine consumers can branch
-      // on it the same way the text path headlines it.
       payload.code = "transport_error";
       payload.error = `cannot reach engine: ${msg}`;
     }
@@ -151,10 +117,6 @@ export function reportCommandError(err: unknown, opts?: { json?: boolean }): nev
       if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
       if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
     } else if (isTransportError(err)) {
-      // Headless one-shot commands must fail loudly with a recognisable
-      // transport headline, not the raw runtime cause ("Unable to
-      // connect…"). The interactive REPL gets a richer humanised hint via
-      // `humanizeRequestError`; this is the command-path equivalent.
       lines.push(`${pc.red("error")}: cannot reach engine: ${msg}`);
     } else {
       lines.push(`${pc.red("error")}: ${msg}`);

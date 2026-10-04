@@ -67,8 +67,6 @@ import {
   stoppingStep,
 } from "@/pages/runs-model";
 
-// Re-exported so callers that already know these names keep working; the
-// definitions live in the pure model module beside its test.
 export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
 
 type Execution = components["schemas"]["Execution"];
@@ -79,7 +77,6 @@ type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
 const PAGE_SIZE = 25;
 
-/** One copy action per block: the same "Kopieren" beside two blocks is two acts. */
 function Copyable({ children }: { children: ReactNode }) {
   return (
     <div className="min-w-0" data-action-scope="copy">
@@ -88,7 +85,6 @@ function Copyable({ children }: { children: ReactNode }) {
   );
 }
 
-/** The words of an outcome, with an unmapped cause set as a machine value. */
 function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
   return (
     <>
@@ -99,10 +95,6 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
   );
 }
 
-/**
- * "Erneut ausführen" (O2): the same version and input, with real effects. The
- * confirmation says so before anything runs; the new run opens in this sheet.
- */
 function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -148,7 +140,6 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
   );
 }
 
-/** One run (O2): its state in the strip, when and how it ran, its steps, its evidence. */
 function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
@@ -166,8 +157,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
     queryKey: ["run-cost", run.id],
     queryFn: () => apiRequest<unknown>(`/v1/executions/${encodeURIComponent(run.id)}/cost`),
   });
-  // The list row is the floor: a refresh that did not return an execution
-  // leaves the record the reader already had.
   const current: Execution = isExecutionRecord(detail.data) ? detail.data : run;
   const outcome =
     isExecutionRecord(detail.data) && (detail.data as ExecutionDetail).outcome
@@ -187,7 +176,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
       : null;
 
   const canReadWorkflows = session.permissions.includes("workflow:read");
-  // An open repair proposal for this workflow is the first remedy.
   const patch = useQuery({
     queryKey: ["run-open-repair", current.workflow_id],
     enabled: failed && canReadWorkflows && Boolean(current.workflow_id),
@@ -355,7 +343,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         <RowsSkeleton count={2} testId="run-detail-loading" />
       ) : (
         <>
-          {/* The run's error, ONCE: above the steps, not again inside one. */}
           {errorEvidence && failing ? (
             <Copyable>
               <CodeBlock
@@ -387,7 +374,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             ) : null}
           </Section>
           <div className="flex flex-col gap-2">
-            {/* The payload last, folded: it is the evidence, not the headline. */}
             {payload ? (
               <CollapsibleSection label={payloadLabel} testId="run-detail-payload">
                 <Copyable>
@@ -411,21 +397,12 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   );
 }
 
-/**
- * All runs, narrowed (O3): the list inside the large sheet. It reads its
- * narrowing from the address once, when the sheet opens, and writes back what
- * the reader removes.
- */
 function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
-  // Called with the search string explicitly: handing the function itself to
-  // `useState` would read the filter from nothing.
   const [initial] = useState(() => filterFromUrl(window.location.search));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
-  // A link that knows the workflow narrows by its id; it has no control of
-  // its own — only the chip below that says so and lifts it.
   const [workflowFilter, setWorkflowFilter] = useState<string | null>(initial.workflowId);
   const [startedWindow, setStartedWindow] = useState<{ from: string | null; to: string | null }>({
     from: initial.startedFrom,
@@ -453,8 +430,6 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     ["failed", "timed_out", "aborted"].includes(run.status),
   ).length;
 
-  // A filter the reader removed must also leave the address, or a reload
-  // brings it back after the reader explicitly took it away.
   const forgetInAddress = useCallback((keys: readonly string[]) => {
     const params = new URLSearchParams(window.location.search);
     for (const key of keys) params.delete(key);
@@ -488,7 +463,6 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
         (run) => <StatusBadge state={run.status} />,
         { width: "w-[16%]" },
       ),
-      // "Details": the cause a failure belongs to, else how it ran.
       column.custom(
         "details",
         (run) => run.failure?.cause_class ?? null,
@@ -592,7 +566,6 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
               ]}
               segmented={
                 <>
-                  {/* The narrowing a link brought, said out loud and removable. */}
                   {workflowFilter ? (
                     <ActionButton
                       size="sm"
@@ -662,26 +635,16 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   );
 }
 
-/** One run, fetched by id: the sheet says what the record says NOW. */
 function useRun(id: string | null, enabled: boolean) {
   const addressed = useQuery({
     queryKey: ["run", id ?? ""],
     enabled: enabled && id !== null,
     queryFn: () => apiRequest<Execution>(`/v1/executions/${encodeURIComponent(id ?? "")}`),
   });
-  // Never the answer to a question that is no longer being asked.
   const run = isExecutionRecord(addressed.data) && addressed.data.id === id ? addressed.data : null;
   return { run, failed: Boolean(addressed.error), retry: () => void addressed.refetch() };
 }
 
-/**
- * The run sheets, on whichever view opened them (O2, O3).
- *
- * `?runs=all` opens all runs in the large sheet; `?run=<id>` opens one run —
- * inside the large sheet, with the way back to the list, when the list is
- * open, and in a sheet of its own otherwise. Both live in the query: the page
- * underneath stays what it was, and back and forward close them again.
- */
 export function RunOverlays() {
   const { t } = useI18n();
   const session = useSession();
@@ -724,7 +687,6 @@ export function RunOverlays() {
       size={overlay.list ? "wide" : "default"}
       title={
         overlay.runId && run?.workflow_id ? (
-          // The title is the workflow, and leads there.
           <a
             href={absolute(workflowHref(run.workflow_id))}
             className="min-w-0 underline-offset-4 hover:underline"
@@ -774,8 +736,6 @@ export function RunOverlays() {
       testId={overlay.runId ? "run-detail" : "resource-runs"}
       closeTestId={overlay.runId ? "run-detail-close" : "runs-sheet-close"}
     >
-      {/* The list stays mounted under an open run, so its filters and rows are
-          exactly as the reader left them on the way back. */}
       {overlay.list ? (
         <div hidden={overlay.runId !== null}>
           <RunsList onShowRun={(id) => show({ list: true, runId: id })} />

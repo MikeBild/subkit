@@ -1,18 +1,3 @@
-// Shared slash-command handler reused by both the readline REPL
-// and the Ink REPL. Pure function in, side-effecting calls through
-// the provided EngineClient. Returns a string to display as a
-// transient banner, or `null` when the command handled its own
-// output (e.g. `/clear` which resets the session).
-//
-// Handlers that need cross-turn state mutation (`/clear`, `/resume`)
-// call back through `setConversationId` — the caller owns the
-// React / closure state shape.
-//
-// cf. `apps/sk/src/repl/slash/dispatcher.ts` — the dispatcher
-// classifies each slash by its `routing` field (local vs. engine)
-// before reaching this handler. This module owns only execution;
-// classification + RBAC routing live in the dispatcher.
-
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -49,13 +34,6 @@ import { dispatchKnowledgeSlash } from "./handlers/knowledge.ts";
 import { dispatchOnboardingSlash } from "./handlers/onboarding.ts";
 import { dispatchSessionSlash } from "./handlers/session-lifecycle.ts";
 
-/**
- * Rich pane descriptions returned by slash commands that open a modal
- * instead of (or in addition to) a one-line banner. The Ink host
- * renders the right component based on `kind`. Adding a new pane kind
- * means: extend this union, handle it in the host's modal slot, and
- * the readline fallback's text mirror.
- */
 export type PaneSpec =
   | {
       kind: "config-form";
@@ -187,14 +165,6 @@ export type PaneSpec =
       setup: SetupValidationResponse;
     }
   | {
-      /**
-       * Onboarding wizard overlay launched by `/onboard`. The pane
-       * carries the pre-fetched template catalog plus three callbacks
-       * the slash handler wires to engine tools: probe, save, and
-       * dismiss. Functions are kept on the spec because the wizard's
-       * step machine needs to invoke them at arbitrary points; the
-       * pane is otherwise opaque to the host.
-       */
       kind: "onboarding-wizard";
       title: string;
       templates: ReadonlyArray<OnboardingTemplate>;
@@ -206,17 +176,9 @@ export type PaneSpec =
       kind: "text";
       title: string;
       subtitle?: string;
-      /** Lines rendered verbatim inside the pane, one `<Text>` per line. */
       lines: ReadonlyArray<string>;
     }
   | {
-      /**
-       * Structured authoring pane. Each section carries a tone so the
-       * Ink renderer can colour-code headings (green for ok / ready,
-       * yellow for needs_input, red for failed, dim for info). Rows
-       * inside a section are `[key, value]` pairs, optionally with a
-       * tone override for a single row.
-       */
       kind: "structured";
       title: string;
       subtitle?: string;
@@ -227,9 +189,6 @@ export type PaneSpec =
       }>;
     }
   | {
-      // /settings opened from the REPL — host renders SettingsModal
-      // in-process with the operator's REPL state piped in so the
-      // Status tab shows real session id / permission mode / tokens.
       kind: "settings";
       initialTab?: string;
       sessionId?: string | null;
@@ -240,14 +199,6 @@ export type PaneSpec =
       tenant?: string | null;
     }
   | {
-      // The portal-token mint flow never returns the plaintext token
-      // through the slash result — slash returns are persisted into
-      // the assistant transcript and the token is short-lived but
-      // bearer-equivalent. Render the QR + URL inline in a transient
-      // pane (mirroring the AdminTab ApiKeysSubTab "shown once"
-      // yellow panel) and dismiss on Esc / 'y' (copy via OSC 52). The
-      // token id (not the secret) is the
-      // only thing we surface back to the transcript.
       kind: "portal-token";
       url: string;
       ttl_minutes: number;
@@ -256,11 +207,6 @@ export type PaneSpec =
       workflow_id: string;
     }
   | {
-      // `/permissions`, `/profile`, `/admin` — single-pane modals that
-      // wrap the corresponding *Tab via SinglePane. Lifted out of
-      // /settings as part of the 5-tab refactor; only the 5 surfaces
-      // {Status, Config, Usage, Skills, Knowledge} remain inside
-      // SettingsModal.
       kind: "permissions";
       tenant?: string | null;
     }
@@ -271,56 +217,24 @@ export interface SlashHandlerContext {
   client: EngineClient;
   profile: ResolvedProfile;
   session: SkSessionState;
-  /** Replace the active conversation id (e.g. `/clear`, `/resume`). */
   setConversationId: (id: string | null) => void;
-  /** Allowed permissions on the current principal, for `/permissions`. */
   allowedPermissions: readonly string[];
-  /** Switch to a different profile by name. Provided by the REPL host. */
   switchProfile?: (name: string) => Promise<string>;
-  /**
-   * Latest `/v1/status` snapshot — populated by the Ink host, refreshed
-   * after every completed turn. Provides connector count + today's
-   * tokens + tenant slug for `/status` and the status-line ticker.
-   */
   statusSnapshot?: StatusSummary | null;
-  /** Latest `/v1/diagnostics/setup` snapshot when the persona can read it. */
   setupSnapshot?: SetupValidationResponse | null;
-  /**
-   * Latest `/v1/sk/bootstrap` snapshot — passed through from the
-   * Ink host's `usePersona` hook. Lets `/status` surface
-   * `fetchedAt + source` so an operator rotating an api_key can see
-   * whether the slash menu reflects the current token (network) or
-   * a stale cache (cache, fallback).
-   */
   bootstrapSnapshot?: {
     fetchedAt: number;
     source: "network" | "cache" | "fallback";
     label: string;
   } | null;
-  /**
-   * Engine-resolved REPL preferences. Carries `portalTokenTtlMin` so
-   * `/session` mints with the tenant-tuned TTL instead of a magic
-   * 15-minute literal.
-   */
   prefs?: {
     portalTokenTtlMin?: number;
     [k: string]: unknown;
   } | null;
-  /**
-   * Open a modal pane in the Ink host. When omitted (e.g. the readline
-   * fallback REPL), pane-returning commands fall back to a text banner.
-   */
   openPane?: (spec: PaneSpec) => void;
-  /** Override config file path (for testing). */
   configPath?: string;
 }
 
-/**
- * Helper: when an Ink host is available, open a "text" pane in the
- * modal slot and return null (no banner). Otherwise fall back to
- * joining the body lines into a single banner string so the readline
- * REPL stays functional.
- */
 export function panify(
   ctx: SlashHandlerContext,
   title: string,
@@ -335,9 +249,6 @@ export function panify(
     );
     return null;
   }
-  // The subtitle carries the cardinality footer ("showing 20 of 45" /
-  // "12 total") — dropping it in the banner fallback would hide the
-  // ground-truth count from readline users, so render it inline.
   return [subtitle !== undefined ? `${title} — ${subtitle}` : title, "", ...lines].join("\n");
 }
 
@@ -374,46 +285,20 @@ function formatSetupLines(setup: SetupValidationResponse): string[] {
   return lines;
 }
 
-/**
- * Execute a slash command by name. Returns a one-line string that
- * the caller should display as a transient banner (or null to clear
- * any existing banner). Throws on network errors — the caller
- * wraps the call in try/catch and surfaces the error as a banner.
- */
 export async function handleSlash(
   name: string,
   rawArgs: string[],
   ctx: SlashHandlerContext,
 ): Promise<string | null> {
-  // Persist frequency for the autocomplete bias. Best-effort — a
-  // write failure never blocks the dispatch.
   recordUsage(name);
-  // Consume `classifySlash` so the dispatcher seam
-  // is real, not aspirational. The classification is logged via
-  // `debugLog` for telemetry and used to short-circuit unknown
-  // commands; it never silently bypasses a registered command. A
-  // future contributor who adds `/connectors` to `LOCAL_ONLY_NAMES`
-  // by accident (or who tags a state-mutating command as
-  // `routing: "local"` in the registry) can be caught by the
-  // dispatcher's `_localOnlySnapshot()` test, which already enforces
-  // that engine-routed commands stay out of the local set.
   const plan = classifySlash(name);
   if (plan.routing === "unknown") {
     debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
-    // Short-circuit never-shipped slashes with a one-line guidance
-    // message pointing at where the need is met. The guidance map
-    // lives in the dispatcher to keep the registry pure.
     const hint = unsupportedSlashGuidance(name);
     if (hint) return `/${name} ${hint}`;
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});
   }
-  // Validate positional args against the per-
-  // command Zod schema at the dispatcher boundary. Commands that
-  // don't set `argsSchema` skip this check (default schema accepts
-  // any string array). When validation fails, return a structured
-  // error string the REPL renders as a transient banner — without
-  // ever reaching the per-command branch below.
   if (plan.command?.argsSchema) {
     const parsed = plan.command.argsSchema.safeParse(rawArgs);
     if (!parsed.success) {
@@ -422,24 +307,9 @@ export async function handleSlash(
       return `/${name}: invalid args — ${where}${issue?.message ?? "schema validation failed"}`;
     }
   }
-  // Switch on the canonical command name (post-alias resolution)
-  // rather than the typed string. The dispatcher's
-  // `resolveSlashCommand` already maps `/install` → `/onboard`
-  // (and `/quit` → `/exit`, `/bug` → `/feedback`, etc.) through
-  // `command.aliases`. Switching on `plan.command?.name`
-  // means the handler can drop the `case "install":` fallthrough
-  // mirrors and there's exactly one branch per canonical slash.
-  // When the command isn't in the registry (unknown / removed) the
-  // typed name still flows through so the existing
-  // `/${name}` error / removed-slash guidance branches still work.
   const dispatchName = plan.command?.name ?? name;
   switch (dispatchName) {
     case "status": {
-      // `/status` is local-only by design — same shape as
-      // `/cost`. Reads the Ink host's latest `/v1/status` snapshot
-      // (refreshed every completed turn) without re-hitting the
-      // engine. A "force refresh" path would belong on a separate
-      // slash if it's ever needed.
       const snap = ctx.statusSnapshot ?? null;
       const tenant = snap?.tenant.slug ?? snap?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
       const budget = snap?.monthly_budget_tokens;
@@ -462,10 +332,6 @@ export async function handleSlash(
         ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
         ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
       ];
-      // Surface the bootstrap snapshot's source + age so an
-      // operator who just rotated an api_key can tell whether the
-      // slash menu reflects the current token or a stale cache. The
-      // `loadBootstrap` cache TTL is 6h.
       if (ctx.bootstrapSnapshot) {
         const ageMs = Date.now() - ctx.bootstrapSnapshot.fetchedAt;
         const ageMin = Math.max(0, Math.floor(ageMs / 60_000));
@@ -487,7 +353,6 @@ export async function handleSlash(
         });
         return null;
       }
-      // Readline fallback: render as a multi-line banner.
       return rows
         .map(
           ([label, value]) =>
@@ -504,24 +369,13 @@ export async function handleSlash(
       return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
     case "install-space":
-      // Pending-space list/install flow lives in handlers/chat-spaces.ts.
       return (await dispatchChatSpaceSlash(rawArgs, ctx)) ?? null;
     case "knowledge":
       return (await dispatchKnowledgeSlash(rawArgs, ctx)) ?? null;
-    // The `/onboard` wizard wiring (template catalog fetch + probe /
-    // save callbacks) lives in handlers/onboarding.ts. The case labels
-    // stay here so the dispatcher contract test keeps seeing one
-    // branch per canonical slash in this file.
     case "install":
     case "onboard":
       return (await dispatchOnboardingSlash(dispatchName, ctx)) ?? null;
     case "cost": {
-      // `/cost` is local-only by design — it reads
-      // `ctx.statusSnapshot` (cached) and `ctx.session.usage` (in-
-      // memory). The snapshot is refreshed by the Ink host after
-      // every completed turn, so values are at-most one-turn stale;
-      // refreshing on every `/cost` would burn an audit row + a
-      // round-trip on a read-of-cached-state. Keep local.
       const snap = ctx.statusSnapshot ?? null;
       const usage = ctx.session.usage;
       const lines: string[] = [];
@@ -532,10 +386,6 @@ export async function handleSlash(
             : usage.remaining_monthly_budget_tokens.toLocaleString();
         lines.push(`tokens · this turn   ${usage.turn_tokens.toLocaleString()}`);
         lines.push(`remaining · monthly  ${remaining}`);
-        // Per-section breakdown — answers the user's "why is this turn
-        // 88k tokens?" complaint by showing skills vs transcript vs
-        // docs splits. Only rendered when the engine emitted them; a
-        // turn that didn't drive an LLM call has no breakdown.
         const b = usage.breakdown;
         if (b) {
           const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString());
@@ -559,8 +409,6 @@ export async function handleSlash(
         if (snap.monthly_budget_tokens !== null) {
           lines.push(`budget · monthly     ${snap.monthly_budget_tokens.toLocaleString()} tok`);
         }
-        // The caller's OWN figures, when the engine attributed them (a
-        // user principal; null for system_account / API-key callers).
         if (snap.tokens_month_user !== null) {
           lines.push("");
           lines.push(`you · today          ${(snap.tokens_today_user ?? 0).toLocaleString()}`);
@@ -580,12 +428,6 @@ export async function handleSlash(
       return panify(ctx, "cost", lines);
     }
     case "exec": {
-      // Per-step audit for an execution. With no argument, picks the
-      // latest execution from the conversation's draft state. With an
-      // explicit `<execution_id>` (full UUID or first 8 chars), fetches
-      // that one. Renders one line per step — the same surface the
-      // ExecutionDiagnosisCard summarizes — so the user can audit a
-      // run from chat without leaving the REPL.
       const arg = (rawArgs[0] ?? "").trim();
       let executionId: string | null = arg.length > 0 ? arg : null;
       if (!executionId) {
@@ -636,10 +478,6 @@ export async function handleSlash(
       }
     }
     case "verbose": {
-      // Toggle SK_VERBOSE for this REPL process. Inline tool_log lines
-      // become visible/hidden under chat-mode tool cards. Persists for
-      // the current session only — set SK_VERBOSE=1 in the environment
-      // to make it the default.
       const current = process.env.SK_VERBOSE === "1";
       process.env.SK_VERBOSE = current ? "0" : "1";
       return panify(ctx, "verbose", [
@@ -648,12 +486,6 @@ export async function handleSlash(
           : "verbose mode ON — every tool's tool_log lines render inline under the card",
       ]);
     }
-    // Draft-centric authoring slashes — connector/workflow draft
-    // inspection, probe/preview, direct edit, snapshots/versions,
-    // context, approvals, and tool policies. Bodies live in
-    // handlers/authoring-drafts.ts; the case labels stay here so the
-    // dispatcher contract test keeps seeing one branch per canonical
-    // slash in this file.
     case "draft":
     case "connector":
     case "workflow":
@@ -668,12 +500,6 @@ export async function handleSlash(
     case "approvals":
     case "policy":
       return (await dispatchAuthoringDraftSlash(dispatchName, rawArgs, ctx)) ?? null;
-    // Session-lifecycle slashes — conversation reset/rename/fork,
-    // transcript copy/export, portal-token minting, resume, compact,
-    // and the settings deep-link. Bodies live in
-    // handlers/session-lifecycle.ts; the case labels stay here so the
-    // dispatcher contract test keeps seeing one branch per canonical
-    // slash in this file.
     case "clear":
     case "new":
     case "copy":
@@ -688,21 +514,7 @@ export async function handleSlash(
     case "compact":
     case "model":
       return (await dispatchSessionSlash(dispatchName, rawArgs, ctx)) ?? null;
-    // /skills, /mcp, /permissions, /audit moved to handlers/inspect.ts
     case "logs": {
-      // /logs [limit] [trace_id?]
-      //
-      // Pure HTTP — calls `GET /v1/diagnostics/errors` on the engine
-      // with the operator's API key. NO ssh, NO doctl, NO process
-      // spawn, NO out-of-band infra access. The engine maintains an
-      // in-memory ring of the last N captured 5xx responses (set by
-      // errorMiddleware) and filters to the caller's tenant.
-      //
-      // Args:
-      //   /logs                   — last 20 errors for this tenant
-      //   /logs 50                — last 50
-      //   /logs 50 <trace_id>     — only entries matching the trace_id
-      //                              from a banner you saw earlier
       const limitArg = rawArgs[0];
       const traceArg = rawArgs[1];
       const limit = limitArg ? Math.max(1, Math.min(200, Number.parseInt(limitArg, 10) || 20)) : 20;
@@ -725,8 +537,6 @@ export async function handleSlash(
         );
         if (e.message) lines.push(`  ${e.message}`);
         if (e.stack) {
-          // Show first 3 stack frames — full stack is in the engine's
-          // structured logger; this surface is a quick triage tool.
           const frames = e.stack.split("\n").slice(1, 4);
           for (const f of frames) lines.push(`  ${f.trim()}`);
         }
@@ -740,10 +550,6 @@ export async function handleSlash(
       );
     }
     case "debug": {
-      // /debug         → status (verbose on/off + path + tail count)
-      // /debug on/off  → toggle verbose body capture (HTTP bodies + raw SSE frames)
-      // /debug tail    → render the last 40 lines of the debug log
-      // /debug path    → just the file path (handy for `tail -f` outside the REPL)
       const sub = (rawArgs[0] ?? "").toLowerCase();
       if (sub === "on" || sub === "off") {
         setDebugVerbose(sub === "on");
@@ -783,16 +589,6 @@ export async function handleSlash(
     case "init": {
       const cwd = process.cwd();
       const path = join(cwd, "SK.md");
-      // Defend against TOCTOU + symlink races.
-      //   1. `lstatSync` (not stat) so a symlinked SK.md doesn't
-      //      mask the existence check.
-      //   2. Use `wx` flag on writeFileSync so the create is atomic
-      //      and refuses to overwrite an existing file (including a
-      //      symlink target outside `cwd`). EEXIST is the safe
-      //      "already exists" path; we report it the same way.
-      //   3. Reject if `cwd` itself isn't a directory or isn't
-      //      writable — the operator presumably ran sk in the wrong
-      //      place.
       try {
         const cwdStat = fs.lstatSync(cwd);
         if (!cwdStat.isDirectory()) {
@@ -807,9 +603,7 @@ export async function handleSlash(
           return `${path} is a symlink — refusing to write (remove or point at a regular file)`;
         }
         return `${path} already exists`;
-      } catch {
-        // ENOENT — fall through to create.
-      }
+      } catch {}
       const starter = [
         `# Memory — ${new Date().toISOString().slice(0, 10)}`,
         "",
@@ -825,8 +619,6 @@ export async function handleSlash(
         "",
       ].join("\n");
       try {
-        // `wx` = write, fail if exists. Atomic + symlink-safe via
-        // open(2) O_CREAT|O_EXCL semantics.
         fs.writeFileSync(path, starter, { encoding: "utf8", flag: "wx" });
         return `wrote ${path}`;
       } catch (err) {
@@ -835,12 +627,6 @@ export async function handleSlash(
     }
     case "config":
     case "usage": {
-      // Deep-link into the SettingsModal on the matching tab for
-      // `/config`, `/usage`. Status is the default landing,
-      // so `/settings` alone (handled in case "settings" below) also
-      // works. The legacy `config-form` 4-field user-settings prompt
-      // moved to `/config-form` so this slot can host the full Config
-      // tab (every engine leaf, searchable).
       const initialTab = dispatchName === "config" ? "Config" : "Usage";
       if (ctx.openPane) {
         ctx.openPane({ kind: "settings", initialTab });
@@ -849,8 +635,6 @@ export async function handleSlash(
       return `open \`sk\` with the Ink REPL to use /${dispatchName}, or edit ${join(homedir(), ".sk", "settings.json")} directly`;
     }
     case "config-form": {
-      // Original 4-field user-settings prompt — kept for scripted /
-      // muscle-memory use; the full Config surface lives behind /config.
       if (ctx.openPane) {
         const current = loadSettings(process.cwd()).merged;
         ctx.openPane({
@@ -932,36 +716,29 @@ export async function handleSlash(
       const profileNames = Object.keys(cfg.profiles);
       const subArg = rawArgs[0];
 
-      // /profile add → redirect outside REPL
       if (subArg === "add") {
         return "run 'sk profile add' outside the REPL to create a new profile";
       }
 
-      // /profile <name> → switch
       if (subArg && profileNames.includes(subArg)) {
         if (ctx.switchProfile) {
           return await ctx.switchProfile(subArg);
         }
-        // Fallback: persist the switch but can't re-wire the client in-flight
         cfg.active_profile = subArg;
         saveConfig(cfg, ctx.configPath);
         return `switched to "${subArg}" — restart sk to use the new profile`;
       }
 
-      // Unknown profile name
       if (subArg) {
         return `profile "${subArg}" not found. Available: ${profileNames.join(", ")}`;
       }
 
-      // /profile (no args, Ink host) → open the SinglePane ProfileCommand.
-      // Readline fallback (and `/env` alias) keeps the text listing.
       if (name === "profile" && ctx.openPane) {
         const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
         ctx.openPane({ kind: "profile", tenant });
         return null;
       }
 
-      // /profile (no args) → list
       const lines: string[] = ["profiles:"];
       for (const [pName, p] of Object.entries(cfg.profiles)) {
         const marker = pName === cfg.active_profile ? "*" : " ";
@@ -972,19 +749,7 @@ export async function handleSlash(
       lines.push("/profile <name> to switch · /profile add to create");
       return lines.join("\n");
     }
-    // /login, /logout, /tenant moved to handlers/auth-redirects.ts
     default: {
-      // Per-category dispatchers extracted into
-      // `apps/sk/src/repl/slash/handlers/`. The main switch above
-      // owns interactive / multi-step commands; the sub-dispatchers
-      // own the long tail of list-and-render commands and the
-      // banner-only redirects. Each returns `undefined` when the
-      // name doesn't belong to its category, so we can fall through
-      // to the next handler in priority order:
-      //   1. inspect — read-only, low-tier (/skills, /mcp, …)
-      //   2. admin-lists — read-only, admin-tier (/connectors, …)
-      //   3. install-wizards — banner redirects to `sk install <kind>`
-      //   4. auth-redirects — banner redirects to `sk login` etc.
       const inspectResult = await dispatchInspectSlash(name, ctx);
       if (inspectResult !== undefined) return inspectResult;
       const adminListResult = await dispatchAdminListSlash(name, ctx);

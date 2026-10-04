@@ -1,24 +1,3 @@
-// Integration tests for runConnectorReauthScanForTenant.
-//
-// The scan makes live HTTP probes — we use node:http createMockServer on an
-// ephemeral port so each scenario can return a real 401 or 200 without a full
-// engine execution.
-//
-// Coverage:
-//   - 401 probe (with a seeded credential) → connector flagged + 1
-//     connector.auth_failed event.
-//   - bearer connector with NO credential row → credential_missing, NOT flagged.
-//   - 200 probe (with credential) → connector stays healthy (no event, no flag).
-//   - Already-flagged connector is skipped (needs_reauth=true is excluded from
-//     the candidate selection); a second scan must NOT emit a second event.
-//   - Tenant isolation: the scan is scoped to a single tenant; a connector
-//     belonging to another tenant must not be affected.
-//   - Runtime streak escalation: 3 consecutive auth_failed scheduler runs on
-//     a schedule-bound workflow emit a level:"error" line naming workflow +
-//     connector; shorter/broken streaks and paused schedules stay silent.
-//   - Driver `mcp` is excluded outright: the sweep must not handshake a remote
-//     MCP server, and must not be the thing that parks one.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
@@ -37,20 +16,12 @@ import { logRing } from "../../observability/log-ring.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { runConnectorReauthScanForTenant } from "../connector-reauth-scan-runner.ts";
 
-// Fixed scan timestamp — the runner only uses `now` for duration logging, so a
-// frozen value keeps the test deterministic (no argless `new Date()`).
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 
 let db: TestDb;
 let tenantId: string;
 let otherTenantId: string;
 
-// Two ephemeral node:http servers (createMockServer) — one always returns 401,
-// one always returns 200. node:http is the repo's stable mock pattern; Bun.serve
-// is avoided here because, under the full-suite run, fetch can bleed across
-// concurrent Bun.serve instances and return a stray response from another
-// server. Two separate servers (rather than path routing) avoids URL-resolution
-// ambiguity: resolveUrl(base_url, "/") hits the server root regardless of path.
 let mockServer401: MockServer;
 let mockServer200: MockServer;
 let unauthBaseUrl: string;
@@ -87,10 +58,6 @@ afterAll(async () => {
   await db.cleanup();
 });
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 async function seedConnector(opts: {
   slug: string;
   tenantIdOverride?: string;
@@ -115,12 +82,6 @@ async function seedConnector(opts: {
   return c!.id;
 }
 
-/**
- * Seed a bearer credential for a connector so probeHttpConnector will
- * proceed past the credential-required guard and reach the target server.
- * Without this, the probe returns credential_missing (not credential_invalid)
- * and the connector is never flagged.
- */
 async function seedBearerCredential(opts: {
   tenantId: string;
   connectorId: string;
@@ -145,16 +106,8 @@ async function queryAuthFailedEventsForTenant(tid: string) {
     .where(and(eq(events.tenant_id, tid), eq(events.type, "connector.auth_failed")));
 }
 
-// ---------------------------------------------------------------------------
-// tests
-// ---------------------------------------------------------------------------
-
 describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
   test("connector whose probe returns 401 is flagged and emits one event", async () => {
-    // Point the connector at the always-401 server and seed a credential so
-    // probeHttpConnector proceeds past the credential-required guard and
-    // actually reaches the server, getting back a 401 that classifies as
-    // credential_invalid.
     const connectorId = await seedConnector({
       slug: "scan-401",
       base_url: unauthBaseUrl,
@@ -181,14 +134,10 @@ describe("runConnectorReauthScanForTenant — 401 connector flagged", () => {
 
 describe("runConnectorReauthScanForTenant — bearer connector with no credential", () => {
   test("connector with auth_type bearer but no credential row is not flagged (credential_missing)", async () => {
-    // Seed a bearer connector with NO credential row — the probe returns
-    // credential_missing, not credential_invalid. The runner must NOT flag it
-    // because a missing credential is not the same as a dead one.
     const connectorId = await seedConnector({
       slug: "scan-no-cred",
       base_url: unauthBaseUrl,
     });
-    // Intentionally: no seedBearerCredential call here.
 
     const eventsBefore = await queryAuthFailedEventsForTenant(tenantId);
     const countBefore = eventsBefore.length;
@@ -199,7 +148,6 @@ describe("runConnectorReauthScanForTenant — bearer connector with no credentia
     expect(rows[0]!.needs_reauth).toBe(false);
     expect(rows[0]!.auth_failed_at).toBeNull();
 
-    // No event emitted for credential_missing.
     const eventsAfter = await queryAuthFailedEventsForTenant(tenantId);
     expect(eventsAfter.length).toBe(countBefore);
   });
@@ -221,7 +169,6 @@ describe("runConnectorReauthScanForTenant — 200 connector untouched", () => {
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
     expect(rows[0]!.needs_reauth).toBe(false);
 
-    // No new event emitted.
     const eventsAfter = await queryAuthFailedEventsForTenant(tenantId);
     expect(eventsAfter.length).toBe(countBefore);
   });
@@ -229,9 +176,6 @@ describe("runConnectorReauthScanForTenant — 200 connector untouched", () => {
 
 describe("runConnectorReauthScanForTenant — already-flagged connector skipped", () => {
   test("a connector that already has needs_reauth=true is excluded from candidates and emits no second event", async () => {
-    // Insert the connector already flagged — the scan WHERE clause
-    // excludes needs_reauth=true rows, so this connector must be skipped
-    // entirely, producing no additional event.
     const connectorId = await seedConnector({
       slug: "scan-preflagged",
       base_url: unauthBaseUrl,
@@ -243,28 +187,14 @@ describe("runConnectorReauthScanForTenant — already-flagged connector skipped"
 
     await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
 
-    // Row still flagged (scan did nothing).
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
     expect(rows[0]!.needs_reauth).toBe(true);
 
-    // No new event.
     const eventsAfter = await queryAuthFailedEventsForTenant(tenantId);
     expect(eventsAfter.length).toBe(countBefore);
   });
 });
 
-// ---------------------------------------------------------------------------
-// runtime auth_failed streak escalation (second scan phase)
-// ---------------------------------------------------------------------------
-
-/**
- * Seed a schedule-bound workflow plus `failures` consecutive failed
- * scheduler executions, each with a failed request step whose error carries
- * `health: "auth_failed"` — the shape the request dispatcher persists on a
- * 401/403 (see execution/steps/request/dispatch.ts healthHintMeta).
- * `finalStatus` overrides the NEWEST execution (e.g. "succeeded" to prove a
- * recovered workflow breaks the streak).
- */
 async function seedAuthFailedStreak(opts: {
   slug: string;
   failures: number;
@@ -398,42 +328,23 @@ describe("runConnectorReauthScanForTenant — scheduled auth_failed streak", () 
 
 describe("runConnectorReauthScanForTenant — tenant isolation", () => {
   test("scan for tenant A does not affect a connector owned by tenant B", async () => {
-    // Connector belonging to the other tenant, pointing at the always-401 server.
     const otherConnectorId = await seedConnector({
       slug: "scan-other-tenant",
       base_url: unauthBaseUrl,
       tenantIdOverride: otherTenantId,
     });
-    // Seed a credential for the other tenant's connector so, if the scan
-    // incorrectly crosses the tenant boundary, the probe would reach 401
-    // and flag it — making the isolation assertion meaningful.
     await seedBearerCredential({ tenantId: otherTenantId, connectorId: otherConnectorId });
 
-    // Run scan only for tenantId (NOT otherTenantId).
     await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
 
-    // The other tenant's connector must be untouched.
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, otherConnectorId));
     expect(rows[0]!.needs_reauth).toBe(false);
     expect(rows[0]!.auth_failed_at).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// driver mcp is never probed by the sweep
-// ---------------------------------------------------------------------------
-
 describe("runConnectorReauthScanForTenant — driver mcp is excluded", () => {
   test("an enabled mcp connector gets no handshake and is not parked by the sweep", async () => {
-    // An mcp probe is a session handshake through the client pool: it clears
-    // the connector's armed backoff, negotiates `initialize`, and on failure
-    // writes last_error, arms a fresh backoff and flips health to degraded.
-    // Running that hourly against every remote a tenant registered makes the
-    // health sweep a load generator, and lets it park a server nobody called.
-    //
-    // The mock server counts hits, so this asserts the ABSENCE of outbound
-    // traffic rather than merely the absence of a recorded verdict — a driver
-    // that handshook and then swallowed the failure would still fail here.
     let hits = 0;
     const mcpServer = await createMockServer((_req, res) => {
       hits += 1;
@@ -447,11 +358,6 @@ describe("runConnectorReauthScanForTenant — driver mcp is excluded", () => {
           slug: "scan-mcp-remote",
           display_name: "scan-mcp-remote",
           driver: "mcp",
-          // MCP credentials are written and resolved under one pinned
-          // environment (MCP_CREDENTIAL_ENVIRONMENT), so the row and its
-          // credential both live in prod — otherwise the handshake would fail
-          // on a missing credential before reaching the socket and the hit
-          // count would prove nothing.
           environment: "prod",
           auth_type: "bearer",
           base_url: mcpServer.baseUrl,
@@ -477,21 +383,16 @@ describe("runConnectorReauthScanForTenant — driver mcp is excluded", () => {
       expect(hits).toBe(0);
 
       const [row] = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
-      // Not parked: no failure text, health untouched, no re-auth flag.
       expect(row!.last_error).toBeNull();
       expect(row!.health_state).toBe("ok");
       expect(row!.needs_reauth).toBe(false);
 
-      // A session row asserts a negotiated session. The sweep must not have
-      // created one, and must not have armed a backoff window.
       const sessions = await db.db
         .select()
         .from(connectorMcpSessions)
         .where(eq(connectorMcpSessions.connector_id, connectorId));
       expect(sessions).toHaveLength(0);
 
-      // The summary must SAY it skipped, so `probed: 0` cannot read as
-      // "nothing to check" on a tenant whose only remotes are MCP ones.
       const completed = logRing.tail({
         module: "scheduler",
         action: "connector_reauth_scan.completed",

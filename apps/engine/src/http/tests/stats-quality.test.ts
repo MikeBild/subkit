@@ -1,14 +1,3 @@
-// Integration tests: GET /v1/stats/quality
-//
-// Covers:
-//   1. Happy path: seeded executions with mixed statuses + failed steps with
-//      error codes + applied patch_candidates → one_shot rate, post_repair
-//      rate, failure_reasons ordering are all correct.
-//   2. NULL-SAFE success rates: zero executions in window → rates are 0,
-//      not NaN or divide-by-zero. THIS IS THE PERMANENT REGRESSION GATE —
-//      a zero-denominator must always yield 0 not NaN.
-//   3. stats:read gating: unauthenticated → 401, member role → 403.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -37,12 +26,11 @@ function genKey(): { plaintext: string; prefix: string; hash: string } {
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
 
-// Window relative to the actual test run so seeds always fall inside.
 const NOW_MS = getTestNow();
 const FROM = new Date(NOW_MS - 2 * 3_600_000).toISOString();
 const TO = new Date(NOW_MS + 3_600_000).toISOString();
 const WIN = `bucket=hour&from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`;
-const SEED_TS = new Date(NOW_MS - 1_800_000); // 30 min ago — always inside the window
+const SEED_TS = new Date(NOW_MS - 1_800_000);
 
 let workflowId = "";
 
@@ -50,7 +38,6 @@ beforeAll(async () => {
   srv = await createHttpTestServer("stats-quality");
   const db = srv.db;
 
-  // Member key for the 403 gate test.
   const [member] = await db
     .insert(users)
     .values({
@@ -70,7 +57,6 @@ beforeAll(async () => {
   });
   memberKey = mk.plaintext;
 
-  // Workflow for FK satisfaction.
   const [wf] = await db
     .insert(workflows)
     .values({
@@ -96,7 +82,6 @@ beforeAll(async () => {
 
   const base = { tenant_id: srv.tenantId, workflow_id: workflowId, workflow_version_id: wfv.id };
 
-  // Seed 3 succeeded + 2 failed executions inside the window.
   const execRows = await db
     .insert(executions)
     .values([
@@ -146,8 +131,6 @@ beforeAll(async () => {
   const [, , , failedExec1, failedExec2] = execRows;
   if (!failedExec1 || !failedExec2) throw new Error("seed failed executions missing");
 
-  // Seed execution_steps for the two failed executions with distinct error codes.
-  // failure_reasons sorts by count desc → connector_timeout (2) before validation_failed (1).
   await db.insert(executionSteps).values([
     {
       tenant_id: srv.tenantId,
@@ -175,7 +158,6 @@ beforeAll(async () => {
     },
   ]);
 
-  // Seed applied patch_candidates with outcome window closed.
   await db.insert(patchCandidates).values([
     {
       tenant_id: srv.tenantId,
@@ -226,7 +208,6 @@ describe("GET /v1/stats/quality — happy path", () => {
     const res = await adminFetch(`/v1/stats/quality?${WIN}`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { one_shot: { success_rate: number } };
-    // rate(3, 5) = round(3/5 * 1000) / 1000 = 0.6
     expect(body.one_shot.success_rate).toBeCloseTo(0.6, 3);
   });
 
@@ -237,12 +218,10 @@ describe("GET /v1/stats/quality — happy path", () => {
       failure_reasons: Array<{ code: string; count: number }>;
     };
     expect(body.failure_reasons.length).toBeGreaterThanOrEqual(2);
-    // connector_timeout appears in 2 steps; validation_failed in 1.
     const timeoutReason = body.failure_reasons.find((r) => r.code === "connector_timeout");
     const validationReason = body.failure_reasons.find((r) => r.code === "validation_failed");
     expect(timeoutReason?.count).toBe(2);
     expect(validationReason?.count).toBe(1);
-    // Ordering: higher count first.
     const timeoutIdx = body.failure_reasons.findIndex((r) => r.code === "connector_timeout");
     const validationIdx = body.failure_reasons.findIndex((r) => r.code === "validation_failed");
     expect(timeoutIdx).toBeLessThan(validationIdx);
@@ -254,10 +233,8 @@ describe("GET /v1/stats/quality — happy path", () => {
     const body = (await res.json()) as {
       post_repair: { successes: number; failures: number; success_rate: number };
     };
-    // Two patches: (3 success, 1 failure) + (2 success, 0 failure) = 5 success, 1 failure
     expect(body.post_repair.successes).toBe(5);
     expect(body.post_repair.failures).toBe(1);
-    // rate(5, 6) = round(5/6 * 1000) / 1000 = 0.833
     expect(body.post_repair.success_rate).toBeCloseTo(0.833, 2);
   });
 
@@ -272,14 +249,9 @@ describe("GET /v1/stats/quality — happy path", () => {
 });
 
 describe("GET /v1/stats/quality — NULL-SAFE zero-denominator gate (permanent regression)", () => {
-  // THIS IS THE PERMANENT SUCCESS-RATE REGRESSION GATE.
-  // A time window with no executions must return success_rate = 0,
-  // not NaN and not a division-by-zero error. If this test fails it
-  // means the rate() function regressed to (n/0) behaviour.
   test("zero executions in window → success_rates are 0, not NaN", async () => {
-    // Use a window far in the past so it contains no seeded rows.
-    const distantFrom = new Date(0).toISOString(); // 1970-01-01
-    const distantTo = new Date(1_000).toISOString(); // 1970-01-01T00:00:01Z
+    const distantFrom = new Date(0).toISOString();
+    const distantTo = new Date(1_000).toISOString();
     const emptyWin = `bucket=hour&from=${encodeURIComponent(distantFrom)}&to=${encodeURIComponent(distantTo)}`;
 
     const res = await adminFetch(`/v1/stats/quality?${emptyWin}`);
@@ -289,18 +261,15 @@ describe("GET /v1/stats/quality — NULL-SAFE zero-denominator gate (permanent r
       post_repair: { successes: number; failures: number; success_rate: number };
       failure_reasons: unknown[];
     };
-    // one_shot
     expect(body.one_shot.succeeded).toBe(0);
     expect(body.one_shot.failed).toBe(0);
     expect(body.one_shot.total).toBe(0);
     expect(Number.isNaN(body.one_shot.success_rate)).toBe(false);
     expect(body.one_shot.success_rate).toBe(0);
-    // post_repair
     expect(body.post_repair.successes).toBe(0);
     expect(body.post_repair.failures).toBe(0);
     expect(Number.isNaN(body.post_repair.success_rate)).toBe(false);
     expect(body.post_repair.success_rate).toBe(0);
-    // failure_reasons
     expect(body.failure_reasons).toHaveLength(0);
   });
 });

@@ -1,14 +1,3 @@
-// D3 — partial-accept of workflow-draft edits.
-//
-// The `apply_workflow_patch` commit_intent carries the full RFC-6902 patch
-// array proposed by edit_workflow_patch; the operator's per-op selection
-// rides on `output.approved_indices`. These tests pin the three terminal
-// outcomes through the SAME auto-persist dispatcher sk-cli, the portal, and
-// MCP all funnel through:
-//   - accept-all  → every op applied (no explicit selection)
-//   - partial     → only the accepted subset applied + skipped ops reported
-//   - decline     → nothing applied, draft byte-stable
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -43,9 +32,6 @@ function makeDraft(): DraftDocument {
         { id: "b", kind: "transform", language: "javascript", expression: "return input.input;" },
       ],
     },
-    // Seed a preview so the transform-authoring gate is satisfied for the
-    // input-only expressions the test patches in (mirrors the fixture in
-    // edit-workflow-patch.test.ts).
     latest_preview: {
       ok: true,
       summary: "seeded",
@@ -159,9 +145,7 @@ describe("auto-persist — apply_workflow_patch (D3)", () => {
     expect(data.skipped_ops[0]!.label).toContain("/steps/0/expression");
 
     const after = await loadDraft(tenant_id, conversation_id, ctx.db);
-    // Op 0 was skipped → step a keeps the original expression.
     expect(steps(after!)[0]!.expression).toBe("return input.input;");
-    // Op 1 was accepted → step b changed.
     expect(steps(after!)[1]!.expression).toBe("return { b: input.input };");
   });
 

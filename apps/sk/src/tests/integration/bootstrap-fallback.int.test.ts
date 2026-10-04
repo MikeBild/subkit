@@ -1,10 +1,3 @@
-// loadBootstrap end-to-end against the fake EngineClient.
-//
-// Exercises the resolution:
-//   1. disk cache hit → no network call
-//   2. /v1/sk/bootstrap success → cache populated
-//   3. /v1/sk/bootstrap rejection → no-grant profile-only snapshot
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,9 +16,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(cacheDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 describe("integration: bootstrap network -> cache -> fallback", () => {

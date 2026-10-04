@@ -1,18 +1,3 @@
-// Minimal line-based REPL for `sk`.
-//
-// Ships v1 as a readline loop rather than an Ink rich UI because
-// readline gives us a usable interactive surface without dragging
-// in React + ink + ink-markdown for the compiled binary. Slash
-// commands, persona-filtered /help, tool-call panels (as one-liners),
-// and approval prompts all work here; streaming markdown rendering
-// and collapsible tool panels ship with the Ink upgrade in the next
-// pass.
-//
-// The REPL is a thin orchestrator over the existing `headless` path:
-// every user turn is a fresh `runHeadless`-style call that appends a
-// message onto the current conversation. Cross-turn state lives in
-// the closure, not in persistent CLI state.
-
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
@@ -48,24 +33,18 @@ import { findSlashCommand, type PersonaProbe, renderHelp, SLASH_COMMANDS } from 
 
 export interface ReplRunOptions {
   profile: ResolvedProfile;
-  /** Optional initial prompt that runs as the first turn. */
   initialPrompt?: string;
-  /** Attach to an existing conversation (from `-c`, `-r`, or `--session-id`). */
   resumeConversationId?: string;
-  /** Force-disable SK.md injection for this session. */
   noMemory?: boolean;
-  /** Optional sinks — tests pass buffers. */
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
   stdin?: NodeJS.ReadableStream;
 }
 
-/** Small persona snapshot cached per session so the status line + slash filter render instantly. */
 interface PersonaSnapshot {
   label: string;
   allowed: Set<string>;
   probe: PersonaProbe;
-  /** Surface bootstrap freshness in /status. */
   fetchedAt: number;
   source: "network" | "cache" | "fallback";
 }
@@ -112,7 +91,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   const persona = await resolvePersona(client, opts.profile);
   const canReadSetup = persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
 
-  // Banner + status line.
   let activeDebugContext: DebugCorrelationFields | null = null;
   const currentDebugContext = (): DebugCorrelationFields | null =>
     activeDebugContext
@@ -148,18 +126,11 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   }
   line(`   type a prompt, /help for commands, /exit to leave.`);
 
-  // Session state lives in the closure across turns.
   let session: SkSessionState = initialSessionState(opts.resumeConversationId ?? null);
   if (opts.resumeConversationId) {
     line(`   resumed conversation ${opts.resumeConversationId.slice(0, 8)}`);
   }
 
-  // Idempotency guard: while the engine is processing a turn (initial
-  // prompt OR an elicitation response), a second `/approve`, `/reject`,
-  // or `/respond` is a no-op. Without this, two quick approves race to
-  // POST /respond — the second one re-resolves an already-resolved
-  // elicitation and triggers a duplicate runLoop turn (wasted tokens
-  // and a confusing UI).
   let elicitInFlight = false;
 
   const rl = readline.createInterface({
@@ -169,15 +140,12 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   });
 
   let running = true;
-  // Handle Ctrl-C: cancel any in-flight turn and reset the prompt.
   rl.on("SIGINT", async () => {
     if (session.conversationId && session.status === "running") {
       try {
         await client.cancelConversation(session.conversationId);
         writeErr("\nsk: turn cancelled\n");
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     rl.prompt();
   });
@@ -210,14 +178,10 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       traceContext(),
     );
     try {
-      // Slash dispatch.
       if (input.startsWith("/")) {
         const slashHead = input.split(/\s+/)[0] ?? "";
         const cmd = findSlashCommand(slashHead);
         if (!cmd) {
-          // Heuristic: `slashHead` like `/Users/...`, `/home/...` is a
-          // Unix path, not a slash command. Built-in slash names never
-          // contain `/`. Mirrors the Ink-app hint in ink-app.tsx.
           const looksLikePath =
             slashHead.slice(1).includes("/") ||
             slashHead.startsWith("~/") ||
@@ -253,18 +217,9 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
 
-      // Pending-elicitation routing — same contract as ink-app:
-      // while an `askUser.*` is open, plain text either resolves the
-      // elicitation or surfaces a hint. NEVER forward as a new prompt
-      // (would race the awaiting-input state and produce a phantom turn).
       if (session.pendingElicitation && session.conversationId && !elicitInFlight) {
         const intent = classifyElicitationIntent(input);
         const tool = session.pendingElicitation.tool_name;
-        // Forensic event: every keystroke that reaches the
-        // pending-elicitation branch is recorded with how it was
-        // classified. Lets a "the user typed yes but nothing happened"
-        // investigation answer "did the CLI route it as confirm? as
-        // ambiguous? as something else?" from a single log file.
         debugLog(
           "dialog.elicitation_routing",
           {
@@ -286,8 +241,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
               session.conversationId,
               session.pendingElicitation.id,
               { confirmed: intent.kind === "confirm" },
-              // `reason` is a machine-code decision token, not prose —
-              // it lands in the `decision_reason` audit column.
               intent.kind === "reject" ? "user_declined" : undefined,
               traceContext(),
             );
@@ -317,7 +270,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           }
           return;
         }
-        // Ambiguous — show a hint instead of forwarding as new prompt.
         const truncated = input.length > 80 ? `${input.slice(0, 80)}…` : input;
         const hint =
           tool === "ask_user_confirm"
@@ -329,14 +281,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
 
-      // Plain prompt → append to current conversation or create a new one.
-      // Forensic event: any prompt that reaches this branch with a
-      // recently-emitted "Reply 'yes'"-style assistant message but no
-      // pending elicitation is almost certainly hitting the silent
-      // failure mode where the engine asked for confirmation in prose
-      // without actually emitting an elicit_request. Surface a loud
-      // warning so the operator knows the next "yes" will become a
-      // phantom new prompt instead of an approval.
       const lastAssistant = lastAssistantText(session);
       const hadRecentUnresolvedIntent =
         session.pendingElicitation === null && looksLikeAssistantConfirmRequest(lastAssistant);
@@ -409,9 +353,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
             created_at: now,
             last_used_at: now,
           });
-        } catch {
-          /* local cache write is best-effort */
-        }
+        } catch {}
       } else {
         const appended = await client.appendConversationMessage(
           session.conversationId,
@@ -478,11 +420,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     }
   };
 
-  // Consume the SSE stream the engine opens after a fresh prompt turn.
-  // Applies each frame to `session` (closure-mutated) and emits the
-  // per-event lines via `renderFrame`. Errors in frame parsing are
-  // logged + reported once per turn so a malformed frame can't silently
-  // freeze the UI.
   const streamUntilDone = async (
     input_kind: "slash" | "prompt",
     traceContext: () => DebugCorrelationFields,
@@ -504,11 +441,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           verbose ? { event: ev } : { event_type: ev.type },
           traceContext(),
         );
-        // Forensic event: every elicit_request that crosses the wire
-        // is recorded with the originating tool_call_id and shape.
-        // Bookends the engine-side `elicitation.created` log so a
-        // "did the prompt actually reach the CLI?" question is one
-        // grep away across both halves of the trace.
         if (ev.type === "elicit_request") {
           const inputKind =
             ev.input && typeof ev.input === "object" && ev.input !== null
@@ -548,11 +480,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     finishTurnRender(session, line);
   };
 
-  // Apply the synchronous events array that POST /respond returns. The
-  // /respond route runs the next runLoop turn inline and returns its
-  // events in the response body — there is no SSE stream for this path.
-  // Without applying these events the slash-command handlers fell silent
-  // after sending the response (the readline-path silent-hang).
   const applyTurnEvents = (events: unknown[], traceContext: () => DebugCorrelationFields): void => {
     const verbose = isDebugVerbose();
     for (const raw of events) {
@@ -593,7 +520,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         allowedPermissions: Array.from(persona.allowed),
         statusSnapshot: await client.statusSummary().catch(() => null),
         setupSnapshot: canReadSetup ? await client.setupValidation().catch(() => null) : null,
-        // Pass bootstrap freshness through so /status surfaces it.
         bootstrapSnapshot: {
           fetchedAt: persona.fetchedAt,
           source: persona.source,
@@ -790,10 +716,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           );
           return;
         }
-        // Operator-typed free text from `/reject <reason>`. It is user
-        // feedback, not a machine code, so it travels in the `output`
-        // payload — `decision_reason` (the `reason` arg) only ever
-        // carries the stable `user_declined` token.
         const feedback = args.slice(1).join(" ") || undefined;
         elicitInFlight = true;
         try {
@@ -860,7 +782,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         return;
       }
       case "init": {
-        // Write a starter SK.md in cwd if none exists.
         const path = join(process.cwd(), "SK.md");
         try {
           const fs = await import("node:fs");
@@ -916,7 +837,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
     }
   };
 
-  // Drain any initial prompt.
   if (bufferedPrompts.length > 0) {
     for (const p of bufferedPrompts) {
       await runTurn(p);
@@ -939,6 +859,4 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   return 0;
 }
 
-// Exported for the /help command so tests can verify the registry
-// wiring without instantiating a full REPL.
 export { SLASH_COMMANDS };

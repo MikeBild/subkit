@@ -1,8 +1,3 @@
-// askUser.choice prompt — single-select from a list of options.
-// Renders the question + options, with the focused option highlighted.
-// Digit keys (1-9) and arrow+Enter both select. The host injects
-// `onResponse` to resume the loop.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
@@ -17,8 +12,6 @@ export interface ChoiceOption {
 export interface ChoicePromptProps {
   question: string;
   options: ChoiceOption[];
-  /** Optional pre-selected option value — the cursor starts on it so
-   *  the user confirms with one keypress. */
   defaultValue?: string | undefined;
   onResponse: (value: { value: string }) => void;
   inputDisabled?: boolean | undefined;

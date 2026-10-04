@@ -12,7 +12,6 @@ const mime = (headers = "", to = "recipient@example.test", text = "Report") => (
     `From: sender@example.test\r\nTo: ${to}\r\nSubject: Today's report\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8${headers}\r\n\r\n${text}`,
   ).toString("base64url"),
 });
-/** The accepted inspection, or null when the profile refused the message. */
 const observed = (body: unknown) => {
   const inspection = inspectReportMessage(body);
   return inspection.ok ? inspection : null;
@@ -134,8 +133,6 @@ test("Unicode report MIME uses the UTF-8 encoder; byte truncation is rejected", 
   expect(observed({ raw: truncated.output })).toBeNull();
 });
 
-// ── The report profile, case by case ──────────────────────────────────────
-
 const encode = (message: string) => ({ raw: Buffer.from(message).toString("base64url") });
 const envelope = (fields: string[], body: string) =>
   encode(`${fields.join("\r\n")}\r\n\r\n${body}`);
@@ -175,7 +172,6 @@ test("a named mailbox is accepted and compared by its address alone", () => {
     "Upraft Auth <sender@example.test>",
     "Ops-Team daily <sender@example.test>",
     "O'Brien & Sons+Co <sender@example.test>",
-    // An encoded word is atext throughout; the name is shown, never compared.
     "=?UTF-8?B?w4Q=?= <sender@example.test>",
   ])
     expect(observed(envelope(fields({ From: from }), "x"))?.boundary.from).toBe(
@@ -203,9 +199,6 @@ test("a named mailbox is accepted and compared by its address alone", () => {
 });
 
 test("an unquoted display name is atext and spaces only, so it cannot carry structure", () => {
-  // Each of these names a mailbox besides the one in angle brackets, or
-  // hides one in a comment: RFC 5322 group syntax, a comment, an address
-  // in the name, an obsolete route, a quoted-pair, a dotted phrase.
   for (const to of [
     "Team: attacker@evil.example; <recipient@example.test>",
     "Team: <recipient@example.test>",
@@ -229,7 +222,6 @@ test("an unquoted display name is atext and spaces only, so it cannot carry stru
       from,
       "sender_invalid",
     ]);
-  // The separator before the angle bracket may still be a tab.
   expect(
     observed(envelope(fields({ To: "Ops Team\t<recipient@example.test>" }), "x"))?.boundary,
   ).toEqual(boundary);
@@ -244,8 +236,6 @@ test("sk.buildMimeMessage keeps a display name ASCII, so every name it writes is
     });
   const named = await build("Upraft Auth <sender@example.test>");
   expect(observed(named.output!)?.boundary.from).toBe("sender@example.test");
-  // A non-ASCII name is refused by the helper itself, never encoded into an
-  // address field the review would have to decode.
   await expect(build("Größe <sender@example.test>")).rejects.toThrow("from must be ASCII");
 });
 
@@ -260,7 +250,6 @@ test("a subject folds only into whole encoded words", () => {
     `${words[0]}\r\n  ${words[1]}`,
   ])
     expect(reasonOf(envelope(fields({ Subject: subject }), "x"))).toBe("header_folded");
-  // Folding anywhere else is refused, whatever it continues with.
   expect(reasonOf(envelope(fields({ To: `recipient@example.test\r\n ${words[0]}` }), "x"))).toBe(
     "header_folded",
   );
@@ -293,13 +282,11 @@ test("sk.buildMimeMessage reports pass in every shape the profile names", async 
     subject: "Upraft Auth: login – Prüfung ok",
     text: "<p>Prüfung ok</p>",
   });
-  // A subject long enough to fold across several encoded words.
   const long = "Wöchentlicher Bericht — ".repeat(6);
   expect(observed(await build({ ...base, subject: long, text: "plain" }))?.subject).toBe(long);
   expect(
     observed(await build({ ...base, subject: "x", text: "plain" }))?.boundary.content_type,
   ).toBe("text/plain");
-  // What buildMimeMessage can also emit stays outside the review.
   for (const [extra, reason] of [
     [{ cc: "cc@example.test" }, "header_not_allowed"],
     [{ bcc: "bcc@example.test" }, "header_not_allowed"],
@@ -409,10 +396,6 @@ test("each refusal names its own rule", () => {
 });
 
 test("the byte-per-character encoder breaks a report in two different ways", async () => {
-  // `—` (U+2014) keeps only its low byte 0x14, a control byte that still
-  // decodes as UTF-8; `·` (U+00B7) keeps 0xB7, which is not UTF-8 at all. The
-  // second is checked first, because the message is decoded before its
-  // headers are read.
   const encodeBinary = async (message: string) =>
     (
       await runJs<string>({

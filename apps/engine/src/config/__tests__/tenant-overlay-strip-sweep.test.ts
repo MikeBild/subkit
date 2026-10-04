@@ -1,14 +1,3 @@
-// Tenant-overlay strip sweep — for every leaf in ConfigSchema with
-// scope: "global", a tenant overlay attempting to set it must:
-//
-//   1. Throw ScopeViolationError on PUT via setConfigKey({tenantId, ...})
-//   2. Be silently dropped (with a structured warn) if hand-injected
-//      into the file's `tenants:` section
-//
-// Sweeps every non-tenant-scope leaf. Catches a regression where the
-// overlay parser's strip logic misses a leaf path, leaking a global
-// setting under a tenant ID.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,9 +21,7 @@ function attach(
       if (!t.startsWith("{")) continue;
       try {
         buf.push(JSON.parse(t));
-      } catch {
-        /* not JSON */
-      }
+      } catch {}
     }
     return orig(chunk);
   }) as typeof process.stdout.write;
@@ -72,13 +59,7 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
     });
     const failures: string[] = [];
     for (const leaf of GLOBAL_LEAVES.slice(0, 30)) {
-      // 30 covers a representative sample across every section; full
-      // sweep would just be a slow restate of the same code path.
       try {
-        // A structural leaf is written as one whole value; "x" is a type error
-        // for it, not a narrow value. The sweep used to hand every leaf a string
-        // because `auth.providers` — the only json leaf at the time — is global
-        // and never reached this tenant-scoped loop.
         const probe =
           leaf.kind === "boolean"
             ? true
@@ -114,9 +95,6 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
           value = true;
           break;
         case "number": {
-          // Walk a candidate ladder for leaves with higher min() bounds
-          // (web-scraper max_chars_*, robots_cache.ttl_ms) or
-          // tight max() bounds (min_runs_before_proposing max 50).
           const tagN = salt++;
           const candidatesN = [
             Math.max(1, Math.min(50, tagN + 1)),
@@ -136,9 +114,6 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
           break;
         }
         case "string": {
-          // Walk a candidate list so regex-restricted leaves (e.g.
-          // notifications.push.quietHours*) pass without baking path
-          // knowledge into this test.
           const tag = `tenant-${salt++}`;
           const candidates = [tag, "00:00", ""];
           value = tag;
@@ -158,7 +133,6 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
           value = [`tenant-${salt++}`];
           break;
         case "json":
-          // Whole-value leaf: a generated string is a type error for it.
           value = structuralProbe(dotted);
           break;
         default:
@@ -174,14 +148,11 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
   });
 
   test("hand-injected non-tenant key in the on-disk overlay is dropped at merge with a warn log", async () => {
-    // Pre-write a config file with a global-scoped leaf inside a tenant overlay.
     const handCrafted = {
       database: { url: "postgres://x" },
       tenants: {
         "tenant-z": {
-          // server.port is global-scoped — must be ignored at merge.
           server: { port: 5555 },
-          // valid tenant-scoped leaf — must survive the merge.
           llm: { provider: "anthropic" },
         },
       },
@@ -193,22 +164,12 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
       configPathOverride: cfgPath,
     });
     const { getConfig } = await import("../loader.ts");
-    // The tenant view should NOT carry server.port=5555 — global is unchanged.
     expect(getConfig("tenant-z").server.port).toBe(3000);
-    // The valid tenant leaf survives.
     expect(getConfig("tenant-z").llm.provider).toBe("anthropic");
-    // Global view is untouched.
     expect(getConfig().llm.provider).toBe("mock");
   });
 });
 
-/**
- * A valid whole value for a structural leaf, by path.
- *
- * Structural leaves are validated atomically, so a generic probe cannot stand
- * in for one. Adding a structural leaf without adding its probe fails here
- * with a sentence rather than a type error nobody can place.
- */
 function structuralProbe(dotted: string): unknown {
   const probes: Record<string, unknown> = {
     "auth.providers": [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }],

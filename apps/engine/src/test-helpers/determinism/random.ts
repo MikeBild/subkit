@@ -1,16 +1,8 @@
-// Seeded PRNG for tests. mulberry32 — 32-bit state, good distribution,
-// fast, trivial to port. Same seed → same sequence.
-
 export interface SeededRandom {
-  /** Uniform float in [0, 1). */
   float(): number;
-  /** Uniform integer in [min, max] inclusive. */
   int(min: number, max: number): number;
-  /** Pick one element from a non-empty array. */
   pick<T>(xs: readonly T[]): T;
-  /** Deterministic byte sequence (length `n`). */
   bytes(n: number): Uint8Array;
-  /** Reset state to initial seed. */
   reset(): void;
 }
 
@@ -49,8 +41,6 @@ export function createSeededRandom(seed: number): SeededRandom {
   };
 }
 
-/** Read a deterministic seed from env (for subprocess / CI consistency).
- *  Falls back to the argument so tests can pin their own seed. */
 export function seedFromEnv(fallback = 1): number {
   const raw = process.env.SUBKIT_DETERMINISTIC_SEED;
   if (!raw) return fallback;

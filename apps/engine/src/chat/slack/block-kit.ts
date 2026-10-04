@@ -1,7 +1,3 @@
-// Block Kit renderers for the Slack adapter.
-//
-// Kept small and deterministic so tests can assert on exact JSON.
-
 import { encodeInteractionEnvelope } from "../api.ts";
 import type { ApprovalCard, ChatDelivery, ChatElicitation, ElicitationField } from "../types.ts";
 
@@ -56,36 +52,6 @@ export function renderApprovalBlocks(card: ApprovalCard): SlackBlock[] {
   ];
 }
 
-// ---------------------------------------------------------------------------
-// Native elicitation rendering
-// ---------------------------------------------------------------------------
-//
-// Action-id / value convention used across these renderers and parsed by
-// `SlackAdapter.receive()` + the dispatcher's interaction branch:
-//
-//   confirm  → action_id `elicit:<elic_id>:confirm`, value JSON
-//              `{"c":"<conversation_id>","o":{"confirmed":true|false}}`
-//   choice   → action_id `elicit:<elic_id>:choice`, value JSON
-//              `{"c":"<conversation_id>","o":{"value":"<selected>"}}`
-//   multi    → action_id `elicit:<elic_id>:multi:submit`, value JSON
-//              `{"c":"<conversation_id>","o":{"values":["a","b"]}}`
-//              (Slack interaction posts include all `selected_options`;
-//              the adapter re-encodes them into `values` for the
-//              dispatcher.)
-//   text/form → action_id `open_elicit:<elic_id>`, value JSON
-//              `{"c":"<conversation_id>"}`; clicking it produces a
-//              `trigger_id` the route uses to open a modal.
-//
-// The same JSON envelope keeps the dispatcher provider-agnostic: it
-// just JSON-parses `interaction.value` and forwards `o` to
-// `respondElicitation`.
-
-/**
- * Returns the inline interactive blocks for elicitations that don't need a
- * modal. Used for `confirm`, `choice`, `multi`. Returns `null` for kinds that
- * require a modal (`text`, `form`) — the caller renders the "Antworten"
- * opener for those instead via `renderOpenFormBlocks`.
- */
 export function renderInlineElicitationBlocks(elicitation: ChatElicitation): SlackBlock[] | null {
   const header: SlackBlock[] = [
     { type: "section", text: { type: "mrkdwn", text: `*${elicitation.summary}*` } },
@@ -122,8 +88,6 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
 
   if (elicitation.kind === "choice") {
     const options = elicitation.options ?? [];
-    // Up to 5 choices render as buttons (fits an `actions` block); more
-    // than 5 use a `static_select` so the layout stays sane.
     if (options.length === 0) return header;
     if (options.length <= 5) {
       return [
@@ -161,10 +125,6 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
 
   if (elicitation.kind === "multi") {
     const options = elicitation.options ?? [];
-    // Slack `checkboxes` element collects the selections; a Submit
-    // button closes the interaction. The Submit button carries the
-    // conversation_id; the dispatcher re-reads the `selected_options`
-    // from the `block_actions` payload to assemble `values`.
     return [
       ...header,
       {
@@ -199,11 +159,6 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
   return null;
 }
 
-/**
- * Renders the "Open" message-with-button for `text` / `form` elicitations.
- * The click produces a fresh `trigger_id`, which the HTTP route handler
- * uses to call `views.open` synchronously within Slack's ~3 s window.
- */
 export function renderOpenFormBlocks(elicitation: ChatElicitation): SlackBlock[] {
   return [
     { type: "section", text: { type: "mrkdwn", text: `*${elicitation.summary}*` } },
@@ -227,9 +182,6 @@ export function renderOpenFormBlocks(elicitation: ChatElicitation): SlackBlock[]
 }
 
 function fieldToInputBlock(field: ElicitationField): SlackBlock {
-  // All input blocks share an outer block_id of `field:<name>`; the
-  // dispatcher reads `view.state.values["field:<name>"]["el:<name>"]`
-  // to recover each answer regardless of the chosen element type.
   const block_id = `field:${field.name}`;
   const action_id = `el:${field.name}`;
   const labelText = field.label ?? field.name;
@@ -281,9 +233,6 @@ function fieldToInputBlock(field: ElicitationField): SlackBlock {
     };
   }
 
-  // text / textarea / number / email all map to plain_text_input. Slack
-  // has no dedicated number/email input; we keep the typed answer in
-  // form_values as a string and downstream code coerces if needed.
   return {
     type: "input",
     block_id,
@@ -301,11 +250,6 @@ function fieldToInputBlock(field: ElicitationField): SlackBlock {
   };
 }
 
-/**
- * Build a Slack `views.open` modal view for a `text` or `form`
- * elicitation. A `text` elicitation degenerates to a single-field form
- * with one `plain_text_input` so the same code path handles both.
- */
 export function buildElicitationModal(elicitation: ChatElicitation): SlackView {
   const fields: ElicitationField[] =
     elicitation.kind === "text"
@@ -322,8 +266,6 @@ export function buildElicitationModal(elicitation: ChatElicitation): SlackView {
     title: { type: "plain_text", text: elicitation.summary.slice(0, 24) || "Antworten" },
     submit: { type: "plain_text", text: "Senden" },
     close: { type: "plain_text", text: "Abbrechen" },
-    // Round-trips conversation_id + elicitation_id through view.submission
-    // so the worker can resume the right turn without a DB lookup.
     private_metadata: JSON.stringify({
       c: elicitation.conversation_id,
       e: elicitation.id,

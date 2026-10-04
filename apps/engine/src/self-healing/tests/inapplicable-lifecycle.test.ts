@@ -1,22 +1,3 @@
-// A repair the current workflow version cannot take is closed, not parked.
-//
-// Production held 48 `proposed` candidates that no human could ever decide:
-// readiness runs the same apply as approve, and for these the apply ended
-// `no_change` or `patch_not_applicable`. Every failure branch logged and left
-// the row `proposed` ("park for review"), and the proactive refresh bumped its
-// `updated_at` every day, so the queue never shrank and the log repeated the
-// same warning ninety times a day.
-//
-// Pinned here:
-//   1. the auto-apply failure branch closes a `no_change` candidate as
-//      `inapplicable`, with the reason, the version and a system audit row;
-//   2. the same drift on the same version is deduped against that closure —
-//      no new row, no repair LLM call;
-//   3. a NEW workflow version re-opens evaluation — a fresh proposal lands;
-//   4. the per-tenant sweep closes only what readiness proves undecidable and
-//      leaves every other row (and its `updated_at`) alone;
-//   5. a manual approve that cannot be performed closes the candidate too.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -54,8 +35,6 @@ async function currentVersionId(): Promise<string> {
   return wf.id;
 }
 
-/** Make the seeded step already read `data.result.id` — the move the mock
- *  repair proposes then changes nothing (`no_change`). */
 async function healStepInPlace(): Promise<void> {
   const id = await currentVersionId();
   const [ver] = await ctx.testDb.db
@@ -132,8 +111,6 @@ describe("inapplicable lifecycle", () => {
     closedVersion = await currentVersionId();
     resetMetricsRegistryForTests();
 
-    // Unattended scan, default safe-patches policy. Readiness already proves
-    // `no_change`, so the row is closed before anything announces it.
     const result = await processDriftSignal(
       await proactiveSignal(),
       signalCtx(),
@@ -161,9 +138,6 @@ describe("inapplicable lifecycle", () => {
     expect(audits[0]?.reason).toBe("no_change");
     expect(audits[0]?.metadata).toMatchObject({ closed_against_version_id: closedVersion });
 
-    // Closed at birth: no "proposed" audit, no `patch.proposed` notification —
-    // a fix nobody can apply must not be announced as one — and the metric
-    // records the closure, not a parked proposal.
     const proposedAudits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -210,8 +184,6 @@ describe("inapplicable lifecycle", () => {
   });
 
   test("a new workflow version re-opens evaluation and allows a fresh proposal", async () => {
-    // A workflow edit: a new version whose step reads the pre-drift path, so
-    // the same move now changes something.
     const [v2] = await ctx.testDb.db
       .insert(workflowVersions)
       .values({
@@ -292,7 +264,6 @@ describe("inapplicable lifecycle", () => {
     expect((await byId(noChange!.id))?.closed_reason).toBe("no_change");
     expect((await byId(notApplicable!.id))?.status).toBe("inapplicable");
     expect((await byId(notApplicable!.id))?.closed_reason).toBe("patch_not_applicable");
-    // Reviewable: stays open. Step gone: not proven permanent — stays proposed.
     for (const kept of [reviewable!, stepGone!]) {
       const row = await byId(kept.id);
       expect(row?.status).toBe("proposed");
@@ -337,10 +308,6 @@ describe("inapplicable lifecycle", () => {
   });
 
   test("the refresh path closes an open candidate once its version can no longer take it", async () => {
-    // The previous test healed the current version in place, so the open
-    // candidate from the re-opened evaluation is now a `no_change`. The next
-    // scan of the same drift reaches it through the refresh path — which used
-    // to bump `updated_at` and park it again.
     const result = await processDriftSignal(
       await proactiveSignal(),
       signalCtx(),

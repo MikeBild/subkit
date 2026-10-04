@@ -1,14 +1,3 @@
-// GraphQL request step with retry + error_policy.
-//
-// Wraps each attempt in its own withEgressAudit call — every retry is a real
-// outbound request that earns its own audit row. Reuses the retry primitives
-// from retry.ts (resolveRetryPolicy / backoffMs / parseRetryAfter) and the
-// same max_attempts formula as the HTTP path: (step.max_retries ?? 4) + 1.
-//
-// After the loop, error_policy controls partial-success handling:
-//   "none" (default): gqlErrors !== null → failed (existing behavior).
-//   "all": if data is present alongside errors → succeeded with partial warn.
-
 import {
   graphqlErrorMessages,
   query as graphqlQuery,
@@ -54,9 +43,6 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-// Classify a retryable result into the two reason labels used in retry logs.
-// 429 and throttle/rate-limit body errors → "graphql_throttle"; 5xx and other
-// transient body errors → "graphql_5xx".
 function retryReason(status: number, body: unknown): "graphql_throttle" | "graphql_5xx" {
   if (status === 429) return "graphql_throttle";
   const errors = (body as { errors?: unknown } | null | undefined)?.errors;
@@ -87,17 +73,11 @@ function retryReason(status: number, body: unknown): "graphql_throttle" | "graph
 }
 
 export interface RunGraphqlWithRetryParams {
-  /** Resolved query parameters passed verbatim to each attempt's graphqlQuery. */
   queryArgs: Parameters<typeof graphqlQuery>[0];
-  /** Egress audit fields shared across attempts; credential_id filled per-call. */
   egressInput: Omit<EgressInput, "credential_id">;
-  /** Retry and error-policy fields from the step definition. */
   step: Pick<RequestStep, "max_retries" | "retry_backoff_ms" | "error_policy">;
-  /** Abort signal from the step run context. */
   signal: AbortSignal;
-  /** Timestamp when the step started (for duration_ms). */
   start: number;
-  /** Initial connector resolution summary; auth_method updated from response. */
   connectorResolution: ConnectorResolutionSummary;
 }
 
@@ -133,12 +113,6 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         err instanceof AuthorityDispatchError ||
         (err instanceof RequestError && err.cause_kind === "authority_invalid")
       ) {
-        // The governance code when the refusal carried one — the same rule the
-        // request dispatcher follows. Without it the GraphQL driver keeps the
-        // hole the HTTP one just lost: a refused dispatch filed as a generic
-        // `authority_invalid`, which `finalizeStepRow` does not audit.
-        // A redirect denial arrives as its own error class here rather than as
-        // a RequestError carrying a reason — same refusal, different wrapper.
         const reason =
           err instanceof AuthorityDispatchError
             ? "authority_redirect_denied"
@@ -155,7 +129,6 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
           }),
         };
       }
-      // Header-contract violations: non-retryable, surface as request_invalid.
       if (err instanceof HttpRequestInvalidError) {
         return {
           status: "failed",
@@ -172,14 +145,9 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
       };
     }
 
-    // Update auth_method from the response (may be oauth2_refreshed).
     connRes = { ...connRes, auth_method: raw.auth_method };
     lastRes = raw;
 
-    // Retry when the response is transient AND we have attempts left.
-    // `attempt` is 0-indexed and counts the request just made, so the loop
-    // issues at most `max_attempts` requests (1 initial + max_retries retries),
-    // matching the HTTP path (retry.ts: "5 attempts max — 1 initial + 4 retries").
     if (isGraphqlRetryable(raw.status, raw.body) && attempt < max_attempts - 1) {
       const reason = retryReason(raw.status, raw.body);
       let wait: number;
@@ -219,9 +187,6 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     };
   }
 
-  // The re-auth clearing edge (connectors/reauth.ts), as an HTTP step walks
-  // it: an answer the stored credential earned lifts the flag. A reply with
-  // `errors`, or a step that sent its own `Authorization`, proves nothing.
   await clearReauthIfProved(p.queryArgs.db, p.queryArgs.connector, {
     status: lastRes.status,
     health: classifyConnectorHealth(lastRes.status, lastRes.headers),
@@ -233,10 +198,6 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
   const httpOk = lastRes.status >= 200 && lastRes.status < 300;
   const errorPolicy = step.error_policy ?? "none";
 
-  // Best-effort success-shape recording, mirroring the HTTP/S3/pg
-  // drivers. Without it the proactive drift scanner has NOTHING to
-  // diff for GraphQL endpoints — a healthy-then-failing operation
-  // produces zero schema_versions rows and the outage stays invisible.
   const recordShape = async (value: unknown): Promise<void> => {
     if (!lastRes) return;
     try {
@@ -251,12 +212,9 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         },
         p.queryArgs.db,
       );
-    } catch {
-      // observability, not load-bearing
-    }
+    } catch {}
   };
 
-  // error_policy:"all" + data present alongside errors → partial success.
   if (errorPolicy === "all" && gqlErrors !== null && httpOk) {
     const data = (lastRes.body as { data?: unknown }).data;
     if (data !== undefined) {
@@ -294,14 +252,10 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
     }
   }
 
-  // Standard outcome: error_policy:"none" or no data alongside errors.
   const graphqlOk = httpOk && gqlErrors === null;
   if (graphqlOk) {
     await recordShape((lastRes.body as { data?: unknown }).data ?? null);
   }
-  // Schema-shaped failures (FieldUndefined / no resolver / unknown field)
-  // carry a structured envelope the drift detector can match — a bare
-  // {code, message} string is invisible to self-healing.
   const schemaVerdict = graphqlOk
     ? null
     : gqlErrors

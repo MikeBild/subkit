@@ -5,27 +5,13 @@ import type { RefusedConnector } from "./state.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import type { StepErrorDetail } from "./types.ts";
 
-/** Why a connector cannot serve a run in its environment. `missing` and
- *  `too_many_references` are decided by the caller that looks the connector
- *  up; the rest are read off a connector it found. */
 export type ConnectorUnavailability =
   | "missing"
   | FoundConnectorUnavailability
   | "too_many_references";
 
-/** Why a connector that exists cannot serve. */
 export type FoundConnectorUnavailability = "disabled" | "needs_reauth" | "credential_unavailable";
 
-/**
- * The one predicate that decides whether a found connector can serve a run.
- *
- * The run dialog's pre-check (the authority preview) and the admission that
- * refuses the run with 409 both ask this, so the two can never disagree about
- * which connector is in the way or why. `credentialRequired` is the caller's
- * to state: the preview asks it for any connector with an auth type, the
- * admission also for a `{{cred.<slug>}}` placeholder on one without.
- * Metadata only — no token is decrypted and no OAuth exchange started.
- */
 export function connectorUnavailability(
   connector: { enabled: boolean; needs_reauth: boolean },
   credential: Pick<CredentialAuthorityMetadata, "available"> | null | undefined,
@@ -37,9 +23,6 @@ export function connectorUnavailability(
   return null;
 }
 
-/** What a refusal names: the step that needs the connector, the connector as
- * resolved in the run's environment, and why it cannot serve. Never a
- * credential field. */
 export interface PreparedReferenceRefusal {
   step_id: string | null;
   connector_id: string | null;
@@ -49,7 +32,6 @@ export interface PreparedReferenceRefusal {
   reason: ConnectorUnavailability;
 }
 
-/** One sentence per reason, naming the connector and the environment. */
 export function preparedReferenceRefusalMessage(refusal: PreparedReferenceRefusal): string {
   const name = `Connector "${refusal.connector_slug ?? refusal.connector_id ?? "unknown"}" in ${refusal.environment}`;
   switch (refusal.reason) {
@@ -66,25 +48,8 @@ export function preparedReferenceRefusalMessage(refusal: PreparedReferenceRefusa
   }
 }
 
-/** The step error code for a connector an operator switched off — the code a
- *  probe of the same connector already answers with. */
 export const CONNECTOR_DISABLED_CODE = "connector_disabled";
 
-/**
- * The step error for a resolved connector that is switched off, or `null`
- * when it is not. Asked through `connectorStepRefusal`, before the circuit
- * breaker is looked at: a disabled connector used to fail its calls until the
- * breaker opened, and the reader was told `circuit_open` about a remote that
- * was never the problem.
- *
- * Only `disabled` refuses here. A connector waiting for a new sign-in still
- * dispatches, because a call that succeeds is what clears that flag again —
- * refusing it would leave the flag with nothing able to lift it.
- *
- * `details` has the shape a prepared-run refusal carries, and `environment`
- * is the connector's own: the twin the run resolved to is the one to enable,
- * not the connector the definition names.
- */
 export function disabledConnectorRefusal(
   connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment" | "enabled">,
   step_id: string | null,
@@ -105,17 +70,8 @@ export function disabledConnectorRefusal(
   };
 }
 
-/** The step error code for a write that resolved to another environment's
- *  connector. */
 export const CONNECTOR_ENVIRONMENT_MISMATCH_CODE = "connector_environment_mismatch";
 
-/**
- * The step error for a write whose connector resolved to a different
- * environment than the run's, or `null`. A read keeps the fallback — it stays
- * load-bearing for single-environment tenants and a cross-environment read is
- * recoverable — but a write must not be sent through it: an author's label is
- * not permission to write into the other environment.
- */
 export function environmentMismatchRefusal(
   connector: Pick<ConnectorView, "slug" | "environment">,
   step: RequestStep,
@@ -131,17 +87,6 @@ export function environmentMismatchRefusal(
   };
 }
 
-/**
- * The refusal that actually blocks a request step on its resolved connector,
- * or `null`. Asked by the request dispatcher and by the `for_each` preflight,
- * so a fan-out fails once with the reason each iteration would have failed.
- *
- * The order is the order in which acting on the answer helps. A write that
- * resolved to the other environment's connector is refused for that first:
- * told to enable that connector, the operator would switch it on and then be
- * refused for the environment anyway. Only a connector that would otherwise
- * take the step is reported as switched off.
- */
 export function connectorStepRefusal(
   connector: Pick<ConnectorView, "id" | "slug" | "display_name" | "environment" | "enabled">,
   step: RequestStep,
@@ -153,8 +98,6 @@ export function connectorStepRefusal(
   );
 }
 
-/** The connector a step refusal named, for the run's own failure record — so
- *  a reader of the failed run can open the connector that has to be fixed. */
 export function refusedConnectorOf(error: {
   code: string;
   details?: unknown;

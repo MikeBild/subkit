@@ -1,7 +1,3 @@
-// Auth provider interfaces. The registry walks providers in priority order
-// per request and returns the first non-null Principal. Each provider is a
-// single-file plugin (see ./providers/*).
-
 export type PrincipalKind = "user" | "system_account";
 
 export type AllowList = string[] | "all";
@@ -14,18 +10,11 @@ export interface ResolvedPrincipal {
   roles: string[];
   api_key_id?: string;
   session_id?: string;
-  /** OAuth client registration this token was issued to (`mcp_oauth` only).
-   *  Credential-bound, so unlike a client's self-reported `clientInfo` it cannot
-   *  be spoofed — which is what makes it usable for per-channel decisions and
-   *  for splitting telemetry by the client that actually connected. */
   oauth_client_id?: string;
   scopes?: string[];
   allowed_workflows?: AllowList;
   allowed_connectors?: AllowList;
   email?: string;
-  /** Set when the credential was a short-lived token minted from an API key
-   *  by the RFC 8693 exchange (`auth/oauth/token-exchange.ts`). The principal
-   *  is otherwise identical to the key's; audit rows carry `via` in metadata. */
   via?: "token_exchange";
 }
 

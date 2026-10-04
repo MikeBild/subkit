@@ -1,19 +1,3 @@
-// HTTP-layer pin for the `client_suppress` body field on
-// POST /v1/conversations/:id/messages.
-//
-// The plumbing chain is:
-//   HTTP body `client_suppress: true`
-//   → AppendMessageBody (Zod) parses it
-//   → messages.ts spreads `next_suggestion_suppress: body.client_suppress`
-//   → service/append.ts forwards to runLoop
-//   → runLoop forwards p.next_suggestion_suppress to buildNextSuggestionFrame
-//   → service emits `{ suggestion: null, reason: "client-suppress" }`.
-//
-// The seam most likely to silently drop the field is the spread in
-// messages.ts. This test pins the round-trip end-to-end so a future
-// refactor of that spread cannot quietly disconnect the wiring without
-// failing CI.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import { tenantLlmSettings } from "../../db/schema/index.ts";
@@ -48,9 +32,6 @@ afterAll(async () => {
   await srv.cleanup();
 });
 
-// Tightened to import the shared SuggestNextReason / SuggestNextKind
-// unions so a typo in the engine fails this test instead of being
-// accepted as a generic string.
 interface NextSuggestionEvent {
   type: "next_suggestion";
   suggestion: string | null;
@@ -68,8 +49,6 @@ function adminHeaders(): Record<string, string> {
 describe("POST /v1/conversations/:id/messages — client_suppress wire round-trip", () => {
   test("client_suppress: true → next_suggestion frame with reason: client-suppress", async () => {
     resetMockProvider();
-    // Empty plan = mock returns `{done: true}` on first ask, the loop
-    // ends without tool calls, suggestion path runs.
     const createRes = await fetch(`${srv.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: adminHeaders(),

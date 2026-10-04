@@ -1,10 +1,3 @@
-// Unsupported-slash guidance map.
-// Asserts:
-//   * agentic-coding slashes return the rationale message
-//   * unknown-but-not-mapped slashes return null
-//   * the dispatcher integration short-circuits before unknown handlers
-//     would have produced a generic banner.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../config.ts";
@@ -22,8 +15,6 @@ describe("unsupportedSlashGuidance map", () => {
     expect(hint).toMatch(/Knowledge Sources/);
   });
 
-  // /health, /preview, /restore are registered slashes; the guidance
-  // map only covers agentic-coding slashes that subkit never ships.
   test("does NOT return guidance for still-registered slashes", () => {
     expect(unsupportedSlashGuidance("health")).toBeNull();
     expect(unsupportedSlashGuidance("preview")).toBeNull();
@@ -71,7 +62,6 @@ describe("dispatcher short-circuit for unsupported slashes", () => {
   });
 
   test("a registered slash is NOT shadowed by the guidance map", async () => {
-    // /clear is a registered local slash; it must NOT pick up guidance.
     const setConversationId = mock((_id: string | null) => {});
     const ctx: SlashHandlerContext = {
       ...makeCtx(),

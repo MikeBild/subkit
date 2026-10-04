@@ -1,13 +1,3 @@
-// operator_quirks injection contract (migration 0006 — replaces the
-// legacy `operator_notes` blob with categorized quirks).
-//
-// When a connector carries `operator_quirks`, the context assembler
-// must render an "Operator quirks" block in the stable head whenever
-// that connector is in scope. The per-turn category picker decides
-// which slots ship; this test exercises the default ("idle") path
-// where only `general` is rendered, plus the "no auth quirks while
-// transforming" invariant by switching the AuthoringPromptHint stage.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
@@ -15,7 +5,6 @@ import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
 import type { AuthoringPromptHint } from "../types.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let ctx: LlmTestCtx;

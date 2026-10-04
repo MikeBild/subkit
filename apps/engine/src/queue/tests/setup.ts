@@ -1,7 +1,3 @@
-// Spin up an isolated Postgres + pg-boss instance for queue tests.
-// Each helper returns a disposable handle so afterAll can drop the
-// database cleanly.
-
 import type { PgBoss } from "pg-boss";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../boss.ts";

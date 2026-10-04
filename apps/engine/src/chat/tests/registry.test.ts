@@ -1,7 +1,3 @@
-// Unit test for ChatAdapterRegistry — exercises the fallback
-// re-derivation when an unregister removes the per-platform fallback.
-// Pure in-memory, no DB.
-
 import { describe, expect, test } from "bun:test";
 import type { ChatAdapter } from "../adapter.ts";
 import { ChatAdapterRegistry } from "../registry.ts";
@@ -35,7 +31,6 @@ describe("ChatAdapterRegistry.unregister", () => {
     expect(r.findVerifier("slack")).toBe(a);
 
     r.unregister({ tenant_id: "t1", platform: "slack", workspace_id: "T_A" });
-    // Fallback was `a` but `a` is gone; b should be promoted.
     expect(r.findVerifier("slack")).toBe(b);
   });
 

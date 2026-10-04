@@ -1,17 +1,3 @@
-// Unit tests for the Run → Drift → Patch → Skill loop-closure metric
-// instrumentation. Calls the four wrappers directly — no DB,
-// no Docker, no LLM. Each test resets the registry so samples don't bleed
-// across cases.
-//
-// Histogram snapshot shape (from metrics.ts snapshot()):
-//   series.name  === "<base_name>"
-//   samples[].name === "<base_name>_bucket" | "<base_name>_sum" | "<base_name>_count"
-//   _count sample .value === number of observe() calls recorded
-//
-// Buckets for LOOP_DRIFT_TO_SKILL_LAG_SECONDS are cumulative per the
-// Prometheus text-exposition spec — `_bucket{le="X"}` counts all
-// observations ≤ X.
-
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
   recordAuthoringContextSkillsUsed,
@@ -20,10 +6,6 @@ import {
   recordLoopSkillCandidatePromoted,
 } from "../instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function counterSample(metricName: string, labels: Record<string, string>): number | undefined {
   const snap = getMetrics().snapshot();
@@ -35,7 +17,6 @@ function counterSample(metricName: string, labels: Record<string, string>): numb
   return sample?.value;
 }
 
-/** Returns the `_count` value for a histogram series (total observations recorded). */
 function histogramCount(metricName: string, labels: Record<string, string>): number {
   const snap = getMetrics().snapshot();
   const series = snap.find((s) => s.name === metricName);
@@ -48,7 +29,6 @@ function histogramCount(metricName: string, labels: Record<string, string>): num
   return countSample?.value ?? 0;
 }
 
-/** Returns the `_sum` value for a histogram series. */
 function histogramSum(metricName: string, labels: Record<string, string>): number {
   const snap = getMetrics().snapshot();
   const series = snap.find((s) => s.name === metricName);
@@ -59,10 +39,6 @@ function histogramSum(metricName: string, labels: Record<string, string>): numbe
   );
   return sumSample?.value ?? 0;
 }
-
-// ---------------------------------------------------------------------------
-// Test suite
-// ---------------------------------------------------------------------------
 
 beforeEach(() => {
   resetMetricsRegistryForTests();
@@ -293,8 +269,6 @@ describe("recordLoopSkillCandidatePromoted", () => {
     });
     const snap = getMetrics().snapshot();
     const series = snap.find((s) => s.name === METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS);
-    // The first bucket that covers 120s is le=300 (second bucket: [60,300,...]).
-    // le=60 should be 0 (120 > 60), le=300 should be 1 (120 ≤ 300).
     const le60 = series?.samples.find(
       (s) =>
         s.name === `${METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS}_bucket` &&
@@ -316,14 +290,12 @@ describe("recordLoopSkillCandidatePromoted", () => {
       tenant_id: "tenant-a",
       source: "auto-suggested",
     });
-    // Counter must still increment.
     expect(
       counterSample(METRIC_NAMES.LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL, {
         tenant_id: "tenant-a",
         source: "auto-suggested",
       }),
     ).toBe(1);
-    // Histogram must have zero observations (no _count sample for this tenant).
     expect(
       histogramCount(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS, {
         tenant_id: "tenant-a",
@@ -433,10 +405,6 @@ describe("METRIC_NAMES catalog entries for the loop-closure series", () => {
   it("lag histogram is registered with the correct bucket boundaries", () => {
     resetMetricsRegistryForTests();
     const text = getMetrics().render();
-    // The LOOP_LAG_BUCKETS_SECONDS are [60,300,1800,3600,21600,86400,604800].
-    // After a reset with no observations, render() emits a zero sample line;
-    // the histogram bucket lines only appear after at least one observe() call.
-    // Confirm the series name appears in the rendered output.
     expect(text).toContain(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS);
   });
 });

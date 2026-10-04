@@ -62,7 +62,6 @@ describe("knowledge/parsers", () => {
       expect(detectFormat("noext", "application/gzip")).toBe("gzip");
       expect(isBinaryFormat("zip")).toBe(true);
       expect(isBinaryFormat("gzip")).toBe(true);
-      // Office MIMEs must never be shadowed by the archive branches.
       expect(
         detectFormat(
           "noext",

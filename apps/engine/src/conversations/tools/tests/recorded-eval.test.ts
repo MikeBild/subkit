@@ -1,11 +1,3 @@
-// Unit tests for the recorded-evaluation pass (Fix 9, session
-// 784c1b02). `runRecordedEval` is pure compute over the candidate
-// workflow + recorded evidence: JSONata compile with caret errors,
-// fingerprint-checked scope-ref resolution, transform evaluation
-// against recorded scope, and the loop/transform gate verdicts — all
-// as OUTCOMES in one report, never as call-bouncing preconditions and
-// never with live HTTP.
-
 import { describe, expect, test } from "bun:test";
 import { runRecordedEval } from "../../recorded-eval.ts";
 import { stepFingerprint } from "../../step-fingerprint.ts";
@@ -56,7 +48,6 @@ describe("runRecordedEval — compile findings", () => {
     );
     const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
     expect(finding?.status).toBe("compile_error");
-    // The QuickJS parse check surfaces a non-empty error message.
     expect(typeof finding?.message).toBe("string");
     expect((finding?.message ?? "").length).toBeGreaterThan(0);
     expect(report.ok).toBe(false);
@@ -113,7 +104,6 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
     expect(finding?.status).toBe("empty_result");
     expect(finding?.path_candidates).toContain("input.scope.fetch.data.items");
     expect(report.ok).toBe(false);
-    // JS empty results steer back to dry_run_transform, not the JSONata path tool.
     expect(report.next_actions).toContain("dry_run_transform");
     expect(report.next_actions).not.toContain("suggest_jsonata_paths");
   });
@@ -124,8 +114,6 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
       { ...fetch, url: "https://example.com/OLD" },
       { items: [{ name: "Ada" }] },
     );
-    // The trace's step_id is still "fetch" but its fingerprint was
-    // recorded against a different definition.
     const report = await runRecordedEval(
       {
         steps: [
@@ -143,9 +131,6 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
     const ref = report.scope_refs.find(
       (r) => r.site === "steps.shape.expression" && r.referenced_step_id === "fetch",
     );
-    // Staleness is carried by the language-aware scope-ref classification:
-    // the JS body's `input.scope.fetch` ref resolves to a fingerprint-
-    // mismatched trace, so the site is not evaluated against stale evidence.
     expect(ref?.evidence).toBe("stale");
     const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
     expect(finding?.status).toBe("not_evaluated");
@@ -153,14 +138,6 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
 });
 
 describe("runRecordedEval — bare-iteration-identifier lint", () => {
-  // NOTE: the bare-`item` JSONata lint was retired for transform sites when
-  // transforms became JavaScript-only — a JS body addresses the iteration
-  // item through its own scope (`input.scope.$item`), so there is no bare
-  // JSONata `item` to lint inside a transform. The lint now owns only the
-  // `branch.when` / `loop.over` JSONata slots. The two former transform-site
-  // lint cases were deleted with
-  // that change.
-
   test("a bare iteration identifier in a `branch.when` JSONata slot is still linted", async () => {
     const fetch = fetchStep();
     const report = await runRecordedEval(
@@ -252,7 +229,6 @@ describe("runRecordedEval — gate verdicts as outcomes", () => {
     );
     const finding = report.expressions.find((f) => f.site === "steps.b.expression");
     expect(finding?.status).toBe("not_evaluated");
-    // The loop's own `over` IS evaluable against the recorded scope.
     const over = report.expressions.find((f) => f.site === "steps.iter.over");
     expect(over?.status).toBe("ok");
   });

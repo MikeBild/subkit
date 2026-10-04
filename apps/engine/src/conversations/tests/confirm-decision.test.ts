@@ -1,12 +1,3 @@
-// Confirm-answer interpretation is one source of truth across every
-// surface. Regression guard for the portal-approval bug: the web portal
-// posts `{ approved: true }`, but the auto-persist write gate used to
-// require `{ confirmed: true }` — so an explicitly-approved
-// `save_workflow_draft` was injected back to the LLM as `user_declined`
-// and the workflow never committed. These tests pin the three readers
-// (interpreter, checkDecline, validateElicitationAnswer) to the same
-// decision for the full matrix of confirm shapes.
-
 import { describe, expect, test } from "bun:test";
 import { checkDecline } from "../persistence/auto-persist/synthetic.ts";
 import {
@@ -17,12 +8,12 @@ import { validateElicitationAnswer } from "../tools/ask-user/validate-answer.ts"
 
 describe("interpretConfirmDecision", () => {
   const cases: Array<[unknown, ConfirmDecision]> = [
-    [{ confirmed: true }, "confirmed"], // MCP / sk-cli canonical
-    [{ approved: true }, "confirmed"], // web portal spelling (the bug)
+    [{ confirmed: true }, "confirmed"],
+    [{ approved: true }, "confirmed"],
     [{ confirmed: false }, "declined"],
-    [{ approved: false }, "declined"], // portal decline spelling
+    [{ approved: false }, "declined"],
     [{ declined: true }, "declined"],
-    [{ confirmed: true, declined: true }, "declined"], // decline wins
+    [{ confirmed: true, declined: true }, "declined"],
     [{}, "ambiguous"],
     [{ tested: true }, "ambiguous"],
     [null, "ambiguous"],
@@ -74,9 +65,6 @@ describe("checkDecline(ask_user_confirm) matches the interpreter", () => {
     });
   });
 
-  // Structural guarantee: a confirm clears the write gate iff the shared
-  // interpreter reads it as "confirmed". This is what makes the log-side
-  // mirror and the write-side gate impossible to diverge again.
   test("write gate clears iff interpreter says confirmed", () => {
     for (const out of [
       { confirmed: true },

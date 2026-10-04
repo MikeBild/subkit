@@ -1,7 +1,3 @@
-// Identity-specific zod schemas. Shared schemas that apply to more than
-// one subsystem (ErrorSchema, PaginationQuery, IdParam) live in
-// `apps/engine/src/api/common-schemas.ts`.
-
 import { z } from "@hono/zod-openapi";
 
 export const TenantSchema = z
@@ -21,8 +17,6 @@ export const UserSchema = z
     email: z.string(),
     role: z.string().nullable(),
     status: z.enum(["invited", "active", "disabled"]),
-    /** Live MCP connections this person approved. Withdrawing them ends
-     *  exactly this many, which is what the Cockpit says before it asks. */
     oauth_connections: z.number().int().nonnegative(),
     created_at: z.string(),
     updated_at: z.string(),

@@ -1,20 +1,3 @@
-// End-to-end webhook trigger test.
-//
-// Drives an inbound `charge.failed` Stripe event through the executor
-// pipeline against a workflow whose definition declares
-// `trigger: { kind: "webhook", source: "stripe", verify: "stripe-signature" }`.
-//
-// Asserts:
-//   * the Stripe verifier accepts a properly-signed body
-//   * an unsigned (or wrong-signature) body is rejected and emits
-//     `webhook.trigger.failed_verification`
-//   * a duplicate event id is deduped (replay protection) and emits
-//     `webhook.trigger.failed_verification` with reason `replay_dedup`
-//   * the success path emits `webhook.trigger.fired` with
-//     `event_id` + `event_type` + `execution_id` metadata
-//   * the workflow runs and the `request` step's stub fetch lands an
-//     HTTP POST shaped like a Slack chat.postMessage call
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -37,10 +20,6 @@ const SECRET = "whsec_stripe_charge_failed_aaaaaaaaaaaaaaaa";
 let ctx: InboundTestCtx;
 let inboundId: string;
 const slackPosts: Array<{ url: string; body: unknown; headers: Record<string, string> }> = [];
-// Real HTTP stub server (NOT a fetch mock): the workflow executes inside
-// the queue handler's async context, where a test-scoped fetch override
-// cannot reach — and a global fetch stub leaks into concurrently-running
-// sibling test files. A loopback server is context-free and leak-free.
 let slackServer: ReturnType<typeof Bun.serve>;
 let slackBaseUrl = "";
 
@@ -74,7 +53,6 @@ function buildChargeFailedBody(eventId: string): string {
 beforeAll(async () => {
   slackServer = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     fetch: async (req) => {
       const headers: Record<string, string> = {};
@@ -98,10 +76,6 @@ beforeAll(async () => {
 
   ctx = await createInboundCtx("stripe-trigger");
 
-  // Replace the workflow's stub DAG with a Slack-post pipeline. The
-  // inbound payload (`{ id, timestamp, type, headers, body }`) is the
-  // execution input; the transform extracts the failed-charge fields
-  // and the request step posts a Slack chat.postMessage.
   const workflowRows = await ctx.db
     .select({ current_version_id: workflows.current_version_id })
     .from(workflows)
@@ -146,9 +120,6 @@ beforeAll(async () => {
     })
     .where(eq(workflowVersions.id, currentVersionId));
 
-  // Bind the inbound row from the workflow trigger (origin = "trigger").
-  // Then rotate the placeholder secret to one we know so we can
-  // produce real Stripe signatures.
   const bound = await bindFromWorkflow(
     {
       tenant_id: ctx.tenantId,
@@ -190,7 +161,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     if (outcome.status !== "denied") throw new Error("expected denied");
     expect(outcome.reason).toBe("missing_stripe_signature");
 
-    // Wait for the fire-and-forget audit insert.
     const last = await waitFor(
       async () => {
         const rows = await ctx.db
@@ -251,8 +221,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
   });
 
   test("a reviewed static production request runs and emits webhook.trigger.fired", async () => {
-    // Keep the dynamic version above unapproved. A separate version fixes the
-    // complete outbound request before the test supplies its finite authority.
     const [prior] = await ctx.db
       .select()
       .from(workflowVersions)
@@ -326,7 +294,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     );
     expect(finished).toBe("succeeded");
 
-    // Slack stub captured a POST.
     expect(slackPosts.length).toBeGreaterThanOrEqual(1);
     const post = slackPosts[0];
     expect(post?.url).toContain("/api/chat.postMessage");
@@ -337,7 +304,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     expect(String(postBody.text)).toContain("ch_1Q9testfailedcharge");
     expect(String(postBody.text)).toContain("card_declined");
 
-    // Step-level success.
     const stepRows = await ctx.db
       .select({ status: executionSteps.status, step_key: executionSteps.step_key })
       .from(executionSteps)
@@ -345,7 +311,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     expect(stepRows.length).toBe(2);
     for (const row of stepRows) expect(row.status).toBe("succeeded");
 
-    // Audit signal — webhook.trigger.fired with the right metadata.
     const fired = await ctx.db
       .select()
       .from(auditLog)
@@ -363,7 +328,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
     expect(firedMeta.event_id).toBe(eventId);
     expect(firedMeta.execution_id).toBe(outcome.execution_id);
 
-    // Legacy actions must NOT have fired for this trigger-origin row.
     const legacy = await ctx.db
       .select()
       .from(auditLog)
@@ -432,9 +396,6 @@ describe("inbound: stripe webhook trigger end-to-end", () => {
       .where(eq(executions.tenant_id, ctx.tenantId));
     expect(afterRows.length).toBe(beforeRows.length);
 
-    // `audit()` is fire-and-forget — the row is queued through
-    // `writeAudit` without awaiting. Poll briefly so the test
-    // observes the persisted row.
     const replayMatch = await waitFor(
       async () => {
         const rows = await ctx.db

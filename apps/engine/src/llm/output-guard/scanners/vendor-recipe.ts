@@ -1,18 +1,3 @@
-// Vendor recipe gate scanner.
-//
-// Catches the most common failure mode of MCP-onboarding turns: the
-// assistant emits a fenced ```json block containing an `mcpServers`
-// entry whose `url` does not match the runtime `engine_url`. The
-// rule is structural — we don't validate against a specific recipe
-// template here (that would require client identification mid-text);
-// instead we assert that any `mcpServers.*.url` field that points at
-// a subkit-shaped origin must equal `engine_url`. Foreign hosts
-// (the user already runs another MCP server) are ignored.
-//
-// Authorization headers containing `<placeholder>`-like patterns
-// are flagged separately so the user does not paste the block
-// before swapping the key in.
-
 import type { Scanner, ScannerContext, Violation } from "../types.ts";
 
 const SUBKIT_HOST_RE = /\b(?:[a-z0-9-]+\.)*subkit(?:[a-z0-9-]+)?(?:-[a-z0-9-]+)?\.(?:[a-z]+)\b/i;
@@ -40,9 +25,7 @@ function checkServer(name: string, server: McpServerEntry, ctx: ScannerContext):
   if (ctx.engine_url) {
     try {
       engineUrl = new URL(ctx.engine_url);
-    } catch {
-      /* ignore malformed engine_url — handled elsewhere */
-    }
+    } catch {}
   }
   if (typeof server.url === "string") {
     let parsed: URL;
@@ -104,7 +87,7 @@ export const vendorRecipeScanner: Scanner = {
       try {
         parsed = JSON.parse(body);
       } catch {
-        continue; // not JSON — leave to other scanners
+        continue;
       }
       const root = parsed as { mcpServers?: Record<string, McpServerEntry> };
       const servers = root?.mcpServers;

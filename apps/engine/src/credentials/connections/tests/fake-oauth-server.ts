@@ -1,44 +1,21 @@
-// An in-repo OAuth 2.1 authorization server with discovery and dynamic client
-// registration — the isolation probe for outbound connections.
-//
-// It is deliberately NOT a copy of SubKit's own server and knows nothing
-// about any product: it speaks RFC 8414, RFC 7591, Authorization Code with
-// PKCE S256 and refresh_token, and it VERIFIES what a real server verifies —
-// a registered client id, a registered redirect URI, the code challenge
-// against the verifier, a code spent at most once, a refresh token it issued.
-// A client that only works against a server that skips those checks would
-// pass a looser fake and fail in the field.
-//
-// Every id it mints is a counter, so the flow is reproducible run to run.
-
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 export interface FakeOAuthServer {
   baseUrl: string;
-  /** Every request as `METHOD /path`, in order. */
   requests: string[];
-  /** Registered clients as the server stored them. */
   clients: Map<
     string,
     { redirect_uris: string[]; client_name?: string; client_uri?: string; scope?: string }
   >;
-  /** What the consent step will do with the next authorization request. */
   decision: "approve" | "deny";
-  /** Token lifetime the server answers with, in seconds. */
   expiresIn: number;
-  /** Whether token responses carry a refresh token. */
   issueRefreshToken: boolean;
-  /** Serve no service descriptor (404) when false. */
   descriptor: boolean;
-  /** Serve no registration endpoint in the metadata when false. */
   registration: boolean;
-  /** Refuse every refresh_token grant when true. */
   refuseRefresh: boolean;
-  /** Deterministic race seam: hold an already-issued refresh response. */
   beforeRefreshResponse?: () => Promise<void>;
-  /** Tokens handed out so far, newest last. */
   accessTokens: string[];
   close: () => Promise<void>;
 }
@@ -64,16 +41,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 export async function startFakeOAuthServer(
-  options: {
-    scopes?: string[];
-    name?: string;
-    /**
-     * Behave like an OpenID Connect server: issue a refresh token only when
-     * the authorization asked for `offline_access` (OIDC Core §11). List that
-     * scope in `scopes` to advertise it.
-     */
-    refreshRequiresOfflineAccess?: boolean;
-  } = {},
+  options: { scopes?: string[]; name?: string; refreshRequiresOfflineAccess?: boolean } = {},
 ): Promise<FakeOAuthServer> {
   const scopes = options.scopes ?? ["read", "write", "admin"];
   const codes = new Map<string, IssuedCode>();
@@ -218,7 +186,6 @@ export async function startFakeOAuthServer(
       return json(res, 200, body);
     }
     if (url.pathname === "/api/whoami" && req.method === "GET") {
-      // A resource endpoint: answers only with a token this server minted.
       const auth = req.headers.authorization ?? "";
       const token = auth.replace(/^Bearer\s+/i, "");
       if (!state.accessTokens.includes(token)) return json(res, 401, { error: "invalid_token" });

@@ -1,17 +1,3 @@
-// Docker-image E2E harness (Track B).
-//
-// Drives the production application container plus external PostgreSQL
-// (Dockerfile + entrypoint.sh + docker-compose.test.yml)
-// over the network, the way a customer runs it. Distinct from the in-process
-// `tests/e2e/setup.ts` harness — this one cannot pin LLM tool sequences
-// (the engine is a separate process) so Track B is outcome-based only.
-//
-// Bootstrap follows the real first-run operator flow:
-//   1. compose up --build --wait  (blocks on the image healthcheck)
-//   2. POST /v1/bootstrap/complete with the test-only bootstrap key
-//   3. materialise the tenant + admin user + admin key
-// Provider is mock (POST /v1/setup accepts it) so no model is ever called.
-
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { BASE_URL, type CommandResult, waitForHealth } from "../e2e/_helpers.ts";
@@ -22,15 +8,6 @@ const COMPOSE_FILE = "docker-compose.test.yml";
 const SERVICE = "engine";
 const TEST_BOOTSTRAP_KEY = "b".repeat(64);
 
-/**
- * Run a `docker compose -f docker-compose.test.yml …` subcommand.
- *
- * Calls spawnSync directly (NOT the shared `runCommand`) and INHERITS the
- * ambient env by default: passing an explicit `env: {...process.env}` to
- * spawnSync mis-parses the docker argv under `bun test` (a Bun quirk that
- * drops the `compose` subcommand → "unknown shorthand flag: 'f'"). An env
- * override is only attached when a caller actually needs one.
- */
 export function compose(args: string[], extraEnv?: Record<string, string>): CommandResult {
   const result = spawnSync("docker", ["compose", "-f", COMPOSE_FILE, ...args], {
     cwd: REPO_ROOT,
@@ -44,31 +21,18 @@ export function compose(args: string[], extraEnv?: Record<string, string>): Comm
   };
 }
 
-/** Start the container (building only when no image exists), blocking until healthy. */
 export async function composeUp(): Promise<void> {
-  // CI and the documented compose:test:up command already build the exact
-  // production image once before the tests start. Rebuilding from every test
-  // file invalidates the COPY layer after the first file writes its log
-  // artifact and can exhaust a hosted runner while reinstalling ONNX assets.
-  // Plain `compose up` still builds automatically for a clean local checkout
-  // where the declared image does not exist.
   const up = compose(["up", "-d", "--wait"]);
   if (up.status !== 0) {
     throw new Error(`compose up failed (${up.status}):\n${up.stdout}\n${up.stderr}`);
   }
-  // `--wait` already gates on the healthcheck, but double-check over HTTP so
-  // the harness owns the readiness contract uniformly with the e2e track.
   await waitForHealth();
 }
 
-/** `down -v` — remove containers plus external-service test volumes. Best-effort. */
 export function composeDown(): void {
   compose(["down", "-v"]);
 }
 
-/** Replace only the stateless application container; PostgreSQL and object
- * storage stay online so the test proves they are the complete state of
- * record. */
 export async function replaceEngineContainer(): Promise<void> {
   const replaced = compose(["up", "-d", "--force-recreate", "--no-deps", "--wait", SERVICE]);
   if (replaced.status !== 0) {
@@ -95,7 +59,6 @@ export function engineMounts(): Array<{ Destination?: string; Type?: string }> {
   }>;
 }
 
-/** Dump the engine container's (ndjson) logs to a file for CI artifacts. */
 export function collectContainerLogs(dest: string): void {
   const logs = compose(["logs", "--no-color", SERVICE]);
   Bun.write(dest, `${logs.stdout}\n${logs.stderr}`);
@@ -107,20 +70,10 @@ export interface BootstrapResult {
   tenantSlug: string;
 }
 
-/** Parse a `wf_live_…` plaintext key out of an issue-admin-key banner. */
 function parseIssuedKey(text: string): string | null {
   return text.match(/wf_live_[A-Za-z0-9_-]+/)?.[0] ?? null;
 }
 
-/**
- * Materialise an admin key. The genuine first-run flow is POST /v1/bootstrap/complete
- * (token redemption); that route is one-time, so on a second boot (or a
- * second test file sharing the container) it returns 410 Gone — we then
- * mint a fresh key via the operator `engine --issue-admin-key` path, which
- * needs the tenant to already exist. tenant_name "default" derives slug
- * "default", matching issue-admin-key's default tenant. Honors
- * SUBKIT_DOCKER_API_KEY for callers that already hold a key.
- */
 export async function bootstrapAdminKey(): Promise<BootstrapResult> {
   const provided = process.env.SUBKIT_DOCKER_API_KEY;
   if (provided) return { adminKey: provided, tenantId: "", tenantSlug: "default" };
@@ -152,10 +105,8 @@ export async function bootstrapAdminKey(): Promise<BootstrapResult> {
     if (res.status !== 410) {
       throw new Error(`POST /v1/bootstrap/complete failed: ${res.status} ${await res.text()}`);
     }
-    // 410 Gone — fall through to the operator key-issuance path.
   }
 
-  // Already bootstrapped: mint a fresh admin key the operator way.
   const issued = issueAdminKeyViaExec("default");
   const key = parseIssuedKey(`${issued.stdout}\n${issued.stderr}`);
   if (!key) {
@@ -171,7 +122,6 @@ export interface DockerEnv {
   tenantSlug: string;
 }
 
-/** Full boot: container up + healthy + bootstrapped admin key. */
 export async function dockerBoot(): Promise<DockerEnv> {
   await composeUp();
   const boot = await bootstrapAdminKey();
@@ -184,11 +134,6 @@ export interface SkResult {
   exitCode: number;
 }
 
-/**
- * Invoke the host-built `sk` binary against the container, mirroring the
- * env contract of the in-process `cli()` helper so the same invocations work
- * on both tracks.
- */
 export async function skDocker(
   env: DockerEnv,
   args: string[],
@@ -221,10 +166,6 @@ export async function skDocker(
   return { stdout, stderr, exitCode };
 }
 
-/**
- * HTTP helper for the Docker track: Bearer the admin key, parse JSON.
- * Mirrors the in-process `apiClient` shape but over the published port.
- */
 export async function dockerApi<T = unknown>(
   env: DockerEnv,
   method: string,
@@ -249,8 +190,6 @@ export async function dockerApi<T = unknown>(
   return { status: res.status, body: parsed };
 }
 
-/** Issue an additional admin key via the operator `engine --issue-admin-key`
- *  path (exercises the documented "more keys later" command). */
 export function issueAdminKeyViaExec(tenantSlug = "default"): CommandResult {
   return compose(["exec", "-T", SERVICE, "engine", "--issue-admin-key", "--tenant", tenantSlug]);
 }

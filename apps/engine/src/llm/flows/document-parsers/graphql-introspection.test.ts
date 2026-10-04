@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { buildSchema, introspectionFromSchema } from "graphql";
 import { parseGraphQLIntrospection } from "./graphql-introspection.ts";
 
-// Build a minimal schema for testing — avoids storing a large JSON fixture.
 const MINIMAL_SCHEMA = buildSchema(`
   type Query {
     hero(id: ID): Hero

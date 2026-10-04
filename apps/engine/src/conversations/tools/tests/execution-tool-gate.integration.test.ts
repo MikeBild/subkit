@@ -1,17 +1,3 @@
-// Integration test for the default-deny execution-tool gate against a REAL
-// palette. Uses testcontainers postgres (createTestDb): seeds a saved workflow
-// so wrapTools builds the genuine `wf_<slug>` synthetic peer, then drives the
-// SAME gate helpers the loop calls (collectSyntheticWorkflowSlugs →
-// resolveExecutionToolGate → applyExecutionToolGate).
-//
-// This is the regression that the build-new hijack lacked: it proves that for a
-// fresh authoring conversation (no bound workflow, no named slug) BOTH
-// run_workflow AND the lookalike `wf_notion-essay-to-markdown` peer are removed
-// — so the model cannot satisfy a "build a new Notion reader" request by running
-// the existing essay workflow and stalling on its input form. It also proves the
-// legitimate paths stay open: naming the slug, or a bound saved workflow, keeps
-// execution exposed.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -138,7 +124,6 @@ describe("execution-tool gate against a real palette", () => {
   test("fresh build-new turn removes BOTH run_workflow and the lookalike peer", async () => {
     const palette = await buildRealPalette();
     const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
-    // The reported repro: unbound conversation, negated build request — no slug named.
     const message =
       "Build a NEW workflow that reads any Notion page. Do NOT run any existing essay workflow.";
     const gate = resolveExecutionToolGate({
@@ -151,7 +136,6 @@ describe("execution-tool gate against a real palette", () => {
     expect(removed).toBe(2);
     expect(palette.run_workflow).toBeUndefined();
     expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
-    // Authoring tools remain reachable.
     expect(palette.list_workflows).toBeDefined();
   });
 
@@ -196,17 +180,9 @@ describe("execution-tool gate against a real palette", () => {
   });
 
   test("chat surface exposes execution with no bound target and no named slug", async () => {
-    // The loop sets `{ exposeExecution: true, reason: "chat_surface" }` for
-    // `p.surface === "chat"` INSTEAD of computing the default-deny gate. Chat is
-    // a fixed read-only palette that cannot author, so the build-new lookalike
-    // hijack the gate guards against is impossible there — default-denying
-    // instead dead-ends the intended run (e.g. after `ask_user_choice`
-    // disambiguation with no commit_intent). Model the chat decision against the
-    // REAL palette: both run_workflow and the wf_<slug> peer must survive even
-    // though nothing is bound and no slug was named this turn.
     const palette = await buildRealPalette();
     const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
-    const message = "gib mir das wetter von übermorgen"; // paraphrase, no slug named
+    const message = "gib mir das wetter von übermorgen";
     expect(resolveNamedWorkflowSlug(message, slugs)).toBeNull();
     const decision = { exposeExecution: true as const, reason: "chat_surface" as const };
     const removed = applyExecutionToolGate(palette, decision, slugs);

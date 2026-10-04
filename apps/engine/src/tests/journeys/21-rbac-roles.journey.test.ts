@@ -1,15 +1,3 @@
-// User story: As a tenant admin, I want to create a custom role
-// scoped to my tenant, assign it to a user, and have the engine honor
-// it across the REST surface.
-// Acceptance criteria:
-//   - AC1: POST /v1/rbac/roles creates a custom role.
-//   - AC2: POST /v1/rbac/roles/:id/permissions attaches permissions.
-//   - AC3: POST /v1/rbac/users/:id/role binds the role to a user.
-//   - AC4: That user can then list + run workflows.
-//   - AC5: That user cannot delete connectors (no connector:delete).
-//   - AC6: Built-in roles reject mutation with 409.
-// Spec refs: gap-pass-2 C1 / C5 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
@@ -79,7 +67,6 @@ describe("journey: rbac custom role", () => {
   }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1-AC5: custom role end to end", async () => {
-    // AC1: create the ops-engineer role
     const createRes = await journeyFetch(ctx, "/v1/rbac/roles", {
       method: "POST",
       body: JSON.stringify({ name: "ops-engineer", description: "custom ops role" }),
@@ -88,7 +75,6 @@ describe("journey: rbac custom role", () => {
     const role = (await createRes.json()) as { id: string; name: string };
     expect(role.name).toBe("ops-engineer");
 
-    // AC2: attach permissions.
     for (const p of ["workflow:read", "workflow:run", "workflow:write", "execution:read"]) {
       const r = await journeyFetch(ctx, `/v1/rbac/roles/${role.id}/permissions`, {
         method: "POST",
@@ -102,17 +88,14 @@ describe("journey: rbac custom role", () => {
       await emptyRoleId(ctx.db, ctx.tenantId),
     );
 
-    // AC3: assign the role via the management API.
     const assignRes = await journeyFetch(ctx, `/v1/rbac/users/${user.id}/role`, {
       method: "POST",
       body: JSON.stringify({ role_id: role.id }),
     });
     expect(assignRes.status).toBe(200);
 
-    // AC4: list + run workflows should now work.
     const listRes = await asUser(apiKey, "/v1/workflows");
     if (listRes.status !== 200) {
-      // Log the body to help diagnose in CI.
       const body = await listRes.text();
       throw new Error(`list failed: ${listRes.status} ${body}`);
     }
@@ -123,7 +106,6 @@ describe("journey: rbac custom role", () => {
     });
     expect([200, 202]).toContain(runRes.status);
 
-    // AC5: connector:delete is NOT in the role → 403.
     const delRes = await asUser(apiKey, "/v1/rbac/roles/xyz", { method: "DELETE" });
     expect(delRes.status).toBe(403);
   });

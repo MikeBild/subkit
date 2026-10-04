@@ -1,18 +1,3 @@
-// create_skill — propose a new tenant Skill as a review candidate.
-//
-// The conversational path NEVER creates an active skill: skills shape every
-// future session, so activation is an explicit human decision (the
-// AGENTS.md never-auto-promote invariant). This tool files a `proposed`
-// skill candidate in the same review queue as session learnings —
-// `sk learnings review`, the REPL welcome-row starter, or an in-session
-// `approve_skill_candidate` close the loop. The admin/REST `createSkill`
-// (skills/service.ts) is unaffected and stays the direct operator path.
-//
-// The input is deliberately the candidate-expressible SUBSET of
-// CreateSkillSchema: fields a candidate cannot carry (gates_tools,
-// activates_when, schemas, side_effects, …) are rejected by the schema
-// instead of being silently dropped — the reviewer adds them on approve.
-
 import { z } from "@hono/zod-openapi";
 import { createCandidateFromAuthoring } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
@@ -30,10 +15,6 @@ const CreateSkillInput = z
     doc_refs: z.array(z.string()).optional(),
     tags: z.array(z.string().min(1)).optional(),
   })
-  // Mirror of skills/service.ts validateScope — enforced at PROPOSAL time
-  // so a scope/entity mismatch fails in the author's face, not later in
-  // the reviewer's approve step (which would leave a permanently
-  // un-approvable candidate in the queue).
   .superRefine((input, ctx) => {
     if (input.scope === "connector" && !input.connector_id) {
       ctx.addIssue({ code: "custom", message: "connector skill requires connector_id" });

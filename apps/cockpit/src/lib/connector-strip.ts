@@ -2,13 +2,6 @@ import type { ConnectorAuthState } from "@/lib/connector-auth-state";
 import type { TranslationKey } from "@/lib/i18n";
 import type { RenewalWay } from "@/pages/connector-detail-model";
 
-/**
- * What a connector's status strip says, top state first (spec D15):
- * Anmeldung abgelaufen › Abgeschaltet › Nicht erreichbar › Nicht angemeldet ›
- * Zugangsdaten unvollständig › ok. Only the top state gets its action; the rest are
- * counted. Switched off sits right under a lost sign-in: signing in never
- * switches a connector on, so after the sign-in it is the next thing to do.
- */
 export type ConnectorStripKind =
   | "expired"
   | "off"
@@ -22,11 +15,9 @@ export type ConnectorStripKind =
   | "unproven";
 
 export type ConnectorStripAction =
-  /** Signs in again — at the provider, through the account connection, or with a new key. */
   | { kind: "renew"; way: Exclude<RenewalWay, null> }
   | { kind: "enable" }
   | { kind: "recheck" }
-  /** A first sign-in, or one that completes withheld permissions. */
   | { kind: "complete"; way: Exclude<RenewalWay, null>; first: boolean };
 
 export interface ConnectorStrip {
@@ -40,13 +31,9 @@ export interface ConnectorStripInput {
   auth: ConnectorAuthState;
   way: RenewalWay;
   enabled: boolean;
-  /** The engine's health verdict of the connector. */
   health: string | null;
-  /** The reader's own test, once run. */
   probe: { ok: boolean } | null;
-  /** Permissions the provider withheld. */
   missingScopes: number;
-  /** The page was opened by the sign-in callback's redirect. */
   returned: boolean;
   rights: { write: boolean; test: boolean };
 }

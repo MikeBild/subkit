@@ -1,8 +1,3 @@
-// Reducer contract tests — cover the new AI-SDK-UI-style lifecycle
-// frames (tool_call_start / tool_call_delta / tool_call_end /
-// tool_result / data_part) and the `awaiting_input` status path.
-// Keeps the cli-core surface honest without bringing up React or Ink.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 
@@ -178,12 +173,6 @@ describe("applyTurnEvent — streaming frames", () => {
   });
 
   test("tool-only assistant turn (content={}) normalises to empty text+parts", () => {
-    // Engine loop.ts:1175 emits content={} for a step with no text and
-    // no violations — the row exists only as a parent-id anchor for the
-    // child tool calls. Without isEffectivelyEmpty the safeStringify
-    // fallback would produce parsed.text="{}" and a one-element parts
-    // array, leaking a `• sk    {}` line into the transcript and
-    // breaking the empty-stub suppression in ink-app.
     const s = applyTurnEvent(initialSessionState("conv-anchor-row"), {
       type: "message",
       role: "assistant",

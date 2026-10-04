@@ -49,14 +49,10 @@ describe("tenant-summary block", () => {
     expect(text).toContain("nightly-sync (published) — Nightly Sync [id=w-1]");
     expect(text).toContain("draft-x (draft) [authoring-only] — Draft X [id=w-2]");
     expect(text).toContain("hubspot (http/prod) — HubSpot [id=c-1]");
-    // Tells the model not to re-list.
     expect(text).toContain("DO NOT call list_workflows");
   });
 
   test("trims overly long lists and appends a ground-truth page hint", () => {
-    // The block shows at most 40 rows; the loader reports the EXACT
-    // tenant-wide total alongside, so the "… and N more" line and the
-    // headline count are ground truth even when far more rows exist.
     const workflows = Array.from({ length: 40 }, (_, i) => ({
       id: `w-${i}`,
       slug: `wf-${i}`,
@@ -76,9 +72,6 @@ describe("tenant-summary block", () => {
   });
 
   test("a trimmed snapshot does not claim to be complete or forbid the list call", () => {
-    // The reported bug: 94 workflows, 40 shown, notion's 8 all past the cap —
-    // the block called itself authoritative and forbade list_workflows, so
-    // the model answered "no notion workflow".
     const workflows = Array.from({ length: 40 }, (_, i) => ({
       id: `w-${i}`,
       slug: `aa-${i}`,
@@ -110,8 +103,6 @@ describe("tenant-summary block", () => {
     expect(text).toContain("PARTIAL LIVE LIST");
     expect(text).toContain("Categories (exact counts over all 94): aa (86), notion (8)");
     expect(text).toContain("- aa-0 (active) — Workflow 0 [category=aa] [id=w-0]");
-    // The workflows rule sends the model to the tool; connectors are complete
-    // and keep the answer-from-snapshot rule.
     expect(text).not.toContain("DO NOT call list_workflows");
     expect(text).toContain("The workflows lines above are incomplete.");
     expect(text).toContain("Never say a workflow or category does not exist");

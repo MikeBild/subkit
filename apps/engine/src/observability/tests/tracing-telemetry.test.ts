@@ -1,9 +1,3 @@
-// Guards the AI SDK 7 telemetry wiring: the `OpenTelemetry` integration +
-// `enrichSpan` must (1) map our runtimeContext into the Langfuse OTLP attribute
-// namespace, and (2) actually emit GenAI-semconv generation spans that
-// Langfuse's OTLP ingestion reads (token/cost). Uses an in-memory span
-// exporter — no network, no real Langfuse.
-
 import { describe, expect, test } from "bun:test";
 import { trace } from "@opentelemetry/api";
 import {
@@ -13,8 +7,6 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { generateText, registerTelemetry } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-// @ai-sdk/otel via the test-helpers shim (no_live_llm invariant forbids direct
-// @ai-sdk/* imports in *.test.ts; the OpenTelemetry adapter is not a live-LLM path).
 import { OpenTelemetry } from "../../test-helpers/otel-telemetry.ts";
 import { langfuseEnrich } from "../tracing.ts";
 
@@ -75,9 +67,6 @@ describe("OpenTelemetry integration emits Langfuse-readable spans", () => {
       model,
       messages: [{ role: "user", content: "hi" }],
       runtimeContext: { tenant_id: "T1", conversation_id: "C1", provider: "anthropic", model: "m" },
-      // includeRuntimeContext is what exposes the runtimeContext keys to
-      // telemetry/enrichSpan (v7 gates it for secret safety) — this mirrors the
-      // real converse config in loop.ts / ai-sdk-model.ts.
       telemetry: {
         isEnabled: true,
         functionId: "converse",
@@ -94,10 +83,8 @@ describe("OpenTelemetry integration emits Langfuse-readable spans", () => {
     const attrs: Record<string, unknown> = {};
     for (const s of exporter.getFinishedSpans()) Object.assign(attrs, s.attributes);
 
-    // (1) enrichSpan → Langfuse namespace (on every span → trace grouping)
     expect(attrs["langfuse.session.id"]).toBe("C1");
     expect(attrs["langfuse.trace.metadata.tenant_id"]).toBe("T1");
-    // (2) GenAI-semconv usage that Langfuse OTLP ingestion reads for token/cost
     expect(attrs["gen_ai.usage.input_tokens"]).toBe(11);
     expect(attrs["gen_ai.usage.output_tokens"]).toBe(7);
     expect(attrs["gen_ai.request.model"]).toBeDefined();

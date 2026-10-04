@@ -1,13 +1,3 @@
-// OPT-D: creating a GraphQL connector warms its schema.
-//
-// A GraphQL API is introspectable, so POST /v1/connectors for a `graphql`
-// connector kicks off `__schema` introspection + SDL ingestion at create time
-// — the authoring agent then has the relay/enum/filter shapes in context
-// without a discover_connector_endpoints round-trip. The warm is bounded +
-// non-fatal: it must never block creation or change the 201 response. This test
-// pins (a) graphql connectors warm against their own base_url, (b) non-graphql
-// connectors do NOT warm, (c) a failing warm does not fail creation.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
@@ -60,7 +50,6 @@ describe("POST /v1/connectors — GraphQL schema warm (OPT-D)", () => {
         auth_type: "none",
       });
       expect(res.status).toBe(201);
-      // The warm ran against the connector's stored base_url.
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]?.[0]).toMatchObject({
         base_url: "https://api.example.test/graphql",
@@ -101,7 +90,6 @@ describe("POST /v1/connectors — GraphQL schema warm (OPT-D)", () => {
         base_url: "https://dead.example.test/graphql",
         auth_type: "none",
       });
-      // Creation still succeeds — the warm failure is swallowed.
       expect(res.status).toBe(201);
       expect(spy).toHaveBeenCalledTimes(1);
     } finally {

@@ -115,8 +115,6 @@ describe("planTurnRouting", () => {
       draft: draft(),
       user_message: "what is a skill?",
     });
-    // "what is a skill" is a concept question → product_help + SK_CONCEPT_GROUNDING,
-    // NOT a tenant_read enumeration of the skill catalog.
     expect(plan.intent).not.toBe("tenant_read");
   });
 

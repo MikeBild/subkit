@@ -1,13 +1,3 @@
-// A run's outcome as structure, derived from what was persisted.
-//
-// `executions.status` alone cannot answer "what happened": a hold-writes
-// preview finalizes `succeeded` although nothing was written, a run with an
-// `on_error:"continue"` step finalizes `succeeded` although a step failed, and
-// a failed run says nothing about which step stopped it or why. Readers used to
-// fill that gap themselves — and showed an earlier step's intermediate output as
-// a failed run's result. The outcome here is the engine's answer; clients
-// compose their own sentences from its fields.
-
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { executionSteps, type executions, workflowVersions } from "../db/schema/index.ts";
@@ -29,16 +19,12 @@ export interface ExecutionOutcome {
   failed_step: { step_key: string; kind: string } | null;
   cause_class: PreviewClassification | null;
   error_code: string | null;
-  /** Which rule of the approved boundary the stopping step broke, when the
-   *  refusal named one (`not_utf8`, `recipient_differs`, …). */
   refusal_reason: ReportDeliveryRefusal | null;
-  /** The connector a refused run named, so a reader can open and reconnect it. */
   connector: RefusedConnector | null;
   steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
   output_contract: OutputContractVerdict;
 }
 
-/** The failure a list row carries: which step stopped the run and its class. */
 export interface ExecutionFailureSummary {
   step_key: string | null;
   cause_class: PreviewClassification | null;
@@ -55,12 +41,10 @@ export interface OutcomeStepRow {
   status: string;
   error: unknown;
   held: boolean;
-  /** Rows written before the `held` column carry the marker here only. */
   request_meta?: unknown;
   started_at: Date | null;
 }
 
-/** A held write: the column, or — for rows older than it — the driver's own marker. */
 function isHeldRow(row: OutcomeStepRow): boolean {
   if (row.held) return true;
   const meta = row.request_meta as { extras?: { held?: unknown } } | null | undefined;
@@ -71,17 +55,10 @@ const FAILED_STEP_STATUSES = new Set(["failed", "timed_out", "aborted"]);
 const FAILED_RUN_STATUSES = new Set(["failed", "timed_out", "aborted"]);
 const OUTPUT_CONTRACT_VERDICTS = new Set<string>(["passed", "violated", "none"]);
 
-/** True when a row belongs to a definition step: its own row or a loop iteration `id[n]`. */
 function rowOfStep(stepKey: string, stepId: string): boolean {
   return stepKey === stepId || stepKey.startsWith(`${stepId}[`);
 }
 
-/**
- * The step that stopped the run. The engine names it on the execution row
- * (`failure.step_id`); without that, the LAST failed row wins — an
- * `on_error:"continue"` failure earlier in the run was tolerated and did not
- * stop anything. Deterministic: ordered by `started_at`, then row order.
- */
 export function pickStoppingStep<
   T extends Pick<OutcomeStepRow, "step_key" | "status" | "started_at">,
 >(rows: readonly T[], failureStepId: string | null | undefined): T | null {
@@ -101,7 +78,6 @@ export function pickStoppingStep<
   return failed[failed.length - 1] ?? null;
 }
 
-/** The connector a run was refused for, as the refusal recorded it on the row. */
 export function refusedConnector(failure: ExecutionRow["failure"]): RefusedConnector | null {
   const connector = failure?.connector;
   if (!connector || typeof connector.reason !== "string") return null;
@@ -111,12 +87,6 @@ export function refusedConnector(failure: ExecutionRow["failure"]): RefusedConne
   };
 }
 
-/**
- * Classify a run's stopping failure: the stopping step row, else the
- * execution's own failure (e.g. `validation_failed`, which no step carries).
- * The one classifier for a whole run — the execution outcome, the list's
- * `failure`, and the operator health digest all name the same cause.
- */
 export function classifyRunFailure(
   exec: Pick<ExecutionRow, "status" | "failure">,
   stopping: Pick<OutcomeStepRow, "status" | "error"> | null,
@@ -131,12 +101,6 @@ export function classifyRunFailure(
   return null;
 }
 
-/**
- * Pure derivation. `definitionSteps` are the top-level steps of the version
- * that ran; for a terminal run, a step with no row never ran and counts as
- * skipped (a branch arm not taken, the tail behind a failure, a step behind a
- * held write). Draft and step runs pass no definition and count rows only.
- */
 export function deriveExecutionOutcome(
   exec: OutcomeExecution,
   rows: readonly OutcomeStepRow[],
@@ -209,7 +173,6 @@ function topLevelSteps(dag: unknown): Array<{ id: string; kind: string }> {
   );
 }
 
-/** The outcome of one execution row: its step rows and its version's steps, two queries. */
 export async function loadExecutionOutcome(
   tenantId: string,
   exec: Pick<ExecutionRow, "id" | "status" | "failure" | "output_contract" | "workflow_version_id">,
@@ -245,10 +208,6 @@ export async function loadExecutionOutcome(
   return deriveExecutionOutcome(exec, rows, topLevelSteps(version[0]?.dag));
 }
 
-/**
- * `failure` for a page of list rows: which step stopped each failed run and
- * its class. One query for the whole page; runs that did not fail are absent.
- */
 export async function loadFailureSummaries(
   tenantId: string,
   execs: ReadonlyArray<Pick<ExecutionRow, "id" | "status" | "failure">>,

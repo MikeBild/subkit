@@ -25,16 +25,12 @@ import {
 
 const TEST_NOW_MS = getTestNow();
 
-// ── Test keypair (regenerated each test run; never written to disk) ──
-
 const { publicKey: TEST_PUBLIC_KEY, privateKey: TEST_PRIVATE_KEY } = generateKeyPairSync("ed25519");
 const TEST_PUBLIC_KEY_PEM = TEST_PUBLIC_KEY.export({ format: "pem", type: "spki" }).toString();
 
 function signSums(sumsText: string): Buffer {
   return cryptoSign(null, Buffer.from(sumsText, "utf8"), TEST_PRIVATE_KEY);
 }
-
-// ── Helpers ──
 
 let tmpDir: string;
 
@@ -86,8 +82,6 @@ function makeConfig(overrides: Partial<UpdaterConfig> = {}): UpdaterConfig {
   };
 }
 
-/** Build a minimal release fixture with a valid SHA256SUMS+SHA256SUMS.sig
- *  pair plus a binary blob whose hash matches the sums entry. */
 function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag: string }): {
   info: UpdateInfo;
   fetchImpl: typeof fetch;
@@ -123,8 +117,6 @@ function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag
   });
   return { info, fetchImpl, sumsText, expectedHash };
 }
-
-// ── isNewer ──
 
 describe("isNewer", () => {
   test("returns false for equal versions", () => {
@@ -170,8 +162,6 @@ describe("isNewer", () => {
   });
 });
 
-// ── platformArch ──
-
 describe("platformArch", () => {
   test("returns os/arch/ext for current platform", () => {
     const result = platformArch();
@@ -195,8 +185,6 @@ describe("platformArch", () => {
     expect(result.os).toBe(expected[process.platform]!);
   });
 });
-
-// ── parseChecksum ──
 
 describe("parseChecksum", () => {
   const hash64 = "a".repeat(64);
@@ -228,8 +216,6 @@ describe("parseChecksum", () => {
   });
 });
 
-// ── formatUpdateBanner ──
-
 describe("formatUpdateBanner", () => {
   test("includes version number", () => {
     const info: UpdateInfo = { version: "2.0.0", tag: "v2.0.0", assets: [], body: "" };
@@ -243,8 +229,6 @@ describe("formatUpdateBanner", () => {
     expect(banner).toContain("subkit update");
   });
 });
-
-// ── defaultUpdaterConfig ──
 
 describe("defaultUpdaterConfig", () => {
   test("sets correct binaryName and repo", () => {
@@ -273,8 +257,6 @@ describe("defaultUpdaterConfig", () => {
     expect(cfg.cacheDir).toContain("my-tool");
   });
 });
-
-// ── Cache management ──
 
 describe("cache management", () => {
   test("writeCache creates directory recursively", () => {
@@ -313,8 +295,6 @@ describe("cache management", () => {
     expect(readCache(dir)).toBeNull();
   });
 });
-
-// ── checkForUpdate ──
 
 describe("checkForUpdate", () => {
   test("returns null when cache is fresh and version is current", async () => {
@@ -399,7 +379,7 @@ describe("checkForUpdate", () => {
   });
 
   test("explicit --self-update (force=true) THROWS on a 404 with a private-repo/token hint", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0" }); // no authToken
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
     const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
     await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow(/private|GITHUB_TOKEN|404/i);
   });
@@ -460,8 +440,6 @@ describe("checkForUpdate", () => {
   });
 });
 
-// ── verifySignature ──
-
 describe("verifySignature", () => {
   test("accepts a valid Ed25519 signature", () => {
     const message = "the quick brown fox";
@@ -487,8 +465,6 @@ describe("verifySignature", () => {
     expect(verifySignature(message, sig, "not a real PEM")).toBe(false);
   });
 });
-
-// ── performUpdate signature gating ──
 
 describe("performUpdate signature gating", () => {
   test("throws when SHA256SUMS.sig asset is missing", async () => {
@@ -543,11 +519,8 @@ describe("performUpdate signature gating", () => {
   });
 });
 
-// ── performUpdate retention + happy path ──
-
 describe("performUpdate retention", () => {
   test("happy path returns from/to/sha256 and retains the prior binary", async () => {
-    // Stand up a fake `process.execPath` so the swap is harmless.
     const cfg = makeConfig();
     const fakeBinary = join(makeCacheDir(), "test-bin");
     writeFileSync(fakeBinary, Buffer.from("OLD-BINARY"));
@@ -577,7 +550,6 @@ describe("performUpdate retention", () => {
 describe("retained versions store", () => {
   test("pruneRetainedVersions keeps the N most recent by installed_at", () => {
     const cfg = makeConfig();
-    // Plant 4 fake retained versions and prune to 2.
     for (const [version, atOffset] of [
       ["1.0.0", 0],
       ["1.1.0", 1000],
@@ -638,7 +610,6 @@ describe("rollbackTo", () => {
       const result = rollbackTo(cfg, "previous");
       expect(result.to_version).toBe("1.11.0");
       expect(readFileSync(fakeBinary).toString()).toBe("MOST-RECENT");
-      // The displaced 2.0.0 is now retained too.
       const retained = listRetainedVersions(cfg);
       expect(retained.map((v) => v.version)).toContain("2.0.0");
     } finally {

@@ -1,9 +1,3 @@
-// Scoped process.env overrides for tests.
-//
-// `withTestEnv` snapshots the requested keys, applies overrides,
-// returns a `restore` handle. Wrap the whole thing in try/finally —
-// keys the test never touched are left alone.
-
 export type EnvOverrides = Record<string, string | undefined>;
 
 export interface EnvHandle {
@@ -34,8 +28,6 @@ export function withTestEnv(overrides: EnvOverrides): EnvHandle {
   };
 }
 
-/** Run `fn` with the given env overrides; restore on exit even if `fn`
- *  throws. Returns `fn`'s result. */
 export async function runWithTestEnv<T>(
   overrides: EnvOverrides,
   fn: () => Promise<T> | T,

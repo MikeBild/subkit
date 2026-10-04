@@ -1,12 +1,3 @@
-// Translate engine validation errors AND transport-/HTTP-level errors
-// into operator-readable copy.
-//
-// The engine speaks Zod / JSONPath ("steps.0.kind: Invalid input"); the
-// REPL renders for humans. This module is the single place that knows
-// the mapping from raw error → label + detail + optional hint, so the
-// validation panel, the ToolCard failure block, and the prompt-error
-// banner stay consistent.
-
 import { type EngineError, isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { debugLogPath, isDebugVerbose } from "../debug.ts";
 
@@ -27,11 +18,8 @@ export interface RawValidationError {
 }
 
 export interface HumanizedValidationError {
-  /** Short, prominent line — rendered bold red. */
   label: string;
-  /** Optional secondary line with the raw path:message — rendered dim. */
   detail?: string;
-  /** Actionable suggestion when we recognise the error pattern. */
   hint?: string;
 }
 
@@ -39,12 +27,6 @@ const STEP_KIND_PATH = /^steps\.(\d+)\.kind$/;
 const STEP_FIELD_PATH = /^steps\.(\d+)\.([\w_.-]+)$/;
 const STEP_ROOT_PATH = /^steps\.(\d+)$/;
 
-/** Engine-error codes / messages that mean "the LLM provider rejected
- *  the call" rather than "the workflow definition is invalid". The CLI
- *  routes both through the same `validation_error` channel
- *  (ink-repl.ts) so this module is the single place that distinguishes
- *  them. The panel header in `ink-app.tsx` keys off the same patterns
- *  to swap "validation errors" for "engine error" / "provider limit". */
 const PROVIDER_LIMIT_RE =
   /(specified api usage limits|usage limit|insufficient_quota|quota.{0,4}exhaust|quota.{0,4}exceed|credit balance|monthly spend|billing hard limit|monthly.?budget)/i;
 
@@ -55,10 +37,6 @@ const RETRY_AT_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) ?utc/
 
 export type EngineErrorKind = "provider_limit" | "provider_unavailable" | "validation" | null;
 
-/** Identify the kind of error encoded as a synthetic validation row.
- *  `path` is the engine error code (e.g. `internal`, `llm_provider_limited`);
- *  `message` is the upstream prose. Used both by `humanizeValidationError`
- *  AND the panel header — exporting so the UI can branch in one place. */
 export function classifyEngineError(e: RawValidationError): EngineErrorKind {
   if (
     e.path === "llm_provider_limited" ||
@@ -81,11 +59,6 @@ export function classifyEngineError(e: RawValidationError): EngineErrorKind {
 }
 
 export function humanizeValidationError(e: RawValidationError): HumanizedValidationError {
-  // Provider-quota / -unavailable errors arrive on the same channel as
-  // workflow validation errors but are upstream-Anthropic concerns, not
-  // anything the operator can fix in their workflow. Recognise them and
-  // emit an actionable hint instead of leaving the operator staring at
-  // "internal".
   const kind = classifyEngineError(e);
   if (kind === "provider_limit") {
     const m = RETRY_AT_RE.exec(e.message);
@@ -137,13 +110,6 @@ export function humanizeValidationError(e: RawValidationError): HumanizedValidat
   };
 }
 
-/**
- * Render the structured payload an authoring write tool
- * (edit_workflow_patch) returns on failure (with valid_kinds,
- * attempted_kind, example_for_kind, etc.) into a single short line for
- * the ToolCard failure body. Falls back to a generic shape when the
- * payload looks unrelated.
- */
 export function summarizeToolFailure(
   toolName: string,
   data: unknown,
@@ -152,10 +118,6 @@ export function summarizeToolFailure(
     return { label: `${toolName} failed` };
   }
   const obj = data as Record<string, unknown>;
-  // The stage-gated repair tool (edit_workflow_patch) refuses with
-  // `authoring_stage_violation` while the draft has no preview or
-  // recorded-eval evidence yet. The engine's message is written for the
-  // LLM; the operator gets the one-line version of the same contract.
   const errCode =
     typeof obj.error_code === "string"
       ? obj.error_code
@@ -197,18 +159,8 @@ export function summarizeToolFailure(
   return { label: `${toolName} failed` };
 }
 
-/**
- * Pattern-driven hint table. Adds a one-line "what to do next"
- * suggestion when an error message matches a known signature. Order
- * matters — the first match wins. New patterns go at the top so
- * specific cases override generic ones.
- */
 const HINT_PATTERNS: ReadonlyArray<{ match: RegExp; hint: string }> = [
   {
-    // Specific case: the engine returned 401 missing_or_invalid_credentials
-    // and the active profile has no api_key set yet. The catch-all 401
-    // hint below is for token-refresh; this one is for a fresh install
-    // where the operator hasn't run `sk profile login` yet.
     match: /\b401\b.*missing_or_invalid_credentials\b/i,
     hint: "no api_key configured — run `sk profile login` (or pass `--api-key <key>`); on a fresh engine, mint one with `bun run db:issue-admin-key`",
   },
@@ -249,14 +201,6 @@ export function findErrorHint(message: string): string | null {
   return null;
 }
 
-// The bun-fetch implementation appends a verbose-suggestion suffix to
-// transport errors:
-//   "The socket connection was closed unexpectedly. For more
-//    information, pass `verbose: true` in the second argument to fetch()"
-// That suffix is implementation noise — the operator can't act on it
-// (we already control the fetch call, and `/debug on` is the
-// user-facing toggle for verbose). Strip it at the boundary so neither
-// the transcript banner nor /debug log includes it.
 const BUN_FETCH_VERBOSE_SUFFIX =
   /\.?\s*For more information,\s*pass\s*`verbose:\s*true`\s*in the second argument to fetch\(\)\.?/i;
 
@@ -264,15 +208,6 @@ export function stripFetchVerboseHint(message: string): string {
   return message.replace(BUN_FETCH_VERBOSE_SUFFIX, "").trim();
 }
 
-/**
- * Recognise the family of transport errors that mean "the request was
- * mid-flight when the socket dropped" rather than "the engine is
- * down". Critical for the elicitation respond flow: an LLM turn can
- * legitimately exceed bun-fetch's keep-alive window, the server-side
- * turn keeps running, and re-polling the conversation recovers the
- * latest state. Keeping the two cases distinct lets the UI render
- * "engine reconnecting…" instead of a red error block.
- */
 export function isTransientSocketDrop(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const cause = (err as { cause?: unknown }).cause;
@@ -308,8 +243,6 @@ function providerHint(err: EngineError): string | null {
     return "resolve the open dialog first — the conversation is paused and waiting for your input";
   }
   if (err.code === "elicitation_already_resolved") {
-    // The user spammed approve / reject. The engine refuses the
-    // duplicate; surface that plainly instead of a raw 409.
     const details =
       err.details && typeof err.details === "object"
         ? (err.details as Record<string, unknown>)
@@ -338,28 +271,11 @@ function providerHint(err: EngineError): string | null {
   return null;
 }
 
-/**
- * Format any thrown error from the prompt / slash pipeline into a
- * banner the user can act on. Backend `EngineError`s become a single
- * line with the HTTP status, error code, and trace_id; transport
- * errors are flagged as connectivity issues; everything else falls
- * back to the raw message. Pattern-matched hints are preferred when
- * the error message matches a known signature.
- *
- * Branches via the name-based guards from `@cli-core/errors` rather
- * than `instanceof`: under bun's parallel test runner a module can be
- * loaded by two workers concurrently, yielding two distinct class
- * identities for the same import specifier.
- */
 export function humanizeRequestError(err: unknown): string {
   if (isEngineError(err)) {
     const e = err;
     const head = `sk: HTTP ${e.status} ${e.code} — ${e.message || "(no detail)"}`;
     const trace = e.trace_id ? ` · trace_id ${e.trace_id}` : "";
-    // Prefer the engine's curated remediation hint (e.g. the actionable
-    // RBAC denial "you have read-only access to connector X …") over the
-    // static pattern table — it is request-specific and always more
-    // precise than a generic 403 match.
     const matched = e.hint ?? providerHint(e) ?? findErrorHint(`${e.code} ${e.message}`);
     const hint = matched
       ? `\n  ↳ ${matched}`
@@ -369,14 +285,8 @@ export function humanizeRequestError(err: unknown): string {
     return `${head}${trace}${hint}`;
   }
   if (isTransportError(err)) {
-    // Strip the bun-fetch verbose suffix unconditionally — it's noise
-    // for every transport error, not just the socket-drop family.
     const cleanedMessage = stripFetchVerboseHint(err.message);
     if (isTransientSocketDrop(err)) {
-      // The socket dropped mid-turn (typical with long LLM turns that
-      // exceed keep-alive). The engine kept running on its side; the
-      // CLI re-polls to recover. Render as a single neutral hint, not
-      // a red "cannot reach engine" block.
       return `sk: engine connection dropped mid-turn — recovering.\n  ↳ the engine kept running; re-pull state with /status if the next turn doesn't refresh on its own`;
     }
     const matched = findErrorHint(cleanedMessage);

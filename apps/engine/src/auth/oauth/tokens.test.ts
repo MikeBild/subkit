@@ -1,6 +1,3 @@
-// Unit tests for MCP OAuth token helpers.
-// Pure functions — no DB, no Docker.
-
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -132,7 +129,6 @@ describe("parseMcpToken", () => {
   });
 
   test("returns null for non-string input (null cast to any)", () => {
-    // parseMcpToken has a typeof guard for non-string
     // biome-ignore lint/suspicious/noExplicitAny: testing guard
     expect(parseMcpToken(null as any)).toBeNull();
     // biome-ignore lint/suspicious/noExplicitAny: testing guard
@@ -140,7 +136,6 @@ describe("parseMcpToken", () => {
   });
 
   test("returns null when token is too short (prefix only, no payload)", () => {
-    // Token with only the prefix but fewer than TOKEN_PREFIX_LENGTH + 8 chars
     const shortAccess = `${ACCESS_TOKEN_PREFIX_LITERAL}abc`;
     expect(parseMcpToken(shortAccess)).toBeNull();
 
@@ -178,11 +173,7 @@ describe("verifyS256 (PKCE)", () => {
   });
 
   test("plain method string as verifier rejects (not a valid S256 verifier)", () => {
-    // A "plain" method would pass the challenge as-is. verifyS256 always
-    // hashes the verifier — so passing the raw challenge as the verifier
-    // will not match (digest-of-digest != original challenge).
     const challenge = makeChallenge("some-verifier");
-    // Passing the challenge itself as the verifier: sha256(challenge) != challenge
     expect(verifyS256(challenge, challenge)).toBe(false);
   });
 

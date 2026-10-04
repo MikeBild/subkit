@@ -1,20 +1,3 @@
-// User story: As an operator who opened a chat from a connector's page, I ask
-// the assistant to file a skill proposal for that connector — only a proposal,
-// not activated — and it files one, instead of telling me no such tool exists
-// and sending me to the REST API or an admin.
-// Acceptance criteria:
-//   - AC1: On the first step of the turn, `create_skill` is in the palette the
-//          model is offered. The conversation targets a connector, the same
-//          shape as a chat opened with `?connector_id=` from the cockpit.
-//   - AC2: When the model calls it, a PROPOSED connector-scoped candidate bound
-//          to that connector exists afterwards, and no skill was created —
-//          the proposal stays inert until a human approves it.
-// Spec refs: docs/concepts/knowledge-and-skills.md, docs/developers/tool-palette.md
-//
-// The model is the mock provider, used only to issue the call; it records the
-// palette each step was offered after every layer between assembly and the
-// provider call has had its say, which is what AC1 reads.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createConnector } from "../../connectors/service.ts";
@@ -89,11 +72,9 @@ describe("journey 67: a skill proposal is reachable from a connector-targeted ch
       expect([200, 202]).toContain(res.status);
       const turn = (await res.json()) as TurnBody;
 
-      // AC1 — the palette the provider saw on the turn's first step.
       const firstStep = mock.toolPalettes[paletteStart] ?? [];
       expect(firstStep.map((t) => t.name)).toContain("create_skill");
 
-      // AC2 — the call files a proposal, never a skill.
       const result = turn.events.find((e) => e.type === "tool_result" && e.tool === "create_skill");
       expect(result?.output?.action).toBe("proposed");
       const rows = await ctx.db

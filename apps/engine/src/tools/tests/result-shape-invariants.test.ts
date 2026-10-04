@@ -1,11 +1,3 @@
-// Result envelope shape invariants.
-//
-// The unified `ToolEnvelope` discriminated union is the dispatcher's
-// public contract. This file uses a Zod schema to validate that every
-// shape the dispatcher emits parses cleanly — guards against drift
-// where a future change accidentally returns the legacy `ok:boolean`
-// or omits a required field.
-
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -13,9 +5,6 @@ import { dispatchTool } from "../dispatcher.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
 
-// Authoritative Zod mirror of the ToolEnvelope union. Updating this
-// without updating types.ts (or vice versa) is the regression we want
-// the test to catch.
 const ToolEnvelopeSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("ok"),
@@ -63,10 +52,6 @@ const PRINCIPAL: ResolvedPrincipal = {
   // biome-ignore lint/suspicious/noExplicitAny: test stub
 } as any;
 
-// Zero-row update chain: the needs_confirm path may call
-// `mintApprovalGrantUrl` when the ambient config/env carries a
-// public_base_url (parallel test files can set one concurrently) — the
-// stub must survive that path, not explode on db.update.
 // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
 const UPDATE_STUB: any = {
   set: () => UPDATE_STUB,
@@ -164,8 +149,6 @@ describe("tools/result-shape — envelope union invariants", () => {
         data: {},
       })),
     ]);
-    // A tenant write without a locally granted approval needs confirmation
-    // on both surfaces. This fixture checks the chat rendering envelope.
     const envelope = await dispatchTool(
       { registry: reg, db: DB_STUB, principal: PRINCIPAL },
       { surface: "chat", name: "_writes", args: {} },
@@ -224,8 +207,6 @@ describe("tools/result-shape — envelope union invariants", () => {
       "paused",
       "not_available_on_surface",
     ]);
-    // Force a complete match — adding a new status without updating the
-    // schema and this set will break the discriminator narrowing.
     const seen = new Set<string>();
     for (const option of (ToolEnvelopeSchema as unknown as { options: Array<unknown> }).options) {
       const shape = (option as { shape?: { status?: { value?: string } } }).shape;

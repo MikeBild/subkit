@@ -1,20 +1,3 @@
-// authenticate_oauth — MCP elicitation URL-mode integration tests.
-//
-// Covers the load-bearing contract of MCP-native OAuth elicitation:
-//
-//   - URL-mode happy path: an oob-capable MCP client, the tool issues an
-//     out-of-band `elicitation/create` with the authorization URL, then
-//     blocks on `waitForOAuthCredential`. We simulate the OAuth callback
-//     by landing a `credentials` row + dispatching the
-//     `connector.oauth.callback_succeeded` event, and assert the
-//     `connector_authenticated` checkpoint is marked ONLY after the
-//     credential lands (not optimistically before).
-//   - Failure path: a `callback_failed` event → `oauth_authorization_failed`,
-//     and the checkpoint is NOT marked.
-//
-// A mock OIDC server backs `startAuthorizationCode` so no real provider
-// is contacted; the MCP `ElicitationBridge` is a structural stub.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,9 +50,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* not yet loaded */
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-aoauth-elicit-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/aoauth-elicit", NODE_ENV: "test" },
@@ -79,8 +60,6 @@ async function ensureConfigLoaded(): Promise<void> {
 
 beforeAll(async () => {
   await ensureConfigLoaded();
-  // The redirect_uri is synthesized from server.public_base_url; set it
-  // so `buildOAuthRedirectUri` resolves without an external override.
   priorBaseUrl = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", "https://engine.test.example", { force: true });
 
@@ -114,7 +93,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A connector configured for OAuth2 against the local mock OIDC server. */
 async function makeOAuthConnector(slug: string): Promise<string> {
   const [c] = await ctx.db
     .insert(connectors)
@@ -139,8 +117,6 @@ async function makeOAuthConnector(slug: string): Promise<string> {
   return c!.id;
 }
 
-/** Structural ElicitationBridge stub — only `.capabilities` + `.elicitOob`
- *  are reached on the oob path. */
 function makeOobBridge(action: "accept" | "decline" = "accept"): ElicitationBridge {
   const fn = async (): Promise<ElicitationResult> => ({ action });
   return {
@@ -150,8 +126,6 @@ function makeOobBridge(action: "accept" | "decline" = "accept"): ElicitationBrid
   } as unknown as ElicitationBridge;
 }
 
-/** Bridge whose `elicitOob` throws — used for the oob transport-failure
- *  and capability-raced-away (`ElicitationUnsupportedError`) branches. */
 function makeOobThrowingBridge(error: Error): ElicitationBridge {
   const fn = async (): Promise<ElicitationResult> => {
     throw error;
@@ -163,8 +137,6 @@ function makeOobThrowingBridge(error: Error): ElicitationBridge {
   } as unknown as ElicitationBridge;
 }
 
-/** Form-only bridge: `oob` capability absent so the tool takes the
- *  `elicitForm` branch. `elicitForm` returns the supplied result. */
 function makeFormBridge(result: ElicitationResult): ElicitationBridge {
   return {
     capabilities: { form: true, oob: false },
@@ -173,8 +145,6 @@ function makeFormBridge(result: ElicitationResult): ElicitationBridge {
   } as unknown as ElicitationBridge;
 }
 
-/** Form-only bridge whose `elicitForm` throws — for the form-mode
- *  transport-failure and `ElicitationUnsupportedError` demote branches. */
 function makeFormThrowingBridge(error: Error): ElicitationBridge {
   return {
     capabilities: { form: true, oob: false },
@@ -185,7 +155,6 @@ function makeFormThrowingBridge(error: Error): ElicitationBridge {
   } as unknown as ElicitationBridge;
 }
 
-/** All `conversation_elicitations` rows for a conversation. */
 async function readElicitations(convId: string) {
   return ctx.db
     .select()
@@ -193,10 +162,6 @@ async function readElicitations(convId: string) {
     .where(eq(conversationElicitations.conversation_id, convId));
 }
 
-/** The resolve audit row for an elicitation carrier — `APPROVAL_APPROVED`
- *  or `APPROVAL_REJECTED`, keyed on the elicitation id as `resource_id`.
- *  Filtered by action so the paired `APPROVAL_REQUESTED` open row (same
- *  `resource_id`) is excluded. */
 async function readResolveAudit(elicitationId: string, action: string) {
   const [row] = await ctx.db
     .select()
@@ -287,9 +252,6 @@ function buildCtx(
   };
 }
 
-/** Wait until the tool has written the connector_oauth_states row — this
- *  proves `startAuthorizationCode` completed and the oob elicitation was
- *  issued, so the callback can now be simulated. */
 async function awaitOAuthStateRow(connectorId: string): Promise<void> {
   await waitFor(
     async () => {
@@ -303,15 +265,6 @@ async function awaitOAuthStateRow(connectorId: string): Promise<void> {
   );
 }
 
-/** Wait until `waitForOAuthCredential` has registered its pubsub handler
- *  on the `connector.oauth` channel, so a dispatched event cannot race
- *  ahead of the listener. The failure path has no DB-poll fallback, so a
- *  missed `callback_failed` event there is a guaranteed full timeout.
- *
- *  Polling the listener count is a valid readiness signal because
- *  `waitForOAuthCredential` (see `credentials/oauth2/wait.ts`) registers
- *  its pubsub listener BEFORE its first DB round-trip — once the count
- *  rises, the handler is live. */
 async function awaitHandlerRegistered(beforeCount: number): Promise<void> {
   await waitFor(() => globalEmitter.listenerCount("connector.oauth") > beforeCount, {
     label: "connector.oauth handler registered",
@@ -337,15 +290,10 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
       connector_id: connectorId,
     });
 
-    // The tool issued the oob elicitation and is now blocked in
-    // `waitForOAuthCredential`. The checkpoint must NOT be set yet — the
-    // previous optimistic marking is the bug this rework fixes.
     await awaitOAuthStateRow(connectorId);
     const checkpointsBefore = draftRef.current.state?.checkpoints?.connector_authenticated ?? null;
     expect(checkpointsBefore).toBeNull();
 
-    // Simulate the OAuth callback: persist the credential then publish
-    // the success event — once the wait's pubsub handler is registered.
     await awaitHandlerRegistered(listenersBefore);
     await insertCredential(connectorId);
     await globalEmitter.dispatch(succeededEvent(connectorId));
@@ -356,15 +304,10 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
       const data = result.data as { status: string };
       expect(data.status).toBe("authenticated");
     }
-    // NOW the checkpoint is marked — and only now.
     const cp = draftRef.current.state?.checkpoints?.connector_authenticated;
     expect(cp).toBeDefined();
     expect(cp?.ok).toBe(true);
 
-    // The bridge (oob) governance row resolved `APPROVAL_APPROVED`. Its
-    // resolve audit carries the tri-state discriminators
-    // (docs/developers/tool-palette.md): a bridge-delivered accept records
-    // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
     const elicitation = (await readElicitations(conversation_id)).find((r) =>
       r.summary.includes("aoe-happy"),
     );
@@ -403,7 +346,6 @@ describe("authenticate_oauth — URL-mode elicitation, provider failure", () => 
     if (!result.ok) {
       expect(result.error_code).toBe(OAUTH_AUTHORIZATION_FAILED);
     }
-    // The checkpoint stays unset — no credential was persisted.
     expect(draftRef.current.state?.checkpoints?.connector_authenticated ?? null).toBeNull();
   });
 });
@@ -411,8 +353,6 @@ describe("authenticate_oauth — URL-mode elicitation, provider failure", () => 
 describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
   test("a pre-existing state row + already-landed credential resolves succeeded without a new URL", async () => {
     const connectorId = await makeOAuthConnector("aoe-resume");
-    // Pre-seed a live state row — simulates a prior turn that already
-    // handed the operator a URL (DB-pause resume, or a bridge retry).
     await ctx.db.insert(connectorOauthStates).values({
       tenant_id,
       connector_id: connectorId,
@@ -421,7 +361,6 @@ describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
       redirect_uri: "https://engine.test.example/v1/oauth/callback",
       expires_at: new Date(Date.now() + 10 * 60_000), // allow-wall-clock: OAuth state row real expiry
     });
-    // The credential already landed — waitForOAuthCredential is idempotent.
     await insertCredential(connectorId);
 
     const draftRef: { current: DraftDocument } = {
@@ -440,7 +379,6 @@ describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
     if (result.ok) {
       expect((result.data as { status: string }).status).toBe("authenticated");
     }
-    // Only ONE state row — the resume path did not mint a second.
     const stateRows = await ctx.db
       .select({ id: connectorOauthStates.id })
       .from(connectorOauthStates)
@@ -453,11 +391,6 @@ describe("authenticate_oauth — resume re-entry (idempotent wait)", () => {
 describe("authenticate_oauth — single dance per connector", () => {
   test("a second authenticate_oauth call with a live state row resumes it, no second state row", async () => {
     const connectorId = await makeOAuthConnector("aoe-single-dance");
-    // A live state row from a prior turn — the operator was already
-    // handed an authorization URL for this connector. `hasPendingOAuthState`
-    // is scoped to (tenant, connector) only, deliberately NOT to the
-    // operator, so ANY caller's `authenticate_oauth` for this connector
-    // resumes THIS dance instead of minting a competing second row.
     await ctx.db.insert(connectorOauthStates).values({
       tenant_id,
       connector_id: connectorId,
@@ -466,8 +399,6 @@ describe("authenticate_oauth — single dance per connector", () => {
       redirect_uri: "https://engine.test.example/v1/oauth/callback",
       expires_at: new Date(Date.now() + 10 * 60_000), // allow-wall-clock: OAuth state row real expiry
     });
-    // The credential already landed — the resume path's idempotent wait
-    // returns `succeeded` immediately.
     await insertCredential(connectorId);
 
     const draftRef: { current: DraftDocument } = {
@@ -483,9 +414,6 @@ describe("authenticate_oauth — single dance per connector", () => {
       } as DraftDocument,
     };
 
-    // A SECOND authenticate_oauth call for the same connector — simulates
-    // a different operator (or a retry) hitting the tool while a dance is
-    // already in flight.
     const result = await authenticateOAuthTool.execute(
       buildCtx(connectorId, makeOobBridge("accept"), draftRef),
       { connector_id: connectorId },
@@ -496,9 +424,6 @@ describe("authenticate_oauth — single dance per connector", () => {
       expect((result.data as { status: string }).status).toBe("authenticated");
     }
 
-    // Exactly ONE state row — the second call resumed the existing dance
-    // and did NOT mint a competing `connector_oauth_states` row. A second
-    // row would race two callbacks to overwrite the one credential.
     const stateRows = await ctx.db
       .select({ id: connectorOauthStates.id, state: connectorOauthStates.state })
       .from(connectorOauthStates)
@@ -512,8 +437,6 @@ describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation br
   test("a principal lacking connector:oauth is denied even with an elicitation-capable bridge", async () => {
     const connectorId = await makeOAuthConnector("aoe-rbac");
 
-    // A user principal with no role and no grants: `can()` resolves no
-    // role_id for this id, so `connector:oauth` denies.
     const principal = makeTestPrincipal({
       id: "00000000-0000-0000-0000-0000000000aa",
       tenant_id,
@@ -522,12 +445,6 @@ describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation br
 
     const registry = buildRegistry([staticToolProvider, conversationToolProvider]);
 
-    // The dispatcher runs the descriptor-declared `connector:oauth` gate
-    // BEFORE `authenticate_oauth.execute` — so the elicitation bridge,
-    // which lives on the conversation ctx the executor would receive, is
-    // never reached. Presence of a bridge cannot bypass the permission
-    // gate. We pass a bridge-carrying conversationCtx to make that
-    // explicit; the deny short-circuits before it is consumed.
     const draftRef: { current: DraftDocument } = {
       current: {
         mode: "connector_authoring",
@@ -546,7 +463,6 @@ describe("authenticate_oauth — RBAC gate is not bypassed by the elicitation br
     if (envelope.status === "error") {
       expect(envelope.error_code).toBe("policy_denied");
     }
-    // The gate fired before the executor ran — no OAuth state row minted.
     const stateRows = await ctx.db
       .select({ id: connectorOauthStates.id })
       .from(connectorOauthStates)
@@ -559,11 +475,6 @@ describe("authenticate_oauth — form-mode elicitation", () => {
   test("an accepted form whose acknowledged box is false is treated as a decline", async () => {
     const connectorId = await makeOAuthConnector("aoe-form-unack");
     const draftRef = makeDraftRef("aoe-form-unack");
-    // Form-only bridge: the operator submitted the form but left the
-    // `acknowledged` checkbox unticked. `action: "accept"` +
-    // `acknowledged !== true` must collapse to the decline path —
-    // proceeding into the credential wait + APPROVAL_APPROVED would be
-    // semantically wrong.
     const bridge = makeFormBridge({ action: "accept", content: { acknowledged: false } });
 
     const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
@@ -574,12 +485,10 @@ describe("authenticate_oauth — form-mode elicitation", () => {
     if (!result.ok) {
       expect(result.error_code).toBe(OAUTH_AUTHORIZATION_DECLINED);
     }
-    // The governance row was resolved cancelled, not left pending.
     const rows = await readElicitations(conversation_id);
     const row = rows.find((r) => r.tool_call_id == null && r.summary.includes("aoe-form-unack"));
     expect(row?.status).toBe("cancelled");
     expect(row?.decision_reason).toBe(OAUTH_AUTHORIZATION_DECLINED);
-    // No credential landed — the checkpoint stays unset.
     expect(draftRef.current.state?.checkpoints?.connector_authenticated ?? null).toBeNull();
   });
 
@@ -602,10 +511,6 @@ describe("authenticate_oauth — elicitation transport failure", () => {
   test("an oob transport failure yields a structured error and keeps the state row live", async () => {
     const connectorId = await makeOAuthConnector("aoe-oob-transport");
     const draftRef = makeDraftRef("aoe-oob-transport");
-    // A generic (non-ElicitationUnsupported) throw mid-`elicitOob` — a
-    // transport/timeout failure. Must NOT DB-pause (an MCP client cannot
-    // resume one); returns a structured error and the live state row lets
-    // a retry resume.
     const bridge = makeOobThrowingBridge(new Error("client disconnected"));
 
     const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
@@ -614,18 +519,12 @@ describe("authenticate_oauth — elicitation transport failure", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error_code).toBe(OAUTH_ELICITATION_TRANSPORT_FAILED);
-    // The state row is still live so a retry resumes the same flow.
     const stateRows = await ctx.db
       .select({ id: connectorOauthStates.id })
       .from(connectorOauthStates)
       .where(eq(connectorOauthStates.connector_id, connectorId));
     expect(stateRows).toHaveLength(1);
 
-    // The governance row resolved `APPROVAL_REJECTED`. Its resolve audit
-    // records the tri-state (docs/developers/tool-palette.md): the carrier was
-    // delivered through the MCP bridge, so `surface: mcp_elicitation`,
-    // and the round-trip broke in transit, so
-    // `elicitation_transport: failed`.
     const elicitation = (await readElicitations(conversation_id)).find((r) =>
       r.summary.includes("aoe-oob-transport"),
     );
@@ -655,40 +554,29 @@ describe("authenticate_oauth — ElicitationUnsupportedError demote to portal", 
   test("oob: capability raced away mid-call → demote the SAME row, no second elicitation", async () => {
     const connectorId = await makeOAuthConnector("aoe-oob-demote");
     const draftRef = makeDraftRef("aoe-oob-demote");
-    // `elicitOob` throws `ElicitationUnsupportedError` AFTER the tool
-    // already opened the `protocol_native` governance row. The fallback
-    // must demote that row to a portal carrier — NOT mint a second row —
-    // so the one-row APPROVAL_REQUESTED → APPROVAL_* lifecycle survives.
     const bridge = makeOobThrowingBridge(new ElicitationUnsupportedError("oob"));
 
     const result = await authenticateOAuthTool.execute(buildCtx(connectorId, bridge, draftRef), {
       connector_id: connectorId,
     });
 
-    // The result is a pause referencing the demoted row.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.pause).toBeDefined();
       expect(result.pause?.tool_name).toBe("ask_user_confirm");
     }
 
-    // Exactly ONE elicitation row for this connector's dance, demoted in
-    // place to protocol_native: false, still pending.
     const rows = (await readElicitations(conversation_id)).filter((r) =>
       r.summary.includes("aoe-oob-demote"),
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.protocol_native).toBe(false);
     expect(rows[0]!.status).toBe("pending");
-    // The pause references that SAME row id.
     if (result.ok) {
       expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
     }
 
-    // The demote left a forensic `elicitation.demoted_to_portal` audit row
-    // keyed on the elicitation id — without it an audit reader cannot tell
-    // the carrier ever attempted the MCP bridge.
     const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
     expect(demoteAudit).toBeDefined();
     expect(demoteAudit!.resource_id).toBe(rows[0]!.id);
@@ -721,8 +609,6 @@ describe("authenticate_oauth — ElicitationUnsupportedError demote to portal", 
       expect((result.data as { elicitation_id: string }).elicitation_id).toBe(rows[0]!.id);
     }
 
-    // The demote left a forensic `elicitation.demoted_to_portal` audit row
-    // keyed on the elicitation id — same forensic trail as the oob branch.
     const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
     expect(demoteAudit).toBeDefined();
     expect(demoteAudit!.resource_id).toBe(rows[0]!.id);

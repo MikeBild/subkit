@@ -8,7 +8,6 @@ describe("classifyAuditProcess", () => {
         stdout: '{"axios":[{"severity":"high","title":"finding"}]}',
         stderr: "",
         exitCode: 1,
-        // Bun 1.3 reports `killed: true` for this ordinary non-zero exit.
         killed: true,
         signalCode: null,
       },

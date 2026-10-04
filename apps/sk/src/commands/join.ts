@@ -1,13 +1,3 @@
-// `sk join` — invited-user provisioning consumer.
-//
-// Pairs with `sk users invite` (admin) and the engine's
-// POST /v1/identity/invites/redeem route. The admin hands the invited
-// user a single-use token; `sk join --invite <token>` redeems it
-// UNAUTHENTICATED (the token is the proof), mints the user's OWN
-// personal API key, and saves it into the active `~/.sk` profile —
-// exactly like `sk init` does with the bootstrap admin key. The admin
-// never sees the personal key.
-
 import { exitCodeFor, isEngineError, isTransportError } from "@cli-core/errors";
 import { defineCommand } from "citty";
 import {
@@ -19,10 +9,6 @@ import {
 } from "../config.ts";
 import { EngineClient, type FetchLike, type InviteRedeemedWire } from "../engine-client.ts";
 
-// Friendly remediation per typed redeem error. The engine returns one
-// of these `code`s with a 400 (or `rate_limit_exceeded` with 429); we
-// translate to plain guidance the invited user — who is not an
-// operator — can act on.
 const REDEEM_FRIENDLY: Record<string, string> = {
   invite_invalid:
     "that invite token is not valid — double-check you pasted it exactly as your admin sent it.",
@@ -40,7 +26,6 @@ export interface RunJoinOptions {
   profile: string;
   fetchImpl?: FetchLike;
   saveProfileImpl?: typeof saveProfile;
-  /** Captures status messages in tests; falls back to process.stdout. */
   out?: (line: string) => void;
   err?: (line: string) => void;
 }
@@ -52,13 +37,6 @@ export interface RunJoinResult {
   error?: { code: string; message: string };
 }
 
-/**
- * Pure helper extracted so tests can drive the HTTP path without the
- * citty layer. All side effects (writing the profile, printing) flow
- * through the injected dependencies. The redeem call is UNAUTHENTICATED
- * — the client is built with an empty `api_key` so no Authorization
- * header is sent.
- */
 export async function runJoin(opts: RunJoinOptions): Promise<RunJoinResult> {
   const save = opts.saveProfileImpl ?? saveProfile;
   const out = opts.out ?? ((line: string) => process.stdout.write(line));
@@ -66,7 +44,7 @@ export async function runJoin(opts: RunJoinOptions): Promise<RunJoinResult> {
 
   const client = new EngineClient({
     engine_url: opts.engine_url,
-    api_key: "", // UNAUTHENTICATED — the invite token in the body is the proof.
+    api_key: "",
     ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
   });
 

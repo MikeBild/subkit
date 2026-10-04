@@ -1,5 +1,3 @@
-// Draft-snapshot LRU + retrieval tests.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -60,14 +58,12 @@ describe("createDraftSnapshot", () => {
   });
 
   test("prunes oldest rows beyond LRU cap", async () => {
-    // Reset: recreate conversation so we start from a clean count
     const [c] = await ctx.db
       .insert(conversations)
       .values({ tenant_id, status: "active" })
       .returning();
     const convId = c!.id;
 
-    // Insert LRU_CAP + 3 snapshots; the 3 oldest must be pruned.
     for (let i = 1; i <= DRAFT_SNAPSHOT_LRU_CAP + 3; i++) {
       await createDraftSnapshot(
         {
@@ -83,7 +79,6 @@ describe("createDraftSnapshot", () => {
     expect(countAfter).toBe(DRAFT_SNAPSHOT_LRU_CAP);
     const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
     const turnIndices = rows.map((r) => r.turn_index).sort((a, b) => a - b);
-    // The 3 smallest turn_indexes should be gone.
     expect(turnIndices[0]).toBe(4);
     expect(turnIndices.at(-1)).toBe(DRAFT_SNAPSHOT_LRU_CAP + 3);
   });
@@ -111,7 +106,6 @@ describe("listDraftSnapshots + getDraftSnapshot", () => {
       await new Promise((r) => setTimeout(r, 5)); // allow-wall-clock: draft-snapshot persistence ordering across appendSnapshot calls
     }
     const rows = await listDraftSnapshots({ tenant_id, conversation_id: convId }, ctx.db);
-    // Newest first == reverse of insert order.
     expect(rows.map((r) => r.id)).toEqual([...ids].reverse());
   });
 

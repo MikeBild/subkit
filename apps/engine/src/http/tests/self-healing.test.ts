@@ -1,22 +1,3 @@
-// HTTP integration tests for the /v1/self-healing routes.
-//
-// Covers the operator-facing surface:
-//   - POST /v1/self-healing/scans triggers a scan as admin, persists
-//     a self_healing_scans row, and emits TRIGGERED + COMPLETED audit
-//     entries.
-//   - Non-admin principals get 403.
-//   - Idempotency-Key returns the prior result with 202 on replay.
-//   - GET /v1/self-healing/scans lists the row.
-//   - GET /v1/self-healing/scans/{id} returns the row.
-//
-// The scan path in these tests deliberately exercises the
-// "no signals" branch: we don't seed any drift, so scanForDrift
-// returns an empty signal list and no Patch Candidates are
-// created. The unit tests in self-healing/tests/proactive-scanner
-// cover the per-signal scanner logic directly; here we're proving
-// the HTTP envelope (auth, idempotency, persistence, audit) — not
-// re-testing scanner internals.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -105,7 +86,6 @@ describe("/v1/self-healing/scans", () => {
     expect(body.candidates_created).toBe(0);
     expect(Array.isArray(body.candidates)).toBe(true);
 
-    // Row persisted.
     const rows = await srv.db
       .select()
       .from(selfHealingScans)
@@ -115,7 +95,6 @@ describe("/v1/self-healing/scans", () => {
     expect(rows[0]?.source).toBe("admin_http");
     expect(rows[0]?.tenant_id).toBe(srv.tenantId);
 
-    // Both lifecycle audit rows exist.
     const audits = await srv.db
       .select()
       .from(auditLog)
@@ -157,7 +136,6 @@ describe("/v1/self-healing/scans", () => {
     expect(replayBody.scan_id).toBe(firstBody.scan_id);
     expect(replayBody.idempotent_replay).toBe(true);
 
-    // Exactly one persisted row for this idempotency key.
     const rows = await srv.db
       .select()
       .from(selfHealingScans)
@@ -208,10 +186,6 @@ describe("/v1/self-healing/scans", () => {
 
   test("concurrent Idempotency-Key races resolve to a single scan row", async () => {
     const key = `race-key-${idemHex(8)}`;
-    // Fire both POSTs in parallel so one of them is guaranteed to lose
-    // the unique-constraint race on (tenant_id, idempotency_key). The
-    // route's ON CONFLICT DO NOTHING + re-read fallback must convert
-    // the loser into a 202 replay rather than a 500.
     const [a, b] = await Promise.all([
       fetch(`${srv.baseUrl}/v1/self-healing/scans`, {
         method: "POST",
@@ -225,13 +199,11 @@ describe("/v1/self-healing/scans", () => {
       }),
     ]);
     const statuses = [a.status, b.status].sort();
-    // One success (200), one replay (202) — neither 500.
     expect(statuses).toEqual([200, 202]);
     const aBody = (await a.json()) as { scan_id: string };
     const bBody = (await b.json()) as { scan_id: string };
     expect(aBody.scan_id).toBe(bBody.scan_id);
 
-    // Exactly one row landed for the race key.
     const rows = await srv.db
       .select()
       .from(selfHealingScans)

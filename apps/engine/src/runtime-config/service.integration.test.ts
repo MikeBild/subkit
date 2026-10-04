@@ -52,7 +52,6 @@ describe("runtime configuration revisions", () => {
     );
     expect(JSON.stringify(initialRevision.document)).not.toContain(tdb.url);
 
-    // A second boot loads PostgreSQL and never re-seeds from bootstrap input.
     const secondBoot = await initializeRuntimeConfig(tdb.db, {
       ...getConfig(),
       database: { url: "postgres://rotated-bootstrap/runtime" },

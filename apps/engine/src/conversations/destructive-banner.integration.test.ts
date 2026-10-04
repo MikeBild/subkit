@@ -1,8 +1,3 @@
-// Destructive-skill commit gate. When a workflow draft declares
-// `derived_from_skill_id` pointing at a skill with
-// `side_effects: "destructive"`, save_workflow_draft refuses unless
-// the LLM re-issues with `confirmed: true`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { skills, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -10,7 +5,6 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { saveWorkflowDraftTool } from "./tools/save-workflow-draft.ts";
 import type { DraftDocument } from "./types.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
@@ -23,8 +17,6 @@ beforeAll(async () => {
     .values({ slug: "dest-banner", display_name: "db" })
     .returning();
   tenant_id = t!.id;
-  // Seed one destructive skill (slug = `destructive-write`) and one
-  // safe one (`safe-read`) so we can exercise both branches.
   await ctx.db.insert(skills).values({
     tenant_id,
     slug: "destructive-write",
@@ -117,8 +109,6 @@ describe.skipIf(skip)("save_workflow_draft — destructive-skill confirmation ga
       makeToolCtx({ tenant_id, conversation_id, draft }),
       { force_commit: false, confirmed: false },
     );
-    // Tool may still fail downstream (no_prior_approval etc.) but it
-    // must NOT be the destructive_skill_confirmation_required envelope.
     if (!result.ok) {
       expect(result.error_code).not.toBe("destructive_skill_confirmation_required");
     }

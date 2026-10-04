@@ -1,10 +1,3 @@
-// End-to-end check that a fresh database, given only `runMigrations(db)`,
-// reaches the schema state the rest of the engine expects.
-//
-// A "schema mismatch the engine quietly logs and keeps going" is the
-// failure this guards against; the test fails loudly if a future
-// refactor breaks the embedded-bundle path on a clean DB.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { listEmbeddedMigrations, runMigrations } from "../migrate.ts";
@@ -13,8 +6,6 @@ import { createTestDb, type TestDb } from "./setup.ts";
 let ctx: TestDb;
 
 beforeAll(async () => {
-  // createTestDb already runs `runMigrations(db)`; this gives us a
-  // fully-migrated DB to inspect.
   ctx = await createTestDb("migrate_fresh_db");
 }, 60_000);
 
@@ -89,11 +80,6 @@ describe("runMigrations on a fresh database", () => {
     expect(r.rows?.[0]?.n).toBe(0);
   });
 
-  // Secret-by-reference CHECK guard, now on `connectors`. The gate moved
-  // with the data: an external MCP server is a connector whose driver is
-  // `mcp`, and its non-secret auth shape lives at `config.mcp.auth`. The
-  // CHECK is scoped to that path rather than the config root because other
-  // drivers legitimately carry header NAMES there.
   test("connectors rejects inline secrets under config.mcp.auth", async () => {
     const tenant = (await ctx.db.execute(
       sql`INSERT INTO tenants (id, slug, display_name) VALUES (gen_random_uuid(), 'mcp-secret-check', 'mcp secret check') RETURNING id::text AS id`,
@@ -102,8 +88,6 @@ describe("runMigrations on a fresh database", () => {
     if (!tenant_id) throw new Error("tenant insert failed");
     const cleanup = sql`DELETE FROM tenants WHERE id = ${tenant_id}`;
     try {
-      // Accept-path: the non-secret shape only. The secret lives in the
-      // encrypted `credentials` row keyed by connector_id.
       await ctx.db.execute(sql`
         INSERT INTO connectors (tenant_id, slug, display_name, driver, base_url, config)
         VALUES (
@@ -111,8 +95,6 @@ describe("runMigrations on a fresh database", () => {
           '{"mcp":{"transport":"http","auth":{"kind":"oauth2","client_id":"public-id"}}}'::jsonb
         )
       `);
-      // Accept-path: an HTTP connector may carry the WORD `api_key` as a
-      // header name at the config root — the CHECK must not reach it.
       await ctx.db.execute(sql`
         INSERT INTO connectors (tenant_id, slug, display_name, driver, base_url, config)
         VALUES (
@@ -120,7 +102,6 @@ describe("runMigrations on a fresh database", () => {
           '{"default_headers":{"api_key":"X-Api-Key"}}'::jsonb
         )
       `);
-      // Reject-path: a secret VALUE inlined in the mcp auth block.
       const denied = [
         '{"mcp":{"auth":{"client_secret":"shhh"}}}',
         '{"mcp":{"auth":{"password":"hunter2"}}}',
@@ -143,8 +124,6 @@ describe("runMigrations on a fresh database", () => {
           );
         } catch (err) {
           threw = true;
-          // Drizzle wraps the pg error as `cause`; the constraint name
-          // only appears on the inner message.
           const inner = (err as { cause?: { message?: string } }).cause?.message ?? "";
           expect(inner).toContain("connectors_mcp_auth_no_inline_secrets_check");
         }
@@ -155,10 +134,6 @@ describe("runMigrations on a fresh database", () => {
     }
   });
 
-  // Slug shape CHECK guard, now on `connectors`. Forbid `__` runs and
-  // leading/trailing punctuation — the `__` ban is what makes the
-  // `mcp_<slug>__<tool>` split point unambiguous, so it applies to EVERY
-  // connector, not only the mcp ones.
   test("connectors rejects malformed slugs, whatever the driver", async () => {
     const tenant = (await ctx.db.execute(
       sql`INSERT INTO tenants (id, slug, display_name) VALUES (gen_random_uuid(), 'mcp-namespace-check', 'mcp namespace check') RETURNING id::text AS id`,
@@ -186,7 +161,6 @@ describe("runMigrations on a fresh database", () => {
         }
         expect(threw).toBe(true);
       }
-      // Accept-path: a well-formed slug with a single `_` and a `-`.
       await ctx.db.execute(sql`
         INSERT INTO connectors (tenant_id, slug, display_name, driver, base_url)
         VALUES (${tenant_id}::uuid, 'notion-mcp_workspace', 'ok', 'mcp', 'https://example.test/mcp')

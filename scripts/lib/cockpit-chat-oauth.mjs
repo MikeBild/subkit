@@ -1,4 +1,3 @@
-/** A governed OAuth call remains actionable through both persisted pauses. */
 export async function verifyChatOAuth(page, stand, conversation, locale) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(
@@ -101,8 +100,6 @@ export async function verifyChatOAuth(page, stand, conversation, locale) {
     await stand.visit(page, `chat/${conversation.id}`);
     const card = page.getByTestId("chat-message-0-approval");
     await card.waitFor();
-    // While the sign-in question waits, the reconnect card offers no button of
-    // its own: answering the question in its card is the one way on.
     if (
       await page
         .getByRole("button", {

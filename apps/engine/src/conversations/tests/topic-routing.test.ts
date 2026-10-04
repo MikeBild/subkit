@@ -1,12 +1,3 @@
-// Topic-based conversation routing — end-to-end.
-//
-// Seeds conversations + their first user messages, runs the topic backfill,
-// then asserts suggestConversationsByTopic routes a related prompt to the
-// right conversation and ABSTAINS (empty) on an unrelated prompt — the two
-// behaviours the routing probe measured. Opt-in (model + DB): set
-// RUN_EMBEDDING_E2E=1. The ranking quality itself is measured offline in
-// benchmarks/routing/conversation-route-probe.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationMessages, conversations } from "../../db/schema/conversations.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -53,7 +44,6 @@ beforeAll(async () => {
     "Weekly report of merged pull requests across our GitHub repos",
   );
   ids.jira = await seedConversation(ownerId, "Create Jira tickets from inbound support emails");
-  // A conversation owned by a DIFFERENT user — must never be suggested.
   ids.otherStripe = await seedConversation(otherOwnerId, "Stripe refunds and chargebacks workflow");
   await backfillEmbeddings({ tenant_id: tenantId }, testDb.db);
 }, 120_000);

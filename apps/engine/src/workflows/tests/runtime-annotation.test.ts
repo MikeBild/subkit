@@ -23,9 +23,6 @@ describe("workflowUsesSandboxedJs", () => {
   });
 
   test("only the explicit `javascript` language counts as sandboxed JS", () => {
-    // `workflowUsesSandboxedJs` keys on `language === "javascript"`.
-    // A web-scraper language (own driver, no QuickJS body) and an
-    // unlabelled transform both return false here.
     expect(workflowUsesSandboxedJs(defWithJs("html-to-markdown"))).toBe(false);
     expect(workflowUsesSandboxedJs(defWithJs(undefined))).toBe(false);
   });
@@ -58,8 +55,6 @@ describe("annotateRuntime", () => {
       runtime: { stdlib_version: "0.1.0" },
     };
     const out = annotateRuntime(input);
-    // Re-stamps to the current version (the act of committing is the
-    // new baseline).
     expect(out.runtime?.stdlib_version).toBe(STDLIB_VERSION);
   });
 });

@@ -1,14 +1,3 @@
-// Regression: workflow-level output_transform / validation_expression must see
-// `$scope.<step>.data` and `$input`, exactly like transform steps do.
-//
-// Bug (reported via the Notion→GitHub pipeline): a multi-step workflow whose
-// output_transform built an object from `$scope.<step>.data.<field>` returned
-// `{}` through the `wf_<slug>` envelope even though every step succeeded and
-// inspect_execution showed the real per-step data. Root cause: engine.ts
-// evaluated output_transform with NO bindings (`evaluate(expr, lastOutput)`),
-// so `$scope` was `{}` and every reference collapsed to nothing. Fix passes
-// `{ input, scope }` bindings. These tests pin that contract.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
@@ -36,8 +25,6 @@ describe("output_transform sees $scope + $input", () => {
         },
         { id: "tag", kind: "transform", language: "javascript", expression: "return { n: 42 };" },
       ],
-      // References two upstream steps by $scope.<id>.data — the exact pattern
-      // that previously collapsed to {}.
       output_transform:
         '{ "slug": $scope.render.data.slug, "title": $scope.render.data.title, "n": $scope.tag.data.n }',
     });
@@ -85,7 +72,6 @@ describe("output_transform sees $scope + $input", () => {
           expression: 'return { slug: "ok" };',
         },
       ],
-      // Falsy → failed if $scope is unbound; truthy now that it resolves.
       validation_expression: "$scope.render.data.slug = 'ok'",
     });
     const result = await runExecution({

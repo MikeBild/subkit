@@ -1,20 +1,3 @@
-// Pin the `@attachment:<slug>` → `[file:fid_<uuid>]` rewrite chokepoint.
-//
-// The runLoop ingest path rewrites every `@attachment:<slug>` token into
-// the canonical `[file:fid_<uuid>]` sentinel BEFORE persisting the user
-// message (see `apps/engine/src/conversations/loop.ts` —
-// `resolveAttachmentSlugsInText` + `appendMessage`). This is the single
-// surface that translates legacy slug tokens into the post-rewriter
-// form. A future refactor that moves the rewrite somewhere else — or
-// drops it entirely — would re-introduce the multi-turn replay leak
-// fixed in checkpoint C: prior-turn user messages would carry literal
-// `[file:fid_...]` text into the LLM with no file_api / file_part /
-// text_extract assembly, no provider-id reuse.
-//
-// This test pins the contract: after `appendUserMessage`, the persisted
-// `conversation_messages.content` row matches `FILE_SENTINEL_RE` and
-// the original `@attachment:<slug>` substring is gone.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
@@ -35,9 +18,6 @@ afterAll(async () => {
 
 describe("attachment ingest chokepoint", () => {
   test("@attachment:<slug> in user message → persisted as [file:fid_...] sentinel", async () => {
-    // Seed a fresh conversation tied to no connector (the rewrite path
-    // does not depend on connector context — it only needs the
-    // conversation id to scope the slug lookup).
     const created = await createConversation(
       {
         tenant_id: ctx.tenant_id,
@@ -48,8 +28,6 @@ describe("attachment ingest chokepoint", () => {
     );
     const conversation_id = created.conversation.id;
 
-    // Attach a file via the production write path (writes object-store
-    // bytes, inserts `files` + `file_links` rows).
     const attached = await attachInlineForTest({
       db: ctx.testDb.db,
       tenant_id: ctx.tenant_id,
@@ -59,9 +37,6 @@ describe("attachment ingest chokepoint", () => {
       slug: "policy-doc",
     });
 
-    // Append a user message referencing the attachment by legacy slug.
-    // `appendUserMessage` owns the rewrite chokepoint + the row insert
-    // (the model loop is a separate step we do not need here).
     await appendUserMessage(
       {
         tenant_id: ctx.tenant_id,
@@ -72,9 +47,6 @@ describe("attachment ingest chokepoint", () => {
       ctx.testDb.db,
     );
 
-    // Read back every user-role message in created_at order. The
-    // rewrite must have applied to the second user turn (the first was
-    // "hello" from `createConversation`).
     const rows = await ctx.testDb.db
       .select()
       .from(conversationMessages)
@@ -87,22 +59,16 @@ describe("attachment ingest chokepoint", () => {
       )
       .orderBy(asc(conversationMessages.created_at));
 
-    // The newest user row carries the rewritten content.
     const lastUser = rows[rows.length - 1];
     expect(lastUser).toBeDefined();
     const content = lastUser!.content as { text?: unknown };
     const text = typeof content?.text === "string" ? content.text : "";
 
-    // Contract 1: persisted text matches the canonical sentinel form.
     const re = new RegExp(FILE_SENTINEL_RE.source, "g");
     expect(re.test(text)).toBe(true);
-    // Contract 2: the canonical sentinel embeds the file's wire id.
     expect(text).toContain(`[file:${attached.file_id}]`);
-    // Contract 3: the original `@attachment:<slug>` substring is gone.
     expect(text).not.toContain("@attachment:policy-doc");
 
-    // Sanity: the conversation row exists (the persist+update path
-    // didn't roll back on the rewrite chokepoint).
     const [conv] = await ctx.testDb.db
       .select()
       .from(conversations)

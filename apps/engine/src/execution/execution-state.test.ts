@@ -1,13 +1,3 @@
-// Execution state-integrity regressions (E3).
-//
-// Pins three contracts the external review flagged:
-//   #14 finalizeExecution is compare-and-set — a terminal row is never
-//       overwritten by a later completion/cancel/timeout.
-//   #13 the queued-only finalize (used by queued-cancel) refuses to touch
-//       a row that already moved to running.
-//   #15 an input-schema violation strands NO execution row (validation now
-//       runs before the row is created).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -64,7 +54,6 @@ describe("finalizeExecution — compare-and-set", () => {
     await finalizeExecution(db, tenantId, id, "succeeded", null);
     expect(await statusOf(id)).toBe("succeeded");
 
-    // A racing cancel/timeout must NOT clobber the recorded success.
     await finalizeExecution(db, tenantId, id, "failed", null);
     expect(await statusOf(id)).toBe("succeeded");
   });
@@ -101,11 +90,6 @@ describe("finalizeStepRow — compare-and-set", () => {
 });
 
 describe("a refused dispatch reaches the audit trail", () => {
-  // Ninety-eight dispatches had been refused on one installation — requests to
-  // an address the approval did not cover — and `audit_log` held not one row
-  // about any of them. The trail recorded what ran and never what was stopped,
-  // so the one question governance exists to answer, "did the limit hold?",
-  // could only be answered by reading execution rows by hand.
   async function refuse(code: string | null, message = "outside the boundary") {
     const executionId = await newQueued();
     await markExecutionRunning(db, tenantId, executionId, new Date(FROZEN_NOW));
@@ -145,17 +129,6 @@ describe("a refused dispatch reaches the audit trail", () => {
   });
 
   test("the real refusal code is what the runtime reports, not a blanket one", async () => {
-    // This file can only assert the SINK. It hands `finalizeStepRow` a code by
-    // hand, so it is structurally blind to the hop that broke this: the request
-    // dispatcher rewrote every governance refusal to `authority_invalid` before
-    // the step row existed, and that code is not in the set, so nothing was
-    // written. Three of the four codes this suite "covered" could never arrive.
-    //
-    // The end-to-end proof lives in
-    // `execution/tests/authority-admission.integration.test.ts` and
-    // `authority-runtime.integration.test.ts`, which drive the real dispatcher.
-    // What belongs HERE is the other half: every code the runtime can now
-    // report does reach the trail.
     for (const code of [
       "execution_authority_changed",
       "execution_authority_unavailable",
@@ -170,15 +143,11 @@ describe("a refused dispatch reaches the audit trail", () => {
   });
 
   test("a code nothing produces is not kept as a promise", async () => {
-    // `execution_boundary_exhausted` sat in the set with no producer anywhere —
-    // a guard over a case that could not happen, which reads like coverage.
     const rows = await refuse("execution_boundary_exhausted");
     expect(rows.some((row) => row.action === "execution.boundary_refused")).toBe(false);
   });
 
   test("an ordinary failure is not a governance event", async () => {
-    // A catch-all would bury the refusals among timeouts and 404s, and the
-    // trail exists to separate exactly those two things.
     for (const code of ["http_4xx", null]) {
       const rows = await refuse(code);
       expect(rows.some((row) => row.action === "execution.boundary_refused")).toBe(false);
@@ -197,8 +166,6 @@ describe("finalizeExecution — queued-only guard", () => {
     const id = await newQueued();
     await markExecutionRunning(db, tenantId, id, new Date(FROZEN_NOW));
     await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
-    // Still running — the queued-cancel path must not abort a row that a
-    // concurrent worker already picked up; the abort signal handles that.
     expect(await statusOf(id)).toBe("running");
   });
 
@@ -286,7 +253,6 @@ describe("runExecution — input validation", () => {
       }),
     ).rejects.toThrow();
     const after = await db.select().from(executions).where(eq(executions.tenant_id, tenantId));
-    // No new row was created — validation runs before createExecution.
     expect(after.length).toBe(before.length);
   });
 });

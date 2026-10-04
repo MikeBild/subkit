@@ -1,21 +1,3 @@
-// RBAC schema — permissions catalog, roles, role↔permission mapping,
-// resource grants, groups, group memberships, and group↔role assignments.
-//
-// Design notes:
-//   - `permissions.name` is the stable identifier (e.g. `workflow:run`)
-//     referenced by route middleware and the `can()` evaluator.
-//   - `roles.tenant_id` is nullable: NULL means a built-in global role
-//     (`admin`, `member`, `enduser`, `metrics_scraper`).
-//     Tenant-scoped custom roles carry the owning tenant id.
-//   - `resource_grants` gives a single (subject, resource, permission)
-//     tuple granted to a user/system_account/group with optional TTL.
-//   - `groups` cluster users; `group_role_assignments` attach roles to
-//     the group so any member inherits those permissions transitively.
-//
-// Built-in roles are seeded once via `seedBuiltinRolesAndPermissions`
-// and marked `is_builtin = true`. The management API rejects mutations
-// against built-in rows with a 409.
-
 import {
   boolean,
   index,
@@ -29,8 +11,6 @@ import {
 import { timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
-// ----- permissions ----------------------------------------------------------
-
 export const permissions = pgTable(
   "permissions",
   {
@@ -43,27 +23,18 @@ export const permissions = pgTable(
   (t) => [uniqueIndex("permissions_name_key").on(t.name)],
 );
 
-// ----- roles ----------------------------------------------------------------
-
 export const roles = pgTable(
   "roles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // NULL for built-in global roles.
     tenant_id: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
     is_builtin: boolean("is_builtin").notNull().default(false),
     ...timestamps,
   },
-  (t) => [
-    // Unique per tenant scope. Built-in rows (tenant_id IS NULL) share
-    // the same unique slot thanks to the partial index below.
-    uniqueIndex("roles_tenant_name_key").on(t.tenant_id, t.name),
-  ],
+  (t) => [uniqueIndex("roles_tenant_name_key").on(t.tenant_id, t.name)],
 );
-
-// ----- role_permissions -----------------------------------------------------
 
 export const rolePermissions = pgTable(
   "role_permissions",
@@ -82,8 +53,6 @@ export const rolePermissions = pgTable(
   ],
 );
 
-// ----- resource_grants ------------------------------------------------------
-
 export const resourceGrants = pgTable(
   "resource_grants",
   {
@@ -91,7 +60,7 @@ export const resourceGrants = pgTable(
     tenant_id: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    subject_type: text("subject_type").notNull(), // user | system_account | group
+    subject_type: text("subject_type").notNull(),
     subject_id: uuid("subject_id").notNull(),
     resource_type: text("resource_type").notNull(),
     resource_id: uuid("resource_id").notNull(),
@@ -116,8 +85,6 @@ export const resourceGrants = pgTable(
   ],
 );
 
-// ----- groups ---------------------------------------------------------------
-
 export const groups = pgTable(
   "groups",
   {
@@ -131,8 +98,6 @@ export const groups = pgTable(
   },
   (t) => [uniqueIndex("groups_tenant_name_key").on(t.tenant_id, t.name)],
 );
-
-// ----- group_members --------------------------------------------------------
 
 export const groupMembers = pgTable(
   "group_members",
@@ -149,8 +114,6 @@ export const groupMembers = pgTable(
     index("group_members_user_idx").on(t.user_id),
   ],
 );
-
-// ----- group_role_assignments -----------------------------------------------
 
 export const groupRoleAssignments = pgTable(
   "group_role_assignments",

@@ -1,23 +1,3 @@
-// What the attention list knows about approvals BEFORE a start is refused.
-//
-// A held schedule or hook is an observed refusal (`admission_hold`). It is
-// recorded on the first start the gate turns away — which, for a version saved
-// on Monday and a schedule that fires on Friday, is four days after anyone
-// could have acted. This reader derives the two earlier facts from what is
-// already stored, and writes nothing:
-//
-//   * awaiting — something starts the workflow automatically and no approval
-//     covers the running version there. The next start will be refused.
-//   * expiring — every approval that still covers it is close to its end.
-//
-// "Covers" is admission's own predicate minus the effect-manifest digest, which
-// only the gate can compute: an approval whose boundary has drifted is found by
-// the first refused start, as before, and becomes a hold on the same workflow.
-//
-// Saved drafts are not read here on purpose. A draft starts nothing until a
-// person applies it; that is the workflow page's "change waiting" state, not a
-// task on this list.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -42,23 +22,14 @@ export interface ApprovalFact {
   workflow_id: string;
   name: string;
   kind: "awaiting" | "expiring";
-  /** The running version's number. */
   version: number;
   environment: "dev" | "prod";
   trigger: { kind: "schedule" | "inbound_hook"; name: string | null };
-  /** Awaiting: since the version was saved. Expiring: null — it has no start. */
   since: string | null;
-  /** Awaiting: the next scheduled start. Expiring: the end of the last
-   *  approval, when a date is what ends it. */
   deadline: string | null;
-  /** Awaiting only: what the running version reaches that the approval of
-   *  the version before it did not, recorded when it became active. Absent
-   *  when nothing was recorded (no earlier approval, or a version before
-   *  inheritance existed). */
   growth?: BoundaryGrowth[];
 }
 
-/** The approvals admission would use for this workflow's running version. */
 function covering(now: Date, environment: SQL): SQL | undefined {
   return and(
     eq(workflowExecutionAuthorities.tenant_id, workflows.tenant_id),
@@ -69,7 +40,6 @@ function covering(now: Date, environment: SQL): SQL | undefined {
   );
 }
 
-/** The three answers one trigger needs, each a subquery over its approvals. */
 function approvalColumns(db: Db, now: Date, environment: SQL) {
   const soon = new Date(now.getTime() + AUTHORITY_EXTEND_WITHIN_DAYS * DAY_MS);
   return {
@@ -77,9 +47,6 @@ function approvalColumns(db: Db, now: Date, environment: SQL) {
       .select({ one: sql`1` })
       .from(workflowExecutionAuthorities)
       .where(covering(now, environment))}`,
-    // An approval with room: it ends later than the threshold and has runs to
-    // spare. One without an end date or without a run limit has room on that
-    // side by definition — an open-ended approval is never "ending".
     comfortable: sql<boolean>`EXISTS ${db
       .select({ one: sql`1` })
       .from(workflowExecutionAuthorities)
@@ -90,7 +57,6 @@ function approvalColumns(db: Db, now: Date, environment: SQL) {
           sql`(${workflowExecutionAuthorities.max_runs} IS NULL OR (${workflowExecutionAuthorities.max_runs} - ${workflowExecutionAuthorities.reserved_runs})::float8 / ${workflowExecutionAuthorities.max_runs} >= ${AUTHORITY_EXTEND_BELOW_RUN_SHARE})`,
         ),
       )}`,
-    // When the last covering approval ends; null when one has no end date.
     ends: sql<Date | string | null>`(${db
       .select({
         until: sql`CASE WHEN bool_or(${workflowExecutionAuthorities.valid_until} IS NULL) THEN NULL ELSE max(${workflowExecutionAuthorities.valid_until}) END`,
@@ -100,7 +66,6 @@ function approvalColumns(db: Db, now: Date, environment: SQL) {
   };
 }
 
-/** A workflow that can run on its own: active, with a running version. */
 function runnable(): SQL | undefined {
   return and(
     isNull(workflows.deleted_at),
@@ -143,8 +108,6 @@ function factOf(row: TriggerRow, now: Date): ApprovalFact | null {
   }
   if (row.comfortable) return null;
   const ends = row.ends === null ? null : new Date(row.ends);
-  // A date is the deadline only when the date is what ends it; an approval
-  // running out of runs ends when the next few starts have used them.
   const byDate =
     ends !== null && ends.getTime() - now.getTime() <= AUTHORITY_EXTEND_WITHIN_DAYS * DAY_MS;
   return {
@@ -155,11 +118,6 @@ function factOf(row: TriggerRow, now: Date): ApprovalFact | null {
   };
 }
 
-/**
- * Per workflow, the approval fact of its unheld automatic starts: awaiting
- * before expiring, and within a kind the nearest deadline. Held triggers are
- * left to the hold itself — it is the stronger statement about the same thing.
- */
 export async function readApprovalFacts(
   db: Db,
   tenantId: string,
@@ -212,7 +170,6 @@ export async function readApprovalFacts(
         saved_at: workflowVersions.created_at,
         authority_growth: workflowVersions.authority_growth,
         slug: webhooksInbound.slug,
-        // Unattended deliveries only ever run in production.
         ...approvalColumns(db, now, sql`'prod'`),
       })
       .from(webhooksInbound)

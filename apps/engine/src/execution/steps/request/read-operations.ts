@@ -1,10 +1,5 @@
 import type { MaterializedRequest } from "../../prepared-request.ts";
 
-/** Provider-documented read operations that use POST. Evaluated only against
- * the final HTTP request, never an author's side_effects hint or connector name.
- * Google documents runReport with analytics.readonly scope:
- * https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport
- */
 export function isDocumentedReadOperation(request: MaterializedRequest | undefined): boolean {
   if (!request || request.method !== "POST" || request.unsupported_body) return false;
   try {

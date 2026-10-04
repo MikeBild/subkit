@@ -1,11 +1,3 @@
-// Robots-cache unit tests.
-//
-// Covers:
-//   - allow / disallow / user-agent specific rules
-//   - per-tenant key isolation
-//   - TTL refetch
-//   - "no robots.txt" → null (treated as allow-all by assertRobotsAllowed)
-
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import * as loader from "../config/loader.ts";
@@ -115,7 +107,6 @@ describe("robots-cache / tenant isolation", () => {
     expect(bFetches).toBe(1);
     expect(__getRobotsCacheStatsForTests().size).toBe(2);
 
-    // A second call for tenant A is a cache hit — no extra fetch.
     await getRobots({
       tenantId: "tenant-a",
       origin: "https://shared.example.com",
@@ -157,8 +148,6 @@ describe("robots-cache / TTL", () => {
     });
     expect(fetches).toBe(1);
 
-    // Manually expire by jumping the cache forward — robots-cache uses
-    // Date.now(), so we monkey-patch the clock for the second call.
     const originalNow = Date.now;
     try {
       Date.now = () => originalNow() + 120_000;

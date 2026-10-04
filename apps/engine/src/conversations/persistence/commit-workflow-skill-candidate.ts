@@ -1,10 +1,3 @@
-// Workflow-capability Skill Candidate proposed on every successful commit.
-//
-// Extracted from commit-workflow.ts to keep that orchestrator under the
-// file-size ceiling. The candidate is always status `proposed` — never an
-// active skill. It is advisory (not reviewable): authoring reads it as
-// context for the same workflow; no person is asked to decide it.
-
 import { createHash } from "node:crypto";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
@@ -12,9 +5,6 @@ import { upsertFromSignal } from "../../skill-candidates/service.ts";
 import type { PatternSignal } from "../../skill-candidates/types.ts";
 import type { ScopeIndex, WorkflowDefFromDraft } from "./commit-workflow.ts";
 
-/** Sorted-key JSON serialization so a fingerprint derived from a `jsonb`
- *  schema (where Postgres does not preserve key order) is stable across
- *  re-commits of the same declared shape. */
 function canonicalJson(value: unknown): string {
   if (value === null || value === undefined) return "null";
   if (typeof value !== "object") return JSON.stringify(value) ?? "null";
@@ -26,8 +16,6 @@ function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
-/** One-line prose summary of a declared `input_schema` (name: type
- *  (required) — description), used in the candidate body. */
 function describeInputSchema(input_schema: unknown): string {
   if (!input_schema || typeof input_schema !== "object") return "none declared";
   const schema = input_schema as Record<string, unknown>;
@@ -46,14 +34,6 @@ function describeInputSchema(input_schema: unknown): string {
     .join("; ");
 }
 
-/**
- * Build the workflow-capability PatternSignal proposed on every commit.
- * Identity is the declared interface: fingerprint = sha256 over the
- * workflow id plus the canonical input/output schemas, so a re-commit of
- * the same shape updates the same candidate (no flood) while a schema
- * change supersedes the prior one (workflow-keyed, endpoint_key null) —
- * exactly one live candidate per workflow.
- */
 function buildAuthoringCapabilitySignal(args: {
   workflow_id: string;
   slug: string;
@@ -71,9 +51,6 @@ function buildAuthoringCapabilitySignal(args: {
         .filter((id): id is string => id !== null),
     ),
   );
-  // Workflow-level candidate: attribute to a connector only when the DAG
-  // is single-connector; multi/zero-connector → null (the supersede pass
-  // then keys purely on workflow_id).
   const connectorId = connectorIds.length === 1 ? connectorIds[0]! : null;
 
   const stepIds = def.steps
@@ -123,8 +100,6 @@ function buildAuthoringCapabilitySignal(args: {
     scope: "workflow",
     workflow_id,
     ...(connectorId ? { connector_id: connectorId } : {}),
-    // endpoint_key intentionally omitted (stored null) — capability is
-    // workflow-scoped, so the supersede pass treats it as workflow-keyed.
     title: `Workflow '${slug}' capabilities`,
     body,
     examples: [exampleInvocation],
@@ -144,12 +119,6 @@ function buildAuthoringCapabilitySignal(args: {
   };
 }
 
-/**
- * Propose (or update) the workflow-capability candidate on commit. It is
- * advisory (`reviewable: false`): drafting context, never a decision a person
- * is asked to take, so nothing announces it. Best-effort: a candidate failure
- * must never break a successful commit, so all errors are caught and logged.
- */
 export async function proposeAuthoringCapabilityCandidate(args: {
   db: Db;
   tenant_id: string;

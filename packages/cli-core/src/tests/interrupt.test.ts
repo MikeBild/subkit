@@ -1,7 +1,3 @@
-// Two-phase Ctrl+C interrupt ceremony — first press cancels the
-// current turn, second press within the window exits. Outside a
-// turn, a single press exits directly.
-
 import { describe, expect, test } from "bun:test";
 import { makeInterruptController } from "../interrupt.ts";
 

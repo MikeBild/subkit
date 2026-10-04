@@ -1,7 +1,3 @@
-// Integration test for the proactive stdlib drift scan. Seeds
-// workflows and request hooks with a range of recorded versions and
-// asserts that only major-gap rows produce DriftSignal entries.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { requestHooks, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
