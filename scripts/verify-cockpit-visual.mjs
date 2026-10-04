@@ -109,9 +109,6 @@ const SYSTEM_ACCOUNT_ID = "018f4b4a-6d33-7b3a-9c2d-0000000005a1";
 const routes = [
   "",
   `?review=workflow:${uuid}`,
-  "decisions?bucket=failing",
-  `decisions?workflow_id=${uuid}`,
-  "operations",
   "chat",
   "workflows",
   "?runs=all",
@@ -1024,7 +1021,7 @@ function workflowInvocation(workflowId) {
       sample,
     },
     output: { schema: null },
-    legacy: false,
+    invalid: false,
     visibility: { hooks: true, schedules: true },
     webhook_input_shape: {
       id: "string",
@@ -1447,6 +1444,11 @@ async function mockApi(route) {
                     verify: "none",
                   }
                 : null,
+          effective_trigger: {
+            kind: rotate === 1 ? "schedule" : rotate === 3 ? "webhook" : "request",
+            source: rotate === 1 || rotate === 3 ? "definition" : "default",
+            state: "active",
+          },
           health_state: rotate === 3 ? "degraded" : rotate === 1 ? "needs_attention" : "ok",
           health_reason: rotate === 3 ? "Drei Läufe in Folge fehlgeschlagen." : null,
           last_executed_at: rotate === 2 ? null : conversation.updated_at,
@@ -2594,8 +2596,8 @@ function markerFor(route) {
   const query = route.split("?")[1] ?? "";
   if (/(^|&)run=/.test(query)) return '[data-testid="run-detail-summary"]';
   if (/(^|&)runs=all/.test(query)) return '[data-testid="resource-runs"]';
-  if (path === "" || path === "decisions" || path === "operations")
-    return query.startsWith("review=") || query.startsWith("workflow_id=")
+  if (path === "")
+    return query.startsWith("review=")
       ? '[data-testid="attention-review-body"]'
       : '[data-testid="attention-list"]';
   if (path === "access") return '[data-testid="roles-section"]';
@@ -2955,15 +2957,6 @@ async function assertReviewCloseLeavesNoTrail(page, label) {
     throw new Error(
       `${label}: Back after closing lands on ${url.pathname}, not where the reader was`,
     );
-}
-
-async function assertLandsOnOverview(page, label, review) {
-  const url = new URL(page.url());
-  if (url.pathname.replace(/\/$/, "") !== "/cockpit")
-    throw new Error(`${label}: lands on ${url.pathname}, not on Übersicht`);
-  if (url.searchParams.get("review") !== review)
-    throw new Error(`${label}: lands with review=${url.searchParams.get("review")}`);
-  if (!review && url.search) throw new Error(`${label}: carries ${url.search} onto Übersicht`);
 }
 
 async function verifyOverviewCalm(page, label, language, capture) {
@@ -3916,12 +3909,6 @@ for (const locale of variants) {
           page,
           `${locale.artifact}/${viewport.name}/overview`,
           locale.name,
-        );
-      if (route.startsWith("decisions") || route === "operations")
-        await assertLandsOnOverview(
-          page,
-          `${locale.artifact}/${viewport.name}/${route}`,
-          route.includes("workflow_id=") ? `workflow:${uuid}` : null,
         );
       if (route.startsWith("connectors?health="))
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);

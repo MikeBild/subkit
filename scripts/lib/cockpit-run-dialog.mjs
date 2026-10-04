@@ -105,7 +105,7 @@ function runDialogApi(state) {
       });
       if (state.variant === "crashed")
         return json(route, { code: "internal_error", message: "internal error" }, 500);
-      if (state.variant === "legacy")
+      if (state.variant === "invalid")
         return json(
           route,
           {
@@ -248,26 +248,26 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
       throw new Error(`${where} · crashed: a fault disables another attempt`);
     await assertNoEngineWords(page, `${where} · crashed`);
 
-    state.variant = "legacy";
+    state.variant = "invalid";
     await openDialog(page, stand);
     await page.getByTestId("workflow-run-submit").waitFor({ state: "visible" });
     await page.getByTestId("workflow-run-submit").click();
     await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
-    const legacySaid = (await text(page, "workflow-run-error")) ?? "";
+    const invalidSaid = (await text(page, "workflow-run-error")) ?? "";
     if (
-      !legacySaid.includes(de ? "älteren Format" : "earlier format") ||
-      !legacySaid.includes("send")
+      !invalidSaid.includes(de ? "älteren Format" : "earlier format") ||
+      !invalidSaid.includes("send")
     )
-      throw new Error(`${where} · legacy: the dialog says "${legacySaid}"`);
-    if (legacySaid.includes(failed))
-      throw new Error(`${where} · legacy: a refusal with a reason reads as a fault`);
+      throw new Error(`${where} · invalid: the dialog says "${invalidSaid}"`);
+    if (invalidSaid.includes(failed))
+      throw new Error(`${where} · invalid: a refusal with a reason reads as a fault`);
     for (const raw of ["definition format", "steps.0.language"])
-      if (legacySaid.includes(raw))
-        throw new Error(`${where} · legacy: the dialog prints the engine's "${raw}"`);
+      if (invalidSaid.includes(raw))
+        throw new Error(`${where} · invalid: the dialog prints the engine's "${raw}"`);
     if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
-      throw new Error(`${where} · legacy: a version the engine refuses can be started again`);
+      throw new Error(`${where} · invalid: a version the engine refuses can be started again`);
     await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
-    await capture("run-dialog-legacy");
+    await capture("run-dialog-invalid");
 
     state.variant = "typed";
     state.previewed = [];

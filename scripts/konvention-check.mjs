@@ -662,7 +662,7 @@ const WORKFLOW_INVOCATION = (() => {
       sample,
     },
     output: { schema: { type: "object", properties: { rows: { type: "integer" } } } },
-    legacy: false,
+    invalid: false,
     visibility: { hooks: true, schedules: true },
     webhook_input_shape: {
       id: "string",

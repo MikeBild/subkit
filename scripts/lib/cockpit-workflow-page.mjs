@@ -34,7 +34,7 @@ function record(state) {
     slug: SLUG,
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
     lifecycle: "active",
-    invalid: Boolean(state.legacy),
+    invalid: Boolean(state.invalid),
     current_version: 9,
     current_version_id: VERSION,
     draft_version_id: state.scenario === "apply" ? DRAFT : VERSION,
@@ -156,7 +156,7 @@ function fullInvocation(state) {
   return {
     workflow_id: WORKFLOW,
     slug: SLUG,
-    invalid: Boolean(state.legacy),
+    invalid: Boolean(state.invalid),
     base_url: address,
     http: {
       method: "POST",
@@ -598,7 +598,7 @@ const WORDS = {
       apply: "Wartet auf Freigabe",
       paused: "Pausiert",
       manual: "Nicht freigegeben",
-      legacy: "Altes Format",
+      invalid: "Altes Format",
       unknown: "Nicht geprüft",
       failing: "Schlägt fehl",
     },
@@ -633,7 +633,7 @@ const WORDS = {
       apply: "Waiting for approval",
       paused: "Paused",
       manual: "Not approved",
-      legacy: "Outdated format",
+      invalid: "Outdated format",
       unknown: "Not verified",
       failing: "Failing",
     },
@@ -1168,10 +1168,10 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the cause left the workflow's page: ${page.url()}`);
     state.failedWith = null;
 
-    where = at("legacy");
-    state.legacy = true;
+    where = at("invalid");
+    state.invalid = true;
     panel = await open(page, stand, state, "approved");
-    await expectState(page, panel, where, words, "legacy", {
+    await expectState(page, panel, where, words, "invalid", {
       action: words.fixInChat,
       openers: 0,
       runnable: false,
@@ -1192,8 +1192,8 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     )
       throw new Error(`${where}: the call does not say it is refused`);
     await assertNoVisibleUuids(page.getByTestId("detail-workflows"), where);
-    await capture("workflow-page-legacy");
-    state.legacy = false;
+    await capture("workflow-page-invalid");
+    state.invalid = false;
 
     where = at("hidden lists");
     state.hiddenLists = true;
