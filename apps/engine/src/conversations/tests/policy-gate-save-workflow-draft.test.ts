@@ -299,7 +299,8 @@ describe("save_workflow_draft — policy gate", () => {
     expect(data.next_prompt as string).toContain(
       "no schedule, webhook or live execution was enabled",
     );
-    expect(data.next_prompt as string).toContain("Skill-Candidate");
+    // A draft save proposes no skill to the person: its capability note is advisory.
+    expect(data.next_prompt as string).not.toContain("Skill-Candidate");
   });
 });
 
