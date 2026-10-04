@@ -212,21 +212,12 @@ jobs:
   konvention:
     name: cockpit convention
     runs-on: ubuntu-24.04
-    # Measured on this runner, not derived from a local number: three
-    # consecutive green runs of this job took 23 minutes each, against a cap of
-    # 25. The old figure behind that cap — "~3 min for the 296-frame visual
-    # sweep" — described a sweep that no longer exists; it writes roughly 800
-    # frames now, and each route added costs six stands. A two-minute margin
-    # means the next honest addition to the sweep fails as a timeout, which
-    # reads like a hang and is only growth.
-    #
-    # 40 was ~1.7x that runtime. The sweep has since grown to about 1150
-    # frames and three consecutive green runs took 33–36 minutes; one run hit
-    # the 40-minute cap and was cancelled, which read like a hang and was only
-    # growth. 60 keeps the same ~1.7x rule: a genuinely stuck browser still
-    # fails the job, and adding a route stays a decision about coverage rather
-    # than about the clock.
-    timeout-minutes: 60
+    # The gate photographs one variant (de-light) at one width (desktop):
+    # every route and stand, every assertion, a twelfth of the frames, so this
+    # job finishes beside the test shards. The full matrix of locales, themes
+    # and widths runs nightly (nightly.yml, cockpit-visual-full), where its
+    # 45 minutes block no release.
+    timeout-minutes: 20
     env:
       TZ: UTC
       LANG: C.UTF-8
@@ -275,6 +266,9 @@ jobs:
       # its own build (scripts/verify-cockpit-visual.mjs) and needs no step of
       # its own beyond this one.
       - name: Cockpit visual sweep
+        env:
+          COCKPIT_SWEEP_VARIANTS: de-light
+          COCKPIT_SWEEP_VIEWPORTS: desktop
         run: bun run verify:cockpit-visual
 
   # The engine's architectural invariants (file size, tenant filtering, route
