@@ -36083,6 +36083,47 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Browser-openable OAuth 2.1 authorization for an mcp connector (single-use grant token)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 20
+            },
+            "required": true,
+            "name": "grant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the authorization server"
+          },
+          "400": {
+            "description": "Grant invalid/expired, or the authorization could not begin (HTML page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/connectors/mcp/oauth/callback": {

@@ -3,7 +3,9 @@
 // The MCP surface exposes reauthentication as a first-class tool so clients
 // can request a portal link without knowing about /v1/connectors/:id/oauth.
 // Mirror that shape from the CLI: `sk auth --connector-id X` prints the
-// authorization URL the user opens in a browser to (re)approve access.
+// authorization URL the user opens in a browser to (re)approve access. The
+// route is the connector's own (`sign_in` on its record): a web service and
+// an MCP server sign in on different routes, and the engine says which.
 
 import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
@@ -24,7 +26,7 @@ export const authCommand = defineCommand({
   meta: {
     name: "auth",
     description:
-      "Start a reauthentication flow for a connector (OAuth2 authorize URL). An mcp connector authorizes through `sk connectors mcp-authorize` instead — it discovers its authorization server rather than reading one from config.",
+      "Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route.",
   },
   args: {
     "connector-id": {
@@ -41,39 +43,20 @@ export const authCommand = defineCommand({
     const client = makeClient();
     const connectorId = String(args["connector-id"]);
     try {
-      // Reuse the existing /v1/connectors/:id/oauth/start endpoint — the
-      // MCP `authenticate` tool wraps the same flow internally, so the
-      // CLI surface stays simple while the MCP surface exposes it to
-      // agents.
-      const res = await client.request<{
-        authorization_url?: string;
-        state?: string;
-        redirect_uri?: string;
-      }>("POST", `/v1/connectors/${encodeURIComponent(connectorId)}/oauth/start`);
+      const res = await client.startConnectorSignIn(connectorId);
 
       if (args.json) {
         printJson(res);
         return;
       }
 
-      const url = res.authorization_url;
-      if (!url) {
-        process.stderr.write("no authorization_url in response\n");
-        process.exit(1);
+      // An empty URL: the engine finished the sign-in without a browser
+      // (a client-credentials exchange) — the credential is stored.
+      if (!res.authorization_url) {
+        process.stdout.write("signed in — no browser step was needed\n");
+        return;
       }
-      // Two-line affordance: the redirect_uri the operator must add to
-      // their OAuth provider's allowlist (Google Cloud Console, GitHub
-      // OAuth app, …) goes FIRST so they configure it before they
-      // open the authorize URL. Without it the provider returns
-      // `redirect_uri_mismatch`. The engine synthesizes this URL from
-      // server.public_base_url + /v1/oauth/callback and reuses it for
-      // every OAuth2 connector on this engine.
-      if (res.redirect_uri) {
-        process.stdout.write(
-          `add this redirect URI to your OAuth app's allowlist:\n  ${res.redirect_uri}\n\n`,
-        );
-      }
-      process.stdout.write(`then open this URL to authorize:\n  ${url}\n`);
+      process.stdout.write(`open this URL to sign in:\n  ${res.authorization_url}\n`);
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }

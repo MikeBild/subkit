@@ -63,6 +63,21 @@ function configOAuthBlock(cfg: ConnectorConfig): Record<string, unknown> {
 }
 
 /**
+ * The OAuth grant a connector declares: its own `config.oauth.grant_type`,
+ * else the bound template's. Read without the database, so the connector
+ * representation and the routes that start a sign-in answer the same way
+ * (`connectorSignIn`).
+ */
+export function connectorOAuthGrantType(
+  connector: Pick<ConnectorView, "config" | "template_snapshot">,
+): string | null {
+  return (
+    nonEmptyString(configOAuthBlock(connectorConfig(connector)).grant_type) ??
+    nonEmptyString(getConnectorTemplateSnapshot(connector)?.oauth?.grant_type)
+  );
+}
+
+/**
  * Why an OAuth config could not be assembled. `template_oauth_credentials`
  * is the actionable one: the connector is bound to a template whose OAuth
  * block expects tenant-supplied client credentials, and none were ever
@@ -188,7 +203,7 @@ export async function resolveConnectorOAuthConfigDetailed(
   // Grant type — drives which token-endpoint flow runs at mint /
   // refresh time. `cognito_user_password` switches the refresh-worker
   // to the AWS InitiateAuth path.
-  const grant_type = nonEmptyString(o.grant_type) ?? nonEmptyString(templateOauth?.grant_type);
+  const grant_type = connectorOAuthGrantType(connector);
   if (
     grant_type === "authorization_code" ||
     grant_type === "client_credentials" ||

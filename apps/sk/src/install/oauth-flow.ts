@@ -12,7 +12,8 @@ async function hasCredential(client: EngineClient, connectorId: string): Promise
 }
 
 /**
- * Drive a connector's browser OAuth flow and resolve the moment the
+ * Drive a connector's browser sign-in — on the route its record names — and
+ * resolve the moment the
  * engine persists the credential. The completion signal is the
  * `connector.oauth.callback_succeeded` SSE event — subscribed BEFORE
  * the browser opens so a fast authorization cannot race the
@@ -25,7 +26,9 @@ export async function runEngineOAuthFlow(
   connectorId: string,
   openBrowser: (url: string) => void,
 ): Promise<void> {
-  const { oauth_url } = await client.startConnectorOAuth(connectorId);
+  const { authorization_url: oauth_url } = await client.startConnectorSignIn(connectorId);
+  // An empty URL: the engine completed the sign-in without a browser.
+  if (!oauth_url) return;
   const timeoutSignal = AbortSignal.timeout(OAUTH_TIMEOUT_MS);
   let resolveEvent!: (succeeded: boolean) => void;
   const eventArrived = new Promise<boolean>((resolve) => {

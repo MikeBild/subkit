@@ -53,22 +53,15 @@ import {
   oauthFlowOrigin,
   settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
-import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import {
   buildOAuthRedirectUri,
   completeAuthorizationCode,
   isOAuthProviderError,
 } from "../../../credentials/index.ts";
-import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { redactUpstreamDetail } from "../../../mcp/index.ts";
-import {
-  ConnectorOauthCallbackFailedPayloadSchema,
-  type ConnectorOauthCallbackFailedReasons,
-  ConnectorOauthCallbackPayloadSchema,
-} from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -82,6 +75,11 @@ import {
   signedInPage,
   signInFailedPage,
 } from "./signin-result.ts";
+import {
+  type SignInFailedReason,
+  signalSignInFailed,
+  signalSignInSucceeded,
+} from "./signin-signals.ts";
 
 const oauthStartRoute = createRoute({
   method: "post",
@@ -488,25 +486,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         partial_grant: isPartialGrant,
         ...(isPartialGrant ? { missing_scopes: missingScopes } : {}),
       });
-      try {
-        await markConnectorNativeUrlElicitationsComplete(
-          {
-            tenant_id: stateRow.tenant_id,
-            connector_id: stateRow.connector_id,
-            outcome: "succeeded",
-          },
-          db,
-        );
-      } catch (completionErr) {
-        logger.warn({
-          module: "oauth",
-          action: "oauth.callback.elicitation_completion_failed",
-          msg: "OAuth credential saved but native MCP URL completion could not be recorded",
-          tenant_id: stateRow.tenant_id,
-          connector_id: stateRow.connector_id,
-          error: completionErr instanceof Error ? completionErr.message : String(completionErr),
-        });
-      }
       if (isPartialGrant) {
         logger.warn({
           module: "oauth",
@@ -519,33 +498,15 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           granted_scopes: grantedScopes,
         });
       }
-      // Publish a `connector.oauth.callback_succeeded` event so any
-      // active sk-cli conversation tailing `/v1/events/stream?channel=
-      // connector.oauth&type=connector.oauth.callback_succeeded` can
-      // auto-resume without the operator typing "done". Best-effort.
-      try {
-        const payload = ConnectorOauthCallbackPayloadSchema.parse({
-          connector_id: stateRow.connector_id,
-          connector_slug: connector.slug,
-          has_refresh_token: bundle.refresh_token != null,
-          source: "oauth_callback",
-        });
-        await writeEvent(db, {
-          tenant_id: stateRow.tenant_id,
-          channel: "connector.oauth",
-          type: "connector.oauth.callback_succeeded",
-          payload,
-        });
-      } catch (publishErr) {
-        logger.warn({
-          module: "oauth",
-          action: "oauth.callback.event_publish_failed",
-          msg: "credential persisted but pubsub event could not be written; conversation will not auto-resume via SSE this round",
-          tenant_id: stateRow.tenant_id,
-          connector_id: stateRow.connector_id,
-          error: publishErr instanceof Error ? publishErr.message : String(publishErr),
-        });
-      }
+      // Settle whoever waits on this connector's sign-in: a conversation
+      // paused on the link, a terminal tailing `connector.oauth`.
+      await signalSignInSucceeded(db, {
+        module: "oauth",
+        tenant_id: stateRow.tenant_id,
+        connector_id: stateRow.connector_id,
+        connector_slug: connector.slug,
+        has_refresh_token: bundle.refresh_token != null,
+      });
       // A Cockpit flow goes straight back to the connector's page, which
       // reads the connector again and says what it finds.
       if (origin === "cockpit") {
@@ -609,7 +570,7 @@ async function publishCallbackFailed(
   p: {
     tenant_id: string;
     connector_id: string;
-    reason: (typeof ConnectorOauthCallbackFailedReasons)[number];
+    reason: SignInFailedReason;
   },
 ): Promise<void> {
   // Durable compliance record for the state change (the claimed state
@@ -629,43 +590,14 @@ async function publishCallbackFailed(
     },
     db,
   );
-  try {
-    await markConnectorNativeUrlElicitationsComplete(
-      { tenant_id: p.tenant_id, connector_id: p.connector_id, outcome: "failed" },
-      db,
-    );
-  } catch (completionErr) {
-    logger.warn({
-      module: "oauth",
-      action: "oauth.callback.failed_elicitation_completion_failed",
-      msg: "OAuth failed but native MCP URL completion could not be recorded",
-      tenant_id: p.tenant_id,
-      connector_id: p.connector_id,
-      error: completionErr instanceof Error ? completionErr.message : String(completionErr),
-    });
-  }
-  try {
-    const connector = await connectorSvc.getConnector(p.tenant_id, p.connector_id, db);
-    if (!connector) throw new NotFoundError("connector");
-    const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({
-      connector_id: p.connector_id,
-      connector_slug: connector.slug,
-      reason: p.reason,
-    });
-    await writeEvent(db, {
-      tenant_id: p.tenant_id,
-      channel: "connector.oauth",
-      type: "connector.oauth.callback_failed",
-      payload,
-    });
-  } catch (publishErr) {
-    logger.warn({
-      module: "oauth",
-      action: "oauth.callback.failed_event_publish_failed",
-      msg: "oauth callback failed but the callback_failed pubsub event could not be written; a waiter will time out instead of failing fast",
-      tenant_id: p.tenant_id,
-      connector_id: p.connector_id,
-      error: publishErr instanceof Error ? publishErr.message : String(publishErr),
-    });
-  }
+  const connector = await connectorSvc
+    .getConnector(p.tenant_id, p.connector_id, db)
+    .catch(() => null);
+  await signalSignInFailed(db, {
+    module: "oauth",
+    tenant_id: p.tenant_id,
+    connector_id: p.connector_id,
+    connector_slug: connector?.slug ?? null,
+    reason: p.reason,
+  });
 }

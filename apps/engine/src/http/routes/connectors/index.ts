@@ -21,10 +21,14 @@
 //   PUT    /v1/connectors/:id/mcp/tool-confirmation — mcp driver: per-tool "no ask"
 //   POST   /v1/connectors/:id/mcp/inspect          — mcp driver: handshake + manifest
 //   POST   /v1/connectors/:id/mcp/authorize        — mcp driver: begin OAuth 2.1
+//   GET    /v1/connectors/:id/mcp/authorize        — mcp driver: browser-openable
+//                                                    begin (single-use grant token)
 //   GET    /v1/connectors/mcp/oauth/callback       — mcp driver: complete OAuth 2.1
 //                                                    (unauthenticated; state-token)
 //   POST   /v1/connectors/:id/call                 — ad-hoc HTTP/GraphQL call
 //   POST   /v1/connectors/:id/oauth/start          — returns authorization_url + state
+//   GET    /v1/connectors/:id/oauth/start          — browser-openable begin (single-use
+//                                                    grant token)
 //   GET    /v1/oauth/callback                      — completes code exchange (single
 //                                                    global endpoint; routes by state)
 //   POST   /v1/connectors/:id/credentials          — attach non-oauth credential (API key)
@@ -106,8 +110,15 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     return requirePermission("connector:test", () => ({ type: "connector", id }))(c, next);
   });
   app.use("/v1/connectors/:id/mcp/authorize", async (c, next) => {
-    const id = c.req.param("id");
-    return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+    // POST: authenticated — requires connector:oauth.
+    // GET:  grant-token path — unauthenticated (single-use skog_… token in the
+    //       query); authentication is enforced inside the route handler by
+    //       consumeStartGrant. Same split as /oauth/start below.
+    if (c.req.method === "POST") {
+      const id = c.req.param("id");
+      return requirePermission("connector:oauth", () => ({ type: "connector", id }))(c, next);
+    }
+    return next();
   });
   // `/v1/connectors/:id` above matches that exact path only, so every
   // sub-resource names its own gate. The runtime and the credential summary
