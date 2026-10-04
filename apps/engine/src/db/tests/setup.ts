@@ -76,8 +76,8 @@ async function preflightPostgres(adminUrl: string): Promise<void> {
     const cause = err instanceof Error ? err.message : String(err);
     throw new Error(
       `PostgreSQL is not reachable at ${adminUrl.replace(/\/\/[^@]*@/, "//<credentials>@")} — ` +
-        `database-backed tests need it. Run \`bun run compose:up\` first ` +
-        `(see CONTRIBUTING.md), or point DATABASE_URL at a running server.` +
+        `database-backed tests need it. Run \`bun run compose:up\` first, ` +
+        `or point DATABASE_URL at a running server.` +
         (cause ? ` (probe error: ${cause})` : ""),
     );
   } finally {

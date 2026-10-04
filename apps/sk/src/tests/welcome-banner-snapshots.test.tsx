@@ -34,8 +34,8 @@ const stubClient = {
 
 describe("WelcomeBanner — visibility snapshots (H9)", () => {
   for (const [name, props] of [
-    ["signed in + tip + whats-new", { tip: "Use /resume", whatsNew: "v4.3 ships /settings" }],
-    ["signed out + no whats-new", { signedIn: false }],
+    ["signed in + tip", { tip: "Use /resume" }],
+    ["signed out", { signedIn: false }],
     ["signed in + target connector", { targetKind: "connector" as const, targetName: "stripe" }],
     [
       "signed in + workflow target + production env",

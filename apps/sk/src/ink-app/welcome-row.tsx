@@ -106,7 +106,6 @@ export interface WelcomeRowProps {
    *  review-learnings starter action. Absent = 0 = today's behavior. */
   pendingLearningsCount?: number | undefined;
   tip: string;
-  whatsNew: string | null;
 }
 
 export const WelcomeRow: React.FC<WelcomeRowProps> = ({
@@ -121,7 +120,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   digestSnapshot,
   pendingLearningsCount = 0,
   tip,
-  whatsNew,
 }) => {
   const setupBannerShownRef = useRef(false);
   // Setup-validation banner gating. The actual one-line banner renders
@@ -204,7 +202,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
         targetName={resumeSummary?.active_target.name ?? null}
         environment={resumeSummary?.active_target.environment ?? null}
         tip={tip}
-        whatsNew={whatsNew}
         signedIn={Boolean(statusSnapshot?.user.email) || persona.tenant !== null}
       />
       {digestNode}

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import {
@@ -70,14 +70,14 @@ describe("the skill file", () => {
     expect(SKILL_MD).toContain("Delete those, or record why each one stays.");
   });
 
-  test("points at the do-not-use column, not only at sk", () => {
-    expect(SKILL_MD).toContain('"Do not\nuse sk when" table is binding');
+  test("names the cases where sk is not the answer, not only sk", () => {
+    expect(SKILL_MD).toContain("Write that down as\nthe decision when it fits.");
   });
 });
 
 describe("the references", () => {
   test("are exactly the pages this binary embeds, and each one is served", async () => {
-    expect(SKILL_REFERENCES.map((r) => `docs/${r.servedPath}`)).toEqual([...ESSENTIAL_PATHS]);
+    expect(SKILL_REFERENCES.map((r) => r.servedPath)).toEqual([...LLMS_PAGE_PATHS]);
     for (const r of SKILL_REFERENCES) {
       const res = await app().request(`http://127.0.0.1/llms/${r.servedPath}`);
       expect(res.status).toBe(200);

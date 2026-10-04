@@ -27,7 +27,6 @@ describe("WelcomeBanner — size budget (H8)", () => {
         targetName="long-named-workflow-slug"
         environment="production"
         tip="Use /resume to reopen a prior session without replaying the full transcript."
-        whatsNew="v4.3.0 (unreleased) — long-running execution notifications + /session QR + /resume rewind"
         signedIn={true}
       />,
     );

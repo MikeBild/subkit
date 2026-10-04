@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
@@ -53,13 +53,6 @@ describe("GET /", () => {
       expect(html).toContain(path);
     }
   });
-
-  test("says plainly that this is not the whole documentation", async () => {
-    // Someone who fetches four pages and assumes that is everything will draw
-    // wrong conclusions about the product. The page has to name its own scope.
-    const body = await (await get("/")).text();
-    expect(body).toContain("not the complete");
-  });
 });
 
 describe("what the entry point promises", () => {
@@ -82,11 +75,10 @@ describe("what the entry point promises", () => {
   });
 });
 
-describe("the decision-and-install set", () => {
-  test("the index lists exactly the essential pages, and each one resolves", async () => {
+describe("the self-description set", () => {
+  test("the index lists exactly the generated pages, and each one resolves", async () => {
     const index = await (await get("/llms.txt")).text();
-    for (const path of ESSENTIAL_PATHS) {
-      const rel = path.replace(/^docs\//, "");
+    for (const rel of LLMS_PAGE_PATHS) {
       expect(index).toContain(`/llms/${rel}`);
       const page = await get(`/llms/${rel}`);
       expect(page.status).toBe(200);
@@ -97,8 +89,7 @@ describe("the decision-and-install set", () => {
   test("no served page links to a page the binary does not carry", async () => {
     // A comparison run on 2026-09-03 found twelve such links and read them as
     // breakage. Links to carried pages must still resolve; the rest are text.
-    for (const path of ESSENTIAL_PATHS) {
-      const rel = path.replace(/^docs\//, "");
+    for (const rel of LLMS_PAGE_PATHS) {
       const body = await (await get(`/llms/${rel}`)).text();
       const links = [
         ...body.matchAll(/\]\(((?:\.\.\/|\.\/)?[A-Za-z0-9_./-]+\.md)(?:#[^)]*)?\)/g),
@@ -117,10 +108,5 @@ describe("the decision-and-install set", () => {
     // binary would be carrying the whole documentation again.
     const res = await get("/llms/concepts/glossary.md");
     expect(res.status).toBe(404);
-  });
-
-  test("the index does not promise to be complete", async () => {
-    const index = await (await get("/llms.txt")).text();
-    expect(index).toContain("Not the complete documentation");
   });
 });

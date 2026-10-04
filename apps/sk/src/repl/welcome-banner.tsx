@@ -24,8 +24,6 @@ export interface WelcomeBannerProps {
   compact?: boolean | undefined;
   /** One-line tip shown under the hint row. Rotate via `pickTip`. */
   tip?: string;
-  /** One-line "what's new" headline pulled from remote config; null/undefined hides the row. */
-  whatsNew?: string | null | undefined;
   /** When false, replaces the persona/tenant slot with a sign-in hint. */
   signedIn?: boolean | undefined;
 }
@@ -54,7 +52,6 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   environment = null,
   compact = false,
   tip,
-  whatsNew,
   signedIn,
 }) => {
   const theme = useTheme();
@@ -126,12 +123,6 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
         <Box marginTop={1}>
           <Text color={theme.severity.warning}>◦ </Text>
           <Text color={theme.severity.dim}>{tip}</Text>
-        </Box>
-      ) : null}
-      {whatsNew ? (
-        <Box>
-          <Text color={theme.severity.dim}>what's new: </Text>
-          <Text color={theme.role.assistant}>{whatsNew}</Text>
         </Box>
       ) : null}
       {!compact ? (

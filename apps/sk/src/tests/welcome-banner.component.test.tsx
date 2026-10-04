@@ -75,42 +75,6 @@ describe("WelcomeBanner (component)", () => {
     }
   });
 
-  test("whatsNew prop renders a 'what's new:' row when provided", async () => {
-    const ui = renderInk(
-      <WelcomeBanner
-        persona="admin"
-        tenant="acme"
-        engineUrl="http://localhost:3000"
-        whatsNew="v4.3 ships /settings tab palette"
-      />,
-    );
-    try {
-      await ui.waitFor((t) => t.includes("what's new:"));
-      const txt = ui.text();
-      expect(txt).toContain("what's new:");
-      expect(txt).toContain("v4.3 ships /settings tab palette");
-    } finally {
-      ui.unmount();
-    }
-  });
-
-  test("whatsNew row is omitted when prop is null/undefined", async () => {
-    const ui = renderInk(
-      <WelcomeBanner
-        persona="admin"
-        tenant="acme"
-        engineUrl="http://localhost:3000"
-        whatsNew={null}
-      />,
-    );
-    try {
-      await ui.waitFor((t) => t.includes("admin@acme"));
-      expect(ui.text()).not.toContain("what's new:");
-    } finally {
-      ui.unmount();
-    }
-  });
-
   test("signedIn=false replaces persona slot with /profile sign-in hint", async () => {
     const ui = renderInk(
       <WelcomeBanner

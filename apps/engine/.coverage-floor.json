@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-subsystem coverage floors enforced by `bun run check:coverage-floor` (see apps/engine/scripts/check-coverage-floor.ts) and surfaced by the audit-invariants `coverage_floor` check (apps/engine/scripts/audit-invariants.ts). Lowering a value requires a written PR justification per .audit-loop-policy.md item 2; raising a value is a free PR and is encouraged when a subsystem grows new tests.",
+  "_comment": "Per-subsystem coverage floors enforced by `bun run check:coverage-floor` and the audit-invariants `coverage_floor` check.",
   "subsystems": {
     "apps/engine/src/rbac": {
       "line_min": 90,

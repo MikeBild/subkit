@@ -1,22 +1,20 @@
 # SubKit Agent Guide
 
-Bounded-autonomy changes follow [the local portfolio contract](contract/BOUNDED-AUTONOMY.md).
-
 Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md files override this guide.
 
 ## Product boundaries
 
-- Preserve the engine, CLI, shared-package, contribution, approval, and deployment boundaries.
-- Extend behavior through the documented contribution format rather than creating parallel sources of truth.
+- Preserve the engine, CLI, shared-package, approval, and deployment boundaries.
 - Keep the repository independent of the private deployment implementation.
 - Keep all persisted data in the product-owned PostgreSQL schema. Other products
   are reachable only through their documented public APIs, never through their
   database objects, files, queues, or runtime internals.
 - Keep migrations, `llms*.txt`, OpenAPI, and comparable self-description assets
-  embedded in every shipped binary/image and covered by drift tests.
+  embedded in every shipped binary/image and covered by drift tests. `llms*.txt`
+  is generated from code and README.md (`bun run gen:llms-txt`); there is no
+  hand-written documentation tree.
 - Do not record concrete production hosts, credentials, deployment identifiers,
-  or private infrastructure in source comments or general docs. Deployment
-  examples belong only in an end-user/operator guide and use placeholder values.
+  or private infrastructure anywhere in the repository. Examples use placeholders.
 - Preserve human approval semantics and deterministic execution. A person
   approves an effect boundary (connectors, addresses, read vs. write) for an
   environment. The approval follows a newly activated version whose boundary
@@ -25,18 +23,15 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
 
 ## Sources and workflow
 
-Read touched code, the nearest AGENTS.md, and the smallest relevant docs. Use:
-- README.md for product orientation
-- SKILLS.md for project-local skills
+Read touched code and the nearest AGENTS.md:
 - apps/engine/AGENTS.md for engine work
 - apps/sk/AGENTS.md for CLI work
 - packages/shared/AGENTS.md for shared contracts
-- docs/developers/agent-navigation.md for the detailed former root guide
 
 The engine currently contains 48 directories under `apps/engine/src/`; the
 subsystem-count contract keeps this navigation summary aligned with the tree.
 
-Prefer focused changes, existing abstractions, and generated-source workflows. Never discard unrelated dirty-worktree state.
+Work directly on `main`. Prefer focused changes, existing abstractions, and generated-source workflows. Never discard unrelated dirty-worktree state.
 
 ## Non-negotiable rules
 
@@ -45,10 +40,15 @@ Prefer focused changes, existing abstractions, and generated-source workflows. N
 - Never commit credentials, local configuration, or generated secrets.
 - Do not hand-edit generated artifacts when a generator exists.
 - Keep shared guidance in AGENTS.md or closer directory guides, not Claude-only memory.
-- Follow repository language and formatting conventions.
+- No comments in code except tool directives (`biome-ignore`, `@ts-expect-error`,
+  `tenant-filter:exempt`, …). Names and tests carry the meaning; a comment is a
+  claim, only a test is evidence.
+- No versions, dates, ticket, PR or commit references in code, tests or file names.
+- No version-suffixed names (`*V2`, `_v2`, `legacy*`); replace the old path and migrate every caller in the same change.
+- Commit messages are one conventional-commit line.
 
 ## Validation
 
-Run the narrowest relevant checks while iterating and the documented repository gate before completion when dependencies are available. Report any skipped validation.
-
-Task-aware context is defined by .agent-prime.json. Use $prime or /prime after a real scope change.
+There is no CI. The pre-push hook (lint, typecheck, invariants, drift, commit
+messages, gitleaks, build) and `bun run verify` before every release tag are the
+gate. Run the narrowest relevant checks while iterating. Report any skipped validation.

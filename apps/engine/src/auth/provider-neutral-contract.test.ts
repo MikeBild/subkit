@@ -33,19 +33,3 @@ test("runtime auth remains provider-neutral with only generic browser routes", (
   expect(source).toContain("/v1/identity/logout");
   expect(source).toContain("/v1/identity/sessions");
 });
-
-test("operator and generated agent docs contain no retired auth tree", () => {
-  const docs = ["docs/admins/configuration.md", "docs/llms-full.txt"]
-    .map((file) => readFileSync(file, "utf8"))
-    .join("\n");
-  const retiredAuthTree = new RegExp(
-    `"auth"\\s*:\\s*\\{\\s*"(?:${["provider", "fire" + "base", "oidc"].join("|")})"\\s*:`,
-  );
-  expect(docs).not.toMatch(retiredAuthTree);
-});
-
-test("browser-auth documentation contains protocols, not concrete providers", () => {
-  const concreteProvider = new RegExp(["fire" + "base", "supa" + "base"].join("|"), "i");
-  const source = readFileSync("docs/developers/input-surfaces.md", "utf8");
-  expect(source).not.toMatch(concreteProvider);
-});

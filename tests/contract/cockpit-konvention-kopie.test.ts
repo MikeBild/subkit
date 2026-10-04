@@ -45,11 +45,9 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const KONVENTION = join(root, "COCKPIT-KONVENTION.md");
-const UI_UX = join(root, "apps/cockpit/UI-UX.md");
 
 const konventionBytes = readFileSync(KONVENTION);
 const konvention = konventionBytes.toString("utf8");
-const uiux = readFileSync(UI_UX, "utf8");
 
 describe("the root copy of the family convention", () => {
   test("it is byte-identical to the reviewed v2.3 document", () => {
@@ -108,71 +106,5 @@ describe("the root copy of the family convention", () => {
 
   test("§8 exists exactly once in it", () => {
     expect([...konvention.matchAll(/^#{2,4} 8\. /gm)]).toHaveLength(1);
-  });
-});
-
-describe("the copy of §8 this product's attention page is measured against", () => {
-  /** The §8 body of the family document, at the heading level the copy uses. */
-  const source = konvention
-    .slice(
-      konvention.indexOf("## 8. Anliegen-Grammatik"),
-      konvention.indexOf("## 9. Diff-Freigabe"),
-    )
-    .replace("## 8. Anliegen-Grammatik", "### 8. Anliegen-Grammatik")
-    .trimEnd();
-
-  /**
-   * The copy runs from its heading to the end of the file, which is a fact
-   * about UI-UX.md and is asserted as one below: everything product-specific
-   * stands ABOVE the fence, so the copy is terminal and a second §8 section can
-   * have nowhere to hide.
-   */
-  const copy = uiux.slice(uiux.indexOf("### 8. Anliegen-Grammatik")).trimEnd();
-
-  test("UI-UX.md carries §8 word for word, only the heading level shifted", () => {
-    // `.length` is UTF-16 code units, not bytes — see the note at the top of
-    // this file. The floor is a floor either way; the label is what was wrong.
-    expect(
-      source.length,
-      "the §8 slice of the family document is not empty (length in UTF-16 code units)",
-    ).toBeGreaterThan(1_000);
-    expect(copy).toBe(source);
-  });
-
-  test("there is exactly ONE §8 section in UI-UX.md, and nothing after it", () => {
-    // THE GAP THE SISTER VERSIONS HAVE. Asserting that a copy matches says
-    // nothing about a SECOND copy standing behind it: paste a contradicting
-    // "### 8. Anliegen-Grammatik" after the fence and WatchKit's shape
-    // stays green, because its slice stops at the first match. Two of them —
-    // the count, and the fact that no heading of any level follows the fence,
-    // so the text comparison above really covers the rest of the file. Text,
-    // not bytes: `expect(copy).toBe(source)` compares decoded strings.
-    expect([...uiux.matchAll(/^#{2,4} 8\. /gm)], "one §8 section, not two").toHaveLength(1);
-    const fence = uiux.indexOf("### 8. Anliegen-Grammatik");
-    expect(fence, "the fence is findable").toBeGreaterThan(0);
-    // Sliced from AFTER the fence's own line, not from fence + 1: with the `m`
-    // flag `^` also matches at index 0, so slicing into the middle of the
-    // heading makes its own tail count as a heading and the assertion fails on
-    // a clean file.
-    const belowFence = uiux.slice(uiux.indexOf("\n", fence) + 1);
-    expect(
-      [...belowFence.matchAll(/^#{1,4} /gm)].map((hit) => hit[0]),
-      "the verbatim copy is the last thing in the file — product-specific text belongs above it",
-    ).toEqual([]);
-  });
-
-  test("the copy names its source and the version its source declares", () => {
-    // THE VERSION IS NOT A LITERAL HERE, and that is a different case from
-    // scripts/konvention-check.mjs, where writing it out is the whole point:
-    // there the constant and the document are the two things being made to
-    // agree. Here the two things are two FILES, so reading the number out of
-    // one and demanding it in the other is exactly the disagreement worth
-    // catching — this line said v1.4 while the root copy had moved on.
-    expect(uiux).toContain("COCKPIT-KONVENTION.md");
-    const declared = /^Version ([0-9]+\.[0-9]+(?:\.[0-9]+)?) · /m.exec(konvention)?.[1];
-    expect(declared, "COCKPIT-KONVENTION.md declares a version in its header line").toBeDefined();
-    expect(uiux, `UI-UX.md names the version its source declares (v${declared})`).toContain(
-      `v${declared}`,
-    );
   });
 });
