@@ -22,6 +22,7 @@ export * from "./reauth.ts";
 export * from "./runtime.ts";
 export * from "./service.ts";
 export * from "./services/call-connector.ts";
+export * from "./sign-in.ts";
 export * from "./template-binding.ts";
 export * from "./template-credentials.ts";
 // `ConnectorTemplateSource` is the canonical zod-derived type in

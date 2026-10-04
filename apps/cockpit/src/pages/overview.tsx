@@ -47,6 +47,7 @@ import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
+import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
@@ -106,22 +107,35 @@ function CompletingVerb({
   const sheets = useOpenRunSheet();
   const { primary } = entryActions(item);
   const testId = `attention-item-${index}-primary`;
+  // A connection renews at its provider; a connector signs in on the route it
+  // states itself (a web service and an MCP server differ). Anything else — a
+  // connector with a key, a workflow whose connector lost its sign-in — is
+  // acted on where the entry leads.
   const signIn = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ authorization_url: string } | null> => {
       const subject = item.subject;
       if (subject?.kind === "connection")
         return apiRequest<{ authorization_url: string }>(
           `/v1/connections/${encodeURIComponent(subject.id)}/renew`,
           { method: "POST" },
         );
-      return apiRequest<{ authorization_url: string }>(
-        `/v1/connectors/${encodeURIComponent(subject?.id ?? "")}/oauth/start`,
-        { method: "POST" },
+      if (subject?.kind !== "connector") return null;
+      const route = connectorSignIn(
+        await apiRequest<Record<string, unknown>>(
+          `/v1/connectors/${encodeURIComponent(subject.id)}`,
+        ),
       );
+      if (!route) return null;
+      return apiRequest<{ authorization_url: string }>(route.start, { method: "POST" });
     },
-    onSuccess: (result) => window.location.assign(result.authorization_url),
-    // Not every sign-in starts at a provider: the connector's page knows the way.
-    onError: () => primary && void navigate(routerTarget(primary.href)),
+    onSuccess: (result) => {
+      if (result?.authorization_url) window.location.assign(result.authorization_url);
+      else if (primary) void navigate(routerTarget(primary.href));
+    },
+    onError: (failure) => {
+      toast.error(signInFailure(failure, t));
+      if (primary) void navigate(routerTarget(primary.href));
+    },
   });
   const cause = useMutation({
     mutationFn: () =>

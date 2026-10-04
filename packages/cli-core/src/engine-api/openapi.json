@@ -4083,6 +4083,13 @@
           "version": {
             "type": "string"
           },
+          "oauth_callback_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The address an OAuth app must allow as its redirect URI for a connector that signs in with an account (`/v1/oauth/callback` on the engine's public origin). Null when no public origin resolves — such a sign-in cannot start until server.public_base_url is set."
+          },
           "recent_conversations": {
             "type": "array",
             "items": {
@@ -4128,6 +4135,7 @@
           "permissions",
           "csrf_token",
           "version",
+          "oauth_callback_url",
           "recent_conversations"
         ]
       },
@@ -13119,6 +13127,28 @@
               "null"
             ]
           },
+          "sign_in": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "oauth",
+                  "mcp"
+                ]
+              },
+              "start": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "start"
+            ]
+          },
           "created_at": {
             "type": "string"
           },
@@ -13160,6 +13190,7 @@
           "needs_reauth",
           "auth_failed_at",
           "auth_failed_reason",
+          "sign_in",
           "created_at",
           "updated_at"
         ]
@@ -35357,6 +35388,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The sign-in service's discovery failed or it refused the request",
             "content": {
               "application/json": {
                 "schema": {

@@ -6,6 +6,7 @@ import {
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
+import { buildOAuthRedirectUri } from "../../../credentials/index.ts";
 import { conversations } from "../../../db/schema/conversations.ts";
 import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { ALL_PERMISSION_NAMES, can } from "../../../rbac/index.ts";
@@ -38,6 +39,12 @@ const CockpitBootstrapResponse = z
     permissions: z.array(z.string()),
     csrf_token: z.string(),
     version: z.string(),
+    oauth_callback_url: z
+      .string()
+      .nullable()
+      .describe(
+        "The address an OAuth app must allow as its redirect URI for a connector that signs in with an account (`/v1/oauth/callback` on the engine's public origin). Null when no public origin resolves — such a sign-in cannot start until server.public_base_url is set.",
+      ),
     recent_conversations: z.array(
       z.object({
         id: z.string().uuid(),
@@ -218,6 +225,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
         permissions,
         csrf_token: await signBrowserCsrf(payload),
         version: OPENAPI_INFO.version,
+        oauth_callback_url: buildOAuthRedirectUri({ req: c.req.raw }),
         recent_conversations: recent.map((row) => ({
           ...row,
           updated_at: row.updated_at.toISOString(),

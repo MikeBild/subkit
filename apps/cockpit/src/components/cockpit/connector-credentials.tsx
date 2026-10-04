@@ -69,6 +69,7 @@ const BADGE_STATE: Record<ConnectorAuthState, string> = {
 export function ConnectorCredentials({
   connectorId,
   authType,
+  signsInAtProvider,
   state,
   canWrite,
   showKey,
@@ -78,6 +79,8 @@ export function ConnectorCredentials({
 }: {
   connectorId: string;
   authType: string | null;
+  /** The connector states a browser sign-in of its own (`sign_in`). */
+  signsInAtProvider: boolean;
   state: ConnectorAuthState;
   canWrite: boolean;
   /** The key form stands open — the strip's "Zugangsdaten eintragen" opens it too. */
@@ -121,7 +124,12 @@ export function ConnectorCredentials({
 
   const items = connections.data?.items ?? [];
   const lost = needsRenewal(state);
-  const way = renewalWay({ authType, usesConnection: Boolean(current?.connection), canWrite });
+  const way = renewalWay({
+    authType,
+    signsInAtProvider,
+    usesConnection: Boolean(current?.connection),
+    canWrite,
+  });
   const line = signInLine(state, way);
   const missingScopes = current?.missing_scopes ?? [];
   const about = current?.connection

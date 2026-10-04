@@ -281,8 +281,23 @@ describe("coming back from a sign-in", () => {
 describe("the sign-in card's one line and one action", () => {
   test("the way to renew follows how the connector signs in", () => {
     const way = (authType: string | null, usesConnection = false, canWrite = true) =>
-      renewalWay({ authType, usesConnection, canWrite });
+      renewalWay({
+        authType,
+        signsInAtProvider: authType === "oauth2",
+        usesConnection,
+        canWrite,
+      });
     expect(way("oauth2")).toBe("provider");
+    // An OAuth that runs machine to machine states no browser sign-in: there
+    // is no provider page to send the reader to, and no key to replace.
+    expect(
+      renewalWay({
+        authType: "oauth2_client",
+        signsInAtProvider: false,
+        usesConnection: false,
+        canWrite: true,
+      }),
+    ).toBeNull();
     expect(way("oauth2", true)).toBe("connection");
     expect(way("bearer", true)).toBe("connection");
     expect(way("header")).toBe("key");

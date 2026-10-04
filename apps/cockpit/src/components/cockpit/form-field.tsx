@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { ContextHelp, SegmentedControl } from "./patterns";
+import { ContextHelp, CopyField, SegmentedControl } from "./patterns";
 
 /**
  * The fields of a FormDialog (P14): a label, the control, one line of help
@@ -75,6 +75,27 @@ export function TextField({
         className={cn(CONTROL, "h-10 sm:h-8", mono && "font-mono")}
         data-testid={id}
       />
+    </Shell>
+  );
+}
+
+/** A value the reader takes from the form, not into it: shown whole, with a copy button. */
+export function CopyValueField({
+  id,
+  label,
+  value,
+  copyLabel,
+  help,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  copyLabel: string;
+  help?: string;
+}) {
+  return (
+    <Shell id={id} label={label} help={help}>
+      <CopyField value={value} label={copyLabel} testId={id} />
     </Shell>
   );
 }

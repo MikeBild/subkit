@@ -37,6 +37,7 @@ import {
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { connectorAuthState } from "@/lib/connector-auth-state";
+import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripAction,
@@ -258,16 +259,22 @@ export function ConnectorPage({
     errorMessage: () => t("connectorState.enableFailed"),
     onSuccess: () => toast.success(t("connectorState.enabled")),
   });
-  // The connector's own OAuth sign-in: the engine mints the authorization URL
-  // and the provider brings the browser back to its callback.
+  // The connector's own sign-in, on the route the connector names: a web
+  // service and an MCP server sign in on different ones. The engine mints the
+  // authorization URL and the provider brings the browser back to its callback.
+  const signInRoute = connectorSignIn(record);
   const oauthStart = useMutation({
-    mutationFn: () =>
-      apiRequest<{ authorization_url: string }>(
-        `/v1/connectors/${encodeURIComponent(id)}/oauth/start`,
-        { method: "POST" },
-      ),
-    onSuccess: (result) => window.location.assign(result.authorization_url),
-    onError: () => toast.error(t("connectorCredentials.renewFailed")),
+    mutationFn: () => {
+      if (!signInRoute) throw new Error("no browser sign-in");
+      return apiRequest<{ authorization_url: string }>(signInRoute.start, { method: "POST" });
+    },
+    onSuccess: async (result) => {
+      if (result.authorization_url) return window.location.assign(result.authorization_url);
+      // Signed in machine to machine: nothing to approve, the page reads again.
+      await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
+      await client.invalidateQueries({ queryKey: ["connector-credential", id] });
+    },
+    onError: (failure) => toast.error(signInFailure(failure, t)),
   });
   const credential = useConnectorCredential(id);
   const connectionRenew = useMutation({
@@ -298,6 +305,7 @@ export function ConnectorPage({
   );
   const way = renewalWay({
     authType,
+    signsInAtProvider: signInRoute !== null,
     usesConnection: Boolean(credential.data?.connection),
     canWrite,
   });
@@ -409,6 +417,7 @@ export function ConnectorPage({
             <ConnectorCredentials
               connectorId={id}
               authType={authType}
+              signsInAtProvider={signInRoute !== null}
               state={auth}
               canWrite={canWrite}
               showKey={showKey}
