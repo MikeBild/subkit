@@ -6,7 +6,7 @@ import { describe, expect, it } from "bun:test";
 import { decodeAtlassianTinyui, parseAtlassianCloudResourceUrl } from "./atlassian-tinyui.ts";
 
 describe("decodeAtlassianTinyui", () => {
-  it("decodes the session-0498925e fixture y4ozBQ → 87263947", () => {
+  it("decodes the fixture y4ozBQ → 87263947", () => {
     expect(decodeAtlassianTinyui("y4ozBQ")).toBe(87263947);
   });
 
@@ -48,7 +48,7 @@ describe("decodeAtlassianTinyui", () => {
 });
 
 describe("parseAtlassianCloudResourceUrl", () => {
-  it("resolves the session-0498925e Confluence Cloud tinyui URL", () => {
+  it("resolves a Confluence Cloud tinyui URL", () => {
     const r = parseAtlassianCloudResourceUrl("https://acme.atlassian.net/wiki/x/y4ozBQ");
     expect(r).toEqual({
       kind: "confluence_tinyui",

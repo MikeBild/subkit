@@ -72,7 +72,7 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
     expect(findSecretSpans(alphabet)).toHaveLength(0);
   });
 
-  test("base64 alphabet as a non-secret var assignment passes through (the outage shape)", () => {
+  test("base64 alphabet as a non-secret var assignment passes through", () => {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     const code = `var B="${alphabet}";`;
     expect(scrubString(code)).toBe(code);

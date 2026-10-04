@@ -122,7 +122,7 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
   });
 }
 
-describe("save_workflow_draft · identity gate (session 5b97ec58)", () => {
+describe("save_workflow_draft · identity gate", () => {
   test("topic pivot creates a new workflow row instead of overwriting the previous one", async () => {
     const conversationId = await freshConversation();
 

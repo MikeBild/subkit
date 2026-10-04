@@ -226,7 +226,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
   });
 });
 
-describe("filterByAuthoringPalette — session 00b93a52 regression", () => {
+describe("filterByAuthoringPalette — discovery stays reachable", () => {
   // Session 00b93a52 ended with the agent saying "save_connector_draft
   // is not available in the current tool palette" and asking the user
   // to restart. Root cause: the old palette hid `save_connector_draft`

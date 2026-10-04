@@ -191,7 +191,7 @@ describe("bootstrapCachePath", () => {
     expect(p).toMatch(/\.json$/);
   });
 
-  test("uses the `__no_tenant__` sentinel slug when no tenant is set (R11-W4)", () => {
+  test("uses the `__no_tenant__` sentinel slug when no tenant is set", () => {
     const p = bootstrapCachePath({ ...PROFILE, active_tenant_id: null }, "/tmp/x");
     // The sentinel uses double-underscores, which the sanitiser
     // (`[^A-Za-z0-9_-]` → `_`) cannot produce from a real tenant

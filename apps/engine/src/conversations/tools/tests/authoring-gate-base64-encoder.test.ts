@@ -27,7 +27,7 @@ const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-
 // 1. Gate REJECTS hand-rolled base64 encoder.
 // ---------------------------------------------------------------------------
 
-describe("evaluateTransformAuthoringGate — rejects hand-rolled base64 encoder (outage regression)", () => {
+describe("evaluateTransformAuthoringGate — rejects hand-rolled base64 encoder", () => {
   test("blocks a transform that embeds the standard base64 alphabet in a var declaration", () => {
     const result = evaluateTransformAuthoringGate(
       {
@@ -249,7 +249,7 @@ describe("evaluateTransformAuthoringGate — rejects hand-rolled hex table", () 
 // detectHandRolledCodec — unit tests for the pure detector.
 // ---------------------------------------------------------------------------
 
-describe("detectHandRolledCodec — specific outage-regression cases", () => {
+describe("detectHandRolledCodec — hand-rolled encoder cases", () => {
   test("detects the standard base64 alphabet inside a const declaration", () => {
     expect(detectHandRolledCodec(`const B="${B64_STD}";`)).toEqual({
       found: true,

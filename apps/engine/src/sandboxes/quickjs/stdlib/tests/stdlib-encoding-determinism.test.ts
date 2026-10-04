@@ -201,7 +201,7 @@ describe("sk.now / sk.nowIso — determinism under a fixed clock", () => {
 // a valid url-safe base64 string with no "+" or "/" chars and no "undefined".
 // ---------------------------------------------------------------------------
 
-describe("sk.base64UrlEncode — the correct encoding primitive (outage regression)", () => {
+describe("sk.base64UrlEncode — the correct encoding primitive", () => {
   const GMAIL_MIME = "To: user@example.com\r\nSubject: Test\r\n\r\nHello, world!";
 
   test("sk.base64UrlEncode produces a url-safe base64 string (no + or /)", async () => {

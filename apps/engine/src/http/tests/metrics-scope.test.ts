@@ -311,7 +311,7 @@ describe("GET /metrics — connection tokens", () => {
     expect(res.body).toContain("# TYPE ");
   });
 
-  test("the 2026-09-04 defect: a connection carrying only mcp:read is refused", async () => {
+  test("a connection carrying only mcp:read is refused", async () => {
     // The approving account is the seeded ADMIN user — exactly the production
     // shape. The grant, not the role, is the answer.
     const { accessToken, grantedScope } = await connect("MCP Read Connection", "mcp:read");

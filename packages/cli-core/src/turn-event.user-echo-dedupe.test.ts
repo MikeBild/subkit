@@ -35,7 +35,7 @@ describe("applyTurnEvent · user-message echo dedupe", () => {
     expect(next.messages[0]?.content).toBe("3");
   });
 
-  test("supersedes optimistic echo even when client preprocessor rewrote content (v6.2.12)", () => {
+  test("supersedes optimistic echo even when client preprocessor rewrote content", () => {
     // Pre-6.2.12 the dedupe required content equality, so the
     // optimistic "create a knowledge source from /Users/.../foo.md"
     // and the engine's persisted "create a knowledge source from

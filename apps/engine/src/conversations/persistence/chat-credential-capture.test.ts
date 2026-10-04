@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe("extractChatPastedCredential — pure parse/capture decision", () => {
-  it("parses the session-97679846 paste shape `email=…, api_token=ATATT…` for a basic draft", () => {
+  it("parses the paste shape `email=…, api_token=ATATT…` for a basic draft", () => {
     const text = `email=mike@example.com, api_token=${FAKE_ATLASSIAN_TOKEN}`;
     const out = extractChatPastedCredential("basic", {}, text, findSecretSpans(text));
     expect(out).toEqual({

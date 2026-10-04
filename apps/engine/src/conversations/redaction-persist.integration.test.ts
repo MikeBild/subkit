@@ -78,7 +78,7 @@ async function readMessageContent(id: string): Promise<Record<string, unknown>> 
 // byte-identical — no "***REDACTED:generic***" corruption.
 // ---------------------------------------------------------------------------
 
-describe("appendMessage — base64 alphabet persists verbatim (outage regression)", () => {
+describe("appendMessage — base64 alphabet persists verbatim", () => {
   test("role=user message containing the bare base64 standard alphabet is stored byte-identical", async () => {
     if (skip) return;
     const conv_id = await makeConversation();
@@ -190,7 +190,7 @@ describe("appendMessage — true secrets ARE still redacted in role=user message
 // must not survive in conversation_elicitations.output.
 // ---------------------------------------------------------------------------
 
-describe("resolveElicitation — secret form answers persist redacted (#304)", () => {
+describe("resolveElicitation — secret form answers persist redacted", () => {
   test("a password field's answer is stored as the marker, not the secret", async () => {
     if (skip) return;
     const conv_id = await makeConversation();

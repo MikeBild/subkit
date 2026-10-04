@@ -118,7 +118,7 @@ describe("history-store: clear + prompt ring", () => {
     expect(loadPromptRing(path)).toEqual(["first", "second", "third"]);
   });
 
-  test("loadPromptRing filters by tenant strictly (R9-W3 — no untagged leak)", () => {
+  test("loadPromptRing filters by tenant strictly (no untagged leak)", () => {
     const path = tmpHistoryPath();
     appendHistory("a", { path, tenant: "acme" });
     appendHistory("b", { path, tenant: "other" });

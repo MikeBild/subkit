@@ -21,7 +21,7 @@ import { createTestDb, type TestDb } from "./setup.ts";
 let db: TestDb;
 
 beforeAll(async () => {
-  db = await createTestDb("v3.5-migration-state");
+  db = await createTestDb("tenant-settings-schema");
 });
 
 afterAll(async () => {
@@ -33,7 +33,7 @@ interface InfoSchemaRow {
   table_name?: string;
 }
 
-describe("v3.5 migration state", () => {
+describe("tenant settings schema", () => {
   test("tenants.settings column was dropped (0009 migration ran)", async () => {
     const result = (await db.db.execute(sql`
       select column_name from information_schema.columns

@@ -567,7 +567,7 @@ describe("conversation_respond_elicitation", () => {
     expect(staged?.output).toEqual({ confirmed: true });
   });
 
-  test("conversation_get passes the password/sensitive form markers through so the client can mask (#304)", async () => {
+  test("conversation_get passes the password/sensitive form markers through so the client can mask", async () => {
     const started = await handleConversationTool({
       db: testDb.db,
       principal,

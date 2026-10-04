@@ -104,7 +104,7 @@ describe("truncateForLlm", () => {
     expect((raw as { workflow: { steps: unknown[] } }).workflow.steps.length).toBe(25);
   });
 
-  it("never emits __omitted_chars / __raw_ref marker keys (regression: session 0ac7593c)", () => {
+  it("never emits __omitted_chars / __raw_ref marker keys", () => {
     // Pre-fix the heaviest-branch shrink loop replaced over-cap branches
     // with `{__omitted_chars, __raw_ref}` marker objects. Those keys
     // leaked through synthesizeFallbackMessage and the chat renderer,

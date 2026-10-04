@@ -112,7 +112,7 @@ describe("synthesizeFallbackMessage · run_workflow describe (bug E / 86de186b)"
     expect(msg).toMatch(/fields: foo, bar/);
   });
 
-  test("lifecycle envelope (probe success) renders humanised line, not envelope keys (session 0ac7593c)", () => {
+  test("lifecycle envelope (probe success) renders humanised line, not envelope keys", () => {
     // Reproduces the "what's now? nothing happens!" symptom: the
     // probe_connector_draft success envelope used to fall through to
     // `fields: mode, stage, lifecycle_state, resource_kind, resource_id`,

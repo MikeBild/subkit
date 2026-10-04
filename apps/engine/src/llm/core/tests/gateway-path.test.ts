@@ -30,7 +30,7 @@ function restore(): void {
   _resetConfigForTests();
 }
 
-describe("provider resolution — regression for the v1.10.0 production 500 cluster", () => {
+describe("provider resolution — regression for production 500s", () => {
   beforeEach(snapshot);
   afterEach(restore);
 
