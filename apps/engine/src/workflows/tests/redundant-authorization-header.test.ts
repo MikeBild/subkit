@@ -59,7 +59,7 @@ describe("validateWorkflowDef · redundant Authorization header", () => {
     expect(result.errors.some((e) => /headers\.authorization/.test(e.path))).toBe(true);
   });
 
-  test("rejects the placeholder form that triggered session 1222158a", () => {
+  test("rejects the placeholder form of the Authorization header", () => {
     const result = validateWorkflowDef({
       name: "t",
       steps: [

@@ -157,7 +157,7 @@ describe("discover_connector_endpoints — cache miss", () => {
     }
   });
 
-  test("DigitalOcean template id surfaces /v2/account + /v2/projects (the bug session 00b93a52 hit)", async () => {
+  test("DigitalOcean template id surfaces /v2/account + /v2/projects", async () => {
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
     );

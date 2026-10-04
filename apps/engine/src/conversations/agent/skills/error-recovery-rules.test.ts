@@ -39,7 +39,7 @@ describe("error-recovery skill body — hard-rule pins", () => {
     expect(errorRecoveryAndRbac).toMatch(/ask_user_choice/);
   });
 
-  test("forbids the prose retry-vs-troubleshoot anti-pattern by name (session abeefb33)", () => {
+  test("forbids the prose retry-vs-troubleshoot anti-pattern by name", () => {
     expect(errorRecoveryAndRbac).toContain("abeefb33");
     expect(errorRecoveryAndRbac).toMatch(/transient database issue/i);
   });

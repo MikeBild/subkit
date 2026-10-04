@@ -226,7 +226,7 @@ describe("assertEgressAllowed (mode resolution)", () => {
   });
 });
 
-describe("assertEgressAllowedResolved — DNS resolution (#4)", () => {
+describe("assertEgressAllowedResolved — DNS resolution", () => {
   const strict = { mode: "strict" as const };
 
   test("blocks a public name that resolves to cloud-metadata (169.254.169.254)", async () => {

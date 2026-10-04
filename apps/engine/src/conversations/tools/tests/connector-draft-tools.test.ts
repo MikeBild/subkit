@@ -520,7 +520,7 @@ describe("connector draft tools", () => {
     expect(latestProbe.summary).toContain("timed out");
   });
 
-  test("green probe auto-saves the connector (session 0ac7593c regression — 'what's now? nothing happens')", async () => {
+  test("green probe auto-saves the connector", async () => {
     // After a green probe, the user should never have to type "save"
     // explicitly. The probe tool fires saveConnectorAtomic inline with
     // `reason: "auto_persist_on_green_probe"` and returns the saved-

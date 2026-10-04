@@ -26,7 +26,7 @@ describe("dispatchAdminListSlash", () => {
     expect(result).toBe("no connectors");
   });
 
-  test("/connectors renders rows from the typed openapi shape (R9-W1)", async () => {
+  test("/connectors renders rows from the typed openapi shape", async () => {
     const ctx = buildCtx({
       listConnectors: () =>
         Promise.resolve({

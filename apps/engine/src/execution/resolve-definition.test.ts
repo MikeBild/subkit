@@ -142,7 +142,7 @@ describe("resolveDefinition — saved source", () => {
     }
   });
 
-  test("refuses to run an archived workflow (#12)", async () => {
+  test("refuses to run an archived workflow", async () => {
     const [c] = await testDb.db
       .insert(workflows)
       .values({ tenant_id: tenantId, slug: "wf-c", name: "Workflow C", lifecycle: "archived" })

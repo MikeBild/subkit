@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { download, isTransient } from "../fetch-embedding-assets.ts";
 
 describe("isTransient", () => {
-  test("the exact failure that broke the v6.0.2 docker build", () => {
+  test("the exact failure that broke a docker build", () => {
     // Copied verbatim from that run's log.
     expect(
       isTransient(

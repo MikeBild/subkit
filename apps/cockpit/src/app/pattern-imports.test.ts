@@ -60,15 +60,10 @@ function violations(): Record<string, Rule[]> {
  * breaks) here.
  */
 const ALLOWED: Record<string, readonly Rule[]> = {
-  "components/cockpit/attention-list.tsx": ["ui-import", "heading"],
   "components/cockpit/automation-grant.tsx": ["ui-import"],
-  "components/cockpit/cause-fix.tsx": ["ui-import"],
-  "components/cockpit/confirm-action.tsx": ["ui-import"],
   "components/cockpit/connector-credentials.tsx": ["ui-import"],
   "components/cockpit/decision-card.tsx": ["ui-import", "heading", "pre", "max-w"],
-  "components/cockpit/detail-action.tsx": ["ui-import"],
   "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
-  "components/cockpit/fenced-block.tsx": ["pre"],
   "components/cockpit/grant-boundary-panels.tsx": ["ui-import"],
   "components/cockpit/grant-notices.tsx": ["ui-import"],
   "components/cockpit/icon-button.tsx": ["ui-import"],

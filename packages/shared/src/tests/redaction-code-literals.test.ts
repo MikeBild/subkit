@@ -33,7 +33,7 @@ const SHA256_HEX = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f200
 // failing the mixed-case lookahead). Must pass through verbatim.
 const HEX_64_UPPER = "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD";
 
-describe("scrubString — code literals that MUST pass through unchanged (outage regression)", () => {
+describe("scrubString — code literals that MUST pass through unchanged", () => {
   test("bare base64 standard alphabet is NOT redacted", () => {
     expect(scrubString(BASE64_ALPHABET)).toBe(BASE64_ALPHABET);
   });
@@ -92,7 +92,7 @@ describe("scrubString — code literals that MUST pass through unchanged (outage
 // uses in the main test file. Must redact when preceded by a keyword/header.
 const HIGH_ENTROPY_TOKEN = "Xy9KqLm2NpRsTuVwAbCdEfGhJkMnPqRsTuVwXyZ1";
 
-describe("scrubString — true secrets STILL redacted after outage fix", () => {
+describe("scrubString — true secrets STILL redacted", () => {
   test("'Authorization: Bearer sk-live-<20 chars>' → redacts the token (pat pattern)", () => {
     const raw = "Authorization: Bearer sk-live-abc123def456ghi789j";
     const out = scrubString(raw);

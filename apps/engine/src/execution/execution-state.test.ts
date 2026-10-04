@@ -58,7 +58,7 @@ async function statusOf(id: string): Promise<string> {
   return row?.status ?? "";
 }
 
-describe("finalizeExecution — compare-and-set (#14)", () => {
+describe("finalizeExecution — compare-and-set", () => {
   test("a terminal row is not overwritten by a later finalize", async () => {
     const id = await newQueued();
     await finalizeExecution(db, tenantId, id, "succeeded", null);
@@ -186,7 +186,7 @@ describe("a refused dispatch reaches the audit trail", () => {
   });
 });
 
-describe("finalizeExecution — queued-only guard (#13)", () => {
+describe("finalizeExecution — queued-only guard", () => {
   test("queued → aborted succeeds", async () => {
     const id = await newQueued();
     await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
@@ -263,7 +263,7 @@ describe("finalizeExecution — queued-only guard (#13)", () => {
   });
 });
 
-describe("runExecution — input validation (#15)", () => {
+describe("runExecution — input validation", () => {
   test("an input-schema violation strands no execution row", async () => {
     const before = await db.select().from(executions).where(eq(executions.tenant_id, tenantId));
     await expect(

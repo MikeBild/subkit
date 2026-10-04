@@ -120,14 +120,14 @@ const TEST_NOW_MS = getTestNow();
 let ctx: JourneyCtx;
 
 beforeAll(async () => {
-  ctx = await createJourneyCtx("53-session-79bf2cca-regression");
+  ctx = await createJourneyCtx("53-approve-loop-and-gate-status");
 }, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("journey 53: session-79bf2cca regression set", () => {
+describe("journey 53: approve, loop and gate status", () => {
   test("AC1: duplicate /respond returns 409 elicitation_already_resolved with the previous decision", async () => {
     const outcome = await createConversationAndRunTurn(
       {

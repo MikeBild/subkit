@@ -42,7 +42,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-describe("EngineClient — elicitation-respond body never hits debug.log (#304)", () => {
+describe("EngineClient — elicitation-respond body never hits debug.log", () => {
   test("a secret typed into the respond body is absent from the verbose debug log", async () => {
     const { EngineClient } = await import("../engine-client.ts");
     const secret = "plainlowentropypw"; // generic key, no vendor prefix — redact() misses it

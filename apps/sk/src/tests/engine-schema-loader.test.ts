@@ -51,7 +51,7 @@ describe("engine schema loader", () => {
     expect(calls).toBe(2);
   });
 
-  test("empty enum throws by default (R3-W3 / R4-W3 — fail loud, not coerce)", () => {
+  test("empty enum throws by default (fail loud, not coerce)", () => {
     expect(() => materializeSchema({ fields: { kind: { type: "enum", enumValues: [] } } })).toThrow(
       /empty_enum_values|enumValues/i,
     );

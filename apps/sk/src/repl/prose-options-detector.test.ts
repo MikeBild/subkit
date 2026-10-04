@@ -161,7 +161,7 @@ describe("detectProseOptions · numbered prose → ChoicePrompt", () => {
     expect(got?.options[2]?.label).toBe("Cancel and revise");
   });
 
-  test("matches the actual session 86de186b prose ('would you prefer to adjust …?')", () => {
+  test("matches real prose ('would you prefer to adjust …?')", () => {
     // Lifted from the user-reported transcript so the detector
     // proves it covers the exact wording the LLM keeps emitting.
     const text = [

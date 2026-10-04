@@ -64,7 +64,7 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     expect(lines[0]).toMatch(/^1\. X — 2 droplets$/);
   });
 
-  test("previewLines integration end-to-end on the session 16d6e46a shape", () => {
+  test("previewLines integration end-to-end on a nested array shape", () => {
     // The exact shape that produced "1. item 1 / 2. item 2 ..." in
     // session 16d6e46a's transcript. Post-fix it reads as a list of
     // project names with their resource counts inline.

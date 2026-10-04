@@ -60,7 +60,7 @@ function adminHeaders() {
 }
 
 describe("/v1/diagnostics/drift", () => {
-  test("clean DB reports no drift and writes a DIAGNOSTICS_DRIFT_READ audit row (review R2-W3)", async () => {
+  test("clean DB reports no drift and writes a DIAGNOSTICS_DRIFT_READ audit row", async () => {
     // allow-wall-clock: bound for the audit_log SELECT predicate; not a determinism axis
     const before = new Date();
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
