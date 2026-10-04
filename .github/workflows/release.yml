@@ -119,7 +119,7 @@ jobs:
           set -euo pipefail
           prev=$(git describe --tags --abbrev=0 --match 'v*.*.*' "$TAG^" 2>/dev/null || true)
           git log --no-merges --format='- %s' ${prev:+$prev..}"$TAG" > notes.md
-          gh release create "$TAG" assets/* --title "$TAG" --notes-file notes.md
+          gh release create "$TAG" assets/engine_* assets/sk_* assets/SHA256SUMS assets/SHA256SUMS.sig --title "$TAG" --notes-file notes.md
 
       - name: Request production deployment
         env:
