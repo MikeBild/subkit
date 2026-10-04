@@ -114,14 +114,136 @@ export function consumptionRows(envelope: unknown, axis: ConsumptionAxis): Consu
       },
     ];
   });
-  // The share is of the money where every row has an amount, and of the
-  // tokens otherwise — one measure for the whole column, never a mix.
+  return withShares(rows);
+}
+
+/**
+ * Each row's share of the whole, largest first.
+ *
+ * The share is of the money where every row has an amount, and of the tokens
+ * otherwise — one measure for the whole column, never a mix.
+ */
+function withShares<Row extends { key: string; tokens: number; cost: number | null }>(
+  rows: Row[],
+): (Row & { share: number | null })[] {
   const priced = rows.length > 0 && rows.every((row) => row.cost !== null);
-  const measure = (row: ConsumptionRow): number => (priced ? (row.cost ?? 0) : row.tokens);
+  const measure = (row: Row): number => (priced ? (row.cost ?? 0) : row.tokens);
   const total = rows.reduce((sum, row) => sum + measure(row), 0);
   return rows
     .map((row) => ({ ...row, share: total > 0 ? measure(row) / total : null }))
     .sort((a, b) => measure(b) - measure(a) || (a.key < b.key ? -1 : 1));
+}
+
+// ---------------------------------------------------------------------------
+// Origin — what the money was spent ON
+//
+// On a real installation nearly all model spend is chat: a conversation has no
+// run, so a breakdown by workflow put almost the whole month into one row that
+// said "not attributable" and answered nothing. The engine records the PURPOSE
+// of every call (`llm_usage.flow`, `LlmFlow` in engine/src/llm/types.ts) and
+// serves it as `group_by=flow`; this folds those purposes into the handful of
+// things a reader recognises.
+// ---------------------------------------------------------------------------
+
+/** The origins a reader is told about; rows sort by cost, not by this order. */
+export const USAGE_ORIGINS = [
+  "chat",
+  "authoring",
+  "summaries",
+  "reviews",
+  "knowledge",
+  "workflowRuns",
+  "other",
+] as const;
+export type UsageOrigin = (typeof USAGE_ORIGINS)[number];
+
+/**
+ * Every flow the engine records, and where it belongs — one entry per member
+ * of `LlmFlow`. A flow the engine adds later and this table does not know
+ * falls into `other`: named, never dropped.
+ */
+export const FLOW_ORIGIN: Readonly<Record<string, UsageOrigin>> = {
+  // A chat turn, and the next-message suggestion that follows it.
+  converse: "chat",
+  suggest_next: "chat",
+  // Drafting a workflow, the self-healing patch proposal, the in-band retry
+  // after a malformed tool call, and the authoring critic.
+  generate: "authoring",
+  repair: "authoring",
+  tool_repair: "authoring",
+  critic_authoring: "authoring",
+  summarize: "summaries",
+  // Checking an answer or a preview against its sources.
+  judge: "reviews",
+  // Reading a sample, a source or a session into structure, and proposing
+  // connectors, skills and knowledge from files.
+  extract: "knowledge",
+  discover: "knowledge",
+  // A model call a workflow's own step made through a connector.
+  workflow_step: "workflowRuns",
+};
+
+/** The origin of one flow. Any `critic_*` is authoring; anything unknown, or none, is `other`. */
+export function flowOrigin(flow: string): UsageOrigin {
+  const known = Object.hasOwn(FLOW_ORIGIN, flow) ? FLOW_ORIGIN[flow] : undefined;
+  if (known) return known;
+  if (flow.startsWith("critic_")) return "authoring";
+  return "other";
+}
+
+export interface OriginRow {
+  /** The origin this row sums. */
+  key: UsageOrigin;
+  /** The engine's flow names the row sums, as recorded — `""` for calls without one. */
+  flows: string[];
+  calls: number;
+  tokens: number;
+  /** This row's share of the window, 0–1. `null` when the total is zero. */
+  share: number | null;
+  /** What the row cost; `null` when a member flow had no amount — never a partial sum. */
+  cost: number | null;
+}
+
+/**
+ * The window's model calls by origin, from the `group_by=flow` envelope: one
+ * row per origin that had calls, largest first.
+ *
+ * A row's cost is the sum of its flows' amounts. One flow without an amount
+ * makes the row's amount unknown: a partial sum shown as a whole one is the
+ * silent partial amount the convention forbids (§0.1 „mind. …").
+ */
+export function originRows(envelope: unknown): OriginRow[] {
+  const byOrigin = new Map<UsageOrigin, Omit<OriginRow, "share">>();
+  for (const row of consumptionRows(envelope, "flow")) {
+    const key = flowOrigin(row.key);
+    const into = byOrigin.get(key);
+    if (!into) {
+      byOrigin.set(key, {
+        key,
+        flows: [row.key],
+        calls: row.calls,
+        tokens: row.tokens,
+        cost: row.cost,
+      });
+      continue;
+    }
+    into.flows.push(row.key);
+    into.calls += row.calls;
+    into.tokens += row.tokens;
+    into.cost = into.cost === null || row.cost === null ? null : into.cost + row.cost;
+  }
+  return withShares([...byOrigin.values()]);
+}
+
+/**
+ * The workflow rows a reader can act on: only consumption a run can be named
+ * for. The catch-all of calls without a run is the origin table's to explain —
+ * shown alone, it answered "where did the money go" with "nowhere in
+ * particular". Shares stay shares of the WHOLE window, so a workflow's bar
+ * says how much of the window's spend it is.
+ */
+export function attributableWorkflowRows(rows: readonly ConsumptionRow[]): ConsumptionRow[] {
+  return rows.filter((row) => !row.unattributed);
 }
 
 export interface BudgetSummary {
