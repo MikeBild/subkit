@@ -10,8 +10,13 @@
 //      never comes back.
 //   3. A sign-in service whose discovery fails is a named 502, not a 500.
 //   4. The Cockpit is told the redirect address an OAuth app must allow.
+//   5. `sign_in` is exactly what the start routes accept: the route it names
+//      takes the connector, the other route refuses it by name, and a
+//      connector with no `sign_in` — a Cognito password grant included — is
+//      refused by both.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import {
   browserSessionCookie,
   signBrowserCsrf,
@@ -23,6 +28,7 @@ import {
   startMockOAuthServer,
 } from "../../../credentials/oauth2/tests/mock-server.ts";
 import { sessions } from "../../../db/schema/index.ts";
+import { __setSdkAuthForTests } from "../../../mcp/client/sdk-auth.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -35,9 +41,17 @@ beforeAll(async () => {
   publicBaseUrlBefore = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
   mock = await startMockOAuthServer();
+  // The MCP start without a remote: persist what the SDK driver persists and
+  // ask for the browser step.
+  __setSdkAuthForTests((async (provider: OAuthClientProvider) => {
+    await provider.saveCodeVerifier("verifier");
+    await provider.redirectToAuthorization(new URL("https://as.example.test/authorize"));
+    return "REDIRECT";
+  }) as unknown as Parameters<typeof __setSdkAuthForTests>[0]);
 });
 
 afterAll(async () => {
+  __setSdkAuthForTests(null);
   await setConfigKey("server.public_base_url", publicBaseUrlBefore, { force: true });
   await mock.close();
   await server.cleanup();
@@ -192,5 +206,100 @@ describe("the Cockpit is told the redirect address", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { oauth_callback_url: string | null };
     expect(body.oauth_callback_url).toBe(`${server.baseUrl}/v1/oauth/callback`);
+  });
+});
+
+describe("sign_in is exactly what the start routes accept", () => {
+  // A refusal by the shared predicate, as either route words it.
+  const REFUSALS = new Set(["no_browser_sign_in", "sign_in_route_mismatch"]);
+
+  async function start(id: string, route: "oauth/start" | "mcp/authorize") {
+    const res = await fetch(`${server.baseUrl}/v1/connectors/${id}/${route}`, {
+      method: "POST",
+      headers: auth(),
+    });
+    const body = (await res.json()) as { code?: string };
+    return { status: res.status, code: body.code ?? null };
+  }
+
+  const cases: [string, Record<string, unknown>, "oauth" | "mcp" | null][] = [
+    [
+      "a web service with an authorization-code client",
+      {
+        driver: "http",
+        base_url: "https://api.example.com",
+        auth_type: "oauth2",
+        config: { oauth: { issuer_url: "MOCK", client_id: "matrix-client" } },
+      },
+      "oauth",
+    ],
+    [
+      "a web service with a client-credentials exchange",
+      {
+        driver: "http",
+        base_url: "https://api.example.com",
+        auth_type: "oauth2",
+        config: {
+          oauth: { grant_type: "client_credentials_json", token_endpoint: "https://t.example/t" },
+        },
+      },
+      "oauth",
+    ],
+    [
+      "a web service with a Cognito password grant",
+      {
+        driver: "http",
+        base_url: "https://api.example.com",
+        auth_type: "oauth2",
+        config: { oauth: { grant_type: "cognito_user_password" } },
+      },
+      null,
+    ],
+    [
+      "a web service with a key",
+      { driver: "http", base_url: "https://api.example.com", auth_type: "bearer" },
+      null,
+    ],
+    [
+      "an MCP server with an account",
+      { driver: "mcp", base_url: "https://matrix.example.com/mcp", auth_type: "oauth2" },
+      "mcp",
+    ],
+    [
+      "an MCP server with a key",
+      { driver: "mcp", base_url: "https://matrix-key.example.com/mcp", auth_type: "bearer" },
+      null,
+    ],
+    [
+      "an MCP server with machine-to-machine OAuth",
+      { driver: "mcp", base_url: "https://matrix-m2m.example.com/mcp", auth_type: "oauth2_client" },
+      null,
+    ],
+  ];
+
+  test.each(cases)("%s", async (label, definition, expected) => {
+    const slug = `matrix-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`.slice(0, 60);
+    const body = JSON.parse(JSON.stringify(definition).replace("MOCK", mock.baseUrl));
+    const c = await create({ name: label, slug, ...body });
+    const signIn = c.sign_in as { kind: string; start: string } | null;
+    expect(signIn?.kind ?? null).toBe(expected);
+
+    const oauth = await start(c.id as string, "oauth/start");
+    const mcpStart = await start(c.id as string, "mcp/authorize");
+    const refused = (r: { status: number; code: string | null }) =>
+      (r.status === 400 || r.status === 422) && REFUSALS.has(r.code ?? "");
+
+    if (expected === null) {
+      expect(oauth).toMatchObject({ code: "no_browser_sign_in" });
+      expect(mcpStart).toMatchObject({ code: "no_browser_sign_in" });
+      return;
+    }
+    const [named, other] = expected === "oauth" ? [oauth, mcpStart] : [mcpStart, oauth];
+    expect(refused(named)).toBe(false);
+    expect(other.code).toBe("sign_in_route_mismatch");
+    // The route the connector names begins the flow when it is configured.
+    if (label.includes("authorization-code") || expected === "mcp") {
+      expect(named.status).toBe(200);
+    }
   });
 });

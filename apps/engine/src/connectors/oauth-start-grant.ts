@@ -1,5 +1,10 @@
 // Single-use OAuth2 start grant — browser-openable short-lived tokens.
 //
+// The link opens the connector's OWN sign-in route — whichever
+// `connectorSignIn` names: `/oauth/start` for a web service,
+// `/mcp/authorize` for an MCP server. Both GET doors consume the grant the
+// same way (`consumeStartGrant`).
+//
 // Discipline mirrors apps/engine/src/identity/portal-token.ts:
 //   - 24 random bytes → url-safe base64, `skog_` prefix for redaction
 //     recognizability. ("skog" = sk OAuth Grant)
@@ -10,8 +15,9 @@
 //
 // Typed errors (never thrown — returned as discriminated union):
 //   - "engine_public_url_missing": buildOAuthRedirectUri() returned null.
-//   - "no_browser_flow": grant_type is client_credentials_json — these
-//     connectors have no browser dance; use beginConnectorOAuthDance directly.
+//   - "no_browser_flow": the connector has no browser sign-in
+//     (`connectorSignIn` is null), or its grant is client_credentials_json,
+//     which completes without a browser — use beginConnectorOAuthDance directly.
 
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
@@ -21,6 +27,8 @@ import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth
 import type { Db } from "../db/client.ts";
 import { connectorOauthStartGrants } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";
+import { connectorSignIn } from "./sign-in.ts";
+import { connectorOAuthGrantType } from "./template-binding.ts";
 import type { ConnectorView } from "./types.ts";
 
 export const GRANT_PREFIX = "skog_";
@@ -53,7 +61,7 @@ export interface MintedGrant {
 }
 
 /**
- * Mint a single-use grant URL for an OAuth2 authorization-code connector.
+ * Mint a single-use grant URL that opens the connector's own sign-in route.
  *
  * Returns a typed error rather than throwing for the two expected failure
  * modes (missing origin, wrong grant_type). Unexpected errors propagate.
@@ -64,23 +72,24 @@ export async function mintOAuthStartGrantUrl(
   db: Db,
   opts: {
     tenant_id: string;
-    connector: Pick<ConnectorView, "id" | "slug" | "auth_type">;
+    connector: Pick<
+      ConnectorView,
+      "id" | "slug" | "driver" | "auth_type" | "config" | "template_snapshot"
+    >;
     actor_id: string | null;
     /** Audit attribution for the minting principal. A system_account
      *  driving a conversation must not be recorded as "user". */
     actor_type?: AuditActorType;
-    /** grant_type from the connector's resolved OAuth config; supplied by
-     *  the caller to avoid a second DB read in this module. */
-    grant_type: string | null;
     ttl_ms?: number;
   },
 ): Promise<MintedGrant | MintGrantError> {
-  const { tenant_id, connector, actor_id, grant_type, ttl_ms = 600_000 } = opts;
+  const { tenant_id, connector, actor_id, ttl_ms = 600_000 } = opts;
   const actor_type = opts.actor_type ?? (actor_id ? "user" : "system");
 
-  // Machine-to-machine connectors have no browser dance — the caller must
-  // use beginConnectorOAuthDance directly.
-  if (grant_type === "client_credentials_json") {
+  // The link goes where the connector's `sign_in` says. None, or a grant
+  // that completes machine to machine, leaves nothing for a browser to open.
+  const signIn = connectorSignIn(connector);
+  if (!signIn || connectorOAuthGrantType(connector) === "client_credentials_json") {
     return { ok: false, error: "no_browser_flow" };
   }
 
@@ -115,7 +124,7 @@ export async function mintOAuthStartGrantUrl(
     db,
   );
 
-  const url = `${origin}/v1/connectors/${connector.id}/oauth/start?grant=${encodeURIComponent(plaintext)}`;
+  const url = `${origin}${signIn.start}?grant=${encodeURIComponent(plaintext)}`;
   return { ok: true, url, expires_at };
 }
 

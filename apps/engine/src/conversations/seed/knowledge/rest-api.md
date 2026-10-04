@@ -169,7 +169,7 @@ A connector is a governed binding to an external system. There are five drivers 
 - `POST /v1/connectors/{id}/call` — invoke the connector directly (method/path/body passthrough).
 - `POST /v1/connectors/{id}/credentials` — set connector credentials.
 - `POST /v1/connectors/{id}/end-user-credentials` — set per-enduser credentials.
-- `POST /v1/connectors/{id}/oauth/start` / `GET /v1/connectors/{id}/oauth/start` — begin an OAuth2 grant; `GET /v1/oauth/callback` completes it (unauthenticated, state-token-authed).
+- `POST /v1/connectors/{id}/oauth/start` / `GET /v1/connectors/{id}/oauth/start` — begin an OAuth2 grant (a connector's `sign_in` names which of this and `/mcp/authorize` signs it in); `GET /v1/oauth/callback` completes it (unauthenticated, state-token-authed).
 - `POST /v1/connectors/validate`, `POST /v1/connectors/probe`, `POST /v1/connectors/import` — check a definition, probe a target, or import a spec. None of the three persists anything. `probe` answers 400 for a driver-`mcp` definition: an MCP session and its credential are resolved by connector id, so there is nothing to probe until the connector is saved (probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`).
 - `POST /v1/connectors/discover` — discover endpoints for a target.
 - `POST /v1/connectors/from-template/{slug}` — instantiate a connector from a template.
@@ -184,7 +184,7 @@ An external MCP server is a connector like any other: it lives at `/v1/connector
 Two driver-specific routes exist, and both answer 404 naming the driver when the connector is not `mcp`:
 
 - `POST /v1/connectors/{id}/mcp/inspect` — force one handshake and return the tools the remote serves, its negotiated capabilities, and its instructions. A disabled connector answers 422: nothing was attempted, so no upstream is blamed.
-- `POST /v1/connectors/{id}/mcp/authorize` — begin the interactive OAuth 2.1 flow and return `{ authorization_url, state }` for the operator's browser. `GET /v1/connectors/mcp/oauth/callback` completes it (unauthenticated, state-token-authed). This flow is separate from `/v1/connectors/{id}/oauth/start` because an MCP server publishes its authorization server through protected-resource metadata and often registers the client dynamically, rather than declaring an issuer in config.
+- `POST /v1/connectors/{id}/mcp/authorize` — begin the interactive OAuth 2.1 flow and return `{ authorization_url, state }` for the operator's browser. `GET /v1/connectors/{id}/mcp/authorize?grant=…` is the browser-openable door a conversation's one-time re-sign-in link opens. `GET /v1/connectors/mcp/oauth/callback` completes it (unauthenticated, state-token-authed). This flow is separate from `/v1/connectors/{id}/oauth/start` because an MCP server publishes its authorization server through protected-resource metadata and often registers the client dynamically, rather than declaring an issuer in config.
 
 The slug matters: a remote tool is addressed in the chat palette as `mcp_<connector_slug>__<remote_tool>`, so a connector slug may never contain a double underscore (a database CHECK enforces it for every driver).
 

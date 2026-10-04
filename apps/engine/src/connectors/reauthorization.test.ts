@@ -273,7 +273,10 @@ describe("the tenant's cached views", () => {
       id: connector.id,
       tenant_id: tenantId,
       slug: connector.slug,
+      driver: "http" as const,
       auth_type: "oauth2" as const,
+      config: {},
+      template_snapshot: null,
     };
     invalidated.length = 0;
     await flagConnectorAuthFailure(testDb.db, flagged, { reason: "credential rejected" });

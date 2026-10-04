@@ -40,6 +40,7 @@ import {
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { OAuthFlowOrigin } from "../../connectors/oauth-origin.ts";
 import { getConnector } from "../../connectors/service.ts";
+import { connectorSignIn } from "../../connectors/sign-in.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
@@ -341,6 +342,24 @@ export const authenticateOAuthTool: ConversationTool = {
       return finalizeWaitResult(ctx, connector, status);
     }
 
+    // Route gate: the connector's own sign-in (`connectorSignIn` — what its
+    // `sign_in` field and both start routes answer). This tool runs the
+    // `/oauth/start` flow; an MCP server discovers its authorization server
+    // and signs in on `/mcp/authorize`, which `request_connector_reauth`
+    // links to.
+    const signIn = connectorSignIn(connector);
+    if (signIn?.kind === "mcp") {
+      return {
+        ok: false,
+        data: {
+          error_code: WRONG_REAUTH_FLOW,
+          message:
+            "connector is an MCP server — it signs in on its own route (mcp/authorize), not the OAuth2 flow authenticate_oauth runs. Call request_connector_reauth for a one-time sign-in link instead.",
+          next_best_actions: ["request_connector_reauth"],
+        },
+      };
+    }
+
     const cfg = await resolveConnectorOAuthConfig(ctx.db, ctx.tenant_id, connector);
     if (!cfg) {
       return {
@@ -359,10 +378,10 @@ export const authenticateOAuthTool: ConversationTool = {
     // code") — the exact failure that sent a whole debugging session down a
     // content-type rabbit hole. Fail fast with an actionable redirect to
     // `request_connector_reauth`, which re-collects the credential in chat and
-    // rotates it in place. Mirrors the guard in
-    // `connectors/oauth-start.ts:beginConnectorOAuthDance` so the two entry
-    // points can't drift.
-    if (cfg.grant_type === "cognito_user_password") {
+    // rotates it in place. The Cognito refusal is the same predicate
+    // `beginConnectorOAuthDance` refuses with: an oauth2 connector that
+    // `connectorSignIn` gives no browser sign-in.
+    if (connector.auth_type === "oauth2" && !signIn) {
       return {
         ok: false,
         data: {
