@@ -82,12 +82,7 @@ import {
 } from "../../../mcp/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { now } from "../../../utils/clock.ts";
-import {
-  BadRequestError,
-  HttpError,
-  NotFoundError,
-  UnprocessableEntityError,
-} from "../../errors.ts";
+import { HttpError, NotFoundError, UnprocessableEntityError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
@@ -285,7 +280,9 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const redirect_uri = buildMcpOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
-      throw new BadRequestError(
+      throw new HttpError(
+        400,
+        "engine_public_url_missing",
         "engine has no resolvable public origin — set server.public_base_url (it must be an HTTPS URL reachable by the external authorization server)",
       );
     }

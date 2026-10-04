@@ -6,16 +6,27 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
+import { useSession } from "@/app/session";
 import {
-  afterCreate,
+  afterCreateTab,
   type ConnectorSignIn,
   type ConnectorTarget,
   connectorCreateBody,
+  EMPTY_OAUTH_CLIENT,
+  manualConnectorProblem,
+  needsOAuthClient,
   needsSecret,
+  type OAuthClientFields,
 } from "@/components/cockpit/create-connector-model";
-import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
+import {
+  ChoiceField,
+  CopyValueField,
+  SelectField,
+  TextField,
+} from "@/components/cockpit/form-field";
 import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
+import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
 import { DEFAULT_RHYTHM, type RhythmValue, rhythmToCron, validTime } from "@/lib/schedule-rhythm";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -287,32 +298,38 @@ function useManualWorkflow(
 
 /**
  * A connector by hand (R19): what it connects, how SubKit signs in there,
- * name, address and — for a key only — the key. An account sign-in goes on to
- * the service's approval, an MCP server otherwise to its tools, a web service
- * to its connection.
+ * name, address and — for a key only — the key; a web service signed in with
+ * an account also its OAuth app. Once it exists the connector says whether a
+ * sign-in starts (its `sign_in`): that goes on to the service's approval, an
+ * MCP server otherwise to its tools, a web service to its connection.
  */
 function useManualConnector(done: () => void, fail: (error: string) => void): ManualForm {
   const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
+  const callbackUrl = useSession().oauth_callback_url;
   const [target, setTarget] = useState<ConnectorTarget>("web");
   const [signIn, setSignIn] = useState<ConnectorSignIn>("account");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [secret, setSecret] = useState("");
+  const [oauth, setOAuth] = useState<OAuthClientFields>(EMPTY_OAUTH_CLIENT);
+  const oauthField = (key: keyof OAuthClientFields) => (value: string) =>
+    setOAuth((current) => ({ ...current, [key]: value }));
   const reset = () => {
     setTarget("web");
     setSignIn("account");
     setName("");
     setAddress("");
     setSecret("");
+    setOAuth(EMPTY_OAUTH_CLIENT);
   };
   const create = useMutation({
     mutationFn: async () => {
       const connector = await apiRequest<Connector>("/v1/connectors", {
         method: "POST",
         body: JSON.stringify(
-          connectorCreateBody({ target, signIn, name, slug: slugify(name), address }),
+          connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
         ),
       });
       // The key is stored as the connector's credential, never in its record.
@@ -328,41 +345,51 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
       reset();
       await client.invalidateQueries({ queryKey: ["catalog"] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
-      const page = connectorHref(connector.id);
-      const next = afterCreate(target, signIn);
-      if (next.signInPath) {
-        // The service's approval, straight away; where it cannot start yet,
-        // the connector's page says what is missing.
+      const page = `${connectorHref(connector.id)}?tab=${afterCreateTab(target)}`;
+      const route = connectorSignIn(connector);
+      if (route) {
+        // The service's approval, straight away, on the route the connector
+        // names. Where it cannot start, the reader is told why and lands on
+        // the page whose sign-in button starts the same route again.
         try {
-          const start = await apiRequest<{ authorization_url: string }>(
-            `/v1/connectors/${encodeURIComponent(connector.id)}/${next.signInPath}`,
-            { method: "POST" },
-          );
-          window.location.assign(start.authorization_url);
-          return;
-        } catch {
-          toast.success(t("create.connector.created", { name: name.trim() }));
-          void navigate({ to: `${page}?tab=${next.tab}` });
-          return;
+          const start = await apiRequest<{ authorization_url: string }>(route.start, {
+            method: "POST",
+          });
+          if (start.authorization_url) {
+            window.location.assign(start.authorization_url);
+            return;
+          }
+          toast.success(t("create.connector.connected", { name: connector.display_name }));
+        } catch (failure) {
+          toast.error(signInFailure(failure, t));
         }
+        void navigate({ to: page });
+        return;
       }
       toast.success(
         t(needsSecret(signIn) ? "create.connector.connected" : "create.connector.created", {
-          name: name.trim(),
+          name: connector.display_name,
         }),
       );
-      void navigate({ to: `${page}?tab=${next.tab}` });
+      void navigate({ to: page });
     },
     onError: (failure) => fail(refusal(failure, t("create.connector.taken"), t)),
   });
+  const oauthFields = needsOAuthClient(target, signIn);
   return {
     pending: create.isPending,
     reset,
     submit: () => {
-      if (!slugify(name)) return fail(t("create.nameMissing"));
-      if (!/^https:\/\/\S+\.\S+/.test(address.trim()))
-        return fail(t("create.connector.addressInvalid"));
-      if (needsSecret(signIn) && !secret.trim()) return fail(t("create.connector.secretMissing"));
+      const problem = manualConnectorProblem({
+        target,
+        signIn,
+        slug: slugify(name),
+        address,
+        secret,
+        oauth,
+        callbackUrl,
+      });
+      if (problem) return fail(t(problem));
       create.mutate();
     },
     fields: (
@@ -415,6 +442,52 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
             value={secret}
             onChange={setSecret}
           />
+        ) : null}
+        {oauthFields && callbackUrl ? (
+          <CopyValueField
+            id="create-connector-callback"
+            label={t("create.connector.callback")}
+            value={callbackUrl}
+            copyLabel={t("create.connector.copyCallback")}
+            help={t("create.connector.callbackHelp")}
+          />
+        ) : null}
+        {oauthFields ? (
+          <>
+            <TextField
+              id="create-connector-issuer"
+              type="url"
+              label={t("create.connector.issuer")}
+              placeholder="https://accounts.example.com"
+              help={t("create.connector.issuerHelp")}
+              value={oauth.issuer}
+              onChange={oauthField("issuer")}
+              mono
+            />
+            <TextField
+              id="create-connector-client-id"
+              label={t("create.connector.clientId")}
+              value={oauth.clientId}
+              onChange={oauthField("clientId")}
+              mono
+            />
+            <TextField
+              id="create-connector-client-secret"
+              type="password"
+              label={t("create.connector.clientSecret")}
+              placeholder={t("create.connector.secretPlaceholder")}
+              value={oauth.clientSecret}
+              onChange={oauthField("clientSecret")}
+            />
+            <TextField
+              id="create-connector-scopes"
+              label={t("create.connector.scopes")}
+              placeholder={t("create.connector.scopesPlaceholder")}
+              value={oauth.scopes}
+              onChange={oauthField("scopes")}
+              mono
+            />
+          </>
         ) : null}
       </>
     ),

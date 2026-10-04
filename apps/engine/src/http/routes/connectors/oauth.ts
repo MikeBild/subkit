@@ -55,17 +55,22 @@ import {
 } from "../../../connectors/index.ts";
 import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
-import { buildOAuthRedirectUri, completeAuthorizationCode } from "../../../credentials/index.ts";
+import {
+  buildOAuthRedirectUri,
+  completeAuthorizationCode,
+  isOAuthProviderError,
+} from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
+import { redactUpstreamDetail } from "../../../mcp/index.ts";
 import {
   ConnectorOauthCallbackFailedPayloadSchema,
   type ConnectorOauthCallbackFailedReasons,
   ConnectorOauthCallbackPayloadSchema,
 } from "../../../pubsub/index.ts";
 import { now } from "../../../utils/clock.ts";
-import { BadRequestError, NotFoundError } from "../../errors.ts";
+import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { OAuthCallbackQuery, OAuthStartResponse } from "./schemas.ts";
@@ -89,6 +94,10 @@ const oauthStartRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: OAuthStartResponse } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    502: {
+      description: "The sign-in service's discovery failed or it refused the request",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -149,22 +158,49 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const redirect_uri = buildOAuthRedirectUri({ req: c.req.raw });
     if (!redirect_uri) {
-      throw new BadRequestError(
+      throw new HttpError(
+        400,
+        "engine_public_url_missing",
         "engine has no resolvable public origin — set server.public_base_url",
       );
     }
 
-    const result = await beginConnectorOAuthDance({
-      db,
-      tenant_id: principal.tenant_id,
-      connector_id: id,
-      actor_id: principal.id,
-      redirect_uri,
-      // `ui` is set only for a request the Cockpit sent under a live browser
-      // session (middleware/auth.ts); every other caller of this route is a
-      // terminal or a script.
-      origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
-    });
+    let result: Awaited<ReturnType<typeof beginConnectorOAuthDance>>;
+    try {
+      result = await beginConnectorOAuthDance({
+        db,
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+        actor_id: principal.id,
+        redirect_uri,
+        // `ui` is set only for a request the Cockpit sent under a live browser
+        // session (middleware/auth.ts); every other caller of this route is a
+        // terminal or a script.
+        origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
+      });
+    } catch (err) {
+      // An error from the sign-in service itself — its discovery document
+      // was missing or did not match the issuer, or it refused the request —
+      // is a remote fault with a name, not an engine crash: a bare 500 left
+      // the person with nothing to correct. Everything else (a named refusal,
+      // a database failure) stays what it is. The raw message can carry a URL
+      // with its query, so only its sanitized form is logged.
+      if (!isOAuthProviderError(err)) throw err;
+      logger.warn({
+        module: "oauth",
+        action: "oauth.start.failed",
+        msg: "OAuth sign-in could not be started at the sign-in service",
+        tenant_id: principal.tenant_id,
+        connector_id: id,
+        error_class: err instanceof Error ? err.name : "Error",
+        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
+      });
+      throw new HttpError(
+        502,
+        "oauth_start_failed",
+        "could not begin sign-in — the sign-in service's discovery document is missing or does not match its issuer URL, or it refused the request",
+      );
+    }
 
     if (result.kind === "done") {
       // Return a synthetic authorization_url so callers that check for the
