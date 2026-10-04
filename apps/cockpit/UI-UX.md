@@ -183,15 +183,20 @@ each opening its run sheet.
 The operations bar holds exactly four figures in a grid that never scrolls sideways — four in a row
 on a wide screen, two by two where four do not fit and on a phone — each about 72px tall so the
 attention list stays on the first screen: Ausführungen and Erfolgsquote over the chosen window,
-Gesunde Konnektoren, marked "Stand jetzt" because it is a state of now, and Kontingent, marked
+Gesunde Konnektoren, marked "Stand jetzt" because it is a state of now, and Nutzung, marked
 "Monat" because the cap is spent against the calendar month. Every figure links to the list that
 counts the same rows over the same bounds — the runs by `started_from`/`started_to`, the failed runs
-of that window, the connectors unwell now, Nutzung for Kontingent. Kontingent is the month's share of
-`tokens.monthly_budget` from `GET /v1/status` — "27 % von 150 Mio. Token", the remainder and the
-pressure word (Reichlich · Wird knapp · Fast aufgebraucht, on the rounded percentage at the
-engine's 75/90 thresholds); with no cap it reads "Kein Kontingent", without a percentage, and links
-the setting only for `settings:write`. Spend is Nutzung's, broken down over the same window; decided
-repairs are the audit trail's. A figure with nothing to count says so in words and has no link;
+of that window, the connectors unwell now, the Nutzung page for Nutzung. Nutzung leads with the
+month's money — `GET /v1/stats/llm` from the first of the UTC month, the month the cap counts — and
+beneath it the month's share of `tokens.monthly_budget` from `GET /v1/status`: "135,80 $",
+"5 % von 150 Mio. Token", the remainder and the pressure word (Reichlich · Wird knapp · Fast
+aufgebraucht, at the engine's 75/90 thresholds). Without a price it falls back to the share; with
+no cap the money stands beside "Kein Kontingent", and with neither it reads "Kein Kontingent" and
+links the setting only for `settings:write`. The window's spend is the Nutzung page's, broken down
+first by what it was spent on (`group_by=flow`, folded into Chat, Workflows entwerfen,
+Zusammenfassungen, Prüfungen, Wissen & Dateien, Workflow-Läufe, Sonstiges — an unknown flow is
+Sonstiges and named), then by workflow (only spend a run can be named for; the section stands down
+when there is none) and by model; decided repairs are the audit trail's. A figure with nothing to count says so in words and has no link;
 there is no link beside "100 %" when nothing failed or every connector is healthy. A figure whose
 read failed says "nicht lesbar" with its own retry. The bar is shown to readers with `stats:read`;
 connector health reads connectors only with `connector:read`. The figures and their reads live in

@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, settingsHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
@@ -30,12 +30,16 @@ import {
   windowBounds,
 } from "@/pages/operations-figures";
 import {
+  attributableWorkflowRows,
   budgetPercent,
   budgetPressure,
   budgetSummary,
   type ConsumptionRow,
   consumptionRows,
+  type OriginRow,
+  originRows,
   runsByWorkflow,
+  type UsageOrigin,
   type WorkflowNameLookup,
   windowCost,
   workflowNameLookup,
@@ -53,13 +57,29 @@ const PRESSURE_LABEL = {
   critical: "resource.usage.pressure.critical",
 } as const satisfies Record<string, TranslationKey>;
 
+const ORIGIN_LABEL: Record<UsageOrigin, TranslationKey> = {
+  chat: "resource.usage.origin.chat",
+  authoring: "resource.usage.origin.authoring",
+  summaries: "resource.usage.origin.summaries",
+  reviews: "resource.usage.origin.reviews",
+  knowledge: "resource.usage.origin.knowledge",
+  workflowRuns: "resource.usage.origin.workflowRuns",
+  other: "resource.usage.origin.other",
+};
+
 function isWindow(value: string): value is StatsWindow {
   return (STATS_WINDOWS as readonly string[]).includes(value);
 }
 
 /**
- * Nutzung (V8): what the model calls cost over one window, by workflow and by
- * model.
+ * Nutzung (V8): what the model calls cost over one window — what the money was
+ * spent on, which workflows' runs spent it, and on which models.
+ *
+ * "Wofür" leads because it is the question the page is opened with. A
+ * breakdown by workflow alone could not answer it: most spend is chat, which
+ * has no run, and the page showed one row "Keinem zuzuordnen" for nearly the
+ * whole month. "Nach Workflow" now holds only spend a run can be named for,
+ * and stands only when there is some.
  *
  * The window is a filter, not a page action (D14): it stands at the right of
  * the summary line, and the summary line is the page's one figure — the
@@ -92,6 +112,12 @@ export function UsagePage() {
     );
   };
 
+  const byFlow = useQuery({
+    queryKey: ["usage-llm", "flow", bounds],
+    enabled: allowed,
+    queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds, "flow")),
+    ...live,
+  });
   const byWorkflow = useQuery({
     queryKey: ["usage-llm", "workflow", bounds],
     enabled: allowed,
@@ -118,10 +144,14 @@ export function UsagePage() {
     ...live,
   });
 
+  const origins = useMemo(() => originRows(byFlow.data), [byFlow.data]);
+  // Every workflow row, the catch-all of calls without a run included: the
+  // window's token total below is the sum of all of them.
   const workflowRows = useMemo(
     () => consumptionRows(byWorkflow.data, "workflow"),
     [byWorkflow.data],
   );
+  const attributedRows = useMemo(() => attributableWorkflowRows(workflowRows), [workflowRows]);
   const modelRows = useMemo(() => consumptionRows(byModel.data, "model"), [byModel.data]);
   const runCounts = useMemo(() => runsByWorkflow(runs.data), [runs.data]);
   const budget = useMemo(() => budgetSummary(status.data), [status.data]);
@@ -170,6 +200,63 @@ export function UsagePage() {
     [numberFormat],
   );
 
+  // The money and its share of the window, as a bar and an amount — one cell
+  // for both breakdowns, so "Wofür" and "Nach Workflow" read alike.
+  const costCell = useCallback(
+    (row: { cost: number | null; tokens: number; share: number | null }) => (
+      <span className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
+        >
+          <span
+            className="block h-full rounded-full bg-primary"
+            style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
+          />
+        </span>
+        <span className="whitespace-nowrap tabular-nums">
+          {row.cost !== null
+            ? currency.format(row.cost)
+            : t("resource.usage.tokensAmount", { count: number.format(row.tokens) })}
+        </span>
+      </span>
+    ),
+    [t, currency, number],
+  );
+
+  const originColumns = useMemo<CockpitColumn<OriginRow>[]>(() => {
+    const column = tableColumns<OriginRow>({ t, dateTime });
+    return [
+      column.custom(
+        "key",
+        (row) => t(ORIGIN_LABEL[row.key]),
+        t("resource.usage.axis.origin"),
+        (row) => (
+          <span
+            className="block break-words font-medium"
+            // The engine's own names for what the row sums, for whoever asks.
+            title={row.flows.filter(Boolean).join(", ") || undefined}
+            data-testid="usage-origin"
+            data-origin={row.key}
+          >
+            {t(ORIGIN_LABEL[row.key])}
+            {/* "Sonstiges" names what fell into it — an unknown purpose is
+                said, not hidden behind a word. */}
+            {row.key === "other" && row.flows.some(Boolean) ? (
+              <span className="ml-2 font-normal text-muted-foreground">
+                {row.flows.filter(Boolean).join(", ")}
+              </span>
+            ) : null}
+          </span>
+        ),
+        { width: "w-[60%]" },
+      ),
+      column.custom("cost", (row) => row.cost ?? row.tokens, t("resource.usage.cost"), costCell, {
+        width: "w-[40%]",
+      }),
+    ];
+  }, [t, dateTime, costCell]);
+
   const workflowColumns = useMemo<CockpitColumn<ConsumptionRow>[]>(() => {
     const column = tableColumns<ConsumptionRow>({ t, dateTime });
     return [
@@ -178,12 +265,6 @@ export function UsagePage() {
         (row) => row.key,
         t("resource.usage.axis.workflow"),
         (row) => {
-          if (row.unattributed)
-            return (
-              <span className="block break-words text-muted-foreground">
-                {t("resource.usage.unattributed")}
-              </span>
-            );
           const lookup = workflowName.get(row.key);
           if (lookup?.kind === "named")
             return (
@@ -208,43 +289,22 @@ export function UsagePage() {
         },
         { width: "w-[52%]" },
       ),
-      column.custom(
-        "cost",
-        (row) => row.cost ?? row.tokens,
-        t("resource.usage.cost"),
-        (row) => (
-          <span className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
-            >
-              <span
-                className="block h-full rounded-full bg-primary"
-                style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
-              />
-            </span>
-            <span className="whitespace-nowrap tabular-nums">
-              {row.cost !== null
-                ? currency.format(row.cost)
-                : t("resource.usage.tokensAmount", { count: number.format(row.tokens) })}
-            </span>
-          </span>
-        ),
-        { width: "w-[32%]" },
-      ),
+      column.custom("cost", (row) => row.cost ?? row.tokens, t("resource.usage.cost"), costCell, {
+        width: "w-[32%]",
+      }),
       column.custom(
         "runs",
         (row) => runCounts.get(row.key) ?? 0,
         t("resource.usage.runs"),
         (row) => (
           <span className="whitespace-nowrap tabular-nums">
-            {row.unattributed ? MISSING : number.format(runCounts.get(row.key) ?? 0)}
+            {number.format(runCounts.get(row.key) ?? 0)}
           </span>
         ),
         { width: "w-[16%]" },
       ),
     ];
-  }, [t, dateTime, workflowName, currency, number, runCounts]);
+  }, [t, dateTime, workflowName, costCell, number, runCounts]);
 
   const modelColumns = useMemo<CockpitColumn<ConsumptionRow>[]>(() => {
     const column = tableColumns<ConsumptionRow>({ t, dateTime });
@@ -360,26 +420,48 @@ export function UsagePage() {
           }
         />
 
-        <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
+        <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
           <DataTable
             // Every `data-testid` the table emits derives from `collectionId`,
-            // so the two tables on this page each need their own.
-            collectionId="usage-consumption-table"
+            // so each table on this page needs its own.
+            collectionId="usage-origin-table"
             collectionTier="embedded"
-            columns={workflowColumns}
-            data={workflowRows}
-            pending={byWorkflow.isPending}
-            error={byWorkflow.error ? tableError(() => void byWorkflow.refetch()) : null}
+            columns={originColumns}
+            data={origins}
+            pending={byFlow.isPending}
+            error={byFlow.error ? tableError(() => void byFlow.refetch()) : null}
             emptyState={emptyState}
             hasActiveFilters={false}
             sorting={[] as SortingState}
             onSortingChange={() => {}}
-            // Two tables, two column pickers: each names the table it shapes.
-            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byWorkflow")}`}
+            // Several tables, several column pickers: each names the table it shapes.
+            columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
             recordsLabel={t("catalog.records")}
             actionsLabel={t("common.actions")}
           />
         </Section>
+
+        {/* Only spend a run can be named for. With none, the section stands
+            down — but never while it is still reading or could not read. */}
+        {byWorkflow.isPending || byWorkflow.error || attributedRows.length > 0 ? (
+          <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
+            <DataTable
+              collectionId="usage-consumption-table"
+              collectionTier="embedded"
+              columns={workflowColumns}
+              data={attributedRows}
+              pending={byWorkflow.isPending}
+              error={byWorkflow.error ? tableError(() => void byWorkflow.refetch()) : null}
+              emptyState={emptyState}
+              hasActiveFilters={false}
+              sorting={[] as SortingState}
+              onSortingChange={() => {}}
+              columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byWorkflow")}`}
+              recordsLabel={t("catalog.records")}
+              actionsLabel={t("common.actions")}
+            />
+          </Section>
+        ) : null}
 
         <Section label={t("resource.usage.byModel")} testId="usage-models">
           <DataTable

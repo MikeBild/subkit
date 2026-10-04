@@ -86,6 +86,17 @@ export function llmStatsEndpoint(bounds: WindowBounds, axis?: ConsumptionAxis): 
   return `/v1/stats/llm?${windowQuery(bounds)}${axis ? `&group_by=${axis}` : ""}`;
 }
 
+/**
+ * The calendar month so far as a model-call window: from the first of the
+ * month, 00:00 UTC, to now, in days. UTC because the cap is counted per UTC
+ * month (`llm_usage.month_bucket`, engine/src/llm/accounting/budget.ts) — the
+ * money beside the share must count the same calls.
+ */
+export function monthSpendEndpoint(now = new Date()): string {
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(now.toISOString())}`;
+}
+
 /** The calendar month's tokens against the cap — the budget figure's one read. */
 export const STATUS_ENDPOINT = "/v1/status";
 
@@ -209,12 +220,18 @@ export type OperatingFigure =
        * the figure says how many calls it leaves out — never a silent partial sum.
        */
       money?: { currency: string; unpricedCalls: number };
-      /** Budget only: the cap, what is left of it, and its pressure word. */
+      /**
+       * Budget only: the month's share of the cap, the cap, what is left of
+       * it, and its pressure word. Absent when nothing bounds the month.
+       */
       budget?: {
+        percent: number;
         budgetTokens: number;
         remainingTokens: number | null;
         pressure: "ample" | "tightening" | "critical";
       };
+      /** Budget only: the month's money is the value, and no cap bounds the month. */
+      uncapped?: true;
     }
   | {
       id: OperatingFigureId;
@@ -281,6 +298,8 @@ export function operatingFigures(input: {
   connectorsPermitted: boolean;
   spend: Read<WindowSpend>;
   budget: Read<BudgetSummary>;
+  /** The calendar month's calls and money — the budget figure's amount. */
+  monthSpend: Read<WindowSpend>;
   canOpen: {
     runs: boolean;
     connectors: boolean;
@@ -290,7 +309,7 @@ export function operatingFigures(input: {
     budgetSetting: boolean;
   };
 }): OperatingFigure[] {
-  const { bounds, counts, connectorsPermitted, spend, budget, canOpen } = input;
+  const { bounds, counts, connectorsPermitted, spend, budget, monthSpend, canOpen } = input;
   const window = { startedFrom: bounds.from, startedTo: bounds.to };
   // An answer that is not the figures is no more readable than a failed read.
   const read = counts.state === "answered" ? counts.value : null;
@@ -372,7 +391,7 @@ export function operatingFigures(input: {
     connectorHealth,
     repairRate,
     costFigure(spend, bounds, canOpen.usage),
-    budgetFigure(budget, canOpen),
+    budgetFigure(budget, monthSpend, canOpen),
   ];
 }
 
@@ -405,18 +424,58 @@ function costFigure(
 }
 
 /**
- * The calendar month's tokens against the cap, as a whole percentage with its
- * pressure word. No cap is "uncapped" — no percentage — and its link is the
- * setting, for someone who may change it.
+ * The calendar month's usage: what the month's model calls cost, with the
+ * month's share of the cap and its pressure word beneath. The money leads
+ * because it is what a reader asks first — "what are we spending" — and the
+ * share alone ("5 % of 150 M tokens") never said it.
+ *
+ * Without a priced amount (no call this month, or none with a price) the
+ * figure falls back to the share of the cap. No cap and no amount is
+ * "uncapped" — no percentage — and its link is the setting, for someone who
+ * may change it.
  */
 function budgetFigure(
   budget: Read<BudgetSummary>,
+  monthSpend: Read<WindowSpend>,
   canOpen: { usage: boolean; budgetSetting: boolean },
 ): OperatingFigure {
-  if (budget.state === "failed") return { id: "budget", state: "unreadable", basis: "month" };
+  if (budget.state === "failed" || monthSpend.state === "failed")
+    return { id: "budget", state: "unreadable", basis: "month" };
   const summary = budget.value;
   const percent = budgetPercent(summary);
   const pressure = budgetPressure(summary);
+  const { calls, cost } = monthSpend.value;
+  const href = canOpen.usage ? usageHref() : null;
+  if (cost !== null && calls !== 0) {
+    const money = { currency: cost.currency, unpricedCalls: cost.unpricedCalls };
+    if (summary.budgetTokens === null)
+      return {
+        id: "budget",
+        state: "value",
+        value: cost.amount,
+        href,
+        basis: "month",
+        money,
+        uncapped: true,
+      };
+    // A cap without the month's consumption beside it is not a share.
+    if (percent === null || pressure === null)
+      return { id: "budget", state: "unreadable", basis: "month" };
+    return {
+      id: "budget",
+      state: "value",
+      value: cost.amount,
+      href,
+      basis: "month",
+      money,
+      budget: {
+        percent,
+        budgetTokens: summary.budgetTokens,
+        remainingTokens: summary.remainingTokens,
+        pressure,
+      },
+    };
+  }
   if (summary.budgetTokens === null)
     return {
       id: "budget",
@@ -431,9 +490,10 @@ function budgetFigure(
     id: "budget",
     state: "value",
     value: percent,
-    href: canOpen.usage ? usageHref() : null,
+    href,
     basis: "month",
     budget: {
+      percent,
       budgetTokens: summary.budgetTokens,
       remainingTokens: summary.remainingTokens,
       pressure,

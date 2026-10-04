@@ -8,6 +8,7 @@ import {
   DECIDED_REPAIR_ACTIONS,
   executionStatsEndpoint,
   llmStatsEndpoint,
+  monthSpendEndpoint,
   type OperatingCounts,
   type OperatingFigure,
   operatingCounts,
@@ -80,6 +81,11 @@ describe("the operations figures", () => {
     monthly_budget_tokens: 150_000_000,
     remaining_monthly_budget_tokens: 109_500_000,
   });
+  // The calendar month's money — what the budget figure leads with.
+  const monthPriced = {
+    calls: 900,
+    cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
+  };
   const counts = (over: Partial<OperatingCounts> = {}) =>
     answered<OperatingCounts | null>({
       runs: { total: 40, failed: 2, successRatePercent: 95 },
@@ -94,6 +100,7 @@ describe("the operations figures", () => {
       connectorsPermitted: true,
       spend: answered(priced),
       budget: answered(month),
+      monthSpend: answered(monthPriced),
       canOpen: all,
       ...overrides,
     });
@@ -126,7 +133,7 @@ describe("the operations figures", () => {
       ["connectorHealth", 75],
       ["repairRate", 75],
       ["cost", 87.22],
-      ["budget", 27],
+      ["budget", 135.8],
     ]);
     const [runs, rate, connectors, repairs, cost, budget] = figures.map(value);
     // Cost: Nutzung over the very window the amount was read over.
@@ -206,7 +213,7 @@ describe("the operations figures", () => {
       ["connectorHealth", "not_permitted", undefined],
       ["repairRate", "none", undefined],
       ["cost", "value", 87.22],
-      ["budget", "value", 27],
+      ["budget", "value", 135.8],
     ]);
   });
 
@@ -272,7 +279,7 @@ describe("the operations figures", () => {
     expect(cost && "href" in cost ? cost.href : null).toBe("/usage?window=7d");
   });
 
-  test("the budget is the month's whole percentage with the engine's pressure word", () => {
+  test("the month's usage is its money, with its whole share of the cap and the engine's word", () => {
     const at = (used: number) =>
       value(
         figuresOf({
@@ -285,22 +292,70 @@ describe("the operations figures", () => {
           ),
         })[5],
       );
-    expect([at(270)?.value, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
-    expect([at(750)?.value, at(750)?.budget?.pressure]).toEqual([75, "tightening"]);
+    expect([at(270)?.value, at(270)?.money]).toEqual([
+      135.8,
+      { currency: "USD", unpricedCalls: 0 },
+    ]);
+    expect([at(270)?.budget?.percent, at(270)?.budget?.pressure]).toEqual([27, "ample"]);
+    expect([at(750)?.budget?.percent, at(750)?.budget?.pressure]).toEqual([75, "tightening"]);
     // 89.6 % reads "89 %" beside "Wird knapp" — the engine's exact share.
-    expect([at(896)?.value, at(896)?.budget?.pressure]).toEqual([89, "tightening"]);
+    expect([at(896)?.budget?.percent, at(896)?.budget?.pressure]).toEqual([89, "tightening"]);
     expect(at(270)?.budget).toMatchObject({ budgetTokens: 1000, remainingTokens: 730 });
+    expect(at(270)?.basis).toBe("month");
   });
 
-  test("no cap is 'no budget' — no percentage — and links the setting only for who may set it", () => {
+  test("a month without a priced amount falls back to its share of the cap", () => {
+    for (const monthSpend of [
+      answered({ calls: 30, cost: null }),
+      answered({ calls: 0, cost: null }),
+    ]) {
+      const figure = value(figuresOf({ monthSpend })[5]);
+      expect([figure?.value, figure?.money, figure?.budget?.percent]).toEqual([27, undefined, 27]);
+    }
+  });
+
+  test("the month's money and its share are both read — either failing makes it unreadable", () => {
+    expect(figuresOf({ monthSpend: { state: "failed" } })[5]?.state).toBe("unreadable");
+    expect(figuresOf({ budget: { state: "failed" } })[5]?.state).toBe("unreadable");
+  });
+
+  test("no cap still shows the month's money, and says there is no cap", () => {
     const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
-    const figure = figuresOf({ budget: uncapped })[5];
+    const figure = value(figuresOf({ budget: uncapped })[5]);
+    expect([figure?.value, figure?.uncapped, figure?.budget, figure?.href]).toEqual([
+      135.8,
+      true,
+      undefined,
+      "/usage",
+    ]);
+  });
+
+  test("no cap and no amount is 'no budget' — no percentage — and links the setting only for who may set it", () => {
+    const uncapped = answered(budgetSummary({ tokens_month: 5_000, monthly_budget_tokens: null }));
+    const unpriced = answered({ calls: 30, cost: null });
+    const figure = figuresOf({ budget: uncapped, monthSpend: unpriced })[5];
     expect(figure?.state).toBe("uncapped");
     expect(figure && "href" in figure ? figure.href : null).toBe(
       "/settings?leaf=tokens.monthly_budget",
     );
-    const readOnly = figuresOf({ budget: uncapped, canOpen: { ...all, budgetSetting: false } })[5];
+    const readOnly = figuresOf({
+      budget: uncapped,
+      monthSpend: unpriced,
+      canOpen: { ...all, budgetSetting: false },
+    })[5];
     expect(readOnly && "href" in readOnly ? readOnly.href : "missing").toBeNull();
+  });
+
+  test("the month's money is asked from the first of the UTC month to now, in days", () => {
+    const endpoint = monthSpendEndpoint(new Date("2026-10-04T09:30:00.000Z"));
+    const query = stats(endpoint);
+    expect(endpoint.startsWith("/v1/stats/llm?")).toBe(true);
+    expect([query.get("bucket"), query.get("from"), query.get("to")]).toEqual([
+      "day",
+      "2026-10-01T00:00:00.000Z",
+      "2026-10-04T09:30:00.000Z",
+    ]);
+    expect(query.get("group_by")).toBeNull();
   });
 
   test("a value the reader may not open is shown without a link", () => {

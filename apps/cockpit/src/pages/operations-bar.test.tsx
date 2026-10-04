@@ -29,6 +29,11 @@ const month = (used: number, cap: number | null) =>
     }),
   );
 const budget = month(40_500_000, 150_000_000);
+// The calendar month's money — what the budget figure leads with.
+const monthSpend = answered({
+  calls: 900,
+  cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
+});
 
 function render(figures: ReturnType<typeof operatingFigures>, locale: Locale = "de"): string {
   const value = {
@@ -86,6 +91,7 @@ const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = 
     connectorsPermitted: true,
     spend,
     budget,
+    monthSpend,
     canOpen: all,
     ...overrides,
   });
@@ -141,28 +147,59 @@ describe("the operations bar", () => {
     expect(html).not.toContain("0,00");
   });
 
-  test("the budget shows the month's percentage of the cap, what is left and its state", () => {
+  test("the month's usage leads with its money, then its share of the cap, what is left and its state", () => {
     const html = render(figuresOf());
     expect(figureText(html, "budget")).toBe(
-      "Kontingent · Monat27 %von 150 Mio. TokenReichlich · 109,5 Mio. übrig",
+      "Nutzung · Monat135,80 $27 % von 150 Mio. TokenReichlich · 109,5 Mio. übrig",
     );
     expect(html).toContain('data-budget-pressure="ample"');
+    expect(hrefs(html)).toContain("/cockpit/usage");
     const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000) }));
     expect(figureText(critical, "budget")).toContain("95 %");
     expect(figureText(critical, "budget")).toContain("Fast aufgebraucht");
     expect(critical).toContain('data-budget-pressure="critical"');
     expect(critical).toContain("text-destructive");
+    expect(figureText(render(figuresOf(), "en"), "budget")).toBe(
+      "Usage · Month$135.8027 % of 150M tokensComfortable · 109.5M left",
+    );
   });
 
-  test("no cap reads 'Kein Kontingent' — no percentage — with the setting for an admin", () => {
+  test("a partly priced month is a floor; an unpriced one falls back to its share", () => {
+    const partial = render(
+      figuresOf({
+        monthSpend: answered({
+          calls: 900,
+          cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 12 },
+        }),
+      }),
+    );
+    expect(figureText(partial, "budget")).toContain("mind. 135,80 $");
+    const unpriced = render(figuresOf({ monthSpend: answered({ calls: 30, cost: null }) }));
+    expect(figureText(unpriced, "budget")).toBe(
+      "Nutzung · Monat27 %von 150 Mio. TokenReichlich · 109,5 Mio. übrig",
+    );
+  });
+
+  test("no cap still shows the month's money and says 'Kein Kontingent'", () => {
     const html = render(figuresOf({ budget: month(5_000, null) }));
-    expect(figureText(html, "budget")).toBe("Kontingent · MonatKein KontingentKontingent setzen");
+    expect(figureText(html, "budget")).toBe("Nutzung · Monat135,80 $Kein Kontingent");
+    expect(hrefs(html)).toContain("/cockpit/usage");
+  });
+
+  test("no cap and no amount reads 'Kein Kontingent' — no percentage — with the setting for an admin", () => {
+    const unpriced = answered({ calls: 30, cost: null });
+    const html = render(figuresOf({ budget: month(5_000, null), monthSpend: unpriced }));
+    expect(figureText(html, "budget")).toBe("Nutzung · MonatKein KontingentKontingent setzen");
     expect(html).toContain('data-figure-state="uncapped"');
     expect(hrefs(html)).toContain("/cockpit/settings?leaf=tokens.monthly_budget");
     const reader = render(
-      figuresOf({ budget: month(5_000, null), canOpen: { ...all, budgetSetting: false } }),
+      figuresOf({
+        budget: month(5_000, null),
+        monthSpend: unpriced,
+        canOpen: { ...all, budgetSetting: false },
+      }),
     );
-    expect(figureText(reader, "budget")).toBe("Kontingent · MonatKein Kontingent");
+    expect(figureText(reader, "budget")).toBe("Nutzung · MonatKein Kontingent");
   });
 
   test("a figure with nothing to count says so — no 0, no link", () => {
@@ -175,6 +212,7 @@ describe("the operations bar", () => {
         }),
         spend: answered({ calls: 0, cost: null }),
         budget: month(0, null),
+        monthSpend: answered({ calls: 0, cost: null }),
         canOpen: { ...all, budgetSetting: false },
       }),
     );
