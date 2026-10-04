@@ -33,7 +33,7 @@ const WORDS = {
     signIn: ["Mit Konto", "Mit Schlüssel", "Ohne"],
     secret: "Zugangsschlüssel",
     oauth: ["Rückleitung", "Anmeldedienst", "Client-ID", "Client-Secret", "Berechtigungen"],
-    serviceFailed: "Anmeldedienst antwortet nicht. Adresse prüfen.",
+    serviceFailed: "Anmeldedienst nicht gefunden oder hat abgelehnt.",
     publicUrl: "Anmeldung nicht möglich: Der Engine fehlt eine öffentliche Adresse.",
   },
   en: {
@@ -41,7 +41,7 @@ const WORDS = {
     signIn: ["With account", "With key", "None"],
     secret: "Access key",
     oauth: ["Redirect address", "Sign-in service", "Client ID", "Client secret", "Scopes"],
-    serviceFailed: "The sign-in service didn't answer. Check its address.",
+    serviceFailed: "Sign-in service not found, or it refused.",
     publicUrl: "Sign-in can't start: the engine has no public address.",
   },
 };

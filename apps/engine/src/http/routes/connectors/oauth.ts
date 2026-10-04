@@ -55,7 +55,11 @@ import {
 } from "../../../connectors/index.ts";
 import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
-import { buildOAuthRedirectUri, completeAuthorizationCode } from "../../../credentials/index.ts";
+import {
+  buildOAuthRedirectUri,
+  completeAuthorizationCode,
+  isOAuthProviderError,
+} from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
 import { connectorOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -175,12 +179,13 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
       });
     } catch (err) {
-      if (err instanceof HttpError) throw err;
-      // Anything else came from the sign-in service: its discovery document
-      // was missing or did not match the issuer, or it refused the request.
-      // That is a remote fault with a name, not an engine crash — a bare 500
-      // left the person with nothing to correct. The raw message can carry a
-      // URL with its query, so only its sanitized form is logged.
+      // An error from the sign-in service itself — its discovery document
+      // was missing or did not match the issuer, or it refused the request —
+      // is a remote fault with a name, not an engine crash: a bare 500 left
+      // the person with nothing to correct. Everything else (a named refusal,
+      // a database failure) stays what it is. The raw message can carry a URL
+      // with its query, so only its sanitized form is logged.
+      if (!isOAuthProviderError(err)) throw err;
       logger.warn({
         module: "oauth",
         action: "oauth.start.failed",

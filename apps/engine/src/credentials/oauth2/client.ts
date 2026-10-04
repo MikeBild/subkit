@@ -640,3 +640,19 @@ export async function runRefreshTokenGrant(
     throw err;
   }
 }
+
+/**
+ * Whether an error came from talking to a sign-in service — its discovery
+ * document, its client registration or one of its endpoints — rather than
+ * from the engine itself. A route reports the first as the remote's fault
+ * and lets the second stay an internal error.
+ */
+export function isOAuthProviderError(err: unknown): boolean {
+  return (
+    err instanceof oauth.ClientError ||
+    err instanceof oauth.ResponseBodyError ||
+    err instanceof oauth.AuthorizationResponseError ||
+    err instanceof oauth.WWWAuthenticateChallengeError ||
+    err instanceof DynamicRegistrationError
+  );
+}
