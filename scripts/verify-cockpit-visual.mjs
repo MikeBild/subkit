@@ -4066,8 +4066,15 @@ async function assertChat(page, label) {
   await page.locator('[data-testid="chat-attachment-0-open"]').click();
   const preview = page.locator('[data-testid="chat-attachment-preview-body"]');
   await preview.waitFor({ state: "visible" });
-  if (!(await preview.innerText()).includes("Zwei Punkte"))
-    throw new Error(`${label} the attachment preview does not show the file`);
+  // The body opens before the file's text arrives; wait for the text, and
+  // fail only when it never comes.
+  await preview
+    .getByText("Zwei Punkte")
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .catch(() => {
+      throw new Error(`${label} the attachment preview does not show the file`);
+    });
   await page.locator('[data-testid="chat-attachment-preview-close"]').click();
   await preview.waitFor({ state: "hidden" });
   await page.locator('[data-testid="chat-attachment-0-remove"]').click();
