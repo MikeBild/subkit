@@ -151,17 +151,27 @@ export function ChoiceField<T extends string>({
   value,
   onChange,
   options,
+  help,
   testId,
 }: {
   label: string;
   value: T;
   onChange(value: T): void;
   options: { value: T; label: string }[];
+  /** One sentence behind (?). */
+  help?: string;
   testId: string;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5" data-slot="form-field">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="flex items-center gap-1">
+        <span className="text-sm font-medium">{label}</span>
+        {help ? (
+          <ContextHelp label={label} testId={`${testId}-help`}>
+            {help}
+          </ContextHelp>
+        ) : null}
+      </span>
       <SegmentedControl
         label={label}
         value={value}
