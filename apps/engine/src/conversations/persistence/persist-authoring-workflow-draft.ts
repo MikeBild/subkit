@@ -146,24 +146,22 @@ export async function persistAuthoringWorkflowDraft(input: {
       and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
     );
   await ctx.setDraft(nextDraft);
-  // A proposed capability remains preparation. Keep the existing useful
-  // authoring summary, but bind it to the saved draft and explicitly state
-  // that approving a skill cannot activate or authorize that workflow.
-  const candidateNotice = changed
-    ? await proposeAuthoringCapabilityCandidate({
-        db: ctx.db,
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        workflow: {
-          id: saved.workflow_id,
-          slug: saved.definition.slug ?? saved.workflow_id,
-          name: saved.definition.name,
-        },
-        def,
-        scope_index,
-        draft_version_id: saved.version_id,
-      })
-    : null;
+  // The described interface is drafting context, bound to the saved draft —
+  // not a decision, so the turn does not announce it as one.
+  if (changed)
+    await proposeAuthoringCapabilityCandidate({
+      db: ctx.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      workflow: {
+        id: saved.workflow_id,
+        slug: saved.definition.slug ?? saved.workflow_id,
+        name: saved.definition.name,
+      },
+      def,
+      scope_index,
+      draft_version_id: saved.version_id,
+    });
   const cadence =
     !saved.definition.trigger || saved.definition.trigger.kind === "request"
       ? detectSchedulePhrases({
@@ -210,7 +208,6 @@ export async function persistAuthoringWorkflowDraft(input: {
           ? null
           : `No new version was written: this definition already IS version ${saved.version}, once the values the schema fills in are applied. The edits are in that version — saving again cannot produce a different result.`,
         "The exact draft version is saved but is not activated. Review its version and effects before human activation; no schedule, webhook or live execution was enabled by this save.",
-        candidateNotice,
       ]
         .filter(Boolean)
         .join("\n"),

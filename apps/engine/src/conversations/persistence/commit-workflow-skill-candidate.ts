@@ -2,7 +2,8 @@
 //
 // Extracted from commit-workflow.ts to keep that orchestrator under the
 // file-size ceiling. The candidate is always status `proposed` — never an
-// active skill; the operator promotes it via the human approval gate.
+// active skill. It is advisory (not reviewable): authoring reads it as
+// context for the same workflow; no person is asked to decide it.
 
 import { createHash } from "node:crypto";
 import type { Db } from "../../db/client.ts";
@@ -144,9 +145,10 @@ function buildAuthoringCapabilitySignal(args: {
 }
 
 /**
- * Propose (or update) the workflow-capability candidate on commit and return a
- * one-line user-facing notice, or null. Best-effort: a candidate failure must
- * never break a successful commit, so all errors are caught and logged.
+ * Propose (or update) the workflow-capability candidate on commit. It is
+ * advisory (`reviewable: false`): drafting context, never a decision a person
+ * is asked to take, so nothing announces it. Best-effort: a candidate failure
+ * must never break a successful commit, so all errors are caught and logged.
  */
 export async function proposeAuthoringCapabilityCandidate(args: {
   db: Db;
@@ -156,7 +158,7 @@ export async function proposeAuthoringCapabilityCandidate(args: {
   def: WorkflowDefFromDraft;
   scope_index: ScopeIndex;
   draft_version_id?: string;
-}): Promise<string | null> {
+}): Promise<void> {
   const { db, tenant_id, conversation_id, workflow, def, scope_index } = args;
   try {
     const signal = buildAuthoringCapabilitySignal({
@@ -167,11 +169,7 @@ export async function proposeAuthoringCapabilityCandidate(args: {
       scope_index,
       ...(args.draft_version_id ? { draft_version_id: args.draft_version_id } : {}),
     });
-    const result = await upsertFromSignal(tenant_id, signal, db);
-    if (result.action === "proposed" || result.action === "updated") {
-      return `📎 Skill-Candidate '${signal.title}' vorgeschlagen — freigeben mit POST /v1/skill-candidates/${result.candidate_id}/approve`;
-    }
-    return null;
+    await upsertFromSignal(tenant_id, signal, db);
   } catch (err) {
     logger.warn({
       module: "conversation_persistence",
@@ -182,6 +180,5 @@ export async function proposeAuthoringCapabilityCandidate(args: {
       workflow_id: workflow.id,
       error: err instanceof Error ? err.message : String(err),
     });
-    return null;
   }
 }

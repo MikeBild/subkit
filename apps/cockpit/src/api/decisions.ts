@@ -42,8 +42,14 @@ export function listPatchCandidatesByStatus(
   return apiRequest(`/v1/patch-candidates?status=${status}&order=desc&limit=25`);
 }
 
+/**
+ * The proposed skills a person can adopt. Observations the engine files as
+ * candidates — a recurring failure, a workflow's described interface — are
+ * not ready guidance (`reviewable: false`): they feed drafting as context and
+ * are never a decision, so no list, count or sheet offers them as one.
+ */
 export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
-  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
+  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed&reviewable=true");
 }
 
 export function listSkillCandidatesByStatus(
