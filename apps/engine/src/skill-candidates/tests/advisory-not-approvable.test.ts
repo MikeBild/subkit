@@ -11,7 +11,8 @@ import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
 import { skillCandidates, skills } from "../../db/schema/skills.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { AdvisoryCandidateError, approveSkillCandidate } from "../service.ts";
+import { AdvisoryCandidateError } from "../candidate-view.ts";
+import { approveSkillCandidate } from "../service.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 

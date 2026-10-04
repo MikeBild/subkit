@@ -16,6 +16,15 @@ export function isAdvisoryPatternKind(kind: string): boolean {
   return ADVISORY_PATTERN_KINDS.has(kind);
 }
 
+/** Approving a candidate the view marks not reviewable is refused on every
+ *  surface — the Cockpit hides the action, the engine owns the rule. */
+export class AdvisoryCandidateError extends Error {
+  constructor(readonly candidate_id: string) {
+    super("an advisory skill candidate cannot be approved");
+    this.name = "AdvisoryCandidateError";
+  }
+}
+
 export function skillReviewDigest(row: typeof skillCandidates.$inferSelect): string {
   return workflowJsonDigest({
     tenant: row.tenant_id,
@@ -62,4 +71,9 @@ export function toView(
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+/** Refuse to adopt an advisory candidate, whichever surface asked. */
+export function assertAdoptable(row: { id: string; pattern_kind: string }): void {
+  if (isAdvisoryPatternKind(row.pattern_kind)) throw new AdvisoryCandidateError(row.id);
 }
