@@ -6,6 +6,13 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
+import {
+  afterCreate,
+  type ConnectorSignIn,
+  type ConnectorTarget,
+  connectorCreateBody,
+  needsSecret,
+} from "@/components/cockpit/create-connector-model";
 import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
@@ -278,23 +285,24 @@ function useManualWorkflow(
   };
 }
 
-type ConnectorKind = "oauth" | "mcp" | "key";
-
 /**
- * A connector by hand (R19): kind, name, address and — except for OAuth — the
- * key. OAuth goes on to the provider's sign-in, MCP to its tools, a key to
- * its connection.
+ * A connector by hand (R19): what it connects, how SubKit signs in there,
+ * name, address and — for a key only — the key. An account sign-in goes on to
+ * the service's approval, an MCP server otherwise to its tools, a web service
+ * to its connection.
  */
 function useManualConnector(done: () => void, fail: (error: string) => void): ManualForm {
   const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [kind, setKind] = useState<ConnectorKind>("oauth");
+  const [target, setTarget] = useState<ConnectorTarget>("web");
+  const [signIn, setSignIn] = useState<ConnectorSignIn>("account");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [secret, setSecret] = useState("");
   const reset = () => {
-    setKind("oauth");
+    setTarget("web");
+    setSignIn("account");
     setName("");
     setAddress("");
     setSecret("");
@@ -303,17 +311,12 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
     mutationFn: async () => {
       const connector = await apiRequest<Connector>("/v1/connectors", {
         method: "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          slug: slugify(name),
-          driver: kind === "mcp" ? "mcp" : "http",
-          environment: "prod",
-          base_url: address.trim(),
-          auth_type: kind === "oauth" ? "oauth2" : "bearer",
-        }),
+        body: JSON.stringify(
+          connectorCreateBody({ target, signIn, name, slug: slugify(name), address }),
+        ),
       });
       // The key is stored as the connector's credential, never in its record.
-      if (kind !== "oauth")
+      if (needsSecret(signIn))
         await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
           method: "POST",
           body: JSON.stringify({ mode: "bearer", token: secret.trim() }),
@@ -326,29 +329,29 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
       await client.invalidateQueries({ queryKey: ["catalog"] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
       const page = connectorHref(connector.id);
-      if (kind === "oauth") {
-        // The provider's sign-in, straight away; where it cannot start yet,
-        // the connection tab says what is missing.
+      const next = afterCreate(target, signIn);
+      if (next.signInPath) {
+        // The service's approval, straight away; where it cannot start yet,
+        // the connector's page says what is missing.
         try {
           const start = await apiRequest<{ authorization_url: string }>(
-            `/v1/connectors/${encodeURIComponent(connector.id)}/oauth/start`,
+            `/v1/connectors/${encodeURIComponent(connector.id)}/${next.signInPath}`,
             { method: "POST" },
           );
           window.location.assign(start.authorization_url);
           return;
         } catch {
           toast.success(t("create.connector.created", { name: name.trim() }));
-          void navigate({ to: `${page}?tab=verbindung` });
+          void navigate({ to: `${page}?tab=${next.tab}` });
           return;
         }
       }
-      if (kind === "mcp") {
-        toast.success(t("create.connector.created", { name: name.trim() }));
-        void navigate({ to: `${page}?tab=werkzeuge` });
-        return;
-      }
-      toast.success(t("create.connector.connected", { name: name.trim() }));
-      void navigate({ to: `${page}?tab=verbindung` });
+      toast.success(
+        t(needsSecret(signIn) ? "create.connector.connected" : "create.connector.created", {
+          name: name.trim(),
+        }),
+      );
+      void navigate({ to: `${page}?tab=${next.tab}` });
     },
     onError: (failure) => fail(refusal(failure, t("create.connector.taken"), t)),
   });
@@ -359,20 +362,32 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
       if (!slugify(name)) return fail(t("create.nameMissing"));
       if (!/^https:\/\/\S+\.\S+/.test(address.trim()))
         return fail(t("create.connector.addressInvalid"));
-      if (kind !== "oauth" && !secret.trim()) return fail(t("create.connector.secretMissing"));
+      if (needsSecret(signIn) && !secret.trim()) return fail(t("create.connector.secretMissing"));
       create.mutate();
     },
     fields: (
       <>
-        <ChoiceField<ConnectorKind>
-          label={t("create.connector.kind")}
-          value={kind}
-          onChange={setKind}
-          testId="create-connector-kind"
+        <ChoiceField<ConnectorTarget>
+          label={t("create.connector.target")}
+          value={target}
+          onChange={setTarget}
+          help={t("create.connector.targetHelp")}
+          testId="create-connector-target"
           options={[
-            { value: "oauth", label: "OAuth" },
-            { value: "mcp", label: "MCP" },
-            { value: "key", label: t("create.connector.key") },
+            { value: "web", label: t("create.connector.target.web") },
+            { value: "mcp", label: t("create.connector.target.mcp") },
+          ]}
+        />
+        <ChoiceField<ConnectorSignIn>
+          label={t("create.connector.signIn")}
+          value={signIn}
+          onChange={setSignIn}
+          help={t("create.connector.signInHelp")}
+          testId="create-connector-signin"
+          options={[
+            { value: "account", label: t("create.connector.signIn.account") },
+            { value: "key", label: t("create.connector.signIn.key") },
+            { value: "none", label: t("create.connector.signIn.none") },
           ]}
         />
         <TextField
@@ -386,18 +401,17 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
           id="create-connector-address"
           type="url"
           label={t("create.connector.address")}
-          placeholder="https://api.example.com"
+          placeholder={target === "mcp" ? "https://mcp.example.com/mcp" : "https://api.example.com"}
           value={address}
           onChange={setAddress}
           mono
         />
-        {kind !== "oauth" ? (
+        {needsSecret(signIn) ? (
           <TextField
             id="create-connector-secret"
             type="password"
             label={t("create.connector.secret")}
             placeholder={t("create.connector.secretPlaceholder")}
-            help={t("create.connector.secretHelp")}
             value={secret}
             onChange={setSecret}
           />

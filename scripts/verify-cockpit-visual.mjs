@@ -15,6 +15,7 @@ import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
+import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
@@ -4742,6 +4743,10 @@ for (const locale of variants) {
     if (standOn(verifyConnectorDetail))
       await verifyConnectorDetail(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
+      );
+    if (standOn(verifyCreateConnector))
+      await verifyCreateConnector(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
     if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>
