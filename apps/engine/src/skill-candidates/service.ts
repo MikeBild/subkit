@@ -620,9 +620,10 @@ export async function upsertFromSignal(
         eq(skillCandidates.pattern_kind, signal.pattern_kind),
         isNull(skillCandidates.endpoint_key),
       ];
+      // Workflow-keyed: the connector changes with the steps, never the identity.
       if (signal.workflow_id)
         tenantSupersedeScope.push(eq(skillCandidates.workflow_id, signal.workflow_id));
-      if (signal.connector_id)
+      else if (signal.connector_id)
         tenantSupersedeScope.push(eq(skillCandidates.connector_id, signal.connector_id));
 
       const stale = await tx
