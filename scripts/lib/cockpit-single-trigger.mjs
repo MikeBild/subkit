@@ -128,7 +128,14 @@ export async function assertSingleTriggers(
 ) {
   const view = page.locator(root);
   if ((await view.count()) !== 1) throw new Error(`${where}: there is no single view "${root}"`);
-  const triggers = await view.evaluate(collectTriggers, content);
+  // A dialog or sheet that is still closing keeps the page aria-hidden for its
+  // exit animation; reading then sees no trigger at all. Give a leaving layer
+  // its moment, never longer: one that stays is still reported below.
+  let triggers = await view.evaluate(collectTriggers, content);
+  for (let attempt = 0; triggers.length === 0 && attempt < 20; attempt++) {
+    await page.waitForTimeout(250);
+    triggers = await view.evaluate(collectTriggers, content);
+  }
   // A page behind an open dialog is hidden from this check entirely: it would
   // pass for having nothing to compare.
   if (triggers.length === 0)
