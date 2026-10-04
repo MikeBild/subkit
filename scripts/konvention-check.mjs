@@ -1118,9 +1118,10 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         actionable_unread_count: 3,
       });
 
-    // The window's model calls and money — what the Kosten figure reads. PARTLY
-    // priced on purpose: the figure must say "mind." and how many calls the
-    // amount leaves out, never show a partial sum as a whole one.
+    // Model calls and money over a window — the month's is what the Nutzung
+    // figure leads with, a window's what the Nutzung page breaks down. PARTLY
+    // priced on purpose: the figure must say "mind.", never show a partial sum
+    // as a whole one.
     if (path === "/v1/stats/llm") {
       if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
         return json(route, { code: "validation", message: "request validation failed" }, 400);
@@ -1144,7 +1145,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
       });
     }
 
-    // The calendar month against the cap — what the Kontingent figure reads.
+    // The calendar month against the cap — the Nutzung figure's share line.
     if (path === "/v1/status")
       return json(route, {
         tokens_today: 1_240_000,
@@ -2249,10 +2250,11 @@ async function checkNoZeroKpiTile(page, where) {
  * the calm sentence, the window switch on the summary line above the bar with
  * 24 hours chosen. Every figure link opens the list of the same window — runs
  * and failed runs by `started_from`/`started_to` — and connector health, a
- * state of now, the unwell connectors; the budget, the month's, Nutzung.
- * Kontingent reads the month's share of the cap with remainder and state. A
- * figure without a number says why in words. Kosten and the decided repairs
- * are not the bar's (§0.1): Nutzung and the audit trail carry them.
+ * state of now, the unwell connectors; the month's usage, Nutzung.
+ * Nutzung reads the month's money, and beneath it the month's share of the
+ * cap with remainder and state. A figure without a number says why in words.
+ * The window's Kosten and the decided repairs are not the bar's (§0.1):
+ * Nutzung and the audit trail carry them.
  */
 async function checkOperationsBar(page, where) {
   const bar = page.locator('[data-testid="operations-bar"] [data-figure-state]');
@@ -2312,11 +2314,14 @@ async function checkOperationsBar(page, where) {
     breach("§1", where, `the four figures stand in ${shape.tops.length} rows, not one or two`);
   if (shape.overflow) breach("§1", where, "the operations bar scrolls sideways");
   const byId = Object.fromEntries(shape.figures.map((figure) => [figure.id, figure]));
-  // Kontingent — the month's share of the cap, with what is left and its state.
+  // Nutzung — the month's money, then its share of the cap, with what is left
+  // and its state. The fixture's month is partly priced: the amount is a floor.
   const budget = byId["operations-figure-budget"];
   if (budget?.state === "value") {
-    if (!/Monat/.test(budget.label))
-      breach("§1", `${where} · budget`, `"${budget.label}" is not marked as the month's`);
+    if (!/Nutzung/.test(budget.label) || !/Monat/.test(budget.label))
+      breach("§1", `${where} · budget`, `"${budget.label}" is not the month's usage`);
+    if (!/mind\. 87,22\s*\$/.test(budget.text))
+      breach("§1", `${where} · budget`, `"${budget.text}" does not lead with the month's money`);
     if (!/27\s*%/.test(budget.text) || !/150 Mio\. Token/.test(budget.text))
       breach("§1", `${where} · budget`, `"${budget.text}" is not the month's share of the cap`);
     if (!/109,5 Mio\. übrig/.test(budget.text) || budget.pressure !== "ample")

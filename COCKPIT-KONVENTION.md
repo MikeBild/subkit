@@ -56,8 +56,8 @@ und verlinken höchstens zur Aufgabe. Jeder Fakt hat genau einen Ort.
 | Gesundheitszustand | Ursachen eines schlechten Zustands sind Einträge der Übersicht; der Zustand selbst nur API, MCP, Prometheus | nirgends |
 | Komponenten/Score | nur API, MCP, Prometheus | — |
 | Zahl offener Anliegen | Abzeichen am Navigationseintrag = Zahl der Einträge | Listenköpfe ohne Zahl |
-| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Kontingent | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1; Kontingent in Kurzform: Prozent vom Monatskontingent mit Zustand) | Nutzung zeigt Aufriss, Tabellen und Laufzeit desselben Fensters, nicht die Betriebswerte; ohne Kontingent „Kein Kontingent" |
-| Kosten | Nutzung, Aufriss desselben Fensters | ohne Preis kein stiller Teilbetrag („mind. …") |
+| Ausführungen, Erfolgsquote, Konnektor-Gesundheit, Nutzung des Monats | Übersicht, Betriebsleiste (je Wert ein Link in die gefilterte Liste desselben Zeitfensters, §10.1; Nutzung in Kurzform: Kosten des Kalendermonats, darunter Prozent vom Monatskontingent mit Zustand) | Nutzung zeigt Aufriss, Tabellen und Laufzeit desselben Fensters, nicht die Betriebswerte; ohne Kontingent „Kein Kontingent" |
+| Kosten | Nutzung, Aufriss desselben Fensters: zuerst wofür, dann nach Workflow (nur zuordenbare Läufe) und nach Modell | ohne Preis kein stiller Teilbetrag („mind. …") |
 | Übernommene Reparaturen | Audit-Trail, entschiedene Vorschläge (§8.5) | — |
 | Datenstand | Eintrag auf der Übersicht, nur wenn veraltet | — |
 | Drift-Scan | kein Knopf im Cockpit (der Scheduler scannt; CLI/MCP behalten ihn) | — |
@@ -85,12 +85,13 @@ geantwortet hat → „Letzte Fehlschläge": die drei jüngsten gescheiterten L�
 
 **Betriebsleiste.** Genau vier Werte in einem Raster ohne seitliches Scrollen — breit in einer
 Zeile oder 2 × 2, auf dem Telefon 2 × 2: Ausführungen, Erfolgsquote, Gesunde Konnektoren,
-Kontingent. Ausführungen und Erfolgsquote zählen im gewählten Zeitfenster; „Gesunde Konnektoren"
-ist ein Zustand und trägt „Stand jetzt", „Kontingent" gilt dem Kalendermonat und trägt „Monat".
-Kontingent zeigt den Anteil am Monatskontingent mit Rest und Zustand, ohne Kontingent „Kein
-Kontingent". Jeder Wert führt auf die gefilterte Liste desselben Fensters (§10.1), Kontingent auf
-Nutzung, die den Aufriss trägt. Kosten und übernommene Reparaturen stehen nicht in der Leiste:
-Kosten zeigt Nutzung im Aufriss, entschiedene Reparaturen der Audit-Trail (§0.1). Ein Wert,
+Nutzung. Ausführungen und Erfolgsquote zählen im gewählten Zeitfenster; „Gesunde Konnektoren"
+ist ein Zustand und trägt „Stand jetzt", „Nutzung" gilt dem Kalendermonat und trägt „Monat".
+Nutzung zeigt die Kosten des Monats, darunter den Anteil am Monatskontingent mit Rest und
+Zustand; ohne Preis nur den Anteil, ohne Kontingent „Kein Kontingent". Jeder Wert führt auf die
+gefilterte Liste desselben Fensters (§10.1), Nutzung auf die Seite Nutzung, die den Aufriss trägt.
+Die Kosten des Zeitfensters und übernommene Reparaturen stehen nicht in der Leiste: Kosten zeigt
+Nutzung im Aufriss, entschiedene Reparaturen der Audit-Trail (§0.1). Ein Wert,
 der nicht gelesen werden konnte, sagt „nicht lesbar" und bietet an, erneut zu lesen — je Wert,
 nicht für die ganze Leiste. Die Leiste ist kompakt (je Wert etwa 72 px hoch), damit die Anliegen im
 ersten Screen stehen. Sie zeigt Zahlen, keine Aufgaben: was jemanden braucht, ist ein Eintrag
