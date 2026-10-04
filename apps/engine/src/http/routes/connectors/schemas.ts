@@ -6,6 +6,7 @@ import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
 import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
+  connectorSignIn,
   effectiveConnectorHealth,
   OperatorQuirksSchema,
   resolveConnectorOAuthConfig,
@@ -122,6 +123,17 @@ export const ConnectorSchema = z
     needs_reauth: z.boolean(),
     auth_failed_at: z.string().datetime().nullable(),
     auth_failed_reason: z.string().nullable(),
+    // How a person signs this connector in with their own account: the
+    // authenticated POST that answers `{ authorization_url }`. `oauth` and
+    // `mcp` are different flows on different routes — a client starts the
+    // one stated here instead of choosing by driver. Null when the connector
+    // has no browser sign-in (a key, or OAuth that runs machine to machine).
+    sign_in: z
+      .object({
+        kind: z.enum(["oauth", "mcp"]),
+        start: z.string(),
+      })
+      .nullable(),
     created_at: z.string(),
     updated_at: z.string(),
     // Redacted credential summaries — present on single-connector GET so
@@ -263,6 +275,7 @@ export function serialize(view: ConnectorView) {
     needs_reauth: c.needs_reauth,
     auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
     auth_failed_reason: c.auth_failed_reason,
+    sign_in: connectorSignIn(c),
     created_at: c.created_at.toISOString(),
     updated_at: c.updated_at.toISOString(),
   };

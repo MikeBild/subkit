@@ -76,6 +76,8 @@ function mcpRecord(trusted) {
     needs_reauth: false,
     auth_failed_at: null,
     auth_failed_reason: null,
+    // A key: no sign-in of its own to start.
+    sign_in: null,
     created_at: iso(30),
     updated_at: iso(1),
   };
@@ -106,6 +108,7 @@ function oauthRecord(state) {
     description: null,
     driver: "http",
     auth_type: "oauth2",
+    sign_in: { kind: "oauth", start: `/v1/connectors/${OAUTH_ID}/oauth/start` },
     base_url: "https://mail.example.org/v1",
     config: { oauth: { scope: "mail.read mail.send" } },
     self_description: undefined,

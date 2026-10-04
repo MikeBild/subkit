@@ -8364,6 +8364,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description The sign-in service's discovery failed or it refused the request */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -18490,6 +18499,8 @@ export interface components {
             permissions: string[];
             csrf_token: string;
             version: string;
+            /** @description The address an OAuth app must allow as its redirect URI for a connector that signs in with an account (`/v1/oauth/callback` on the engine's public origin). Null when no public origin resolves — such a sign-in cannot start until server.public_base_url is set. */
+            oauth_callback_url: string | null;
             recent_conversations: {
                 /** Format: uuid */
                 id: string;
@@ -20815,6 +20826,11 @@ export interface components {
             /** Format: date-time */
             auth_failed_at: string | null;
             auth_failed_reason: string | null;
+            sign_in: {
+                /** @enum {string} */
+                kind: "oauth" | "mcp";
+                start: string;
+            } | null;
             created_at: string;
             updated_at: string;
             credentials?: components["schemas"]["CredentialSummary"][];

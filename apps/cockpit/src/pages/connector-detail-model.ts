@@ -328,19 +328,23 @@ export function connectorNotice(p: {
  *
  *   connection  the sign-in rides on an account connection; renewed there
  *   provider    the connector's own sign-in at the provider (leaves the page
- *               and comes back)
+ *               and comes back) — offered when the connector states a
+ *               browser sign-in (`sign_in`), which an OAuth that runs machine
+ *               to machine does not
  *   key         a stored key, replaced in the card
  */
 export type RenewalWay = "connection" | "provider" | "key" | null;
 
 export function renewalWay(p: {
   authType: string | null;
+  /** The connector states a browser sign-in of its own (`sign_in` is set). */
+  signsInAtProvider: boolean;
   usesConnection: boolean;
   canWrite: boolean;
 }): RenewalWay {
   if (!p.canWrite) return null;
   if (p.usesConnection) return "connection";
-  if (p.authType === "oauth2") return "provider";
+  if (p.signsInAtProvider) return "provider";
   return offersKeyReplacement(p.authType) ? "key" : null;
 }
 

@@ -78,6 +78,7 @@ function connectorRecord(id, expired) {
     driver: "http",
     environment: "dev",
     auth_type: expired ? "oauth2" : "none",
+    sign_in: expired ? { kind: "oauth", start: `/v1/connectors/${id}/oauth/start` } : null,
     base_url: expired ? "https://mail.example.com" : "https://lager.example.org/api",
     dsn: null,
     config: {},

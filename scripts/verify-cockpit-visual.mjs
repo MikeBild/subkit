@@ -1313,6 +1313,7 @@ async function mockApi(route) {
       ],
       csrf_token: "test-csrf",
       version: "visual-sweep",
+      oauth_callback_url: `${url.origin}/v1/oauth/callback`,
       recent_conversations: [],
     });
   }
@@ -1538,6 +1539,7 @@ async function mockApi(route) {
       environment: "prod",
       enabled: true,
       auth_type: "oauth2",
+      sign_in: { kind: "oauth", start: `/v1/connectors/${runConnectorId}/oauth/start` },
       health_state: "needs_reauth",
       needs_reauth: true,
       updated_at: "2026-08-10T09:00:00.000Z",
