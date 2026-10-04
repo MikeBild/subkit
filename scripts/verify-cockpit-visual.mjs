@@ -2095,11 +2095,21 @@ async function mockApi(route) {
         // workflow. The row must be visible and named, not dropped.
         ["", 611, 74_000_000],
       ],
+      // Keyed by `llm_usage.flow` — the engine's purposes, which the page
+      // folds into origins. One purpose the page does not know, and calls
+      // without one, must land in "Sonstiges", named, not vanish.
       flow: [
         ["converse", 690, 88_000_000],
+        ["suggest_next", 40, 2_000_000],
         ["generate", 210, 34_000_000],
+        ["summarize", 90, 9_000_000],
         ["judge", 180, 12_000_000],
         ["repair", 33, 4_000_000],
+        ["critic_authoring", 12, 1_000_000],
+        ["workflow_step", 61, 6_000_000],
+        ["extract", 8, 500_000],
+        ["some_future_flow", 4, 300_000],
+        ["", 2, 200_000],
       ],
       // Keyed by `llm_usage.user_id`, which is a UUID or NULL — never an
       // address. Sending readable names meant the sweep never exercised the
@@ -3334,10 +3344,63 @@ async function assertOperationsBar(page, label) {
   for (const href of shape.links)
     if (!/started_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
       throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
-  // Kontingent in short form, from the fixture: the month's share of the cap
-  // in its state.
+  // Nutzung in short form, from the fixture: the month's money — partly
+  // priced, so a floor — then the month's share of the cap in its state.
+  if (!/412[,.]87/.test(shape.budget ?? ""))
+    throw new Error(
+      `${label}: the usage figure does not lead with the month's money: "${shape.budget}"`,
+    );
   if (!/95\s*%/.test(shape.budget ?? "") || shape.pressure !== "critical")
     throw new Error(`${label}: the budget figure reads "${shape.budget}" (${shape.pressure})`);
+}
+
+/**
+ * Nutzung answers "what was it spent on": the origin table leads, every
+ * purpose the fixture sends lands in a row — an unknown one and calls without
+ * one in "Sonstiges", named — and the workflow table holds only spend a run
+ * can be named for, never the catch-all row.
+ */
+async function assertUsageOrigins(page, label) {
+  await page.locator('[data-testid="usage-origin"]:visible').first().waitFor();
+  const shape = await page.evaluate(() => ({
+    // The table renders a row list and a card list, one of them hidden per
+    // viewport: only what the reader sees counts.
+    origins: [...document.querySelectorAll('[data-testid="usage-origin"]')]
+      .filter((cell) => cell.getClientRects().length > 0)
+      .map((cell) => ({
+        origin: cell.getAttribute("data-origin"),
+        text: (cell.textContent ?? "").trim(),
+      })),
+    sections: [
+      ...document.querySelectorAll(
+        '[data-testid="usage-origins"], [data-testid="usage-breakdown"], [data-testid="usage-models"]',
+      ),
+    ].map((section) => section.getAttribute("data-testid")),
+    breakdown: (
+      document.querySelector('[data-testid="usage-breakdown"]')?.textContent ?? ""
+    ).trim(),
+  }));
+  const origins = shape.origins.map((row) => row.origin).sort();
+  const expected = [
+    "authoring",
+    "chat",
+    "knowledge",
+    "other",
+    "reviews",
+    "summaries",
+    "workflowRuns",
+  ];
+  if (origins.join("|") !== expected.join("|"))
+    throw new Error(`${label}: the origin table holds ${origins.join(", ")}`);
+  if (shape.origins[0]?.origin !== "chat")
+    throw new Error(`${label}: the origin table does not lead with the largest, chat`);
+  const other = shape.origins.find((row) => row.origin === "other");
+  if (!other?.text.includes("some_future_flow"))
+    throw new Error(`${label}: "Sonstiges" does not name the flow it holds: "${other?.text}"`);
+  if (shape.sections.join("|") !== "usage-origins|usage-breakdown|usage-models")
+    throw new Error(`${label}: the usage sections stand as ${shape.sections.join(", ")}`);
+  if (/Keinem zuzuordnen|Not attributable/.test(shape.breakdown))
+    throw new Error(`${label}: the workflow table still carries the catch-all row`);
 }
 
 /** An old address lands on Übersicht — with the review it named, and nothing else. */
@@ -4570,6 +4633,8 @@ for (const locale of variants) {
         );
       if (route.startsWith("connectors?health="))
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "usage")
+        await assertUsageOrigins(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "settings?tab=benachrichtigungen")
         await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))

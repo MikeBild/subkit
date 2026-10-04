@@ -10,12 +10,17 @@
 // zero, because that is the distinction this data keeps losing.
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { llmStatsEndpoint, windowBounds } from "@/pages/operations-figures";
 import {
+  attributableWorkflowRows,
   budgetPercent,
   budgetPressure,
   budgetSummary,
   consumptionRows,
+  FLOW_ORIGIN,
+  flowOrigin,
+  originRows,
   runsByWorkflow,
   unpricedModels,
   windowCost,
@@ -381,5 +386,95 @@ describe("runs per workflow", () => {
     });
     expect([...runs]).toEqual([["w1", 7]]);
     expect(runsByWorkflow(null).size).toBe(0);
+  });
+});
+
+describe("what the money was spent on", () => {
+  // `group_by=flow`, in the published shape: one dimension, so each group
+  // carries its own amount.
+  const flow = (key: string, total: number, amount: number | null, calls = 1) => ({
+    key: { flow: key },
+    totals: { calls, tokens: { total } },
+    ...(amount === null ? {} : { cost: { amount, currency: "USD", unpriced_calls: 0 } }),
+  });
+
+  test("names every flow the engine records — a new one breaks here, not on the page", () => {
+    // Read from the engine's own union, so the table cannot fall behind it
+    // silently: an unmapped flow would land in "Sonstiges" on every page.
+    const source = readFileSync(
+      new URL("../../../engine/src/llm/types.ts", import.meta.url),
+      "utf8",
+    );
+    const union = source.slice(source.indexOf("export type LlmFlow"));
+    const flows = [...union.slice(0, union.indexOf(";")).matchAll(/\|\s*"([a-z_]+)"/g)].map(
+      (match) => match[1] ?? "",
+    );
+    expect(flows.length).toBeGreaterThan(5);
+    expect(Object.keys(FLOW_ORIGIN).sort()).toEqual([...flows].sort());
+  });
+
+  test("folds purposes into what a reader recognises, largest first", () => {
+    const rows = originRows({
+      groups: [
+        flow("converse", 900, 131.42, 600),
+        flow("suggest_next", 10, 0.01),
+        flow("summarize", 50, 3.09),
+        flow("generate", 30, 0.66),
+        flow("repair", 10, 0.3),
+        flow("critic_authoring", 2, 0.03),
+        flow("tool_repair", 1, 0.01),
+        flow("judge", 9, 0.29),
+      ],
+    });
+    expect(rows.map((row) => row.key)).toEqual(["chat", "summaries", "authoring", "reviews"]);
+    expect(rows[0]?.cost).toBeCloseTo(131.43, 5);
+    expect(rows[2]?.cost).toBeCloseTo(1, 5);
+    expect(rows[0]?.flows).toEqual(["converse", "suggest_next"]);
+    expect(rows[0]?.calls).toBe(601);
+    expect(rows.reduce((sum, row) => sum + (row.share ?? 0), 0)).toBeCloseTo(1, 5);
+  });
+
+  test("an unknown purpose, or none, is 'other' — named, never dropped", () => {
+    expect(flowOrigin("some_future_flow")).toBe("other");
+    expect(flowOrigin("")).toBe("other");
+    expect(flowOrigin("critic_preview")).toBe("authoring");
+    expect(flowOrigin("toString")).toBe("other");
+    const rows = originRows({
+      groups: [flow("converse", 10, 1), flow("some_future_flow", 5, 0.5), flow("", 5, 0.5)],
+    });
+    const other = rows.find((row) => row.key === "other");
+    expect(other).toMatchObject({ tokens: 10, cost: 1 });
+    expect([...(other?.flows ?? [])].sort()).toEqual(["", "some_future_flow"]);
+  });
+
+  test("one flow without an amount makes its origin's amount unknown, not a partial sum", () => {
+    const rows = originRows({ groups: [flow("generate", 10, 1), flow("repair", 10, null)] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cost).toBeNull();
+    // Without an amount on every row, shares are of the tokens.
+    expect(rows[0]?.share).toBe(1);
+  });
+
+  test("survives an envelope it does not recognise", () => {
+    for (const bad of [null, undefined, {}, { groups: "nope" }])
+      expect(originRows(bad)).toEqual([]);
+  });
+});
+
+describe("the workflows a run can be named for", () => {
+  test("drop the catch-all of calls without a run, and keep their share of the whole window", () => {
+    const rows = consumptionRows(
+      {
+        groups: [
+          { key: { workflow: "" }, totals: { calls: 600, tokens: { total: 970 } } },
+          { key: { workflow: "w1" }, totals: { calls: 3, tokens: { total: 30 } } },
+        ],
+      },
+      "workflow",
+    );
+    const attributed = attributableWorkflowRows(rows);
+    expect(attributed.map((row) => row.key)).toEqual(["w1"]);
+    expect(attributed[0]?.share).toBeCloseTo(0.03, 5);
+    expect(attributableWorkflowRows(rows.filter((row) => row.unattributed))).toEqual([]);
   });
 });

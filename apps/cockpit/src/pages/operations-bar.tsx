@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
 import { absolute } from "@/app/links";
 import { ActionButton, TileSkeleton } from "@/components/cockpit/patterns";
@@ -7,6 +8,7 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   type FigureBasis,
   llmStatsEndpoint,
+  monthSpendEndpoint,
   OPERATING_FIGURE_IDS,
   type OperatingFigure,
   type OperatingFigureId,
@@ -88,6 +90,15 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     enabled: allowed,
     queryFn: () => apiRequest<unknown>(llmStatsEndpoint(bounds)),
   });
+  // The calendar month's money, for the budget figure — a month, whatever the
+  // window. Fixed when the window is chosen, like the window's own bounds: a
+  // `to` re-read at every render would be a new query each time.
+  const monthEndpoint = useMemo(() => monthSpendEndpoint(new Date(bounds.to)), [bounds.to]);
+  const monthSpend = useQuery({
+    queryKey: ["operations-spend", "month", monthEndpoint],
+    enabled: allowed,
+    queryFn: () => apiRequest<unknown>(monthEndpoint),
+  });
   // The calendar month against the cap: a month, whatever the window.
   const status = useQuery({
     queryKey: ["usage-status"],
@@ -103,6 +114,7 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
     connectorsPermitted: canConnectors,
     spend: read(spend, windowSpend(spend.data)),
     budget: read(status, budgetSummary(status.data)),
+    monthSpend: read(monthSpend, windowSpend(monthSpend.data)),
     canOpen: {
       runs: can("execution:read"),
       connectors: canConnectors,
@@ -113,13 +125,16 @@ export function useOperationsFigures(bounds: WindowBounds, permissions: readonly
   });
   // Every read has answered — or failed — before any figure is shown: a
   // figure that appears late moves the ones beside it.
-  const pending = counts.isPending || spend.isPending || status.isPending;
+  const pending = counts.isPending || spend.isPending || status.isPending || monthSpend.isPending;
   // Runs, success rate, connector health and repair rate share one read: a
   // retry on any of them asks it again.
   const retry = (id: OperatingFigureId) => {
     if (id === "cost") void spend.refetch();
-    else if (id === "budget") void status.refetch();
-    else void counts.refetch();
+    else if (id === "budget") {
+      // The month's usage is two reads: its money and its share of the cap.
+      void status.refetch();
+      void monthSpend.refetch();
+    } else void counts.refetch();
   };
   return { allowed, figures, pending, retry };
 }
@@ -286,9 +301,19 @@ function Figure({
         </span>
         {figure.budget ? (
           <span className="truncate text-xs text-muted-foreground">
-            {t("overview.operations.budgetOf", {
-              budget: compact.format(figure.budget.budgetTokens),
-            })}
+            {figure.money
+              ? // The month's money leads; its share of the cap stands beside it.
+                t("overview.operations.budgetShare", {
+                  percent: figure.budget.percent,
+                  budget: compact.format(figure.budget.budgetTokens),
+                })
+              : t("overview.operations.budgetOf", {
+                  budget: compact.format(figure.budget.budgetTokens),
+                })}
+          </span>
+        ) : figure.uncapped ? (
+          <span className="truncate text-xs text-muted-foreground">
+            {t("overview.operations.uncapped")}
           </span>
         ) : null}
       </p>
