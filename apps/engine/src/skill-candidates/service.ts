@@ -20,7 +20,7 @@ import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
-import { skillReviewDigest, toView } from "./candidate-view.ts";
+import { isAdvisoryPatternKind, skillReviewDigest, toView } from "./candidate-view.ts";
 import {
   detectFailurePatterns,
   detectRepairPatterns,
@@ -793,6 +793,15 @@ export async function runPatternAnalysis(
 // Human gate: Approve
 // ---------------------------------------------------------------------------
 
+/** Approving a candidate the view marks not reviewable is refused on every
+ *  surface — the Cockpit hides the action, the engine owns the rule. */
+export class AdvisoryCandidateError extends Error {
+  constructor(readonly candidate_id: string) {
+    super("an advisory skill candidate cannot be approved");
+    this.name = "AdvisoryCandidateError";
+  }
+}
+
 export async function approveSkillCandidate(
   p: ApproveSkillCandidateParams,
   exec?: Db,
@@ -818,6 +827,7 @@ export async function approveSkillCandidate(
 
     if (!rows[0]) return null;
     const row = rows[0];
+    if (isAdvisoryPatternKind(row.pattern_kind)) throw new AdvisoryCandidateError(row.id);
     if (p.expected_review_digest && p.expected_review_digest !== skillReviewDigest(row))
       return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;

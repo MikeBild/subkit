@@ -2,7 +2,10 @@
 
 import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
-import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
+import {
+  AdvisoryCandidateError,
+  approveSkillCandidate,
+} from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
@@ -21,10 +24,16 @@ export const approveSkillCandidateTool: ConversationTool = {
   // Promotion creates a draft; this tool never implies active knowledge.
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
-    const out = await approveSkillCandidate(
-      { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
-      ctx.db,
-    );
+    let out: Awaited<ReturnType<typeof approveSkillCandidate>>;
+    try {
+      out = await approveSkillCandidate(
+        { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
+        ctx.db,
+      );
+    } catch (err) {
+      if (!(err instanceof AdvisoryCandidateError)) throw err;
+      return { ok: false, data: { error: "skill_candidate_advisory" } };
+    }
     if (!out) {
       await ctx.engineClient.audit_write({
         resource_type: "skill_candidate",
