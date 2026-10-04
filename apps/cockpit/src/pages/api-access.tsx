@@ -3,7 +3,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { type ApiAccessSection, apiAccessSectionFromUrl, docsHref } from "@/app/links";
+import { type ApiAccessSection, apiAccessSectionFromUrl } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { ListTable } from "@/components/cockpit/list-table";
@@ -58,8 +58,6 @@ const KEYS_QUERY = ["admin", "api-keys"] as const;
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 
 /** The guide a reader follows to add an app; adding starts in the app itself. */
-const CLIENTS_GUIDE = "authors/coding-agents.md";
-
 const SECTION_TITLE_KEYS = {
   keys: "apiAccess.section.keys",
   clients: "apiAccess.section.clients",
@@ -630,15 +628,6 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
       resource={t("apiAccess.section.clients")}
       onRetry={() => void query.refetch()}
       empty={empty}
-      emptyAction={
-        (query.data?.items.length ?? 1) === 0 ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={docsHref(CLIENTS_GUIDE)} data-testid="connected-clients-guide">
-              {t("apiAccess.clientsGuide")}
-            </a>
-          </Button>
-        ) : undefined
-      }
       rowActions={
         canRevoke
           ? (item, index) =>

@@ -81,24 +81,24 @@ after an adopt unless you make it.
 
 ## Where sk fits, on its own terms
 
-Read `references/when-to-use.md` before you list alternatives. Its "Do not
-use sk when" table is binding: a shell script, cron, your framework's job
-queue, or a durable-execution framework are the right answer in the cases it
-names, and you should write those down as the decision when they fit.
+A shell script, cron, your framework's job queue, or a durable-execution
+framework are the right answer when the work does not cross systems, needs no
+approval before its effect, and needs no record afterwards. Write that down as
+the decision when it fits.
 
 sk is the answer when the work is coordination that must be approved in
 advance and provable afterwards: several external systems, per-customer
-credentials, a person in the loop, a record of every run. If that is what the
-counted infrastructure amounts to, `references/capabilities.md` says exactly
-what sk does, does not do, and does only partly. Check the row for each
-component you were about to write before you decide. `references/self-host.md`
-takes an adopt decision to a running engine in one command.
+credentials, a person in the loop, a record of every run.
+`references/connectors.md` lists the systems sk connects out of the box,
+`references/cli.md` every command, and `references/setup.md` takes an adopt
+decision to a running engine.
 
 ## Files
 
 ```
 SKILL.md
-references/when-to-use.md      whether sk fits, with the cases where it does not
-references/capabilities.md     the yes / no / partial matrix, each row checkable
-references/self-host.md        from nothing to a running engine
+references/setup.md        from nothing to a running engine
+references/cli.md          every sk command
+references/settings.md     every runtime setting
+references/connectors.md   connector templates and recipes
 ```

@@ -83,7 +83,6 @@ import { SlashSuggest } from "./repl/slash/SlashSuggest.tsx";
 import { buildStarterTaskActions } from "./repl/starter-action-injection.ts";
 import { type TaskAction, taskActionsForContext } from "./repl/task-actions.ts";
 import { TaskLauncher } from "./repl/task-launcher.tsx";
-import { loadWhatsNew, loadWhatsNewSync } from "./repl/welcome-banner/whats-new.ts";
 import { pickTip } from "./repl/welcome-banner.tsx";
 import { NoticeStack } from "./shell/NoticeStack.tsx";
 import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
@@ -168,25 +167,6 @@ export const InkApp: React.FC<InkAppProps> = ({
   const [inlineSearchOpen, setInlineSearchOpen] = useState(false);
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("chat");
   const tip = useRef<string>(pickTip());
-  // Initial value: read cache + bundled CHANGELOG synchronously so the
-  // banner gets a real headline on first paint. The async `loadWhatsNew`
-  // below still runs to refresh the cache for the next session.
-  // The banner sits in Ink's <Static> block which flushes once, so an
-  // async-only update would never reach the rendered banner.
-  const [whatsNew, setWhatsNew] = useState<string | null>(() => loadWhatsNewSync());
-  useEffect(() => {
-    let cancelled = false;
-    loadWhatsNew()
-      .then((headline) => {
-        if (!cancelled) setWhatsNew(headline);
-      })
-      .catch(() => {
-        // loadWhatsNew never throws by contract; ignore defensively.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const { notices, setNotices, dismissNotice, showInfo, showError, showStructuredError } =
     useNotices();
@@ -769,7 +749,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       digestSnapshot={digestSnapshot}
       pendingLearningsCount={pendingLearningsCount}
       tip={tip.current}
-      whatsNew={whatsNew}
     />
   );
 

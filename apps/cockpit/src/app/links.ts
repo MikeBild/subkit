@@ -260,16 +260,6 @@ export function apiAccessHref(section?: ApiAccessSection | null): string {
   return withQuery("/api-access", { section });
 }
 
-/**
- * A page of the documentation as the engine serves it — `GET /llms/<path>`,
- * public, from the same `docs/` tree the repository holds. A raw browser
- * address outside the cockpit: an `<a href>` takes it as it is, never through
- * `absolute()`. `path` is below `docs/`, e.g. `developers/token-exchange.md`.
- */
-export function docsHref(path: string): string {
-  return `/llms/${path.replace(/^docs\//, "")}`;
-}
-
 /** The section an address opens Zugangsdaten at, or none. Anything else is dropped. */
 export function apiAccessSectionFromUrl(search: string): ApiAccessSection | null {
   const raw = new URLSearchParams(search).get("section");

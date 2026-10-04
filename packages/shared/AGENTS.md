@@ -42,7 +42,7 @@ packages. It is the **one place** where those surfaces agree on shape.
 | Shape | Location |
 |---|---|
 | Domain types used by 2+ apps | `packages/shared/` |
-| Type used only by the engine | `apps/engine/src/domain/` or subsystem-local |
+| Type used only by the engine | subsystem-local in `apps/engine/src/` |
 | CLI prompt / updater helper | `packages/cli-core/` |
 | Route-specific Zod schema | `apps/engine/src/api/` |
 

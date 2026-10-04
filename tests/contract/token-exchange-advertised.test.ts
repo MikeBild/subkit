@@ -44,12 +44,4 @@ describe("token exchange is advertised", () => {
     expect(help).toContain("--key-file <path>");
     expect(help).toContain("--ttl <seconds>");
   });
-
-  test("the developer docs page exists and is linked from the section index", () => {
-    const page = read("docs/developers/token-exchange.md");
-    expect(page).toContain(GRANT);
-    expect(page).toContain(SUBJECT_TYPE);
-    expect(page).toContain("--token-exchange");
-    expect(read("docs/developers/README.md")).toContain("token-exchange.md");
-  });
 });

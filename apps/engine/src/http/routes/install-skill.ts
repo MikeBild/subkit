@@ -29,7 +29,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
-import { ESSENTIAL_PATHS } from "@shared/llms-index.ts";
+import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 // The source lives under agent-skills/ at the repository root, not skills/:
 // `skills` is an engine subsystem name, and the route-layering invariant
 // reads any import path containing it as a reach into that subsystem.
@@ -46,10 +46,7 @@ export const SKILL_NAME = "build-or-adopt";
 /** Reference pages the installer fetches next to the skill: the same set the
  *  binary embeds and serves under /llms/<path>, by basename. */
 export const SKILL_REFERENCES: ReadonlyArray<{ servedPath: string; file: string }> =
-  ESSENTIAL_PATHS.map((p) => {
-    const servedPath = p.replace(/^docs\//, "");
-    return { servedPath, file: servedPath.split("/").pop() ?? servedPath };
-  });
+  LLMS_PAGE_PATHS.map((servedPath) => ({ servedPath, file: servedPath }));
 
 // Skill directories in the Agent Skills convention; the same two `sk skills
 // sync` writes to inside a repository, here at the user level so the skill

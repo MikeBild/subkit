@@ -9,8 +9,7 @@ When rules conflict, the more specific file wins (this one).
 pub/sub, connector drivers, AI flows, self-healing, audit log, RBAC. It's the only
 surface with domain logic. `sk` (`apps/sk/`) is a thin wrapper on top of it.
 
-See the subsystem table in `../../docs/developers/agent-navigation.md` for the
-48 directories and their responsibilities.
+The 48 directories under `src/` each own one concern; the directory name is the concern.
 
 ## Non-negotiables
 
@@ -84,8 +83,7 @@ you need a new one:
 
 1. Confirm it doesn't fit in an existing directory.
 2. Confirm with the user (or `domain-architect`) before creating it.
-3. Add it to the subsystem table in the root `AGENTS.md`.
-4. Add relevant docs under `docs/` with the next available number.
+3. Update the directory count in the root `AGENTS.md` and here.
 
 ## Quality gate before "done"
 

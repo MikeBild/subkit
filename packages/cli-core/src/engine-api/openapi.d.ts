@@ -2563,8 +2563,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * llms-txt index of the sk documentation set
-         * @description A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, link, and one-line summary, plus an Optional section. Links drill down to /llms/{path}; see /llms-full.txt for the full text in one fetch.
+         * llms-txt index of what this engine describes about itself
+         * @description A robots.txt-style index (https://llmstxt.org): setup, the sk CLI, runtime settings and the connector catalog, each generated from the engine's code. Links drill down to /llms/{path}; /llms-full.txt carries all pages in one fetch.
          */
         get: {
             parameters: {
@@ -2642,7 +2642,7 @@ export interface paths {
         };
         /**
          * Everything this engine carries, in one fetch
-         * @description The decision-and-install pages this binary embeds, concatenated into a single llms-txt document (https://llmstxt.org), each preceded by a source marker — enough for a model to judge whether sk fits and to run one. Not the complete documentation set.
+         * @description Every page this binary embeds, concatenated into a single llms-txt document (https://llmstxt.org), each preceded by a source marker.
          */
         get: {
             parameters: {

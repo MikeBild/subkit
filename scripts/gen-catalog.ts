@@ -142,7 +142,7 @@ function main(): void {
     "A **template** connects a system: base URL, auth flow, endpoint schema, and a " +
       "vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — " +
       "say what you want in a conversation and sk clones the closest recipe as your " +
-      "starting draft. Curated, scenario-first picks: [Use cases](use-cases.md).",
+      "starting draft.",
     "",
     "## Connector templates",
     "",

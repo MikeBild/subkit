@@ -916,7 +916,6 @@ const EN = {
   "apiAccess.total.keysSummary": "{count} keys · {active} active",
   "apiAccess.keysHelp":
     "A key lets a script call in over HTTP; it carries only the rights you give it.",
-  "apiAccess.clientsGuide": "How to connect an app →",
   "apiAccess.column.name": "Name",
   "apiAccess.column.state": "Status",
   "apiAccess.column.lastUsed": "Last used",
@@ -4742,7 +4741,6 @@ const DE: Record<TranslationKey, string> = {
   "apiAccess.total.keysSummary": "{count} Schlüssel · {active} aktiv",
   "apiAccess.keysHelp":
     "Ein Schlüssel erlaubt Aufrufe von außen per HTTP; er trägt nur die Rechte, die du ihm gibst.",
-  "apiAccess.clientsGuide": "So verbindest du eine App →",
   "apiAccess.column.name": "Name",
   "apiAccess.column.state": "Status",
   "apiAccess.column.lastUsed": "Zuletzt benutzt",

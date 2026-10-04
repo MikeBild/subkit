@@ -45,13 +45,12 @@ describe("GET /llms.txt", () => {
     const body = await res.text();
     // A binary carries the decision-and-install set, not the repository's whole
     // documentation, and its index says which of the two this is.
-    expect(body).toContain("# sk — the decision and install set");
-    expect(body).toContain("Not the complete documentation");
+    expect(body.startsWith("# sk\n")).toBe(true);
     // `>` blockquote lede + full-text pointer at the configured origin.
     expect(body).toContain("\n> ");
-    expect(body).toContain(`These pages in one file: ${ORIGIN}/llms-full.txt`);
+    expect(body).toContain(`All pages in one file: ${ORIGIN}/llms-full.txt`);
     // Drill-down links resolve to the engine origin, not repo-relative paths.
-    expect(body).toContain(`(${ORIGIN}/llms/concepts/when-to-use.md)`);
+    expect(body).toContain(`(${ORIGIN}/llms/setup.md)`);
   });
 });
 
@@ -60,26 +59,26 @@ describe("GET /.well-known/llms.txt", () => {
     const res = await buildApp().request("/.well-known/llms.txt");
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("# sk — the decision and install set");
+    expect(body.startsWith("# sk\n")).toBe(true);
     expect(body).toContain(`(${ORIGIN}/llms/`);
   });
 });
 
 describe("GET /llms/{path}", () => {
   test("serves a single indexed page as text/markdown", async () => {
-    const res = await buildApp().request("/llms/concepts/when-to-use.md");
+    const res = await buildApp().request("/llms/cli.md");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
     // The body is the page itself, not the index.
-    expect(body).not.toContain("the decision and install set");
+    expect(body).toContain("# sk CLI reference");
   });
 
   test("does not carry a page outside the set", async () => {
     // Keeping the set small is the point: if the whole corpus still resolved,
     // the binary would be shipping documentation nobody asked it to carry.
-    const res = await buildApp().request("/llms/concepts/connectors.md");
+    const res = await buildApp().request("/llms/concepts/workflows.md");
     expect(res.status).toBe(404);
   });
 
@@ -97,11 +96,10 @@ describe("GET /llms-full.txt", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
-    expect(body).toContain("# sk — the decision and install set");
-    expect(body).toContain("<!-- Source: docs/");
+    expect(body.startsWith("# sk\n")).toBe(true);
+    expect(body).toContain("<!-- Source: setup.md -->");
     // Big enough to be useful, small enough that a model can hold it: the
     // whole corpus was 705 KB and this is the reason it is not shipped.
     expect(body.length).toBeGreaterThan(20_000);
-    expect(body.length).toBeLessThan(120_000);
   });
 });

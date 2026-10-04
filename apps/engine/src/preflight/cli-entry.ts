@@ -29,8 +29,7 @@ export const PREFLIGHT_FLAGS = [
  * because they are the same for all four.
  */
 export const PREFLIGHT_HELP: string =
-  "\nBootstrap preflight — run these when the engine refuses to start\n" +
-  "(the full story: docs/admins/bootstrap-preflight.md)\n\n" +
+  "\nBootstrap preflight — run these when the engine refuses to start\n\n" +
   "  --preflight\n" +
   "      Can this release run on this database, object store and settings?\n" +
   "      Answers before anything is migrated. Changes nothing, ever.\n\n" +

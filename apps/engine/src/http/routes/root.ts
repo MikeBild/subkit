@@ -38,7 +38,10 @@ const ENTRIES: ReadonlyArray<Entry> = [
     path: "/install/skill",
     what: "Installer for an agent skill that asks the make-or-buy question mid-build",
   },
-  { path: "/llms.txt", what: "Should you use sk, what it can do, how to run it — indexed" },
+  {
+    path: "/llms.txt",
+    what: "Setup, CLI, settings and connectors, generated from the code — indexed",
+  },
   { path: "/llms-full.txt", what: "Those same pages in one fetch, for a model" },
   { path: "/openapi.json", what: "The full API surface" },
   { path: "/docs", what: "That API surface as a browsable reference" },
@@ -71,9 +74,6 @@ ${rows}
 
 Start with /llms.txt if you are a model, /cockpit if you are a person, and
 /docker-compose.yml if you want to run one of these yourself.
-
-What this engine carries is the decision-and-install set, not the complete
-documentation: enough to judge whether sk fits and to run one.
 `;
 }
 
@@ -105,8 +105,7 @@ function renderHtml(origin: string): string {
 ${rows}
 </table>
 <footer>Start with <a href="${escapeHtml(origin)}/cockpit">the web interface</a> if you are a person, or
-<a href="${escapeHtml(origin)}/llms.txt">/llms.txt</a> if you are a model. What this engine carries is the
-decision-and-install set, not the complete documentation.</footer>
+<a href="${escapeHtml(origin)}/llms.txt">/llms.txt</a> if you are a model.</footer>
 </html>
 `;
 }

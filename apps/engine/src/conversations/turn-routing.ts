@@ -171,10 +171,7 @@ export function planTurnRouting(args: {
       action:
         "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `sk mcp`. Do not mention the deprecated SSE MCP transport.",
       question: null,
-      required_grounding: [
-        "docs/developers/input-surfaces.md",
-        "docs/developers/input-surfaces.md",
-      ],
+      required_grounding: [],
       notes: [
         "Keep the answer operational and surface-aware.",
         "If exact client configuration is unknown, say what is confirmed and where the live contract lives.",
@@ -190,7 +187,7 @@ export function planTurnRouting(args: {
       action:
         "Explain chat-platform usage from the actual chat adapter design. For Google Chat as a conversation interface, ground the answer in chat workspace install; the dispatcher auto-binds first-message platform users to the tenant's seeded admin (audited as `auto_link`).",
       question: null,
-      required_grounding: ["docs/developers/input-surfaces.md"],
+      required_grounding: [],
       notes: [
         "Treat Google Chat as a first-class conversation surface, not just an outbound connector target.",
       ],
@@ -207,7 +204,6 @@ export function planTurnRouting(args: {
           "Explain that scheduled workflow execution is available here through `create_schedule`, `list_schedules`, `update_schedule`, and `delete_schedule`. Ground the answer in the cron/every:<seconds> contract and tell the user to resolve the workflow first when needed.",
         question: null,
         required_grounding: [
-          "docs/concepts/workflows.md",
           "apps/engine/src/conversations/tools/generated/writes/schedules.ts",
           "list_workflows",
         ],
@@ -329,10 +325,7 @@ export function planTurnRouting(args: {
       action:
         "Answer from the actual HTTP surface: the live OpenAPI contract is at `/openapi.json`, interactive docs at `/docs`, and exact REST paths must be grounded in the route definitions or live contract.",
       question: null,
-      required_grounding: [
-        "docs/developers/input-surfaces.md",
-        "docs/developers/input-surfaces.md",
-      ],
+      required_grounding: [],
       notes: [
         "Do not invent endpoints or request shapes when the route is not confirmed.",
         "If a capability exists in the engine but not in this chat surface, say so explicitly.",
@@ -468,11 +461,7 @@ export function planTurnRouting(args: {
     action:
       "Answer with confirmed Subkit product behavior, grounded in actual tools or docs. Prefer a short, operational answer plus the next concrete step in sk.",
     question: null,
-    required_grounding: [
-      "docs/developers/input-surfaces.md",
-      "docs/developers/input-surfaces.md",
-      "docs/developers/input-surfaces.md",
-    ],
+    required_grounding: [],
     notes: ["Do not default to generic onboarding when the user is asking about product behavior."],
     forbidden_fallbacks: fallbackList(),
   };

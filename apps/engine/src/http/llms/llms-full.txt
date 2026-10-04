@@ -1,0 +1,2870 @@
+# sk
+
+> A self-hosted engine for governed workflows. These pages are generated from the engine's own code: setup, the sk CLI, runtime settings, and the connector catalog.
+> All pages in one file: llms-full.txt
+
+## Pages
+
+- [sk](llms/setup.md): sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+- [sk CLI reference](llms/cli.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
+- [subkit runtime settings](llms/settings.md): Every value below lives in canonical runtime configuration and is editable via the Cockpit, HTTP/MCP settings APIs, sk settings configure, or sk settings set.
+- [Connector & recipe catalog](llms/connectors.md): What ships in the box: 58 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
+
+<!-- Source: setup.md -->
+
+# sk
+
+sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded.
+
+## Run the engine
+
+Requires Docker with Compose.
+
+```bash
+curl -O https://<engine-host>/docker-compose.yml   # or use docker-compose.yml from this repository
+MASTER_KEY=$(openssl rand -hex 32) docker compose up -d
+curl -s http://localhost:3000/health
+```
+
+Keep `MASTER_KEY`. It encrypts stored secrets; losing it loses them.
+
+From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
+
+## First-run setup
+
+```bash
+docker compose exec engine sk init \
+  --token "$(docker compose logs engine 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1 | cut -d' ' -f4)" \
+  --admin-email you@example.com \
+  --tenant-name "My Org" \
+  --llm-provider anthropic \
+  --llm-api-key <your-provider-key>
+```
+
+Use `--llm-provider mock --llm-api-key mock` to try it without an LLM account.
+
+Open the Cockpit at `http://localhost:3000/cockpit`.
+
+## Use the sk CLI on your machine
+
+The engine serves the CLI itself. There is no npm package.
+
+```bash
+curl -fsSL http://localhost:3000/install | bash
+docker compose exec engine engine --issue-admin-key --tenant my-org   # prints an `sk login` line
+sk login --engine-url http://localhost:3000 --api-key <key>
+sk
+```
+
+`sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
+
+## License
+
+MIT
+
+<!-- Source: cli.md -->
+
+# sk CLI reference
+
+Every `sk` command and argument — and the surface authoring runs through:
+creating or changing a workflow, connector, knowledge source or skill is a
+definition edit, and definition edits belong here, where the change is a
+file you can read and a command you can re-run.
+
+Running bare `sk` opens the interactive REPL; every command below is
+scriptable and prints to stdout. The declarative path — `create --file`,
+`update --file`, `validate`, `preview` / `probe` — checks a definition
+*before* it exists rather than after, so a mistake costs an error message
+instead of a half-built connector someone has to clean up.
+
+The `requires` column is the persona-aware *visibility* gate used for
+`--help` filtering — the engine independently enforces permissions on
+every API call.
+
+| command | requires | description | subcommands |
+| ------- | -------- | ----------- | ----------- |
+| `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
+| `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
+| `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
+| `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
+| `sk auth` | `connector:write` | Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route. | — |
+| `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
+| `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
+| `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `disable`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `enable`, `get`, `import`, `inspect`, `list`, `mcp-authorize`, `mcp-inspect`, `patch`, `probe`, `promote`, `test`, `validate` |
+| `sk credentials` | `credential:read` | Manage connector credentials | `delete`, `list`, `rotate`, `set` |
+| `sk diagnostics` | `audit:read` | Engine diagnostics: errors, LLM status, setup validation | `errors`, `llm`, `setup` |
+| `sk discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
+| `sk doctor` | — | Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked). | — |
+| `sk events` | `audit:read` | Query audit events | `get`, `list` |
+| `sk executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `result`, `steps`, `tail` |
+| `sk extract` | `conversation:write` | Extract structured data from a file (LLM for text, native parsers for binary) | — |
+| `sk files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `stats`, `upload` |
+| `sk health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `sk doctor` for connectivity/setup. | — |
+| `sk hooks` | `inbound_hook:read` | Manage inbound webhook bindings | `create`, `delete`, `get`, `list` |
+| `sk init` | — | Complete first-run engine bootstrap (consumes the token printed at engine boot) | — |
+| `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
+| `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
+| `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
+| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `import`, `list`, `patch`, `search` |
+| `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
+| `sk login` | — | Authenticate against a subkit engine | — |
+| `sk logout` | — | Drop the active profile | — |
+| `sk logs` | `audit:read` | Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601. | — |
+| `sk ls` | — | List cached conversation sessions for the active profile | — |
+| `sk mcp` | — | Run a stdio MCP server proxied to the engine | — |
+| `sk notifications` | `notification:read` | Manage notification channels, rules, deliveries, and the inbox | `channels`, `deliveries`, `inbox`, `rules` |
+| `sk patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `get`, `list`, `preview`, `reject` |
+| `sk portal-tokens` | `portal_token:read` | Manage portal tokens | `create`, `list`, `revoke` |
+| `sk profile` | — | Manage named profiles (environments) | `add`, `delete`, `list`, `show`, `use` |
+| `sk rbac` | `rbac:read` | Manage RBAC roles, permissions, grants, groups, and hooks | `can`, `grants`, `groups`, `permissions`, `request-hooks`, `roles`, `users`, `whatcan` |
+| `sk rename` | — | Assign or change a short alias for a session (used by `sk -r <alias>`) | — |
+| `sk review` | `workflow:read` | Aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions. | — |
+| `sk rm` | — | Drop a session from the local cache (the server-side conversation row is preserved) | — |
+| `sk schedules` | `workflow:read` | Scheduled workflow runs | `create`, `delete`, `list`, `pause`, `resume`, `update` |
+| `sk self-healing` | `workflow:write` | Trigger and review proactive drift scans (admin) | `list`, `scan`, `show` |
+| `sk sessions` | — | Manage locally-cached conversation sessions | `ls`, `rename`, `rm`, `search`, `show` |
+| `sk settings` | `settings:read` | List, read, write, or interactively configure engine settings (secrets always masked) | `configure`, `get`, `list`, `set` |
+| `sk show` | — | Show cached metadata for a session by id or alias | — |
+| `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
+| `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
+| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp`, `operations` |
+| `sk status` | — | Print the active profile + engine reachability | — |
+| `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
+| `sk system` | `system:restart` | Engine process operations (restart) | `restart` |
+| `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
+| `sk tenants` | — | List tenants you belong to or switch the active one | — |
+| `sk update` | — | Update sk CLI to the latest version | — |
+| `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
+| `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `update`, `validate` |
+
+## Commands and arguments
+
+Every argument of every command. `<name>` is positional; `--name` is a flag.
+
+### `sk agent`
+
+Coding-agent integration: session briefings and hook setup
+
+#### `sk agent briefing`
+
+Print the domain-scoped session briefing for coding agents
+
+- `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo)
+- `--budget` (string) — Token budget for the briefing
+- `--hook` (default: false) — SessionStart-hook mode: read hook JSON from stdin, never fail
+- `--json` (default: false) — JSON output
+
+#### `sk agent capture`
+
+Send a session transcript to the engine for learning distillation
+
+- `--transcript` (string) — Path to the transcript file (JSONL or text)
+- `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo)
+- `--agent` (string, default: claude-code) — Producing agent name
+- `--session-id` (string) — Session id for evidence attribution
+- `--hook` (default: false) — SessionEnd/Stop-hook mode: read hook JSON from stdin, never fail
+- `--json` (default: false) — JSON output
+
+#### `sk agent init`
+
+Declare this repo's domains and wire coding-agent session hooks
+
+- `--domains` (string, required) — Comma-separated domain slugs this repo grounds on (e.g. blog-de)
+- `--budget` (string) — Optional per-session token budget
+- `--skip-claude` (default: false) — Do not touch ~/.claude/settings.json
+
+
+### `sk apikeys`
+
+Manage API keys
+
+#### `sk apikeys create`
+
+Issue a new API key (shown once)
+
+- `--name` (string) — Friendly key name (label)
+- `--expires` (string) — Expiry — ISO-8601 timestamp
+- `--scopes` (string) — Comma-separated scope strings (e.g. "workflow:read,workflow:invoke"). Defaults to ["*"] — full role-derived access, and read-and-execute over MCP. Add "mcp:authoring" for a key that may also author definitions over MCP (a coding agent); leave it off for a key going into a browser client.
+- `--allowed-workflows` (string) — Comma-separated workflow ids/slugs. Use "*" for explicit "all".
+- `--allowed-connectors` (string) — Comma-separated connector ids/slugs. Use "*" for explicit "all".
+
+#### `sk apikeys list`
+
+List API keys
+
+- `--json` — JSON output
+
+#### `sk apikeys revoke`
+
+Revoke an API key
+
+- `<id>` (positional, required) — Key id
+
+#### `sk apikeys rotate`
+
+Rotate an API key (new key shown once)
+
+- `<id>` (positional, required) — Key id
+
+
+### `sk attach`
+
+Upload a file and link it to a conversation (shortcut)
+
+- `<conversation-id>` (positional, required) — Conversation id (UUID)
+- `<path>` (positional, required) — Path to file
+- `--content-type` (string) — Override detected MIME type
+- `--slug` (string) — Optional slug for the link
+- `--role` (string) — Optional role for the link
+- `--quiet` (default: false) — Suppress progress output
+- `--json` (default: false) — JSON output
+
+
+### `sk audit`
+
+Query the append-only audit log
+
+#### `sk audit export`
+
+Stream audit log as NDJSON to stdout or a file
+
+- `--since` (string) — Lower bound — ISO-8601 timestamp
+- `--output` (string) — Output file path (default: stdout)
+
+#### `sk audit query`
+
+Filter the audit log
+
+- `--limit` (string) — Max rows
+- `--since` (string) — Lower bound — ISO-8601 timestamp or relative (e.g. 10m, 1h, 7d)
+- `--action` (string) — Action name filter
+- `--actor` (string) — Actor id filter
+- `--resource-id` (string) — Filter by resource id
+- `--cursor` (string) — Continue after a previous page (its next_cursor)
+- `--json` — JSON output
+
+#### `sk audit show`
+
+Fetch one audit event by id
+
+- `<id>` (positional, required) — Audit event id
+
+
+### `sk auth`
+
+Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route.
+
+- `--connector-id` (string, required) — Connector to reauthenticate
+- `--json` — Emit the full response as JSON
+
+
+### `sk chat`
+
+Manage external chat spaces (Google Chat / Slack)
+
+#### `sk chat install-space`
+
+Register a chat space with the engine (Google Chat / Slack)
+
+- `<platform>` (positional) — google_chat | slack
+- `<workspace_id>` (positional) — Native space id, e.g. spaces/<id> (Slack: team id T…)
+- `--bot-token` (string) — Slack bot token (xoxb-…) — required for slack
+- `--default-channel` (string) — Optional default channel
+- `--as` (string) — Installer platform user id (auto-filled from a pending space when omitted)
+- `--json` — JSON output
+
+#### `sk chat remove-space`
+
+Remove a chat-space install
+
+- `<id>` (positional) — Chat workspace row id
+- `--yes` — Skip confirmation
+- `--json` — JSON output
+
+#### `sk chat spaces`
+
+List chat spaces installed in this tenant
+
+- `--json` — JSON output
+
+
+### `sk connector-templates`
+
+Manage connector templates
+
+#### `sk connector-templates create`
+
+Create a connector template
+
+- `--file` (string) — Path to a full template JSON file
+- `--slug` (string) — Template slug (short-form convenience mode)
+- `--name` (string) — Template name (short-form convenience mode)
+- `--driver` (string) — Driver identifier (short-form convenience mode)
+
+#### `sk connector-templates delete`
+
+Delete a connector template
+
+- `<id>` (positional, required) — Template id
+
+#### `sk connector-templates list`
+
+List connector templates
+
+- `--json` — JSON output
+
+#### `sk connector-templates recipe`
+
+Show one recipe by slug (template slug + recipe slug)
+
+- `<slug>` (positional) — Template slug (e.g. stripe)
+- `<recipe>` (positional) — Recipe slug (e.g. list-customers)
+- `--json` — JSON output
+
+#### `sk connector-templates recipe-pack`
+
+Show the recipes in a vertical pack
+
+- `<vertical>` (positional) — Vertical (revops | customer-success | finance | data | devops | security | marketing | hr)
+- `--json` — JSON output
+
+#### `sk connector-templates recipes`
+
+List recipes shipped with a connector template
+
+- `<slug>` (positional) — Template slug (e.g. stripe, github)
+- `--json` — JSON output
+
+#### `sk connector-templates search`
+
+Fuzzy-search connector templates by name/alias/keyword
+
+- `<query>` (positional, required) — Search text (e.g. 'hub')
+- `--limit` (string, default: 10) — Max results
+- `--json` — JSON output
+
+#### `sk connector-templates set-oauth`
+
+Store tenant-scoped OAuth client credentials for a connector template
+
+- `--slug` (string, required) — Template slug
+- `--client-id` (string, required) — OAuth client id
+- `--client-secret` (string, required) — OAuth client secret
+
+
+### `sk connectors`
+
+Manage connectors
+
+#### `sk connectors create`
+
+Create a connector from a template slug (--template) or a definition file (--file). --file runs validate and probe against the unsaved definition first, so a broken connector is never created; pass --skip-checks to bypass.
+
+- `--template` (string) — Template slug
+- `--file` (string) — Path to a connector definition JSON file
+- `--credential` (string) — Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `sk credentials set` after create.
+- `--name` (string) — Override connector name (--template only)
+- `--skip-checks` — Skip the checks (NOT recommended).
+- `--json` — JSON-only output (suppresses narration)
+
+#### `sk connectors delete`
+
+Delete a connector
+
+- `<id>` (positional) — Connector id
+- `--yes` — Skip confirmation
+
+#### `sk connectors disable`
+
+Disable a connector. It keeps its configuration and credentials and stops being offered for use.
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors docs-delete`
+
+Delete a connector doc
+
+- `<id>` (positional, required) — Connector id
+- `<doc-id>` (positional, required) — Doc id
+
+#### `sk connectors docs-ingest`
+
+Ingest docs from a URL into a connector
+
+- `<id>` (positional, required) — Connector id
+- `--url` (string, required) — URL to ingest
+
+#### `sk connectors docs-list`
+
+List ingested docs for a connector
+
+- `<id>` (positional, required) — Connector id
+- `--json` — JSON output
+
+#### `sk connectors docs-search`
+
+Ranked search over connector docs
+
+- `<id>` (positional, required) — Connector id
+- `<query>` (positional, required) — Search query
+- `--limit` (string, default: 10) — Max results
+
+#### `sk connectors enable`
+
+Enable a connector (operator on switch)
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors get`
+
+Get a connector by id
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors import`
+
+Turn an API specification into a connector. Parses the spec, shows the draft it produced, then creates it after confirmation (--yes to skip). Nothing is saved until you agree.
+
+- `--spec` (string, required) — Path to the specification file, or a URL / curl command (see --source)
+- `--source` (string, required) — openapi | google_discovery | postman | har | graphql | graphql_introspection | curl
+- `--name` (string) — Override the connector name
+- `--environment` (string) — dev (default) or prod
+- `--yes` — Create without asking (for non-interactive use)
+- `--dry-run` — Print the draft and stop. Nothing is created.
+- `--json` — JSON-only output
+
+#### `sk connectors inspect`
+
+Inspect a connector resource (alias of `get`).
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors list`
+
+List connectors, grouped into catalog blocks
+
+- `--limit` (string, default: 50) — Max rows
+- `--category` (string) — Only this catalog block. A connector's block is its driver: http, graphql, postgres, s3, mcp.
+- `--flat` — One flat table instead of grouped blocks
+- `--json` — JSON output
+
+#### `sk connectors mcp-authorize`
+
+mcp driver: begin the interactive OAuth 2.1 flow and print the URL to open in a browser.
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors mcp-inspect`
+
+mcp driver: force one handshake and list the tools, capabilities and instructions the remote actually serves.
+
+- `<id>` (positional) — Connector id
+
+#### `sk connectors patch`
+
+Update a connector, from --file (a partial definition: only the fields it names change) or from --name. --file runs validate first.
+
+- `<id>` (positional, required) — Connector id
+- `--file` (string) — Path to a partial definition JSON file
+- `--name` (string) — New name
+- `--skip-checks` — Skip validation (NOT recommended).
+- `--json` — JSON-only output (suppresses narration)
+
+#### `sk connectors probe`
+
+Probe a connector's upstream boundary. With an id, probes the saved connector (alias of `test`); with --file, probes an unsaved definition and saves nothing.
+
+- `<id>` (positional) — Connector id
+- `--file` (string) — Path to a connector definition JSON file — probes it without saving it
+- `--credential` (string) — Path to a credential JSON file. Signs this probe only; never stored. Required when the definition's auth_type is not 'none'.
+- `--json` — JSON-only output
+
+#### `sk connectors promote`
+
+Promote a connector and its credentials from DEV to PROD
+
+- `<id>` (positional) — DEV connector id
+- `--to` (string, default: prod) — Target environment (prod only)
+- `--strategy` (string, default: copy) — Promotion strategy: copy or move
+- `--idempotency-key` (string) — Stable retry key; generated when omitted
+- `--yes` — Confirm a move without prompting
+- `--json` — JSON output
+
+#### `sk connectors test`
+
+Test a connector connection (alias of `probe`). Exits non-zero when the probe fails.
+
+- `<id>` (positional) — Connector id
+- `--json` — JSON-only output
+
+#### `sk connectors validate`
+
+Check a connector definition file against its driver's config schema. Saves nothing, reaches no upstream.
+
+- `<file>` (positional, required) — Path to a definition JSON file
+- `--json` — JSON-only output
+
+
+### `sk credentials`
+
+Manage connector credentials
+
+#### `sk credentials delete`
+
+Delete a credential
+
+- `<credential-id>` (positional, required) — Credential id
+
+#### `sk credentials list`
+
+List credentials for a connector
+
+- `<connector-id>` (positional, required) — Connector id
+- `--json` — JSON output
+
+#### `sk credentials rotate`
+
+Rotate a credential
+
+- `<credential-id>` (positional, required) — Credential id
+
+#### `sk credentials set`
+
+Attach a credential to a connector (scriptable; no conversation needed). Modes: bearer | header | query | basic | aws_sigv4 | none.
+
+- `<connector-id>` (positional, required) — Connector id
+- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | none
+- `--token` (string) — Secret token (bearer mode)
+- `--header` (string) — header mode: "Name=Value" (comma-separate multiple)
+- `--query` (string) — query mode: "key=Value" (comma-separate multiple)
+- `--username` (string) — basic mode username
+- `--password` (string) — basic mode password
+- `--access-key-id` (string) — aws_sigv4 access key id
+- `--secret-access-key` (string) — aws_sigv4 secret access key
+- `--session-token` (string) — aws_sigv4 optional STS session token
+- `--skip-checks` — Skip the post-set connectivity probe
+- `--json` — JSON-only output
+
+
+### `sk diagnostics`
+
+Engine diagnostics: errors, LLM status, setup validation
+
+#### `sk diagnostics errors`
+
+Show recent engine errors
+
+- `--limit` (string, default: 20) — Max rows
+- `--since` (string) — ISO timestamp lower bound
+- `--trace-id` (string) — Filter by trace id
+- `--tail` — Keep reading (not applicable — uses snapshot endpoint)
+- `--json` — JSON output
+
+#### `sk diagnostics llm`
+
+Show LLM diagnostics
+
+_No arguments._
+
+#### `sk diagnostics setup`
+
+Validate engine setup
+
+- `--json` — JSON output
+
+
+### `sk discovery`
+
+Manage discovery runs and artifacts
+
+#### `sk discovery approve`
+
+Approve a discovery artifact
+
+- `<artifact-id>` (positional, required) — Artifact id
+
+#### `sk discovery artifacts`
+
+List artifacts for a discovery run
+
+- `<run-id>` (positional, required) — Run id
+- `--json` (default: false) — JSON output
+
+#### `sk discovery create`
+
+Start a discovery run from one or more files
+
+- `--file` (string, required) — File path(s), comma-separated
+- `--label` (string) — Optional label for the run
+
+#### `sk discovery get`
+
+Get a discovery run
+
+- `<run-id>` (positional, required) — Run id
+
+#### `sk discovery list`
+
+List discovery runs
+
+- `--limit` (string, default: 20) — Max rows
+- `--json` (default: false) — JSON output
+
+#### `sk discovery reject`
+
+Reject a discovery artifact
+
+- `<artifact-id>` (positional, required) — Artifact id
+- `--reason` (string) — Rejection reason
+
+
+### `sk doctor`
+
+Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked).
+
+- `--engine-url` (string) — Override the resolved engine URL
+- `--api-key` (string) — Override the resolved API key
+- `--profile` (string) — Use a named profile
+- `--json` — Emit one JSON object instead of human output
+
+
+### `sk events`
+
+Query audit events
+
+#### `sk events get`
+
+Get an audit event by id
+
+- `<id>` (positional, required) — Event id
+
+#### `sk events list`
+
+List audit events
+
+- `--limit` (string, default: 50) — Max rows
+- `--since` (string) — ISO timestamp lower bound
+- `--action` (string) — Filter by action
+- `--json` — JSON output
+
+
+### `sk executions`
+
+Manage workflow executions
+
+#### `sk executions abort`
+
+Abort a running execution
+
+- `<id>` (positional) — Execution id
+
+#### `sk executions get`
+
+Get an execution by id
+
+- `<id>` (positional) — Execution id
+- `--json` (default: false) — JSON-only (skip Output files line)
+
+#### `sk executions list`
+
+List executions
+
+- `--limit` (string, default: 20) — Max rows
+- `--status` (string) — Filter by status
+- `--source` (string) — Filter by request source (e.g. scheduler, cli, api, mcp, chat)
+- `--parent` (string) — Lineage filter: list the reruns spawned from this execution id
+- `--from` (string) — Only runs that started at or after this instant (ISO-8601 or now-24h, now-7d, startOfMonth)
+- `--to` (string) — Only runs that started before this instant (exclusive; default: open)
+- `--cursor` (string) — Continue after a previous page (the next_cursor it printed)
+- `--json` (default: false) — JSON output
+
+#### `sk executions rerun`
+
+Re-run a previous execution against the workflow + input it carried. Useful after diagnose/repair.
+
+- `<id>` (positional) — Execution id to rerun
+- `--input` (string) — Override the original input (JSON string). Omit to reuse it verbatim.
+- `--follow` — Queue the rerun and stream its progress live (step-by-step JSON lines).
+
+#### `sk executions result`
+
+Print the final output a workflow execution produced
+
+- `<id>` (positional) — Execution id
+- `--json` (default: false) — JSON-only output
+
+#### `sk executions steps`
+
+List steps for an execution
+
+- `<id>` (positional) — Execution id
+- `--json` (default: false) — JSON output
+
+#### `sk executions tail`
+
+Stream live output from an execution
+
+- `<id>` (positional) — Execution id
+
+
+### `sk extract`
+
+Extract structured data from a file (LLM for text, native parsers for binary)
+
+- `<file>` (positional, required) — Path to sample file
+- `--hint` (string) — Hint to the LLM extractor (text inputs only)
+
+
+### `sk files`
+
+Manage files (upload, download, link, …)
+
+#### `sk files delete`
+
+Soft-delete a file
+
+- `<id>` (positional, required) — File id (fid_…)
+- `--force` (default: false) — Skip confirmation prompt
+
+#### `sk files download`
+
+Download a file by id
+
+- `<id>` (positional, required) — File id (fid_…)
+- `--output` (string) — Output path (default: ./<filename>, '-' for stdout)
+- `--quiet` (default: false) — Suppress progress output
+
+#### `sk files get`
+
+Show file metadata
+
+- `<id>` (positional, required) — File id (fid_…)
+- `--json` (default: false) — JSON output
+
+#### `sk files link`
+
+Attach a file to an owning resource (conversation, knowledge_source, …)
+
+- `<fid>` (positional, required) — File id (fid_…)
+- `--to` (string, required) — Owning resource as <resource_type>:<id>
+- `--slug` (string) — Optional slug for the link
+- `--role` (string) — Optional role for the link
+
+#### `sk files list`
+
+List files
+
+- `--status` (string) — Filter by status (pending|ready|failed|…)
+- `--linked-to` (string) — Filter to files linked to <type>:<id> (e.g. conversation:abc-…)
+- `--cursor` (string) — Pagination cursor
+- `--limit` (string, default: 20) — Max rows (1-100)
+- `--json` (default: false) — JSON output
+
+#### `sk files stats`
+
+Aggregate file counters for this tenant
+
+- `--by` (string) — Group by: status|scanner_verdict (default: status)
+- `--json` (default: false) — JSON output
+
+#### `sk files upload`
+
+Upload a file (inline ≤5 MB, authenticated streaming above)
+
+- `<path>` (positional, required) — Path to file
+- `--content-type` (string) — Override detected MIME type
+- `--no-dedup` (default: false) — Skip the client-side sha256 dedup probe (forces an upload)
+- `--link-to` (string) — After upload, link the file to <resource_type>:<id>
+- `--slug` (string) — Optional slug for the link
+- `--role` (string) — Optional role for the link
+- `--label` (string) — Reserved for future labels (no-op today)
+- `--quiet` (default: false) — Suppress progress output
+- `--json` (default: false) — JSON output (also silences progress)
+
+
+### `sk health`
+
+Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `sk doctor` for connectivity/setup.
+
+- `--engine-url` (string) — Engine base URL
+- `--window-hours` (string) — Lookback window for failing runs (default 24)
+- `--json` — JSON output (composite object)
+
+
+### `sk hooks`
+
+Manage inbound webhook bindings
+
+#### `sk hooks create`
+
+Create an inbound webhook binding. The signing secret is read from a file (or - for stdin), never from an argument.
+
+- `--slug` (string, required) — Public path: POST /v1/hooks/<slug>
+- `--workflow-id` (string, required) — Workflow id to bind
+- `--verifier` (string, default: standard) — Signature scheme: standard | github | stripe | hmac
+- `--secret-file` (string, required) — File holding the shared signing secret (- reads stdin)
+- `--config-file` (string) — JSON file for native_verifier_config, e.g. {"hmac": {...}} for the hmac verifier
+
+#### `sk hooks delete`
+
+Delete an inbound webhook binding
+
+- `<id>` (positional, required) — Hook id
+
+#### `sk hooks get`
+
+Get an inbound webhook binding
+
+- `<id>` (positional, required) — Hook id
+
+#### `sk hooks list`
+
+List inbound webhook bindings
+
+- `--json` — JSON output
+
+
+### `sk init`
+
+Complete first-run engine bootstrap (consumes the token printed at engine boot)
+
+- `--token` (string) — One-time bootstrap token printed by the engine on first boot
+- `--engine-url` (string) — Engine base URL (defaults to http://localhost:3000)
+- `--profile` (string) — Profile to write the new admin key into (default: default)
+- `--admin-email` (string) — Admin user email (skip prompt)
+- `--tenant-name` (string) — Tenant display name (skip prompt)
+- `--llm-provider` (string) — LLM provider: mock|anthropic|openai|gemini|azure|bedrock|vertex (skip prompt)
+- `--llm-api-key` (string) — LLM API key (skip prompt)
+- `--defaults` — Never prompt: fill anything still missing with local defaults (mock LLM provider, tenant 'Local', admin email from git config)
+
+
+### `sk install`
+
+Guided setup for enterprise integrations
+
+#### `sk install github`
+
+Install GitHub connector
+
+_No arguments._
+
+#### `sk install google-workspace`
+
+Install Google Workspace connector
+
+_No arguments._
+
+#### `sk install hubspot`
+
+Install HubSpot connector
+
+_No arguments._
+
+#### `sk install jira`
+
+Install Jira connector
+
+_No arguments._
+
+#### `sk install salesforce`
+
+Install Salesforce connector
+
+_No arguments._
+
+#### `sk install slack`
+
+Install Slack notifications
+
+_No arguments._
+
+#### `sk install teams`
+
+Install Microsoft Teams notifications
+
+_No arguments._
+
+
+### `sk invites`
+
+Manage user-provisioning invites
+
+#### `sk invites list`
+
+List provisioning invites
+
+- `--status` (string) — Filter by status: pending|redeemed|revoked|expired
+- `--json` — JSON output
+
+#### `sk invites revoke`
+
+Revoke an un-redeemed invite
+
+- `<id>` (positional, required) — Invite id
+
+
+### `sk join`
+
+Redeem an invite to provision your personal API key (no login required)
+
+- `--invite` (string, required) — Single-use invite token from your admin
+- `--engine-url` (string) — Engine base URL (defaults to http://localhost:3000)
+- `--profile` (string) — Profile to write the new key into (default: default)
+
+
+### `sk knowledge-sources`
+
+Manage knowledge sources
+
+#### `sk knowledge-sources analyze`
+
+Generate a description + tags for a knowledge source via the engine LLM
+
+- `<id>` (positional, required) — Knowledge source id
+- `--force` (default: false) — Overwrite an existing description
+
+#### `sk knowledge-sources create`
+
+Upload a file as a knowledge source
+
+- `--file` (string, required) — Path to file
+- `--title` (string) — Override title (defaults to filename)
+- `--description` (string) — Description (omit to let the engine auto-generate one)
+- `--tags` (string) — Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit both --tags and --description to auto-generate them.
+- `--scope` (string) — Scope: global | workflow
+- `--workflow-id` (string) — Workflow id (required when scope=workflow)
+- `--json` — JSON-only output (suppresses narration)
+
+#### `sk knowledge-sources delete`
+
+Delete a knowledge source
+
+- `<id>` (positional, required) — Knowledge source id
+
+#### `sk knowledge-sources get`
+
+Get a knowledge source by id
+
+- `<id>` (positional, required) — Knowledge source id
+
+#### `sk knowledge-sources import`
+
+Import a directory of markdown files as one knowledge source (upsert by slug; OKF-compatible frontmatter is read tolerantly)
+
+- `<dir>` (positional, required) — Directory to import
+- `--name` (string) — Source name (defaults to root index.md H1 or dirname)
+- `--slug` (string) — Stable slug (defaults to slugified name)
+- `--description` (string) — Source description
+- `--tags` (string) — Comma-separated extra tags (frontmatter tags merge in)
+- `--scope` (string) — Scope: global | workflow
+- `--workflow-id` (string) — Workflow id (required when scope=workflow)
+- `--json` (default: false) — JSON output
+
+#### `sk knowledge-sources list`
+
+List knowledge sources
+
+- `--limit` (string, default: 20) — Max rows
+- `--json` (default: false) — JSON output
+
+#### `sk knowledge-sources patch`
+
+Update a knowledge source
+
+- `<id>` (positional, required) — Knowledge source id
+- `--title` (string) — New title
+- `--description` (string) — New description
+- `--tags` (string) — Comma-separated tags (replaces existing)
+- `--status` (string) — Status: active | inactive
+
+#### `sk knowledge-sources search`
+
+Semantic search across knowledge sources
+
+- `<query>` (positional, required) — Search query
+- `--tags` (string) — Comma-separated tags to narrow results
+- `--limit` (string, default: 10) — Max results
+- `--json` (default: false) — JSON output
+
+
+### `sk learnings`
+
+Review learnings captured from coding-agent sessions
+
+#### `sk learnings list`
+
+List proposed session learnings
+
+- `--json` (default: false) — JSON output
+
+#### `sk learnings review`
+
+Review proposed session learnings interactively
+
+_No arguments._
+
+
+### `sk login`
+
+Authenticate against a subkit engine
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — Scripted API-key login (skips device flow)
+- `--tenant` (string) — Active tenant id
+- `--profile` (string) — Profile name (~/.sk/config.json)
+- `--portal-token` (string) — Authenticate as a portal-token principal
+
+
+### `sk logout`
+
+Drop the active profile
+
+- `--profile` (string) — Profile name to clear (default: active)
+
+
+### `sk logs`
+
+Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601.
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key (audit:read required)
+- `--profile` (string) — Use a named profile
+- `--follow` (alias -f) — Live SSE tail (Ctrl-C to stop)
+- `--since` (string) — Start time — relative (5m, 2h, 1d), ISO-8601, or unix-ms
+- `--limit` (string) — Max entries when not following (default 200)
+- `--module` (string) — Filter by module name (e.g. migrate, scheduler)
+- `--action` (string) — Filter by action (e.g. drift_detected)
+- `--level` (string) — Minimum level (trace|debug|info|warn|error|fatal)
+- `--json` — Emit raw NDJSON for piping to jq, instead of pretty-printing
+
+
+### `sk ls`
+
+List cached conversation sessions for the active profile
+
+- `--limit` (string, default: 20) — Max rows
+- `--search` (string) — Filter by substring in title / alias
+- `--all` — Show every profile, not just the active one
+
+
+### `sk mcp`
+
+Run a stdio MCP server proxied to the engine
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key (Bearer)
+- `--tenant` (string) — Active tenant id
+- `--profile` (string) — Profile name (~/.sk/config.json)
+
+
+### `sk notifications`
+
+Manage notification channels, rules, deliveries, and the inbox
+
+#### `sk notifications channels`
+
+Manage notification channels
+
+_No arguments._
+
+#### `sk notifications deliveries`
+
+Notification deliveries
+
+_No arguments._
+
+#### `sk notifications inbox`
+
+Read and acknowledge queued notifications
+
+- `--all` — Show everything queued, ignoring the stored cursor
+- `--unread` — Only tasks you have not marked read
+- `--actionable` — Only tasks that need someone to act
+- `--limit` (string) — Max rows (<=500)
+- `--json` — JSON output
+
+#### `sk notifications rules`
+
+Manage notification rules
+
+_No arguments._
+
+
+### `sk patch-candidates`
+
+Manage patch candidates
+
+#### `sk patch-candidates approve`
+
+Approve a patch candidate
+
+- `<id>` (positional, required) — Patch candidate id
+- `--review-digest` (string, required) — Digest from the reviewed candidate preview
+
+#### `sk patch-candidates get`
+
+Get a patch candidate by id
+
+- `<id>` (positional, required) — Patch candidate id
+
+#### `sk patch-candidates list`
+
+List patch candidates
+
+- `--limit` (string, default: 20) — Max rows
+- `--json` (default: false) — JSON output
+
+#### `sk patch-candidates preview`
+
+Review the exact repair diff and approval digest
+
+- `<id>` (positional, required) — Patch candidate id
+
+#### `sk patch-candidates reject`
+
+Reject a patch candidate
+
+- `<id>` (positional, required) — Patch candidate id
+- `--reason` (string) — Rejection reason
+
+
+### `sk portal-tokens`
+
+Manage portal tokens
+
+#### `sk portal-tokens create`
+
+Issue a portal token (shown once)
+
+- `--name` (string, required) — Token name
+- `--user-id` (string) — User id to bind the token to
+- `--expires` (string) — Expiry — ISO-8601 timestamp
+
+#### `sk portal-tokens list`
+
+List portal tokens
+
+- `--json` — JSON output
+
+#### `sk portal-tokens revoke`
+
+Revoke a portal token
+
+- `<id>` (positional, required) — Token id
+
+
+### `sk profile`
+
+Manage named profiles (environments)
+
+#### `sk profile add`
+
+Create a new profile (guided setup)
+
+- `--name` (string) — Profile name
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+
+#### `sk profile delete`
+
+Delete a saved profile
+
+- `<name>` (positional, required) — Profile name to delete
+
+#### `sk profile list`
+
+List all saved profiles
+
+_No arguments._
+
+#### `sk profile show`
+
+Show profile details + health check
+
+- `<name>` (positional) — Profile name (default: active)
+
+#### `sk profile use`
+
+Switch the active profile
+
+- `<name>` (positional) — Profile name to activate
+
+
+### `sk rbac`
+
+Manage RBAC roles, permissions, grants, groups, and hooks
+
+#### `sk rbac can`
+
+Check whether a principal holds a permission
+
+- `<principal>` (positional, required) — Principal id
+- `<permission>` (positional, required) — Permission name
+- `<resource>` (positional) — Optional resource in <type>:<id> form
+- `--json` — JSON output
+
+#### `sk rbac grants`
+
+Manage resource grants
+
+_No arguments._
+
+#### `sk rbac groups`
+
+Manage groups
+
+_No arguments._
+
+#### `sk rbac permissions`
+
+Browse the permission catalog
+
+_No arguments._
+
+#### `sk rbac request-hooks`
+
+Manage before-request hooks
+
+_No arguments._
+
+#### `sk rbac roles`
+
+Manage RBAC roles
+
+_No arguments._
+
+#### `sk rbac users`
+
+Manage user role bindings
+
+_No arguments._
+
+#### `sk rbac whatcan`
+
+Show your effective access level on a connector (none/read-only/read-write)
+
+- `<connector>` (positional, required) — Connector id
+- `--json` — JSON output
+
+
+### `sk rename`
+
+Assign or change a short alias for a session (used by `sk -r <alias>`)
+
+- `<ref>` (positional, required) — Conversation id or existing alias
+- `<alias>` (positional, required) — New alias
+
+
+### `sk review`
+
+Aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions.
+
+- `--limit` (string, default: 10) — Max rows per section
+- `--json` (default: false) — JSON output
+
+
+### `sk rm`
+
+Drop a session from the local cache (the server-side conversation row is preserved)
+
+- `<ref>` (positional, required) — Conversation id or alias
+
+
+### `sk schedules`
+
+Scheduled workflow runs
+
+#### `sk schedules create`
+
+Schedule a workflow (a workflow carries at most one schedule; re-create updates it)
+
+- `--workflow` (string, required) — Workflow id
+- `--cron` (string, required) — 5-field cron or "every:<seconds>" (e.g. "0 8 * * *")
+- `--timezone` (string) — IANA timezone (default UTC)
+- `--executionMode` (string, default: prod) — Connector environment: dev or prod (default prod)
+- `--paused` (default: false) — Create in paused state
+- `--input` (string) — JSON input payload passed to every run
+- `--json` (default: false) — JSON output
+
+#### `sk schedules delete`
+
+Delete a schedule
+
+- `<id>` (positional, required) — Schedule id
+- `--json` (default: false) — JSON output
+
+#### `sk schedules list`
+
+List scheduled workflow runs
+
+- `--workflow` (string) — Filter by workflow id
+- `--json` (default: false) — JSON output
+
+#### `sk schedules pause`
+
+Pause a schedule (keeps the row)
+
+- `<id>` (positional, required) — Schedule id
+- `--json` (default: false) — JSON output
+
+#### `sk schedules resume`
+
+Resume a paused schedule
+
+- `<id>` (positional, required) — Schedule id
+- `--json` (default: false) — JSON output
+
+#### `sk schedules update`
+
+Update a schedule's cron, timezone, environment, or input
+
+- `<id>` (positional, required) — Schedule id
+- `--cron` (string) — New cron expression
+- `--timezone` (string) — New IANA timezone
+- `--executionMode` (string) — New connector environment: dev or prod
+- `--input` (string) — New JSON input payload
+- `--json` (default: false) — JSON output
+
+
+### `sk self-healing`
+
+Trigger and review proactive drift scans (admin)
+
+#### `sk self-healing list`
+
+List proactive drift scans
+
+- `--limit` (string, default: 20) — Max rows
+- `--status` (string) — Filter by status (running/succeeded/failed)
+- `--source` (string) — Filter by source (scheduler/admin_http/mcp)
+- `--json` (default: false) — JSON output
+
+#### `sk self-healing scan`
+
+Trigger a proactive self-healing drift scan
+
+- `--workflow` (string) — Scope validation-drift to this workflow id
+- `--connector` (string) — Scope schema-drift to this connector id
+- `--idempotency-key` (string) — Replay-safe key; a second call within 24h with the same key returns the original result
+- `--json` (default: false) — JSON output
+
+#### `sk self-healing show`
+
+Show a proactive drift scan by id
+
+- `<id>` (positional, required) — Scan id
+
+
+### `sk sessions`
+
+Manage locally-cached conversation sessions
+
+#### `sk sessions ls`
+
+List cached conversation sessions for the active profile
+
+- `--limit` (string, default: 20) — Max rows
+- `--search` (string) — Filter by substring in title / alias
+- `--all` — Show every profile, not just the active one
+
+#### `sk sessions rename`
+
+Assign or change a short alias for a session (used by `sk -r <alias>`)
+
+- `<ref>` (positional, required) — Conversation id or existing alias
+- `<alias>` (positional, required) — New alias
+
+#### `sk sessions rm`
+
+Drop a session from the local cache (the server-side conversation row is preserved)
+
+- `<ref>` (positional, required) — Conversation id or alias
+
+#### `sk sessions search`
+
+Fuzzy-search cached sessions by title / alias / id
+
+- `<query>` (positional, required) — Search text
+- `--limit` (string, default: 20) — Max rows
+- `--all` — Search every profile, not just the active one
+
+#### `sk sessions show`
+
+Show cached metadata for a session by id or alias
+
+- `<ref>` (positional, required) — Conversation id or alias
+
+
+### `sk settings`
+
+List, read, write, or interactively configure engine settings (secrets always masked)
+
+#### `sk settings configure`
+
+Interactive Ink palette for inspecting settings (← / → cycles tabs, type to filter in Config, Enter to edit, Esc to exit). In non-TTY environments use --non-interactive to print the JSON contract instead.
+
+- `--tab` (string) — Open directly on a tab: Status | Config | Usage | Skills | Knowledge
+- `--non-interactive` — Skip the Ink renderer; print the GET /v1/settings response as JSON. Auto-detected when stdin is not a TTY.
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--tenant` (string) — Tenant id (writes a tenant overlay)
+- `--json` — JSON output
+
+#### `sk settings get`
+
+Read one leaf by dotted path
+
+- `<path>` (positional, required) — Setting path (e.g. llm.api_key)
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--tenant` (string) — Tenant id (writes a tenant overlay)
+- `--json` — JSON output
+
+#### `sk settings list`
+
+List every leaf with its resolved value
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--tenant` (string) — Tenant id (writes a tenant overlay)
+- `--json` — JSON output
+
+#### `sk settings set`
+
+Write one leaf. <value> must be valid JSON ('"abc"', 42, true, null).
+
+- `<path>` (positional, required) — Setting path
+- `<value>` (positional, required) — Value as JSON
+- `--force` — Bypass requiresRestart guard in production
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--tenant` (string) — Tenant id (writes a tenant overlay)
+- `--json` — JSON output
+
+
+### `sk show`
+
+Show cached metadata for a session by id or alias
+
+- `<ref>` (positional, required) — Conversation id or alias
+
+
+### `sk skill-candidates`
+
+Manage skill candidates
+
+#### `sk skill-candidates approve`
+
+Approve a skill candidate
+
+- `<id>` (positional, required) — Candidate id
+
+#### `sk skill-candidates get`
+
+Get a skill candidate by id
+
+- `<id>` (positional, required) — Candidate id
+
+#### `sk skill-candidates list`
+
+List skill candidates
+
+- `--limit` (string, default: 20) — Max rows
+- `--json` (default: false) — JSON output
+
+#### `sk skill-candidates reject`
+
+Reject a skill candidate
+
+- `<id>` (positional, required) — Candidate id
+- `--reason` (string) — Rejection reason
+
+
+### `sk skills`
+
+Manage skills
+
+#### `sk skills activate`
+
+Activate a skill
+
+- `<id>` (positional, required) — Skill id
+
+#### `sk skills archive`
+
+Archive a skill
+
+- `<id>` (positional, required) — Skill id
+
+#### `sk skills create`
+
+Create a skill from a JSON file
+
+- `--file` (string, required) — Path to SkillDef JSON
+
+#### `sk skills delete`
+
+Delete a skill
+
+- `<id>` (positional, required) — Skill id
+
+#### `sk skills edit`
+
+Update a skill
+
+- `<id>` (positional, required) — Skill id
+- `--file` (string) — Path to JSON patch file
+- `--title` (string) — New title
+
+#### `sk skills get`
+
+Get a skill by id
+
+- `<id>` (positional, required) — Skill id
+
+#### `sk skills history`
+
+Show a skill's version history (newest first)
+
+- `<id>` (positional, required) — Skill id
+- `--json` (default: false) — JSON output
+
+#### `sk skills list`
+
+List skills
+
+- `--limit` (string, default: 20) — Max rows
+- `--json` (default: false) — JSON output
+
+#### `sk skills patch`
+
+Update a skill
+
+- `<id>` (positional, required) — Skill id
+- `--file` (string) — Path to JSON patch file
+- `--title` (string) — New title
+
+#### `sk skills restore`
+
+Restore a skill to a prior audited snapshot
+
+- `<id>` (positional, required) — Skill id
+- `--to` (string, required) — audit_entry_id from `sk skills history`
+
+#### `sk skills sync`
+
+Materialize domain skills as SKILL.md for Claude Code and Codex
+
+- `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo)
+- `--json` (default: false) — JSON output
+
+
+### `sk stats`
+
+Tenant-scoped runtime statistics (needs stats:read)
+
+#### `sk stats chat`
+
+Chat turns, modes, deduplication, and outcomes
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--traffic-class` (string) — organic|synthetic|internal (comma-separated; default organic)
+- `--operation` (string) — Filter canonical operation(s)
+- `--outcome` (string) — Filter outcome(s)
+- `--request-source` (string) — Filter request source(s)
+- `--platform` (string) — Filter platform(s)
+- `--response-mode` (string) — json|sse|sync|async|none
+
+#### `sk stats connectors`
+
+Connector-call volume + latency + outcome. Example: sk stats connectors --bucket hour --from now-24h
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--connector-id` (string) — Filter by connector id
+- `--connector-slug` (string) — Filter by connector slug
+- `--driver` (string) — Filter by driver (comma-separated)
+- `--method` (string) — Filter by method (comma-separated)
+- `--outcome` (string) — Filter by outcome (success,denied,error)
+- `--status-class` (string) — 2xx,3xx,4xx_other,4xx_auth,4xx_rate_limited,5xx,network_error,no_status
+- `--include-endpoint` — Add normalized endpoint-path axis
+
+#### `sk stats conversations`
+
+Conversation calls, streams, disconnects, and outcomes
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--traffic-class` (string) — organic|synthetic|internal (comma-separated; default organic)
+- `--operation` (string) — Filter canonical operation(s)
+- `--outcome` (string) — Filter outcome(s)
+- `--request-source` (string) — Filter request source(s)
+- `--platform` (string) — Filter platform(s)
+- `--response-mode` (string) — json|sse|sync|async|none
+
+#### `sk stats events`
+
+Audit-event volume by class (webhook_outbound, webhook_inbound, chat, notification, schedule, self_healing, discovery, execution_lifecycle, policy, external_write). Example: sk stats events --class self_healing --bucket day --from now-7d
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--class` (string, required) — One of: webhook_outbound, webhook_inbound, chat, notification, schedule, self_healing, discovery, execution_lifecycle, policy, external_write
+- `--outcome` (string) — Filter by outcome (success,denied,error)
+
+#### `sk stats executions`
+
+Workflow run volume + duration distribution. Example: sk stats executions --bucket hour --from now-24h
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--workflow-id` (string) — Filter by workflow id
+- `--status` (string) — Filter by status (comma-separated: succeeded,failed,…)
+- `--request-source` (string) — Filter by request source (open set, e.g. api,scheduler,wait_reaper)
+- `--execution-mode` (string) — dev|prod
+
+#### `sk stats http`
+
+HTTP route volume, latency, bytes, and errors
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--traffic-class` (string) — organic|synthetic|internal (comma-separated; default organic)
+- `--operation` (string) — Filter canonical operation(s)
+- `--outcome` (string) — Filter outcome(s)
+- `--request-source` (string) — Filter request source(s)
+- `--platform` (string) — Filter platform(s)
+- `--response-mode` (string) — json|sse|sync|async|none
+
+#### `sk stats llm`
+
+LLM token usage + cache-hit + latency. Example: sk stats llm --bucket day --from startOfMonth
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--model` (string) — Filter by model (comma-separated)
+- `--flow` (string) — Filter by flow (comma-separated)
+- `--user-id` (string) — Scope to one user (another user needs stats:read:all)
+- `--mine` — Scope to your own usage (resolves your user id automatically)
+
+#### `sk stats mcp`
+
+MCP JSON-RPC, sessions, capacity, tasks, and SSE
+
+- `--bucket` (string) — minute|hour|day|month|year
+- `--from` (string) — ISO-8601 or relative (now-24h, now-7d, startOfMonth)
+- `--to` (string) — ISO-8601 or relative (default: now)
+- `--tz` (string) — IANA timezone (default UTC)
+- `--group-by` (string) — comma-separated group dimensions (≤2)
+- `--json` (default: false) — raw JSON output
+- `--traffic-class` (string) — organic|synthetic|internal (comma-separated; default organic)
+- `--operation` (string) — Filter canonical operation(s)
+- `--outcome` (string) — Filter outcome(s)
+- `--request-source` (string) — Filter request source(s)
+- `--platform` (string) — Filter platform(s)
+- `--response-mode` (string) — json|sse|sync|async|none
+
+#### `sk stats operations`
+
+The Übersicht's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: sk stats operations --window 7d
+
+- `--window` (string) — 24h (default), 7d or 30d
+- `--from` (string) — Window start (ISO-8601 or now-24h, startOfMonth)
+- `--to` (string) — Window end (default: now)
+- `--json` — Emit the raw engine response
+
+
+### `sk status`
+
+Print the active profile + engine reachability
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key (Bearer)
+- `--tenant` (string) — Active tenant id
+- `--profile` (string) — Profile name (~/.sk/config.json)
+
+
+### `sk subscriptions`
+
+Manage event subscriptions
+
+#### `sk subscriptions create`
+
+Create a subscription
+
+- `--event` (string, required) — Event type
+- `--workflow-id` (string, required) — Workflow id
+
+#### `sk subscriptions delete`
+
+Delete a subscription
+
+- `<id>` (positional, required) — Subscription id
+
+#### `sk subscriptions deliveries`
+
+Show deliveries for a subscription
+
+- `<id>` (positional, required) — Subscription id
+
+#### `sk subscriptions get`
+
+Get a subscription
+
+- `<id>` (positional, required) — Subscription id
+
+#### `sk subscriptions list`
+
+List subscriptions
+
+- `--json` — JSON output
+
+#### `sk subscriptions patch`
+
+Update a subscription
+
+- `<id>` (positional, required) — Subscription id
+- `--active` (string, required) — Set active state (true|false)
+
+#### `sk subscriptions replay`
+
+Replay a subscription delivery
+
+- `<sub-id>` (positional, required) — Subscription id
+- `<delivery-id>` (positional, required) — Delivery id
+
+
+### `sk system`
+
+Engine process operations (restart)
+
+#### `sk system restart`
+
+Restart the engine so a saved restart-sensitive setting takes effect (needs a supervisor)
+
+- `--wait` — Wait (up to 240 s) until the restarted engine runs the saved settings
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key
+- `--profile` (string) — Profile name
+- `--json` — JSON output
+
+
+### `sk system-accounts`
+
+Manage system accounts
+
+#### `sk system-accounts create`
+
+Create a system account
+
+- `--name` (string, required) — Account name
+
+#### `sk system-accounts delete`
+
+Delete a system account
+
+- `<id>` (positional, required) — Account id
+
+#### `sk system-accounts list`
+
+List system accounts
+
+- `--json` — JSON output
+
+
+### `sk tenants`
+
+List tenants you belong to or switch the active one
+
+- `--engine-url` (string) — Engine base URL
+- `--api-key` (string) — API key (Bearer)
+- `--tenant` (string) — Active tenant id
+- `--profile` (string) — Profile name (~/.sk/config.json)
+- `<use>` (positional) — Tenant id to switch to
+
+
+### `sk update`
+
+Update sk CLI to the latest version
+
+- `--force` (default: false) — Force re-download even if already up to date
+- `--check` (default: false) — Check for updates without installing
+- `--channel` (string, default: stable) — Release channel: stable | beta
+- `--rollback` (default: false) — Restore the most recent retained sk binary
+- `--to` (string) — With --rollback, the explicit version to restore (default: most recent retained)
+
+
+### `sk users`
+
+Manage identity users
+
+#### `sk users create`
+
+Create a user in the caller's tenant
+
+- `--email` (string, required) — User email
+- `--role` (string) — Role: admin|member|enduser (default member)
+- `--json` — JSON output
+
+#### `sk users delete`
+
+Delete a user
+
+- `<id>` (positional, required) — User id
+
+#### `sk users get`
+
+Fetch a user by id
+
+- `<id>` (positional, required) — User id
+
+#### `sk users invite`
+
+Issue a single-use provisioning invite for a user (token shown once)
+
+- `<id>` (positional, required) — User id to invite
+- `--scopes` (string) — Comma-separated scope strings (default ["*"])
+- `--allowed-workflows` (string) — Comma-separated workflow ids/slugs
+- `--allowed-connectors` (string) — Comma-separated connector ids/slugs
+- `--ttl` (string) — Invite lifetime in minutes
+- `--json` — JSON output
+
+#### `sk users list`
+
+List identity users
+
+- `--limit` (string) — Max rows
+- `--json` — JSON output
+
+#### `sk users patch`
+
+Update a user's role (admin only)
+
+- `<id>` (positional, required) — User id
+- `--role` (string, required) — New role: admin|member|enduser
+
+
+### `sk workflows`
+
+Manage workflows
+
+#### `sk workflows create`
+
+Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.
+
+- `--file` (string, required) — Path to WorkflowDef JSON
+- `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
+- `--input` (string) — Input JSON string passed to the preview dry-run.
+- `--json` — JSON-only output (suppresses narration)
+
+#### `sk workflows delete`
+
+Delete a workflow
+
+- `<id>` (positional) — Workflow id
+
+#### `sk workflows dry-run`
+
+Preview a draft WorkflowDef by dry-running it via runExecution (source=draft). No persistence. Alias: dry-run.
+
+- `<file>` (positional, required) — Path to WorkflowDef JSON
+- `--input` (string) — Input JSON string
+- `--name` (string) — Optional label (goes to executions.source_ref)
+
+#### `sk workflows get`
+
+Get a workflow by id
+
+- `<id>` (positional) — Workflow id
+
+#### `sk workflows history`
+
+List committed versions of a workflow
+
+- `<id>` (positional, required) — Workflow id
+- `--json` — JSON output
+
+#### `sk workflows invoke-snippet`
+
+Emit a ready-to-paste, authenticated snippet to run a saved workflow from your own app or CI (curl/node/python).
+
+- `<id>` (positional, required) — Workflow id
+- `--lang` (string, default: curl) — Snippet language: curl (default), node, or python
+- `--environment` (string, default: prod) — Where the call runs: prod (default) or dev. Printed as the x-subkit-environment header.
+- `--json` — JSON output
+
+#### `sk workflows list`
+
+List workflows, grouped into catalog blocks
+
+- `--limit` (string, default: 50) — Max rows
+- `--category` (string) — Only this catalog block
+- `--connector` (string) — Only workflows using this connector (id or slug)
+- `--flat` — One flat table instead of grouped blocks
+- `--json` — JSON output
+
+#### `sk workflows preview`
+
+Preview a draft WorkflowDef by dry-running it via runExecution (source=draft). No persistence. Alias: dry-run.
+
+- `<file>` (positional, required) — Path to WorkflowDef JSON
+- `--input` (string) — Input JSON string
+- `--name` (string) — Optional label (goes to executions.source_ref)
+
+#### `sk workflows restore`
+
+Restore a prior workflow version
+
+- `<id>` (positional, required) — Workflow id
+- `<version>` (positional, required) — Version number
+
+#### `sk workflows run`
+
+Run a saved workflow, an inline draft definition, or a single step
+
+- `<id>` (positional) — Workflow id or slug (omit when using --draft or --step)
+- `--input` (string) — Input JSON string. Prefix with `@` to read from a file (e.g. `--input @./payload.json`).
+- `--input-file` (string) — Upload a file and substitute its ref into --input at key K. Format: K=<path>. Repeatable.
+- `--draft` (string) — Path to a draft WorkflowDef JSON file (no commit)
+- `--step` (string) — Path to a single StepDef JSON file (no workflow persistence)
+- `--name` (string) — Optional label for --draft runs (goes to executions.source_ref)
+- `--slug` (string) — Optional workflow_slug for --step runs (cosmetic)
+- `--follow` — Queue the run and stream its progress live (step-by-step JSON lines). Saved workflows only.
+- `--idempotency-key` (string) — Make this trigger safe to repeat: a second run with the same key is not started, the first run's id comes back instead. Saved workflows only.
+
+#### `sk workflows update`
+
+Update a workflow from a JSON file (PUT the full definition). Runs `validate` and `preview` by default; pass --skip-checks to bypass. An unchanged definition does not rotate a version.
+
+- `<id>` (positional, required) — Workflow id
+- `--file` (string, required) — Path to WorkflowDef JSON
+- `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
+- `--input` (string) — Input JSON string passed to the preview dry-run.
+- `--json` — JSON-only output (suppresses narration)
+
+#### `sk workflows validate`
+
+Validate a draft WorkflowDef JSON file (structural + step schema checks). No execution, no persistence.
+
+- `<file>` (positional, required) — Path to WorkflowDef JSON
+
+<!-- Source: settings.md -->
+
+# subkit runtime settings
+
+Every value below lives in canonical runtime configuration and is editable via
+the Cockpit, HTTP/MCP settings APIs, `sk settings configure`, or `sk settings set`. Per-tenant
+overrides go into the file's `tenants` section and only honor leaves
+tagged `scope=tenant`.
+
+Path resolution: tenant overlay → global value → schema default. Legacy
+`SK_OVERRIDE_<UPPERCASE_PATH>` values only seed a missing leaf once and are then persisted;
+they never override an existing Cockpit/API value.
+
+## log
+Logging
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `log.format` | enum("dev" \| "pretty" \| "prod" \| "ndjson" \| "json") | `"ndjson"` | global | no | no | Log output format |
+| `log.level` | enum("trace" \| "debug" \| "info" \| "warn" \| "error" \| "fatal") | `"info"` | global | no | no | Log verbosity |
+
+## server
+HTTP server
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
+| `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
+| `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
+
+## database
+Database connection
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `database.url` | string | `—` | global | yes | yes | Bootstrap-only Postgres connection string. Rotate DATABASE_URL and restart replicas; runtime revisions cannot change this binding. |
+
+## llm
+LLM configuration
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `llm.api_key` | string | `""` | tenant | yes | no | Primary LLM API key |
+| `llm.context_1m` | boolean | `false` | tenant | no | no | Enable 1M context window where supported |
+| `llm.critic.enabled` | boolean | `false` | tenant | no | no | Run the second-stage LLM critic on workflow drafts after every static gate passes |
+| `llm.critic.max_consecutive_rejections` | number | `3` | tenant | no | no | After this many consecutive critic_rejected results in a conversation, skip the critic to avoid an infinite re-author loop |
+| `llm.critic.min_steps` | number | `3` | tenant | no | no | Minimum step count for the critic to run on a draft (drift in recent drafts also triggers a run) |
+| `llm.fallback_model` | string | `""` | tenant | no | no | Fallback model identifier |
+| `llm.fallback_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Fallback provider on primary failure |
+| `llm.model` | string | `""` | tenant | no | no | Primary model identifier |
+| `llm.output_guard` | enum("soft" \| "hard" \| "off") | `"soft"` | global | no | no | LLM output safety mode (soft: rewrite + log, hard: throw, off: bypass — never use in production) |
+| `llm.provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `"mock"` | tenant | no | no | Primary LLM provider |
+| `llm.providers.ai_gateway.api_key` | string | `""` | global | yes | no |  |
+| `llm.providers.ai_gateway.model` | string | `""` | global | no | no |  |
+| `llm.providers.anthropic.api_key` | string | `""` | tenant | yes | no | API key for this provider |
+| `llm.providers.anthropic.base_url` | string | `""` | global | no | no | Optional base URL override |
+| `llm.providers.anthropic.model` | string | `""` | tenant | no | no | Default model identifier |
+| `llm.providers.azure.api_key` | string | `""` | tenant | yes | no |  |
+| `llm.providers.azure.api_version` | string | `""` | global | no | no |  |
+| `llm.providers.azure.base_url` | string | `""` | global | no | no |  |
+| `llm.providers.azure.model` | string | `""` | tenant | no | no |  |
+| `llm.providers.azure.resource_name` | string | `""` | global | no | no |  |
+| `llm.providers.azure.use_deployment_based_urls` | boolean | `false` | global | no | no |  |
+| `llm.providers.bedrock.access_key_id` | string | `""` | global | yes | no |  |
+| `llm.providers.bedrock.base_url` | string | `""` | global | no | no |  |
+| `llm.providers.bedrock.model` | string | `""` | tenant | no | no |  |
+| `llm.providers.bedrock.region` | string | `""` | global | no | no |  |
+| `llm.providers.bedrock.secret_access_key` | string | `""` | global | yes | no |  |
+| `llm.providers.bedrock.session_token` | string | `""` | global | yes | no |  |
+| `llm.providers.gemini.api_key` | string | `""` | tenant | yes | no | API key for this provider |
+| `llm.providers.gemini.base_url` | string | `""` | global | no | no | Optional base URL override |
+| `llm.providers.gemini.model` | string | `""` | tenant | no | no | Default model identifier |
+| `llm.providers.openai.api_key` | string | `""` | tenant | yes | no | API key for this provider |
+| `llm.providers.openai.base_url` | string | `""` | global | no | no | Optional base URL override |
+| `llm.providers.openai.model` | string | `""` | tenant | no | no | Default model identifier |
+| `llm.providers.vertex.api_key` | string | `""` | tenant | yes | no |  |
+| `llm.providers.vertex.client_email` | string | `""` | global | no | no |  |
+| `llm.providers.vertex.google_application_credentials` | string | `""` | global | no | no |  |
+| `llm.providers.vertex.location` | string | `""` | global | no | no |  |
+| `llm.providers.vertex.model` | string | `""` | tenant | no | no |  |
+| `llm.providers.vertex.private_key` | string | `""` | global | yes | no |  |
+| `llm.providers.vertex.project` | string | `""` | global | no | no |  |
+| `llm.suggestion_model` | string | `"claude-haiku-4-5"` | tenant | no | no | Small model used to generate post-turn suggestions |
+| `llm.summarize_model` | string | `""` | tenant | no | no | Model used for summarization passes |
+| `llm.summarize_provider` | enum("mock" \| "anthropic" \| "openai" \| "gemini" \| "azure" \| "bedrock" \| "vertex" \| "ai_gateway") | `null` | tenant | no | no | Provider used for summarization passes |
+| `llm.web_search` | boolean | `true` | tenant | no | no | Allow the assistant to use Anthropic-native server-side web search (billed per search; Anthropic models only). Toggle off per tenant via /settings. |
+
+## auth
+Authentication
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `auth.enable_signup` | boolean | `false` | global | no | no | Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working. |
+| `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
+| `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
+| `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
+| `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
+| `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
+| `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin","metrics:read"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. Add, reorder and remove freely, except metrics:read: GET /metrics enforces it, so it is restored whenever a written value omits it. |
+| `auth.providers` | json | `[{"protocol":"api_key","id":"api-key","label":"SubKit API key"}]` | global | no | no | Provider-neutral browser authentication adapters. OIDC records are public clients and use Authorization Code with PKCE; client secrets are not stored in runtime configuration. |
+| `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
+
+## platform
+Chat platform integrations
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `platform.googlechat.audience` | string | `""` | global | no | yes |  |
+| `platform.googlechat.client_email` | string | `""` | global | no | yes |  |
+| `platform.googlechat.private_key` | string | `""` | global | yes | yes |  |
+| `platform.googlechat.project_id` | string | `""` | global | no | yes |  |
+| `platform.googlechat.sync_turn_timeout_ms` | number | `25000` | global | no | no | Bounded wait for the inline synchronous Google Chat turn before falling back to detached async delivery (must stay under Google's ~30s sync window) |
+| `platform.slack.client_id` | string | `""` | global | no | yes |  |
+| `platform.slack.client_secret` | string | `""` | global | yes | yes |  |
+| `platform.slack.signing_secret` | string | `""` | global | yes | yes |  |
+| `platform.teams.app_id` | string | `""` | global | no | yes |  |
+| `platform.teams.app_password` | string | `""` | global | yes | yes |  |
+
+## storage
+Object storage
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `storage.object_store.access_key_id` | string | `""` | global | yes | no |  |
+| `storage.object_store.bucket` | string | `""` | global | no | no |  |
+| `storage.object_store.endpoint` | string | `""` | global | no | no |  |
+| `storage.object_store.force_path_style` | boolean | `true` | global | no | no |  |
+| `storage.object_store.region` | string | `"us-east-1"` | global | no | no |  |
+| `storage.object_store.secret_access_key` | string | `""` | global | yes | no |  |
+| `storage.object_store.session_token` | string | `""` | global | yes | no |  |
+
+## observability
+Observability
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `observability.analytics.api_key` | string | `""` | global | yes | no | API key for the analytics endpoint. |
+| `observability.analytics.enabled` | boolean | `false` | global | no | no | Enable product-analytics emission. Off by default — no external calls are made unless this is true and an endpoint is configured. |
+| `observability.analytics.endpoint` | string | `""` | global | no | no | Self-hostable analytics ingest endpoint. Empty disables emission even when enabled=true. |
+| `observability.analytics.project` | string | `""` | global | no | no | Project or workspace identifier on the analytics platform. |
+| `observability.deployment_environment` | string | `"development"` | global | no | no | Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute. |
+| `observability.field_truncation_chars` | number | `2048` | global | no | no | Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction. |
+| `observability.langfuse.host` | string | `""` | global | no | no |  |
+| `observability.langfuse.public_key` | string | `""` | global | no | no |  |
+| `observability.langfuse.secret_key` | string | `""` | global | yes | no |  |
+| `observability.otlp.endpoint` | string | `""` | global | no | no |  |
+| `observability.otlp.service_name` | string | `"subkit"` | global | no | no |  |
+| `observability.predictive.connector_unhealthy_pct` | number | `80` | global | no | no | Percent of recent connector calls returning a non-ok health verdict above which connector drift is flagged. |
+| `observability.predictive.dlq_critical_depth` | number | `5` | global | no | no | Standing dead-letter-queue depth at or above which DLQ accumulation is flagged critical (a worker-failure backlog, not a per-window delta). |
+| `observability.predictive.llm_fallback_pct` | number | `80` | global | no | no | Percent of LLM calls falling back to the secondary provider above which primary-provider degradation is flagged. |
+| `observability.predictive.memory_cap_fraction` | number | `0.9` | global | no | no | Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning. |
+| `observability.predictive.pool_saturation_pct` | number | `80` | global | no | no | Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged. |
+| `observability.predictive.transient_retry_rate` | number | `1` | global | no | no | Transient-DB-retries-per-minute above which a flapping Postgres is flagged. |
+| `observability.usage.enabled` | boolean | `false` | global | no | no | Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled. |
+| `observability.usage.hmac_secret` | string | `""` | global | yes | no | Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry. |
+| `observability.usage.retention_days` | number | `90` | global | no | no | Raw usage-event retention in days; aggregate reports may outlive raw rows. |
+
+## egress
+Egress filter
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `egress.mode` | enum("strict" \| "permissive") | `null` | global | no | no | Egress mode: strict blocks private/loopback hosts, permissive allows them. Null falls back to NODE_ENV default. |
+| `egress.provider_hosts_extra` | string[] | `[]` | global | no | no | Extra hostnames counted as LLM providers for token accounting and per-run budgets. Does NOT affect the egress filter — adding a host makes calls to it metered, not permitted. |
+
+## mcp
+MCP transport
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `mcp.api_key` | string | `""` | global | yes | no |  |
+| `mcp.read_only` | boolean | `false` | global | no | no |  |
+
+## errors
+Error ring buffer
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `errors.ring_size` | number | `100` | global | no | yes |  |
+
+## spec
+Spec fetcher
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `spec.allow_private_fetch` | boolean | `false` | global | no | no | Allow OpenAPI spec fetches from private/loopback hosts (test-only) |
+
+## queue
+Queue worker
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
+| `queue.concurrency` | number | `1` | global | no | yes | Executions this replica runs at once. Raising it trades isolation for throughput. Restart required. |
+| `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
+| `queue.crash_recovery_threshold_ms` | number | `0` | global | no | no | Hard age threshold for crash recovery. 0 uses each workflow timeout multiplied by its grace factor. |
+
+## tokens
+Token budget
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code for tokens.prices. The built-in catalog is in USD and applies only while this is USD; otherwise only tokens.prices entries price anything. |
+| `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
+| `tokens.prices` | json | `[]` | tenant | no | no | Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero. |
+
+## operations
+Startup operations
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `operations.seed_skills_at_boot` | boolean | `true` | global | no | yes | Upsert embedded skill seeds for all tenants during startup |
+| `operations.update_check_enabled` | boolean | `true` | global | no | yes | Check for a newer engine release during startup |
+
+## sandbox
+QuickJS JS sandbox limits
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `sandbox.memory_bytes` | number | `134217728` | global | no | no | Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB. |
+| `sandbox.stack_bytes` | number | `2097152` | global | no | no | Max stack size for a JS sandbox run, in bytes. Default 2 MB. |
+| `sandbox.tick_budget` | number | `10000000` | global | no | no | Interrupt-tick budget (coarse runaway backstop, not an opcode count). |
+| `sandbox.transform_wall_ms` | number | `60000` | global | no | no | Wall-clock cap for transform steps, in ms (overridable per step via timeout_ms). Long synchronous transforms block the worker — chunk via for_each instead of raising. Default 60 s. |
+| `sandbox.wall_ms` | number | `30000` | global | no | no | Default wall-clock cap for a JS sandbox run, in ms. Default 30 s. |
+
+## repl
+sk REPL session preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"auto"` | tenant | no | no | Default REPL permission mode for the principal: ask, auto, plan, or yolo. |
+| `repl.portalTokenTtlMin` | number | `15` | tenant | no | no | TTL in minutes for portal tokens minted by the /session slash (1..1440). |
+
+## ui
+REPL chrome preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `ui.personality` | enum("concise" \| "balanced" \| "verbose") | `"balanced"` | tenant | no | no | Assistant response style: concise \| balanced \| verbose. |
+| `ui.statusline.format` | enum("minimal" \| "compact" \| "detailed") | `"compact"` | tenant | no | no | Status-line layout: minimal \| compact \| detailed. |
+| `ui.theme` | enum("auto" \| "light" \| "dark" \| "high-contrast") | `"auto"` | tenant | no | no | REPL color theme: auto \| light \| dark \| high-contrast. |
+| `ui.title.format` | enum("session-id" \| "tenant-session" \| "model-tenant-session") | `"session-id"` | tenant | no | no | Window-title format used by the sk REPL. |
+
+## notifications
+sk REPL notification preferences
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `notifications.inbox.retention_days` | number | `30` | global | no | no | Days a notification inbox task survives before the retention sweep deletes it. |
+| `notifications.push.enabled` | boolean | `false` | tenant | no | no | OS push notifications for long-running execution completion. |
+| `notifications.push.quietHoursEnd` | string | `""` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.quietHoursStart` | string | `""` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.thresholdSec` | number | `30` | tenant | no | no | Minimum elapsed turn seconds before a notification fires. |
+
+## connectors
+Per-connector tunables. Each sub-section is owned by one connector template.
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `connectors.http.max_response_bytes` | number | `104857600` | tenant | no | no | Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB). |
+| `connectors.mcp.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP connector's serialized tool manifest; the heaviest tools are dropped first when exceeded |
+| `connectors.mcp.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
+| `connectors.mcp.tools_list_max_pages` | number | `5` | tenant | no | no | Max tools/list pages followed per external MCP handshake; a server paginating past this keeps only the pages read |
+| `connectors.web_scraper.authoring.extract_too_large_yellow_pct` | number | `30` | tenant | no | no | Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows. |
+| `connectors.web_scraper.authoring.red_sitemap_threshold` | number | `100000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target refuses (Red). |
+| `connectors.web_scraper.authoring.yellow_sitemap_threshold` | number | `10000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target returns Yellow. |
+| `connectors.web_scraper.optimization.min_runs_before_proposing` | number | `3` | tenant | no | no | Minimum recent runs before any candidate is emitted. |
+| `connectors.web_scraper.optimization.sample_size` | number | `10` | tenant | no | no | Number of recent runs the analyzer reads per recipe. |
+| `connectors.web_scraper.optimization.scan_cron` | string | `"0 3 * * *"` | global | no | no | Crontab for the per-tenant optimization scan (default daily 03:00). |
+| `connectors.web_scraper.optimization.trivial_markdown_bytes` | number | `512` | tenant | no | no | Pages whose MarkdownOutput.bytes is below this count as trivial. |
+| `connectors.web_scraper.robots_cache.max_entries` | number | `2000` | global | no | no | LRU ceiling shared across tenants (keyed by tenant_id + origin). |
+| `connectors.web_scraper.robots_cache.ttl_ms` | number | `3600000` | global | no | no | TTL for the per-tenant robots.txt LRU. |
+| `connectors.web_scraper.runtime.default_wait_ms` | number | `0` | tenant | no | no | Floor for between-page wait inside the crawl loop. Raised if robots.txt declares a higher Crawl-delay. |
+| `connectors.web_scraper.runtime.max_chars_markdown` | number | `100000` | tenant | no | no | Per-page markdown output cap (extract_too_large). |
+| `connectors.web_scraper.runtime.max_chars_readability` | number | `100000` | tenant | no | no | Per-page input cap into Readability (extract_too_large). |
+| `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
+| `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
+| `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+
+## Authentication providers
+
+`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `sk settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.
+
+OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an operational auth-provider source: legacy `SK_OVERRIDE_AUTH_PROVIDERS` may only seed a missing canonical value once, like other compatibility imports.
+
+Configured labels are diagnostic metadata only. The common `mcp-auth` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.
+
+<!-- Source: connectors.md -->
+
+# Connector & recipe catalog
+
+What ships in the box: **58 connector templates** across **16 categories**, carrying **240 recipes** — pre-authored, runnable workflows you clone instead of starting from a blank page.
+
+A **template** connects a system: base URL, auth flow, endpoint schema, and a vendor-basics Skill. A **recipe** is a complete workflow shipped on that template — say what you want in a conversation and sk clones the closest recipe as your starting draft.
+
+## Connector templates
+
+### CRM
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **HubSpot** | `hubspot` | http | bearer | HubSpot CRM API |
+| **Salesforce** | `salesforce` | http | oauth2 | Salesforce REST API |
+
+### Payments
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Square** | `square` | http | bearer | Square payments and commerce API |
+| **Stripe** | `stripe` | http | bearer | Stripe payments API |
+
+### E-commerce
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Shopify** | `shopify` | http | header | Shopify Admin REST API |
+
+### Marketing
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Mailchimp** | `mailchimp` | http | bearer | Mailchimp email marketing API |
+
+### Communication
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Google Chat** | `google-chat` | http | oauth2 | Google Chat API |
+| **Google Gmail** | `google-gmail` | http | oauth2 | Google Gmail API |
+| **LinkedIn** | `linkedin` | http | oauth2 | LinkedIn API — member identity (OpenID Connect) and posting (UGC Posts). |
+| **SendGrid** | `sendgrid` | http | bearer | SendGrid email delivery API |
+| **Slack** | `slack` | http | bearer | Slack Web API |
+| **Twilio** | `twilio` | http | basic | Twilio SMS, Voice, and Messaging API |
+
+### Project management
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Asana** | `asana` | http | bearer | Asana project management API |
+| **Jira** | `jira` | http | oauth2 | Jira Cloud REST API. |
+| **Linear** | `linear` | graphql | bearer | Linear GraphQL API |
+| **Monday.com** | `monday` | graphql | bearer | Monday.com GraphQL API |
+| **Xray Cloud (GraphQL)** | `xray-cloud` | graphql | oauth2 | Xray Cloud test-management GraphQL API. |
+
+### Productivity & documents
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Airtable** | `airtable` | http | bearer | Airtable REST API |
+| **Confluence** | `confluence` | http | oauth2 | Confluence Cloud wiki API |
+| **Google Calendar** | `google-calendar` | http | oauth2 | Google Calendar API |
+| **Google Docs** | `google-docs` | http | oauth2 | Google Docs API |
+| **Google Sheets** | `google-sheets` | http | oauth2 | Google Sheets API |
+| **Google Workspace** | `google-workspace` | http | oauth2 | Google Workspace APIs (Gmail, Calendar, Drive) |
+| **HTTP API** | `http` | http | none | Any HTTP or REST API that has no dedicated template: set the base URL, pick how it authenticates, and every request step against it is governed like the rest. |
+| **Notion** | `notion` | http | bearer | Notion API |
+| **Web Scraper** | `web-scraper` | http | none | Fetch public web pages and convert to markdown / extract structured data. |
+
+### File storage
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Dropbox** | `dropbox` | http | oauth2 | Dropbox file storage API |
+| **Google Drive** | `google-drive` | http | oauth2 | Google Drive file storage API |
+
+### Dev tools
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **GitHub (REST)** | `github` | http | bearer | GitHub REST API (date-versioned: 2026-03-10 latest, 2022-11-28 default) — best for write operations (issue creation, PR merge, file commits) where REST is more expressive than GraphQL. |
+| **GitHub (GraphQL)** | `github-graphql` | graphql | bearer | GitHub GraphQL API v4 — one roundtrip instead of N+1 REST fetches for deep traversals (repo → issues → comments → labels). |
+| **Vercel** | `vercel` | http | bearer | Vercel deployment and hosting API |
+
+### Databases
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Firebase** | `firebase` | http | oauth2 | Firebase Firestore REST API |
+| **PostgreSQL** | `postgres` | postgres | none | PostgreSQL relational database |
+| **Supabase** | `supabase` | http | bearer | Supabase PostgREST API |
+| **Supabase (GraphQL)** | `supabase-graphql` | graphql | header | Supabase GraphQL API (pg_graphql at /graphql/v1) — one roundtrip for nested reads instead of N+1 PostgREST calls. |
+
+### Analytics
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Google Search Console** | `google-search-console` | http | oauth2 | Google Search Console API |
+
+### Web scraping
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Browserless** | `browserless` | http | query | Browserless headless Chrome API |
+| **Jina Reader** | `jina-reader` | http | bearer | Jina Reader URL-to-markdown and search API |
+
+### Enterprise & support
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **Intercom** | `intercom` | http | bearer | Intercom customer messaging API |
+| **OAuth2 Generic** | `oauth2-generic` | http | header | Reusable OAuth2 endpoints (token exchange, refresh, introspect, revoke, client_credentials, device code) for arbitrary providers. |
+
+### AI
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **OpenAI** | `openai` | http | bearer | OpenAI API for models, responses, embeddings, files, and structured outputs. |
+
+### Cloud
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **AWS DynamoDB** | `aws-dynamodb` | http | aws_sigv4 | AWS DynamoDB NoSQL database API |
+| **AWS Lambda** | `aws-lambda` | http | aws_sigv4 | AWS Lambda serverless functions API |
+| **AWS S3** | `aws-s3` | s3 | header | Amazon S3 object storage |
+| **AWS SES** | `aws-ses` | http | aws_sigv4 | AWS Simple Email Service API |
+| **AWS SQS** | `aws-sqs` | http | aws_sigv4 | AWS Simple Queue Service API |
+| **Cloudflare** | `cloudflare` | http | bearer | Cloudflare REST API for zones, DNS, Workers, R2, Zero Trust, and account services |
+| **DigitalOcean** | `digitalocean` | http | bearer | DigitalOcean cloud API |
+| **Google Cloud Storage** | `google-cloud-storage` | http | oauth2 | Google Cloud Storage JSON API |
+
+### AWS operations
+
+| Template | slug | driver | auth | What it connects |
+| -------- | ---- | ------ | ---- | ---------------- |
+| **AWS AppSync (Cognito User-Password)** | `appsync-cognito` | graphql | oauth2 | AWS AppSync GraphQL API authenticated via Cognito User-Pool USER_PASSWORD_AUTH. |
+| **AWS AppSync (IAM SigV4)** | `appsync-iam` | graphql | aws_sigv4 | AWS AppSync GraphQL API authenticated via IAM SigV4. |
+| **AWS API Gateway (IAM SigV4)** | `aws-apigw-iam` | http | aws_sigv4 | AWS API Gateway REST endpoint with IAM authorization. |
+| **AWS CloudWatch Alarms** | `aws-cloudwatch-alarms` | http | aws_sigv4 | Amazon CloudWatch Alarms API. |
+| **AWS CloudWatch Logs** | `aws-cloudwatch-logs` | http | aws_sigv4 | Amazon CloudWatch Logs API for log ingestion + Logs Insights query. |
+| **AWS CloudWatch Metrics** | `aws-cloudwatch-metrics` | http | aws_sigv4 | Amazon CloudWatch Metrics API for metric ingestion + statistic queries. |
+| **AWS Cognito User Pools** | `aws-cognito-user-pools` | http | aws_sigv4 | Amazon Cognito User Pools administrative API for users and groups. |
+| **AWS EventBridge** | `aws-eventbridge` | http | aws_sigv4 | Amazon EventBridge API for event publishing + rule management. |
+| **AWS STS** | `aws-sts` | http | aws_sigv4 | AWS Security Token Service — temporary-credential issuance for cross-account / cross-role access. |
+
+## Recipes
+
+Grouped by template. **Trigger** is how the workflow starts: `request` (on demand — chat, CLI, MCP, REST), `schedule` (cron), or `webhook` (an external system calls in). **Also uses** lists connectors beyond the template's own.
+
+### Airtable (`airtable`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-record` | POST a new row with fields. | request | — |
+| `delete-record` | DELETE a record by id. | request | — |
+| `get-record` | Fetch a single record from a table. | request | — |
+| `list-bases` | Enumerate accessible bases via the meta API. | request | — |
+| `list-records` | Page through records with offset-based pagination. | request | — |
+| `list-records-formula` | Run a server-side filter formula against a table. | request | — |
+| `list-tables` | Enumerate tables (and their fields) in a base. | request | — |
+| `update-record` | PATCH a record's fields (partial update). | request | — |
+
+### AWS AppSync (Cognito User-Password) (`appsync-cognito`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-entity` | Starter mutation pattern. | request | — |
+| `list-page` | Starter pattern for AppSync list queries that return items plus nextToken. | request | — |
+| `query-by-id` | Generic AppSync query pattern with explicit variables and body.errors handling. | request | — |
+
+### AWS AppSync (IAM SigV4) (`appsync-iam`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-entity` | Starter mutation pattern. | request | — |
+| `list-page` | Starter pattern for AppSync list queries that return items plus nextToken. | request | — |
+| `query-by-id` | Generic AppSync query pattern with explicit variables and body.errors handling. | request | — |
+
+### Asana (`asana`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `add-comment` | POST a comment story. | request | — |
+| `create-task` | POST a new task to a project. | request | — |
+| `get-task` | Fetch one task record. | request | — |
+| `list-projects` | Enumerate projects. | request | — |
+| `list-tags` | Enumerate tags. | request | — |
+| `list-tasks` | Enumerate tasks for a project. | request | — |
+| `list-users` | Enumerate users in a workspace. | request | — |
+| `list-workspaces` | Enumerate workspaces the user is a member of. | request | — |
+| `me` | Fetch the user record for the PAT/OAuth identity. | request | — |
+| `update-task` | PUT changes to a task (assignee, due date, name). | request | — |
+
+### AWS API Gateway (IAM SigV4) (`aws-apigw-iam`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `signed-get` | Call an IAM-authorized API Gateway GET endpoint. | request | — |
+| `signed-post` | Call an IAM-authorized API Gateway POST endpoint with JSON body. | request | — |
+
+### AWS CloudWatch Alarms (`aws-cloudwatch-alarms`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `describe-alarms` | List alarms by name prefix, state, or alarm-action prefix. | request | — |
+| `disable-actions` | External write. | request | — |
+| `enable-actions` | External write. | request | — |
+| `set-alarm-state` | External write. | request | — |
+
+### AWS CloudWatch Logs (`aws-cloudwatch-logs`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-log-group` | External write. | request | — |
+| `filter-log-events` | Server-side filter pattern over a log group, optionally bounded by a time window. | request | — |
+| `list-log-groups` | Page through all log groups in the account, optionally filtered by name prefix. | request | — |
+| `put-log-event` | External write. | request | — |
+| `query-logs-insights` | Two-step pattern: StartQuery returns a queryId; GetQueryResults polls until the query completes. | request | — |
+| `set-retention` | External write. | request | — |
+
+### AWS CloudWatch Metrics (`aws-cloudwatch-metrics`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `get-metric-data` | Modern GetMetricData endpoint — fetch many metrics + statistics in a single call. | request | — |
+| `get-metric-statistics` | Query average / sum / max / min / sample-count over a time window with a period. | request | — |
+| `list-metrics` | Cursor-paginated listing of metric names + dimensions in a namespace. | request | — |
+| `put-metric-data` | External write. | request | — |
+
+### AWS Cognito User Pools (`aws-cognito-user-pools`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `admin-add-user-to-group` | Add a user to a Cognito group. | request | — |
+| `admin-disable-user` | Disable a user in a Cognito user pool. | request | — |
+| `admin-get-user` | Get one user by username from a user pool. | request | — |
+| `list-users` | List users in a user pool with optional pagination token. | request | — |
+
+### AWS DynamoDB (`aws-dynamodb`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `get-item` | Get one DynamoDB item by key using the JSON protocol. | request | — |
+| `put-item` | Write one DynamoDB item. | request | — |
+| `query-items` | Query a table or index with KeyConditionExpression and optional ExclusiveStartKey. | request | — |
+| `scan-page` | Scan a bounded page and return LastEvaluatedKey; use carefully on large tables. | request | — |
+
+### AWS EventBridge (`aws-eventbridge`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-rule` | External write. | request | — |
+| `disable-rule` | External write. | request | — |
+| `enable-rule` | External write. | request | — |
+| `list-rules` | List rules in a bus, optionally filtered by name prefix. | request | — |
+| `list-targets` | Show every target wired up to a rule (Lambda, SQS, SNS, ECS task, etc.). | request | — |
+| `put-events` | External write. | request | — |
+
+### AWS Lambda (`aws-lambda`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `invoke-function` | Invoke a Lambda function synchronously with a JSON payload. | request | — |
+
+### AWS S3 (`aws-s3`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `delete-object` | Delete one object key. | request | — |
+| `get-object-text` | Download an object and parse it as text. | request | — |
+| `list-prefix` | List objects under a prefix with optional pagination. | request | — |
+| `put-object-text` | Upload text content to an S3 key. | request | — |
+
+### AWS SES (`aws-ses`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `send-email` | Send a simple SES email from a verified identity. | request | — |
+
+### AWS SQS (`aws-sqs`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `delete-message` | Delete one received message by receipt handle. | request | — |
+| `receive-messages` | Receive a bounded batch without deleting it. | request | — |
+| `send-message` | Send one message to a queue URL. | request | — |
+
+### AWS STS (`aws-sts`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `assume-role` | External write (issues new credentials). | request | — |
+| `assume-role-with-web-identity` | Exchange a short-lived OIDC JWT (GitHub Actions, Auth0, custom IdP) for AWS temporary credentials. | request | — |
+| `get-caller-identity` | Returns the account, ARN, and userId of the IAM principal whose credentials signed the call. | request | — |
+| `get-session-token` | External write. | request | — |
+
+### Browserless (`browserless`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `scrape-then-email-digest` | Reliable scrape-then-email pattern for pages that load content via client-side JS. | schedule | `undefined`, `undefined` |
+
+### Cloudflare (`cloudflare`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `list-dns-records` | List DNS records for a Cloudflare zone. | request | — |
+| `list-zones` | List zones visible to the configured API token. | request | — |
+| `verify-token` | Verify that the configured Cloudflare API token is active and accepted. | request | — |
+
+### Firebase (`firebase`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `signin-email-password-then-firestore-read` | Two-step auth-chain pattern. | request | — |
+
+### GitHub (REST) (`github`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-issue` | POST a new issue to a repo. | request | — |
+| `delegated-triage-via-call` | File an issue then invoke a tenant-defined `triage-issue` sub-workflow by slug. | request | — |
+| `fan-out-issues-prs-releases` | Demonstrates ParallelStep — three independent GET requests run concurrently against the same repo (issues, pulls, releases) and the workflow surfaces the merged shape. | request | — |
+| `get-pr` | Fetch one PR by number. | request | — |
+| `get-repo` | Fetch a repo record by `owner/repo`. | request | — |
+| `list-all-repos-paginate-js-form` | Demonstrates LoopStep.data_selector — JS arrow form. | request | — |
+| `list-commits` | Page through commits on the default branch. | request | — |
+| `list-issues` | Page through open issues. | request | — |
+| `list-my-repos` | Page through the authenticated user's repos. | request | — |
+| `list-prs` | Page through open PRs for a repo. | request | — |
+| `list-releases` | Page through repo releases. | request | — |
+| `list-repos-retry-on-secondary-rate-limit` | Demonstrates RequestStep.retry_on_status + retry_backoff_ms. | request | — |
+| `list-workflow-runs` | Page through Actions workflow runs for a repo. | request | — |
+| `me` | Fetch the user record for the PAT/OAuth-authenticated identity. | request | — |
+| `merge-pr-after-approval` | Open a pull request, then pause until a reviewer POSTs an `pr_approved` signal to /v1/executions/{execution_id}/signals (typically via a portal-token approval link), then merge. | request | — |
+
+### GitHub (GraphQL) (`github-graphql`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `list-viewer-repositories` | Fetch the first page of repositories visible to the authenticated viewer with pageInfo for follow-up cursor pagination. | request | — |
+| `repository-issues` | Fetch issues for an owner/repo pair with labels, assignees, and cursor metadata. | request | — |
+| `repository-pull-requests` | Fetch recent pull requests with review status signals and cursor metadata. | request | — |
+| `search-repositories` | Run a GitHub GraphQL search query and return repository nodes plus rate-limit cost. | request | — |
+| `viewer` | Fetch the authenticated viewer and current GraphQL rate-limit state. | request | — |
+
+### HubSpot (`hubspot`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-contact` | POST a new contact with email + firstname + lastname properties. | request | — |
+| `get-contact` | Fetch a single contact record. | request | — |
+| `list-companies` | Page through CRM companies. | request | — |
+| `list-contacts` | Page through CRM contacts with cursor pagination. | request | — |
+| `list-deals` | Page through CRM deals with stage + amount surfaced. | request | — |
+| `list-owners` | Enumerate CRM owners (users assigned to records). | request | — |
+| `list-pipelines` | Enumerate deal pipelines and their stages. | request | — |
+| `list-properties-contacts` | Return every property defined on the contact object — useful for property discovery before authoring. | request | — |
+| `list-tickets` | Page through CRM tickets. | request | — |
+| `postmortem-due-in-n-days-via-state` | Schedule + State multi-day lifecycle. | schedule | — |
+| `search-contacts-by-email` | Use the CRM search API to find contacts whose primary email matches. | request | — |
+
+### Intercom (`intercom`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-contact` | POST a new contact (role=user, email). | request | — |
+| `get-contact` | Fetch a single contact. | request | — |
+| `list-admins` | Enumerate admins. | request | — |
+| `list-contacts` | Search contacts ordered by created desc. | request | — |
+| `list-conversations` | Search conversations ordered by updated_at desc. | request | — |
+| `list-tags` | Enumerate tags in the workspace. | request | — |
+| `me` | Identity probe. | request | — |
+| `reply-to-conversation` | POST a reply (admin replies via assignee). | request | — |
+| `trial-nurture-day-1-3-7-14-via-state` | Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. | schedule | — |
+
+### Jina Reader (`jina-reader`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `sec-filing-to-markdown` | Pattern for converting SEC filing HTML pages to markdown for downstream extraction. | request | — |
+| `url-to-markdown` | Fetch a web page through Jina Reader and return clean markdown. | request | — |
+
+### Jira (`jira`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `list-my-issues` | Fetch every issue assigned to the current user regardless of status. | request | — |
+| `list-open-issues` | Fetch issues assigned to the current user whose lifecycle is not Done, sorted by most recent update. | request | — |
+| `search-issues-by-jql` | Run an arbitrary JQL query against the Jira /search endpoint. | request | — |
+
+### Linear (`linear`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-issue` | Mutation to create an issue with a title. | request | — |
+| `get-issue` | Fetch one issue with its state + assignee. | request | — |
+| `list-cycles` | Enumerate cycles for a team. | request | — |
+| `list-issues` | First 50 open issues for a team, ordered by createdAt desc. | request | — |
+| `list-projects` | Enumerate projects with their progress. | request | — |
+| `list-teams` | Enumerate teams the user belongs to. | request | — |
+| `update-issue` | Mutation to update title / description / state. | request | — |
+| `viewer` | Identity probe via GraphQL `viewer { id email name }`. | request | — |
+
+### LinkedIn (`linkedin`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-post` | Publish a text post to the authenticated member's LinkedIn feed. | request | — |
+
+### Mailchimp (`mailchimp`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `add-member` | POST a subscriber. | request | — |
+| `campaign-report` | Engagement summary for a campaign. | request | — |
+| `list-audiences` | Enumerate audiences. | request | — |
+| `list-campaigns` | Page through campaigns. | request | — |
+| `list-members` | Page through members. | request | — |
+| `list-tags` | Enumerate tags. | request | — |
+| `ping` | Probe the API to validate the API key and data center suffix. | request | — |
+| `send-campaign` | Trigger send for a campaign id. | request | — |
+
+### Monday.com (`monday`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `complexity-probe` | Read the remaining complexity budget — useful before bulk operations. | request | — |
+| `create-item` | Add a new item to a board with column values. | request | — |
+| `get-board` | Fetch one board with its columns + first 100 items. | request | — |
+| `list-boards` | Page through accessible boards. | request | — |
+| `list-users` | Enumerate users. | request | — |
+| `list-workspaces` | Enumerate workspaces. | request | — |
+| `me` | Identity probe via GraphQL `me { id email name }`. | request | — |
+| `update-item-column` | Change a single column on an item. | request | — |
+
+### Notion (`notion`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-page` | Add a new row to a database with title + properties. | request | — |
+| `get-database` | Fetch one database's schema (properties + types). | request | — |
+| `get-page` | Fetch a single page record by id. | request | — |
+| `list-databases` | Enumerate databases the integration has access to. | request | — |
+| `list-page-children` | Page through the block tree under a page. | request | — |
+| `list-users` | Enumerate users in the workspace. | request | — |
+| `me` | Identity probe — useful before driving the API. | request | — |
+| `query-database` | Run a database query with filter + sort. | request | — |
+| `search` | Full-text search across pages + databases the integration sees. | request | — |
+| `update-page` | PATCH a page's properties block. | request | — |
+
+### OAuth2 Generic (`oauth2-generic`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `client-credentials-grant` | RFC 6749 §4.4 client_credentials grant. | request | — |
+| `device-code-flow` | First leg of the device-authorization grant for input-constrained devices (CLIs, TVs, IoT). | request | — |
+| `exchange-code-for-token` | RFC 6749 §4.1 authorization-code grant. | request | — |
+| `introspect-token` | Ask the authorization server whether a token is still active and what scopes / subject it represents. | request | — |
+| `refresh-access-token` | RFC 6749 §6 refresh-token grant. | request | — |
+| `revoke-token` | External write. | request | — |
+
+### OpenAI (`openai`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-embedding` | Create one text embedding for downstream semantic matching. | request | — |
+| `list-models` | List models available to the API key. | request | — |
+| `structured-extraction` | Extract people from text using a JSON schema response format. | request | — |
+
+### PostgreSQL (`postgres`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `active-connections` | pg_stat_activity snapshot — useful when investigating a stuck query or a connection storm. | request | — |
+| `atomic-debit-credit-double-entry` | Demonstrates RequestStep.sql.also — both the debit and credit run inside one transaction; either both commit or both roll back. | request | — |
+| `describe-table` | Return column name, data type, nullability, and default for a given table. | request | — |
+| `export-large-table-stream` | Demonstrates RequestStep.sql.cursor — instead of buffering the full result set in memory, the driver streams rows in batches of 1000 via a server-side cursor. | request | — |
+| `list-indexes` | Return index name, columns, and uniqueness for a target table. | request | — |
+| `list-schemas` | Enumerate non-system schemas. | request | — |
+| `list-tables` | List every table in the `public` schema with row-count estimates from pg_class. | request | — |
+| `recent-rows` | ORDER BY a timestamp column (default `created_at`) DESC LIMIT N. | request | — |
+| `row-count` | SELECT COUNT(*) for the supplied table. | request | — |
+| `table-bytes` | Use pg_total_relation_size to rank tables. | request | — |
+| `update-must-affect-exactly-one-row` | Demonstrates RequestStep.expected_row_count — UPDATE that affects more or fewer than one row triggers `expected_row_count_mismatch` and rolls back. | request | — |
+
+### SendGrid (`sendgrid`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-list` | POST a new marketing list. | request | — |
+| `get-template` | Fetch one template (versions + active). | request | — |
+| `list-contacts` | Page through marketing contacts. | request | — |
+| `list-stats` | Aggregated stats for the last 7 days. | request | — |
+| `list-suppressions` | Enumerate the bounce suppression list. | request | — |
+| `list-templates` | Page through dynamic templates. | request | — |
+| `send-from-template` | Send transactional mail using a dynamic template id and substitution data. | request | — |
+| `send-mail` | POST /v3/mail/send with from + to + subject + content. | request | — |
+
+### Shopify (`shopify`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `list-customers` | Page through customers. | request | — |
+| `list-orders` | Page through open orders. | request | — |
+| `list-products` | Page through products in the catalog. | request | — |
+| `shop-info` | Smoke probe — fetches store metadata. | request | — |
+
+### Slack (`slack`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `add-reaction` | Star/+1/etc — react to a message. | request | — |
+| `auth-test` | Validate the bot token. | request | — |
+| `channel-history` | Fetch recent messages from a channel. | request | — |
+| `create-channel` | Provision a new channel. | request | — |
+| `invite-user` | Add users to a channel. | request | — |
+| `list-channels` | Page through public channels with cursor pagination. | request | — |
+| `list-users` | Enumerate workspace members. | request | — |
+| `post-message` | Send a chat.postMessage to a channel id. | request | — |
+| `post-then-pause-then-edit` | Demonstrates WaitStep (short, in-process, duration_ms ≤ 6h). | request | — |
+| `team-info` | Workspace metadata (name, domain, enterprise). | request | — |
+| `upload-file` | Upload an attachment to a channel via files.upload. | request | — |
+
+### Square (`square`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `create-customer` | POST a new customer with given_name + email. | request | — |
+| `inventory-counts` | Fetch real-time inventory counts. | request | — |
+| `list-catalog-items` | Page through catalog items (ITEM type). | request | — |
+| `list-customers` | Page through customers. | request | — |
+| `list-locations` | Smoke probe — every Square workflow starts with a location id. | request | — |
+| `list-orders` | POST /orders/search with a location filter. | request | — |
+| `list-payments` | Page through Payments. | request | — |
+| `list-team-members` | Search team members at a location. | request | — |
+| `merchant-info` | Fetch merchant metadata. | request | — |
+| `refund-payment` | POST /refunds with payment_id + amount + currency. | request | — |
+
+### Stripe (`stripe`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `charge-or-refund-by-amount` | Demonstrates BranchStep — when amount > 0, capture a charge against the customer; when amount < 0, issue a refund of the absolute value against the most recent charge. | request | — |
+| `create-customer` | POST a new customer record. | request | — |
+| `create-customer-idempotent` | Demonstrates RequestStep.idempotency_key — the workflow can re-run with the same email and Stripe will return the original customer instead of creating a duplicate. | request | — |
+| `create-payment-intent` | POST a new payment intent. | request | — |
+| `daily-charges-digest` | Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. | schedule | — |
+| `get-charge` | Fetch a single charge record by its Stripe id. | request | — |
+| `get-customer` | Fetch a single customer record by its Stripe id. | request | — |
+| `incremental-charges-via-state` | Canonical AI-authoring few-shot for the multi-day lifecycle pattern: a daily schedule wakes the workflow, `state_read` pulls the last-synced cursor (`null` on the first run via `default_value`), the request lists only newer charges, and `state_write` advances the watermark in the same transaction as the step result. | schedule | — |
+| `list-balance-transactions` | Page through Stripe balance transactions for finance reporting. | request | — |
+| `list-charges` | Page through charges, surfacing id + amount + currency + status. | request | — |
+| `list-charges-validate-no-zero-amount` | Demonstrates WorkflowDef.validation_function — a QuickJS expression evaluated against the final output. | request | — |
+| `list-customers` | Page through the most recent customers, returning id + email + created timestamp. | request | — |
+| `list-invoices` | Page through invoices, surfacing id + status + amount_due + customer. | request | — |
+| `list-payment-intents` | Page through payment intents with cursor pagination. | request | — |
+| `list-prices` | List prices, optionally scoped to one product id. | request | — |
+| `list-products` | Page through Stripe products. | request | — |
+| `list-subscriptions` | List subscriptions, defaulting to active status. | request | — |
+| `new-customer-enrich-notify` | Three-connector reference recipe. | request | `undefined`, `undefined`, `undefined` |
+| `on-charge-failed-notify-slack` | Webhook-triggered: when Stripe fires `charge.failed` against the workflow's inbound URL, this recipe verifies the Stripe signature, extracts the failed-charge fields (id, amount, currency, decline reason, customer email), and posts a redacted alert into the operator's chosen Slack channel. | webhook | `undefined` |
+
+### Twilio (`twilio`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `account-balance` | Fetch account balance + currency. | request | — |
+| `get-message` | Fetch a message record. | request | — |
+| `list-calls` | Recent voice call records. | request | — |
+| `list-messages` | Page through Messages.json. | request | — |
+| `list-numbers` | Enumerate purchased numbers. | request | — |
+| `send-sms` | POST a message via Messages.json — pass From + To + Body. | request | — |
+| `send-whatsapp` | Send via the WhatsApp From channel — From and To prefixed with `whatsapp:`. | request | — |
+| `verify-phone-lookup` | Use the Lookup API to validate a phone number. | request | — |
+
+### Vercel (`vercel`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `get-deployment` | Fetch one deployment by id or URL. | request | — |
+| `list-deployments` | List recent deployments, optionally scoped by project. | request | — |
+| `list-projects` | List projects visible to the token. | request | — |
+
+### Web Scraper (`web-scraper`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `crawl-sitemap-to-markdown` | Fetch a site's sitemap.xml, loop over its <loc> entries, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. | request | — |
+| `extract-main-content` | GET a URL, run Mozilla Readability to isolate the article, then convert to markdown. | request | — |
+| `fetch-url-as-markdown` | GET a single public URL and convert its HTML body to markdown. | request | — |
+
+### Xray Cloud (GraphQL) (`xray-cloud`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `get-test-by-issue-id` | Fetch a single Xray test entity by its Jira issue ID. | request | — |
+| `introspect-schema` | Run a standard GraphQL introspection query to verify the credential and enumerate available types. | request | — |
