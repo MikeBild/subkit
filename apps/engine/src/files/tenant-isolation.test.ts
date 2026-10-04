@@ -16,6 +16,7 @@ import { apiKeys, conversations, tenants, users } from "../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { registerResourcesCapability } from "../mcp/capabilities/resources.ts";
 import { PubSubEmitter } from "../pubsub/emitter.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import {
   createDeterministicHexFactory,
   createDeterministicUuidFactory,
@@ -78,7 +79,11 @@ beforeAll(async () => {
 
   const [uB] = await srv.db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "admin@iso-b.local", role: "admin" })
+    .values({
+      tenant_id: tenantBId,
+      email: "admin@iso-b.local",
+      role_id: await builtinRoleId(srv.db, "admin"),
+    })
     .returning();
   if (!uB) throw new Error("seed user B");
   // Deterministic 24 bytes encoded base64url, then sliced like the

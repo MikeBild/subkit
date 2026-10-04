@@ -730,11 +730,6 @@ export const InkApp: React.FC<InkAppProps> = ({
     showInfo,
   });
 
-  // Banner once on mount so we don't cover the terminal prompt on
-  // exit; clear it after the first prompt submission so the message
-  // list gets the vertical space back.
-  const showBanner = session.messages.length === 0;
-
   const welcomeRow = (
     <WelcomeRow
       key="welcome"
@@ -769,10 +764,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       void submitElicitationResponse(elicitationId, output, reason);
     },
   });
-  // Suppress the unused-var warning while the legacy guard is still
-  // referenced below (e.g. starter-actions visibility tests).
-  void showBanner;
-  void showWelcomeActions;
 
   const content = (
     <Box flexDirection="column">
@@ -949,7 +940,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       ) : null}
 
       {/* Prefix slash-command suggestions (hidden while a pane is open).
-          The legacy SuggestionList drives ranked picks once the user
+          The SuggestionList drives ranked picks once the user
           starts typing; the new SlashSuggest adds the discovery
           welcome hint when the buffer is empty so first-time users
           stop guessing at /. */}

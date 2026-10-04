@@ -32,7 +32,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
@@ -254,7 +253,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
       // Route through the structured envelope so the operator
       // gets a `code` + `hint` + `details` instead of a generic
       // `internal_error`.
-      throw HttpError.withEnvelope(500, "unknown_principal_kind", "principal.kind not recognised", {
+      throw new HttpError(500, "unknown_principal_kind", "principal.kind not recognised", {
         hint: "this is an engine bug — file an issue with the trace_id",
         details: { principal_kind: String(principal.kind) },
       });
@@ -267,7 +266,6 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
       const [row] = await db
         .select({
           email: users.email,
-          role_legacy: users.role,
           role_name: roles.name,
         })
         .from(users)
@@ -276,7 +274,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         .limit(1);
       if (row) {
         email = row.email ?? email;
-        roleName = resolveEffectiveUserRole(row.role_legacy, row.role_name);
+        roleName = row.role_name;
       }
     } else {
       // Hoisted to the static import at the top of the file.
@@ -314,14 +312,9 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         row_tenant_id: tenantRow.id,
       });
-      throw HttpError.withEnvelope(
-        500,
-        "tenant_row_mismatch",
-        "tenants query returned a foreign tenant",
-        {
-          hint: "this is an engine bug — file an issue with the trace_id",
-        },
-      );
+      throw new HttpError(500, "tenant_row_mismatch", "tenants query returned a foreign tenant", {
+        hint: "this is an engine bug — file an issue with the trace_id",
+      });
     }
 
     // Probe all UX-gating permissions in parallel. `can()` is the

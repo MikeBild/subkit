@@ -3214,18 +3214,10 @@
             "type": "string"
           },
           "role": {
-            "type": "string",
-            "enum": [
-              "admin",
-              "member",
-              "enduser"
+            "type": [
+              "string",
+              "null"
             ]
-          },
-          "effective_role": {
-            "type": "string"
-          },
-          "role_consistent": {
-            "type": "boolean"
           },
           "status": {
             "type": "string",
@@ -3251,8 +3243,6 @@
           "tenant_id",
           "email",
           "role",
-          "effective_role",
-          "role_consistent",
           "status",
           "oauth_connections",
           "created_at",
@@ -6240,9 +6230,9 @@
           "slug": {
             "type": "string"
           },
-          "legacy": {
+          "invalid": {
             "type": "boolean",
-            "description": "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_legacy` until the workflow is saved again."
+            "description": "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_invalid` until the workflow is saved again."
           },
           "base_url": {
             "type": [
@@ -6649,7 +6639,7 @@
         "required": [
           "workflow_id",
           "slug",
-          "legacy",
+          "invalid",
           "base_url",
           "http",
           "visibility",
@@ -8120,9 +8110,6 @@
           },
           "fail_fast": {
             "type": "boolean"
-          },
-          "item_var": {
-            "type": "string"
           }
         },
         "required": [
@@ -8464,7 +8451,7 @@
             "type": "string"
           },
           "dag": {},
-          "legacy": {
+          "invalid": {
             "type": "boolean"
           }
         },
@@ -8474,7 +8461,7 @@
           "version",
           "note",
           "created_at",
-          "legacy"
+          "invalid"
         ]
       },
       "Workflow": {
@@ -8546,9 +8533,9 @@
               "null"
             ]
           },
-          "legacy": {
+          "invalid": {
             "type": "boolean",
-            "description": "True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_legacy` until it is saved again in the current format."
+            "description": "True when the current version is stored in an earlier definition format. The workflow is shown as stored; a run of it is refused with `workflow_version_invalid` until it is saved again in the current format."
           },
           "steps": {
             "type": "array",
@@ -8641,7 +8628,7 @@
           "health_state",
           "health_reason",
           "health_changed_at",
-          "legacy",
+          "invalid",
           "steps",
           "input_schema",
           "output_schema",
@@ -17496,9 +17483,6 @@
               "prod"
             ]
           },
-          "execute_writes": {
-            "type": "boolean"
-          },
           "include_step_results": {
             "type": "boolean"
           },
@@ -23664,10 +23648,7 @@
             "type": "string"
           },
           "role_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
         },
         "required": [
@@ -23680,12 +23661,12 @@
         "type": "object",
         "properties": {
           "role_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           }
-        }
+        },
+        "required": [
+          "role_id"
+        ]
       },
       "RbacGrantListResponse": {
         "type": "object",
@@ -39500,7 +39481,7 @@
         "tags": [
           "conversations"
         ],
-        "summary": "Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are held unless execute_writes is true.",
+        "summary": "Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are always held.",
         "security": [
           {
             "bearerAuth": []
@@ -44808,7 +44789,7 @@
         "tags": [
           "rbac"
         ],
-        "summary": "Assign or clear a user's role",
+        "summary": "Assign a user's role",
         "security": [
           {
             "bearerAuth": []

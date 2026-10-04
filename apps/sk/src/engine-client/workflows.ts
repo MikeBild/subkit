@@ -26,7 +26,7 @@ export type WorkflowVersionEntry = {
   version: number;
   note: string | null;
   created_at: string;
-  legacy: boolean;
+  invalid: boolean;
 };
 
 /** The engine's answer to "how is this workflow called" — the fields `sk` reads. */
@@ -47,7 +47,7 @@ export const workflowsMethods = {
   // --------------------------- Workflow versions ---------------------------
   /** Every committed version of a workflow, newest first. The engine pages
    *  the history, so this reads page after page until it has all of it.
-   *  `legacy` marks a version that can be read but no longer restored. */
+   *  `invalid` marks a version that can be read but no longer restored. */
   async listWorkflowVersions(
     this: EngineClient,
     workflowId: string,

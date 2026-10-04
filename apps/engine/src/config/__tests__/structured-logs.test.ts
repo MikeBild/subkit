@@ -5,8 +5,6 @@
 //
 //   - `module:"config" action:"loaded"` once per boot, with a
 //     leaf-source tally
-//   - `module:"config" action:"legacy_env.seeded"` when a legacy
-//     SK_OVERRIDE_* value is imported, listing only leaf names
 //   - `module:"config" action:"setting.applied"` once per
 //     setConfigKey commit, with leaf path + scope + sensitive flag
 //     + restart flag + changed flag (NEVER the value)
@@ -20,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _resetConfigForTests, loadConfig, setConfigKey } from "../loader.ts";
+import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../loader.ts";
 
 interface CapturedLog {
   module?: string;
@@ -134,51 +132,16 @@ describe("config loader — structured logs", () => {
     expect(logLines((l) => l.module === "config" && l.action === "loaded").length).toBe(2);
   });
 
-  test("emits legacy_env.seeded when a missing leaf is imported", async () => {
+  test("an SK_OVERRIDE_* environment value never reaches the configuration", async () => {
     await loadConfig({
       env: {
         DATABASE_URL: "postgres://x",
         NODE_ENV: "test",
-        SK_OVERRIDE_LLM_API_KEY: "x",
+        SK_OVERRIDE_LLM_API_KEY: "env-value",
       },
       configPathOverride: cfgPath,
     });
-    const imports = logLines((l) => l.module === "config" && l.action === "legacy_env.seeded");
-    expect(imports.length).toBe(1);
-    expect(imports[0]!.seeded_keys).toEqual(["llm.api_key"]);
-  });
-
-  test("does not emit legacy env events when no SK_OVERRIDE_* is present", async () => {
-    await loadConfig({
-      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
-      configPathOverride: cfgPath,
-    });
-    const events = logLines(
-      (l) => l.module === "config" && String(l.action).startsWith("legacy_env."),
-    );
-    expect(events.length).toBe(0);
-  });
-
-  test("emits legacy_env.ignored when canonical config already has the leaf", async () => {
-    await loadConfig({
-      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
-      configPathOverride: cfgPath,
-    });
-    _resetConfigForTests();
-    captured.length = 0;
-
-    await loadConfig({
-      env: {
-        DATABASE_URL: "postgres://x",
-        NODE_ENV: "test",
-        SK_OVERRIDE_LLM_API_KEY: "stale-secret-value",
-      },
-      configPathOverride: cfgPath,
-    });
-    const ignored = logLines((l) => l.module === "config" && l.action === "legacy_env.ignored");
-    expect(ignored.length).toBe(1);
-    expect(ignored[0]!.ignored_keys).toEqual(["llm.api_key"]);
-    expect(JSON.stringify(ignored[0])).not.toContain("stale-secret-value");
+    expect(getConfig().llm.api_key).not.toBe("env-value");
   });
 
   test("emits session-secret auto-gen info line on first boot", async () => {

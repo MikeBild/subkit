@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer, loadAuthProvidersForTest } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -98,7 +99,11 @@ describe("GET /v1/identity/providers", () => {
   test("a principal without identity:read is answered too — there is nothing to withhold", async () => {
     const [user] = await ctx.db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "enduser-providers@test.local", role: "enduser" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "enduser-providers@test.local",
+        role_id: await builtinRoleId(ctx.db, "enduser"),
+      })
       .returning();
     expect(user).toBeDefined();
     const plaintext = `wf_live_${"x".repeat(32)}`;

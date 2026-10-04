@@ -15,7 +15,6 @@
       "body": ["fetch_resources", "collect_project"],
       "kind": "loop",
       "over": "$scope.fetch_projects.data.projects",
-      "item_var": "project",
       "on_error": "fail"
     },
     {

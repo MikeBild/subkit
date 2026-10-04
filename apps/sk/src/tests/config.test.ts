@@ -45,8 +45,8 @@ describe("sk config", () => {
       path,
       JSON.stringify({
         engine_url: "http://localhost:9999",
-        api_key: "legacy_key",
-        active_tenant_id: "t-legacy",
+        api_key: "flat_key",
+        active_tenant_id: "t-flat",
       }),
     );
     const cfg = loadConfig(path);

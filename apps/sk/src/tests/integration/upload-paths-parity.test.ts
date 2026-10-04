@@ -1,6 +1,6 @@
 // Upload-paths-parity: every CLI entry point that uploads a file must
 // call through `uploadPath` (which routes to either `uploadInline` or
-// `batchCreateFiles + putToPresignedUrl + finalizeFile`). No path may
+// `batchCreateFiles + putUploadBytes + finalizeFile`). No path may
 // bypass the shared helper and hit a different endpoint.
 //
 // The test simulates each entry point with a controlled fetch mock that

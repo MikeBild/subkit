@@ -60,7 +60,6 @@ import { saveConnectorDraftTool } from "./save-connector-draft.ts";
 import { saveLearningTool } from "./save-learning.ts";
 import { saveWorkflowDraftTool } from "./save-workflow-draft.ts";
 import { searchDocsTool } from "./search-docs.ts";
-import { searchKnowledgeTool } from "./search-knowledge.ts";
 import { startConnectorFromDescriptionTool } from "./start-connector-from-description.ts";
 import { startConnectorFromTemplateTool } from "./start-connector-from-template.ts";
 import { startWorkflowFromRecipeTool } from "./start-workflow-from-recipe.ts";
@@ -220,8 +219,8 @@ export interface ToolResultPause {
  * Discriminated union returned by every conversation tool.
  *
  * `ok: true`  — tool succeeded; `data` carries the payload.
- * `ok: false` — tool failed; callers may use the legacy `data` field
- *   OR the structured error fields (`error_code`, `message`, `details`,
+ * `ok: false` — tool failed; the failure rides `data` and/or the
+ *   structured error fields (`error_code`, `message`, `details`,
  *   `next_best_actions`). Prefer the structured form for new rejections
  *   so the loop can fold `next_best_actions` into the next turn's
  *   `prior_failures`.
@@ -238,7 +237,7 @@ export type ToolResult =
     }
   | {
       ok: false;
-      /** Legacy payload field — present on most existing `ok: false` results. */
+      /** Failure payload fed back to the model. */
       data?: unknown;
       /** Machine-readable rejection code. */
       error_code?: string;
@@ -457,7 +456,6 @@ register(inspectAuthoringContextTool);
 register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);
 register(inspectWorkflowTool);
-register(searchKnowledgeTool);
 register(saveLearningTool);
 register(searchDocsTool);
 register(analyzeScrapeTargetTool);
@@ -561,16 +559,16 @@ register(listDraftSnapshotsTool);
 register(restoreDraftSnapshotTool);
 register(restoreWorkflowVersionTool);
 
-// Auto-generated read tools covering every read-surface domain:
+// Engine-API read tools covering every read-surface domain:
 // workflows, connectors, executions, skills, skill-candidates,
 // patch-candidates, knowledge-sources, audit, metrics, identity
 // (whoami + users + api-keys + portal-tokens + system-accounts),
 // rbac (roles + permissions), hooks, subscriptions, status.
-import { ALL_GENERATED_READ_TOOLS } from "./generated/index.ts";
-import { ALL_GENERATED_WRITE_TOOLS } from "./generated/writes/index.ts";
+import { ALL_ENGINE_API_READ_TOOLS } from "./engine-api/index.ts";
+import { ALL_ENGINE_API_WRITE_TOOLS } from "./engine-api/writes/index.ts";
 
-for (const t of ALL_GENERATED_READ_TOOLS) register(t);
-for (const t of ALL_GENERATED_WRITE_TOOLS) register(t);
+for (const t of ALL_ENGINE_API_READ_TOOLS) register(t);
+for (const t of ALL_ENGINE_API_WRITE_TOOLS) register(t);
 
 export function getTool(name: string): ConversationTool | undefined {
   return registry.get(name);

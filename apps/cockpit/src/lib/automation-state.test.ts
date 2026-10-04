@@ -1073,40 +1073,40 @@ describe("the extension thresholds are the engine's", () => {
 });
 
 describe("a version stored in an earlier format", () => {
-  const legacy = { ...hooked, legacy: true };
+  const invalid = { ...hooked, invalid: true };
 
   test("is its own state, whatever is approved or would start it", () => {
     const state = automationState(
-      inputs({ workflow: legacy, status: status(["authorized"]), authorities: [authority()] }),
+      inputs({ workflow: invalid, status: status(["authorized"]), authorities: [authority()] }),
     );
-    expect(state.state).toBe("legacy");
+    expect(state.state).toBe("invalid");
     // Changing it is an author's act — in the chat.
     expect(state.primaryAction).toEqual({ kind: "repair", via: "chat", stepId: null });
     expect(state.pendingEnvironments).toEqual([]);
     // No approval is offered for a version the engine would refuse to approve.
-    expect(automationState(inputs({ workflow: legacy })).state).toBe("legacy");
+    expect(automationState(inputs({ workflow: invalid })).state).toBe("invalid");
     expect(
       automationState(
         inputs({
-          workflow: legacy,
+          workflow: invalid,
           schedules: [schedule({ paused: true })],
           status: status(["paused"]),
         }),
       ).state,
-    ).toBe("legacy");
+    ).toBe("invalid");
   });
 
   test("a saved change is the way out, and leads", () => {
-    const state = automationState(inputs({ workflow: { ...legacy, draft_version_id: DRAFT } }));
+    const state = automationState(inputs({ workflow: { ...invalid, draft_version_id: DRAFT } }));
     expect(state.state).toBe("apply");
   });
 
   test("the chat card says the state and offers no approval", () => {
-    const card = automationCard(automationState(inputs({ workflow: legacy })), 1);
+    const card = automationCard(automationState(inputs({ workflow: invalid })), 1);
     expect(card).toMatchObject({ act: "none", environments: [] });
-    expect(card.titleKey).toBe(AUTOMATION_STATE_KEYS.legacy);
+    expect(card.titleKey).toBe(AUTOMATION_STATE_KEYS.invalid);
     expect(CATALOGS.de[card.hintKey]).toContain("älteren Format");
     expect(CATALOGS.en[card.hintKey]).toContain("earlier format");
-    expect(CATALOGS.de[AUTOMATION_STATE_KEYS.legacy]).toBe("Altes Format");
+    expect(CATALOGS.de[AUTOMATION_STATE_KEYS.invalid]).toBe("Altes Format");
   });
 });

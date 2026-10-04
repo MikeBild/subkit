@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { EngineClient } from "../engine-client.ts";
 
-test("CLI rejects legacy successful HTTP responses that did not apply a repair", async () => {
+test("CLI rejects successful HTTP responses that did not apply a repair", async () => {
   for (const body of [
     { applied: false, workflow_version_id: null },
     { applied: true, workflow_version_id: null },

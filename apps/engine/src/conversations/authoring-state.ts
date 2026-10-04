@@ -24,6 +24,7 @@ import {
   normalizeSummary,
   normalizeWorkflowDraft,
   nowIso,
+  surfaceModeFor,
 } from "./authoring-state/normalize.ts";
 import {
   checkpointSeq,
@@ -65,16 +66,11 @@ export function createEmptyDraftDocument(mode: AuthoringMode = "onboarding"): Dr
     workflow: createEmptyWorkflowDraft(),
     connector: null,
     latest_preview: null,
-    state: createEmptyState(modeFromLegacy(mode)),
+    state: createEmptyState(surfaceModeFor(mode)),
   });
 }
 
-function modeFromLegacy(mode: AuthoringMode | undefined): "connector" | "workflow" {
-  if (mode === "workflow_authoring" || mode === "resume_review") return "workflow";
-  return "connector";
-}
-
-function inferLegacyMode(draft: DraftDocument): AuthoringMode {
+function inferDraftMode(draft: DraftDocument): AuthoringMode {
   if (
     draft.mode === "onboarding" ||
     draft.mode === "connector_authoring" ||
@@ -238,7 +234,7 @@ function applyWorkflowMutation(
 export function refreshDraftSummary(draft: DraftDocument): DraftDocument {
   const workflow = normalizeWorkflowDraft(draft);
   const connector = draft.connector ?? null;
-  const mode = inferLegacyMode({ ...draft, workflow, connector });
+  const mode = inferDraftMode({ ...draft, workflow, connector });
   const existingSummary = normalizeSummary(draft) ?? undefined;
   const state = normalizeState(draft, mode);
   const active_target = computeActiveTarget(state, connector, workflow);

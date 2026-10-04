@@ -85,7 +85,7 @@ export async function beginConnectorOAuthDance(
   const signIn = connectorSignIn(connector);
   if (signIn?.kind !== "oauth") {
     throw signIn
-      ? HttpError.withEnvelope(
+      ? new HttpError(
           400,
           "sign_in_route_mismatch",
           "this connector does not sign in through oauth/start",
@@ -189,7 +189,7 @@ export async function beginConnectorOAuthDance(
     // (template OAuth credentials never stored) was undiagnosable from
     // the CLI.
     if (resolution.missing === "template_oauth_credentials") {
-      throw HttpError.withEnvelope(
+      throw new HttpError(
         400,
         "bad_request",
         `template "${connector.template_slug}" requires tenant OAuth client credentials, and none are stored`,

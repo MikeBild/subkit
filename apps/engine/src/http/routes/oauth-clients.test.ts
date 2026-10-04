@@ -15,7 +15,7 @@ import {
   mcpOauthClients,
   mcpOauthRefreshTokens,
 } from "../../db/schema/mcp_oauth.ts";
-import { createRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -39,7 +39,6 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "member-oauth-clients@test.local",
-      role: "member",
       role_id: noopRole.id,
     })
     .returning();
@@ -87,7 +86,7 @@ async function seedPerson(): Promise<{ id: string; email: string }> {
   const email = `approver-${++personSeq}@test.local`;
   const [row] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email, role: "admin" })
+    .values({ tenant_id: ctx.tenantId, email, role_id: await builtinRoleId(ctx.db, "admin") })
     .returning({ id: users.id, email: users.email });
   if (!row) throw new Error("seed person failed");
   return row;

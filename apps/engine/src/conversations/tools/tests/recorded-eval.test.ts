@@ -152,13 +152,13 @@ describe("runRecordedEval — evaluation against recorded evidence", () => {
   });
 });
 
-describe("runRecordedEval — bare-iteration-identifier lint (item_var retirement)", () => {
+describe("runRecordedEval — bare-iteration-identifier lint", () => {
   // NOTE: the bare-`item` JSONata lint was retired for transform sites when
   // transforms became JavaScript-only — a JS body addresses the iteration
   // item through its own scope (`input.scope.$item`), so there is no bare
   // JSONata `item` to lint inside a transform. The lint now owns only the
   // `branch.when` / `loop.over` JSONata slots. The two former transform-site
-  // lint cases (bare `item`, legacy declared `item_var`) were deleted with
+  // lint cases were deleted with
   // that change.
 
   test("a bare iteration identifier in a `branch.when` JSONata slot is still linted", async () => {
@@ -214,7 +214,7 @@ describe("runRecordedEval — gate verdicts as outcomes", () => {
       {
         steps: [
           fetchStep(),
-          { id: "iter", kind: "loop", over: "$scope.fetch.data", item_var: "x", body: ["b"] },
+          { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
           {
             id: "b",
             kind: "transform",
@@ -238,7 +238,7 @@ describe("runRecordedEval — gate verdicts as outcomes", () => {
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", item_var: "x", body: ["b"] },
+          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["b"] },
           {
             id: "b",
             kind: "transform",

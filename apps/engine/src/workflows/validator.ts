@@ -6,9 +6,8 @@
 // - transform expressions (JavaScript function bodies) must parse
 // - loop bodies must reference the iteration item (`$item` in JSONata,
 //   `${item.…}` in strings) — otherwise the loop is N copies of the
-//   same call, typically a bug. Legacy stored versions that declare
-//   `item_var` validate under their declared contract; NEW definitions
-//   must not declare `item_var` at all (retired authoring field).
+//   same call, typically a bug. A definition that declares the retired
+//   `item_var` is rejected.
 //
 // Static JSONata identifier-scope checking lives at runtime in
 // `apps/engine/src/execution/steps/transform.ts` so the engine has the
@@ -26,6 +25,7 @@ import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { suggestClosest } from "./levenshtein.ts";
+import { retiredItemVarIssues } from "./stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
 
@@ -135,21 +135,28 @@ export function validateWorkflowDef(
   forward_refs?: ForwardRef[];
 } {
   const parsed = WorkflowDefSchema.safeParse(input);
+  const retiredItemVar = retiredItemVarIssues(input).map(({ path, step_id, message }) => ({
+    path: step_id === null ? path : `steps.${step_id}.item_var`,
+    message,
+  }));
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => ({
-        path: i.path.map((p) => String(p)).join("."),
-        // `i.message` is typed string, but some Zod variants (discriminated
-        // union errors, refinements that throw objects) leak non-strings
-        // into this field. Coerce defensively so the client never renders
-        // "[object Object]" in the validation-error panel.
-        message: typeof i.message === "string" ? i.message : JSON.stringify(i.message),
-      })),
+      errors: [
+        ...retiredItemVar,
+        ...parsed.error.issues.map((i) => ({
+          path: i.path.map((p) => String(p)).join("."),
+          // `i.message` is typed string, but some Zod variants (discriminated
+          // union errors, refinements that throw objects) leak non-strings
+          // into this field. Coerce defensively so the client never renders
+          // "[object Object]" in the validation-error panel.
+          message: typeof i.message === "string" ? i.message : JSON.stringify(i.message),
+        })),
+      ],
     };
   }
   const wf = parsed.data;
-  const errors: ValidationError[] = [];
+  const errors: ValidationError[] = [...retiredItemVar];
   const forwardRefs: ForwardRef[] = [];
   const allowForwardRefs = options.allowForwardRefs === true;
   const ids = new Set<string>();
@@ -356,22 +363,6 @@ export function validateWorkflowDef(
           }
         }
       }
-      // `item_var` is retired from the authored contract. Loop items
-      // are addressed as `$item` (JSONata) / `${item.…}` (strings).
-      // This is THE single enforcement point: every write surface
-      // (HTTP create/update, conversation authoring tools, draft
-      // executions) flows through validateWorkflowDef, while stored
-      // legacy versions are only Zod-parsed on read/execute and keep
-      // running under their declared contract (see
-      // `execution/loop-scope.ts`).
-      if (step.item_var !== undefined) {
-        errors.push({
-          path: `steps.${step.id}.item_var`,
-          message:
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
-            "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).",
-        });
-      }
       // The body must reference the iteration item somewhere. A loop
       // whose body never reads the iteration item is N copies of the
       // same call — almost always a bug. The transcript that triggered
@@ -385,20 +376,11 @@ export function validateWorkflowDef(
       //   - the canonical placeholder `${item.…}` (for URLs / headers /
       //     query / body strings), or
       //   - the canonical `$item` binding (for JSONata expressions).
-      // Legacy definitions that declare `item_var` (stored versions —
-      // they are rejected above for new writes, but this rule must not
-      // double-fire on them) still validate under their declared
-      // contract: the bare declared name counts as a reference.
       // Skip the check when ANY body id is still a forward reference —
       // the LLM hasn't authored that step yet, so we cannot tell whether
       // it will read the iteration item.
       const someBodyIsForwardRef = step.body.some((bid) => !ids.has(bid));
-      const declaredItemVar = step.item_var;
-      const referencesItem = bodySteps.some(
-        (bs) =>
-          stepReferencesCanonicalItem(bs) ||
-          (declaredItemVar !== undefined && stepReferencesIdentifier(bs, declaredItemVar)),
-      );
+      const referencesItem = bodySteps.some((bs) => stepReferencesCanonicalItem(bs));
       if (bodySteps.length > 0 && !someBodyIsForwardRef && !referencesItem) {
         errors.push({
           path: `steps.${step.id}`,
@@ -533,7 +515,7 @@ export function validateWorkflowDef(
 /** Canonical iteration-item references: `${item.…}` in strings,
  *  `$item` in JSONata. Conservative substring/regex check over the
  *  serialized step — errs towards false-positives (lets the loop
- *  validate) like `stepReferencesIdentifier`. */
+ *  validate). */
 function stepReferencesCanonicalItem(step: StepDef): boolean {
   const haystack = JSON.stringify(step);
   return haystack.includes("${item") || /\$item\b/.test(haystack);
@@ -623,19 +605,4 @@ function collectAddressingPlaceholderErrors(
     }
   }
   return errors;
-}
-
-function stepReferencesIdentifier(step: StepDef, identifier: string): boolean {
-  // Conservative substring check. Catches `${item.foo}`, `$item`,
-  // bare `item.foo`, and `item` in JSONata. We err on the side of
-  // false-positives (allows the loop to validate) rather than
-  // false-rejections.
-  const haystack = JSON.stringify(step);
-  return (
-    haystack.includes(`\${${identifier}`) ||
-    haystack.includes(`{{ ${identifier}`) ||
-    haystack.includes(`{{${identifier}`) ||
-    haystack.includes(`$${identifier}`) ||
-    new RegExp(`\\b${identifier}\\b`).test(haystack)
-  );
 }

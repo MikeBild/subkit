@@ -128,7 +128,6 @@ describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
   });
 
   test("when engine result lacks mime_type AND args has mime_type, args wins", () => {
-    // Simulate an older engine that doesn't echo mime_type back.
     const call = makeKsCall({
       includeResultMime: false,
       argMimeType: "text/markdown",
@@ -149,10 +148,9 @@ describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
   });
 
   test("when neither carries mime_type and mode=from_attachment, fallback is application/octet-stream", () => {
-    // Last-resort backward compatibility for older engines that did not
-    // echo the MIME. The from_attachment branch can't know the type
-    // without querying the file row again, so octet-stream is the safe
-    // default.
+    // The stored row carries no MIME. The from_attachment branch can't know
+    // the type without querying the file row again, so octet-stream is the
+    // safe default.
     const call = makeKsCall({
       includeResultMime: false,
       argMode: "from_attachment",

@@ -19,6 +19,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { logger } from "../../logging/logger.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import { now } from "../../utils/clock.ts";
 import { can, connectorAccessLevel } from "../evaluator.ts";
 import * as grantsSvc from "../grants.ts";
@@ -74,10 +75,11 @@ describe("rbac evaluator", () => {
     const memberRoleId = await findBuiltin("member");
     if (!adminRoleId || !memberRoleId) throw new Error("builtin roles missing");
 
+    const noPermissionsRoleId = await emptyRoleId(db, tenantId);
     const seedUser = async (email: string, roleId: string | null): Promise<string> => {
       const [row] = await db
         .insert(users)
-        .values({ tenant_id: tenantId, email, role: "admin", role_id: roleId })
+        .values({ tenant_id: tenantId, email, role_id: roleId ?? noPermissionsRoleId })
         .returning({ id: users.id });
       if (!row) throw new Error("seed user");
       return row.id;

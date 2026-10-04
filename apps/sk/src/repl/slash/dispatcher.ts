@@ -46,37 +46,12 @@ export function classifySlash(name: string): SlashDispatchPlan {
 }
 
 /**
- * One-release guidance for slashes that have been removed from the
- * registry (or that callers occasionally try to use because they
- * exist in another tool). Returns the guidance line when the bare
- * name matches; null otherwise.
- *
- * The guidance map covers two cohorts:
- *
- *  1. **Removed in the consolidation pass** — slashes that once had
- *     a registered command but were collapsed into a hub (e.g. `/health`
- *     → `/audit`, `/install-slack` → `/install`). Once one minor
- *     release has shipped with the guidance, the entries are deleted —
- *     per repo memory rule "no backwards-compat shims".
- *
- *  2. **Agentic-coding slashes that intentionally don't exist in sk**
- *     (`/agents`, `/fast`, `/plan`, `/diff`, `/output-style`,
- *     `/rewind`). These never had a registration; the guidance is
- *     permanent because the question keeps coming up.
+ * Guidance for agentic-coding slashes that sk intentionally does not
+ * ship (`/agents`, `/fast`, `/plan`, `/diff`, `/output-style`,
+ * `/rewind`). They were never registered; the question keeps coming
+ * up, so the bare name answers with where the need is met instead.
  */
-export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.freeze({
-  // Removed in the consolidation pass.
-  "install-slack": "moved into `/install`",
-  "install-teams": "moved into `/install`",
-  "install-github": "moved into `/install`",
-  "install-google-workspace": "moved into `/install`",
-  "install-salesforce": "moved into `/install`",
-  "install-jira": "moved into `/install`",
-  "install-hubspot": "moved into `/install`",
-  // An external MCP server is now a connector whose driver is `mcp`.
-  "mcp-servers": "external MCP servers are connectors — use `/connectors` or `sk connectors`",
-  // Agentic-coding slashes that subkit intentionally does NOT ship.
-  // Permanent guidance — these were never registered.
+export const UNSUPPORTED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.freeze({
   agents:
     "subkit has no subagent routing — Skills, Knowledge Sources, and Connectors fill those niches; see `/skills` and `/knowledge`",
   fast: "subkit uses a single configured model — see `model` setting via `/model`",
@@ -87,8 +62,8 @@ export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.f
   rewind: "term collides with `workflows restore`; conversation rewind is `/resume → press t`",
 });
 
-export function removedSlashGuidance(name: string): string | null {
-  const hint = REMOVED_SLASH_GUIDANCE[name];
+export function unsupportedSlashGuidance(name: string): string | null {
+  const hint = UNSUPPORTED_SLASH_GUIDANCE[name];
   return hint ?? null;
 }
 

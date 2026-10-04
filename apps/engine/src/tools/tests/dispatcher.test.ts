@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { AuditAction, ToolDispatchPolicyDeniedMetadataSchema } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../../conversations/tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

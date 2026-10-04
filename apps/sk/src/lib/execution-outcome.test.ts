@@ -36,7 +36,7 @@ describe("executionOutcomeLine", () => {
     expect(line).not.toContain("succeeded");
   });
 
-  test("no outcome (older engine) prints nothing", () => {
-    expect(executionOutcomeLine(undefined)).toBeNull();
+  test("no outcome prints nothing", () => {
+    expect(executionOutcomeLine(null)).toBeNull();
   });
 });

@@ -57,10 +57,10 @@ const WorkflowInvocationSchema = z
   .object({
     workflow_id: z.string().uuid(),
     slug: z.string(),
-    legacy: z
+    invalid: z
       .boolean()
       .describe(
-        "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_legacy` until the workflow is saved again.",
+        "True when the current version is stored in an earlier definition format. Everything below is read from the stored definition as written; a run is refused with `workflow_version_invalid` until the workflow is saved again.",
       ),
     /** The configured public address of this engine; null when
      *  `server.public_base_url` is unset. Never derived from the request. */
@@ -255,7 +255,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
       {
         workflow_id: workflow.id,
         slug: workflow.slug,
-        legacy: workflow.legacy,
+        invalid: workflow.invalid,
         base_url: baseUrl,
         http: {
           method: "POST" as const,

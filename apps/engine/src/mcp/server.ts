@@ -63,7 +63,7 @@ const CATALOG_AND_GROUNDING = [
   "ask for one block, or for everything that touches a given connector.",
   "",
   "Grounding: for questions about the tenant's business domains (conventions, runbooks,",
-  "internal APIs), call `search_knowledge_v2` FIRST and answer from the hits — do not",
+  "internal APIs), call `search_knowledge` FIRST and answer from the hits — do not",
   "answer from prior knowledge. If the search returns nothing, say so instead of guessing.",
 ];
 

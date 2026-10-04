@@ -11,7 +11,7 @@
 // this process.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
@@ -36,10 +36,9 @@ describe("sandbox limits are sourced from config", () => {
     // 24 MB cap via config override. A 64 MB allocation would succeed under
     // the 128 MB static default, so its failure here proves the configured
     // cap — not DEFAULT_LIMITS — is what `runJs` applied.
-    await loadConfig({
-      env: { ...BASE_ENV, SK_OVERRIDE_SANDBOX_MEMORY_BYTES: String(24 * 1024 * 1024) },
-      configPathOverride: join(dir, "subkit.config.json"),
-    });
+    const configPath = join(dir, "subkit.config.json");
+    writeFileSync(configPath, JSON.stringify({ sandbox: { memory_bytes: 24 * 1024 * 1024 } }));
+    await loadConfig({ env: BASE_ENV, configPathOverride: configPath });
 
     let threw: unknown = null;
     try {
@@ -56,10 +55,9 @@ describe("sandbox limits are sourced from config", () => {
   });
 
   test("a configured tick budget aborts a runaway loop", async () => {
-    await loadConfig({
-      env: { ...BASE_ENV, SK_OVERRIDE_SANDBOX_TICK_BUDGET: "2001" },
-      configPathOverride: join(dir, "subkit.config.json"),
-    });
+    const configPath = join(dir, "subkit.config.json");
+    writeFileSync(configPath, JSON.stringify({ sandbox: { tick_budget: 2001 } }));
+    await loadConfig({ env: BASE_ENV, configPathOverride: configPath });
 
     let threw: unknown = null;
     try {

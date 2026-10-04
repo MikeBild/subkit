@@ -133,7 +133,7 @@ export function registerWorkflowDiagnosisRoutes(app: OpenAPIHono<AppEnv>): void 
     } catch (error) {
       if (!(error instanceof GateRepairError)) throw error;
       if (error.code === "workflow_not_found") throw new NotFoundError("workflow");
-      throw HttpError.withEnvelope(409, error.code, error.message, {
+      throw new HttpError(409, error.code, error.message, {
         hint: "GET /v1/workflows/{id}/diagnosis lists the repairs the active version offers.",
       });
     }

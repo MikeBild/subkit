@@ -22,8 +22,8 @@ describe("findSlashCommandPositions", () => {
   });
 
   test("supports hyphens, underscores, and digits in command names", () => {
-    expect(findSlashCommandPositions("/run_v2 /find-thing")).toEqual([
-      { start: 0, end: 7, name: "run_v2" },
+    expect(findSlashCommandPositions("/run_42 /find-thing")).toEqual([
+      { start: 0, end: 7, name: "run_42" },
       { start: 8, end: 19, name: "find-thing" },
     ]);
   });

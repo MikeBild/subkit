@@ -43,6 +43,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerChatEventHandler } from "../handlers/chat-event.ts";
@@ -91,7 +92,11 @@ beforeAll(async () => {
   tenantId = tenant.id;
   const [user] = await testDb.db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "ce@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantId,
+      email: "ce@test.local",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("seed user");
 
@@ -333,13 +338,13 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
 
   test("mention in unknown space → deny audit + ONE generic reply; second mention rate-limited", async () => {
     const SPACE = "spaces/FB_MENTION";
-    const ev1 = googleEvent({
+    const firstMention = googleEvent({
       workspace_id: SPACE,
       channel_id: SPACE,
       thread_id: `${SPACE}/threads/T1`,
       event_key: "g-fb-m-1",
     });
-    await boss.send(CHAT_EVENT_QUEUE, { event: ev1 });
+    await boss.send(CHAT_EVENT_QUEUE, { event: firstMention });
     const firstDeny = await waitForDenyAudits(SPACE, 1);
     expect(firstDeny).toHaveLength(1);
     expect(firstDeny[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
@@ -365,8 +370,12 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
 
     // Second mention into the SAME space within the minute: deny audit
     // still recorded, but the 1/min/space bucket gates the reply.
-    const ev2 = googleEvent({ workspace_id: SPACE, channel_id: SPACE, event_key: "g-fb-m-2" });
-    await boss.send(CHAT_EVENT_QUEUE, { event: ev2 });
+    const secondMention = googleEvent({
+      workspace_id: SPACE,
+      channel_id: SPACE,
+      event_key: "g-fb-m-2",
+    });
+    await boss.send(CHAT_EVENT_QUEUE, { event: secondMention });
     const bothDenies = await waitForDenyAudits(SPACE, 2);
     expect(bothDenies).toHaveLength(2);
     await new Promise((r) => setTimeout(r, 500)); // allow-wall-clock: settle for a (wrong) second send

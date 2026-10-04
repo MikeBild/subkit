@@ -49,12 +49,9 @@ export interface TurnEvent {
   ts: string;
   /** Event family. */
   kind: TurnEventKind;
-  /** Owning tenant slug or id. Required on every write.
-   *  Persisted alongside each event so a single pasted line still
-   *  carries its tenant context. Optional in the type to allow
-   *  loading legacy flat-layout files written before the tenant
-   *  field became required; new writes always populate it. */
-  tenant?: string;
+  /** Owning tenant slug or id. Persisted alongside each event so a
+   *  single pasted line still carries its tenant context. */
+  tenant: string;
   /** Free-form payload — every kind defines its own shape. */
   data: Record<string, unknown>;
 }
@@ -90,11 +87,7 @@ export interface AppendOptions {
   dir?: string;
   /** Tenant slug or id — namespaces the on-disk path so a forensic
    *  reader can immediately tell which tenant owns the JSONL even
-   *  if conversation IDs collide. Now REQUIRED on every
-   *  write so that a caller forgetting to pass it fails the
-   *  typecheck rather than silently landing on the legacy flat
-   *  `~/.sk/sessions/{conv}.jsonl` path. `loadEvents` keeps it
-   *  optional so older flat-layout files stay readable. */
+   *  if conversation IDs collide. */
   tenant: string;
   /** Inject a clock for tests. */
   now?: () => Date;
@@ -104,26 +97,18 @@ export function sessionsDir(override?: string): string {
   return override ?? join(homedir(), ".sk", "sessions");
 }
 
-/** Path for a conversation's JSONL log. When `tenant` is provided
- *  the file lives under `~/.sk/sessions/{tenant}/{conv}.jsonl`;
- *  otherwise it falls back to the legacy flat layout
- *  `~/.sk/sessions/{conv}.jsonl` so already-written logs from older
- *  versions of the CLI keep loading. New writes always specify a
- *  tenant and get the namespaced path. */
+/** Path for a conversation's JSONL log:
+ *  `~/.sk/sessions/{tenant}/{conv}.jsonl`. */
 export function sessionEventsPath(
   conversationId: string,
-  dir?: string,
-  tenant?: string | null,
+  dir: string | undefined,
+  tenant: string,
 ): string {
-  const root = sessionsDir(dir);
-  if (tenant) {
-    // Sanitise: tenants are slugs/uuids in practice, but a malicious
-    // override that contains `..` or `/` could escape. Replace any
-    // non-alphanumeric/`-`/`_` char with `_`.
-    const safe = tenant.replace(/[^A-Za-z0-9_-]/g, "_");
-    return join(root, safe, `${conversationId}.jsonl`);
-  }
-  return join(root, `${conversationId}.jsonl`);
+  // Sanitise: tenants are slugs/uuids in practice, but a malicious
+  // override that contains `..` or `/` could escape. Replace any
+  // non-alphanumeric/`-`/`_` char with `_`.
+  const safe = tenant.replace(/[^A-Za-z0-9_-]/g, "_");
+  return join(sessionsDir(dir), safe, `${conversationId}.jsonl`);
 }
 
 /**
@@ -133,7 +118,7 @@ export function sessionEventsPath(
  */
 export function appendEvent(
   conversationId: string,
-  ev: Omit<TurnEvent, "ts">,
+  ev: Omit<TurnEvent, "ts" | "tenant">,
   opts: AppendOptions,
 ): void {
   // Runtime guard for the typecheck-required `tenant` field.
@@ -201,10 +186,8 @@ function maybeTrimJsonl(path: string, keep: number): void {
  * Read every event from the conversation's JSONL log. Skips truncated
  * trailing lines. Returns events in the order they were written.
  *
- * `tenant` is now required, mirroring the
- * `appendEvent` write-side contract. Reading the legacy
- * flat path requires the explicit `loadLegacyFlatEvents` helper
- * below — a caller that forgets the tenant on a load can't
+ * `tenant` is required, mirroring the `appendEvent` write-side
+ * contract — a caller that forgets the tenant on a load can't
  * silently target the wrong file.
  */
 export function loadEvents(
@@ -235,26 +218,6 @@ export function deleteEvents(
   }
 }
 
-/**
- * Explicit reader for the legacy flat-layout path
- * (`~/.sk/sessions/{conv}.jsonl` — no tenant namespace, written
- * before the tenant namespace existed). Use this only when explicitly
- * migrating or inspecting legacy flat-layout files; the modern read path is
- * `loadEvents(conv, dir, tenant)`.
- */
-export function loadLegacyFlatEvents(conversationId: string, dir?: string): TurnEvent[] {
-  return readJsonlEvents(sessionEventsPath(conversationId, dir));
-}
-
-/** Matching delete for legacy flat-layout files. */
-export function deleteLegacyFlatEvents(conversationId: string, dir?: string): void {
-  try {
-    unlinkSync(sessionEventsPath(conversationId, dir));
-  } catch {
-    /* gone already */
-  }
-}
-
 function readJsonlEvents(path: string): TurnEvent[] {
   if (!existsSync(path)) return [];
   let content: string;
@@ -269,7 +232,11 @@ function readJsonlEvents(path: string): TurnEvent[] {
     if (!line) continue;
     try {
       const ev = JSON.parse(line) as TurnEvent;
-      if (typeof ev.seq === "number" && typeof ev.kind === "string") {
+      if (
+        typeof ev.seq === "number" &&
+        typeof ev.kind === "string" &&
+        typeof ev.tenant === "string"
+      ) {
         events.push(ev);
       }
     } catch {

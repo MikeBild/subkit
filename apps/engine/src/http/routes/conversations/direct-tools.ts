@@ -61,7 +61,6 @@ const PreviewRequestSchema = z
     step_id: z.string().min(1).optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
-    execute_writes: z.boolean().optional(),
     include_step_results: z.boolean().optional(),
     budget_ms_per_step: z.number().int().min(500).max(60_000).optional(),
   })
@@ -123,7 +122,7 @@ const previewRoute = createRoute({
   path: "/v1/conversations/{id}/preview",
   tags: ["conversations"],
   summary:
-    "Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are held unless execute_writes is true.",
+    "Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are always held.",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
@@ -189,7 +188,7 @@ const snapshotRestoreRoute = createRoute({
 /** Map service-layer failures onto the shared HTTP error envelope. */
 function toHttpError(error: unknown): never {
   if (error instanceof DirectInvokeError) {
-    throw HttpError.withEnvelope(error.status, error.error_code, error.message, {
+    throw new HttpError(error.status, error.error_code, error.message, {
       ...(error.error_code === "invalid_tool_args"
         ? {
             hint: "The body must satisfy the tool's input schema — see /openapi.json for the request shape.",
@@ -223,7 +222,6 @@ export function registerDirectToolRoutes(app: OpenAPIHono<AppEnv>): void {
             step_id,
             ...(rest.input !== undefined ? { input: rest.input } : {}),
             ...(rest.environment !== undefined ? { environment: rest.environment } : {}),
-            ...(rest.execute_writes !== undefined ? { execute_writes: rest.execute_writes } : {}),
           }
         : rest,
     }).catch(toHttpError);

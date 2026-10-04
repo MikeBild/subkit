@@ -17,6 +17,7 @@
 // middleware below.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -25,13 +26,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import {
-  ErrorSchema,
-  IdParam,
-  InviteRedeemedSchema,
-  UserInviteIssuedSchema,
-  UserInviteSchema,
-} from "./schemas.ts";
+import { InviteRedeemedSchema, UserInviteIssuedSchema, UserInviteSchema } from "./schemas.ts";
 
 // -------- per-IP rate limit (redeem only) --------
 //

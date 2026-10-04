@@ -30,6 +30,7 @@ import {
   createWorkflowRow,
   type EngineTestCtx,
 } from "../../execution/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
@@ -142,7 +143,11 @@ beforeAll(async () => {
   const now = await databaseNow(db);
   const [user] = await db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "approver@example.com", role: "admin" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "approver@example.com",
+      role_id: await builtinRoleId(db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("missing user");
   const [session] = await db

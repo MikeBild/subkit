@@ -31,12 +31,8 @@ const ON_REQUEST: TranslationKey = "workflows.trigger.request";
  * A schedule or webhook that is declared but not bound fires nothing, so it
  * must not read as "Zeitplan": its word says it runs on request only. Paused
  * and held schedules keep their own words for the same reason.
- *
- * No effective trigger (an older engine) is the request default, not an
- * unknown state — "unknown" would be a claim the engine never made.
  */
-export function triggerLabelKey(trigger: EffectiveTrigger | null | undefined): TranslationKey {
-  if (!trigger) return ON_REQUEST;
+export function triggerLabelKey(trigger: EffectiveTrigger): TranslationKey {
   if (trigger.kind === "schedule") {
     switch (trigger.state) {
       case "paused":

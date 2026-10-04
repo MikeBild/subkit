@@ -838,9 +838,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
 
       const runIteration = async (itemIdx: number): Promise<void> => {
         const item = items[itemIdx];
-        // Pass a no-item_var loopStep shape so buildLoopChildScope only
-        // binds the canonical $item + $loop_index — no legacy alias.
-        const childScope = buildLoopChildScope({}, scope, item, itemIdx);
+        const childScope = buildLoopChildScope(scope, item, itemIdx);
         const iterStepRowId = await insertStepRow(db, {
           tenant_id,
           execution_id,
@@ -1161,7 +1159,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         } | null = null;
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           const item = items[itemIdx];
-          const childScope = buildLoopChildScope(loopStep, scope, item, itemIdx);
+          const childScope = buildLoopChildScope(scope, item, itemIdx);
           const bodyResults: Record<string, unknown> = {};
           // Hold-writes: held body steps hold PER ITERATION — each
           // iteration materializes its own held_request from its own

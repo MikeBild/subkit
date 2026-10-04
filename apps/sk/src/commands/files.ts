@@ -186,7 +186,7 @@ export async function uploadPath(
     "content-type": content_type,
   };
   try {
-    await client.putToPresignedUrl(entry.upload_url, headers, stream);
+    await client.putUploadBytes(entry.upload_url, headers, stream);
   } finally {
     finishProgress(progress);
   }

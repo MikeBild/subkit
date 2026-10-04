@@ -13,7 +13,7 @@ import { AuditAction } from "../../../audit/types.ts";
 import { auditLog } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { queryAuditTool } from "../generated/audit.ts";
+import { queryAuditTool } from "../engine-api/audit.ts";
 import type { ToolContext } from "../index.ts";
 
 // Deterministic fixtures (no randomUUID — the determinism gate forbids it).

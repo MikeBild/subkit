@@ -145,7 +145,7 @@ export function WorkflowPage({
   const versionId = text(record, "current_version_id");
   // The running version is stored in an earlier format: the engine refuses to
   // run it, so the page does not offer a run it would refuse.
-  const legacy = record.legacy === true;
+  const legacy = record.invalid === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
   const trigger =
     record.effective_trigger && typeof record.effective_trigger === "object"
@@ -162,7 +162,7 @@ export function WorkflowPage({
     draft_version_id: text(record, "draft_version_id"),
     current_version: version,
     webhooks_active: webhooksActive,
-    legacy,
+    invalid: legacy,
   };
   const health = text(record, "health_state");
   // Switched off: archived, its schedule and webhook unbound (D17).

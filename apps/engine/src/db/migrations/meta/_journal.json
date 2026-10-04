@@ -547,6 +547,13 @@
       "when": 1791046847786,
       "tag": "0077_skill_applies_to_file_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1791114364870,
+      "tag": "0078_users_role_id_only",
+      "breakpoints": true
     }
   ]
 }

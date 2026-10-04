@@ -176,17 +176,17 @@ export class GoogleChatAdapter implements ChatAdapter {
           ? (common.parameters as Record<string, unknown>)
           : {};
       const action = (raw.action as Record<string, unknown>) ?? {};
-      const legacyParams = (action.parameters as Array<Record<string, unknown>>) ?? [];
-      const legacyParam = (key: string): string =>
-        (legacyParams.find((p) => p.key === key)?.value as string) ?? "";
+      const listParams = (action.parameters as Array<Record<string, unknown>>) ?? [];
+      const listParam = (key: string): string =>
+        (listParams.find((p) => p.key === key)?.value as string) ?? "";
       const actionId =
         typeof commonParams.action_id === "string" && commonParams.action_id.length > 0
           ? commonParams.action_id
-          : legacyParam("action_id");
+          : listParam("action_id");
       const valueParam =
         typeof commonParams.value === "string" && commonParams.value.length > 0
           ? commonParams.value
-          : legacyParam("value");
+          : listParam("value");
 
       // form_values extraction from `common.formInputs`, split by
       // action_id (cardinality can't discriminate — stringInputs.value

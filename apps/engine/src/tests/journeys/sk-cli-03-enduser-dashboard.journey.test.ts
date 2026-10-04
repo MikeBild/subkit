@@ -51,7 +51,6 @@ describe("journey: sk-cli enduser dashboard", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "enduser@sk-cli-03.test",
-        role: "enduser",
         role_id: ctx.rbacRoleIds.enduser,
       })
       .returning();

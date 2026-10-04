@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, users } from "../../../../db/schema/index.ts";
 import { issueApiKey } from "../../../../identity/service.ts";
+import { builtinRoleId } from "../../../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -31,7 +32,11 @@ beforeAll(async () => {
   // Seed a member user with an API key — the attacker principal.
   const [member] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member-esc@test.local", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-esc@test.local",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member failed");
   memberId = member.id;
@@ -44,7 +49,11 @@ beforeAll(async () => {
   // A second member that the attacker might try to target.
   const [target] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member-target@test.local", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-target@test.local",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!target) throw new Error("seed target member failed");
   targetMemberId = target.id;
@@ -76,7 +85,7 @@ describe("C1 — member self-escalation via PATCH is blocked", () => {
 
     // The role must be unchanged — escalation did not happen.
     const [refreshed] = await ctx.db.select().from(users).where(eq(users.id, memberId));
-    expect(refreshed?.role).toBe("member");
+    expect(refreshed?.role_id).toBe(await builtinRoleId(ctx.db, "member"));
   });
 
   test("member PATCH another member's role to admin returns 403 and leaves DB role unchanged", async () => {
@@ -91,7 +100,7 @@ describe("C1 — member self-escalation via PATCH is blocked", () => {
     expect(body.code).toBe("forbidden");
 
     const [refreshed] = await ctx.db.select().from(users).where(eq(users.id, targetMemberId));
-    expect(refreshed?.role).toBe("member");
+    expect(refreshed?.role_id).toBe(await builtinRoleId(ctx.db, "member"));
   });
 });
 
@@ -109,7 +118,7 @@ describe("C1 — admin can update another user's role (happy-path guard)", () =>
 
     // DB reflects the new role.
     const [refreshed] = await ctx.db.select().from(users).where(eq(users.id, targetMemberId));
-    expect(refreshed?.role).toBe("admin");
+    expect(refreshed?.role_id).toBe(await builtinRoleId(ctx.db, "admin"));
 
     // Audit row: USER_ROLE_CHANGED must be present with the correct tenant.
     const auditRows = await ctx.db

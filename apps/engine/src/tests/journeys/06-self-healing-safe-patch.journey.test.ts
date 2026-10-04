@@ -309,7 +309,7 @@ describe("journey: self-healing safe patch", () => {
     // `data.*` envelope so it lines up with the step's existing
     // `data.id` selector.
     // -----------------------------------------------------------------
-    const upstreamV1 = { data: { id: 1, name: "Ada" } };
+    const upstreamFlat = { data: { id: 1, name: "Ada" } };
     await recordSuccessShape(
       {
         tenant_id: ctx.tenantId,
@@ -317,11 +317,11 @@ describe("journey: self-healing safe patch", () => {
         endpoint_key: endpoint,
         workflow_id: driftWorkflowId,
         step_id: "drift-step",
-        value: upstreamV1,
+        value: upstreamFlat,
       },
       ctx.db,
     );
-    const shapeAfterV1 = await getLatestShape(
+    const shapeAfterFlat = await getLatestShape(
       {
         tenant_id: ctx.tenantId,
         connector_id: driftConnectorId,
@@ -329,8 +329,8 @@ describe("journey: self-healing safe patch", () => {
       },
       ctx.db,
     );
-    expect(shapeAfterV1).not.toBeNull();
-    expect(shapeAfterV1).toEqual(deriveShape(upstreamV1));
+    expect(shapeAfterFlat).not.toBeNull();
+    expect(shapeAfterFlat).toEqual(deriveShape(upstreamFlat));
 
     // -----------------------------------------------------------------
     // Call 2 — upstream flips to the v2 shape. The `id` field has been
@@ -338,7 +338,7 @@ describe("journey: self-healing safe patch", () => {
     // selector `data.id` to miss. The drift detector should read the
     // v1 shape from `schema_versions` and emit a `schema_diff` signal.
     // -----------------------------------------------------------------
-    const upstreamV2 = { data: { result: { id: 1, full_name: "Ada" } } };
+    const upstreamWrapped = { data: { result: { id: 1, full_name: "Ada" } } };
     const [drift_exec] = await ctx.db
       .insert(executions)
       .values({
@@ -381,9 +381,9 @@ describe("journey: self-healing safe patch", () => {
           kind: "jsonata_miss",
           expression: "data.id",
           missing_path: "data.id",
-          captured_response: upstreamV2,
+          captured_response: upstreamWrapped,
         },
-        output_preview: upstreamV2,
+        output_preview: upstreamWrapped,
       })
       .returning();
     const driftStepId = drift_step!.id;
@@ -467,7 +467,7 @@ describe("journey: self-healing safe patch", () => {
         endpoint_key: endpoint,
         workflow_id: driftWorkflowId,
         step_id: "drift-step",
-        value: upstreamV2,
+        value: upstreamWrapped,
       },
       ctx.db,
     );
@@ -501,7 +501,7 @@ describe("journey: self-healing safe patch", () => {
           },
           extras: { data_selector: "data.full_name" },
         },
-        output_preview: upstreamV2,
+        output_preview: upstreamWrapped,
       },
       settledShape ?? null,
     );

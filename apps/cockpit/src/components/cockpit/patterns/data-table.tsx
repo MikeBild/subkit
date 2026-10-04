@@ -392,23 +392,9 @@ export function DataTable<TData extends RowData>({
   total?: number;
   /** Called with 0 when the built-in search changes what the list shows. */
   onPageChange?(page: number): void;
-  /** @deprecated No pager any more; ignored until every list is endless. */
-  mode?: "offset" | "cursor";
-  /** @deprecated No pager any more; ignored. */
-  page?: number;
-  /** @deprecated No pager any more; ignored. */
-  pageSize?: number;
-  /** @deprecated No pager any more; ignored. */
-  hasNext?: boolean;
-  /** @deprecated No pager any more; ignored. */
-  previousLabel?: string;
-  /** @deprecated No pager any more; ignored. */
-  nextLabel?: string;
   columnsLabel: string;
   /** The result count's label, for assistive technology. */
   recordsLabel?: string;
-  /** @deprecated The result count is stated by the table itself; ignored. */
-  loadedLabel?: string;
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";

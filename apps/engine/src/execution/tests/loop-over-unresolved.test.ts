@@ -50,7 +50,6 @@ describe("runLoopStep · loop_over_unresolved warning", () => {
         kind: "loop",
         over: "$scope.fetch_projects.data.something_wrong",
         body: ["fetch_resources"],
-        item_var: "project",
       },
       scope: { fetch_projects: { data: { projects: [{ id: "p1" }] } } },
     });
@@ -72,7 +71,6 @@ describe("runLoopStep · loop_over_unresolved warning", () => {
         kind: "loop",
         over: "src",
         body: ["b"],
-        item_var: "x",
       },
       scope: { src: { count: 5 } },
     });
@@ -90,7 +88,6 @@ describe("runLoopStep · loop_over_unresolved warning", () => {
         kind: "loop",
         over: "src",
         body: ["b"],
-        item_var: "x",
       },
       scope: { src: [{ id: 1 }, { id: 2 }] },
     });
@@ -111,7 +108,6 @@ describe("runLoopStep · loop_over_unresolved warning", () => {
         kind: "loop",
         over: "src",
         body: ["b"],
-        item_var: "x",
       },
       scope: { src: [] },
     });

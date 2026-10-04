@@ -11,7 +11,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { AuditQueryFilters } from "../../../audit/index.ts";
-import { queryAuditTool } from "../generated/audit.ts";
+import { queryAuditTool } from "../engine-api/audit.ts";
 import type { ToolContext } from "../index.ts";
 
 type RecordedFilters = Partial<Omit<AuditQueryFilters, "tenant_id">>;

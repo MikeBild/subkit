@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { auditAwait } from "../../audit/audit.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -81,7 +82,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "member-audit@test.local",
-      role: "member",
+      role_id: await builtinRoleId(srv.db, "member"),
     })
     .returning();
   if (!member) throw new Error("seed member failed");

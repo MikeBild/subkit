@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { auditLog, sessions, users } from "../../db/schema/index.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import {
   CODE_CHALLENGE,
   CODE_VERIFIER,
@@ -202,7 +203,11 @@ describe("scope intersection — role-based scope restriction", () => {
     // Seed a member-role user
     const [memberUser] = await db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "member-scope@test.local", role: "member" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "member-scope@test.local",
+        role_id: await builtinRoleId(db, "member"),
+      })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");
 
@@ -288,7 +293,11 @@ describe("scope intersection — role-based scope restriction", () => {
     // Approve. The fresh role has no MCP baseline, so the grant is denied.
     const [user] = await db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "downgrade@test.local", role: "member" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "downgrade@test.local",
+        role_id: await builtinRoleId(db, "member"),
+      })
       .returning();
     if (!user) throw new Error("seed user failed");
 
@@ -324,7 +333,10 @@ describe("scope intersection — role-based scope restriction", () => {
     const csrfToken = csrfMatch![1] as string;
 
     // Downgrade AFTER the consent page rendered, BEFORE the decision POST.
-    await db.update(users).set({ role: "enduser" }).where(eq(users.id, user.id));
+    await db
+      .update(users)
+      .set({ role_id: await builtinRoleId(db, "enduser") })
+      .where(eq(users.id, user.id));
 
     const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
       method: "POST",
@@ -429,7 +441,11 @@ describe("scope selection — client request is a hard ceiling", () => {
     // result drops admin and keeps only what the member holds.
     const [memberUser] = await db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "tamper@test.local", role: "member" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "tamper@test.local",
+        role_id: await builtinRoleId(db, "member"),
+      })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");
 
@@ -499,7 +515,7 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member-admin-only@test.local",
-        role: "member",
+        role_id: await builtinRoleId(db, "member"),
       })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");
@@ -801,7 +817,11 @@ describe("consent form structure — scope inputs must submit", () => {
   test("a member approving the rendered form is granted (not denied as role_downgrade)", async () => {
     const [memberUser] = await db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: "form-structure@test.local", role: "member" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: "form-structure@test.local",
+        role_id: await builtinRoleId(db, "member"),
+      })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");
 

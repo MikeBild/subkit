@@ -84,7 +84,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/oauth/shared.ts",
   "apps/engine/src/http/routes/agent-briefing.ts",
   "apps/engine/src/http/routes/identity/cockpit.ts",
-  "apps/engine/src/conversations/tools/generated/metrics.ts",
+  "apps/engine/src/conversations/tools/engine-api/metrics.ts",
   "apps/engine/src/mcp/server.ts",
   "apps/engine/src/mcp/capabilities/resources.ts",
   "apps/engine/src/mcp/capabilities/completion.ts",

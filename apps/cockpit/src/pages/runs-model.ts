@@ -481,13 +481,13 @@ type StepLike = {
 /**
  * The step whose error is THE run's error, shown once.
  *
- * The engine names it (`outcome.failed_step`). Only without an outcome — an
- * older engine — does the sheet fall back to the first step that carries an
- * error, which is what it always did.
+ * The engine names it (`outcome.failed_step`). Only without an outcome — a
+ * detail fetch that has not answered — does the sheet fall back to the first
+ * step that carries an error.
  */
 export function stoppingStep<T extends StepLike>(
   steps: readonly T[],
-  outcome: ExecutionOutcome | null | undefined,
+  outcome: ExecutionOutcome | null,
 ): T | null {
   const key = outcome?.failed_step?.step_key;
   if (key) {
@@ -537,8 +537,7 @@ export const FAILED_RUN_STATUSES: ReadonlySet<string> = new Set(["failed", "time
  * first badge read "Erfolgreich" above "Vorbereitet, Schreibzugriffe
  * zurückgehalten", the second put "Erfolgreich" on a red cause block.
  *
- * Without an outcome (an older engine, a detail fetch that failed) the status
- * decides, and every status the engine counts as failed is one.
+ * Without an outcome (a detail fetch that failed) the status decides, and every status the engine counts as failed is one.
  */
 export interface RunVerdict {
   label: string;

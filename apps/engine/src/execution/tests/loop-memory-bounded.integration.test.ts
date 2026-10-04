@@ -74,7 +74,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each",
           over: "$scope.items.data",
-          item_var: "item",
           body: ["fetch_blob"],
         },
         {
@@ -145,7 +144,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each2",
           over: "$scope.items2.data",
-          item_var: "item",
           body: ["fetch_blob2"],
         },
         {
@@ -206,7 +204,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each3",
           over: "$scope.items3.data",
-          item_var: "item",
           body: ["fetch_blob3"],
         },
         {
@@ -295,7 +292,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each5",
           over: "$scope.items5.data",
-          item_var: "item",
           body: ["fetch_small"],
         },
         {
@@ -382,7 +378,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each6",
           over: "$scope.items6.data",
-          item_var: "item",
           body: ["fetch_blob6"],
         },
         {
@@ -441,7 +436,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "outer7",
           over: "$scope.items7.data",
-          item_var: "item",
           body: ["fetch_blob7"],
         },
         {
@@ -457,7 +451,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "inner7",
           over: "$scope.outer7.data",
-          item_var: "row",
           body: ["pick_blob7"],
         },
         // Inner body: extract the blob length from the re-hydrated row.
@@ -523,7 +516,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each8",
           over: "$scope.items8.data",
-          item_var: "item",
           body: ["fetch_blob8"],
         },
         {
@@ -572,7 +564,6 @@ describe("loop memory-bounded: OOM guard", () => {
           kind: "loop",
           id: "each9",
           over: "$scope.items9.data",
-          item_var: "item",
           body: ["fetch_blob9"],
         },
         {

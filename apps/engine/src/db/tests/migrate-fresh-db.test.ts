@@ -189,7 +189,7 @@ describe("runMigrations on a fresh database", () => {
       // Accept-path: a well-formed slug with a single `_` and a `-`.
       await ctx.db.execute(sql`
         INSERT INTO connectors (tenant_id, slug, display_name, driver, base_url)
-        VALUES (${tenant_id}::uuid, 'notion-mcp_v2', 'ok', 'mcp', 'https://example.test/mcp')
+        VALUES (${tenant_id}::uuid, 'notion-mcp_workspace', 'ok', 'mcp', 'https://example.test/mcp')
       `);
     } finally {
       await ctx.db.execute(cleanup);

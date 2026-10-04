@@ -21,7 +21,6 @@
 // Designed to drop into shell scripts: `sk doctor --json` emits a single
 // JSON object so a CI gate can parse it.
 
-import { exitCodeFor } from "@cli-core/errors";
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
@@ -258,17 +257,7 @@ export const doctorCommand = defineCommand({
           });
         }
       } catch (err) {
-        if (isEngineError(err) && err.status === 404) {
-          // Older engine without the drift endpoint. Fall back to the
-          // health flag — we only got here because the field was missing
-          // OR true; either way the operator should upgrade.
-          results.push({
-            name: "schema_drift",
-            status: "warn",
-            detail: "engine does not expose /v1/diagnostics/drift",
-            hint: "upgrade the engine to a build that exposes the drift endpoint",
-          });
-        } else if (isEngineError(err) && err.status === 403) {
+        if (isEngineError(err) && err.status === 403) {
           results.push({
             name: "schema_drift",
             status: "warn",
@@ -315,7 +304,7 @@ export const doctorCommand = defineCommand({
     // The find-out-early surface: a connector pointing at a removed or
     // deprecated endpoint, a dead credential, or a workflow flagged
     // needs_attention shows up HERE — before an unattended run returns
-    // "0 results". Older engines without the route degrade to a dim note.
+    // "0 results".
     try {
       const integ = await client.integrationsHealth();
       const attention = integ.connectors.filter((c) => c.effective_health !== "ok");
@@ -354,14 +343,7 @@ export const doctorCommand = defineCommand({
         });
       }
     } catch (err) {
-      if (isEngineError(err) && err.status === 404) {
-        results.push({
-          name: "integrations",
-          status: "warn",
-          detail: "engine does not expose /v1/diagnostics/integrations",
-          hint: "upgrade the engine to a build with the connector-health rollup",
-        });
-      } else if (isEngineError(err) && err.status === 403) {
+      if (isEngineError(err) && err.status === 403) {
         results.push({
           name: "integrations",
           status: "warn",
@@ -401,5 +383,3 @@ export const doctorCommand = defineCommand({
     process.exit(exitCodeFromStatus(overall));
   },
 });
-// Suppress unused warning for the error-mapping helper kept for future use.
-void exitCodeFor;

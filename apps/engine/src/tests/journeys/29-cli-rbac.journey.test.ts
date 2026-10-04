@@ -247,7 +247,6 @@ describe("journey 29: subkit rbac CLI", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "ops-alice@test.local",
-        role: "member",
         role_id: ctx.rbacRoleIds.member,
       })
       .returning();
@@ -273,7 +272,6 @@ describe("journey 29: subkit rbac CLI", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "grant-bob@test.local",
-        role: "member",
         role_id: ctx.rbacRoleIds.member,
       })
       .returning();

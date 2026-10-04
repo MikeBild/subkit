@@ -116,7 +116,7 @@ describe("drift-detector: graphql_schema_error → endpoint_contract", () => {
         kind: "endpoint_path",
         step_id: "step-1",
         description: "rewrite the removed root field",
-        patch: { path: "/steps/0/graphql/query", value: "query { chargersV2 { id } }" },
+        patch: { path: "/steps/0/graphql/query", value: "query { allChargers { id } }" },
       } as never,
       signal,
     );

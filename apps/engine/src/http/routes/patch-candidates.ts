@@ -444,22 +444,17 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     if (outcome.status === "not_found") throw new NotFoundError("patch_candidate");
     if (outcome.status === "no_proposal" || outcome.status === "no_step") {
-      throw HttpError.withEnvelope(
-        409,
-        "conflict",
-        "patch candidate carries no replayable step material",
-        {
-          hint: "this candidate came from a proactive scan with no failing-step snapshot — run the workflow once so the engine captures one, then re-scan",
-        },
-      );
+      throw new HttpError(409, "conflict", "patch candidate carries no replayable step material", {
+        hint: "this candidate came from a proactive scan with no failing-step snapshot — run the workflow once so the engine captures one, then re-scan",
+      });
     }
     if (outcome.status === "gate_fix") {
-      throw HttpError.withEnvelope(409, "not_replayable", "a gate repair has no fixture replay", {
+      throw new HttpError(409, "not_replayable", "a gate repair has no fixture replay", {
         hint: "prepare the candidate (POST /v1/patch-candidates/{id}/prepare) and let a held preparation run of the prepared version show the request the gate now sees",
       });
     }
     if (outcome.status === "no_fixture") {
-      throw HttpError.withEnvelope(409, "conflict", "no execution fixture to replay against", {
+      throw new HttpError(409, "conflict", "no execution fixture to replay against", {
         hint: "run the workflow once so the engine captures a fixture, then retry the dry-run",
       });
     }
@@ -486,7 +481,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
     if (row.status !== "proposed") {
-      throw HttpError.withEnvelope(
+      throw new HttpError(
         409,
         "conflict",
         `patch candidate is ${row.status}; only 'proposed' candidates can be approved`,
@@ -561,7 +556,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       }
       if (error instanceof PatchDecisionError)
-        throw HttpError.withEnvelope(409, error.code, "The reviewed repair cannot be applied", {
+        throw new HttpError(409, error.code, "The reviewed repair cannot be applied", {
           hint: "Load the candidate preview to inspect its current state and reason.",
         });
       if (error instanceof HttpError) throw error;
@@ -598,7 +593,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
     if (row.status !== "proposed") {
-      throw HttpError.withEnvelope(
+      throw new HttpError(
         409,
         "conflict",
         `patch candidate is ${row.status}; only 'proposed' candidates can be rejected`,

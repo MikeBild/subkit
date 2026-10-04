@@ -1,19 +1,7 @@
-// item_var retirement — validation surfaces.
-//
-//   - `validateWorkflowDef` is THE enforcement point: any definition
-//     declaring `item_var` is rejected on every write surface.
-//   - The loop-body-references-item rule accepts the canonical forms
-//     only (`$item` in JSONata, `${item.…}` in strings) for new
-//     definitions; a legacy definition that declares `item_var` still
-//     satisfies the rule with its declared bare name (it is rejected
-//     for the declaration itself, but must not double-fire).
-//   - `validateBareIterationIdentifiers` lints bare iteration names in
-//     loop-body JSONata with a concrete `$item` rewrite as did_you_mean.
-//   - The conversations verifier rejects both at build time.
-
 import { describe, expect, test } from "bun:test";
 import { verifyWorkflow } from "../../conversations/verifier.ts";
 import { validateBareIterationIdentifiers } from "../reference-validator.ts";
+import { executableDefinition, readStoredDefinition } from "../stored-definition.ts";
 import { validateWorkflowDef } from "../validator.ts";
 
 const baseSteps = [
@@ -22,10 +10,10 @@ const baseSteps = [
   { id: "double", kind: "transform", expression: "$item * 2" },
 ];
 
-describe("validateWorkflowDef — item_var rejection (single enforcement point)", () => {
+describe("validateWorkflowDef — item_var rejection", () => {
   test("declaring item_var is rejected with a $item rewrite hint", () => {
     const res = validateWorkflowDef({
-      name: "legacy",
+      name: "declares-item-var",
       steps: [
         baseSteps[0],
         { id: "iter", kind: "loop", over: "get_numbers.data", item_var: "num", body: ["double"] },
@@ -39,19 +27,28 @@ describe("validateWorkflowDef — item_var rejection (single enforcement point)"
     expect(itemVarError?.message).toContain("retired");
   });
 
-  test("legacy declared contract does not double-fire the loop-body rule", () => {
+  test("a declared item_var name does not satisfy the loop-body rule", () => {
     const res = validateWorkflowDef({
-      name: "legacy",
+      name: "declares-item-var",
       steps: [
         baseSteps[0],
         { id: "iter", kind: "loop", over: "get_numbers.data", item_var: "num", body: ["double"] },
         { id: "double", kind: "transform", expression: "num * 2" },
       ],
     });
-    // Only the item_var rejection — the bare `num` reference satisfies
-    // the declared legacy contract for the body-references-item rule.
-    expect(res.errors).toHaveLength(1);
-    expect(res.errors[0]?.path).toBe("steps.iter.item_var");
+    expect(res.errors.map((e) => e.path).sort()).toEqual(["steps.iter", "steps.iter.item_var"]);
+  });
+
+  test("item_var is reported even when the definition fails the schema", () => {
+    const res = validateWorkflowDef({
+      name: "declares-item-var",
+      steps: [
+        { id: "iter", kind: "loop", item_var: "num", body: ["double"] },
+        { id: "double", kind: "transform", expression: "$item * 2" },
+      ],
+    });
+    expect(res.ok).toBe(false);
+    expect(res.errors.some((e) => e.path === "steps.iter.item_var")).toBe(true);
   });
 
   test("canonical $item JSONata reference satisfies the loop-body rule", () => {
@@ -126,17 +123,6 @@ describe("validateBareIterationIdentifiers — authoring lint", () => {
     expect(errors[0]?.did_you_mean).toEqual(["$item.name"]);
   });
 
-  test("legacy declared item_var name is linted in loop-body branch.when", () => {
-    const errors = validateBareIterationIdentifiers([
-      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
-      { id: "iter", kind: "loop", over: "get.data", item_var: "project", body: ["gate"] },
-      { id: "gate", kind: "branch", when: "project.name & ' x'", then_steps: [], else_steps: [] },
-    ]);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]?.bad_reference).toBe("project");
-    expect(errors[0]?.did_you_mean).toEqual(["$item.name & ' x'"]);
-  });
-
   test("a JavaScript transform in a loop body is NOT bare-item-linted", () => {
     // A JS transform addresses the item as `input.scope.$item`; the bare-item
     // JSONata lint does not apply to it.
@@ -182,11 +168,11 @@ describe("validateBareIterationIdentifiers — authoring lint", () => {
 describe("conversations verifier — build-time rejection", () => {
   test("item_var declaration + bare loop-body branch.when are both error findings", () => {
     const report = verifyWorkflow({
-      name: "legacy",
+      name: "declares-item-var",
       steps: [
         { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
         { id: "iter", kind: "loop", over: "get.data", item_var: "num", body: ["gate"] },
-        { id: "gate", kind: "branch", when: "num > 2", then_steps: [], else_steps: [] },
+        { id: "gate", kind: "branch", when: "item > 2", then_steps: [], else_steps: [] },
       ],
     });
     const codes = report.errors.map((e) => e.code);
@@ -206,5 +192,31 @@ describe("conversations verifier — build-time rejection", () => {
       ],
     });
     expect(report.errors).toHaveLength(0);
+  });
+});
+
+describe("stored definitions — item_var", () => {
+  const stored = {
+    name: "stored",
+    steps: [
+      { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
+      { id: "iter", kind: "loop", over: "get.data", item_var: "num", body: ["shape"] },
+      { id: "shape", kind: "transform", language: "javascript", expression: "return 1;" },
+    ],
+  };
+
+  test("a stored version declaring item_var reads as invalid, naming the step", () => {
+    const read = readStoredDefinition(stored);
+    expect(read.invalid).toBe(true);
+    if (!read.invalid) return;
+    expect(read.issues).toEqual([
+      expect.objectContaining({ path: "steps.1.item_var", step_id: "iter" }),
+    ]);
+  });
+
+  test("a stored version declaring item_var is refused for execution", () => {
+    expect(() => executableDefinition(stored)).toThrow(
+      expect.objectContaining({ code: "workflow_version_invalid" }),
+    );
   });
 });

@@ -266,7 +266,7 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   // (rbac/seed.ts), and get_engine_status is the DESIGNATED low-sensitivity
   // self-status surface — the sensitive operator health digest is a
   // separate, already `stats:read`-gated surface kept out of this tool
-  // (conversations/tools/generated/status.ts). Gating it here would break
+  // (conversations/tools/engine-api/status.ts). Gating it here would break
   // the core self-assistant use case (an enduser asking the engine to
   // describe its own status).
   get_execution: {

@@ -91,11 +91,11 @@ import {
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 import { WORKFLOW_TOOL_PREFIX } from "../tools/authoring-palette.ts";
 import { applyWorkflowPatchToDraft } from "../tools/edit-workflow-patch.ts";
-import { CreateApiKeyInput, createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
+import { CreateApiKeyInput, createApiKeyTool } from "../tools/engine-api/writes/create-api-key.ts";
 import {
   UpdateWorkflowInput,
   updateWorkflowTool,
-} from "../tools/generated/writes/update-workflow.ts";
+} from "../tools/engine-api/writes/update-workflow.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { checkToolPermission, resolveConversationPrincipal } from "../tools/permission-gate.ts";
 import { normalizeWorkflowInput, workflowInputRecord } from "../tools/workflow-input-normalize.ts";

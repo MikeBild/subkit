@@ -118,7 +118,6 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         id: "fetch_resources",
         kind: "loop",
         over: "$scope.extract.data",
-        item_var: "project",
         body: ["fetch_one"],
       },
     ]);

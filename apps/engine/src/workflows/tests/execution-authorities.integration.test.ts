@@ -20,12 +20,14 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import {
   inspectInboundHookAutomation,
   inspectScheduleAutomation,
 } from "../../scheduler/automation-status.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import {
   activateWorkflowDraft,
   grantWorkflowAuthority,
@@ -48,7 +50,11 @@ async function fixture(extraDefinition: Record<string, unknown> = {}) {
   if (!tenant) throw new Error("missing tenant fixture");
   const [user] = await ctx.db
     .insert(users)
-    .values({ tenant_id: tenant.id, email: `${slug}@example.test`, role: "admin" })
+    .values({
+      tenant_id: tenant.id,
+      email: `${slug}@example.test`,
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   const [workflow] = await ctx.db
     .insert(workflows)
@@ -240,6 +246,10 @@ test("signed but revoked sessions cannot grant", async () => {
 
 test("a user without workflow permission cannot grant", async () => {
   const f = await fixture();
+  await ctx.db
+    .update(users)
+    .set({ role_id: await emptyRoleId(ctx.db, f.workflow.tenant_id) })
+    .where(eq(users.id, f.context.principal.id));
   await expect(
     grantWorkflowAuthority(f.workflow.id, f.input, {
       ...f.context,

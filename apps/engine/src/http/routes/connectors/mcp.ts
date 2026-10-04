@@ -327,7 +327,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         throw new NotFoundError("mcp connector");
       case "not_this_route":
         throw started.route
-          ? HttpError.withEnvelope(
+          ? new HttpError(
               422,
               "sign_in_route_mismatch",
               "this connector does not sign in through mcp/authorize",

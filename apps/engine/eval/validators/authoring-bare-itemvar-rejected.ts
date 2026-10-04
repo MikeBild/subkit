@@ -8,15 +8,14 @@
 //     item by a bare name is rejected with `bare_iteration_identifier`
 //     and a concrete `$item` rewrite as did_you_mean,
 //   - declaring `item_var` itself is rejected as a retired field
-//     (`item_var_retired`), including the legacy declared name being
-//     flagged as a bare reference.
+//     (`item_var_retired`).
 
 import { verifyWorkflow } from "../../src/conversations/verifier.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
 interface Input {
   bare_item_workflow: { steps: Array<Record<string, unknown>> };
-  legacy_item_var_workflow: { steps: Array<Record<string, unknown>> };
+  item_var_workflow: { steps: Array<Record<string, unknown>> };
   expect: {
     bare_error_code: string;
     retired_error_code: string;
@@ -45,23 +44,14 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     };
   }
 
-  // Legacy `item_var` declaration → retired-field rejection AND the
-  // declared name flagged as a bare reference with the $item rewrite.
-  const legacyReport = verifyWorkflow(input.legacy_item_var_workflow);
-  const retired = legacyReport.errors.find((e) => e.code === input.expect.retired_error_code);
+  const itemVarReport = verifyWorkflow(input.item_var_workflow);
+  const retired = itemVarReport.errors.find((e) => e.code === input.expect.retired_error_code);
   if (!retired) {
     return {
       pass: false,
       reason: `expected ${input.expect.retired_error_code} for the declared item_var; got ${JSON.stringify(
-        legacyReport.errors.map((e) => e.code),
+        itemVarReport.errors.map((e) => e.code),
       )}`,
-    };
-  }
-  const legacyBare = legacyReport.errors.find((e) => e.code === input.expect.bare_error_code);
-  if (!legacyBare?.message.includes(input.expect.did_you_mean_contains)) {
-    return {
-      pass: false,
-      reason: `declared item_var name must be flagged as a bare reference with a ${input.expect.did_you_mean_contains} rewrite`,
     };
   }
 

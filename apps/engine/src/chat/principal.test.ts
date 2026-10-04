@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
@@ -40,7 +41,11 @@ beforeAll(async () => {
   // Tenant A has a user with role "member".
   const [userA] = await testDb.db
     .insert(users)
-    .values({ tenant_id: tenantAId, email: "member@tenant-a.local", role: "member" })
+    .values({
+      tenant_id: tenantAId,
+      email: "member@tenant-a.local",
+      role_id: await builtinRoleId(testDb.db, "member"),
+    })
     .returning();
   if (!userA) throw new Error("seed user A failed");
   userAId = userA.id;
@@ -48,7 +53,11 @@ beforeAll(async () => {
   // Tenant B has a different user (same role, different tenant).
   const [userB] = await testDb.db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "member@tenant-b.local", role: "admin" })
+    .values({
+      tenant_id: tenantBId,
+      email: "member@tenant-b.local",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!userB) throw new Error("seed user B failed");
   userBId = userB.id;

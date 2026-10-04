@@ -30,6 +30,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -180,7 +181,7 @@ beforeAll(async () => {
     .values({
       tenant_id: tenantBId,
       email: "admin-b-iso@test.local",
-      role: "admin",
+      role_id: await builtinRoleId(db, "admin"),
     })
     .returning();
 

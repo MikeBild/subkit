@@ -19,7 +19,7 @@
         }
       ]
     },
-    "legacy_item_var_workflow": {
+    "item_var_workflow": {
       "steps": [
         {
           "id": "fetch",
@@ -37,7 +37,7 @@
         {
           "id": "gate",
           "kind": "branch",
-          "when": "project.active = true"
+          "when": "$item.active = true"
         }
       ]
     },

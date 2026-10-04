@@ -2,7 +2,7 @@
 //
 //   * GET /v1/workflows/:id/history is a read-only view of what was stored.
 //     A version saved under an earlier definition schema is listed with its
-//     dag unchanged and `legacy: true` — it does not fail the whole list.
+//     dag unchanged and `invalid: true` — it does not fail the whole list.
 //   * POST /v1/workflows/:id/restore/:version stays strict: a version that no
 //     longer validates is refused with a typed `version_not_restorable`, and
 //     the refusal writes nothing.
@@ -55,9 +55,9 @@ const currentSteps = (value: number) => [
 
 // A definition as it was valid under an earlier schema: `jsonata` is no longer
 // a transform language, so today's schema rejects the step.
-const LEGACY_DAG = {
-  name: "legacy-history",
-  slug: "legacy-history",
+const INVALID_DAG = {
+  name: "invalid-history",
+  slug: "invalid-history",
   steps: [{ kind: "transform", id: "shape", language: "jsonata", expression: "$.items" }],
 };
 
@@ -66,7 +66,7 @@ interface VersionItem {
   version: number;
   note: string | null;
   dag: unknown;
-  legacy: boolean;
+  invalid: boolean;
 }
 
 async function createWorkflow(name: string): Promise<{ id: string }> {
@@ -101,9 +101,9 @@ async function history(id: string, query = ""): Promise<Response> {
 }
 
 describe("workflow history with a version stored under an earlier schema", () => {
-  test("history lists it unchanged and marks it legacy", async () => {
-    const wf = await createWorkflow("legacy-history");
-    await insertStoredVersion(wf.id, 2, LEGACY_DAG);
+  test("history lists it unchanged and marks it invalid", async () => {
+    const wf = await createWorkflow("invalid-history");
+    await insertStoredVersion(wf.id, 2, INVALID_DAG);
 
     const res = await history(wf.id);
     expect(res.status).toBe(200);
@@ -111,17 +111,17 @@ describe("workflow history with a version stored under an earlier schema", () =>
     expect(body.total).toBe(2);
     expect(body.items.map((v) => v.version)).toEqual([2, 1]);
 
-    const [legacy, current] = body.items;
-    expect(current?.legacy).toBe(false);
-    expect(legacy?.legacy).toBe(true);
+    const [invalid, current] = body.items;
+    expect(current?.invalid).toBe(false);
+    expect(invalid?.invalid).toBe(true);
     // The stored definition comes back as stored — not parsed, defaulted or
     // stripped on the way out.
-    expect(legacy?.dag).toEqual(LEGACY_DAG);
+    expect(invalid?.dag).toEqual(INVALID_DAG);
   });
 
   test("restoring it is a typed refusal that names the step and writes nothing", async () => {
-    const wf = await createWorkflow("legacy-restore");
-    await insertStoredVersion(wf.id, 2, { ...LEGACY_DAG, name: "legacy-restore" });
+    const wf = await createWorkflow("invalid-restore");
+    await insertStoredVersion(wf.id, 2, { ...INVALID_DAG, name: "invalid-restore" });
     const [before] = await ctx.db
       .select({ current_version_id: workflows.current_version_id })
       .from(workflows)

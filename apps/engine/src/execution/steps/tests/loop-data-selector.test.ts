@@ -26,7 +26,6 @@ describe("loop step · data_selector (JS expression form)", () => {
       id: "for_each_project",
       data_selector: "(sourceData) => sourceData.fetch_projects.data.projects",
       body: ["fetch_resources"],
-      item_var: "project",
     });
     const scope = {
       fetch_projects: { data: { projects: [{ id: "p1" }, { id: "p2" }] } },
@@ -43,7 +42,6 @@ describe("loop step · data_selector (JS expression form)", () => {
       // Throws — cannot read `.projects` of undefined.
       data_selector: "(sourceData) => sourceData.does_not_exist.projects",
       body: ["body"],
-      item_var: "project",
     });
     const result = await runLoopStep({ ctx: ctx(), step, scope: {} });
     expect(result.status).toBe("failed");
@@ -61,7 +59,6 @@ describe("loop step · data_selector (JS expression form)", () => {
       id: "wrong_shape",
       data_selector: "(sourceData) => sourceData.fetch_projects.data",
       body: ["body"],
-      item_var: "project",
     });
     const scope = { fetch_projects: { data: { projects: [{ id: "p1" }] } } };
     const result = await runLoopStep({ ctx: ctx(), step, scope });
@@ -83,7 +80,6 @@ describe("loop step · data_selector (JS expression form)", () => {
         over: "$scope.x.data",
         data_selector: "(s) => s.x.data",
         body: ["a"],
-        item_var: "item",
       });
     expect(parse).toThrow(/exactly one/i);
   });
@@ -94,12 +90,11 @@ describe("loop step · data_selector (JS expression form)", () => {
         kind: "loop",
         id: "missing",
         body: ["a"],
-        item_var: "item",
       });
     expect(parse).toThrow(/exactly one/i);
   });
 
-  test("path-style `over` continues to work (backwards compatibility)", async () => {
+  test("path-style `over` resolves against scope", async () => {
     // The runtime calls jsonata(over).evaluate(scope), which treats
     // top-level keys as roots. Bare-path form is what jsonata resolves
     // directly against scope[key]; the documented `$scope.<key>` form
@@ -107,10 +102,9 @@ describe("loop step · data_selector (JS expression form)", () => {
     // pre-resolve, which is out of scope for this unit test.
     const step = LoopStepSchema.parse({
       kind: "loop",
-      id: "legacy",
+      id: "path_over",
       over: "fetch_projects.data.projects",
       body: ["body"],
-      item_var: "project",
     });
     const scope = {
       fetch_projects: { data: { projects: [{ id: "p1" }, { id: "p2" }] } },

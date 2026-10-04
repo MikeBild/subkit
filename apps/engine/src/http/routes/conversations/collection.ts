@@ -16,7 +16,7 @@ import { principalOrigin } from "../../../auth/index.ts";
 import type { ConversationStatus, TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
-  buildMessagesV2,
+  buildMessages,
   humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
@@ -281,7 +281,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const detail = await svc.getConversation(principal.tenant_id, id, db);
     if (!detail) throw new NotFoundError("conversation");
-    const messages = buildMessagesV2(detail.messages, detail.tool_calls);
+    const messages = buildMessages(detail.messages, detail.tool_calls);
     const usage = await svc.readConversationUsage(db, principal.tenant_id, id);
     return c.json(
       {

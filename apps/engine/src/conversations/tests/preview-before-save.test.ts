@@ -110,7 +110,7 @@ describe("save_workflow_draft preview-before-commit gate", () => {
     });
   });
 
-  test("legacy force-like fields do not bypass the preview gate", async () => {
+  test("force-like fields do not bypass the preview gate", async () => {
     const [conv] = await ctx.testDb.db
       .insert(conversations)
       .values({

@@ -84,7 +84,7 @@ describe("trimToBudget", () => {
     expect(markdown).toContain("## Knowledge index");
     expect(markdown).toContain("**Source 2**");
     expect(markdown).toContain("2 proposed skill candidate(s)");
-    expect(markdown).toContain('search_knowledge_v2` with `tags: ["domain:blog-de"]');
+    expect(markdown).toContain('search_knowledge` with `tags: ["domain:blog-de"]');
   });
 
   test("stays within the budget", () => {
@@ -117,7 +117,7 @@ describe("trimToBudget", () => {
   test("never trims the header and grounding rule", () => {
     const { markdown } = trimToBudget(input(), 1);
     expect(markdown).toContain("# sk session briefing");
-    expect(markdown).toContain("search_knowledge_v2");
+    expect(markdown).toContain("search_knowledge");
   });
 
   test("omits the knowledge index without knowledge:read", () => {

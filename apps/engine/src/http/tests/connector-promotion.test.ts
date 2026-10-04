@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createConnector } from "../../connectors/index.ts";
 import { upsertCredential } from "../../credentials/index.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -15,7 +16,7 @@ beforeAll(async () => {
     .values({
       tenant_id: ctx.tenantId,
       email: "member-connector-promotion@test.local",
-      role: "member",
+      role_id: await builtinRoleId(ctx.db, "member"),
     })
     .returning({ id: users.id });
   if (!member) throw new Error("seed member failed");

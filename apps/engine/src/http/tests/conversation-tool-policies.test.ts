@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { apiKeys, auditLog, conversations, tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -181,7 +182,7 @@ describe("conversation tool-policies HTTP route — cross-tenant isolation", () 
       .values({
         tenant_id: otherTenant.id,
         email: `${slug}@test.local`,
-        role: "admin",
+        role_id: await builtinRoleId(srv.db, "admin"),
       })
       .returning();
     if (!otherUser) throw new Error("seed other user failed");

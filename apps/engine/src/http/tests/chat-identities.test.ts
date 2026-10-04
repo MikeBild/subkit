@@ -14,6 +14,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -39,7 +40,11 @@ beforeAll(async () => {
   if (!t2) throw new Error("seed second tenant");
   const [u2] = await ctx.db
     .insert(users)
-    .values({ tenant_id: t2.id, email: "other-id@chat.test", role: "admin" })
+    .values({
+      tenant_id: t2.id,
+      email: "other-id@chat.test",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
@@ -47,7 +52,11 @@ beforeAll(async () => {
   // Provision a non-admin member in the SAME tenant for RBAC-deny tests.
   const [member] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member-chatid@chat.test", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-chatid@chat.test",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member user");
   const plain = `wf_live_${apiKeyHex(24).slice(0, 32)}`;

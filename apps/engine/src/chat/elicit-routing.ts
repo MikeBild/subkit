@@ -1,5 +1,5 @@
 // Routing for inbound chat interactions (Block-Kit clicks, view
-// submissions, legacy approve/reject) into the conversation
+// submissions, approve/reject approval cards) into the conversation
 // pipeline's `respondElicitation`. Extracted from `dispatcher.ts`
 // to keep that file under the audit-invariant size cap and because
 // the interaction-routing block is self-contained: it takes the
@@ -181,8 +181,8 @@ export interface RouteChatInteractionArgs {
  *
  * Action-id families:
  *   approve:<elic_id> / reject:<elic_id>
- *       Legacy ApprovalCard path (kept; the existing block-kit
- *       Approve/Reject card is still a valid render).
+ *       ApprovalCard path, emitted by `sendApproval` when the adapter
+ *       has no native elicitation renderer.
  *   elicit:<elic_id>:confirm | :choice | :multi:select | :multi:submit
  *       Native rendering. Value carries a JSON envelope
  *       `{c: conversation_id, o: <typed output>}`. `multi:select` is
@@ -219,49 +219,49 @@ export async function routeChatInteraction(
   let rawOutput: unknown = null;
   let kind: ElicitationKind | null = null;
 
-  const legacy = /^(approve|reject):(.+)$/.exec(action_id);
-  if (legacy) {
-    // Legacy ApprovalCard: value is the bare conversation_id (raw
+  const approval = /^(approve|reject):(.+)$/.exec(action_id);
+  if (approval) {
+    // ApprovalCard: value is the bare conversation_id (raw
     // string, NOT JSON). A JSON-shaped value here means a renderer
-    // emitted the new `{c,o}` envelope under a legacy action_id —
+    // emitted the `{c,o}` envelope under an approval action_id —
     // fail-closed log so the renderer regression surfaces before
     // we feed a JSON string into `respondElicitation` as the
     // conversation_id.
     if (actionValue.startsWith("{")) {
       logger.warn({
         module: "chat",
-        action: "interaction.legacy_value_shape_mismatch",
+        action: "interaction.approval_value_shape_mismatch",
         msg: "approve/reject action carries an envelope-shaped value — renderer regression?",
         action_id,
       });
       return { status: "ignored" };
     }
-    const legacyElicId = legacy[2] ?? "";
+    const approvalElicId = approval[2] ?? "";
     // Crafted action_id (e.g. `approve:not-a-uuid`) or value would
     // reach a `uuid`-typed Postgres column as raw text and throw
     // `invalid input syntax for type uuid`, escaping into pg-boss
     // (3× retry storm, no deny audit). Validate up front; ignore
     // silently so SIEM sees the noise via the structured log alone.
-    if (!UUID_RE.test(legacyElicId) || !UUID_RE.test(actionValue)) {
+    if (!UUID_RE.test(approvalElicId) || !UUID_RE.test(actionValue)) {
       logger.warn({
         module: "chat",
-        action: "interaction.legacy_ids_malformed",
+        action: "interaction.approval_ids_malformed",
         msg: "approve/reject action carries non-UUID ids — discarding",
         action_id,
       });
       return { status: "ignored" };
     }
-    elicitation_id = legacyElicId;
+    elicitation_id = approvalElicId;
     conversation_id = actionValue;
     kind = "confirm";
     // Invariant: rawOutput here is engine-constructed from the
     // regex-validated `approve|reject` capture, NOT from any
     // attacker-controlled payload field. If a future caller adds a
-    // new legacy action_id, it MUST keep `rawOutput` engine-constructed
+    // new approval action_id, it MUST keep `rawOutput` engine-constructed
     // — the validateElicitationOutput pass below trusts the kind
     // matches and would silently accept a maliciously-shaped output
     // that happened to fit the confirm schema.
-    rawOutput = { confirmed: legacy[1] === "approve" };
+    rawOutput = { confirmed: approval[1] === "approve" };
   } else {
     const elicit = /^elicit:([^:]+):(confirm|choice|multi:submit)$/.exec(action_id);
     if (elicit) {
@@ -507,7 +507,7 @@ export async function routeChatInteraction(
     unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
   const isApprove =
-    legacy?.[1] === "approve" ||
+    approval?.[1] === "approve" ||
     (typeof output === "object" &&
       output !== null &&
       (output as { confirmed?: boolean }).confirmed === true);

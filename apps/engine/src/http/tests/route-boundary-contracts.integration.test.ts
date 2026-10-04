@@ -23,6 +23,7 @@ import type { Db } from "../../db/client.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
@@ -68,7 +69,10 @@ async function seedPrincipal(
   email: string,
   role: "admin" | "member",
 ): Promise<Principal> {
-  const [user] = await db.insert(users).values({ tenant_id: tenantId, email, role }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({ tenant_id: tenantId, email, role_id: await builtinRoleId(db, role) })
+    .returning();
   if (!user) throw new Error(`seed user failed (${email})`);
   const key = generateApiKey();
   await db.insert(apiKeys).values({

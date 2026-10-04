@@ -20,12 +20,17 @@ const spend = answered({
   calls: 120,
   cost: { amount: 87.22, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
 });
-const month = (used: number, cap: number | null) =>
+const month = (
+  used: number,
+  cap: number | null,
+  state: string | null = cap === null ? null : "ample",
+) =>
   answered(
     budgetSummary({
       tokens_month: used,
       monthly_budget_tokens: cap,
       remaining_monthly_budget_tokens: cap === null ? null : Math.max(cap - used, 0),
+      monthly_budget_state: state,
     }),
   );
 const budget = month(40_500_000, 150_000_000);
@@ -154,7 +159,7 @@ describe("the operations bar", () => {
     );
     expect(html).toContain('data-budget-pressure="ample"');
     expect(hrefs(html)).toContain("/cockpit/usage");
-    const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000) }));
+    const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000, "critical") }));
     expect(figureText(critical, "budget")).toContain("95 %");
     expect(figureText(critical, "budget")).toContain("Fast aufgebraucht");
     expect(critical).toContain('data-budget-pressure="critical"');

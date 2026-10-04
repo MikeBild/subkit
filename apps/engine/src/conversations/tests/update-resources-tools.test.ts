@@ -7,9 +7,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, connectors, knowledgeSources, subscriptions } from "../../db/schema/index.ts";
-import { updateConnectorTool } from "../tools/generated/writes/update-connector.ts";
-import { updateKnowledgeSourceTool } from "../tools/generated/writes/update-knowledge-source.ts";
-import { updateSubscriptionTool } from "../tools/generated/writes/update-subscription.ts";
+import { updateConnectorTool } from "../tools/engine-api/writes/update-connector.ts";
+import { updateKnowledgeSourceTool } from "../tools/engine-api/writes/update-knowledge-source.ts";
+import { updateSubscriptionTool } from "../tools/engine-api/writes/update-subscription.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

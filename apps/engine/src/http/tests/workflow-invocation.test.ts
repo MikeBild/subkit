@@ -21,7 +21,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
-import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { withConfigKey } from "../../test-helpers/config-override.ts";
 import { createWorkflow as createWorkflowIn } from "../../workflows/index.ts";
 import { RunBodySchema } from "../routes/executions/schemas.ts";
@@ -51,7 +51,7 @@ const headers = (key = ctx.apiKey): Record<string, string> => ({
 interface Invocation {
   workflow_id: string;
   slug: string;
-  legacy: boolean;
+  invalid: boolean;
   visibility: { hooks: boolean; schedules: boolean };
   base_url: string | null;
   http: {
@@ -157,7 +157,11 @@ async function reader(name: string, permissions: string[]): Promise<string> {
     await grantPermissionToRole(ctx.db, ctx.tenantId, role.id, permission);
   const [user] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: `invocation-${name}@test.local`, role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: `invocation-${name}@test.local`,
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!user) throw new Error("missing user fixture");
   await ctx.db.update(users).set({ role_id: role.id }).where(eq(users.id, user.id));
@@ -593,14 +597,14 @@ const LEGACY_STEPS = {
 describe.each(Object.entries(LEGACY_STEPS))(
   "a workflow whose current version is stored in an earlier format — %s",
   (_shape, steps) => {
-    async function legacyWorkflow() {
+    async function invalidWorkflow() {
       const wf = await createWorkflow({ description: "kept readable" });
       // Written straight to the row: the current write path would refuse it.
       await ctx.db
         .update(workflowVersions)
         .set({
           dag: {
-            name: "legacy",
+            name: "invalid",
             description: "kept readable",
             trigger: { kind: "schedule", cron: "0 6 * * *" },
             input_schema: { type: "object", properties: { city: { type: "string" } } },
@@ -612,33 +616,33 @@ describe.each(Object.entries(LEGACY_STEPS))(
     }
 
     test("is still readable: the workflow, the list it is a row of, and how to call it", async () => {
-      const wf = await legacyWorkflow();
+      const wf = await invalidWorkflow();
 
       const single = await fetch(`${ctx.baseUrl}/v1/workflows/${wf.id}`, { headers: headers() });
       expect(single.status).toBe(200);
-      const view = (await single.json()) as { legacy: boolean; steps: Array<{ id: string }> };
-      expect(view.legacy).toBe(true);
+      const view = (await single.json()) as { invalid: boolean; steps: Array<{ id: string }> };
+      expect(view.invalid).toBe(true);
       // What is stored is what is shown.
       expect(view.steps.map((step) => step.id)).toEqual(["old"]);
 
       const list = await fetch(`${ctx.baseUrl}/v1/workflows?limit=200`, { headers: headers() });
       expect(list.status).toBe(200);
-      const items = ((await list.json()) as { items: Array<{ id: string; legacy: boolean }> })
+      const items = ((await list.json()) as { items: Array<{ id: string; invalid: boolean }> })
         .items;
-      expect(items.find((item) => item.id === wf.id)?.legacy).toBe(true);
+      expect(items.find((item) => item.id === wf.id)?.invalid).toBe(true);
       // One legacy row does not take the others down with it.
-      expect(items.some((item) => item.id !== wf.id && item.legacy === false)).toBe(true);
+      expect(items.some((item) => item.id !== wf.id && item.invalid === false)).toBe(true);
 
       const called = await invocation(wf.id);
       expect(called.status).toBe(200);
-      expect(called.body.legacy).toBe(true);
+      expect(called.body.invalid).toBe(true);
       expect(called.body.http.body.workflow_id).toBe(wf.id);
       // The readers walk the stored definition as written.
       expect(called.body.input.sample).toEqual({ city: "<city>" });
     });
 
     test("is refused by name when it is run", async () => {
-      const wf = await legacyWorkflow();
+      const wf = await invalidWorkflow();
       const res = await fetch(`${ctx.baseUrl}/v1/executions`, {
         method: "POST",
         headers: headers(),
@@ -650,14 +654,14 @@ describe.each(Object.entries(LEGACY_STEPS))(
         message: string;
         details?: { issues?: Array<{ step_id: string }> };
       };
-      expect(body.code).toBe("workflow_version_legacy");
+      expect(body.code).toBe("workflow_version_invalid");
       expect(body.message).toContain("earlier definition format");
       expect(body.details?.issues?.[0]?.step_id).toBe("old");
     });
 
-    test("a current-format workflow says it is not legacy", async () => {
+    test("a current-format workflow says it is not invalid", async () => {
       const wf = await createWorkflow();
-      expect((await invocation(wf.id)).body.legacy).toBe(false);
+      expect((await invocation(wf.id)).body.invalid).toBe(false);
     });
   },
 );

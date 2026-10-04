@@ -25,6 +25,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -52,7 +53,11 @@ beforeAll(async () => {
   otherTenantId = t2.id;
   const [u2] = await ctx.db
     .insert(users)
-    .values({ tenant_id: otherTenantId, email: "other@chat.test", role: "admin" })
+    .values({
+      tenant_id: otherTenantId,
+      email: "other@chat.test",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
@@ -62,7 +67,11 @@ beforeAll(async () => {
   // them with 403; admins (the default ctx.apiKey) pass.
   const [member] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member-chatws@chat.test", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-chatws@chat.test",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member user");
   const plain = `wf_live_${apiKeyHex(24).slice(0, 32)}`;

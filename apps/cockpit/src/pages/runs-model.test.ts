@@ -48,7 +48,7 @@ describe("run authority evidence", () => {
       ["Exact workflow version", "historical-version"],
     ]);
   });
-  test("does not reinterpret legacy runs as approved or unauthorized", () => {
+  test("does not reinterpret unbound runs as approved or unauthorized", () => {
     expect(
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: null }, t),
     ).toEqual([["Authority recorded for this run", "No execution-authority binding recorded"]]);

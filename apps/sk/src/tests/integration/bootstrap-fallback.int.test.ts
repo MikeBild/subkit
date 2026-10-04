@@ -1,9 +1,9 @@
 // loadBootstrap end-to-end against the fake EngineClient.
 //
-// Exercises the 3-tier resolution:
+// Exercises the resolution:
 //   1. disk cache hit → no network call
 //   2. /v1/sk/bootstrap success → cache populated
-//   3. /v1/sk/bootstrap rejection → tiered persona-probe fallback
+//   3. /v1/sk/bootstrap rejection → no-grant profile-only snapshot
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -37,22 +37,21 @@ describe("integration: bootstrap network -> cache -> fallback", () => {
     expect(b.source).toBe("cache");
     const counts = fakeClientCallCounts(client);
     expect(counts.bootstrap).toBe(1);
-    // The legacy whoami probe is NOT used when bootstrap succeeds.
     expect(counts.whoami).toBe(0);
   });
 
-  test("/v1/sk/bootstrap rejection fans out to the legacy probe", async () => {
+  test("/v1/sk/bootstrap rejection grants nothing and probes nothing", async () => {
     const client = createFakeEngineClient({
-      errorOnBootstrap: new Error("HTTP 404"),
-      rbacAllow: (perm) => perm === "conversation:read",
+      errorOnBootstrap: new Error("HTTP 500"),
+      rbacAllow: () => true,
     });
     const snap = await loadBootstrap(client, ANONYMOUS_PROFILE, { cacheDir });
     expect(snap.source).toBe("fallback");
     const counts = fakeClientCallCounts(client);
     expect(counts.bootstrap).toBe(1);
-    expect(counts.whoami).toBeGreaterThan(0);
-    expect(counts.rbacCan).toBeGreaterThan(0);
-    expect(snap.allowed.has("conversation:read")).toBe(true);
+    expect(counts.whoami).toBe(0);
+    expect(counts.rbacCan).toBe(0);
+    expect(snap.allowed.size).toBe(0);
   });
 
   test("forceRefresh re-fetches even after a fresh cache write", async () => {

@@ -30,6 +30,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -128,7 +129,11 @@ beforeAll(async () => {
 
   const [uB] = await srv.db
     .insert(users)
-    .values({ tenant_id: tB.id, email: "admin@ninbox-b.local", role: "admin" })
+    .values({
+      tenant_id: tB.id,
+      email: "admin@ninbox-b.local",
+      role_id: await builtinRoleId(srv.db, "admin"),
+    })
     .returning();
   if (!uB) throw new Error("seed user B failed");
   const kB = genKey();
@@ -147,8 +152,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "enduser@ninbox-a.local",
-      // Legacy role string — the evaluator reads role_id; enduser role lacks notification:read.
-      role: "enduser",
+      role_id: await builtinRoleId(srv.db, "enduser"),
     })
     .returning();
   if (!uE) throw new Error("seed enduser failed");
@@ -166,7 +170,11 @@ beforeAll(async () => {
   // inbox — the configuration the destructive ack used to corrupt.
   const [uC] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "colleague@ninbox-a.local", role: "admin" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "colleague@ninbox-a.local",
+      role_id: await builtinRoleId(srv.db, "admin"),
+    })
     .returning();
   if (!uC) throw new Error("seed colleague failed");
   const kC = genKey();

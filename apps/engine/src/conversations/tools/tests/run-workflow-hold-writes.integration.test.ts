@@ -37,7 +37,7 @@ import {
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { draftPreviewInput } from "../draft-preview-input.ts";
 import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
-import { runWorkflowTool } from "../generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.

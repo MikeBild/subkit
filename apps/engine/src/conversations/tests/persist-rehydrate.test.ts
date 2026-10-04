@@ -15,7 +15,7 @@ import {
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { buildMessagesV2 } from "../parts.ts";
+import { buildMessages } from "../parts.ts";
 import { buildModelMessages } from "../persist.ts";
 import { getConversation } from "../service/get.ts";
 
@@ -488,7 +488,7 @@ test("answered text tools show the answer and a completed card after reloading",
     .returning();
   const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);
   if (!detail) throw new Error("conversation missing");
-  const ui = buildMessagesV2(detail.messages, detail.tool_calls);
+  const ui = buildMessages(detail.messages, detail.tool_calls);
   expect(ui.filter((m) => m.role === "user").map((m) => m.parts)).toEqual([
     [{ type: "text", text: "Blau" }],
   ]);

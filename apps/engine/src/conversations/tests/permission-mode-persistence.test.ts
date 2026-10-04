@@ -21,7 +21,7 @@ afterAll(async () => {
 });
 
 describe("conversation permission mode persistence", () => {
-  test("new sessions persist auto by default without changing legacy or explicit modes", async () => {
+  test("new sessions persist auto by default without changing stored or explicit modes", async () => {
     for (const mode of [undefined, "ask", "plan", "auto"] as const) {
       const created = await createConversation(
         {

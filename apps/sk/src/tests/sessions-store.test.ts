@@ -29,10 +29,6 @@ describe("session JSONL store", () => {
     expect(sessionsDir()).toMatch(/\.sk\/sessions$/);
   });
 
-  test("sessionEventsPath joins {dir}/{conversationId}.jsonl", () => {
-    expect(sessionEventsPath("c-123", "/tmp/x")).toBe("/tmp/x/c-123.jsonl");
-  });
-
   test("appendEvent + loadEvents round-trip", () => {
     appendEvent(
       "c-1",
@@ -77,6 +73,21 @@ describe("session JSONL store", () => {
     const events = loadEvents("c-2", dir, "t-test");
     expect(events.length).toBe(1);
     expect(events[0]?.seq).toBe(0);
+  });
+
+  test("loadEvents skips rows that carry no tenant", () => {
+    appendEvent(
+      "c-5",
+      { seq: 0, kind: "user_message", data: { text: "ok" } },
+      { dir, tenant: "t-test" },
+    );
+    const fs = require("node:fs") as typeof import("node:fs");
+    fs.appendFileSync(
+      sessionEventsPath("c-5", dir, "t-test"),
+      `${JSON.stringify({ seq: 1, ts: "2026-01-01T00:00:00Z", kind: "user_message", data: {} })}\n`,
+    );
+    const events = loadEvents("c-5", dir, "t-test");
+    expect(events.map((e) => e.seq)).toEqual([0]);
   });
 
   test("file is mode 0600", () => {

@@ -272,7 +272,7 @@ describe("onError modes", () => {
     );
   });
 
-  test("a write that fails inside a legacy loop body surfaces in execution final_status", async () => {
+  test("a write that fails inside a loop-step body surfaces in execution final_status", async () => {
     // The loop driver only resolves the collection (status "succeeded");
     // pre-fix a failed body write was stored only in the per-iteration
     // envelope and never propagated. The body step's default on_error must
@@ -306,7 +306,7 @@ describe("onError modes", () => {
     expect(container?.status).toBe("failed");
   });
 
-  test("legacy loop body failure with on_error=continue does NOT fail the execution", async () => {
+  test("loop-step body failure with on_error=continue does NOT fail the execution", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-write-continue",
       steps: [

@@ -38,4 +38,4 @@ This skill is intentionally thin. For exact request/response shapes, the signatu
 search_knowledge({ query: "<your question>", tags: ["sk-platform-reference"] })
 ```
 
-(or `search_knowledge_v2` with the same `tags`). The exhaustive content lives in the knowledge source slug `sk-ref-webhooks`.
+The exhaustive content lives in the knowledge source slug `sk-ref-webhooks`.

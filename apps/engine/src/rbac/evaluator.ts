@@ -133,10 +133,7 @@ async function principalRoleId(db: Db, principal: ResolvedPrincipal): Promise<st
       .from(users)
       .where(eq(users.id, principal.id))
       .limit(1);
-    if (rows[0]?.role_id) return rows[0].role_id;
-    // Legacy fallback: honor the `principal.roles` names (derived
-    // from the enum column) so users that predate the RBAC backfill
-    // still resolve a role_id via the built-in table.
+    if (rows[0]) return rows[0].role_id;
     for (const name of principal.roles ?? []) {
       const id = await lookupBuiltinRoleIdByName(db, name);
       if (id) return id;

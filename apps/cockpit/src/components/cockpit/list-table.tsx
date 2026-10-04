@@ -72,15 +72,9 @@ export function ListTable<TData extends RowData>({
         hasActiveFilters={false}
         sorting={[] as SortingState}
         onSortingChange={() => {}}
-        page={0}
-        pageSize={Math.max(rows.length, 1)}
         total={rows.length}
-        onPageChange={() => {}}
-        previousLabel={t("catalog.previous")}
-        nextLabel={t("catalog.next")}
         columnsLabel={t("catalog.columns")}
         recordsLabel={t("catalog.records")}
-        loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
       />
     </div>

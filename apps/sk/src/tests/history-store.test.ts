@@ -122,7 +122,7 @@ describe("history-store: clear + prompt ring", () => {
     const path = tmpHistoryPath();
     appendHistory("a", { path, tenant: "acme" });
     appendHistory("b", { path, tenant: "other" });
-    appendHistory("c", { path }); // legacy untagged — DROPPED under filter
+    appendHistory("c", { path }); // untagged — DROPPED under filter
     // Pre-R9-W3 the result was ["a", "c"]: untagged rows leaked
     // across tenants. Strict tenant filter now returns only rows
     // tagged with that exact tenant.

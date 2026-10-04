@@ -15,12 +15,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
-import { conversations, workflows, workflowVersions } from "../../../db/schema/index.ts";
+import { conversations, users, workflows, workflowVersions } from "../../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { buildMcpStubCtx } from "../../../mcp/adapter.ts";
+import { emptyRoleId } from "../../../test-helpers/roles.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
-import { runWorkflowTool } from "../generated/writes/run-workflow.ts";
+import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -169,10 +170,26 @@ describe.skipIf(skip)("run_workflow via buildMcpStubCtx — RBAC threading", () 
       },
     };
 
-    const result = await runWorkflowTool.execute(ctx, {
-      workflow: workflowId,
-      environment: "dev",
-    });
+    const [owner] = await convCtx.testDb.db
+      .select({ role_id: users.role_id })
+      .from(users)
+      .where(eq(users.id, convCtx.user_id));
+    if (!owner) throw new Error("conversation user missing");
+    await convCtx.testDb.db
+      .update(users)
+      .set({ role_id: await emptyRoleId(convCtx.testDb.db, convCtx.tenant_id) })
+      .where(eq(users.id, convCtx.user_id));
+    const result = await runWorkflowTool
+      .execute(ctx, {
+        workflow: workflowId,
+        environment: "dev",
+      })
+      .finally(() =>
+        convCtx.testDb.db
+          .update(users)
+          .set({ role_id: owner.role_id })
+          .where(eq(users.id, convCtx.user_id)),
+      );
 
     expect(result.ok).toBe(false);
     const data = result.data as Record<string, unknown>;

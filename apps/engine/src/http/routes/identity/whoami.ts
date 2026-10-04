@@ -2,7 +2,6 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -61,7 +60,6 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
       const [row] = await db
         .select({
           email: users.email,
-          role_legacy: users.role,
           role_name: roles.name,
         })
         .from(users)
@@ -69,7 +67,7 @@ export function registerWhoamiRoute(app: OpenAPIHono<AppEnv>): void {
         .where(and(eq(users.tenant_id, principal.tenant_id), eq(users.id, principal.id)))
         .limit(1);
       email = row?.email ?? null;
-      roleName = row ? resolveEffectiveUserRole(row.role_legacy, row.role_name) : null;
+      roleName = row?.role_name ?? null;
     } else if (principal.kind === "system_account") {
       const [row] = await db
         .select({

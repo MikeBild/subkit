@@ -141,7 +141,7 @@ function runDialogApi(state) {
         return json(
           route,
           {
-            code: "workflow_version_legacy",
+            code: "workflow_version_invalid",
             message:
               'this workflow version is stored in an earlier definition format and cannot run — step "send", steps.0.language: invalid. Save the workflow again in the current format.',
             details: {

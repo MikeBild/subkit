@@ -16,9 +16,10 @@ describe("workflow connector relations", () => {
 });
 
 describe("workflow trigger words", () => {
-  test("a workflow without an effective trigger runs on request, it is not unknown", () => {
-    expect(triggerLabelKey(null)).toBe("workflows.trigger.request");
-    expect(triggerLabelKey(undefined)).toBe("workflows.trigger.request");
+  test("a request trigger reads as on request", () => {
+    expect(triggerLabelKey({ kind: "request", source: "default", state: "active" })).toBe(
+      "workflows.trigger.request",
+    );
   });
 
   test("a bound schedule reads as a schedule, whatever the definition said", () => {

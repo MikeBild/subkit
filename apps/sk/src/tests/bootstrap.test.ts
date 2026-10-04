@@ -49,8 +49,6 @@ interface BootstrapResp {
 
 class FakeClient {
   bootstrapCalls = 0;
-  whoamiCalls = 0;
-  rbacCalls = 0;
   bootstrapResponse: BootstrapResp | Error;
   constructor(resp: BootstrapResp | Error) {
     this.bootstrapResponse = resp;
@@ -59,30 +57,6 @@ class FakeClient {
     this.bootstrapCalls++;
     if (this.bootstrapResponse instanceof Error) return Promise.reject(this.bootstrapResponse);
     return Promise.resolve(this.bootstrapResponse);
-  }
-  whoami(): Promise<{
-    id: string;
-    kind: "user" | "system_account";
-    tenant_id: string;
-    tenant_slug: string | null;
-    email: string | null;
-    role_name: string | null;
-    provider: string;
-  }> {
-    this.whoamiCalls++;
-    return Promise.resolve({
-      id: "u-1",
-      kind: "user",
-      tenant_id: "t-test",
-      tenant_slug: "t-test",
-      email: "fb@example.com",
-      role_name: "operator",
-      provider: "api_key",
-    });
-  }
-  rbacCan(): Promise<{ allow: boolean; source: string | null; reason: string | null }> {
-    this.rbacCalls++;
-    return Promise.resolve({ allow: false, source: null, reason: null });
   }
 }
 
@@ -189,12 +163,16 @@ describe("loadBootstrap", () => {
     expect(client.bootstrapCalls).toBe(2);
   });
 
-  test("falls back to legacy persona-probe when /v1/sk/bootstrap 404s", async () => {
-    const client = new FakeClient(new Error("HTTP 404"));
+  test("a failed /v1/sk/bootstrap yields a no-grant snapshot keyed off the profile", async () => {
+    const client = new FakeClient(new Error("HTTP 500"));
     const snap = await loadBootstrap(client as unknown as EngineClient, PROFILE, { cacheDir });
     expect(client.bootstrapCalls).toBe(1);
-    expect(client.whoamiCalls).toBeGreaterThan(0);
     expect(snap.source).toBe("fallback");
+    expect(snap.label).toBe("operator");
+    expect(snap.tenant).toBe("t-test");
+    expect(snap.allowed.size).toBe(0);
+    expect(snap.probe.allows("conversation:read")).toBe(false);
+    expect(() => readFileSync(bootstrapCachePath(PROFILE, cacheDir), "utf8")).toThrow();
   });
 
   test("ttl=0 disables disk cache entirely", async () => {

@@ -468,8 +468,8 @@ function translate(error: unknown): never {
       code,
       (error as Error).message,
       details && typeof details === "object" && !Array.isArray(details)
-        ? (details as Record<string, unknown>)
-        : undefined,
+        ? { details: details as Record<string, unknown> }
+        : {},
     );
   throw error;
 }

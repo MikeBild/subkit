@@ -11,6 +11,7 @@ import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { withContext } from "../../logging/context.ts";
 import { logger } from "../../logging/logger.ts";
 import { logRing } from "../../observability/log-ring.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -31,7 +32,11 @@ beforeAll(async () => {
 
   const [member] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "member-logs@test.local", role: "member" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "member-logs@test.local",
+      role_id: await builtinRoleId(srv.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member failed");
   const key = newKey();

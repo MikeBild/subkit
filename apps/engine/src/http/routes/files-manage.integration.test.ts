@@ -60,7 +60,6 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "portal@files-manage.local",
-      role: "enduser",
       role_id: portalRole.id,
     })
     .returning();

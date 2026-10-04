@@ -79,7 +79,7 @@ const discoverRoute = createRoute({
 
 class DiscoveryUnavailableError extends HttpError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(503, "discovery_unavailable", message, details);
+    super(503, "discovery_unavailable", message, details ? { details } : {});
   }
 }
 

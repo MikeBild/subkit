@@ -71,7 +71,7 @@ describe("conversations/tools — invokeForSdk envelope parity", () => {
     }
   });
 
-  test("envelope shape matches legacy ToolResult discriminator (ok:true | ok:false)", async () => {
+  test("envelope shape matches the ToolResult discriminator (ok:true | ok:false)", async () => {
     // Verify the back-conversion in envelopeToToolResult preserves the
     // discriminator the chat loop expects. We use a tool we know the
     // registry exposes on chat surface: preview_attachment is a safe

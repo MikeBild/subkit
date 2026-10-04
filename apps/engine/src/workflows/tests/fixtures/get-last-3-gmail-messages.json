@@ -18,7 +18,6 @@
       "body": ["get_message"],
       "kind": "loop",
       "over": "$scope.list_messages.data.messages",
-      "item_var": "msg",
       "on_error": "fail"
     },
     {

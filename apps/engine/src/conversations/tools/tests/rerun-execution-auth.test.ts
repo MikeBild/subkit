@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { rerunExecutionTool } from "../generated/writes/rerun-execution.ts";
+import { rerunExecutionTool } from "../engine-api/writes/rerun-execution.ts";
 import type { ToolContext } from "../index.ts";
 
 test("rerun refuses a missing principal before reading or executing anything", async () => {

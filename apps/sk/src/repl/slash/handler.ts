@@ -39,7 +39,7 @@ import type {
   OnboardingSaveResult,
   OnboardingTemplate,
 } from "../onboarding-wizard.tsx";
-import { classifySlash, removedSlashGuidance } from "./dispatcher.ts";
+import { classifySlash, unsupportedSlashGuidance } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
 import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
 import { dispatchAuthoringDraftSlash } from "./handlers/authoring-drafts.ts";
@@ -400,12 +400,10 @@ export async function handleSlash(
   const plan = classifySlash(name);
   if (plan.routing === "unknown") {
     debugLog("dialog.warning", { reason: "unknown_slash", slash_name: name }, {});
-    // Short-circuit removed/never-shipped slashes with a one-line
-    // guidance message pointing at the new home. The guidance map
-    // lives in the dispatcher to keep the registry pure; entries
-    // decay one release after the actual delete pass per
-    // "no backwards-compat shims".
-    const hint = removedSlashGuidance(name);
+    // Short-circuit never-shipped slashes with a one-line guidance
+    // message pointing at where the need is met. The guidance map
+    // lives in the dispatcher to keep the registry pure.
+    const hint = unsupportedSlashGuidance(name);
     if (hint) return `/${name} ${hint}`;
   } else {
     debugLog("dialog.elicitation_routing", { slash_name: name, routing: plan.routing }, {});

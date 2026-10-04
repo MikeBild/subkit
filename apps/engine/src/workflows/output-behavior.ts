@@ -4,7 +4,7 @@
 // when no transform is declared (verified at
 // `apps/engine/src/execution/engine.ts:854` and surfaced through the
 // run-workflow tool at
-// `apps/engine/src/conversations/tools/generated/writes/run-workflow.ts:545`).
+// `apps/engine/src/conversations/tools/engine-api/writes/run-workflow.ts:545`).
 // That contract is invisible to a reader of the workflow JSON — they
 // see `output_transform: null` and naturally infer "output is null."
 // Polish A surfaces an explicit `output_behavior` label so the LLM

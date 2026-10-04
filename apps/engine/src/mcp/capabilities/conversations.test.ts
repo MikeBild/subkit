@@ -33,6 +33,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { startBoss, stopBoss } from "../../queue/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { stampMcpTaskProgress } from "../tasks/store.ts";
 import { handleConversationTool } from "./conversations.ts";
 
@@ -66,7 +67,11 @@ beforeAll(async () => {
   if (!t) throw new Error("seed tenant failed");
   const [u] = await testDb.db
     .insert(users)
-    .values({ tenant_id: t.id, email: "ct@test.local", role: "admin" })
+    .values({
+      tenant_id: t.id,
+      email: "ct@test.local",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   principal = {
@@ -84,7 +89,11 @@ beforeAll(async () => {
   if (!t2) throw new Error("seed foreign tenant failed");
   const [u2] = await testDb.db
     .insert(users)
-    .values({ tenant_id: t2.id, email: "foreign@test.local", role: "admin" })
+    .values({
+      tenant_id: t2.id,
+      email: "foreign@test.local",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
     .returning();
   if (!u2) throw new Error("seed foreign user failed");
   foreignPrincipal = {

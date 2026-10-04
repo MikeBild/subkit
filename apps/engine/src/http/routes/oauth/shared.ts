@@ -135,14 +135,14 @@ export async function permittedMcpScopes(
   db: Db,
   tenantId: string,
   userId: string,
-  roleName: string,
+  roleName: string | null,
 ): Promise<string[]> {
   const principal: ResolvedPrincipal = {
     provider: "oidc",
     kind: "user",
     id: userId,
     tenant_id: tenantId,
-    roles: [roleName],
+    roles: roleName ? [roleName] : [],
     scopes: [],
   };
   const allowed: string[] = [];

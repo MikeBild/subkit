@@ -7,16 +7,15 @@
 // ones), so this runner measures agreement against a human-labeled golden set
 // (`eval/judge-golden.json`) and FAILS if agreement drops below the threshold.
 //
-//   MASTER_KEY=<64hex> SK_OVERRIDE_LLM_PROVIDER=anthropic \
-//     SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY=sk-ant-... \
-//     bun run apps/engine/eval/judge-calibration.ts
+//   MASTER_KEY=<64hex> SUBKIT_CONFIG=<config with llm.provider=anthropic and
+//     llm.providers.anthropic.api_key> bun run apps/engine/eval/judge-calibration.ts
 //
 // Needs Postgres (a throwaway migrated DB) + a real LLM key — it exercises the
 // REAL judge, not the mock. NOT part of the mock-only `bun run eval` gate; runs
 // pre-release / nightly (see .github/workflows/nightly-eval.yml). Exit 0 when
 // agreement >= AGREEMENT_THRESHOLD, else 1.
 
-// The LLM provider + key come from the same SK_OVERRIDE_* env the engine reads
+// The LLM provider + key come from the config file the engine reads
 // (see the usage line above). This runner exercises the real judge WITHOUT
 // booting the engine, so main() must `await loadConfig()` itself — until it does,
 // the config is uninitialised and the judge silently resolves to the `gateway`
@@ -57,7 +56,7 @@ async function main(): Promise<void> {
     console.error(
       `judge-calibration: needs a ready anthropic provider (real judge, not mock), got ` +
         `detected=${setup.detected} ok=${setup.ok} missing=${JSON.stringify(setup.missing)}. ` +
-        `Set SK_OVERRIDE_LLM_PROVIDER=anthropic + SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY.`,
+        `Point SUBKIT_CONFIG at a config with llm.provider=anthropic and llm.providers.anthropic.api_key.`,
     );
     process.exit(2);
   }

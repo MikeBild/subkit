@@ -37,6 +37,7 @@ import {
   setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
@@ -88,7 +89,11 @@ beforeAll(async () => {
   tenantId = t.id;
   const [u] = await queue.testDb.db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "rt@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantId,
+      email: "rt@test.local",
+      role_id: await builtinRoleId(queue.testDb.db, "admin"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;

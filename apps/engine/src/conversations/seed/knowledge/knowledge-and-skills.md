@@ -102,7 +102,7 @@ a repo declares which domains it works in via `.sk/agent.json` (written by
 
 - **In:** every new session gets a budgeted briefing (`GET /v1/agent/briefing`)
   carrying the domain's active Skills verbatim and an INDEX of its Knowledge
-  Sources — details stay behind `search_knowledge_v2` so sessions look up
+  Sources — details stay behind `search_knowledge` so sessions look up
   instead of preloading. `sk skills sync` additionally materializes the Skills
   as SKILL.md files for offline use.
 - **Back:** session transcripts (`POST /v1/agent/sessions`, wired by the
@@ -133,7 +133,7 @@ a repo declares which domains it works in via `.sk/agent.json` (written by
 
 ## Reading knowledge back
 
-`search_knowledge_v2` returns ranked snippets. When a snippet is not enough
+`search_knowledge` returns ranked snippets. When a snippet is not enough
 ("read me the deploy runbook"), `read_knowledge` pages through a source's FULL
 content — pass `path` (e.g. `/runbooks/deploy.md`) for one file of a bundle, or
 repeat with `next_offset` for everything. Raw HTTP:

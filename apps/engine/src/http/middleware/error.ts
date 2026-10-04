@@ -9,15 +9,13 @@ import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
-import { ENVELOPE_BRAND } from "../_internal.ts";
 import { HttpError, UnauthorizedError } from "../errors.ts";
 import type { AppEnv } from "../openapi.ts";
 
 interface EnvelopeOptions {
-  hint?: string;
-  retry_after?: number;
+  hint?: string | undefined;
+  retry_after?: number | undefined;
   details?: unknown;
-  [k: symbol]: unknown;
 }
 
 function envelope(
@@ -25,28 +23,10 @@ function envelope(
   status: number,
   code: string,
   message: string,
-  detailsOrOpts?: unknown | EnvelopeOptions,
+  opts: EnvelopeOptions = {},
 ) {
-  let hint: string | undefined;
-  let retryAfter: number | undefined;
-  let details: unknown;
-  // Dispatch by brand only — never by shape. The legacy positional
-  // form (4th arg = arbitrary details bag) stays the default; the new
-  // envelope path is opt-in via the ENVELOPE_BRAND symbol stamped by
-  // `HttpError.withEnvelope(...)`.
-  if (
-    detailsOrOpts &&
-    typeof detailsOrOpts === "object" &&
-    !Array.isArray(detailsOrOpts) &&
-    (detailsOrOpts as { [k: symbol]: unknown })[ENVELOPE_BRAND] === true
-  ) {
-    const opts = detailsOrOpts as EnvelopeOptions;
-    hint = opts.hint;
-    retryAfter = opts.retry_after;
-    details = opts.details;
-  } else {
-    details = detailsOrOpts;
-  }
+  const { hint, details } = opts;
+  const retryAfter = opts.retry_after;
   if (retryAfter != null) c.header("Retry-After", String(retryAfter));
   return c.json(
     {
@@ -94,22 +74,6 @@ function captureToRing(
  *  - `APICallError` (ai)            → typed provider envelope
  *  - Abort/timeout                  → 504 llm_timeout
  */
-/**
- * Stamp the envelope brand on an opts object so `envelope()` treats
- * it as the new {hint, retry_after, details} shape rather than a
- * legacy details bag. Call sites that build the envelope inline
- * (mapLlmError, mapKnownErrorResponse) wrap their opts here; routes
- * that throw HttpError use `HttpError.withEnvelope(...)` instead.
- */
-function envelopeOpts(o: { hint?: string; retry_after?: number; details?: unknown }): {
-  hint?: string;
-  retry_after?: number;
-  details?: unknown;
-  [k: symbol]: unknown;
-} {
-  return { ...o, [ENVELOPE_BRAND]: true };
-}
-
 function readRetryAfter(details: unknown): number | undefined {
   if (!details || typeof details !== "object") return undefined;
   const d = details as Record<string, unknown>;
@@ -129,30 +93,18 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   // error" — this is the difference between a confusing dead-end and a fix.
   if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
     captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
-    return envelope(
-      c,
-      400,
-      "llm_provider_misconfigured",
-      err.message,
-      envelopeOpts({
-        hint: "set the provider key with `sk settings set llm.providers.<provider>.api_key '\"…\"'` (or `sk init --llm-api-key`), then retry",
-      }),
-    );
+    return envelope(c, 400, "llm_provider_misconfigured", err.message, {
+      hint: "set the provider key with `sk settings set llm.providers.<provider>.api_key '\"…\"'` (or `sk init --llm-api-key`), then retry",
+    });
   }
   if (err instanceof LlmQuotaExhausted) {
     captureToRing(c, err, 429, "llm_quota_exhausted", "llm_quota");
     const retryAfter = readRetryAfter(err.details) ?? 60;
-    return envelope(
-      c,
-      429,
-      "llm_quota_exhausted",
-      err.message,
-      envelopeOpts({
-        hint: "raise the provider quota or wait for the reset window before retrying",
-        retry_after: retryAfter,
-        details: err.details,
-      }),
-    );
+    return envelope(c, 429, "llm_quota_exhausted", err.message, {
+      hint: "raise the provider quota or wait for the reset window before retrying",
+      retry_after: retryAfter,
+      details: err.details,
+    });
   }
   const providerErr =
     err instanceof LlmProviderError
@@ -163,56 +115,40 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   if (providerErr) {
     if (providerErr.kind === "context_length_exceeded") {
       captureToRing(c, providerErr, 413, "llm_context_too_large", "llm_provider");
-      return envelope(
-        c,
-        413,
-        "llm_context_too_large",
-        providerErr.message,
-        envelopeOpts({
-          hint: "compact the conversation with /compact or trim attachments before retrying",
-          details: providerErr.details,
-        }),
-      );
+      return envelope(c, 413, "llm_context_too_large", providerErr.message, {
+        hint: "compact the conversation with /compact or trim attachments before retrying",
+        details: providerErr.details,
+      });
     }
     if (providerErr.kind === "rate_limit" || providerErr.kind === "quota_exhausted") {
       captureToRing(c, providerErr, 429, "llm_provider_limited", "llm_provider");
       const retryAfter = readRetryAfter(providerErr.details) ?? 30;
-      return envelope(
-        c,
-        429,
-        "llm_provider_limited",
-        providerErr.message,
-        envelopeOpts({
-          hint:
-            providerErr.kind === "quota_exhausted"
-              ? "provider quota exhausted — raise it in the provider console or wait for the next window"
-              : "provider rate-limited the request — retry after the cool-down",
-          retry_after: retryAfter,
-          details: providerErr.details,
-        }),
-      );
+      return envelope(c, 429, "llm_provider_limited", providerErr.message, {
+        hint:
+          providerErr.kind === "quota_exhausted"
+            ? "provider quota exhausted — raise it in the provider console or wait for the next window"
+            : "provider rate-limited the request — retry after the cool-down",
+        retry_after: retryAfter,
+        details: providerErr.details,
+      });
     }
     if (providerErr.kind === "overloaded" || providerErr.kind === "other") {
       captureToRing(c, providerErr, 503, "llm_provider_unavailable", "llm_provider");
-      return envelope(
-        c,
-        503,
-        "llm_provider_unavailable",
-        providerErr.message,
-        envelopeOpts({
-          hint: "the LLM provider is overloaded; retry in a few seconds",
-          retry_after: 5,
-          details: providerErr.details,
-        }),
-      );
+      return envelope(c, 503, "llm_provider_unavailable", providerErr.message, {
+        hint: "the LLM provider is overloaded; retry in a few seconds",
+        retry_after: 5,
+        details: providerErr.details,
+      });
     }
   }
   if (NoObjectGeneratedError.isInstance(err)) {
     captureToRing(c, err, 502, "llm_no_object", "llm_no_object");
     return envelope(c, 502, "llm_no_object", "llm output did not match the expected schema", {
-      cause: err.cause instanceof Error ? err.cause.message : undefined,
-      finishReason: err.finishReason,
-      usage: err.usage,
+      details: {
+        cause: err.cause instanceof Error ? err.cause.message : undefined,
+        finishReason: err.finishReason,
+        usage: err.usage,
+      },
     });
   }
   // AbortError from AbortSignal.timeout fires as a DOMException with
@@ -233,30 +169,11 @@ export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Respons
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {
       c.header("WWW-Authenticate", err.wwwAuthenticate);
     }
-    // If the error carries hint/retry_after, route through the new
-    // branded envelope; otherwise preserve the legacy positional-
-    // details path so existing throw sites that pass
-    // `{ code, details: {...} }` keep surfacing the same
-    // `body.details` shape on the wire.
-    // Presence-test `hint` symmetrically with `retry_after`.
-    // The previous truthy check would silently fall through on
-    // `hint === ""` (no throw site sets it that way today, but the
-    // brand was supposed to encode "this field is set", not "this
-    // field is non-empty").
-    if (err.hint != null || err.retry_after != null) {
-      return envelope(
-        c,
-        err.status,
-        err.code,
-        err.message,
-        envelopeOpts({
-          ...(err.hint ? { hint: err.hint } : {}),
-          ...(err.retry_after != null ? { retry_after: err.retry_after } : {}),
-          ...(err.details ? { details: err.details } : {}),
-        }),
-      );
-    }
-    return envelope(c, err.status, err.code, err.message, err.details);
+    return envelope(c, err.status, err.code, err.message, {
+      hint: err.hint,
+      retry_after: err.retry_after,
+      details: err.details,
+    });
   }
   return mapLlmError(c, err);
 }

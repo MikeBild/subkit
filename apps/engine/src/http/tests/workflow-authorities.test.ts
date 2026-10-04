@@ -21,7 +21,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.ts";
-import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -657,7 +657,11 @@ test("authority history rejects cross-workflow cursors and cross-tenant reads", 
   if (!tenant) throw new Error("missing foreign tenant fixture");
   const [user] = await ctx.db
     .insert(users)
-    .values({ tenant_id: tenant.id, email: "history@example.test", role: "admin" })
+    .values({
+      tenant_id: tenant.id,
+      email: "history@example.test",
+      role_id: await builtinRoleId(ctx.db, "admin"),
+    })
     .returning();
   if (!user) throw new Error("missing foreign user fixture");
   const foreignHeaders = await readOnlyKey(tenant.id, user.id);
@@ -992,7 +996,11 @@ test("automation-status shows hooks and refusal reasons only to readers of each"
       await grantPermissionToRole(ctx.db, ctx.tenantId, role.id, permission);
     const [user] = await ctx.db
       .insert(users)
-      .values({ tenant_id: ctx.tenantId, email: `${slug}-${name}@test.local`, role: "member" })
+      .values({
+        tenant_id: ctx.tenantId,
+        email: `${slug}-${name}@test.local`,
+        role_id: await builtinRoleId(ctx.db, "member"),
+      })
       .returning();
     if (!user) throw new Error("missing user fixture");
     await ctx.db.update(users).set({ role_id: role.id }).where(eq(users.id, user.id));

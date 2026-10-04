@@ -11,7 +11,7 @@ import {
 import { parseConfigDocument, safeParseConfigDocument } from "./non-removable-scopes.ts";
 import { inspectRetiredMcpSections, retiredSectionMessage } from "./retired-sections.ts";
 import type { Config } from "./schema.ts";
-import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
+import { dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
 
 export type SourceTag = "override" | "tenant" | "global" | "default";
 
@@ -38,18 +38,12 @@ interface LoaderState {
 let _state: LoaderState | null = null;
 let _writeLock: Promise<void> = Promise.resolve();
 
-const OVERRIDE_PREFIX = "SK_OVERRIDE_";
-
 export {
   ConfigLoaderError,
   RestartRequiredError,
   ScopeViolationError,
   ValidationError,
 } from "./errors.ts";
-
-function envKeyForLeaf(leafPath: string[]): string {
-  return OVERRIDE_PREFIX + leafPath.join("_").toUpperCase();
-}
 
 function setDeep(target: Record<string, unknown>, leafPath: string[], value: unknown): void {
   let cursor = target;
@@ -70,64 +64,6 @@ function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
     cursor = (cursor as Record<string, unknown>)[segment];
   }
   return cursor;
-}
-
-function coerceLegacySeedValue(raw: string, leaf: ConfigLeaf): unknown {
-  switch (leaf.kind) {
-    case "string":
-      return raw;
-    case "number": {
-      const n = Number(raw);
-      if (Number.isNaN(n)) {
-        throw new ConfigLoaderError(`${envKeyForLeaf(leaf.path)} must be a number; got "${raw}"`);
-      }
-      return n;
-    }
-    case "boolean":
-      return raw === "true" || raw === "1";
-    case "enum":
-      return raw;
-    case "string-list":
-      return raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-    case "string-array":
-      return JSON.parse(raw);
-    case "json":
-      return JSON.parse(raw);
-    default:
-      return raw;
-  }
-}
-
-function collectLegacyEnvSeeds(
-  env: Record<string, string | undefined>,
-  fileConfig: Record<string, unknown>,
-): {
-  seeds: Record<string, unknown>;
-  seededKeys: string[];
-  ignoredKeys: string[];
-} {
-  const seeds: Record<string, unknown> = {};
-  const seededKeys: string[] = [];
-  const ignoredKeys: string[] = [];
-
-  for (const leaf of listConfigLeaves()) {
-    const envKey = envKeyForLeaf(leaf.path);
-    const raw = env[envKey];
-    if (raw === undefined) continue;
-    const dotted = dottedPath(leaf);
-    if (getDeep(fileConfig, leaf.path) !== undefined) {
-      ignoredKeys.push(dotted);
-      continue;
-    }
-    const value = coerceLegacySeedValue(raw, leaf);
-    setDeep(seeds, leaf.path, value);
-    seededKeys.push(dotted);
-  }
-
-  return { seeds, seededKeys, ignoredKeys };
 }
 
 /** Process bindings that seed revision 1 and never override later revisions. */
@@ -329,23 +265,8 @@ export async function loadConfig(
   const fileObj =
     typeof fileRaw === "object" && fileRaw !== null ? (fileRaw as Record<string, unknown>) : {};
 
-  const {
-    seeds: legacySeeds,
-    seededKeys,
-    ignoredKeys,
-  } = statelessRuntime
-    ? { seeds: {}, seededKeys: [], ignoredKeys: [] }
-    : collectLegacyEnvSeeds(env, fileObj);
-  const seeds = deepMergeReplaceArrays(legacySeeds, collectBootstrapEnvSeeds(env)) as Record<
-    string,
-    unknown
-  >;
+  const seeds = collectBootstrapEnvSeeds(env);
 
-  // SK_OVERRIDE_* is a compatibility import only: a legacy value may seed
-  // a leaf that is absent from the canonical file, but can never override a
-  // file/API value. The parsed config is persisted below on first import, so
-  // subsequent boots no longer depend on that environment variable.
-  //
   // We deliberately do NOT use
   // c12/defu here: defu CONCATENATES arrays, and the previous code also
   // handed c12 the same file twice — once via `configFile` (which c12
@@ -419,7 +340,7 @@ export async function loadConfig(
   mirrorGenericLlmKey(parsed);
 
   // Auto-generate session secret on first boot if missing.
-  let needsPersist = seededKeys.length > 0;
+  let needsPersist = false;
   let generatedSessionSecret = false;
   if (!parsed.auth.session.secret) {
     parsed.auth.session.secret = randomBytes(32).toString("hex");
@@ -436,27 +357,6 @@ export async function loadConfig(
         msg: "auth.session.secret was empty; generated a new value and persisted",
       });
     }
-  }
-
-  if (seededKeys.length > 0 && !statelessRuntime) {
-    const { logger } = await import("../logging/logger.ts");
-    logger.warn({
-      module: "config",
-      action: "legacy_env.seeded",
-      msg: "legacy SK_OVERRIDE_* values imported into canonical config",
-      seeded_keys: seededKeys,
-      config_path: configPath,
-    });
-  }
-  if (ignoredKeys.length > 0) {
-    const { logger } = await import("../logging/logger.ts");
-    logger.warn({
-      module: "config",
-      action: "legacy_env.ignored",
-      msg: "legacy SK_OVERRIDE_* values ignored because canonical config wins",
-      ignored_keys: ignoredKeys,
-      config_path: configPath,
-    });
   }
 
   // Per-leaf source map at boot — one structured info line that

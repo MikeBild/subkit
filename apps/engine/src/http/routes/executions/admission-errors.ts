@@ -69,5 +69,5 @@ export async function admissionRefusal(
       : context.execution_id
         ? { execution_id: context.execution_id }
         : undefined;
-  throw HttpError.withEnvelope(409, code, message, details ? { details } : {});
+  throw new HttpError(409, code, message, details ? { details } : {});
 }

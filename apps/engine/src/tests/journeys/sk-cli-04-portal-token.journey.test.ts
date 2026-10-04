@@ -67,7 +67,6 @@ describe("journey: sk-cli portal-token customer", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "portal-customer@sk-cli-04.test",
-        role: "enduser",
         role_id: ctx.rbacRoleIds.portal_token_user,
       })
       .returning();

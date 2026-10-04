@@ -134,7 +134,7 @@ describe("recordTransition — one entry per user_* state", () => {
     expect(meta.actor_id).toBe("00000000-0000-0000-0000-000000000001");
   });
 
-  test("user_auto_declined keeps the legacy transition available for explicit cancellations", async () => {
+  test("user_auto_declined keeps the user_declined transition available for explicit cancellations", async () => {
     const id = await seedToolCall("ask_user_confirm");
     await recordTransition(ctx.db, {
       tool_call_id: id,

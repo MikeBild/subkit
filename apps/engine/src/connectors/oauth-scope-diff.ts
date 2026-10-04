@@ -67,7 +67,7 @@ export function diffOauthScopes(
       expected,
       granted: [],
       missing: [],
-      note: "this credential was issued before the engine started tracking OAuth grant scopes; cannot verify whether every requested scope was granted. Re-run authenticate_oauth to record the current grant set.",
+      note: "no granted scope set is recorded for this credential; cannot verify whether every requested scope was granted. Re-run authenticate_oauth to record the current grant set.",
     };
   }
   const grantedSet = new Set(granted);

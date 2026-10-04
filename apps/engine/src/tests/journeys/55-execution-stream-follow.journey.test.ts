@@ -182,7 +182,6 @@ describe("journey 55: per-execution SSE follow", () => {
         .values({
           tenant_id: ctx.tenantId,
           email: "enduser@journey-55.test",
-          role: "enduser",
           role_id: ctx.rbacRoleIds.enduser,
         })
         .returning();

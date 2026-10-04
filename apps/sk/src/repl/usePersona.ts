@@ -1,11 +1,9 @@
 // React hook that exposes the bootstrap snapshot reactively.
 //
-// Replaces the blocking `await resolvePersonaShared(...)` gate at REPL
-// startup with a non-blocking hook: render the welcome banner first,
+// Non-blocking at REPL startup: render the welcome banner first,
 // resolve persona in the background, push a toast on completion. The
-// snapshot is materialized via `loadBootstrap` (cache → /v1/sk/bootstrap
-// → tiered persona-probe), so the first frame is no longer held up
-// by the network.
+// snapshot is materialized via `loadBootstrap` (cache → /v1/sk/bootstrap),
+// so the first frame is not held up by the network.
 
 import { useEffect, useRef, useState } from "react";
 import type { ResolvedProfile } from "../config.ts";

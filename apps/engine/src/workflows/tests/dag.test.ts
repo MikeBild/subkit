@@ -114,7 +114,6 @@ describe("buildStepDag", () => {
           id: "iter",
           kind: "loop",
           over: "$input",
-          item_var: "x",
           body: ["work"],
         },
         { id: "work", kind: "transform", language: "javascript", expression: "return 1;" },

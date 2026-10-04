@@ -709,7 +709,7 @@ export class UnsupportedIngestionSourceError extends HttpError {
       400,
       "unsupported_ingestion_source",
       `template ${slug} does not have a supported ingestion source`,
-      { slug },
+      { details: { slug } },
     );
     this.slug = slug;
   }

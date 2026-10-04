@@ -40,7 +40,6 @@ beforeAll(async () => {
     .values({
       tenant_id: tenantId,
       email: "admin@metrics-scope.test",
-      role: "admin",
       role_id: roleIds.admin,
     })
     .returning();
@@ -49,7 +48,6 @@ beforeAll(async () => {
     .values({
       tenant_id: tenantId,
       email: "member@metrics-scope.test",
-      role: "member",
       role_id: roleIds.member,
     })
     .returning();

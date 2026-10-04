@@ -18,7 +18,7 @@ import { createDocsTestCtx, type DocsTestCtx, stubFetch } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
-const SPEC_V1 = {
+const ORIGINAL_SPEC = {
   openapi: "3.0.0",
   info: { title: "Refresh", version: "1.0.0" },
   paths: {
@@ -28,7 +28,7 @@ const SPEC_V1 = {
   },
 };
 
-const SPEC_V2 = {
+const CHANGED_SPEC = {
   openapi: "3.0.0",
   info: { title: "Refresh", version: "1.0.1" },
   paths: {
@@ -54,7 +54,7 @@ afterAll(async () => {
 describe("docs-ingestion/refresh", () => {
   test("a second ingest on the same source writes fresh chunks", async () => {
     const url = "https://ex.test/refresh.json";
-    const firstFetch = stubFetch({ [url]: { body: JSON.stringify(SPEC_V1) } });
+    const firstFetch = stubFetch({ [url]: { body: JSON.stringify(ORIGINAL_SPEC) } });
     const first = await ingestDocs(
       {
         tenant_id: ctx.tenantId,
@@ -67,7 +67,7 @@ describe("docs-ingestion/refresh", () => {
     // overview + 1 op = 2 chunks
     expect(first.ingested_count).toBe(2);
 
-    const secondFetch = stubFetch({ [url]: { body: JSON.stringify(SPEC_V2) } });
+    const secondFetch = stubFetch({ [url]: { body: JSON.stringify(CHANGED_SPEC) } });
     const second = await ingestDocs(
       {
         tenant_id: ctx.tenantId,

@@ -433,28 +433,27 @@ function renderScopeManifestLines(
     const kind = typeof step.kind === "string" ? step.kind : null;
     if (!id || !kind) continue;
     if (kind === "loop") {
-      const itemVar = typeof step.item_var === "string" ? step.item_var : "item";
       const body = Array.isArray(step.body) ? (step.body as unknown[]) : [];
       const bodyIds = body.filter((b): b is string => typeof b === "string");
       const firstBodyId = bodyIds[0] ?? null;
       lines.push(
         `  - $scope.${id}.data: array — one entry per iteration; each entry is { ${bodyIds.join(", ") || "<no body steps>"} } where each body key is a ScopeEnvelope { data, error, duration_ms }`,
       );
-      lines.push(`    - inside the loop body, $${itemVar} is the current item (no envelope)`);
+      lines.push(`    - inside the loop body, $item is the current item (no envelope)`);
       const itemShape = describeLoopItemShape(step, tracesById);
       if (itemShape.keys.length > 0) {
         const shown = itemShape.keys.slice(0, 12);
         const more = itemShape.keys.length > 12 ? `, … +${itemShape.keys.length - 12} more` : "";
         lines.push(
-          `    - $${itemVar}.{ ${shown.join(", ")}${more} } (sampled from preview of \`${itemShape.source}\`)`,
+          `    - $item.{ ${shown.join(", ")}${more} } (sampled from preview of \`${itemShape.source}\`)`,
         );
       } else if (itemShape.primitive) {
         lines.push(
-          `    - $${itemVar} is ${itemShape.primitive} (sampled from preview of \`${itemShape.source}\`)`,
+          `    - $item is ${itemShape.primitive} (sampled from preview of \`${itemShape.source}\`)`,
         );
       } else if (itemShape.source && !itemShape.previewed) {
         lines.push(
-          `    - $${itemVar} shape unknown — run \`dry_run_workflow\` to record a sample of \`${itemShape.source}\``,
+          `    - $item shape unknown — run \`dry_run_workflow\` to record a sample of \`${itemShape.source}\``,
         );
       }
       if (firstBodyId) {

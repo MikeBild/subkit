@@ -1,6 +1,6 @@
 // Reducer contract tests — cover the new AI-SDK-UI-style lifecycle
 // frames (tool_call_start / tool_call_delta / tool_call_end /
-// tool_result_v2 / data_part) and the `awaiting_input` status path.
+// tool_result / data_part) and the `awaiting_input` status path.
 // Keeps the cli-core surface honest without bringing up React or Ink.
 
 import { describe, expect, test } from "bun:test";

@@ -103,7 +103,7 @@ describe("loop.over · honors $scope / $input bindings", () => {
     expect(loopWarning).toBeUndefined();
   });
 
-  test("bare-path form `extract_projects.data` still works (back-compat)", async () => {
+  test("bare-path form `extract_projects.data` still works", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-bare-path",
       steps: [

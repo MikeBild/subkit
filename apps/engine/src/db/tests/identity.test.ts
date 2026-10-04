@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { writeAudit } from "../audit.ts";
 import { apiKeys, auditLog, tenants, users } from "../schema/index.ts";
@@ -31,11 +32,11 @@ describe("identity schema", () => {
       .values({
         tenant_id: tenant!.id,
         email: "owner@acme.test",
-        role: "admin",
+        role_id: await builtinRoleId(ctx.db, "admin"),
       })
       .returning();
     expect(user).toBeDefined();
-    expect(user!.role).toBe("admin");
+    expect(user!.role_id).toBe(await builtinRoleId(ctx.db, "admin"));
 
     const plaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`; // allow-random: legacy; review before changing
     const hash = createHash("sha256").update(plaintext).digest("hex");

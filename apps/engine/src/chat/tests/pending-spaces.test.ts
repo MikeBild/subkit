@@ -23,6 +23,7 @@ import {
 } from "../../conversations/tests/setup.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
 import { chatIdentities, chatWorkspaces, tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { chatWorkspaceAad } from "../api.ts";
 import { listPendingSpacesForPrincipal } from "../pending-spaces.ts";
 
@@ -107,7 +108,11 @@ beforeAll(async () => {
   tenantBId = tenantB.id;
   const [userB] = await ctx.testDb.db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "pending-b@test.local", role: "member" })
+    .values({
+      tenant_id: tenantBId,
+      email: "pending-b@test.local",
+      role_id: await builtinRoleId(ctx.testDb.db, "member"),
+    })
     .returning();
   if (!userB) throw new Error("seed user B failed");
   userBId = userB.id;
@@ -190,7 +195,11 @@ describe("chat: pending-space discovery attribution", () => {
   test("a principal with no chat_identity gets nothing", async () => {
     const [lonely] = await ctx.testDb.db
       .insert(users)
-      .values({ tenant_id: ctx.tenant_id, email: "lonely@test.local", role: "member" })
+      .values({
+        tenant_id: ctx.tenant_id,
+        email: "lonely@test.local",
+        role_id: await builtinRoleId(ctx.testDb.db, "member"),
+      })
       .returning();
     if (!lonely) throw new Error("seed lonely user failed");
     const items = await listPendingSpacesForPrincipal(ctx.testDb.db, {

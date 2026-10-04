@@ -604,13 +604,13 @@ describe("preview judge · goal stash round-trip", () => {
     expect(fresh.state?.judge_breaker ?? null).toBeNull();
   });
 
-  test("a legacy { fingerprint, blocks } judge_breaker seeds blocks_since_commit", () => {
+  test("an earlier { fingerprint, blocks } judge_breaker seeds blocks_since_commit", () => {
     const normalized = normalizeDraftDocument({
       workflow: { name: "g", steps: [] },
       state: {
         mode: "workflow",
         stage: "workflow_draft_started",
-        judge_breaker: { fingerprint: "legacy", blocks: 2 },
+        judge_breaker: { fingerprint: "earlier", blocks: 2 },
       },
     });
     expect(normalized.state?.judge_breaker?.blocks_since_commit).toBe(2);

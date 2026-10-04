@@ -53,7 +53,6 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member@sk-cli-09.test",
-        role: "member",
         role_id: ctx.rbacRoleIds.member,
       })
       .returning();
@@ -74,7 +73,6 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "enduser@sk-cli-09.test",
-        role: "enduser",
         role_id: ctx.rbacRoleIds.enduser,
       })
       .returning();

@@ -14,7 +14,7 @@ import type { TranslationKey } from "@/lib/i18n";
 export type StripKind =
   | "loading"
   | "failed"
-  | "legacy"
+  | "invalid"
   | "disabled"
   | "paused"
   | "stopped"
@@ -82,7 +82,7 @@ export interface StripInput {
 const TONES: Record<StripKind, StripTone> = {
   loading: "ok",
   failed: "error",
-  legacy: "error",
+  invalid: "error",
   disabled: "warn",
   paused: "warn",
   stopped: "error",
@@ -102,7 +102,7 @@ const TONES: Record<StripKind, StripTone> = {
 export const STRIP_STATE_KEYS: Record<StripKind, TranslationKey> = {
   loading: "workflowStrip.state.loading",
   failed: "workflowStrip.state.failed",
-  legacy: "automation.state.legacy",
+  invalid: "automation.state.invalid",
   disabled: "workflowStrip.state.disabled",
   paused: "workflowStrip.state.paused",
   stopped: "workflowStrip.state.stopped",
@@ -155,8 +155,8 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
 
   const candidates: { kind: StripKind; action: StripAction | null }[] = [];
   const approvable = rights.write && automation?.target != null;
-  if (automation?.state === "legacy")
-    candidates.push({ kind: "legacy", action: rights.chat ? { kind: "chat" } : null });
+  if (automation?.state === "invalid")
+    candidates.push({ kind: "invalid", action: rights.chat ? { kind: "chat" } : null });
   if (input.disabled)
     candidates.push({ kind: "disabled", action: rights.write ? { kind: "enable" } : null });
   switch (input.disabled ? null : automation?.state) {

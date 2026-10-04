@@ -18,6 +18,7 @@ import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
 // Ensure the config loader is bootstrapped so route handlers that
@@ -106,7 +107,7 @@ export async function createHttpTestServer(
     .values({
       tenant_id: tenant.id,
       email: `admin-${label}@test.local`,
-      role: "admin",
+      role_id: await builtinRoleId(testDb.db, "admin"),
     })
     .returning();
   if (!user) throw new Error("seed user failed");

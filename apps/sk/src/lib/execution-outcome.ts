@@ -7,7 +7,7 @@ import type { components } from "@cli-core/engine-api/openapi.d.ts";
 
 type ExecutionOutcome = components["schemas"]["ExecutionOutcome"];
 
-export function executionOutcomeLine(outcome: ExecutionOutcome | null | undefined): string | null {
+export function executionOutcomeLine(outcome: ExecutionOutcome | null): string | null {
   if (!outcome) return null;
   const parts: string[] = [outcome.kind];
   if (outcome.kind === "held") parts.push("— writes held, nothing written");

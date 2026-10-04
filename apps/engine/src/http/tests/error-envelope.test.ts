@@ -7,7 +7,7 @@ import type { AppEnv } from "../openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 describe("HttpError envelope shape", () => {
-  test("legacy details-positional is preserved", () => {
+  test("a subclass details bag lands in details", () => {
     const err = new BadRequestError("nope", { field: "x" });
     expect(err.toBody()).toEqual({
       code: "bad_request",
@@ -18,11 +18,7 @@ describe("HttpError envelope shape", () => {
     expect(err.retry_after).toBeUndefined();
   });
 
-  test("legacy details with a `hint` key is treated as details, not as envelope opts", () => {
-    // W4 review fix: the previous shape-sniffing dispatch would have
-    // re-shaped this into the envelope (hint outside details). The
-    // brand-based dispatch keeps it inside `details` where every
-    // existing throw site expects it.
+  test("a subclass details bag with a `hint` key stays inside details", () => {
     const err = new ConflictError("conflict", { hint: "retry the merge", foo: 1 });
     const body = err.toBody();
     expect(body.code).toBe("conflict");
@@ -30,8 +26,8 @@ describe("HttpError envelope shape", () => {
     expect(body.details).toEqual({ hint: "retry the merge", foo: 1 });
   });
 
-  test("HttpError.withEnvelope explicitly opts into the new envelope shape", () => {
-    const err = HttpError.withEnvelope(409, "conflict", "stale write", {
+  test("HttpError options carry hint and details", () => {
+    const err = new HttpError(409, "conflict", "stale write", {
       hint: "refetch the resource",
       details: { foo: 1 },
     });
@@ -41,33 +37,14 @@ describe("HttpError envelope shape", () => {
     expect(body.details).toEqual({ foo: 1 });
   });
 
-  test("HttpError.withEnvelope captures retry_after", () => {
-    const err = HttpError.withEnvelope(429, "rate_limited", "slow down", { retry_after: 30 });
+  test("HttpError options carry retry_after", () => {
+    const err = new HttpError(429, "rate_limited", "slow down", { retry_after: 30 });
     const body = err.toBody();
     expect(body.retry_after).toBe(30);
     expect(body.code).toBe("rate_limited");
   });
 
-  test("UnprocessableEntityError can be wrapped through withEnvelope", () => {
-    // The subclass keeps the legacy positional-details signature for
-    // backwards compatibility; if a caller wants the rich envelope it
-    // builds via withEnvelope on the parent instead.
-    const err = HttpError.withEnvelope(422, "unprocessable_entity", "bad shape", {
-      hint: "fix the schema",
-      details: { path: "$.steps[0]" },
-    });
-    expect(err.toBody()).toEqual({
-      code: "unprocessable_entity",
-      message: "bad shape",
-      hint: "fix the schema",
-      details: { path: "$.steps[0]" },
-    });
-  });
-
-  test("UnprocessableEntityError positional details (no brand) preserves verbatim", () => {
-    // Defensive: confirms the existing 50+ throw sites that pass a
-    // details bag with arbitrary keys continue to wire the body
-    // through unchanged. No silent reshaping.
+  test("UnprocessableEntityError keeps its details verbatim", () => {
     const err = new UnprocessableEntityError("bad shape", {
       hint: "fix the schema",
       details: { path: "$.steps[0]" },
@@ -129,7 +106,7 @@ describe("error envelope over HTTP", () => {
 // header in a single response. The unit tests above exercise the
 // envelope construction in isolation; this block stands up the
 // real `errorMiddleware` against a synthetic route that throws
-// `HttpError.withEnvelope(429, …, { hint, retry_after })` and
+// `new HttpError(429, …, { hint, retry_after })` and
 // asserts the wire response.
 describe("error envelope wire — 429 hint + retry_after", () => {
   let server: ServerType;
@@ -148,7 +125,7 @@ describe("error envelope wire — 429 hint + retry_after", () => {
       return c.json({ code: "internal_error", message: String(err) }, 500);
     });
     app.get("/__test__/throw-429", () => {
-      throw HttpError.withEnvelope(429, "rate_limited", "slow your roll", {
+      throw new HttpError(429, "rate_limited", "slow your roll", {
         hint: "wait 30s and retry",
         retry_after: 30,
       });

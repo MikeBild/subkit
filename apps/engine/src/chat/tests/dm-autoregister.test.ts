@@ -23,6 +23,7 @@ import {
 } from "../../conversations/tests/setup.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
 import { auditLog, chatIdentities, chatWorkspaces, tenants, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { chatWorkspaceAad } from "../api.ts";
 import { ensureDmAutoRegistration } from "../dm-autoregister.ts";
 import type { ChatEvent } from "../types.ts";
@@ -96,7 +97,11 @@ beforeAll(async () => {
   tenantBId = tenantB.id;
   const [userB] = await ctx.testDb.db
     .insert(users)
-    .values({ tenant_id: tenantBId, email: "dm-b@test.local", role: "member" })
+    .values({
+      tenant_id: tenantBId,
+      email: "dm-b@test.local",
+      role_id: await builtinRoleId(ctx.testDb.db, "member"),
+    })
     .returning();
   if (!userB) throw new Error("seed user B failed");
 

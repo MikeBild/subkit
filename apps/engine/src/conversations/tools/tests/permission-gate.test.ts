@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { callConnectorTool } from "../call-connector.ts";
-import { analyzeKnowledgeSourceTool } from "../generated/writes/analyze-knowledge-source.ts";
+import { analyzeKnowledgeSourceTool } from "../engine-api/writes/analyze-knowledge-source.ts";
 import {
   deleteConnectorTool,
   deleteKnowledgeSourceTool,
@@ -13,15 +13,15 @@ import {
   deleteWorkflowTool,
   revokeApiKeyTool,
   revokePortalTokenTool,
-} from "../generated/writes/cleanup.ts";
-import { createKnowledgeSourceTool } from "../generated/writes/create-knowledge-source.ts";
-import { createSkillTool } from "../generated/writes/create-skill.ts";
-import { deleteSkillTool } from "../generated/writes/delete-skill.ts";
-import { updateConnectorTool } from "../generated/writes/update-connector.ts";
-import { updateKnowledgeSourceTool } from "../generated/writes/update-knowledge-source.ts";
-import { updateSkillTool } from "../generated/writes/update-skill.ts";
-import { updateSubscriptionTool } from "../generated/writes/update-subscription.ts";
-import { updateWorkflowTool } from "../generated/writes/update-workflow.ts";
+} from "../engine-api/writes/cleanup.ts";
+import { createKnowledgeSourceTool } from "../engine-api/writes/create-knowledge-source.ts";
+import { createSkillTool } from "../engine-api/writes/create-skill.ts";
+import { deleteSkillTool } from "../engine-api/writes/delete-skill.ts";
+import { updateConnectorTool } from "../engine-api/writes/update-connector.ts";
+import { updateKnowledgeSourceTool } from "../engine-api/writes/update-knowledge-source.ts";
+import { updateSkillTool } from "../engine-api/writes/update-skill.ts";
+import { updateSubscriptionTool } from "../engine-api/writes/update-subscription.ts";
+import { updateWorkflowTool } from "../engine-api/writes/update-workflow.ts";
 import type { ToolContext } from "../index.ts";
 import { checkToolPermission } from "../permission-gate.ts";
 import { requestConnectorReauthTool } from "../request-connector-reauth.ts";

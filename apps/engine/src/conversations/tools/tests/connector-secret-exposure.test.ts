@@ -19,8 +19,8 @@ import { hydrateDraftFromSavedConnector } from "../../authoring-state/normalize.
 import { connectorFieldPatch } from "../../persistence/save-connector.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { dryRunTransformTool } from "../dry-run-transform.ts";
-import { getConnectorTool } from "../generated/connectors.ts";
-import { updateConnectorTool } from "../generated/writes/update-connector.ts";
+import { getConnectorTool } from "../engine-api/connectors.ts";
+import { updateConnectorTool } from "../engine-api/writes/update-connector.ts";
 import type { ToolContext } from "../index.ts";
 import { probeConnectorTool } from "../probe-connector.ts";
 import { resolveDraftProbeSecrets } from "../probe-draft-secrets.ts";

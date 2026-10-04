@@ -22,6 +22,7 @@ import {
   tenants,
   users,
 } from "../../../db/schema/index.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { SlackAdapter } from "../adapter.ts";
 
@@ -81,7 +82,11 @@ describe("SlackAdapter.handleSyncInteraction — cross-tenant elicitation defens
     if (!foreignTenant) throw new Error("seed foreign tenant");
     const [foreignUser] = await ctx.testDb.db
       .insert(users)
-      .values({ tenant_id: foreignTenant.id, email: "foreign@x.test", role: "admin" })
+      .values({
+        tenant_id: foreignTenant.id,
+        email: "foreign@x.test",
+        role_id: await builtinRoleId(ctx.testDb.db, "admin"),
+      })
       .returning();
     if (!foreignUser) throw new Error("seed foreign user");
     const [foreignConv] = await ctx.testDb.db

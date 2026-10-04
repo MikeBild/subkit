@@ -81,9 +81,7 @@ export {
 } from "./mcp-server.ts";
 export {
   type RecordToolPolicyConfirmationRequiredParams,
-  type RecordToolPolicyConfirmCollapsedMcpParams,
   recordToolPolicyConfirmationRequired,
-  recordToolPolicyConfirmCollapsedMcp,
 } from "./policy.ts";
 export type { AuditOutcome, RecordedEntry, RecorderBase } from "./types.ts";
 export {

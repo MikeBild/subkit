@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { eq } from "drizzle-orm";
 import { apiKeys, executionFixtures, executions, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -210,7 +211,7 @@ describe("mcp resources", () => {
       .values({
         tenant_id: suite.http.tenantId,
         email: "member-resources@test.local",
-        role: "member",
+        role_id: await builtinRoleId(suite.http.db, "member"),
       })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");

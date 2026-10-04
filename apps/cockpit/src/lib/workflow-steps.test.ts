@@ -393,10 +393,10 @@ describe("step result preview", () => {
     expect(stepResultPreview(runStep({ step_key: "a", output_preview: output }))).toBe(
       JSON.stringify(output, null, 2),
     );
-    const legacy = `{"id":"${UUID}","finished_at":"2030-08-25T22:00:00.000Z"}`;
+    const preview = `{"id":"${UUID}","finished_at":"2030-08-25T22:00:00.000Z"}`;
     expect(
-      stepResultPreview(runStep({ step_key: "a", output_preview: null, result_preview: legacy })),
-    ).toBe(legacy);
+      stepResultPreview(runStep({ step_key: "a", output_preview: null, result_preview: preview })),
+    ).toBe(preview);
   });
 });
 

@@ -16,7 +16,6 @@ import type { Db } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import type { AllowList, ResolvedPrincipal } from "../types.ts";
-import { resolveEffectiveUserRole } from "../user-role.ts";
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 
@@ -145,7 +144,6 @@ export async function resolvePrincipalFromApiKeyRow(
     // tenant-filter:exempt — prefix-based credential lookup pre-tenant
     const userRows = await db
       .select({
-        role: users.role,
         email: users.email,
         role_id: users.role_id,
         role_name: rolesTable.name,
@@ -172,10 +170,7 @@ export async function resolvePrincipalFromApiKeyRow(
       });
       return null;
     }
-    // Prefer the `roles` table lookup so custom tenant roles flow
-    // through into the resolved principal. Fall back to the legacy
-    // enum for rows predating the RBAC backfill.
-    roles = [resolveEffectiveUserRole(u.role, u.role_name)];
+    roles = u.role_name ? [u.role_name] : [];
     email = u.email;
   } else if (row.system_account_id) {
     kind = "system_account";

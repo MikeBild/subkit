@@ -59,8 +59,7 @@ describe("journey: rbac resource grants", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member@22.local",
-        role: "member",
-        role_id: memberRole[0]?.id ?? null,
+        role_id: memberRole[0]!.id,
       })
       .returning();
     memberUserId = u!.id;

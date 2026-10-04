@@ -54,7 +54,6 @@ describe("validateStepReferences", () => {
         kind: "loop",
         over: "$scope.fetch_projets.data.items",
         body: ["fetch_projects"],
-        item_var: "p",
       },
     ]);
     const errors = validateStepReferences(draft);

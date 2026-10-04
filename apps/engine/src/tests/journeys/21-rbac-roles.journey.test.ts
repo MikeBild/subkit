@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { emptyRoleId } from "../../test-helpers/roles.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -32,13 +33,12 @@ function newKey() {
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
 
-async function createUserWithKey(opsUserEmail: string, roleId: string | null) {
+async function createUserWithKey(opsUserEmail: string, roleId: string) {
   const [u] = await ctx.db
     .insert(users)
     .values({
       tenant_id: ctx.tenantId,
       email: opsUserEmail,
-      role: "member",
       role_id: roleId,
     })
     .returning();
@@ -97,8 +97,10 @@ describe("journey: rbac custom role", () => {
       expect(r.status).toBe(200);
     }
 
-    // Create a user with no role_id yet and an API key.
-    const { user, apiKey } = await createUserWithKey("ops@21.local", null);
+    const { user, apiKey } = await createUserWithKey(
+      "ops@21.local",
+      await emptyRoleId(ctx.db, ctx.tenantId),
+    );
 
     // AC3: assign the role via the management API.
     const assignRes = await journeyFetch(ctx, `/v1/rbac/users/${user.id}/role`, {

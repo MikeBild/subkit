@@ -16,13 +16,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import {
-  type AttentionItem,
-  attentionOf,
-  type OperatorHealthDigest,
-  resolvedAtOf,
-  scheduledRunsOf,
-} from "../engine-client.ts";
+import type { AttentionItem, OperatorHealthDigest } from "../engine-client.ts";
 import {
   attentionItemLine,
   FAILURE_ORIGIN_LABEL,
@@ -46,7 +40,7 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
   // The attention list is what the headline counts: every item gets a line,
   // whatever its kind — a connector needing sign-in, a held schedule, the
   // reader's own waiting conversation — not only the kinds the digest details.
-  const items = attentionOf(digest).items;
+  const items = digest.attention.items;
   const unread = unreadAttentionSources(digest);
 
   return (
@@ -73,10 +67,8 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
       {digest.failure_groups.map((g) => {
         // Whether the scheduler ever started one of these runs, not whether it
         // started all of them: one manual retry used to turn this group yellow
-        // while the schedule kept failing every hour. Through the helper, since
-        // this CLI also runs against engines that do not report the number.
-        const resolvedAt = resolvedAtOf(g);
-        const isScheduled = scheduledRunsOf(g) > 0 && resolvedAt === null;
+        // while the schedule kept failing every hour.
+        const isScheduled = g.scheduled_count > 0 && g.resolved_at === null;
         // A cause whose workflow has run clean on its schedule since is not a
         // live incident; it stays listed, because what broke is worth reading,
         // but it stops being red.
@@ -94,9 +86,9 @@ const NeedsAttentionPanelImpl: React.FC<NeedsAttentionPanelProps> = ({ digest })
             <Box paddingLeft={4}>
               <Text dimColor>{g.cause}</Text>
             </Box>
-            {resolvedAt ? (
+            {g.resolved_at ? (
               <Box paddingLeft={4}>
-                <Text color="green">last ran clean on its schedule {resolvedAt}</Text>
+                <Text color="green">last ran clean on its schedule {g.resolved_at}</Text>
               </Box>
             ) : null}
           </Box>

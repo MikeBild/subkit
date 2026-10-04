@@ -20,6 +20,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -52,7 +53,11 @@ beforeAll(async () => {
   // Member key for the 403 gate test.
   const [member] = await db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "member-sq@test.local", role: "member" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "member-sq@test.local",
+      role_id: await builtinRoleId(db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member failed");
   const mk = genKey();

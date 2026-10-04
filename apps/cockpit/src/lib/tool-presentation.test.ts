@@ -45,12 +45,8 @@ describe("toolLabel", () => {
 });
 
 describe("humaniseToolName", () => {
-  test("drops a trailing version so the name describes the action, not our versioning", () => {
-    expect(humaniseToolName("search_knowledge_v2")).toBe("Search Knowledge");
-  });
-
-  test("keeps a version-looking word that is part of the name", () => {
-    expect(humaniseToolName("get_v2_report")).toBe("Get V2 Report");
+  test("reads an unregistered snake_case name as words", () => {
+    expect(humaniseToolName("list_open_invoices")).toBe("List Open Invoices");
   });
 });
 
@@ -62,19 +58,6 @@ describe("toolTier", () => {
 
   test("an unknown action gets a card — over-showing beats hiding", () => {
     expect(toolTier("some_future_tool")).toBe("action");
-  });
-
-  test("a versioned name is the same action, not an unregistered one", () => {
-    // `search_knowledge_v2` fell out of the registry and got a card of its own,
-    // which is exactly the noise the two tiers exist to remove.
-    expect(toolTier("search_knowledge_v2")).toBe("background");
-    expect(toolLabel("search_knowledge_v2")).toEqual({
-      kind: "background",
-      words: {
-        active: "tool.background.searchKnowledge.active",
-        past: "tool.background.searchKnowledge.past",
-      },
-    });
   });
 
   test("a saved workflow is always an action, never a background line", () => {
@@ -280,7 +263,10 @@ describe("what a workflow call really was", () => {
       "tool.refusal.permission",
     );
     // A version in an earlier format is refused by that name, not as a failed run.
-    const legacy = { ok: false, data: { error_code: "workflow_version_legacy", status: "failed" } };
+    const legacy = {
+      ok: false,
+      data: { error_code: "workflow_version_invalid", status: "failed" },
+    };
     expect(workflowRunKind(legacy)).toBe("refused");
     expect(translate("de", workflowRefusalKey(legacy) ?? "tool.outcome.foundIssue")).toBe(
       "Fassung in älterem Format gespeichert",
@@ -293,7 +279,7 @@ describe("what a workflow call really was", () => {
   test("every reason word exists in both catalogs", () => {
     for (const code of [
       "workflow_activation_required",
-      "workflow_version_legacy",
+      "workflow_version_invalid",
       "workflow_not_persisted",
       "workflow_not_found",
       "permission_denied",

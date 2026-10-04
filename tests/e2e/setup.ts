@@ -56,7 +56,7 @@ import { buildDefaultRegistry, createApp } from "../../apps/engine/src/http/serv
 import { createBoss, disposeBoss } from "../../apps/engine/src/queue/boss.ts";
 import { registerAllHandlers } from "../../apps/engine/src/queue/handlers/index.ts";
 import {
-  backfillRoleIds,
+  backfillSystemAccountRoleIds,
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../../apps/engine/src/rbac/seed.ts";
@@ -406,7 +406,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     .returning();
   if (!tenant) throw new Error("seed tenant failed");
 
-  await backfillRoleIds(testDb.db, rbacRoleIds);
+  await backfillSystemAccountRoleIds(testDb.db, rbacRoleIds);
 
   // Seed each persona.
   const personas = {} as Record<PersonaName, Persona>;

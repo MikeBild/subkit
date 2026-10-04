@@ -50,7 +50,7 @@ export { updateSkillTool } from "./update-skill.ts";
 export { updateSubscriptionTool } from "./update-subscription.ts";
 export { updateWorkflowTool } from "./update-workflow.ts";
 
-export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
+export const ALL_ENGINE_API_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
   rerunExecutionTool,
   promoteConnectorTool,

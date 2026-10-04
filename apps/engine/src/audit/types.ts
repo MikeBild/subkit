@@ -581,9 +581,6 @@ export const AuditAction = {
   // actor_id null. The metadata carries the counts and the fingerprints of
   // both keys, never key material.
   MASTER_KEY_REWRAPPED: "secret.master_key_rewrapped",
-  STATELESS_BRIDGE_CONFIG_IMPORTED: "stateless_bridge.config_imported",
-  STATELESS_BRIDGE_OBJECT_MIGRATED: "stateless_bridge.object_migrated",
-  STATELESS_BRIDGE_COMPLETED: "stateless_bridge.completed",
 
   // Trigger lifecycle for workflow-bound webhooks + schedules. The
   // `bound` / `unbound` events fire from the workflow save/delete

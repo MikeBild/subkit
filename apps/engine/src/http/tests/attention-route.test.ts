@@ -26,7 +26,7 @@ import {
 } from "../../operator/health-digest.ts";
 import { invalidateOperationalOverview } from "../../operator/operational-overview.ts";
 import { grantResource } from "../../rbac/grants.ts";
-import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
+import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../../test-helpers/principals.ts";
@@ -70,7 +70,11 @@ beforeAll(async () => {
   await grantPermissionToRole(srv.db, srv.tenantId, role.id, "stats:read");
   const [user] = await srv.db
     .insert(users)
-    .values({ tenant_id: srv.tenantId, email: "observer@test.local", role: "member" })
+    .values({
+      tenant_id: srv.tenantId,
+      email: "observer@test.local",
+      role_id: await builtinRoleId(srv.db, "member"),
+    })
     .returning();
   if (!user) throw new Error("user fixture");
   await srv.db.update(users).set({ role_id: role.id }).where(eq(users.id, user.id));

@@ -122,6 +122,9 @@ export function mapRoleError(err: unknown): never {
   if (err instanceof rolesSvc.BuiltinImmutableError) {
     throw new ConflictError("builtin_role_immutable");
   }
+  if (err instanceof rolesSvc.RoleInUseError) {
+    throw new ConflictError("role_in_use");
+  }
   if (err instanceof rolesSvc.RoleNotFoundError) {
     throw new NotFoundError("role");
   }
@@ -145,7 +148,7 @@ export async function buildQueryPrincipal(
   const { roles: rolesTable, systemAccounts } = await import("../../../db/schema/index.ts");
   // Try user first.
   const uRows = await db
-    .select({ id: usersTable.id, role: usersTable.role, role_name: rolesTable.name })
+    .select({ id: usersTable.id, role_name: rolesTable.name })
     .from(usersTable)
     .leftJoin(rolesTable, eq(rolesTable.id, usersTable.role_id))
     .where(and(eq(usersTable.id, id), eq(usersTable.tenant_id, tenant_id)))
@@ -156,7 +159,7 @@ export async function buildQueryPrincipal(
       kind: "user",
       id,
       tenant_id,
-      roles: [uRows[0].role_name ?? uRows[0].role],
+      roles: uRows[0].role_name ? [uRows[0].role_name] : [],
     };
   }
   // Fall back to system account.

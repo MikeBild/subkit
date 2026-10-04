@@ -13,6 +13,7 @@ function digest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHealthDi
     failure_groups: [],
     patch_candidates: { open: 0, items: [] },
     risk: [],
+    attention: { schema_version: "attention.v1", sources: {}, items: [] },
     rendered: "",
     all_clear: false,
     ...overrides,

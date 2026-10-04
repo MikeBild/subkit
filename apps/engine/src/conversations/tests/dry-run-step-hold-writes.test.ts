@@ -6,7 +6,7 @@
 // tripwire is the mock upstream's request log: a held write must leave
 // ZERO entries. The result envelope carries the explicit `held` marker
 // (top level + step_traces) with the materialized `held_request`
-// artifact. Legacy execute_writes:true cannot release mutable draft state.
+// artifact.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -92,11 +92,9 @@ interface HeldEnvelope {
 }
 
 describe("dry_run_step · hold-writes", () => {
-  test("whole draft preview also holds writes when the legacy flag is true", async () => {
+  test("whole draft preview holds writes", async () => {
     hits.length = 0;
-    const result = await dryRunWorkflowTool.execute(makeCtx(writeStepDraft()), {
-      execute_writes: true,
-    });
+    const result = await dryRunWorkflowTool.execute(makeCtx(writeStepDraft()), {});
     expect(hitsFor("/send")).toHaveLength(0);
     const rows = await ctx.testDb.db
       .select()
@@ -124,19 +122,5 @@ describe("dry_run_step · hold-writes", () => {
     expect(data.held_request?.method).toBe("POST");
     expect(data.held_request?.url).toBe(`${mock.baseUrl}/send`);
     expect(data.held_request?.body).toEqual({ subject: "Welcome" });
-  });
-
-  test("execute_writes: true cannot release a mutable draft step", async () => {
-    hits.length = 0;
-    const result = await dryRunStepTool.execute(makeCtx(writeStepDraft()), {
-      step_id: "send",
-      execute_writes: true,
-    });
-
-    expect(result.ok).toBe(true);
-    expect(hitsFor("/send")).toHaveLength(0);
-    const data = result.data as HeldEnvelope;
-    expect(data.held).toBe(true);
-    expect(data.held_request?.method).toBe("POST");
   });
 });

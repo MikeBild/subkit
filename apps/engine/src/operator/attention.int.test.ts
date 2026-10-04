@@ -36,11 +36,13 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { currentMonthBucket } from "../llm/accounting/budget.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
 import { grantResource } from "../rbac/grants.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 import { createSecretVersion } from "../runtime-config/service.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
+import { emptyRoleId } from "../test-helpers/roles.ts";
 import {
   type AttentionItem,
   attentionAllClear,
@@ -75,10 +77,19 @@ let unusedConnectionId: string;
 let ownConversationId: string;
 let othersConversationId: string;
 
-async function seedUser(email: string, role: "admin" | "member" | "enduser"): Promise<string> {
+async function seedUser(
+  email: string,
+  role: "admin" | "member" | "enduser" | null,
+): Promise<string> {
   const [row] = await testDb.db
     .insert(users)
-    .values({ tenant_id, email, role, role_id: null })
+    .values({
+      tenant_id,
+      email,
+      role_id: role
+        ? await builtinRoleId(testDb.db, role)
+        : await emptyRoleId(testDb.db, tenant_id),
+    })
     .returning({ id: users.id });
   if (!row) throw new Error("user fixture");
   return row.id;
@@ -141,7 +152,7 @@ beforeAll(async () => {
   const ownerId = await seedUser("owner@a", "admin");
   const otherId = await seedUser("other@a", "admin");
   const enduserId = await seedUser("enduser@a", "enduser");
-  const granteeId = await seedUser("grantee@a", "enduser");
+  const granteeId = await seedUser("grantee@a", null);
   owner = adminPrincipal(tenant_id, ownerId);
   otherPerson = adminPrincipal(tenant_id, otherId);
   enduser = { provider: "api_key", kind: "user", id: enduserId, tenant_id, roles: ["enduser"] };
@@ -537,7 +548,11 @@ describe("permission cost", () => {
     const costTenant = t!.id;
     const [u] = await testDb.db
       .insert(users)
-      .values({ tenant_id: costTenant, email: "cost@a", role: "enduser", role_id: null })
+      .values({
+        tenant_id: costTenant,
+        email: "cost@a",
+        role_id: await emptyRoleId(testDb.db, costTenant),
+      })
       .returning({ id: users.id });
     const reader: ResolvedPrincipal = {
       provider: "api_key",
@@ -581,9 +596,10 @@ describe("permission cost", () => {
     const forTen = queries;
     expect(ten.items).toHaveLength(10);
     expect(forTen).toBe(forOne);
-    // Seven distinct gates at a few catalog reads each, plus the reader's own
-    // conversations — bounded, and independent of how many items there are.
-    expect(forTen).toBeLessThanOrEqual(30);
+    // Seven distinct gates at a few catalog reads each (the reader's role
+    // included), plus the reader's own conversations — bounded, and
+    // independent of how many items there are.
+    expect(forTen).toBeLessThanOrEqual(34);
   });
 });
 

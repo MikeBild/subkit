@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, systemAccounts, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -55,7 +56,7 @@ beforeAll(async () => {
     .values({
       tenant_id: srv.tenantId,
       email: "scoped-user@test.local",
-      role: "member",
+      role_id: await builtinRoleId(srv.db, "member"),
     })
     .returning();
   const ukey = newKeyPlaintext();

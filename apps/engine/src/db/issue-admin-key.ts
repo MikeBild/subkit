@@ -18,11 +18,11 @@
 // re-seeds, or touches any other row — safe on a live database.
 
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { createDbFromUrl } from "./client.ts";
-import { apiKeys, tenants, users } from "./schema/index.ts";
+import { apiKeys, roles, tenants, users } from "./schema/index.ts";
 
 export type IssuedAdminKey = {
   tenant_slug: string;
@@ -83,7 +83,15 @@ export async function issueAdminKey(opts: { tenantSlug: string }): Promise<Issue
     const [adminUser] = await db
       .select({ id: users.id, email: users.email })
       .from(users)
-      .where(and(eq(users.tenant_id, tenant.id), eq(users.role, "admin")))
+      .innerJoin(roles, eq(roles.id, users.role_id))
+      .where(
+        and(
+          eq(users.tenant_id, tenant.id),
+          isNull(users.deleted_at),
+          isNull(roles.tenant_id),
+          eq(roles.name, "admin"),
+        ),
+      )
       .limit(1);
     if (!adminUser) {
       throw new Error(`no admin user found in tenant '${opts.tenantSlug}'`);

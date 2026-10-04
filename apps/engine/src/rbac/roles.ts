@@ -3,11 +3,12 @@
 // are read-only and trip the `builtin_immutable` error.
 
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   permissions as permissionsTable,
   rolePermissions,
   roles as rolesTable,
+  users,
 } from "../db/schema/index.ts";
 
 export interface RoleRow {
@@ -31,6 +32,13 @@ export class RoleNotFoundError extends Error {
   constructor() {
     super("role_not_found");
     this.name = "RoleNotFoundError";
+  }
+}
+
+export class RoleInUseError extends Error {
+  constructor() {
+    super("role_in_use");
+    this.name = "RoleInUseError";
   }
 }
 
@@ -103,6 +111,12 @@ export async function deleteRole(db: Db, tenant_id: string, id: string): Promise
   const existing = await getRole(db, tenant_id, id);
   if (!existing) throw new RoleNotFoundError();
   if (existing.is_builtin) throw new BuiltinImmutableError();
+  const [holder] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.tenant_id, tenant_id), eq(users.role_id, id)))
+    .limit(1);
+  if (holder) throw new RoleInUseError();
   await db
     .delete(rolesTable)
     .where(and(eq(rolesTable.id, id), eq(rolesTable.tenant_id, tenant_id)));
@@ -160,6 +174,18 @@ export async function revokePermissionFromRole(
     .where(and(eq(rolePermissions.role_id, role_id), eq(rolePermissions.permission_id, pid)))
     .returning({ role_id: rolePermissions.role_id });
   return del.length > 0;
+}
+
+/** Id of a built-in (global) role. Throws when the catalog is not seeded. */
+export async function builtinRoleId(exec: Executor, name: string): Promise<string> {
+  // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
+  const [row] = await exec
+    .select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(and(isNull(rolesTable.tenant_id), eq(rolesTable.name, name)))
+    .limit(1);
+  if (!row) throw new RoleNotFoundError();
+  return row.id;
 }
 
 export async function findRoleByName(

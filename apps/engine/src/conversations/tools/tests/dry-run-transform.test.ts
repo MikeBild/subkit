@@ -270,7 +270,7 @@ describe("dry_run_transform — scope reference resolution", () => {
 // Fix 6 (session 784c1b02): the sandbox must reproduce the EXACT
 // JSONata surface execution builds — `$scope`/`$steps` bindings via
 // buildJsonataBindings, and for a step inside a loop body the engine's
-// per-iteration childScope (`$item`, `$loop_index`, bare `item_var`).
+// per-iteration childScope (`$item`, `$loop_index`).
 // Pre-fix those references returned `{}` here while working at runtime,
 // so the model "debugged" working expressions into broken ones.
 describe("dry_run_transform — execution-parity loop-body context", () => {
@@ -287,10 +287,9 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
       id: "iter",
       kind: "loop",
       over: "$scope.fetch.data.items",
-      item_var: "row",
       body: ["shape"],
     },
-    { id: "shape", kind: "transform", language: "jsonata", expression: "row.name" },
+    { id: "shape", kind: "transform", language: "jsonata", expression: "$item.name" },
   ];
 
   function recordEnvelopePreview(toolCtx: ToolContext): void {
@@ -316,45 +315,31 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
     });
   }
 
-  test("LEGACY declared item_var: bare name, $item, $loop_index, and sibling $scope resolve exactly as execution would", async () => {
+  test("$item, $loop_index, and sibling $scope resolve exactly as execution would", async () => {
     const toolCtx = makeCtxWithDraft(loopDraftSteps());
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
       expression:
-        "{ 'name': row.name, 'same': $item.name, 'idx': $loop_index, 'total': $count($scope.fetch.data.items), 'since': $input.since }",
+        "{ 'name': $item.name, 'idx': $loop_index, 'total': $count($scope.fetch.data.items), 'since': $input.since }",
       step_id: "shape",
       dialect: "jsonata",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
-      value: { name: string; same: string; idx: number; total: number; since: string };
-      metadata: { loop_context?: { loop_id: string; item_var: string; loop_index: number } };
+      value: { name: string; idx: number; total: number; since: string };
+      metadata: { loop_context?: { loop_id: string; loop_index: number } };
     };
-    // Identical to the engine childScope for iteration 0:
-    //   childScope = { ...scope, row: items[0], $item: items[0], $loop_index: 0 }
     expect(data.value).toEqual({
       name: "Ada",
-      same: "Ada",
       idx: 0,
       total: 2,
       since: "2026-01-01",
     });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: "row", loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
   });
 
-  const canonicalLoopDraftSteps = (): Array<Record<string, unknown>> => [
-    { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-    {
-      id: "iter",
-      kind: "loop",
-      over: "$scope.fetch.data.items",
-      body: ["shape"],
-    },
-    { id: "shape", kind: "transform", language: "jsonata", expression: "$item.name" },
-  ];
-
-  test("canonical contract (no item_var): $item resolves, loop_context.item_var is null", async () => {
-    const toolCtx = makeCtxWithDraft(canonicalLoopDraftSteps());
+  test("loop_context names the enclosing loop and the emulated iteration", async () => {
+    const toolCtx = makeCtxWithDraft(loopDraftSteps());
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
       expression: "{ 'name': $item.name, 'idx': $loop_index }",
@@ -364,18 +349,16 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
     expect(result.ok).toBe(true);
     const data = result.data as {
       value: { name: string; idx: number };
-      metadata: { loop_context?: { loop_id: string; item_var: string | null; loop_index: number } };
+      metadata: { loop_context?: { loop_id: string; loop_index: number } };
     };
     expect(data.value).toEqual({ name: "Ada", idx: 0 });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: null, loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
   });
 
-  test("canonical contract (no item_var): a bare iteration name does NOT resolve (execution parity)", async () => {
-    const toolCtx = makeCtxWithDraft(canonicalLoopDraftSteps());
+  test("a bare iteration name does NOT resolve (execution parity)", async () => {
+    const toolCtx = makeCtxWithDraft(loopDraftSteps());
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
-      // `row` is unbound — the retired bare binding must not leak into
-      // the sandbox when the definition does not declare item_var.
       expression: "row.name",
       step_id: "shape",
       dialect: "jsonata",
@@ -490,14 +473,13 @@ describe("dry_run_transform — javascript dialect", () => {
     expect(data.metadata.resolved_from_preview).toBe("$scope");
   });
 
-  test("loop-body emulation: the body reads input.scope.$item / input.scope.$loop_index (+ legacy bare item_var)", async () => {
+  test("loop-body emulation: the body reads input.scope.$item / input.scope.$loop_index", async () => {
     const toolCtx = makeCtxWithDraft([
       { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
       {
         id: "iter",
         kind: "loop",
         over: "$scope.fetch.data.items",
-        item_var: "row",
         body: ["shape"],
       },
       { id: "shape", kind: "transform", language: "javascript", expression: "return null;" },
@@ -505,28 +487,25 @@ describe("dry_run_transform — javascript dialect", () => {
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
       expression:
-        "return { name: input.scope.$item.name, idx: input.scope.$loop_index, legacy: input.scope.row.name, total: input.scope.fetch.data.items.length, since: input.input.since };",
+        "return { name: input.scope.$item.name, idx: input.scope.$loop_index, total: input.scope.fetch.data.items.length, since: input.input.since };",
       step_id: "shape",
       dialect: "javascript",
     });
     expect(result.ok).toBe(true);
     const data = result.data as {
-      value: { name: string; idx: number; legacy: string; total: number; since: string };
-      metadata: { loop_context?: { loop_id: string; item_var: string | null; loop_index: number } };
+      value: { name: string; idx: number; total: number; since: string };
+      metadata: { loop_context?: { loop_id: string; loop_index: number } };
     };
-    // Identical to the engine childScope for iteration 0, carried as
-    // `input.scope`: { ...scope, row: items[0], $item: items[0], $loop_index: 0 }.
     expect(data.value).toEqual({
       name: "Ada",
       idx: 0,
-      legacy: "Ada",
       total: 2,
       since: "2026-01-01",
     });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", item_var: "row", loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
   });
 
-  test("canonical loop (no item_var): $item resolves, the bare name does NOT leak into input.scope", async () => {
+  test("$item resolves and no bare item name is bound into input.scope", async () => {
     const toolCtx = makeCtxWithDraft([
       { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
       { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
@@ -542,10 +521,8 @@ describe("dry_run_transform — javascript dialect", () => {
     expect(result.ok).toBe(true);
     const data = result.data as {
       value: { name: string; hasBare: boolean };
-      metadata: { loop_context?: { item_var: string | null } };
     };
     expect(data.value).toEqual({ name: "Ada", hasBare: false });
-    expect(data.metadata.loop_context?.item_var).toBeNull();
   });
 
   test("syntax error classifies as compile_error and carries a verified JS repair (language passthrough)", async () => {

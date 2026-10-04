@@ -30,19 +30,13 @@ const inputSchema = z
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     budget_ms: z.number().int().min(500).max(60_000).optional(),
-    execute_writes: z
-      .boolean()
-      .optional()
-      .describe(
-        "Legacy preference retained for compatibility. Draft previews always hold writes, even when true. For live writes, save and activate an immutable workflow version and use its bounded execution or prepared one-shot approval.",
-      ),
   })
   .openapi("DryRunStepToolInput");
 
 export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
   description:
-    "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched, even with execute_writes:true. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
+    "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",

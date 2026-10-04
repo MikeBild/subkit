@@ -14,7 +14,7 @@
 //
 // Precedence — the first that applies wins:
 //
-//   0. legacy    the running version is stored in an earlier format: the
+//   0. invalid   the running version is stored in an earlier format: the
 //                engine refuses to run, admit or approve it. Only a saved
 //                change — the way out — is judged before it.
 //   1. paused    every schedule and hook is stopped; nothing else matters.
@@ -40,7 +40,7 @@ import { observedAuthorityState, type WorkflowAuthority } from "@/lib/workflow-a
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
 
 export type AutomationStateKind =
-  | "legacy"
+  | "invalid"
   | "paused"
   | "apply"
   | "repair"
@@ -93,7 +93,7 @@ export interface AutomationWorkflow {
   /** Active inbound hooks, from the record — readable without `inbound_hook:read`. */
   webhooks_active?: number | null;
   /** The running version is stored in an earlier format and cannot run. */
-  legacy?: boolean | null;
+  invalid?: boolean | null;
 }
 
 export interface AutomationInputs {
@@ -444,10 +444,10 @@ export function automationState(input: AutomationInputs): AutomationState {
   // 0. The running version cannot run at all, whatever would start it and
   //    whatever was approved: it has to be saved again, and that is an
   //    author's act. A saved change that waits IS that act, and leads.
-  if (workflow.legacy === true && target?.kind !== "prepared") {
+  if (workflow.invalid === true && target?.kind !== "prepared") {
     return {
       ...base,
-      state: "legacy",
+      state: "invalid",
       facts,
       ...shown(null),
       pendingEnvironments: [],
@@ -653,7 +653,7 @@ export function automationActionPermitted(
 
 /** The word for each state. */
 export const AUTOMATION_STATE_KEYS = {
-  legacy: "automation.state.legacy",
+  invalid: "automation.state.invalid",
   paused: "automation.state.paused",
   apply: "automation.state.apply",
   repair: "automation.state.repair",
@@ -741,12 +741,12 @@ export function automationCard(
         titleKey: "chat.automationCard.authorized.title",
         hintKey: "chat.automationCard.authorized.hint",
       };
-    case "legacy":
+    case "invalid":
       // Changing the workflow happens in a conversation — this one.
       return {
         ...calm,
-        titleKey: AUTOMATION_STATE_KEYS.legacy,
-        hintKey: "automation.headline.legacy",
+        titleKey: AUTOMATION_STATE_KEYS.invalid,
+        hintKey: "automation.headline.invalid",
       };
     case "manual":
       return {

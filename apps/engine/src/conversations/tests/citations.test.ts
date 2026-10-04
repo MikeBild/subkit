@@ -25,8 +25,8 @@ describe("harvestCitations", () => {
           { id: "k2", source_name: "Repo Guide", snippet: "list repositories" },
         ],
       }),
-      // search_knowledge_v2 re-surfaces k1 — must dedup.
-      toolResult("search_knowledge_v2", { hits: [{ id: "k1", source_name: "Payments Guide" }] }),
+      // A second search re-surfaces k1 — must dedup.
+      toolResult("search_knowledge", { hits: [{ id: "k1", source_name: "Payments Guide" }] }),
     ];
     const citations = harvestCitations(events);
     expect(citations.map((c) => c.id)).toEqual(["k1", "k2"]);

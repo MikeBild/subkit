@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { eq } from "drizzle-orm";
 import { users } from "../../../../db/schema/index.ts";
 import { issueApiKey } from "../../../../identity/service.ts";
+import { builtinRoleId } from "../../../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../tests/setup.ts";
 import { _resetInviteRedeemRateLimitForTests } from "../invites.ts";
 
@@ -26,7 +27,11 @@ beforeAll(async () => {
   // admin short-circuit, so admin-gated handlers refuse it.
   const [member] = await ctx.db
     .insert(users)
-    .values({ tenant_id: ctx.tenantId, email: "member-invites@test.local", role: "member" })
+    .values({
+      tenant_id: ctx.tenantId,
+      email: "member-invites@test.local",
+      role_id: await builtinRoleId(ctx.db, "member"),
+    })
     .returning();
   if (!member) throw new Error("seed member failed");
   const issued = await issueApiKey(

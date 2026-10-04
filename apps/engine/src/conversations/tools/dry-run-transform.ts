@@ -81,10 +81,7 @@ const DryRunInput = z
      * loop body, the evaluation reproduces the engine's per-iteration
      * childScope: `$item` and `$loop_index` are bound from the first
      * item of the loop's `over` collection resolved against the
-     * recorded scope — identical surface to execution. The bare
-     * `item_var` name is additionally bound ONLY for legacy
-     * definitions that still declare `item_var` (retired field; new
-     * definitions address the item as `$item` exclusively). For
+     * recorded scope — identical surface to execution. For
      * `dialect: "javascript"` the same childScope rides `input.scope`,
      * so the body reads `input.scope.$item` / `input.scope.$loop_index`
      * exactly as execution builds them per iteration. Defaults
@@ -208,7 +205,7 @@ export const dryRunTransformTool: ConversationTool = {
     "Audit metadata records only an expression hash + dialect — the raw expression may contain PII and is never written.",
     "`sample_data` is normally a LITERAL JSON value (array, object, etc.). As a shortcut for transform-only iteration, you can also pass `$scope`, `$scope.<step_id>`, or `$input` — the tool resolves these from the latest cached dry_run_workflow preview for this conversation, so you can debug a transform against real upstream data without rerunning the workflow.",
     "JSONata bindings are execution-identical: `$input`, `$scope`, `$steps`, and every `$`-prefixed scope key resolve exactly as they do in a `transform` step at runtime. For `javascript`, the resolved scope record IS `input.scope` and the recorded workflow input IS `input.input` — the exact production context shape.",
-    "Pass `step_id` to emulate a draft step's runtime context. For a step inside a loop body, the tool binds `$item` and `$loop_index` from the first item of the loop's `over` collection resolved against the recorded scope — the same childScope the engine builds per iteration. Address the item as `$item.<path>` (JSONata) or `input.scope.$item.<path>` (javascript); the bare item name is bound ONLY for legacy definitions that still declare the retired `item_var` field.",
+    "Pass `step_id` to emulate a draft step's runtime context. For a step inside a loop body, the tool binds `$item` and `$loop_index` from the first item of the loop's `over` collection resolved against the recorded scope — the same childScope the engine builds per iteration. Address the item as `$item.<path>` (JSONata) or `input.scope.$item.<path>` (javascript).",
     "On a compile/syntax error, runtime/eval error, or an empty result over a real scope (jsonata and javascript dialects), the result carries a bounded `repair` proposal in the same language (verified repaired expression with before/after, ≤2 attempts). Nothing is auto-applied — use the proposed expression in your next edit, or override it.",
   ],
   requires_skill: "data-handling",
@@ -358,9 +355,7 @@ export const dryRunTransformTool: ConversationTool = {
 
     // Loop-body emulation: when the target draft step lives in
     // a loop body, execution binds `$item` and `$loop_index` into a
-    // per-iteration childScope — plus the bare `item_var` name ONLY
-    // when the definition declares the retired field (legacy stored
-    // versions; see execution/loop-scope.ts for the contract).
+    // per-iteration childScope (see execution/loop-scope.ts).
     // Reproduce that surface here so the expression that works in this
     // sandbox is byte-identical to the one that works at runtime —
     // pre-fix the sandbox returned `{}` for those references and the
@@ -368,7 +363,7 @@ export const dryRunTransformTool: ConversationTool = {
     // The `javascript` dialect rides the same childScope: it becomes
     // `input.scope`, so authored JS reads `input.scope.$item` /
     // `input.scope.$loop_index` exactly as execution builds them.
-    let loopContext: { loop_id: string; item_var: string | null; loop_index: number } | null = null;
+    let loopContext: { loop_id: string; loop_index: number } | null = null;
     const parityDialect = args.dialect === "jsonata" || args.dialect === "javascript";
     if (parityDialect && args.step_id !== undefined) {
       const draftSteps = getWorkflowDraft(ctx.getDraft()).steps;
@@ -393,14 +388,6 @@ export const dryRunTransformTool: ConversationTool = {
           (s.body as unknown[]).includes(args.step_id as string),
       );
       if (enclosingLoop && scopeRecord) {
-        // Legacy-only bare binding: bound when the stored definition
-        // declares `item_var`; new/migrated definitions omit it and
-        // get `$item` + `$loop_index` exclusively (execution parity
-        // with buildLoopChildScope).
-        const itemVar =
-          typeof enclosingLoop.item_var === "string" && enclosingLoop.item_var.length > 0
-            ? (enclosingLoop.item_var as string)
-            : null;
         const over = typeof enclosingLoop.over === "string" ? (enclosingLoop.over as string) : null;
         let items: unknown;
         if (over) {
@@ -430,7 +417,6 @@ export const dryRunTransformTool: ConversationTool = {
         // (mirrors execution/loop-scope.ts buildLoopChildScope).
         const childScope: Record<string, unknown> = {
           ...scopeRecord,
-          ...(itemVar !== null ? { [itemVar]: items[0] } : {}),
           $item: items[0],
           $loop_index: 0,
         };
@@ -438,7 +424,6 @@ export const dryRunTransformTool: ConversationTool = {
         resolvedSampleData = childScope;
         loopContext = {
           loop_id: String(enclosingLoop.id),
-          item_var: itemVar,
           loop_index: 0,
         };
       }

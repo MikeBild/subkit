@@ -17,6 +17,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -102,7 +103,7 @@ describe("journey: before-request hook denial", () => {
       .values({
         tenant_id: ctx.tenantId,
         email: "member-hook-deny@test.local",
-        role: "member",
+        role_id: await builtinRoleId(ctx.db, "member"),
       })
       .returning();
     if (!memberUser) throw new Error("seed member user failed");

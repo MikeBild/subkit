@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { userIdentities, users } from "../db/schema/index.ts";
+import { builtinRoleId } from "../rbac/roles.ts";
 
 export class IdentityLinkConflictError extends Error {
   constructor() {
@@ -85,7 +86,11 @@ export async function resolveProviderIdentity(
     if (!user) {
       [user] = await tx
         .insert(users)
-        .values({ tenant_id: options.tenantId, email, role: "member" })
+        .values({
+          tenant_id: options.tenantId,
+          email,
+          role_id: await builtinRoleId(tx, "member"),
+        })
         .onConflictDoNothing({ target: [users.tenant_id, users.email] })
         .returning();
       createdUser = Boolean(user);

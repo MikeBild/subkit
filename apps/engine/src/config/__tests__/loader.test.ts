@@ -86,37 +86,6 @@ describe("loadConfig", () => {
     expect(mode).toBe(0o600);
   });
 
-  test("legacy SK_OVERRIDE_LLM_API_KEY seeds a missing leaf once", async () => {
-    await loadFresh({
-      DATABASE_URL: "postgres://x",
-      NODE_ENV: "test",
-      SK_OVERRIDE_LLM_API_KEY: "override-key",
-    });
-    expect(getConfig().llm.api_key).toBe("override-key");
-    expect(getConfig("tenant-a").llm.api_key).toBe("override-key");
-    expect(getDiagnostics().override_keys).toEqual([]);
-    expect(getDiagnostics().source_map["llm.api_key"]).toBe("global");
-  });
-
-  test("canonical API value wins over a legacy env value on later boots", async () => {
-    await loadFresh({
-      DATABASE_URL: "postgres://x",
-      NODE_ENV: "test",
-      SK_OVERRIDE_LLM_API_KEY: "legacy-key",
-    });
-    await setConfigKey("llm.api_key", "api-key");
-
-    _resetConfigForTests();
-    await loadFresh({
-      DATABASE_URL: "postgres://x",
-      NODE_ENV: "test",
-      SK_OVERRIDE_LLM_API_KEY: "stale-env-key",
-    });
-
-    expect(getConfig().llm.api_key).toBe("api-key");
-    expect(getDiagnostics().override_keys).toEqual([]);
-  });
-
   test("tenant overlay schema rejects non-scope:tenant leaves at parse time", async () => {
     // A hand-edited config that puts `server.port` (scope:global)
     // inside a tenant overlay must fail parse — the overlay schema
@@ -249,25 +218,5 @@ describe("setConfigKey", () => {
     const r = await setConfigKey("llm.api_key", "post-freeze-key");
     expect(r.after).toBe("post-freeze-key");
     expect(getConfig().llm.api_key).toBe("post-freeze-key");
-  });
-});
-
-describe("settings_override_active{key} legacy metric", () => {
-  test("does not publish active override samples for one-time env imports", async () => {
-    const { getMetrics, resetMetricsRegistryForTests } = await import(
-      "../../observability/metrics.ts"
-    );
-    resetMetricsRegistryForTests();
-
-    await loadFresh({
-      DATABASE_URL: "postgres://x",
-      NODE_ENV: "test",
-      SK_OVERRIDE_LLM_API_KEY: "first-override",
-      SK_OVERRIDE_ERRORS_RING_SIZE: "200",
-    });
-    const reg = getMetrics();
-    const rendered = reg.render();
-    expect(rendered).not.toContain('settings_override_active{key="llm.api_key"}');
-    expect(rendered).not.toContain('settings_override_active{key="errors.ring_size"}');
   });
 });

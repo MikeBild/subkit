@@ -43,7 +43,6 @@ const SELF_UPDATE_FLAG = "--self-update";
 const ROLLBACK_FLAG = "--rollback";
 const CHECK_UPDATE_FLAG = "--check-update";
 const MIGRATE_FLAG = "--migrate";
-const BRIDGE_STATELESS_FLAG = "--bridge-stateless";
 const SEED_FLAG = "--seed";
 const ISSUE_ADMIN_KEY_FLAG = "--issue-admin-key";
 const TOKEN_EXCHANGE_FLAG = "--token-exchange";
@@ -800,37 +799,6 @@ async function main(): Promise<void> {
             msg: "engine --migrate failed",
             error: err instanceof Error ? err.message : String(err),
           });
-          process.exit(1);
-        }
-      },
-    );
-    return;
-  }
-
-  // One-shot, rerunnable recovery bridge. It deliberately runs only when
-  // requested and never participates in normal stateless process startup.
-  if (process.argv.includes(BRIDGE_STATELESS_FLAG)) {
-    await withContext(
-      {
-        trace_id: newTraceId(),
-        tenant_id: SYSTEM_TENANT_ID,
-        request_source: "cli",
-        actor_id: "stateless-bridge",
-      },
-      async () => {
-        try {
-          const { runStatelessBridgeCli } = await import("./runtime-config/bridge.ts");
-          const report = await runStatelessBridgeCli(process.argv);
-          process.stdout.write(`${JSON.stringify(report)}\n`);
-          process.exit(0);
-        } catch (err) {
-          logger.fatal({
-            module: "engine",
-            action: "stateless_bridge.cli_failed",
-            msg: "engine --bridge-stateless failed",
-            error: err instanceof Error ? err.message : String(err),
-          });
-          await closeDb().catch(() => {});
           process.exit(1);
         }
       },

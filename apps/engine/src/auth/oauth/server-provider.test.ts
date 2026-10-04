@@ -14,6 +14,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 import { sha256Hex } from "./tokens.ts";
 
@@ -67,7 +68,11 @@ beforeAll(async () => {
 
   const [u] = await db
     .insert(users)
-    .values({ tenant_id: tenantId, email: "mcp-oauth@test.local", role: "admin" })
+    .values({
+      tenant_id: tenantId,
+      email: "mcp-oauth@test.local",
+      role_id: await builtinRoleId(db, "admin"),
+    })
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;

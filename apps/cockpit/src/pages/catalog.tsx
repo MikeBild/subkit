@@ -289,12 +289,7 @@ function catalogColumns(
         "trigger",
         (row) => row.effective_trigger,
         t("catalog.trigger"),
-        (row) =>
-          t(
-            triggerLabelKey(
-              row.effective_trigger as WorkflowListItem["effective_trigger"] | null | undefined,
-            ),
-          ),
+        (row) => t(triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"])),
         { width: "w-[11%]" },
       ),
       // The last run's time leads to the runs of this workflow — the date is
@@ -697,15 +692,10 @@ export function CatalogPage({
               ),
             }
           : {})}
-        page={state.page}
-        pageSize={PAGE_SIZE}
         total={total}
         onPageChange={(page) => setState({ page })}
-        previousLabel={t("catalog.previous")}
-        nextLabel={t("catalog.next")}
         columnsLabel={t("catalog.columns")}
         recordsLabel={t("catalog.records")}
-        loadedLabel={t("catalog.loaded", { count: rows.length })}
         actionsLabel={t("common.actions")}
       />
       {recategorize && (

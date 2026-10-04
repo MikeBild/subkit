@@ -30,6 +30,7 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import { deliver, handleChatEvent } from "../dispatcher.ts";
@@ -136,12 +137,12 @@ describe("chat dispatcher", () => {
     const card = adapter.approvals[0];
     if (!card) throw new Error("no card");
 
-    const conv1 = await ctx.testDb.db
+    const pendingConversation = await ctx.testDb.db
       .select()
       .from(conversations)
       .where(eq(conversations.id, card.conversation_id))
       .limit(1);
-    expect(conv1[0]?.status).toBe("awaiting_input");
+    expect(pendingConversation[0]?.status).toBe("awaiting_input");
 
     // Simulate Slack interaction (click Approve) → dispatcher runs decideApproval.
     const interaction: ChatEvent = {
@@ -160,13 +161,13 @@ describe("chat dispatcher", () => {
     // Chat is a read-only channel: the resumed turn ran WITHOUT the
     // authoring palette, so the canned plan's save_workflow_draft never
     // fired — no commit, no workflow, even for a fully-linked user.
-    const conv2 = await ctx.testDb.db
+    const resumedConversation = await ctx.testDb.db
       .select()
       .from(conversations)
       .where(eq(conversations.id, card.conversation_id))
       .limit(1);
-    expect(conv2[0]?.status).not.toBe("committed");
-    expect(conv2[0]?.target_workflow_id).toBeNull();
+    expect(resumedConversation[0]?.status).not.toBe("committed");
+    expect(resumedConversation[0]?.target_workflow_id).toBeNull();
 
     // Defense-in-depth check on the tool-call log: no authoring tool
     // ever executed in this conversation — the palette never carried
@@ -396,7 +397,11 @@ describe("chat dispatcher", () => {
     if (!foreignTenant) throw new Error("seed foreign tenant");
     const [foreignUser] = await ctx.testDb.db
       .insert(usersTbl)
-      .values({ tenant_id: foreignTenant.id, email: "c2-foreign@test.local", role: "admin" })
+      .values({
+        tenant_id: foreignTenant.id,
+        email: "c2-foreign@test.local",
+        role_id: await builtinRoleId(ctx.testDb.db, "admin"),
+      })
       .returning();
     if (!foreignUser) throw new Error("seed foreign user");
 
@@ -484,7 +489,7 @@ describe("chat session mapping", () => {
       .values({
         tenant_id: ctx.tenant_id,
         email: "second-mapper@example.com",
-        role: "member",
+        role_id: await builtinRoleId(ctx.testDb.db, "member"),
       })
       .returning();
     if (!u2) throw new Error("seed second user failed");
@@ -679,7 +684,7 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
       .values({
         tenant_id: ctx.tenant_id,
         email: "salvage-second@example.com",
-        role: "member",
+        role_id: await builtinRoleId(ctx.testDb.db, "member"),
       })
       .returning();
     if (!u2) throw new Error("seed second salvage user failed");

@@ -15,7 +15,7 @@ import { UsagePage } from "@/pages/usage";
 import { absolute } from "./links";
 import {
   CHAT_ROUTES,
-  legacyTarget,
+  movedTarget,
   PAGE_ROUTES,
   type PageRoute,
   REDIRECT_ROUTES,
@@ -74,7 +74,7 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
     getParentRoute: () => rootRoute,
     path,
     beforeLoad: () => {
-      window.location.replace(absolute(legacyTarget(path, window.location.search)));
+      window.location.replace(absolute(movedTarget(window.location.search)));
     },
   }),
 );

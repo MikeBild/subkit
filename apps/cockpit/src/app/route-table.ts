@@ -14,7 +14,7 @@
  * an entry does not compile, and a check that reads this file reads exactly
  * what the router reads.
  */
-import { attentionHref, peopleHref, uuidParam } from "./links";
+import { peopleHref } from "./links";
 
 export const PAGE_ROUTES = [
   "/",
@@ -30,39 +30,19 @@ export type PageRoute = (typeof PAGE_ROUTES)[number];
 /**
  * Paths that render no page of their own but must still land somewhere.
  *
- * A redirect is a route a person can type or bookmark, or that a mail, an
- * audit row or an older engine handed out. Each one's target is decided by
- * `legacyTarget`, from the path and the query it arrived with.
- *
- * `/decisions` and `/operations` were the decisions queue and the system page.
- * Both were a second and third place for what Übersicht now says once: what needs
- * the reader, and why the installation is not well. Their addresses land on
- * Übersicht — a link that named one workflow opens that workflow's review sheet.
- *
  * `/access` was the roles, groups and grants page. It is a section of
  * Personen & Rechte now, and its address lands on the roles — what it opened
  * with.
  */
-export const REDIRECT_ROUTES = ["/decisions", "/operations", "/access"] as const;
-
-export type RedirectRoute = (typeof REDIRECT_ROUTES)[number];
+export const REDIRECT_ROUTES = ["/access"] as const;
 
 /**
- * Where an old address lands, from its path and its RAW query.
- *
- * `/access` carries its query along, under the section it lands on — its own
- * `section` wins, whatever the old address said. The decisions queue's `bucket` narrowed a
- * page that no longer exists — carried along, it would only sit in Übersicht's
- * address meaning nothing. `workflow_id` is the one thing an old decisions
- * link said that still has a place, and it has to be a UUID to get there.
+ * Where a redirect lands, from its path and its RAW query. `/access` carries
+ * its query along, under the section it lands on — its own `section` wins,
+ * whatever the old address said.
  */
-export function legacyTarget(path: RedirectRoute, search: string): string {
-  if (path === "/access") return redirectTarget(peopleHref("roles"), search);
-  if (path === "/decisions") {
-    const workflowId = uuidParam(new URLSearchParams(search), "workflow_id");
-    return workflowId ? attentionHref({ review: `workflow:${workflowId}` }) : attentionHref();
-  }
-  return attentionHref();
+export function movedTarget(search: string): string {
+  return redirectTarget(peopleHref("roles"), search);
 }
 
 /**

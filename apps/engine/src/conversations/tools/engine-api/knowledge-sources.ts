@@ -10,7 +10,9 @@ const SearchInput = z
     tags: z.array(z.string().min(1)).optional(),
     limit: z.number().int().min(1).max(50).optional(),
   })
-  .openapi("SearchKnowledgeToolInputV2");
+  .openapi("SearchKnowledgeToolInput");
+
+const SEARCH_KNOWLEDGE_DEFAULT_LIMIT = 5;
 
 export const listKnowledgeSourcesTool: ConversationTool = {
   name: "list_knowledge_sources",
@@ -19,7 +21,7 @@ export const listKnowledgeSourcesTool: ConversationTool = {
   inputSchema: ListInput,
   category: "tenant_read",
   // Enumeration is gated like the typed fast-path list intent
-  // (`knowledge:read`). `search_knowledge_v2` stays ungated so grounding
+  // (`knowledge:read`). `search_knowledge` stays ungated so grounding
   // over the global `sk-ref-*` reference still works for any principal.
   permission: { action: "knowledge:read", resourceType: "knowledge" },
   async execute(ctx) {
@@ -55,17 +57,18 @@ export const getKnowledgeSourceTool: ConversationTool = {
   },
 };
 
-export const searchKnowledgeV2Tool: ConversationTool = {
-  name: "search_knowledge_v2",
+export const searchKnowledgeTool: ConversationTool = {
+  name: "search_knowledge",
   description:
-    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags).",
+    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the request needs context beyond the tenant snapshot and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags). If the first result does not answer the question, refine the query once and stop — do not spin.",
   inputSchema: SearchInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof SearchInput>) {
+    const workflowId = args.workflow_id ?? ctx.workflow_id;
     const hits = await ctx.engineClient.knowledgeSources.search(args.query, {
-      ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
+      ...(workflowId ? { workflow_id: workflowId } : {}),
       ...(args.tags !== undefined ? { tags: args.tags } : {}),
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      limit: args.limit ?? SEARCH_KNOWLEDGE_DEFAULT_LIMIT,
     });
     return { ok: true, data: { hits } };
   },
@@ -90,7 +93,7 @@ const READ_KNOWLEDGE_PAGE_SIZE = 50;
 export const readKnowledgeTool: ConversationTool = {
   name: "read_knowledge",
   description:
-    "Read the FULL content of a Knowledge Source, paginated — the follow-up to search_knowledge_v2 when a snippet is not enough (e.g. 'read me the deploy runbook'). Pass path to read one file of an imported bundle; repeat with next_offset until it is absent to retrieve everything.",
+    "Read the FULL content of a Knowledge Source, paginated — the follow-up to search_knowledge when a snippet is not enough (e.g. 'read me the deploy runbook'). Pass path to read one file of an imported bundle; repeat with next_offset until it is absent to retrieve everything.",
   inputSchema: ReadKnowledgeInput,
   category: "tenant_read",
   permission: {
@@ -111,7 +114,7 @@ export const readKnowledgeTool: ConversationTool = {
         ok: false,
         data: {
           error: "path_not_found",
-          hint: "list paths via read_knowledge without path, or search_knowledge_v2 first",
+          hint: "list paths via read_knowledge without path, or search_knowledge first",
         },
       };
     }
@@ -155,6 +158,6 @@ export const readKnowledgeTool: ConversationTool = {
 export const knowledgeSourceReadTools: ConversationTool[] = [
   listKnowledgeSourcesTool,
   getKnowledgeSourceTool,
-  searchKnowledgeV2Tool,
+  searchKnowledgeTool,
   readKnowledgeTool,
 ];

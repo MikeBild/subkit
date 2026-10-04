@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, sessions, users } from "../../../db/schema/index.ts";
 import { deactivateUser } from "../../../identity/provisioning.ts";
+import { builtinRoleId } from "../../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
@@ -55,7 +56,7 @@ describe("deactivating a user severs their browser sessions", () => {
       .values({
         tenant_id: server.tenantId,
         email: `deactivate-sessions-${Date.now()}@test.local`, // allow-wall-clock
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning({ id: users.id });
     if (!user) throw new Error("seed user failed");
@@ -95,7 +96,7 @@ describe("deactivating a user severs their browser sessions", () => {
       .values({
         tenant_id: server.tenantId,
         email: `deactivate-scope-${Date.now()}@test.local`, // allow-wall-clock
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning({ id: users.id });
     const [bystander] = await server.db
@@ -103,7 +104,7 @@ describe("deactivating a user severs their browser sessions", () => {
       .values({
         tenant_id: server.tenantId,
         email: `bystander-${Date.now()}@test.local`, // allow-wall-clock
-        role: "member",
+        role_id: await builtinRoleId(server.db, "member"),
       })
       .returning({ id: users.id });
     if (!victim || !bystander) throw new Error("seed users failed");

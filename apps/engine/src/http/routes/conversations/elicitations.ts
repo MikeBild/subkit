@@ -185,10 +185,12 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       } catch (error) {
         if (error instanceof svc.ElicitationAlreadyResolvedError) {
           throw new HttpError(409, "elicitation_already_resolved", error.message, {
-            elicitation_id: error.elicitation_id,
-            previous_status: error.status,
-            previous_output: error.previous_output,
-            previous_decision_reason: error.previous_decision_reason,
+            details: {
+              elicitation_id: error.elicitation_id,
+              previous_status: error.status,
+              previous_output: error.previous_output,
+              previous_decision_reason: error.previous_decision_reason,
+            },
           });
         }
         if (error instanceof svc.ElicitationValidationError) {
@@ -196,9 +198,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           // original prompt (with error pins merged) so the client
           // re-renders the same dialog and re-submits.
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
-            elicitation_id: error.elicitation_id,
-            field_errors: error.field_errors,
-            pending_elicitation: error.pending_elicitation,
+            details: {
+              elicitation_id: error.elicitation_id,
+              field_errors: error.field_errors,
+              pending_elicitation: error.pending_elicitation,
+            },
           });
         }
         throw error;
@@ -309,10 +313,12 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
       } catch (error) {
         if (error instanceof svc.ElicitationAlreadyResolvedError) {
           throw new HttpError(409, "elicitation_already_resolved", error.message, {
-            elicitation_id: error.elicitation_id,
-            previous_status: error.status,
-            previous_output: error.previous_output,
-            previous_decision_reason: error.previous_decision_reason,
+            details: {
+              elicitation_id: error.elicitation_id,
+              previous_status: error.status,
+              previous_output: error.previous_output,
+              previous_decision_reason: error.previous_decision_reason,
+            },
           });
         }
         if (error instanceof svc.ElicitationValidationError) {
@@ -320,9 +326,11 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
           // original prompt (with error pins merged) so the client
           // re-renders the same dialog and re-submits.
           throw new HttpError(422, "elicitation_validation_failed", error.message, {
-            elicitation_id: error.elicitation_id,
-            field_errors: error.field_errors,
-            pending_elicitation: error.pending_elicitation,
+            details: {
+              elicitation_id: error.elicitation_id,
+              field_errors: error.field_errors,
+              pending_elicitation: error.pending_elicitation,
+            },
           });
         }
         throw error;
