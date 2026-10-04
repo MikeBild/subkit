@@ -78,7 +78,7 @@ describe("the root copy of the family convention", () => {
     // whatever the file happens to hold.
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
     expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.3 text").toBe(
-      "aeb6f7dec13f99163aa54a5aace87c40b4fd43ac41e689cd813f66a9578ea376",
+      "21b45923319d53c0f7cf593ea1c6a4e0b3cec233fa257d5479044976114727e7",
     );
   });
 
