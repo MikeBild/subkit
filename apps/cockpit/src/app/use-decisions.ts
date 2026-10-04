@@ -34,7 +34,7 @@ import { useLiveQueryOptions } from "./live-events";
  * catalogue is small and cached; a target that stays unresolved renders as
  * nothing rather than as a UUID.
  */
-function useNameIndex(permissions: readonly string[], enabled: boolean): NameIndex {
+export function useNameIndex(permissions: readonly string[], enabled: boolean): NameIndex {
   const canWorkflows = permissions.includes("workflow:read");
   const canConnectors = permissions.includes("connector:read");
   const names = useQuery({
