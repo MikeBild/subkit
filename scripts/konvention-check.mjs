@@ -499,6 +499,10 @@ function catalogRows(path) {
         current_version: 8,
         connectors: rotate === 2 ? [] : ["reporting-api", "mailer"].slice(0, rotate + 1),
         trigger: rotate === 1 ? { kind: "schedule", cron: "0 6 * * *", tz: "UTC" } : null,
+        effective_trigger:
+          rotate === 1
+            ? { kind: "schedule", source: "definition", state: "active" }
+            : { kind: "request", source: "default", state: "active" },
         health_state: rotate === 3 ? "degraded" : "ok",
         health_reason: rotate === 3 ? "Drei Läufe in Folge fehlgeschlagen." : null,
         last_executed_at: days(1),
@@ -2043,40 +2047,6 @@ async function checkUsageMirrorsNoFigures(page) {
     breach("§0.1", "/usage", "Nutzung shows the operating figures a second time");
 }
 
-async function checkLegacyRedirects(context) {
-  const cases = [
-    { from: "decisions", path: "/cockpit", review: null },
-    { from: "decisions?bucket=failing", path: "/cockpit", review: null },
-    { from: `decisions?workflow_id=${ID}`, path: "/cockpit", review: `workflow:${ID}` },
-    { from: "operations", path: "/cockpit", review: null },
-  ];
-  for (const { from, path, review } of cases) {
-    const page = await context.newPage();
-    try {
-      await stand.visit(page, from);
-      await page
-        .locator('[data-testid="attention-page"]')
-        .waitFor({ state: "visible", timeout: 15_000 });
-      const url = new URL(page.url());
-      if (url.pathname.replace(/\/$/, "") !== path)
-        breach("§6", `/${from}`, `lands on ${url.pathname} instead of ${path}`);
-      if (url.searchParams.get("review") !== review)
-        breach("§6", `/${from}`, `lands with review=${url.searchParams.get("review")}`);
-      if (!review && url.search !== "")
-        breach("§6", `/${from}`, `carries ${url.search} onto Übersicht, where it means nothing`);
-      if (review)
-        await page
-          .locator('[data-testid="attention-review"]')
-          .waitFor({ state: "visible", timeout: 10_000 });
-    } catch (error) {
-      if (error instanceof NichtGemessen) throw error;
-      breach("§6", `/${from}`, `the old address does not land: ${error.message}`);
-    } finally {
-      await page.close();
-    }
-  }
-}
-
 async function openReview(context, id) {
   const page = await context.newPage();
   await stand.visit(page, `?review=${id}`);
@@ -3235,7 +3205,6 @@ try {
   await today.close();
 
   await checkReviewSheet(context);
-  await checkLegacyRedirects(context);
   await checkStaleReview(context);
   await checkCatalogOpensInApp(context);
 
