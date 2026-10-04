@@ -4,6 +4,18 @@ import type { SkillCandidateView } from "./types.ts";
 
 /** Convert a DB row to a view. evidence_count defaults to 0 — callers that
  *  need the real count should query the relational evidence table. */
+/** Kinds a person never adopts: they feed drafting prompts as context
+ *  (an authoring capability) or name a symptom (a failure pattern), so
+ *  activating one as a skill would teach nothing. */
+const ADVISORY_PATTERN_KINDS: ReadonlySet<string> = new Set([
+  "failure_pattern",
+  "authoring_capability",
+]);
+
+export function isAdvisoryPatternKind(kind: string): boolean {
+  return ADVISORY_PATTERN_KINDS.has(kind);
+}
+
 export function skillReviewDigest(row: typeof skillCandidates.$inferSelect): string {
   return workflowJsonDigest({
     tenant: row.tenant_id,
@@ -42,9 +54,7 @@ export function toView(
     confidence: row.confidence,
     status: row.status,
     promoted_skill_id: row.promoted_skill_id,
-    reviewable:
-      row.status === "proposed" &&
-      !["failure_pattern", "authoring_capability"].includes(row.pattern_kind),
+    reviewable: row.status === "proposed" && !isAdvisoryPatternKind(row.pattern_kind),
     review_digest: skillReviewDigest(row),
     fingerprint: row.fingerprint,
     version: row.version,

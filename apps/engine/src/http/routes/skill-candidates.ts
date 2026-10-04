@@ -267,20 +267,31 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.title) overrides.title = body.title;
     if (body.body) overrides.body = body.body;
     if (body.status) overrides.status = body.status;
-    const result = await svc.approveSkillCandidate(
-      {
-        tenant_id: principal.tenant_id,
-        candidate_id: id,
-        actor_id: principal.id,
-        ...(body.expected_review_digest
-          ? { expected_review_digest: body.expected_review_digest }
-          : {}),
-        ...(Object.keys(overrides).length > 0
-          ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
-          : {}),
-      },
-      db,
-    );
+    let result: Awaited<ReturnType<typeof svc.approveSkillCandidate>>;
+    try {
+      result = await svc.approveSkillCandidate(
+        {
+          tenant_id: principal.tenant_id,
+          candidate_id: id,
+          actor_id: principal.id,
+          ...(body.expected_review_digest
+            ? { expected_review_digest: body.expected_review_digest }
+            : {}),
+          ...(Object.keys(overrides).length > 0
+            ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
+            : {}),
+        },
+        db,
+      );
+    } catch (err) {
+      if (err instanceof svc.AdvisoryCandidateError)
+        throw new HttpError(
+          409,
+          "candidate_advisory",
+          "This proposal is advisory context and cannot be adopted as a skill",
+        );
+      throw err;
+    }
     if (!result) {
       const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
       if (candidate)
