@@ -268,6 +268,54 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
   });
 });
 
+describe("request_connector_reauth — the link opens the connector's own sign-in route", () => {
+  async function seedMcpServer(slug: string): Promise<string> {
+    const [c] = await ctx.testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug,
+        display_name: slug,
+        driver: "mcp",
+        environment: "prod",
+        auth_type: "oauth2",
+        base_url: "https://remote.example.test/mcp",
+        config: { mcp: { transport: "http", auth: { kind: "oauth2" } } },
+      })
+      .returning();
+    if (!c) throw new Error("seed connector failed");
+    return c.id;
+  }
+
+  test("an MCP server's link opens mcp/authorize, never oauth/start", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.test");
+    const connector_id = await seedMcpServer("rr-mcp-server");
+
+    const result = await requestConnectorReauthTool.execute(makeToolContext(), { connector_id });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as { method: string; reauth_url: string };
+    expect(data.method).toBe("oauth2");
+    const url = new URL(data.reauth_url);
+    expect(url.pathname).toBe(`/v1/connectors/${connector_id}/mcp/authorize`);
+    expect(url.searchParams.get("grant")).toStartWith("skog_");
+  });
+
+  test("over MCP the paused elicitation carries the same mcp/authorize link", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.test");
+    const connector_id = await seedMcpServer("rr-mcp-server-mcp");
+
+    const result = await requestConnectorReauthTool.execute(makeToolContext(ctx.user_id, "mcp"), {
+      connector_id,
+    });
+
+    const pauseInput = result.pause?.input as Record<string, unknown>;
+    expect(String(pauseInput.authorization_url)).toContain(
+      `/v1/connectors/${connector_id}/mcp/authorize?grant=skog_`,
+    );
+  });
+});
+
 describe("request_connector_reauth — error envelopes", () => {
   test("neither connector_id nor slug → invalid_input", async () => {
     const result = (await requestConnectorReauthTool.execute(makeToolContext(), {})) as ErrorResult;

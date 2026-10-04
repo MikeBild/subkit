@@ -36,6 +36,7 @@ import {
 import { resetCircuitBreaker } from "./circuit-breaker.ts";
 import type { ConnectorHealth } from "./health.ts";
 import { setConnectorHealth } from "./health-state.ts";
+import { connectorSignIn } from "./sign-in.ts";
 import type { ConnectorView } from "./types.ts";
 
 /**
@@ -390,6 +391,12 @@ export async function emitConnectorAuthFailed(
   });
 }
 
+/** The connector fields the re-sign-in route is decided from. */
+export type ReauthConnector = Pick<
+  ConnectorView,
+  "id" | "slug" | "driver" | "auth_type" | "config" | "template_snapshot"
+>;
+
 /**
  * Resolve the stable "reconnect here" URL for a connector that needs re-auth.
  *
@@ -401,25 +408,30 @@ export async function emitConnectorAuthFailed(
  * surrounding transaction rolls back. A stable endpoint link has neither
  * failure mode.
  *
- * Both `oauth2` and non-OAuth (basic/bearer/header/query/none) connectors
- * have NO click-through browser flow at these bare endpoint URLs — both
- * `/oauth/start` (bearer-authed POST) and `/credentials` (API-key-authed
- * POST) reject an unauthenticated browser hit. The honest instruction for
- * an operator notification is the same for both: ask the assistant to run
- * `request_connector_reauth`, which mints a fresh single-use browser link
- * (`/oauth/start?grant=…` or `/credentials/setup?grant=…` respectively).
- * `reauth_url` still exposes the bare endpoint so API-key/programmatic
- * callers can hit it directly.
+ * The route is the connector's own sign-in (`connectorSignIn`, the predicate
+ * its `sign_in` field is computed from): `/oauth/start` for a web service,
+ * `/mcp/authorize` for an MCP server. A connector with no browser sign-in — a
+ * key, machine-to-machine OAuth, a Cognito password grant — reconnects by
+ * storing a new credential at `/credentials`.
+ *
+ * None of these bare endpoint URLs is a click-through browser flow: each is
+ * an authenticated POST that rejects an unauthenticated browser hit. The
+ * honest instruction for an operator notification is the same for all: ask
+ * the assistant to run `request_connector_reauth`, which mints a fresh
+ * single-use browser link (`<sign-in route>?grant=…` or
+ * `/credentials/setup?grant=…`). `reauth_url` still exposes the bare endpoint
+ * so API-key/programmatic callers can hit it directly.
  *
  * Returns `reauth_url: null` only when no public engine origin resolves — the
  * `engine_public_url_missing` guard (buildOAuthRedirectUri() === null).
  */
-export function buildReauthUrl(connector: Pick<ConnectorView, "id" | "slug" | "auth_type">): {
+export function buildReauthUrl(connector: ReauthConnector): {
   method: "oauth2" | "portal_setup";
   reauth_url: string | null;
   instructions: string;
 } {
-  const method = connector.auth_type === "oauth2" ? "oauth2" : "portal_setup";
+  const signIn = connectorSignIn(connector);
+  const method = signIn ? "oauth2" : "portal_setup";
   const redirect_uri = buildOAuthRedirectUri();
   if (!redirect_uri) {
     return {
@@ -429,26 +441,16 @@ export function buildReauthUrl(connector: Pick<ConnectorView, "id" | "slug" | "a
     };
   }
   const origin = redirect_uri.slice(0, -OAUTH_CALLBACK_PATH.length);
-  if (method === "oauth2") {
-    // The static /oauth/start endpoint requires bearer auth — it cannot be
-    // opened directly in a browser. The correct affordance for an operator
-    // notification is to tell them to ask the assistant, which will mint a
-    // fresh single-use grant URL via request_connector_reauth. We still
-    // expose the POST endpoint URL as reauth_url so API-key callers can hit
-    // it programmatically; the instructions tell the human path.
+  if (signIn) {
     return {
       method,
-      reauth_url: `${origin}/v1/connectors/${connector.id}/oauth/start`,
+      reauth_url: `${origin}${signIn.start}`,
       instructions: `Ask the assistant to run request_connector_reauth for '${connector.slug}' to get a one-time sign-in link, or POST this endpoint with an API key.`,
     };
   }
-  // The static /credentials endpoint requires an API key — it is not a
-  // browser-openable "secure page" (it 401s an unauthenticated hit). Same
-  // affordance as the oauth2 branch above: ask the assistant, which mints a
-  // fresh single-use credential-setup grant URL via request_connector_reauth.
   return {
     method,
-    reauth_url: `${origin}/v1/connectors/${connector.id}/credentials`,
+    reauth_url: `${origin}/v1/connectors/${encodeURIComponent(connector.id)}/credentials`,
     instructions: `Ask the assistant to run request_connector_reauth for '${connector.slug}' to get a one-time credential-setup link, or POST this endpoint with an API key.`,
   };
 }
@@ -466,7 +468,7 @@ export function buildReauthUrl(connector: Pick<ConnectorView, "id" | "slug" | "a
  */
 export async function flagConnectorAuthFailure(
   db: Db,
-  connector: Pick<ConnectorView, "id" | "tenant_id" | "slug" | "auth_type">,
+  connector: ReauthConnector & Pick<ConnectorView, "tenant_id">,
   opts: { reason: string; workflow_id?: string | null },
 ): Promise<{ transitioned: boolean }> {
   const result = await db.transaction(async (tx) => {

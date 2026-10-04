@@ -217,8 +217,9 @@ export const connectorOauthStates = pgTable(
 
 // ----- connector_oauth_start_grants -----------------------------------------
 // Single-use, 10-min-TTL grant tokens that allow an unauthenticated browser
-// to start an OAuth2 authorization-code dance via
-// GET /v1/connectors/{id}/oauth/start?grant=skog_<token>.
+// to start the connector's own sign-in via
+// GET /v1/connectors/{id}/oauth/start?grant=skog_<token> (a web service) or
+// GET /v1/connectors/{id}/mcp/authorize?grant=skog_<token> (an MCP server).
 // The token is stored as a sha256 hex digest only (portal-token discipline).
 
 export const connectorOauthStartGrants = pgTable(

@@ -16,6 +16,18 @@
 //                                            returns it for the operator's
 //                                            browser to open.
 //
+//   GET  /v1/connectors/{id}/mcp/authorize  — UNAUTHENTICATED (grant-token
+//                                            auth). The browser-openable
+//                                            door to the same flow, for the
+//                                            re-sign-in link a conversation
+//                                            hands out: consumes a
+//                                            single-use skog_… grant (the
+//                                            one `/oauth/start?grant=`
+//                                            consumes), begins the
+//                                            authorization and
+//                                            302-redirects to the
+//                                            authorization server.
+//
 //   GET  /v1/connectors/mcp/oauth/callback  — UNAUTHENTICATED. The external
 //                                            server's authorization server
 //                                            redirects the operator's
@@ -56,16 +68,22 @@ import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
+  AuditAction,
+  auditAwait,
   readRequestSource,
   recordConnectorMcpAuthorizationFailed,
   recordConnectorMcpAuthorizationStarted,
   recordConnectorMcpAuthorized,
 } from "../../../audit/index.ts";
 import {
+  connectorSignIn,
+  consumeStartGrant,
+  getConnector,
   type OAuthFlowOrigin,
   oauthFlowOrigin,
   settleConnectorReauthorization,
 } from "../../../connectors/index.ts";
+import type { Db } from "../../../db/client.ts";
 import { mcpOauthStates } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import {
@@ -93,6 +111,7 @@ import {
   signedInPage,
   signInFailedPage,
 } from "./signin-result.ts";
+import { signalSignInFailed, signalSignInSucceeded } from "./signin-signals.ts";
 
 const LOG_MODULE = "mcp_oauth";
 
@@ -150,6 +169,11 @@ const McpOAuthCallbackQuery = z.object({
   error_description: z.string().optional(),
 });
 
+// The single-use grant a conversation's re-sign-in link carries. Min-20
+// guards against short random strings; `consumeStartGrant` enforces the hash
+// match, the connector and the expiry atomically.
+const McpAuthorizeGrantQuery = z.object({ grant: z.string().min(20) });
+
 // ── Route definitions ────────────────────────────────────────────────────────
 
 const inspectRoute = createRoute({
@@ -189,6 +213,26 @@ const authorizeRoute = createRoute({
     502: {
       description: "Authorization-server discovery failed",
       content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const authorizeGrantRoute = createRoute({
+  method: "get",
+  path: "/v1/connectors/{id}/mcp/authorize",
+  tags: ["connectors"],
+  summary: "Browser-openable OAuth 2.1 authorization for an mcp connector (single-use grant token)",
+  // Unauthenticated: a conversation hands this URL to a person to open in a
+  // browser. Authentication is the single-use opaque `grant` query parameter
+  // (skog_… token) the engine minted and stored as a sha256 hash in
+  // connector_oauth_start_grants — the same discipline as
+  // GET /v1/connectors/{id}/oauth/start.
+  request: { params: IdParam, query: McpAuthorizeGrantQuery },
+  responses: {
+    302: { description: "Redirect to the authorization server" },
+    400: {
+      description: "Grant invalid/expired, or the authorization could not begin (HTML page)",
+      content: { "text/html": { schema: z.string() } },
     },
   },
 });
@@ -264,155 +308,114 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(authorizeRoute, async (c) => {
     const principal = requireAuth(c);
-    const db = c.get("db");
     const { id } = c.req.valid("param");
     const requestSource: RequestSource = readRequestSource(c) ?? "api";
-
-    const server = await getMcpConnector(db, principal.tenant_id, id);
-    if (!server) throw new NotFoundError("mcp connector");
-
-    const auth = server.auth;
-    if (auth.kind !== "oauth2") {
-      throw new UnprocessableEntityError(
-        "interactive authorization is only available for an mcp connector whose config.mcp.auth.kind is 'oauth2'",
-      );
-    }
-
-    const redirect_uri = buildMcpOAuthRedirectUri({ req: c.req.raw });
-    if (!redirect_uri) {
-      throw new HttpError(
-        400,
-        "engine_public_url_missing",
-        "engine has no resolvable public origin — set server.public_base_url (it must be an HTTPS URL reachable by the external authorization server)",
-      );
-    }
-
-    // Opaque correlation token. crypto.randomUUID is the same RNG the
-    // connector flow relies on for an unguessable single-use state.
-    const state = crypto.randomUUID();
-
-    // Placeholder row at flow start, mirroring connectorOauthStates: the
-    // SDK driver fills in code_verifier + authorization_url via the
-    // provider's callbacks below.
-    await db.insert(mcpOauthStates).values({
+    const started = await startMcpAuthorization({
+      db: c.get("db"),
+      req: c.req.raw,
       tenant_id: principal.tenant_id,
       connector_id: id,
-      state,
-      code_verifier: "",
-      redirect_uri,
-      requested_scopes: auth.scope ?? null,
-      // Attribution hand-off: the callback is unauthenticated, so the
-      // flow's originator rides the state row and is threaded back into
-      // the authorized / failed audit rows at callback time.
-      started_by_actor_id: principal.id,
+      actor_id: principal.id,
       // Same rule as the connector OAuth start: `ui` is a Cockpit request
       // under a live browser session, anything else a terminal or a script.
-      origin: (requestSource === "ui" ? "cockpit" : "cli") satisfies OAuthFlowOrigin,
-      expires_at: new Date(now() + STATE_TTL_MS),
+      origin: requestSource === "ui" ? "cockpit" : "cli",
+      request_source: requestSource,
     });
-
-    const issuerForAudit = auth.issuer ?? server.url;
-    try {
-      const provider = makeMcpOAuthProvider({
-        db,
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-        environment: MCP_CREDENTIAL_ENVIRONMENT,
-        redirect_uri,
-        state,
-        auth,
-        interactive: true,
-        request_source: requestSource,
-      });
-      // Drive PRM → AS discovery → DCR → PKCE. With no authorizationCode the
-      // driver builds the authorization URL, calls provider.saveCodeVerifier
-      // + provider.redirectToAuthorization (which persists the URL on the
-      // row), and returns "REDIRECT".
-      const result = await sdkAuth(provider, { serverUrl: server.url });
-      if (result !== "REDIRECT") {
-        // "AUTHORIZED" here would mean a live token already satisfied the
-        // server with no browser step — not the interactive contract this
-        // route promises. Treat it as a flow error so the operator isn't
-        // handed a stale/empty authorization URL.
-        throw new Error(`unexpected auth() result for interactive flow: ${result}`);
-      }
-
-      // Re-read the row to pick up the authorization URL the provider just
-      // persisted.
-      const rows = await db
-        .select({ authorization_url: mcpOauthStates.authorization_url })
-        .from(mcpOauthStates)
-        .where(
-          and(eq(mcpOauthStates.tenant_id, principal.tenant_id), eq(mcpOauthStates.state, state)),
-        )
-        .limit(1);
-      const authorizationUrl = rows[0]?.authorization_url;
-      if (!authorizationUrl) {
-        throw new Error("authorization URL was not persisted by the OAuth provider");
-      }
-
-      await recordConnectorMcpAuthorizationStarted({
-        tenant_id: principal.tenant_id,
-        actor_id: principal.id,
-        request_source: requestSource,
-        connector_id: id,
-        connector_slug: server.slug,
-        issuer: issuerForAudit,
-        executor: db,
-      });
-
-      logger.info({
-        module: LOG_MODULE,
-        action: "authorize.started",
-        msg: "issued interactive OAuth authorization URL for external MCP server",
-        tenant_id: principal.tenant_id,
-        connector_id: id,
-        connector_slug: server.slug,
-        state_prefix: state.slice(0, 8),
-      });
-
-      return c.json({ authorization_url: authorizationUrl, state }, 200);
-    } catch (err) {
-      // Roll back the placeholder row so a failed discovery/DCR leaves no
-      // orphan in-flight authorization.
-      await db
-        .delete(mcpOauthStates)
-        .where(
-          and(eq(mcpOauthStates.tenant_id, principal.tenant_id), eq(mcpOauthStates.state, state)),
+    if (started.ok) return c.json(started.flow, 200);
+    switch (started.failure) {
+      case "not_found":
+        throw new NotFoundError("mcp connector");
+      case "not_this_route":
+        throw started.route
+          ? HttpError.withEnvelope(
+              422,
+              "sign_in_route_mismatch",
+              "this connector does not sign in through mcp/authorize",
+              { hint: `start its sign-in at ${started.route}` },
+            )
+          : new HttpError(
+              422,
+              "no_browser_sign_in",
+              "this connector has no browser sign-in — interactive authorization is only available for an mcp connector whose auth_type is 'oauth2'",
+            );
+      case "no_public_address":
+        throw new HttpError(
+          400,
+          "engine_public_url_missing",
+          "engine has no resolvable public origin — set server.public_base_url (it must be an HTTPS URL reachable by the external authorization server)",
         );
-      // `reason` is a sanitized classifier, never the verbose error (it can
-      // embed a discovery/authorization URL with a query string).
-      await recordConnectorMcpAuthorizationFailed({
-        tenant_id: principal.tenant_id,
-        actor_id: principal.id,
-        request_source: requestSource,
-        connector_id: id,
-        connector_slug: server.slug,
-        issuer: issuerForAudit,
-        reason: "discovery_or_registration_failed",
-        executor: db,
-      });
+      case "start_failed":
+        // 502: the failure is almost always a remote discovery / DCR fault
+        // (the external AS), not a malformed client request. No URL/secret
+        // in the surfaced message.
+        throw new HttpError(
+          502,
+          "mcp_authorization_failed",
+          "could not begin authorization — the external MCP server's authorization-server discovery or dynamic client registration failed",
+        );
+    }
+  });
+
+  // ── GET /v1/connectors/{id}/mcp/authorize?grant=skog_… ───────────────────
+  // Unauthenticated browser-grant path. Atomically consumes the single-use
+  // grant, then begins the authorization and 302-redirects.
+  app.openapi(authorizeGrantRoute, async (c) => {
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const { grant } = c.req.valid("query");
+
+    // Atomic claim: a wrong connector id does NOT burn the grant.
+    const claimed = await consumeStartGrant(db, { token: grant, connector_id: id });
+    if (!claimed) {
+      // Never echo the grant in HTML or logs.
       logger.warn({
         module: LOG_MODULE,
-        action: "authorize.failed",
-        msg: "interactive OAuth authorization could not be started for external MCP server",
-        tenant_id: principal.tenant_id,
+        action: "authorize.grant_invalid",
+        msg: "start grant not found, expired, or wrong connector — browser opened an invalid link",
         connector_id: id,
-        connector_slug: server.slug,
-        error_class: err instanceof Error ? err.name : "Error",
-        // Raw discovery/DCR errors can embed a full URL with its query
-        // string; reduce every embedded URL to host-only + length-cap.
-        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
       });
-      // 502: the failure is almost always a remote discovery / DCR fault
-      // (the external AS), not a malformed client request. No URL/secret in
-      // the surfaced message.
-      throw new HttpError(
-        502,
-        "mcp_authorization_failed",
-        "could not begin authorization — the external MCP server's authorization-server discovery or dynamic client registration failed",
-      );
+      return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "link_expired"));
     }
+
+    // The tenant comes ONLY from the claimed row — never from the request.
+    const { tenant_id, connector_id, created_by_actor_id } = claimed;
+
+    // The consumer is an unauthenticated browser; the grant IS the auth.
+    // Attribution to the minting principal lives in metadata (and on the
+    // paired GRANT_ISSUED row) — recording it as the acting principal would
+    // claim a person made a request they never made.
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.CONNECTOR_OAUTH_GRANT_CONSUMED,
+        resource_type: "connector",
+        resource_id: connector_id,
+        result: "success",
+        metadata: { connector_id, created_by_actor_id },
+      },
+      db,
+    );
+
+    const started = await startMcpAuthorization({
+      db,
+      req: c.req.raw,
+      tenant_id,
+      connector_id,
+      actor_id: null,
+      // A grant link is handed out in a conversation.
+      origin: "chat",
+      request_source: readRequestSource(c) ?? "api",
+    });
+    if (started.ok) return c.redirect(started.flow.authorization_url, 302);
+    const failure =
+      started.failure === "not_found"
+        ? "connector_gone"
+        : started.failure === "no_public_address"
+          ? "no_public_address"
+          : "not_startable";
+    return resultResponse(c, signInFailedPage(requestLocale(c), "chat", failure));
   });
 
   app.openapi(callbackRoute, async (c) => {
@@ -477,8 +480,18 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         }),
       );
 
-    const failAudit = (reason: string): Promise<unknown> =>
-      recordConnectorMcpAuthorizationFailed({
+    // Every failure is audited, and settles whoever waits on this
+    // connector's sign-in (a paused conversation, a terminal tailing
+    // `connector.oauth`) — exactly as the connector OAuth callback does.
+    const failAudit = async (
+      reason:
+        | "provider_error"
+        | "missing_code"
+        | "token_exchange_failed"
+        | "server_not_found"
+        | "issuer_mismatch",
+    ): Promise<void> => {
+      await recordConnectorMcpAuthorizationFailed({
         tenant_id,
         actor_id: started_by_actor_id,
         request_source: requestSource,
@@ -488,6 +501,21 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         reason,
         executor: db,
       });
+      await signalSignInFailed(db, {
+        module: LOG_MODULE,
+        tenant_id,
+        connector_id,
+        connector_slug: server?.slug ?? null,
+        // The published event names three reasons; the other two still
+        // settle the paused conversation.
+        reason:
+          reason === "provider_error" ||
+          reason === "missing_code" ||
+          reason === "token_exchange_failed"
+            ? reason
+            : null,
+      });
+    };
 
     // Provider error path — operator denied access, scope rejected, etc.
     if (q.error) {
@@ -596,6 +624,14 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
         executor: db,
       });
 
+      await signalSignInSucceeded(db, {
+        module: LOG_MODULE,
+        tenant_id,
+        connector_id,
+        connector_slug,
+        has_refresh_token: Boolean((await provider.tokens().catch(() => undefined))?.refresh_token),
+      });
+
       // Evict ONLY this server's pooled client so the NEXT palette
       // handshake reconnects fresh with the token just written. Without
       // this the in-memory backoff window armed when the server was
@@ -653,6 +689,173 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+type McpAuthorizationStart =
+  | { ok: true; flow: { authorization_url: string; state: string } }
+  | { ok: false; failure: "not_found" }
+  /** `route` is the connector's own sign-in when it has one elsewhere. */
+  | { ok: false; failure: "not_this_route"; route: string | null }
+  | { ok: false; failure: "no_public_address" }
+  | { ok: false; failure: "start_failed" };
+
+/**
+ * Begin an interactive authorization for an mcp connector: the one flow both
+ * doors of `/v1/connectors/{id}/mcp/authorize` run — the authenticated POST
+ * and the grant-token GET a conversation's link opens.
+ *
+ * The connector is refused unless `connectorSignIn` — the predicate its
+ * `sign_in` field is computed from — sends it here. Then RFC 9728 PRM → RFC
+ * 8414 AS discovery → RFC 7591 DCR → PKCE through the SDK's `auth()` driver,
+ * the authorization URL persisted on a fresh `mcp_oauth_states` row (the
+ * `state` the callback claims), and the start audited. A failed discovery
+ * rolls the row back and is audited as failed.
+ *
+ * `tenant_id` is the caller's principal (POST) or the claimed grant's row
+ * (GET), never anything else from the request.
+ */
+async function startMcpAuthorization(p: {
+  db: Db;
+  req: Request;
+  tenant_id: string;
+  connector_id: string;
+  /** The person who started it; null for the grant-token browser path. */
+  actor_id: string | null;
+  origin: OAuthFlowOrigin;
+  request_source: RequestSource;
+}): Promise<McpAuthorizationStart> {
+  const { db, tenant_id, connector_id: id, actor_id } = p;
+
+  const connector = await getConnector(tenant_id, id, db);
+  if (!connector) return { ok: false, failure: "not_found" };
+  const signIn = connectorSignIn(connector);
+  if (signIn?.kind !== "mcp") {
+    return { ok: false, failure: "not_this_route", route: signIn?.start ?? null };
+  }
+  const server = await getMcpConnector(db, tenant_id, id);
+  if (!server) return { ok: false, failure: "not_found" };
+  // `auth_type = oauth2` and `config.mcp.auth.kind = oauth2` are held equal
+  // on every write; this narrows the config the provider reads.
+  const auth = server.auth;
+  if (auth.kind !== "oauth2") return { ok: false, failure: "not_this_route", route: null };
+
+  const redirect_uri = buildMcpOAuthRedirectUri({ req: p.req });
+  if (!redirect_uri) return { ok: false, failure: "no_public_address" };
+
+  // Opaque correlation token. crypto.randomUUID is the same RNG the
+  // connector flow relies on for an unguessable single-use state.
+  const state = crypto.randomUUID();
+
+  // Placeholder row at flow start, mirroring connectorOauthStates: the SDK
+  // driver fills in code_verifier + authorization_url via the provider's
+  // callbacks below.
+  await db.insert(mcpOauthStates).values({
+    tenant_id,
+    connector_id: id,
+    state,
+    code_verifier: "",
+    redirect_uri,
+    requested_scopes: auth.scope ?? null,
+    // Attribution hand-off: the callback is unauthenticated, so the flow's
+    // originator rides the state row and is threaded back into the
+    // authorized / failed audit rows at callback time.
+    started_by_actor_id: actor_id,
+    origin: p.origin,
+    expires_at: new Date(now() + STATE_TTL_MS),
+  });
+
+  const issuerForAudit = auth.issuer ?? server.url;
+  try {
+    const provider = makeMcpOAuthProvider({
+      db,
+      tenant_id,
+      connector_id: id,
+      environment: MCP_CREDENTIAL_ENVIRONMENT,
+      redirect_uri,
+      state,
+      auth,
+      interactive: true,
+      request_source: p.request_source,
+    });
+    // Drive PRM → AS discovery → DCR → PKCE. With no authorizationCode the
+    // driver builds the authorization URL, calls provider.saveCodeVerifier +
+    // provider.redirectToAuthorization (which persists the URL on the row),
+    // and returns "REDIRECT".
+    const result = await sdkAuth(provider, { serverUrl: server.url });
+    if (result !== "REDIRECT") {
+      // "AUTHORIZED" here would mean a live token already satisfied the
+      // server with no browser step — not the interactive contract this
+      // flow promises. Treat it as a flow error so the person isn't handed a
+      // stale/empty authorization URL.
+      throw new Error(`unexpected auth() result for interactive flow: ${result}`);
+    }
+
+    // Re-read the row to pick up the authorization URL the provider just
+    // persisted.
+    const rows = await db
+      .select({ authorization_url: mcpOauthStates.authorization_url })
+      .from(mcpOauthStates)
+      .where(and(eq(mcpOauthStates.tenant_id, tenant_id), eq(mcpOauthStates.state, state)))
+      .limit(1);
+    const authorizationUrl = rows[0]?.authorization_url;
+    if (!authorizationUrl) {
+      throw new Error("authorization URL was not persisted by the OAuth provider");
+    }
+
+    await recordConnectorMcpAuthorizationStarted({
+      tenant_id,
+      actor_id,
+      request_source: p.request_source,
+      connector_id: id,
+      connector_slug: server.slug,
+      issuer: issuerForAudit,
+      executor: db,
+    });
+
+    logger.info({
+      module: LOG_MODULE,
+      action: "authorize.started",
+      msg: "issued interactive OAuth authorization URL for external MCP server",
+      tenant_id,
+      connector_id: id,
+      connector_slug: server.slug,
+      origin: p.origin,
+      state_prefix: state.slice(0, 8),
+    });
+
+    return { ok: true, flow: { authorization_url: authorizationUrl, state } };
+  } catch (err) {
+    // Roll back the placeholder row so a failed discovery/DCR leaves no
+    // orphan in-flight authorization.
+    await db
+      .delete(mcpOauthStates)
+      .where(and(eq(mcpOauthStates.tenant_id, tenant_id), eq(mcpOauthStates.state, state)));
+    // `reason` is a sanitized classifier, never the verbose error (it can
+    // embed a discovery/authorization URL with a query string).
+    await recordConnectorMcpAuthorizationFailed({
+      tenant_id,
+      actor_id,
+      request_source: p.request_source,
+      connector_id: id,
+      connector_slug: server.slug,
+      issuer: issuerForAudit,
+      reason: "discovery_or_registration_failed",
+      executor: db,
+    });
+    logger.warn({
+      module: LOG_MODULE,
+      action: "authorize.failed",
+      msg: "interactive OAuth authorization could not be started for external MCP server",
+      tenant_id,
+      connector_id: id,
+      connector_slug: server.slug,
+      error_class: err instanceof Error ? err.name : "Error",
+      // Raw discovery/DCR errors can embed a full URL with its query string;
+      // reduce every embedded URL to host-only + length-cap.
+      error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
+    });
+    return { ok: false, failure: "start_failed" };
+  }
+}
 
 /** Origin-only comparison for RFC 9207 issuer validation. Both inputs are
  *  parsed as URLs; a non-URL value never matches. */

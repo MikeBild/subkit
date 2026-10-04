@@ -120,10 +120,11 @@ describe("the mcp driver's own routes are driver-dispatched", () => {
     expect(JSON.stringify(await res.json())).toContain("mcp connector");
   });
 
-  test("mcp/authorize against an http connector is a 404 for 'mcp connector', not an OAuth dance", async () => {
+  test("mcp/authorize against an http connector is refused by its sign-in, not an OAuth dance", async () => {
+    // The route accepts exactly what the connector's `sign_in` sends to it.
     const res = await post(`/v1/connectors/${httpConnectorId}/mcp/authorize`);
-    expect(res.status).toBe(404);
-    expect(JSON.stringify(await res.json())).toContain("mcp connector");
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe("no_browser_sign_in");
   });
 
   test("mcp/authorize on an mcp connector whose auth kind is not oauth2 is refused with the reason", async () => {

@@ -42,15 +42,6 @@
 // handshake with the remote's own message and drops the oauth2 token on a
 // mid-session 401, both on the path a tenant actually exercises. The sweep
 // could only re-observe that at the cost of new outbound traffic.
-//
-// And what it would produce would be WRONG. `flagConnectorAuthFailure` builds
-// its operator notification through `buildReauthUrl`, which routes an
-// `auth_type = oauth2` connector to `/v1/connectors/{id}/oauth/start` — a
-// flow that reads a pre-declared issuer out of the connector config. An MCP
-// server discovers its authorization server through protected-resource
-// metadata and often registers the client dynamically, which is why it has
-// its own `/mcp/authorize` route. Flagging one here would hand the operator
-// a link that cannot complete the re-auth it is asking them to perform.
 
 import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
