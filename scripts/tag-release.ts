@@ -124,6 +124,14 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+console.log("release:tag: running the full local gate (bun run verify)\n");
+try {
+  execFileSync("bun", ["run", "verify"], { cwd: REPO, stdio: "inherit" });
+} catch {
+  console.error(`release:tag: refusing to tag ${tag} — bun run verify failed`);
+  process.exit(1);
+}
+
 if (localTag === "") git("tag", tag, head);
 console.log(`release:tag: ${tag} → ${head.slice(0, 8)}`);
 

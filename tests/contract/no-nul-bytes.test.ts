@@ -77,7 +77,7 @@ describe("no tracked source file is invisible to text search", () => {
     // sweep is repository-sized, and it demonstrably includes the file the
     // defect was found in.
     expect(scanned.length).toBeGreaterThan(1_000);
-    expect(scanned).toContain("tests/contract/ci-workflows.test.ts");
+    expect(scanned).toContain("tests/contract/no-nul-bytes.test.ts");
   });
 
   test("the detector finds a NUL where there is one", () => {

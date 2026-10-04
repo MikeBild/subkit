@@ -775,7 +775,7 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
   // event-loop GC blips), the connector egress guard ran "permissive"
   // instead of "strict", and OIDC cookies were missing `Secure`.
   const IDENTITY_DEFINE = "process.env.NODE_ENV=process.env.NODE_ENV";
-  const SOURCES = ["package.json", ".github/workflows/release.yml"];
+  const SOURCES = ["package.json", "Dockerfile"];
   const violations: string[] = [];
   for (const rel of SOURCES) {
     const text = readFileSync(join(REPO, rel), "utf8");
