@@ -5238,7 +5238,10 @@ for (const locale of variants) {
 }
 
 for (const locale of focused ? [] : variants) {
-  for (const viewport of ["desktop", "mobile"]) {
+  // A sheet per swept width: a narrowed sweep has no frames for the others.
+  for (const viewport of ["desktop", "mobile"].filter((name) =>
+    viewports.some((swept) => swept.name === name),
+  )) {
     const contact = await browser.newPage({
       viewport: { width: 1600, height: 1000 },
     });
